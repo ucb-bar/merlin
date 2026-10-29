@@ -511,6 +511,7 @@ _OP_FAMILY: dict[str, str] = {
     "tensor_sub": "elementwise_map",
     "prefix_sum": "reduction",
     "conv_backward": "contraction",
+    "conv_backward_spatial": "contraction",
     "rope": "elementwise_map",
     "rope_qkv": "elementwise_map",
     "logit_softcap": "elementwise_map",

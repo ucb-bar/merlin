@@ -219,6 +219,7 @@
             "tensor_sub",
             "prefix_sum",
             "conv_backward",
+            "conv_backward_spatial",
             "concat",
             "insert_slice",
             "fill",

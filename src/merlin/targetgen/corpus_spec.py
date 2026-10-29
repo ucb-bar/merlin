@@ -25,6 +25,7 @@ from merlin.targetgen.capsule_dram import dtype_bits
 from .capsule_intent import _semantic_block as _semantic_block
 from .column_sum_capsule import build_column_sum, column_sum_program
 from .scalar_affine_capsule import build_scalar_affine, scalar_affine_program
+from .conv_backward_spatial_capsule import build_conv_backward_spatial
 from .conv_backward_capsule import build_conv_backward, conv_backward_program
 from .prefix_sum_capsule import build_prefix_sum, prefix_sum_program
 from .tensor_sub_capsule import build_tensor_sub, tensor_sub_program
@@ -2620,6 +2621,7 @@ def build_activation_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, 
 
 
 BUILDERS["activation_matmul"] = build_activation_matmul
+BUILDERS["conv_backward_spatial"] = build_conv_backward_spatial  # 3x3 padded conv grads incl. the fold (conv_backward_spatial_capsule)
 BUILDERS["conv_backward"] = build_conv_backward  # pointwise conv grads: dX, dW, db (conv_backward_capsule)
 BUILDERS["prefix_sum"] = build_prefix_sum  # inclusive scan down the outer axis (prefix_sum_capsule)
 BUILDERS["tensor_sub"] = build_tensor_sub  # Y = X0 - X1 over two operands, weights (1, -1) (tensor_sub_capsule)

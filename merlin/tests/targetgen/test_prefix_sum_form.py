@@ -85,7 +85,7 @@ def test_form_is_declared_by_the_reviewed_row():
 
     doc = validate_software_spec(load_yaml(repo_root() / "examples/gemmini/target/software-spec.yaml"), "gemmini")
     kept, refused = ft.declared_forms(doc, {})
-    assert kept.get("reduction") == ["cumsum"], (kept, refused)
+    assert "cumsum" in kept.get("reduction", []), (kept, refused)
 
 
 @pytest.mark.parametrize("m,n", [(16, 16), (4, 8)])
@@ -114,4 +114,4 @@ def test_convolution_backward_form_is_declared_by_the_contraction_row():
 
     doc = validate_software_spec(load_yaml(repo_root() / "examples/gemmini/target/software-spec.yaml"), "gemmini")
     kept, refused = ft.declared_forms(doc, {})
-    assert kept.get("contraction") == ["convolution_backward"], (kept, refused)
+    assert "convolution_backward" in kept.get("contraction", []), (kept, refused)

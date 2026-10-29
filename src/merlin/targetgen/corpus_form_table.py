@@ -147,6 +147,11 @@ def _conv_backward(m: int, n: int) -> dict[str, Any]:
     return {"M": m, "K": n, "N": n}
 
 
+def _conv_backward_spatial(m: int, n: int) -> dict[str, Any]:
+    """The canonical padded 3x3 stride-1 case; its geometry is fixed (``conv_backward_spatial_capsule.CASE``)."""
+    return {}
+
+
 def _scalar_affine(weight: int, bias: int) -> Callable[[int, int], dict[str, Any]]:
     """A scalar-immediate affine map ``y = weight * x + bias`` (literal immediates; one tensor operand).
 
@@ -199,6 +204,7 @@ FORM_TABLE: dict[tuple[str, str], FormEntry] = {
     # with one broadcast constant c; the hardware primitives are the unit-scale accumulating load (c as the
     # accumulator seed) and the weighted integer mesh (w), both documented on the spec row, not on the contract's
     # movement `forms` vocabulary, so none is listed here.
+    ("contraction", "convolution_backward_spatial"): FormEntry("conv_backward_spatial", _conv_backward_spatial),
     ("contraction", "convolution_backward"): FormEntry("conv_backward", _conv_backward),
     ("reduction", "cumsum"): FormEntry("prefix_sum", _prefix_sum),
     ("elementwise_map", "tensor_sub"): FormEntry("tensor_sub", _tensor_sub),

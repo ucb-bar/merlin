@@ -201,7 +201,7 @@ operations:
     # numerical_semantics.accumulator_seed_tensor (reviewed, sign-off addendum); its RTL evidence is cited
     # there and in `evidence.basis`.
     families: [contraction, window_mean]
-    forms: [convolution_backward]
+    forms: [convolution_backward, convolution_backward_spatial]
     placement: accelerator
     arithmetic: integer_multiply_accumulate
     operand_dtypes:
@@ -244,6 +244,19 @@ operations:
         row for aten.convolution_backward.default runs on the device (placement device, spec_int8 plan admitted, pass;
         3637 device instructions) in /scratch2/loren/backend-verify/results-all.csv. Primitives required are the int8 mesh
         (PE.scala:23) with the int32 accumulator, DMA permutation of a 16x16 tile (transposer), and accumulate-on-load.
+        Addendum, form convolution_backward_spatial. The same three gradients for a padded 3x3 stride-1 convolution
+        (4x4x4 image, 16 output channels), written as ONE interface program. grad_weight = Xcol^T @ dY and
+        grad_input_col = W @ dY^T are two int8 contractions of this row (K = 3*3*C = 36 for the first, K = 16 for the
+        second), the transposes plain permutation movement, and grad_input_col is read out at int8 by a power-of-two
+        acc_scale (the quantized backward requantizes between operations). grad_input is the overlap-add of every
+        block's taps onto the image (col2im, window_sum fold), the standalone integer sum of reduction_standalone
+        (its comment above declares col2im and the pool backwards under D3a, and the contract states that overlapping
+        writes add, so a scatter-add fold is the accumulate-on-load primitive). grad_bias is the same row's outer-axis
+        integer sum. Nothing here needs a primitive the contract does not declare. Primitives required are the int8 mesh
+        with the int32 accumulator, DMA permutation, and accumulate-on-load with overlapping writes. The fold reads int8
+        and writes the raw int32 sum, and the weight gradient and bias are read out at accumulator width, so the
+        comparison is exact. Each region is tagged prov.aten aten.convolution_backward.default. A stride above 1 or a
+        dilation needs a different fold geometry and is not claimed.
     emission_obligations:
       execution_program:
         status: compiler_obligation

@@ -774,6 +774,36 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         t = _apply_epilogue(t, attrs, env)
         return {out_name: t.to_list()}
 
+    if op == "conv_backward_spatial":
+        # grad_weight = Xcol^T @ dY; grad_input = fold(requant(W @ dY^T)); grad_bias = sum_l dY. Composed from the
+        # existing integer semantics only: Tensor.matmul, the readout stage, the permute/reshape movement and the
+        # exact window sums (fold and reduce) -- no arithmetic of its own.
+        from merlin.runtime import integer_ops
+
+        g = attrs["geometry"]
+        x, dy, w = env[attrs["xcol"]], env[attrs["dy"]], env[attrs["weight"]]
+        permute = {"form": "permute", "perm": [1, 0]}
+        grad_weight = integer_ops.move(x, permute, None).matmul(dy)
+        col = _apply_epilogue(
+            w.matmul(integer_ops.move(dy, permute, None)),
+            {"epilogue": ["acc_scale"], "acc_scale": attrs["grad_input_col_scale"], "output_dtype": "i8"},
+            env,
+        )
+        col = integer_ops.move(col, {"form": "reshape"}, [1, g["K"], g["L"]])
+        window = {"readout_scale": 1.0, "output_dtype": "i32", "rounding": "half_to_even", "layout": "nchw"}
+        grad_input = integer_ops.window_sum(
+            col, {**window, "mode": "fold", **attrs["fold"]}, [1, g["C"], g["H"], g["W"]], op="conv_backward fold"
+        )
+        grad_bias = integer_ops.window_sum(
+            dy, {**window, "mode": "reduce", "dims": [0], "average": False}, [1, g["N"]], op="conv_backward bias"
+        )
+        names = attrs["outs"]
+        return {
+            names[0]: _narrow_to_dtype(grad_weight, "i32").to_list(),
+            names[1]: grad_input.to_list(),
+            names[2]: grad_bias.to_list(),
+        }
+
     if op == "resident_reuse":
         # one resident weight, multiple matmuls (each with its own lhs/epilogue/out)
         w = env[attrs["weight"]]
