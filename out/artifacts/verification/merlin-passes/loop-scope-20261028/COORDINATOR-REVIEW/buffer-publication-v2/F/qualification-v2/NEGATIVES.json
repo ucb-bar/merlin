@@ -1,0 +1,153 @@
+[
+  {
+    "name": "source_wrong_seed",
+    "status": "HOST_REFUSAL",
+    "reason": "actual operand/capture/return/observer or same-shaped buffer changed",
+    "consumer_called": false
+  },
+  {
+    "name": "normalized_wrong_seed",
+    "status": "HOST_REFUSAL",
+    "reason": "actual operand/capture/return/observer or same-shaped buffer changed",
+    "consumer_called": false
+  },
+  {
+    "name": "reused_wrong_seed",
+    "status": "HOST_REFUSAL",
+    "reason": "actual retained operand/capture or same-typed private buffer changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_wrong_seed",
+    "status": "HOST_REFUSAL",
+    "reason": "retained operation/observer/capture/metadata changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_missing_initializer_store",
+    "status": "HOST_REFUSAL",
+    "reason": "retained operation/observer/capture/metadata changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_wrong_tile_stride",
+    "status": "HOST_REFUSAL",
+    "reason": "generated outer bounds/stride binding changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_wrong_inner_cutoff",
+    "gate_status": "not_established",
+    "reason": "complete possible-success buffer obligation rejected",
+    "consumer_called": false,
+    "status": "ACTUAL_GATE_EXPECTED_OBLIGATION_REFUSAL",
+    "native_classification": {
+      "status": "EXPECTED_COMPONENT_OBLIGATION_REFUSAL",
+      "root": "GraphMemorySCFObligation.valid",
+      "line": 14,
+      "diagnostic": "Tactic `decide` proved that the proposition"
+    }
+  },
+  {
+    "name": "final_wrong_load_address",
+    "status": "HOST_REFUSAL",
+    "reason": "retained operation/observer/capture/metadata changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_wrong_store_address",
+    "status": "HOST_REFUSAL",
+    "reason": "retained operation/observer/capture/metadata changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_wrong_scalar_return",
+    "status": "HOST_REFUSAL",
+    "reason": "retained operation/observer/capture/metadata changed",
+    "consumer_called": false
+  },
+  {
+    "name": "source_wrong_scalar_return",
+    "status": "HOST_REFUSAL",
+    "reason": "actual operand/capture/return/observer or same-shaped buffer changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_wrong_observer_operand",
+    "status": "HOST_REFUSAL",
+    "reason": "retained operation/observer/capture/metadata changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_early_free",
+    "status": "HOST_REFUSAL",
+    "reason": "supported exact no-carry initializer control required",
+    "consumer_called": false
+  },
+  {
+    "name": "final_missing_free",
+    "status": "HOST_REFUSAL",
+    "reason": "retained operation/observer/capture/metadata changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_alignment1",
+    "status": "HOST_REFUSAL",
+    "reason": "retained operation/observer/capture/metadata changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_visibility",
+    "status": "HOST_REFUSAL",
+    "reason": "retained operation/observer/capture/metadata changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_entry_renamed",
+    "status": "HOST_REFUSAL",
+    "reason": "retained operation/observer/capture/metadata changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_missing_unchanged_entry",
+    "status": "HOST_REFUSAL",
+    "reason": "missing unchanged operation",
+    "consumer_called": false
+  },
+  {
+    "name": "final_observer_arguments_order",
+    "status": "HOST_REFUSAL",
+    "reason": "retained operation/observer/capture/metadata changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_observer_reordered",
+    "status": "HOST_REFUSAL",
+    "reason": "retained operation/observer/capture/metadata changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_missing_observer",
+    "status": "HOST_REFUSAL",
+    "reason": "retained operation/observer/capture/metadata changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_wrong_allocation_shape",
+    "status": "HOST_REFUSAL",
+    "reason": "SSA result/argument arity/type changed",
+    "consumer_called": false
+  },
+  {
+    "name": "reused_wrong_allocation_shape",
+    "status": "HOST_REFUSAL",
+    "reason": "actual SSA argument/result arity/type changed",
+    "consumer_called": false
+  },
+  {
+    "name": "final_nonidentity_strides",
+    "status": "HOST_REFUSAL",
+    "reason": "SSA result/argument arity/type changed",
+    "consumer_called": false
+  }
+]

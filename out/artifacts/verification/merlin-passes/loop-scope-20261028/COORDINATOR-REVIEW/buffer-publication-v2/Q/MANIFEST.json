@@ -1,0 +1,2064 @@
+{
+  "schema": "merlin.buffer-reuse.q-delivery.v6",
+  "files": [
+    {
+      "path": "BUFFER-DIAGNOSTIC-REPAIR.json",
+      "sha256": "2fbdbf88ca97ac870377497642367842206c6029c17f91c834c2b7ce97e626f5",
+      "bytes": 667
+    },
+    {
+      "path": "BUFFER-EPOCH-REPAIR.json",
+      "sha256": "1da44b37c36eab43c5cd77a284fbd411b0188ee581ed4c0e4d224c53e530f2b7",
+      "bytes": 593
+    },
+    {
+      "path": "BUFFER-SHAPE-REPAIR.json",
+      "sha256": "16a2cf4340ca768784afd10b22fb15361bdf0839006249d8d1333ead3e428d31",
+      "bytes": 1425
+    },
+    {
+      "path": "CanonicalBufferQuery.lean",
+      "sha256": "c1ba6703c5069f45ddb66079cb6bd6016d966e962c11ddf78de9624bc0fabd2c",
+      "bytes": 265811
+    },
+    {
+      "path": "DEPENDENCIES.json",
+      "sha256": "aee97aebf08223249b757be7bf96fc5c1d3abfa8ca9367eee109044f994768e9",
+      "bytes": 43741
+    },
+    {
+      "path": "EPOCH-RESULT.json",
+      "sha256": "e0f790dd06bf874a381e86e40ae2d8c9162510b17f05548fd9130ec8f0eeca1d",
+      "bytes": 15011
+    },
+    {
+      "path": "EPOCH-SPLIT.json",
+      "sha256": "3268d54c42619ecc4248b4c913503dd13dadf38b51044b6a0bb7c42345371ee5",
+      "bytes": 1639
+    },
+    {
+      "path": "EVIDENCE-LINEAGE.json",
+      "sha256": "9530b75f754a3b8e90e7372f76e63b7cdbe1e390bf016120592b8f0abc115d55",
+      "bytes": 5105
+    },
+    {
+      "path": "FINAL-STYLE.json",
+      "sha256": "61a86bbd40f1ee88d6077670ada1516a4cb8b9308a63313c64deda39cf245824",
+      "bytes": 319
+    },
+    {
+      "path": "GATE-INTERFACE.md",
+      "sha256": "615089d0635d4a794ef1f20b5e49550698cb1ff79c634c80d16796abb03e465b",
+      "bytes": 1938
+    },
+    {
+      "path": "LOOP-ISOLATION.json",
+      "sha256": "90f3aa7e4b7ea097809a19a27f308785748d678285a8d274971facec4c916c77",
+      "bytes": 50
+    },
+    {
+      "path": "NORMALIZED-IDENTITY-REFUSAL.json",
+      "sha256": "ab8445dea92891c15f1372e740af269cc84a8de5862473598b50c62926bb765f",
+      "bytes": 642
+    },
+    {
+      "path": "PAPER-ROW.md",
+      "sha256": "d8443e1e597f0c161f8f3d5ec016e17af311ba310cd25ceff63c0042b29685dc",
+      "bytes": 1905
+    },
+    {
+      "path": "PREPARATION.json",
+      "sha256": "64834f3389553684ef68f71e475a4018cffa479a84ee76cf5028211edfd025b2",
+      "bytes": 16698
+    },
+    {
+      "path": "PROJECT_CLOSURE.json",
+      "sha256": "7421711d7ff5575a6f40ec49a441011c329ba6d1cb47e0b188996ca48c7e1b84",
+      "bytes": 26700
+    },
+    {
+      "path": "Q-SPLIT-COMPARISON.json",
+      "sha256": "7f557e333edce8764a8a52b27f674afe266a519f0b8ed72318c0549edf6fc047",
+      "bytes": 5914
+    },
+    {
+      "path": "Q5-final-lint-v1.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "Q5-final-lint-v1.stdout",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "bytes": 19
+    },
+    {
+      "path": "Q5-final-tests-v1.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "Q5-final-tests-v1.stdout",
+      "sha256": "803723bc3a8d878afd5eb6f9e74a160beaa10394b86ee20209650d4b45994b38",
+      "bytes": 179
+    },
+    {
+      "path": "Q6-CANDIDATES.json",
+      "sha256": "9ce2ac0c0985169df372ccbd261ae166f7c052c51f9269e02b66f61c0606a29b",
+      "bytes": 3841
+    },
+    {
+      "path": "Q6-changed-source-lint-v1.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "Q6-changed-source-lint-v1.stdout",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "bytes": 19
+    },
+    {
+      "path": "Q6-final-lint-v1.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "Q6-final-lint-v1.stdout",
+      "sha256": "742dfab92071f54415981df782fe471a7e1fc4e356d34d5606fbb4a84b841a58",
+      "bytes": 4777
+    },
+    {
+      "path": "Q6-final-tests-v1.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "Q6-final-tests-v1.stdout",
+      "sha256": "4ffcb966f5ec71010d2344f46b208b0739f98206c1cbe68823870661a1c84620",
+      "bytes": 179
+    },
+    {
+      "path": "QUERY_PARTS.json",
+      "sha256": "840056f018270c5a51575592642c8abaca07f38da95b6a1878f14d6578e99ab7",
+      "bytes": 328956
+    },
+    {
+      "path": "README.md",
+      "sha256": "af25a7b997104131cf15ac6182be8ce846c5e65049dfa18bb30f6bfadc0ce529",
+      "bytes": 2527
+    },
+    {
+      "path": "REGRESSIONS.json",
+      "sha256": "52ec458613624591d2aef06ab138992e4c1ae839abc061b5c4f242277bfbe83d",
+      "bytes": 1036
+    },
+    {
+      "path": "REPAIR-STATUS.json",
+      "sha256": "6b5fcc3c5cc18e06058c2c760fbf491505ab19feed29bfd7723ac4aeee2b12bf",
+      "bytes": 583
+    },
+    {
+      "path": "REVIEW.md",
+      "sha256": "c1c957ba9e0c717fa4ef1a2248e8b530787c2aa33d1df1d0f4d91f9883f1599a",
+      "bytes": 4054
+    },
+    {
+      "path": "ROOTS.json",
+      "sha256": "17b597bf06ee63cccad98a4057873a3563214dfc0c1237a16027207907e4251e",
+      "bytes": 12343
+    },
+    {
+      "path": "RUN.md",
+      "sha256": "69e6e1dd5899d9d1eb19455bb8a04e6c58cf42b51b5780c9d23df145a6c34a1e",
+      "bytes": 2814
+    },
+    {
+      "path": "SDK-TEST-STATUS.json",
+      "sha256": "ebdb8919d41d903e0ae15dbd782ee4a1937e2e3a5cd5dded06d48958daacc2d1",
+      "bytes": 655
+    },
+    {
+      "path": "SOURCE-CLOSURE-RELATIVE.json",
+      "sha256": "5a8cb33b3fdc6a96facf6bd64a9bf1c4c80cae796161dcc3ffd11fc05123caf7",
+      "bytes": 52145
+    },
+    {
+      "path": "SOURCES.json",
+      "sha256": "f3f5e90931a0c87dd692c8de4496aa08436d08c9bd552aaa348d17c95561ab2a",
+      "bytes": 5563
+    },
+    {
+      "path": "binding-BUILD.json",
+      "sha256": "00aac340c503372ef0dc00a3cc04ddd815f0a9289eeb302b2bc08075a85410a5",
+      "bytes": 406
+    },
+    {
+      "path": "binding-ENVIRONMENT-BOUNDARY.md",
+      "sha256": "54d351886819b81487b637ab5e365f4cba646c2c09363d704b9f4089ba3bc9f1",
+      "bytes": 1127
+    },
+    {
+      "path": "binding-SDK-PROCESS-v1.json",
+      "sha256": "d0f39bf95c6f62ec8f051ad66e3d210cbbae3093c2fdf78bd669c8506b22eeba",
+      "bytes": 761
+    },
+    {
+      "path": "binding-SDK-controls/IMPORTS.json",
+      "sha256": "437943b5afda99ff5480bf447a4be6e03b10a95033ffdd691d31f21858751a11",
+      "bytes": 19682
+    },
+    {
+      "path": "binding-SDK-controls/RESULT.json",
+      "sha256": "d55ac1b259a18fb12e0a82b1a29398ebfb4a2a4bd7b2a10689f8945f232c6672",
+      "bytes": 1777
+    },
+    {
+      "path": "binding-SDK-controls/SELECTED-191.json",
+      "sha256": "f2a6b9c0cade3abcf59b2dcf37f1eff0290f83d094cf3624b23730dc7624a410",
+      "bytes": 64369
+    },
+    {
+      "path": "binding-SOURCE-ADDENDUM.json",
+      "sha256": "a2d2ccf421e018190ba2b15830ddfa2e660ba1a4a366d3681574e6e0372f68ba",
+      "bytes": 1579
+    },
+    {
+      "path": "binding-TRIAGE.md",
+      "sha256": "468c3f50e554d3c763903dbfe63bed781e3762b508b7df87c4b7b3d615d6d233",
+      "bytes": 2692
+    },
+    {
+      "path": "case-requests/CASE-MAP.json",
+      "sha256": "c73851b51b49ba93edff1e3e9ab71f5385acd6574dd5381da91060dd418ca538",
+      "bytes": 4231
+    },
+    {
+      "path": "case-requests/alignment32_tile3/CanonicalBufferQuery.lean",
+      "sha256": "54de54ee25c819880f9feb783c2ed3892822a18360d3eba4d46a24697063d1d6",
+      "bytes": 265811
+    },
+    {
+      "path": "case-requests/alignment32_tile3/EpochCommands.lean",
+      "sha256": "9dfe0e996d06d40ad29a55350d2584662b243117d58c2484370b8d2346f5d0d0",
+      "bytes": 21844
+    },
+    {
+      "path": "case-requests/alignment32_tile3/EpochKernel.lean",
+      "sha256": "dc7e374536fe409b2768fd0f91b1ca57b782c527f62791c78f2b79697c6b01c6",
+      "bytes": 7753
+    },
+    {
+      "path": "case-requests/alignment32_tile3/EpochPlan.lean",
+      "sha256": "0f255776d9ec73dfe21eda5eb6dbf9355753c9a40921d470d73f86d61a9aaf6f",
+      "bytes": 274
+    },
+    {
+      "path": "case-requests/alignment32_tile3/EpochSyntax.lean",
+      "sha256": "1b21481c5d9ce3e6400b8125c28608bcc66175b40b838bfbf6c840a3ae486ad7",
+      "bytes": 27851
+    },
+    {
+      "path": "case-requests/alignment32_tile3/OriginalCanonicalBufferQuery.lean",
+      "sha256": "70e1e937e9e39ed1c091bc2e3bf522df70263c13db8631fb070e551678f6d88d",
+      "bytes": 265563
+    },
+    {
+      "path": "case-requests/alignment32_tile3/PARTS.json",
+      "sha256": "dc124be028dbf398ed3ed5a2226308e978904678475e43cc384741244bf7ecb1",
+      "bytes": 328956
+    },
+    {
+      "path": "case-requests/alignment32_tile3/REQUEST.json",
+      "sha256": "6b8d076930e6f97df5e3d372a748110ce762e0faafbc112b1612e8b7efe6fcde",
+      "bytes": 793
+    },
+    {
+      "path": "case-requests/alignment32_tile3/ROOTS.json",
+      "sha256": "17b597bf06ee63cccad98a4057873a3563214dfc0c1237a16027207907e4251e",
+      "bytes": 12343
+    },
+    {
+      "path": "case-requests/alignment32_tile3/RawChainEntries.lean",
+      "sha256": "5995b1c4c5a934aa044b90cc8fa631900127f714a3cad4d6fb31f6cbc2312e02",
+      "bytes": 23013
+    },
+    {
+      "path": "case-requests/alignment32_tile3/WholeEpoch.lean",
+      "sha256": "8a96976121403e1d1b46c6e15b0c314a89de486cb618aa2fd119126e5f93445a",
+      "bytes": 2572
+    },
+    {
+      "path": "case-requests/alignment32_tile3/WholeExpansion.lean",
+      "sha256": "f27dde63c1ee7888cf78ca840a2c6cf3892ffc590828b09ea364569d78ef85ec",
+      "bytes": 15057
+    },
+    {
+      "path": "case-requests/alignment32_tile3/WholeFinal.lean",
+      "sha256": "448725f643e6edcdaa9dbd5963223765c676020fc738dedb10727b591dbc9a7b",
+      "bytes": 15244
+    },
+    {
+      "path": "case-requests/alignment32_tile3/WholeMaterialization.lean",
+      "sha256": "3326428cb486aa19723ce70bd2f65a99f860f80d2658bfe56879dee36f24dd50",
+      "bytes": 26246
+    },
+    {
+      "path": "case-requests/alignment32_tile3/WholeMemory.lean",
+      "sha256": "7d3b8b74107c779564dafa1bf92dbee08333c184c19417937c7a2ad1107f1cb3",
+      "bytes": 63397
+    },
+    {
+      "path": "case-requests/alignment32_tile3/WholeReuse.lean",
+      "sha256": "f1c557284e770ebeae606f59f169607b67068a19a23d66f40ff1b9465aacabfb",
+      "bytes": 30235
+    },
+    {
+      "path": "case-requests/alignment32_tile3/WholeShape.lean",
+      "sha256": "21bf11352159a3c07b26ad38a9d70059688fbf1f4adb40ddcbd9a59be7225b23",
+      "bytes": 33693
+    },
+    {
+      "path": "case-requests/alignment32_tile3/stage0.mlir",
+      "sha256": "ca7058dd9d777a3d24729f7645f64ef734405024dc4cd0de5cd90180a868e3e4",
+      "bytes": 2664
+    },
+    {
+      "path": "case-requests/alignment32_tile3/stage1.mlir",
+      "sha256": "48c6b6ae454ab4b2ada775bff3025a58fea85bf9983d00114b0c3e6fd4d8bb53",
+      "bytes": 3962
+    },
+    {
+      "path": "case-requests/alignment32_tile3/stage2.mlir",
+      "sha256": "f0cf2cc6d87d28a0164ff50ae09eadcfa9b6bf3af9eaaeab1fcb3a0c84d546ae",
+      "bytes": 3784
+    },
+    {
+      "path": "case-requests/alignment32_tile3/stage3.mlir",
+      "sha256": "e1b2f009669aaefe52de0da5222621a1e3c02f33ecb3488e2a0a75c1084f6965",
+      "bytes": 4496
+    },
+    {
+      "path": "case-requests/retained_two_epochs/CanonicalBufferQuery.lean",
+      "sha256": "c1ba6703c5069f45ddb66079cb6bd6016d966e962c11ddf78de9624bc0fabd2c",
+      "bytes": 265811
+    },
+    {
+      "path": "case-requests/retained_two_epochs/EpochCommands.lean",
+      "sha256": "ec3453ddb529ea9b8732aa3050f0119962d827fff70af471759087140c21dea9",
+      "bytes": 21844
+    },
+    {
+      "path": "case-requests/retained_two_epochs/EpochKernel.lean",
+      "sha256": "6d6bdf36329188da1b63eddf351c01c67dd718ebebc57bac4ecd992ce7f6c82f",
+      "bytes": 7753
+    },
+    {
+      "path": "case-requests/retained_two_epochs/EpochPlan.lean",
+      "sha256": "0f255776d9ec73dfe21eda5eb6dbf9355753c9a40921d470d73f86d61a9aaf6f",
+      "bytes": 274
+    },
+    {
+      "path": "case-requests/retained_two_epochs/EpochSyntax.lean",
+      "sha256": "8103468b683f68ee80787bb12d674b6936005c497741f13b12de010a7147e673",
+      "bytes": 27851
+    },
+    {
+      "path": "case-requests/retained_two_epochs/OriginalCanonicalBufferQuery.lean",
+      "sha256": "816fea3406f68f15deccd8c2911b0a0859e08deca701827824cc9e55ec74831a",
+      "bytes": 265563
+    },
+    {
+      "path": "case-requests/retained_two_epochs/PARTS.json",
+      "sha256": "891f6b1dde12210a11c667ce3924270f56252c03d24dae3c44940d64a4386c8f",
+      "bytes": 328956
+    },
+    {
+      "path": "case-requests/retained_two_epochs/REQUEST.json",
+      "sha256": "35d9477f8f48d9617c0bad0a7e3a504d312444e3093b28281a0613f7dc290bfc",
+      "bytes": 795
+    },
+    {
+      "path": "case-requests/retained_two_epochs/ROOTS.json",
+      "sha256": "17b597bf06ee63cccad98a4057873a3563214dfc0c1237a16027207907e4251e",
+      "bytes": 12343
+    },
+    {
+      "path": "case-requests/retained_two_epochs/RawChainEntries.lean",
+      "sha256": "8a6605245650a2ef86fbb0232d1a9e7110278efa3d05f78aedccae9f24d47cf0",
+      "bytes": 23013
+    },
+    {
+      "path": "case-requests/retained_two_epochs/WholeEpoch.lean",
+      "sha256": "8a96976121403e1d1b46c6e15b0c314a89de486cb618aa2fd119126e5f93445a",
+      "bytes": 2572
+    },
+    {
+      "path": "case-requests/retained_two_epochs/WholeExpansion.lean",
+      "sha256": "1bc362aa30c934c73a7cf66c53281b72a8c07c76b4559a9068e078af556380df",
+      "bytes": 15057
+    },
+    {
+      "path": "case-requests/retained_two_epochs/WholeFinal.lean",
+      "sha256": "5a67d8cf395486dd8b0f774d22e629096f6fea7031c4f9977685b9a37722d5a2",
+      "bytes": 15244
+    },
+    {
+      "path": "case-requests/retained_two_epochs/WholeMaterialization.lean",
+      "sha256": "90ed1799d7e42ba8da52def6130ed8f19ce094b6ab346a4674fa11b1771ae265",
+      "bytes": 26246
+    },
+    {
+      "path": "case-requests/retained_two_epochs/WholeMemory.lean",
+      "sha256": "324c50eb1731a335c6c4cb7cec909aa26cd43fa2340d8fcd84ae7b759f45c3cd",
+      "bytes": 63397
+    },
+    {
+      "path": "case-requests/retained_two_epochs/WholeReuse.lean",
+      "sha256": "2a406d996e003f91d044f37ec9f812877b201b9184442957e1c2bfb6e03f74b9",
+      "bytes": 30235
+    },
+    {
+      "path": "case-requests/retained_two_epochs/WholeShape.lean",
+      "sha256": "1c66c2f64f69540e4f096988eeb31aba36c2f24093206d6fac98d36e7a292e7d",
+      "bytes": 33693
+    },
+    {
+      "path": "case-requests/retained_two_epochs/stage0.mlir",
+      "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+      "bytes": 2659
+    },
+    {
+      "path": "case-requests/retained_two_epochs/stage1.mlir",
+      "sha256": "255ddf668a40f0e9d4624223a05897d99ce9a46466f71d1e59d692494972ca1d",
+      "bytes": 3960
+    },
+    {
+      "path": "case-requests/retained_two_epochs/stage2.mlir",
+      "sha256": "84c0e124321f0b3a57198602baeb1dcedf7f5a7c034f723fbd2613c984df91d9",
+      "bytes": 3782
+    },
+    {
+      "path": "case-requests/retained_two_epochs/stage3.mlir",
+      "sha256": "3b0a5fed1763d89d10284f879777ab40d3ea111f418e8595bf185d6ec7156525",
+      "bytes": 4494
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/CanonicalBufferQuery.lean",
+      "sha256": "f8637233b36eef597e88256deadc641cb7320eeda615ff6fe258e663a8f65be7",
+      "bytes": 265811
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/EpochCommands.lean",
+      "sha256": "65c20d7d1e66ec76c1520b84ef65614d7d7d355bb460801e8fc869b56e5e01f8",
+      "bytes": 21844
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/EpochKernel.lean",
+      "sha256": "038a2bcaa7651d9bb0179c4dee283cd2804c5e3bf17c84002fcc5ec95569ff71",
+      "bytes": 7753
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/EpochPlan.lean",
+      "sha256": "0f255776d9ec73dfe21eda5eb6dbf9355753c9a40921d470d73f86d61a9aaf6f",
+      "bytes": 274
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/EpochSyntax.lean",
+      "sha256": "8fd2e6d41d142a31fd44e96c02f16b015779501fbd814b93bfb55cf6857f7447",
+      "bytes": 27851
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/OriginalCanonicalBufferQuery.lean",
+      "sha256": "fe80f2228540f57e5f0901d6eb35ff0409dc0060ce4aeb47575c2e470841b6e1",
+      "bytes": 265563
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/PARTS.json",
+      "sha256": "8e54509f6c262b2b3ceb73f9a8f5bd63ffa42b97123a7e0d978fd17069f52575",
+      "bytes": 328956
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/REQUEST.json",
+      "sha256": "1b3d5dcf67695b04c613acaf3dd5e57f844ea5fc502b7545c6ed3296c05f69c5",
+      "bytes": 796
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/ROOTS.json",
+      "sha256": "17b597bf06ee63cccad98a4057873a3563214dfc0c1237a16027207907e4251e",
+      "bytes": 12343
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/RawChainEntries.lean",
+      "sha256": "1ca57651bd574ab2241da98f0ae93bbe4d17cbac6fb5c8bc9111c3c1001ed4e2",
+      "bytes": 23013
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/WholeEpoch.lean",
+      "sha256": "8a96976121403e1d1b46c6e15b0c314a89de486cb618aa2fd119126e5f93445a",
+      "bytes": 2572
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/WholeExpansion.lean",
+      "sha256": "3d99a534ad25570076731eb44837c9a65a003a5876f9d00735d6417fbc18a987",
+      "bytes": 15057
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/WholeFinal.lean",
+      "sha256": "9669101e2310e7801f1ad6ffabaa824b7c76df6ee0eed7a09def4671bc501edd",
+      "bytes": 15244
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/WholeMaterialization.lean",
+      "sha256": "266002922ce57186fc10dbab4898316ea0240996528b647ea3b4f52c1a363304",
+      "bytes": 26246
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/WholeMemory.lean",
+      "sha256": "6f156ac18aced0664029cc6a86ca2ef9cfe9d9391c5eff084fa736057b78fff1",
+      "bytes": 63397
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/WholeReuse.lean",
+      "sha256": "c61c2f2f893e37ac1a2d07d410d08d1e57de7e8939933762dac37b9c4912b07f",
+      "bytes": 30235
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/WholeShape.lean",
+      "sha256": "68a0bd10e4348a05dc4bbe50dbde8fb4005715efb6ba604c03d6f3f116c25cf9",
+      "bytes": 33693
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/stage0.mlir",
+      "sha256": "c55d26bb5f78e2afd42b6c776185c7b0a0f51342b97855b178fc1ffa760143c3",
+      "bytes": 2664
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/stage1.mlir",
+      "sha256": "dfd92e9a41b41fb7db6100badbe6c87f0058a5d14ac6e23b33c1678d8d0baaad",
+      "bytes": 3962
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/stage2.mlir",
+      "sha256": "ac3cfc1afc49100d6792e43dbc52f66bde4c7c89d09b111c6cac965c0e60978a",
+      "bytes": 3784
+    },
+    {
+      "path": "case-requests/rows1_columns1_tile3/stage3.mlir",
+      "sha256": "388caad9196f0df538d8c23f1432296e47da6470d74e802fc7c4ebf59600139c",
+      "bytes": 4496
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/CanonicalBufferQuery.lean",
+      "sha256": "ec3ea8f70cd6f33262974154d2d857d893a40cc729b664c300f2277494a8f14a",
+      "bytes": 265811
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/EpochCommands.lean",
+      "sha256": "be987ff41bd6164d0e79c32e1642678f5a54218d7295129f017890fb2c09d25a",
+      "bytes": 21844
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/EpochKernel.lean",
+      "sha256": "182e73c6e5c4a4024e3eff175ee872683f71ca8883d4a8d47986dbf04a83eda5",
+      "bytes": 7753
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/EpochPlan.lean",
+      "sha256": "0f255776d9ec73dfe21eda5eb6dbf9355753c9a40921d470d73f86d61a9aaf6f",
+      "bytes": 274
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/EpochSyntax.lean",
+      "sha256": "d87b90885b50fe7bad4af73cdac504e317c17d96c82a107a0e9d83c7b331ef03",
+      "bytes": 27851
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/OriginalCanonicalBufferQuery.lean",
+      "sha256": "4c4f32f3296c20cf37f25524efa2f890b473bd696abc6d85650cbfdf056ebb55",
+      "bytes": 265563
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/PARTS.json",
+      "sha256": "a2fec4bab3b937aeaebf055944f2950868b46fe78917a3b7a8763fd3b9857df5",
+      "bytes": 328956
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/REQUEST.json",
+      "sha256": "3f0640b0107e0fc8a32e373c1ba45d710486ae89a2975807062e079eca277432",
+      "bytes": 802
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/ROOTS.json",
+      "sha256": "17b597bf06ee63cccad98a4057873a3563214dfc0c1237a16027207907e4251e",
+      "bytes": 12343
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/RawChainEntries.lean",
+      "sha256": "4badef463af3263545e81d1941223351d49e88fd5336bf4427bc9850181f5d12",
+      "bytes": 23013
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/WholeEpoch.lean",
+      "sha256": "8a96976121403e1d1b46c6e15b0c314a89de486cb618aa2fd119126e5f93445a",
+      "bytes": 2572
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/WholeExpansion.lean",
+      "sha256": "86b06208ce6e565f7d384a69d371e562f4b3291249cb52a96970c460f09f5272",
+      "bytes": 15057
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/WholeFinal.lean",
+      "sha256": "b30449a446574136768e2aee2f9d654daaf5474f1416b299d3c7c69d065b31d5",
+      "bytes": 15244
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/WholeMaterialization.lean",
+      "sha256": "11dff894857babfbc333e8d9ed17c6e1db223215811b9ac810e9762d3f90942b",
+      "bytes": 26246
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/WholeMemory.lean",
+      "sha256": "5d042c0a03b3734c19deb87cd1fd82cbffddd8e25988bd0e2976371446e321d0",
+      "bytes": 63397
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/WholeReuse.lean",
+      "sha256": "c18a9a9f8236be43a243aeb1152539ca00133a52134d73c3c8a4dd1ff6c52316",
+      "bytes": 30235
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/WholeShape.lean",
+      "sha256": "6c860a18958b8f401429caf5275544cffe727f1ce00f933d34be826e7ca67ca8",
+      "bytes": 33693
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/stage0.mlir",
+      "sha256": "8a8e24aad23cf6433abc6b574613bc6299dfdd88242f6648d121bf58f91f444c",
+      "bytes": 2664
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/stage1.mlir",
+      "sha256": "21cccc992d4ccb628309d52aa4fdc68e45668243d26d1896a15849db87d10e4f",
+      "bytes": 3962
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/stage2.mlir",
+      "sha256": "a2c93b3d256fef89d8d8bb166790712083213ff58e6af6e8e5d955a8eaa54a0d",
+      "bytes": 3784
+    },
+    {
+      "path": "case-requests/rows3_columns2_tile2_short/stage3.mlir",
+      "sha256": "62eeebe7ab8df1ce45f044b5b2720548ef6c4c0d4d284e4cddef1b18242a91e8",
+      "bytes": 4496
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/CanonicalBufferQuery.lean",
+      "sha256": "b351f5e2e90cf5886add5eb6adfa12ab33cfe6b5b700b4fb02808b738cd6ba7b",
+      "bytes": 371617
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/EpochCommands.lean",
+      "sha256": "6687360f231a7ce8ad0f06548366cae4c8b71b08cb240cb6daa86b6797cefb66",
+      "bytes": 30780
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/EpochKernel.lean",
+      "sha256": "129cf65ec590a4aa1c2590712baa553ef378e1328c6af0cb250888f6952a230e",
+      "bytes": 11257
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/EpochPlan.lean",
+      "sha256": "0f255776d9ec73dfe21eda5eb6dbf9355753c9a40921d470d73f86d61a9aaf6f",
+      "bytes": 274
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/EpochSyntax.lean",
+      "sha256": "d0ba337960a25c618353868e87dc2021957a4d3bf53ea1c75bd4e1e0cd4d0f80",
+      "bytes": 39053
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/OriginalCanonicalBufferQuery.lean",
+      "sha256": "3fdf8fcd86c5d495effa5a9b5dc625fbafded52ce0ce72d4d1ad9decfcd39a0a",
+      "bytes": 371369
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/PARTS.json",
+      "sha256": "6849ae06fcc566f6249ed9484ca06d3432292ef04ad644c4111fd3b5516bcc71",
+      "bytes": 459522
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/REQUEST.json",
+      "sha256": "9a0d741d564d97d707efaad4786e96370622c97d1ae61b1f50a2f4fa99f13172",
+      "bytes": 835
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/ROOTS.json",
+      "sha256": "e70d5ba8400facf8f8b409a17c81ae2b09f0536f6ed43f5b27a1b0c52c26dbcb",
+      "bytes": 12591
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/RawChainEntries.lean",
+      "sha256": "08d75d3c9b20d7736cc8e6aa5d2b5bf87a8e0d212007c01a4ac5e7223ae7b131",
+      "bytes": 27264
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/WholeEpoch.lean",
+      "sha256": "8a96976121403e1d1b46c6e15b0c314a89de486cb618aa2fd119126e5f93445a",
+      "bytes": 2572
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/WholeExpansion.lean",
+      "sha256": "b395ef84795c1df3341aa500a0a8f676b89bb9bfe4e23120509c7f6b20eed6d2",
+      "bytes": 21526
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/WholeFinal.lean",
+      "sha256": "1ab72fc40f0b1bcc008b03269a51242bc7a8ee305584fccfea9dec3f4534b003",
+      "bytes": 19694
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/WholeMaterialization.lean",
+      "sha256": "a46cc160c19c8bb8fb9279322ecb6882da0fb34b3ab9cb2d4ccfa3aa24e16c16",
+      "bytes": 34597
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/WholeMemory.lean",
+      "sha256": "a6f94e062bd1a8df38a7e92a9c780810dc963942ab8ef8af3f7dbb65a9d44262",
+      "bytes": 100587
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/WholeReuse.lean",
+      "sha256": "b8006c70cb5011cd4cea2d647a0f233275af08b4efb9fb2b204b3a0ac17e7029",
+      "bytes": 40636
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/WholeShape.lean",
+      "sha256": "09d0104a5f67096cc5881c6d8073392a65136cbb776151259db90180d0224834",
+      "bytes": 44745
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/stage0.mlir",
+      "sha256": "4c4398108d52d19cf4b5abeb0a9743559dfff60827c8e73989cabe11ba2996d4",
+      "bytes": 3662
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/stage1.mlir",
+      "sha256": "2dab38608fcba69fc934007e3bc07c988a2155458cba0188edb5376377a0f24b",
+      "bytes": 5318
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/stage2.mlir",
+      "sha256": "af64ec69fb4bdda09803f995773d5deefe150ca1ed7734cc54ac7cce4222c2b8",
+      "bytes": 4962
+    },
+    {
+      "path": "case-requests/three_disjoint_epochs/stage3.mlir",
+      "sha256": "522974d1e2c75e1cf82e4da40a05a76b3358517ba74c585fc55d2c658605709f",
+      "bytes": 6042
+    },
+    {
+      "path": "classifier-tests-structural-v2.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "classifier-tests-structural-v2.stdout",
+      "sha256": "394aa0f933a58443b82be3d098a52d59b1fdd6bc987e01480034e6b62c325e74",
+      "bytes": 99
+    },
+    {
+      "path": "dependencies/src/merlin/__init__.py",
+      "sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086",
+      "bytes": 742
+    },
+    {
+      "path": "dependencies/src/merlin/common/__init__.py",
+      "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e",
+      "bytes": 144
+    },
+    {
+      "path": "dependencies/src/merlin/common/owned_process.py",
+      "sha256": "096779cceee8d757264731b8bf6d05ee0a59138b220422a7f1decbe878feb910",
+      "bytes": 5515
+    },
+    {
+      "path": "dependencies/src/merlin/common/paths.py",
+      "sha256": "ce9238694f7622d92ffb0e4bdae09839604f4c625092b2cef8f286773dca85b9",
+      "bytes": 17204
+    },
+    {
+      "path": "dependencies/src/merlin/sched/__init__.py",
+      "sha256": "b84e4c42421f5277d338c12ae9726ba256befa5c1491d4928c2da994fc1ee7a0",
+      "bytes": 668
+    },
+    {
+      "path": "dependencies/src/merlin/sched/ir/__init__.py",
+      "sha256": "7783c6bfc27bde3f32164ca70803d6d4d21dde9e812363da2c05693a46fedfd9",
+      "bytes": 935
+    },
+    {
+      "path": "dependencies/src/merlin/sched/ir/expr.py",
+      "sha256": "f33b1c6fb0dd389abb50bcaa2072b057f45bcba866ff1c015a9be8d36e212b12",
+      "bytes": 4922
+    },
+    {
+      "path": "dependencies/src/merlin/sched/ir/kernel.py",
+      "sha256": "89a52f2d9303cd0d2ce7d985e25ef765f1452aa82b135e1456acd7a28a28f94f",
+      "bytes": 16078
+    },
+    {
+      "path": "dependencies/src/merlin/sched/ir/parse.py",
+      "sha256": "ae66843c9dcbde727eb113f541f9c9c3214ef01c4dc1f0ed8035e32bfae758a3",
+      "bytes": 14514
+    },
+    {
+      "path": "dependencies/src/merlin/verify/__init__.py",
+      "sha256": "ed2b23769b23d2a34b47f38b316aca76277193efbcbce589670188a5cceeffe4",
+      "bytes": 1017
+    },
+    {
+      "path": "dependencies/src/merlin/verify/buffer_reuse_bridge.py",
+      "sha256": "aefc81d846c2a8cc19938a4e86a4794431c979586ebc92f3db786b4ca0f8953e",
+      "bytes": 2766
+    },
+    {
+      "path": "dependencies/src/merlin/verify/buffer_reuse_emit.py",
+      "sha256": "6c3a080f93d5e3d5fd06e0cac461dbf4c3c0eff0769ed07c2f24e88211dbcc64",
+      "bytes": 11697
+    },
+    {
+      "path": "dependencies/src/merlin/verify/buffer_reuse_gate.py",
+      "sha256": "14a14c3527f2f0b9a645b68f3f30a2aebc0631ecc1f045666162ba7249cbfa69",
+      "bytes": 19108
+    },
+    {
+      "path": "dependencies/src/merlin/verify/buffer_reuse_intake.py",
+      "sha256": "575842becf867163b3aacdadb55d4653c05b8f4aac3e0a77beede2098f060768",
+      "bytes": 8338
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCF.lean",
+      "sha256": "b7c665843732da433c765da7d8045d4a7463fb7b450c70570e3efe1640ad08f0",
+      "bytes": 4861
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAccessLocal.lean",
+      "sha256": "5ae28e5a48be8c91d8843e669ba37b41741a7deb11f557fb2c4f0c4a74114d7d",
+      "bytes": 6012
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+      "sha256": "05502dbe0083bf14ce2ea1b3a165ebd42cc0cf7e34e6a3340fc41a53bc6c592b",
+      "bytes": 5883
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+      "sha256": "55c0a6e1378b5bce3c84f293cb9457194925b299b3ee463a099a622faeb2def1",
+      "bytes": 8847
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+      "sha256": "145d3f6572f326ad5c79c43acabb9ceee341b6932cbc3348d3b926503497011e",
+      "bytes": 8705
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+      "sha256": "f727397a27d9857c2753dd0210b10a7dd2e3ee98c93e51a473db8ffcb6a7122b",
+      "bytes": 7450
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean",
+      "sha256": "2e3897623722010d45cc5dfb69726eba16433ecb9d0e59aeb5c65dda1c8b9286",
+      "bytes": 5753
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+      "sha256": "b7daf1561d9ff944385a10b30dd83b32b6f7e05a10d3998df60a824a6a8bd884",
+      "bytes": 9108
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+      "sha256": "9c92b1fedea928d04c7fc5fc5941f8f83c915335679a580e3cfb9cfaac7e5b9b",
+      "bytes": 2983
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+      "sha256": "533ea4922a1d3862c5ef5312c8d7351028d81ef74b8196a62c8cf419c7dd32a7",
+      "bytes": 5538
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean",
+      "sha256": "b16a3c65a288d1c79280f25f1e6ff19585ac7594c1ff384da66d9df15caf46ef",
+      "bytes": 7143
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+      "sha256": "aaab49c958853175d62c0c02de6d3764b9b507d2cbfc444c7c5ad03c1fb35739",
+      "bytes": 6281
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+      "sha256": "e14ab2c0ed8ce153580617047d3d937def7502453635648a7493a875158a2dcf",
+      "bytes": 6704
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+      "sha256": "923f9215fb28c725e5a407598d023f2f735f9f07181ef8b225b0861c1aaf71d2",
+      "bytes": 5369
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+      "sha256": "93fbf46d0e921ea99dd40f41b1470632dfe84d9bb0f97e3e8a63aaa72705539a",
+      "bytes": 5602
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+      "sha256": "2864687091ab69889485fa491eee07d671ac3d362eeede9bb9a59a78f6c84651",
+      "bytes": 10129
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+      "sha256": "a6d91ad7f1b9daac83ff54481e05689296da5280810c3d1e70021f2871a74970",
+      "bytes": 7567
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+      "sha256": "323972c1f6fd811cd3f98fa53a74199a46a04bd2fd6078a994f80871824789af",
+      "bytes": 10385
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+      "sha256": "98a489fa9370724b13a5e5c169d7a823751ce4e53e5fda5996abccc37c56b96e",
+      "bytes": 5957
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+      "sha256": "de8a83c3e4aee65b0c77d5e5c7d85d843f1960ca6f0a1cb1839bf61332779002",
+      "bytes": 6815
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.lean",
+      "sha256": "21d67fdc1bd04ff3eafa684c9a4a23663a9792d5b556d446abb1fbb5e89638d0",
+      "bytes": 6277
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+      "sha256": "d3e392af113e85e115584d3e8533e5f99fa8bb14379cc41c971233cdbb2f7185",
+      "bytes": 8872
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+      "sha256": "161214250a30dc39254b52cac338586fc2eb0aaa6f6c683c2c435a31cc76c863",
+      "bytes": 4926
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+      "sha256": "678c49926f5bab9d3a86e13363c2a2aabc0e9be593e167ebb5913dd97bea888a",
+      "bytes": 9734
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+      "sha256": "8226b4042bfb9180be4749848838ed9731d339e55985b82a3312578f964f7ef3",
+      "bytes": 5610
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+      "sha256": "1cd3c1fd266856edfd2cc2643e3bc7c28b25c74c45b51b98dbe1b29c4d715603",
+      "bytes": 8514
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+      "sha256": "05aa9d172b9f0376de1503c9796d08595565ba13d0d4390d792ed5334023cfb1",
+      "bytes": 11860
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+      "sha256": "71cbe9b82c9ccc0f441946c317f21c46b09817b0db923abfdaa097b6090102b8",
+      "bytes": 7661
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+      "sha256": "1506ce36832471f28bc33fc336d8418873fbb544bdc76443a7b946a0ad3373d6",
+      "bytes": 5985
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+      "sha256": "84cd8ac53d96f90c0255929bc44d4e5e2dce3173baeed4caa604d6d59af0b7c6",
+      "bytes": 8781
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean",
+      "sha256": "2fe1366da6a5e9c30d6accddcc1457a24893d174d532759a33ba1fe452e631db",
+      "bytes": 9243
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+      "sha256": "31efbe25ef09d06b344ca57ad456331254870bcbdd4e506eb8291fb1414d600d",
+      "bytes": 8520
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.lean",
+      "sha256": "2719d58b9c38cbc22d83da2bb6209551e0856f8399efc6dc3f0c35a33790201b",
+      "bytes": 4958
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+      "sha256": "e01db92a6e04e0c42e6af711ec42681e3e2ab8684fb47c058f4788855b94484e",
+      "bytes": 5584
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+      "sha256": "cf68afb7771484e60a3c71f23dbe98510d48c70bc4f5701102aa83b8985bf678",
+      "bytes": 5870
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+      "sha256": "9b9f6912aa807006042fbb600a28756c32238c782e8ece5bc25bb51d2123b129",
+      "bytes": 12129
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+      "sha256": "7ae1dfdb7f642ca6b5b950c683a1141e2fc14cb2147c2406761bad089b463ec0",
+      "bytes": 8533
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean",
+      "sha256": "39517f78dd2987b0527f50e5aedae00a07d5638d1a444def9baa0dcf62800ab2",
+      "bytes": 2768
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFComposition.lean",
+      "sha256": "26b341f8f6e90187c0dd301c022cdcac5e6037caa26d0a207beaff08441ca7a2",
+      "bytes": 13452
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFCoverage.lean",
+      "sha256": "e0dd846bf321516099232b2ba8603cdde9efbb19073058594cb1d9c94eb373bf",
+      "bytes": 5846
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFEffects.lean",
+      "sha256": "17d2fb5c242ad2cbf52859893b6adfdc1e9cf6d97ab3770de53d426ce3e854e1",
+      "bytes": 6157
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFLoops.lean",
+      "sha256": "3d3c97dd9593855f2d9962d407eee4714c229765efaf873074750b50605d9ab4",
+      "bytes": 4269
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean",
+      "sha256": "35c8428218b8ae776fb073fd431182ea979e6e9185e0d867253808caf9921a7a",
+      "bytes": 6316
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModes.lean",
+      "sha256": "53d1674540fae8aff754f740e369d29de0bd9a68facacbba0c6154aa981ef37b",
+      "bytes": 5453
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFOperational.lean",
+      "sha256": "ee7ad6757ea921243d03b3458534af11b8e5d6775b10164a70c606ee2dc23670",
+      "bytes": 10841
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFRect.lean",
+      "sha256": "5f7977123358e7a3de53704f2fa2956d1b89bd7a60c6957a6e8676795c0ce562",
+      "bytes": 6094
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFScope.lean",
+      "sha256": "86c8d7319914a96934964ed8c9b45fdfc80aeb8fdd37f1a94d3f2b026dd7cbc3",
+      "bytes": 3210
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFSimulation.lean",
+      "sha256": "5a9e204faa5375435683b2c15a1344210980979c636862749c9585cf00751e01",
+      "bytes": 4589
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean",
+      "sha256": "414a5c25490fc099815eed9b491cb99e0c7e114435a7ac498f8e35428ed57cd3",
+      "bytes": 9874
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsReuse.lean",
+      "sha256": "51b46ae3c0e1bb64ca47ec1ec1a2bb36fe96f706d229d8ca4f6302f6e38a5c2c",
+      "bytes": 7525
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsReuseCountermodels.lean",
+      "sha256": "ff170131b35e0c972c02573437da450ebfb3595efcd47f07f55d54b657483f98",
+      "bytes": 4299
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsReuseGeometry.lean",
+      "sha256": "9c2553f3fa45cbdeb03c9f084aa6f84f247a574f98c7a543010c8ffa65018e1a",
+      "bytes": 6933
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsReuseLifetime.lean",
+      "sha256": "cb3d7cd2553443fb204209cb369bdad79a31d340619e57efd12106b3f51c6c4a",
+      "bytes": 3194
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsReuseModel.lean",
+      "sha256": "0011d490dffb9d36ab3d7f1c4b3e944c91ce6a30ae84155367c39b3090b54626",
+      "bytes": 7878
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsReuseProtocol.lean",
+      "sha256": "538c4066cb1dca7a8911f5bf99d3cae5e449c475871f2ba0e49b60386b8384f0",
+      "bytes": 6086
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsReuseSemantics.lean",
+      "sha256": "8b5f9d5a71a7aab8559286e5bdb36dfc02e2abeb24a76ad5710434a20bf3da6f",
+      "bytes": 13700
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+      "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+      "bytes": 9653
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+      "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+      "bytes": 3962
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+      "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+      "bytes": 7091
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+      "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+      "bytes": 2118
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShape.lean",
+      "sha256": "7d4314ce5f13378e3f807be57a39da4c064b16e2fe569b685cddd4a22a9beb4e",
+      "bytes": 4332
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeAfter.lean",
+      "sha256": "41e9825fad8b832e7d63471d03b0e35a04b891411aab17bced45735b528feab1",
+      "bytes": 3721
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeAfterRename.lean",
+      "sha256": "0fe635ec3bdd1bbf645c8b948683dbe87b71b30a57db0454322b4db7106adde4",
+      "bytes": 12788
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeBindings.lean",
+      "sha256": "0022f37c8c015cd51d4b571592fb01e4723f55152b80240e47d566508f35ebab",
+      "bytes": 4966
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeCode.lean",
+      "sha256": "57784b3dae571bcc1a9d228605ae1a3fd4b40a2b784afd2d3eb4a0bbc22b1432",
+      "bytes": 8871
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeCountermodels.lean",
+      "sha256": "d855ed8506c22cd01a4843afa64a259880ba8c43c8eb8c8b7e5e7c4e868095ea",
+      "bytes": 2131
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAccess.lean",
+      "sha256": "f1f410710384eaa7cd4aa0def577262f1f53c05611b19c7b8b5fb213d792f768",
+      "bytes": 5761
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocation.lean",
+      "sha256": "0edc7b495eb1d144333c46a1dbc1329e959c8b6b11062aef8daa89f15f26b067",
+      "bytes": 5148
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocationSteps.lean",
+      "sha256": "0459c81d8a59512f0bc9e4857ef4a0971368db3595eaffcf6aa90076cd019618",
+      "bytes": 5819
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAlpha.lean",
+      "sha256": "49dfd218309960377abf0ff2c8dbd6dbbe7fbb3085a9be1023da720cc5eb4bd0",
+      "bytes": 4726
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCallers.lean",
+      "sha256": "6be387cd2aaa0a1f29bc9208d9e6dd52ae2aab3920060fe502627386e4200700",
+      "bytes": 3550
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCells.lean",
+      "sha256": "0b8e9cb3720e9b4d14064edead3cbe8227bd1e16c7ebfd9128a2758cc37be9fa",
+      "bytes": 5096
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochChain.lean",
+      "sha256": "87cb50172d2ae8b89194a8c3b1c11a00eb05bd04c8d21bb7fa28e05b26ceeb62",
+      "bytes": 4579
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCommand.lean",
+      "sha256": "b813fb95d6f72a9db64f67b85f28b6da167cca275623301d336bbee6cf32a166",
+      "bytes": 7954
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochEntry.lean",
+      "sha256": "fbb11b4a2790a6d4112e478cb48949175561b90be325fd15f63721433c8106a6",
+      "bytes": 7267
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochExecution.lean",
+      "sha256": "a5fc4a526ee2a8d9c1191484b884b9407d1e05753977550de71dbf885a2bcec9",
+      "bytes": 6260
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFrame.lean",
+      "sha256": "3e2ca99074f4bdd0f425667f335f66f68363e8a55ae49e177ec0f1ddf4dba2bb",
+      "bytes": 4019
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFunction.lean",
+      "sha256": "d090ca0de54891e03ce752dfbb8924e3036f3669c6d064380e1949417795acb5",
+      "bytes": 7530
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializer.lean",
+      "sha256": "b2290d23f41cb072f6cb87c1848ecd855393b269f6870df70ed88bda69ef5a4e",
+      "bytes": 14216
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializerSteps.lean",
+      "sha256": "6ad862c33a3989dcd1381c2204efad70736b89727ab67a4bdb3bf67835196986",
+      "bytes": 5238
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInvariant.lean",
+      "sha256": "d48b28611e26e0d33d7a3b929d26922509a1936016b4309235d9fd8b475b5cea",
+      "bytes": 4743
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLink.lean",
+      "sha256": "313a13396fee90c55a322936f5976e2b64c19494345c182a6d2e52615fb544af",
+      "bytes": 5324
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMeaning.lean",
+      "sha256": "d66312808776742f3233b97c25acc2202ee9a3f616032cfc80512aca8657265d",
+      "bytes": 5298
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMemorySteps.lean",
+      "sha256": "7e7b0ddcde788a162559ee5c7e13c8f6845016ec5cab403bed71ea8cc1529414",
+      "bytes": 7069
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochModel.lean",
+      "sha256": "6cd1969490912288c4393e47a08ac5fdf240c7f8a5a258e44f87965a1f52a9be",
+      "bytes": 4046
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochNormalize.lean",
+      "sha256": "0e23fdf6bb90cf53057aa133dee22ff2a8c14db045b13ffc2768a94c91e199d5",
+      "bytes": 7580
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserver.lean",
+      "sha256": "179aee1f802b503c4a2bcd0b813da80c5f5f993d2b00c899b567109c9d726671",
+      "bytes": 13796
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserverSteps.lean",
+      "sha256": "87039b241d2af2e902d8f9e8b230da637e87c33d83a313076df975ac7068cca7",
+      "bytes": 6478
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochOutcomes.lean",
+      "sha256": "606d9b366e046b99f83080b341e3655c4821a7a8e28736321a6b9c937f959ddc",
+      "bytes": 4276
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlan.lean",
+      "sha256": "715ca2a51b85011a28ba54d4aa600696f65d81f13746356a504d9011094c1eb2",
+      "bytes": 9344
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlanMeaning.lean",
+      "sha256": "fcb791b786dd64ad8a0a9e07f612fe31caef262c792fd55d467322d7d57cf7fb",
+      "bytes": 4399
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrimitives.lean",
+      "sha256": "05a914ed6fce840db6d6ace89c02022ec546a4f1d1e4bb016b262c898992de58",
+      "bytes": 7623
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrivate.lean",
+      "sha256": "fc839734d4fa92cbfa5c1b94a13a9aa17b32ada6a61cceef8987aaa04f7d0ea9",
+      "bytes": 4619
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPublic.lean",
+      "sha256": "021c98a5f64f1698f995df889242baec59bad916e288d67a54b526eb75b26dc9",
+      "bytes": 5231
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochReturn.lean",
+      "sha256": "9ee400ce401fc5a569b033bb9bb747c808df007a87ebc4817045646bebfe3ee7",
+      "bytes": 5675
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSCF.lean",
+      "sha256": "2a43ac06b57f69b4ab3dca774c92fa03ed5ba8ced1afaf3fbc8a6245bc492cda",
+      "bytes": 5448
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScalarSteps.lean",
+      "sha256": "7c3cde93cdcc6c74c6ebdbb1a3a7fc7fce0d7b02948c62b01b758a3a4bbe37fb",
+      "bytes": 6136
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScope.lean",
+      "sha256": "925351b9343b271eb9834a47a73d037bc4b3006c91e991bf730dc80181c16f4b",
+      "bytes": 7669
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSequence.lean",
+      "sha256": "75bede10e21af0ab799aa97569d0ff348e66663ac5b014a70c18451a7f6f2bd2",
+      "bytes": 8067
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochState.lean",
+      "sha256": "864a0e489cd7e6974fe21749556d42f11c9a6456c3b58a522920145bcb88af9a",
+      "bytes": 9338
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochViews.lean",
+      "sha256": "4b1618a73d1cdce364a03dc79a8407a60f8d071355ba82ff2510ab7902bb608d",
+      "bytes": 9696
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeMemory.lean",
+      "sha256": "5c53cfb1b3ae15a2aeec82f9acbd3939e32dbd56a0097da8d0aa04c9a8ad3f65",
+      "bytes": 4855
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeModel.lean",
+      "sha256": "38952ca358eebd28a5a8103a18f002c86ecbcc76b3e82b2642e8f5a4245f6371",
+      "bytes": 3342
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeModule.lean",
+      "sha256": "17ccc635a1718ad775304b5f9daa0715f6a84c249668f8defaa33cb17a98a823",
+      "bytes": 5961
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeSSA.lean",
+      "sha256": "daa129e43fc43806eaa54560abfe3541f1ebbd1d93b36a97e28ce0df5c552594",
+      "bytes": 7075
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeSound.lean",
+      "sha256": "93c7be67db0a1eb04ea62bc27adf3ea7b038aa87d01e95ce533a143a30780626",
+      "bytes": 7170
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsShapeWitness.lean",
+      "sha256": "766b552e3edec6b89b0111c0cb18e37743f2351827944fd47b487a75aa84eaf8",
+      "bytes": 5646
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+      "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+      "bytes": 5730
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+      "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+      "bytes": 9854
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/GraphStateAudit.lean",
+      "sha256": "377eb83eafd6c8d5a625c59f6dbe59d762b4aff003894efcc51df4944580bf99",
+      "bytes": 3451
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+      "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+      "bytes": 3246
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+      "bytes": 4537
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_input_admission.py",
+      "sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8",
+      "bytes": 7626
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops.py",
+      "sha256": "83700aa0044b5abf4166bbeecdbfe8a20ce72e3c563ce66f6558af00f7aed805",
+      "bytes": 13606
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_capacity.py",
+      "sha256": "1b88518675b54bd25b7dcfab7fe84640367d5b1a4f3da9b7f8b527c9272ea98d",
+      "bytes": 13123
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_capacity_capture.py",
+      "sha256": "32b2d091edcd6adc09549d8b60415e1cb39a99bf4a6e2d41f189fec30913ca8e",
+      "bytes": 3797
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_capture.py",
+      "sha256": "d4224363dec549cb6f5d2b6b4b13226ea65fe18c233496d08b1a7035cce2cb18",
+      "bytes": 11686
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_effects.py",
+      "sha256": "97794532d22909052fdf5c0faaf8c598f12f9ffd0ad2d8a24067d4764ae2715a",
+      "bytes": 6726
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf.py",
+      "sha256": "5a17f1932da0ddd1bbfe9be92a464ba7fd2dac849ad45878433a3c4241eb4da7",
+      "bytes": 7112
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+      "sha256": "d1a8dbab64ee787737647b9d6805bd104e82df401e05ca86b1ee7763beb1dc7e",
+      "bytes": 8597
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_after_context.py",
+      "sha256": "7283f9534796db00ecbe23db15b2efbc2abb85d03ef9d72bcd8dc73628538474",
+      "bytes": 7365
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_after_context_data.py",
+      "sha256": "85475002b026afadceb1fbf9bacbb69d9a532dbc8e97634fba8471b39561ed55",
+      "bytes": 6006
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_after_context_witness.py",
+      "sha256": "0fc83cb22dd3c347e8b79e02e38efd74a5780eff2ffd389b93db8e15a6338647",
+      "bytes": 11203
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+      "sha256": "d6b3d79ce6747842a9eb4e48fe8f2543283b02f543f0afe22124cdab01256620",
+      "bytes": 9307
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+      "sha256": "e3bd007e4fe26eec0adb107d2fa84473a606ec211503f92b0e44dcc144d81fc8",
+      "bytes": 4537
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py",
+      "sha256": "444c095ff96d0910204ec572075df371f534e66b93be09f8a7766c14bfff4caf",
+      "bytes": 3665
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+      "sha256": "1d75d98ed6c47647a8adbb98f5197c5f75c36c8bf943b551d729ef0f21e3b1da",
+      "bytes": 8640
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+      "sha256": "a6b746a365b9b2cb4da5b5335ddecc9b8e67a8a908dcacbc8723d71571d61ae5",
+      "bytes": 5421
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_after_projection.py",
+      "sha256": "6744c38dd448be15a2e9e9b5d3cd52f8a42063ccf2f690fa1ab0fed395d97144",
+      "bytes": 5836
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+      "sha256": "90ab8e279a71538b8e70fb8f9e0c86f33f08fbed50f83592739a46ac6e842601",
+      "bytes": 4950
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_capture.py",
+      "sha256": "eb72e6fe8c33808e0f34b88b112ba9c2ad097c7737ff594bd2c7a203563963ba",
+      "bytes": 5352
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_cases.py",
+      "sha256": "4ba135144cb7c856ee2465c541d9f7989d5ae4928aa3dd81bc440634b32c1a95",
+      "bytes": 1717
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_model.py",
+      "sha256": "f065b5d82adbaee702bedd60c08d165e0ca81eae030484d18806a971c9f32ae6",
+      "bytes": 8638
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_projection.py",
+      "sha256": "3d522ee9d47732e009a9c0e46932e91bba2896b07fcdf4c40dc5d3806054e6b8",
+      "bytes": 13383
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_runtime.py",
+      "sha256": "3617723bd6463db4ad3af39a5529f3ca2477b4b5a0e4c96a47ca134148c2af99",
+      "bytes": 7240
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_selection.py",
+      "sha256": "cf8569b4a7a05b44f32dbf9738cfb9eb5996a416aca4831fccaa23b0a5acf8a8",
+      "bytes": 5336
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_memory_scf_witness.py",
+      "sha256": "211791bb9d1cb2e1f5e8bf360584a927a12de9b73a23e575c3feee9b4c17dfc5",
+      "bytes": 8413
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_reuse.py",
+      "sha256": "86a62d587150a629978cad1774cff46e61df04419575af498f0f10bb8e97e832",
+      "bytes": 18132
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_reuse_capture.py",
+      "sha256": "7f25c31910f3da789cc72e1bacdb95a3d305290fceb64ced963a4377e2e5b821",
+      "bytes": 7225
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_reuse_cases.py",
+      "sha256": "e0eb58c226d0337d41e2ad92ba458ca0d77b44b5062efd807c7abadf1fa10274",
+      "bytes": 7345
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_reuse_projection.py",
+      "sha256": "fcf75ecc44039a2a5b6a8a69cff1b7a8a9a23ac449100fe21c88464a56266102",
+      "bytes": 18764
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_reuse_runtime.py",
+      "sha256": "d0f99cf17bd807c00d398dcd45bcf806da90febbbcbb90fb80703a8a2b0bfa0f",
+      "bytes": 6036
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_segment.py",
+      "sha256": "79ef70280f0f0d5368adbef728ab1875aa88355d22366f2e6feae56465488b61",
+      "bytes": 14944
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_segment_capture.py",
+      "sha256": "9f521c43a379ca6cd5dc449fe689b1b86d4fd4a0449a5aa59631485a0f1081e8",
+      "bytes": 6988
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_segment_project.py",
+      "sha256": "100eac0428643abed04d831511ee3fe4c6ffee0261a70704c338a708e3b2244e",
+      "bytes": 2891
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_segment_projection.py",
+      "sha256": "c522dcd9b440f5deb3d9147aeabb3fea36fd69d129bb60fc1533185cd33d1ae8",
+      "bytes": 12966
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape.py",
+      "sha256": "6b0cfce1f83371ef485c66b430f1769cbfb425760729dff7fcdcb9fcb23e01ed",
+      "bytes": 6668
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_after.py",
+      "sha256": "79048c93d3f036787b09c80bea6ae73067f2bb07632d1e131c46b64adb8603b3",
+      "bytes": 2454
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_after_declarations.py",
+      "sha256": "5c0f5f88fd8c9d0f7214319147e7c732c7431dd6da1d7fc6c6b498fa96a3218c",
+      "bytes": 3100
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+      "sha256": "ac4f1f49156725a7b938a5654f35cd46a555fe490b820292db78144219078ca1",
+      "bytes": 7480
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_after_model.py",
+      "sha256": "ed6b8187dbc9069386aa45d1d37e9594f41765e82f0b8c84287640f3f9342efd",
+      "bytes": 2882
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_after_projection.py",
+      "sha256": "d3a4fddf2cdb6ec1d2d1a63335eceab6a100aa7559f8fb685f283184b1b8c71f",
+      "bytes": 11710
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_capture.py",
+      "sha256": "94262c34876e169c17ab9b639941cd3423b44b110adf09aa763fc60cdae0a24f",
+      "bytes": 6594
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_cases.py",
+      "sha256": "1b90874912fbc702869f607ab3708bd957eeabd715de9d62773e504fdbf0bcf3",
+      "bytes": 4364
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_epoch.py",
+      "sha256": "4669e2aba418732f1e8d00d159712ba12c2b5fab6dd807951e95c401dc150254",
+      "bytes": 9408
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_epoch_cases.py",
+      "sha256": "9f40b6fbe115b2539c8b42b29777155cea3ff597bc5db507810fbd24915743d4",
+      "bytes": 3545
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_epoch_fields.py",
+      "sha256": "c0d54940b3b173f6cc1c6b88dbc91cc3ffc01fff39c65f64a7d9b3f3496fc58f",
+      "bytes": 9260
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+      "sha256": "e59eaa5bd18ec5be416255239185600b988c69d323d99f7e7a9320125084fc69",
+      "bytes": 9947
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_epoch_observer.py",
+      "sha256": "93c61f2589f4551b635917db2ac80208892883803559948ed5836bde4729b21e",
+      "bytes": 5687
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_epoch_plan.py",
+      "sha256": "50ea898e28ecb0a15d8f16562bda2341bf04b6680143393d8435c1d751edc730",
+      "bytes": 9835
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+      "sha256": "0832d6a9c496b92e064949cd418b7b6746cd447ed3ef7b426c5b16f237a34e44",
+      "bytes": 10425
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_epoch_selection.py",
+      "sha256": "2bde23365bf9a278c9b39bd7c7e84fad9b296119945337648a83d3a91c2a55a7",
+      "bytes": 8279
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_epoch_steps.py",
+      "sha256": "240d4e046e6d65fa699a864bc6b7422abec1ed24ad1b93b915b6ef2a8d00641c",
+      "bytes": 10772
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_epoch_witness.py",
+      "sha256": "677dff3252f2df86874717aba38d72d2d027a8081b3049dabe0afbf0c209c71b",
+      "bytes": 13023
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_model.py",
+      "sha256": "24650e08cac546b7bd9ffaad2fdbf979d766728675a92f15fa129999087ff320",
+      "bytes": 8067
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_projection.py",
+      "sha256": "e98a10afc170db23b378488450b874f6178bdaa6ce1f0115cb09a02d12e5414c",
+      "bytes": 13895
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_runtime.py",
+      "sha256": "2cd2c1dd1ed8eebd6b7acf7a601a637cbaac11eb72d8ae33314ea626898e8c28",
+      "bytes": 7571
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_selection.py",
+      "sha256": "93b303bbaa02345c76bd0c11ba76966ed6fad6323cb5545b1165fa777d693603",
+      "bytes": 6831
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_types.py",
+      "sha256": "f596e44c9a933c08f99e1057d14f3b1a1b8e03684c1c1db6344aaa3f08bd60dc",
+      "bytes": 1977
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_shape_witness.py",
+      "sha256": "a2b80da642ac8fcee4e945f5514b19bfe904e930015882b56a3bccf463acb58d",
+      "bytes": 10383
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_storage.py",
+      "sha256": "2151f30b88e5d17f5d57a40dc0898ee64f4620b5acdd391366a3c61d67a51241",
+      "bytes": 22023
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_unroll.py",
+      "sha256": "9b2c91ae1897b6532339df519198d012c59c02071658a0d68d1038893862b4db",
+      "bytes": 15050
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_unroll_capture.py",
+      "sha256": "3b648b37618adca977558884c2fc82e69c945ea668514b223bc290592a31390c",
+      "bytes": 6826
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_unroll_cases.py",
+      "sha256": "6a1e33d53e27bc5bfaa49663e2f4e7f0e5f5a85c6195983148b7c91d8243e922",
+      "bytes": 3665
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_unroll_composition.py",
+      "sha256": "de83f271f03ba013f8fddc3e6d54061a560f7a752d259a013f8d159c7c4e47dc",
+      "bytes": 6718
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_loops_unroll_projection.py",
+      "sha256": "63cc9e95e23bcd97447dded8b04d0cf16c9b4ca26d75e9691a6b151a2fd0c994",
+      "bytes": 16405
+    },
+    {
+      "path": "dependencies/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+      "bytes": 12573
+    },
+    {
+      "path": "entry-roster.json",
+      "sha256": "866df3d6f911965ffb0249d01a70bd56ab7fb8dfee81d480ab4f68046b193058",
+      "bytes": 2940
+    },
+    {
+      "path": "evidence-lineage/F-CORPUS-WITNESS-FIRST-INTENT.json",
+      "sha256": "c49bbfc61a1686096ffffbf3db7cd08a5a51fd35a0b5741b4e55ab353ba3a479",
+      "bytes": 543
+    },
+    {
+      "path": "evidence-lineage/F-CORPUS-WITNESS-FIRST-PROCESS.json",
+      "sha256": "193854737f76f3c1d737f78932c0aedb20744b97e62a6876963e15b373b54fd5",
+      "bytes": 750
+    },
+    {
+      "path": "evidence-lineage/F-CORPUS-WITNESS-FIRST-TRACEBACK.txt",
+      "sha256": "f4168d12ee061a252101133904ff6d6418bcca8e3b896259739ac77a7ecb0b86",
+      "bytes": 2420
+    },
+    {
+      "path": "evidence-lineage/F-CORPUS-WITNESS-FIRST-stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "evidence-lineage/F-CORPUS-WITNESS-FIRST-stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "evidence-lineage/F-CORPUS-WITNESS-PARTIAL.json",
+      "sha256": "34c1c3040a9f90b686823cc3851228b6fb0f23f5f52261d7d5c3e2cde74e061f",
+      "bytes": 1280
+    },
+    {
+      "path": "evidence-lineage/F-SAFE-BOUNDARY.json",
+      "sha256": "9236ea884747995a746de8a201843353525affad0dd1150baf840d58dcf22409",
+      "bytes": 903
+    },
+    {
+      "path": "evidence-lineage/F2-MAIN-186.json",
+      "sha256": "b92e6cdd9b93b38dc8a81a942aae76aaa7cbace46bdc5a2faa1a3126787e69a6",
+      "bytes": 828
+    },
+    {
+      "path": "evidence-lineage/F2-REPLAY-186.json",
+      "sha256": "18243d84e5f4bf6997f1b19bacba224baf85b91386be62974393a917d2be2883",
+      "bytes": 475
+    },
+    {
+      "path": "evidence-lineage/ROOT-BINDING-REPAIR.json",
+      "sha256": "4664f30598c2e1545a4de92b9474703ef523d80880d72dfb90386e337d8b596c",
+      "bytes": 812
+    },
+    {
+      "path": "evidence-lineage/W-191-CHECK-REPLAY.json",
+      "sha256": "57b6c3c739c693ce8da3ce79c3ad9d7dd4e8bdd1394b74a08da52e9bccb57e51",
+      "bytes": 2910
+    },
+    {
+      "path": "evidence-lineage/W-191-CHECK.json",
+      "sha256": "d0a92e0b34e140a86b7e4c023f2587513363b3ace91c6c7c2b056eaec0c9b7e3",
+      "bytes": 942
+    },
+    {
+      "path": "evidence-lineage/W-191-REPLAY.json",
+      "sha256": "f1b4a3e91eaf32a0927219f56a3b084a60edbf69fb9dd0157fa6d5cda59f7335",
+      "bytes": 945
+    },
+    {
+      "path": "evidence-lineage/W-CONSTRUCTIVE-CORPUS-JOIN.json",
+      "sha256": "b9262d385e90c203b7c41ea38f116467da25e82a95deecfbd6827a8d315802dc",
+      "bytes": 4603
+    },
+    {
+      "path": "factored-lint-v2.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "factored-lint-v2.stdout",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "bytes": 19
+    },
+    {
+      "path": "factored-tests-v2.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "factored-tests-v2.stdout",
+      "sha256": "a1ea596ed08b4b12da25c12191b66271038c64fc80665241bfc887420f241c27",
+      "bytes": 99
+    },
+    {
+      "path": "final-lint-v2.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "final-lint-v2.stdout",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "bytes": 19
+    },
+    {
+      "path": "final-tests-v1.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "final-tests-v1.stdout",
+      "sha256": "4ce2bdfe0aac7c039f2c94263cc7f0212d5d7f2130f840825a586885363219c2",
+      "bytes": 179
+    },
+    {
+      "path": "finalize_cut6.py",
+      "sha256": "0ad2952a541983f79bbbeb2cc04bad29e186ab0eca7b752dd6e5e25ca63d351c",
+      "bytes": 23622
+    },
+    {
+      "path": "freeze_cut6.py",
+      "sha256": "075bb63cb72aec72a801582afdbcba338f076f9c5c387d2e7e3cd3d187baa581",
+      "bytes": 4606
+    },
+    {
+      "path": "hint-diagnostic.json",
+      "sha256": "6a5cdd4ca22b8cb24c87d24b77067c08b76c2b82f36a277352f5806e24c97d35",
+      "bytes": 291741
+    },
+    {
+      "path": "old-baselines/src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+      "sha256": "21c9af7755cb1bf9032932cd0957894993e4c7bfefc12cd282d714495fc31b61",
+      "bytes": 9275
+    },
+    {
+      "path": "old-baselines/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py",
+      "sha256": "3fbace47addf4df9ecebcd8ec916e0134171cbc717be4439ca366d83cfb201e1",
+      "bytes": 3610
+    },
+    {
+      "path": "old-baselines/src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+      "sha256": "6733bab311e4b7f3b3f16fcd1f3fbb7ea4d4d37f6671e25eefe77a7ce0a2ba77",
+      "bytes": 4934
+    },
+    {
+      "path": "owned.patch",
+      "sha256": "46425bf47f398ff65a191818adebf32479391e0523058fafaae469792540e224",
+      "bytes": 63369
+    },
+    {
+      "path": "queries/EpochCommands.lean",
+      "sha256": "ec3453ddb529ea9b8732aa3050f0119962d827fff70af471759087140c21dea9",
+      "bytes": 21844
+    },
+    {
+      "path": "queries/EpochKernel.lean",
+      "sha256": "6d6bdf36329188da1b63eddf351c01c67dd718ebebc57bac4ecd992ce7f6c82f",
+      "bytes": 7753
+    },
+    {
+      "path": "queries/EpochPlan.lean",
+      "sha256": "0f255776d9ec73dfe21eda5eb6dbf9355753c9a40921d470d73f86d61a9aaf6f",
+      "bytes": 274
+    },
+    {
+      "path": "queries/EpochSyntax.lean",
+      "sha256": "8103468b683f68ee80787bb12d674b6936005c497741f13b12de010a7147e673",
+      "bytes": 27851
+    },
+    {
+      "path": "queries/RawChainEntries.lean",
+      "sha256": "8a6605245650a2ef86fbb0232d1a9e7110278efa3d05f78aedccae9f24d47cf0",
+      "bytes": 23013
+    },
+    {
+      "path": "queries/WholeEpoch.lean",
+      "sha256": "8a96976121403e1d1b46c6e15b0c314a89de486cb618aa2fd119126e5f93445a",
+      "bytes": 2572
+    },
+    {
+      "path": "queries/WholeExpansion.lean",
+      "sha256": "1bc362aa30c934c73a7cf66c53281b72a8c07c76b4559a9068e078af556380df",
+      "bytes": 15057
+    },
+    {
+      "path": "queries/WholeFinal.lean",
+      "sha256": "5a67d8cf395486dd8b0f774d22e629096f6fea7031c4f9977685b9a37722d5a2",
+      "bytes": 15244
+    },
+    {
+      "path": "queries/WholeMaterialization.lean",
+      "sha256": "90ed1799d7e42ba8da52def6130ed8f19ce094b6ab346a4674fa11b1771ae265",
+      "bytes": 26246
+    },
+    {
+      "path": "queries/WholeMemory.lean",
+      "sha256": "324c50eb1731a335c6c4cb7cec909aa26cd43fa2340d8fcd84ae7b759f45c3cd",
+      "bytes": 63397
+    },
+    {
+      "path": "queries/WholeReuse.lean",
+      "sha256": "2a406d996e003f91d044f37ec9f812877b201b9184442957e1c2bfb6e03f74b9",
+      "bytes": 30235
+    },
+    {
+      "path": "queries/WholeShape.lean",
+      "sha256": "1c66c2f64f69540e4f096988eeb31aba36c2f24093206d6fac98d36e7a292e7d",
+      "bytes": 33693
+    },
+    {
+      "path": "raw/stage0.mlir",
+      "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+      "bytes": 2659
+    },
+    {
+      "path": "raw/stage1.mlir",
+      "sha256": "255ddf668a40f0e9d4624223a05897d99ce9a46466f71d1e59d692494972ca1d",
+      "bytes": 3960
+    },
+    {
+      "path": "raw/stage2.mlir",
+      "sha256": "84c0e124321f0b3a57198602baeb1dcedf7f5a7c034f723fbd2613c984df91d9",
+      "bytes": 3782
+    },
+    {
+      "path": "raw/stage3.mlir",
+      "sha256": "3b0a5fed1763d89d10284f879777ab40d3ea111f418e8595bf185d6ec7156525",
+      "bytes": 4494
+    },
+    {
+      "path": "shape-BUILD.json",
+      "sha256": "08c901106e1a147a0efdee98b1139c73fa983aff980e0e8dfd5667ce91d81ae2",
+      "bytes": 365
+    },
+    {
+      "path": "shape-lint-v2.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "shape-lint-v2.stdout",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "bytes": 19
+    },
+    {
+      "path": "shape-tests-v1.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "shape-tests-v1.stdout",
+      "sha256": "a4ba6a0b833ef7026d4d291578c1a66aa7b84a732bb259d96dc88bdb89ae3418",
+      "bytes": 99
+    },
+    {
+      "path": "sources/merlin/tests/ir/test_buffer_reuse_emission_unit.py",
+      "sha256": "9769616d9ca60e5ece5c03d4b16648b4c7809b3b1c183b726328b950a7fdf697",
+      "bytes": 5765
+    },
+    {
+      "path": "sources/merlin/tests/ir/test_buffer_reuse_gate_unit.py",
+      "sha256": "543e60ac0fffaffdb096b50d0fd4060f97cf7f28cd02d9edc738f8902277d678",
+      "bytes": 4548
+    },
+    {
+      "path": "sources/merlin/tests/ir/test_buffer_reuse_intake_unit.py",
+      "sha256": "8c363003664910e0db1872c90a91d6ffbdefb51778dba74a65012ab340b6e7d7",
+      "bytes": 5917
+    },
+    {
+      "path": "sources/src/merlin/verify/buffer_reuse_bridge.py",
+      "sha256": "aefc81d846c2a8cc19938a4e86a4794431c979586ebc92f3db786b4ca0f8953e",
+      "bytes": 2766
+    },
+    {
+      "path": "sources/src/merlin/verify/buffer_reuse_emit.py",
+      "sha256": "6c3a080f93d5e3d5fd06e0cac461dbf4c3c0eff0769ed07c2f24e88211dbcc64",
+      "bytes": 11697
+    },
+    {
+      "path": "sources/src/merlin/verify/buffer_reuse_gate.py",
+      "sha256": "14a14c3527f2f0b9a645b68f3f30a2aebc0631ecc1f045666162ba7249cbfa69",
+      "bytes": 19108
+    },
+    {
+      "path": "sources/src/merlin/verify/buffer_reuse_intake.py",
+      "sha256": "575842becf867163b3aacdadb55d4653c05b8f4aac3e0a77beede2098f060768",
+      "bytes": 8338
+    },
+    {
+      "path": "sources/src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+      "sha256": "d6b3d79ce6747842a9eb4e48fe8f2543283b02f543f0afe22124cdab01256620",
+      "bytes": 9307
+    },
+    {
+      "path": "sources/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py",
+      "sha256": "444c095ff96d0910204ec572075df371f534e66b93be09f8a7766c14bfff4caf",
+      "bytes": 3665
+    },
+    {
+      "path": "sources/src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+      "sha256": "90ab8e279a71538b8e70fb8f9e0c86f33f08fbed50f83592739a46ac6e842601",
+      "bytes": 4950
+    },
+    {
+      "path": "successor-v5-to-v6.patch",
+      "sha256": "6e66b8e1379f449ee48ac4d7d8568fa0b41fff9dc2e7ca312b58a65747fa93a4",
+      "bytes": 890
+    },
+    {
+      "path": "test_classifier_candidate.py",
+      "sha256": "731b05ce10e95ce7db40ff883a7a9eddc72f01368faa68a129b6075dec092fd6",
+      "bytes": 4363
+    },
+    {
+      "path": "three-epoch-FULL-RESULT.json",
+      "sha256": "ab37e38b31688a5ec50e70feefba6f2ebbfc6f8762b8a6972818bbb70c708a9e",
+      "bytes": 2894
+    },
+    {
+      "path": "three-epoch-Q-FULL-COMPARISON.json",
+      "sha256": "04f339198eee51164c3a07e719e24f27140cb44da719241020d180db0548a846",
+      "bytes": 1845
+    },
+    {
+      "path": "three-epoch-RESULT.json",
+      "sha256": "05b4fea98b076a1457640c51c2d748f634149833fa1a1fefe33938f8be58087a",
+      "bytes": 1297
+    }
+  ],
+  "bound_source_count": 191,
+  "proof_source_count": 111,
+  "generated_modules": 12,
+  "historical_F2_186_scope": "five positives/24 valid mutants/fresh replay",
+  "isolated_W_191_scope": "one baseline freshcheck/separate-process replay",
+  "full191_five_case_independent_qualification": false,
+  "qualification_transferred": false,
+  "human_approved": false,
+  "production_enforcement": false
+}

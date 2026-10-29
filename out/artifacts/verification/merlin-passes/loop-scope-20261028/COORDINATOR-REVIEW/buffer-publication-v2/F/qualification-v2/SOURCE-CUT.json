@@ -1,0 +1,82 @@
+{
+  "Q_cut": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/source-cut-v5/SOURCES.json",
+    "sha256": "63958654009c497dd786e9f1ac046689fcc051e65ec5fc544c19bb77f72c8677",
+    "bytes": 4319
+  },
+  "F_sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/buffer_reuse_qualification.py",
+      "sha256": "c999d8c845d6aa209dd2a91fba86573d9fcf13218da2da0d7418bfebf89208ba",
+      "bytes": 8506
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/buffer_reuse_qualification_cases.py",
+      "sha256": "f724e7b909f326ae70218d1ad2562cc2fd767d72fecf5bad88c2c18e70dfab0f",
+      "bytes": 9323
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/buffer_reuse_qualification_classifier.py",
+      "sha256": "997b0ab91364d936eea3d794ef58f8054226276d9d9d63ea669a454d12f2980f",
+      "bytes": 3306
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/buffer_reuse_qualification_components.py",
+      "sha256": "787261a3d8525469e5cb9f808036fbdbc079ad2fda7604b9c2bf64792757bdcb",
+      "bytes": 8157
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/buffer_reuse_qualification_live.py",
+      "sha256": "9b31492516369a11c4490f0d44365590663d1734375d2474ac9002678c5a408d",
+      "bytes": 17553
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/buffer_reuse_qualification_protocol.py",
+      "sha256": "1b507b60b4f120d5d79ca0f9fa347595ef2852783be30ed7b6af6197de24f8e5",
+      "bytes": 8967
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/buffer_reuse_qualification_review.py",
+      "sha256": "d86df7e96eec4ef7f4cac8e14604ec2c4c38848c2975dab93cdb3c615d75e70b",
+      "bytes": 7182
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/buffer_reuse_qualification_worker.py",
+      "sha256": "b70bf0c14c5f574581315a8fd45306942a9fc70f37c9a662d335e479170b5e70",
+      "bytes": 4238
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/test_buffer_reuse_qualification_classifier.py",
+      "sha256": "177da80a8c40a507f65cf4c860f1d965518e2f5436f4484a20faba5cd4978e3e",
+      "bytes": 1974
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/test_buffer_reuse_qualification_review.py",
+      "sha256": "6dc45256d2231b8760c7f96a39856c54a27cdb4f7ef6f3d093fe72c949d361ac",
+      "bytes": 2172
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/loop_transform_qualification.py",
+      "sha256": "c07c6faedf05bfa0e541d4b7a46bce3ec63a2a75fc469e823f30b043f1cafd84",
+      "bytes": 17255
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/loop_transform_qualification_classifier.py",
+      "sha256": "0d9e5f5c97dd38527a458975b8cf3fa360e261a8b1459f6e829681d540c9f0a0",
+      "bytes": 3686
+    }
+  ],
+  "lean": {
+    "path": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+    "bytes": 9024
+  },
+  "corpus_expected": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/EXPECTED-POSITIVES.json",
+    "sha256": "f5fffe9509d49f847658de09abfb2c47bf52c038d275ed2b2678f90a260df2c6",
+    "bytes": 991
+  },
+  "relation": "equal_possible_successful_public_observations",
+  "old_gate_timeout_preserved": "native-first-v1",
+  "human_approved": false
+}

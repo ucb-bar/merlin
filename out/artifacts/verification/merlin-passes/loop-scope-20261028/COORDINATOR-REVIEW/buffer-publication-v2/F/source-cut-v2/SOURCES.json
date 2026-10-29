@@ -1,0 +1,66 @@
+{
+  "schema": "merlin.buffer.F-source.v2",
+  "status": "FROZEN_SUCCESSOR_Q5_NATIVE_QUALIFICATION_PENDING",
+  "sources": [
+    {
+      "path": "merlin/tests/ir/buffer_reuse_qualification.py",
+      "bytes": 8506,
+      "sha256": "c999d8c845d6aa209dd2a91fba86573d9fcf13218da2da0d7418bfebf89208ba"
+    },
+    {
+      "path": "merlin/tests/ir/buffer_reuse_qualification_cases.py",
+      "bytes": 9323,
+      "sha256": "f724e7b909f326ae70218d1ad2562cc2fd767d72fecf5bad88c2c18e70dfab0f"
+    },
+    {
+      "path": "merlin/tests/ir/buffer_reuse_qualification_classifier.py",
+      "bytes": 3306,
+      "sha256": "997b0ab91364d936eea3d794ef58f8054226276d9d9d63ea669a454d12f2980f"
+    },
+    {
+      "path": "merlin/tests/ir/buffer_reuse_qualification_components.py",
+      "bytes": 8157,
+      "sha256": "787261a3d8525469e5cb9f808036fbdbc079ad2fda7604b9c2bf64792757bdcb"
+    },
+    {
+      "path": "merlin/tests/ir/buffer_reuse_qualification_live.py",
+      "bytes": 17553,
+      "sha256": "9b31492516369a11c4490f0d44365590663d1734375d2474ac9002678c5a408d"
+    },
+    {
+      "path": "merlin/tests/ir/buffer_reuse_qualification_protocol.py",
+      "bytes": 8967,
+      "sha256": "1b507b60b4f120d5d79ca0f9fa347595ef2852783be30ed7b6af6197de24f8e5"
+    },
+    {
+      "path": "merlin/tests/ir/buffer_reuse_qualification_review.py",
+      "bytes": 7182,
+      "sha256": "d86df7e96eec4ef7f4cac8e14604ec2c4c38848c2975dab93cdb3c615d75e70b"
+    },
+    {
+      "path": "merlin/tests/ir/buffer_reuse_qualification_worker.py",
+      "bytes": 4238,
+      "sha256": "b70bf0c14c5f574581315a8fd45306942a9fc70f37c9a662d335e479170b5e70"
+    },
+    {
+      "path": "merlin/tests/ir/test_buffer_reuse_qualification_classifier.py",
+      "bytes": 1974,
+      "sha256": "177da80a8c40a507f65cf4c860f1d965518e2f5436f4484a20faba5cd4978e3e"
+    },
+    {
+      "path": "merlin/tests/ir/test_buffer_reuse_qualification_review.py",
+      "bytes": 2172,
+      "sha256": "6dc45256d2231b8760c7f96a39856c54a27cdb4f7ef6f3d093fe72c949d361ac"
+    }
+  ],
+  "changes": [
+    "Exact native diagnostic source argument/absolute path +generated-part hash binding",
+    "Controlled-format structural semantic-definition/theorem-header/context/order guard permits proof-body repair only",
+    "Prioritize required failed case without removing other4expected cases"
+  ],
+  "tests": "33SDKfree classifier/source-guard controls; lint pass",
+  "source_only_review": "successor-query-review-v1/ALL5-Q5-REVIEW.json",
+  "old_partial_source_cut": "source-cut-v1",
+  "old_full_profile": "qualification-v1/PARTIAL remains unchanged",
+  "human_approved": false
+}

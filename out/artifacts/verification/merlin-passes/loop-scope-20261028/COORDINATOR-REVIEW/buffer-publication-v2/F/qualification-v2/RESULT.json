@@ -1,0 +1,23 @@
+{
+  "status": "BOUNDED_BUFFER_ENGINEERING_BATCH_PASSED",
+  "expected_positives": 5,
+  "actual_gate_positives": 5,
+  "valid_mutant_quadruples": 24,
+  "actual_gate_native_refusals": 1,
+  "host_refusals": 23,
+  "failed_or_unavailable": [],
+  "protocol": {
+    "status": "checked",
+    "dedicated_attack_report": {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/dedicated-attack-scratch/REPORT.json",
+      "sha256": "82d004ec15cd2787605b5e274fec9dbe29df2005a006e7d0b8a702ff7ade6554",
+      "bytes": 932197
+    },
+    "fresh_process_replay": true
+  },
+  "relation": "equal_possible_successful_public_observations",
+  "full_error_world_equivalence": false,
+  "human_approved": false,
+  "native_allocator_fidelity": false,
+  "production_enforcement": false
+}

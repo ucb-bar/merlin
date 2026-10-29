@@ -1,6 +1,6 @@
 /- UNCOMPILED. Full block return/caller observation and actual entry registers.
-The local-simulation obligation remains explicit: these lifting lemmas do not
-yet certify that the finite expansion plan supplies every local proof/call edge.
+The localLaw-simulation obligation remains explicit: these lifting lemmas do not
+yet certify that the finite expansion plan supplies every localLaw proof/call edge.
 -/
 import Merlin.GraphLoopsMemorySCFAfterExecution
 import Merlin.GraphLoopsShapeEpochOutcomes
@@ -26,11 +26,11 @@ name. Actual view parameters must be caller views outside the private partition.
 theorem entry_related {Value User : Type} (plan : Epoch.PlanContext) (function : Function)
     (facts : Epoch.EntryFacts plan function) (domain : EntrySlotFacts plan function)
     (inputs : List (Runtime Value)) (typed : ValuesHold function.parameters inputs)
-    (callers : Epoch.CallersValid plan.objects.length plan.callers (assign emptyEnv function.parameters inputs))
+    (callers : Epoch.CallersValid plan.objects.length plan.callers (GraphLoopsShape.assign emptyEnv function.parameters inputs))
     (heap : Heap Value) (user : User) :
     RegistersRelated plan.objects function.parameters
       (Epoch.entryMemory plan function inputs heap user).observed.registers
-      (assign emptyEnv function.parameters inputs) := by
+      (GraphLoopsShape.assign emptyEnv function.parameters inputs) := by
   intro binding member
   have outside : binding.name ∉ plan.views.map (fun item => item.binding.name) := by
     intro mapped
@@ -52,6 +52,7 @@ theorem candidate_returned_iff {Value User : Type} (plan : Epoch.PlanContext)
     (before after : GraphLoopsReuse.Memory Value (Epoch.PublicState Value User)) :
     GraphLoopsMemorySCF.Step plan.objects plan.configs (plan.oldMeaning scalar) true true (.retained key) before after ↔
       after = Epoch.returnMemory returned before := by
+  unfold Epoch.PlanContext.oldMeaning
   rw [retained_modes plan.objects plan.configs plan.objects.length plan.specifications plan.mapping
     scalar key (.returned returned) selected]
   exact Epoch.returned_step_iff plan.objects.length plan.specifications scalar plan.mapping key returned
@@ -59,10 +60,10 @@ theorem candidate_returned_iff {Value User : Type} (plan : Epoch.PlanContext)
 
 theorem expanded_block {Value User : Type} (plan : Epoch.PlanContext)
     (scalar : Epoch.BinaryMeaning Value)
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (expansions : List Expansion) (context : Context) (sourceClock clock : Nat)
     (checked : Epoch.CommandsValid plan context sourceClock (expansions.map Expansion.source))
-    (local : LocalSimulations plan scalar meaning context clock expansions)
+    (localLaw : LocalSimulations plan scalar meaning context clock expansions)
     (returnKey : String) (returned : List Binding)
     (returnSelected : Epoch.specAt plan.specifications returnKey = some (.returned returned))
     (returnBound : AllBound (Epoch.finalContext context (expansions.map Expansion.source)) returned)
@@ -83,7 +84,7 @@ theorem expanded_block {Value User : Type} (plan : Epoch.PlanContext)
   constructor
   · rintro ⟨next, run, outputsEqual⟩
     obtain ⟨middle, oldRun, worldEqual, finalRelated, finalRegisters, _⟩ :=
-      expansions_backward plan scalar meaning expansions context sourceClock clock checked local before actual next world
+      expansions_backward plan scalar meaning expansions context sourceClock clock checked localLaw before actual next world
         registers callers related run
     refine ⟨Epoch.returnMemory returned middle, ?_, ?_, worldEqual⟩
     · apply (Epoch.execution_append _ _ _ _ _ _ _ _ _).mpr
@@ -96,7 +97,7 @@ theorem expanded_block {Value User : Type} (plan : Epoch.PlanContext)
       ((Epoch.execution_single _ _ _ _ _ _ _ _).mp returnRun)
     subst after
     obtain ⟨next, expandedRun, finalRelated, finalRegisters, _⟩ :=
-      expansions_forward plan scalar meaning expansions context sourceClock clock checked local before middle actual
+      expansions_forward plan scalar meaning expansions context sourceClock clock checked localLaw before middle actual
         registers callers related initialRun
     refine ⟨next, ?_, ?_⟩
     · rw [worldEqual]; exact expandedRun

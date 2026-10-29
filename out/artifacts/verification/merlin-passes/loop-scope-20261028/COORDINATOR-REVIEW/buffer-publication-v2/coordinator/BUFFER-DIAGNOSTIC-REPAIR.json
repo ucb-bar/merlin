@@ -1,0 +1,10 @@
+{
+  "status": "REVIEWED_APPLIED_STRUCTURAL_DIAGNOSTIC_SUCCESSOR",
+  "path": "src/merlin/verify/buffer_reuse_gate.py",
+  "before": "2e19b2d9e3cd5dae855e36ff5080ec3d9d72e4b0db03cb7361b579144008e880",
+  "reviewed_candidate": "6e0db675edb409152e6e8abae31af9903e786054cf3a8d2ec3140b19f0ec87e3",
+  "after": "b768715361f9f3fccce02b1169bc17bad40d25331d4d86f16466f8fda10035cc",
+  "root_correction": "Only ordinary error exit1 may receive NotEstablished; other nonzero exits unavailable",
+  "review": "No regex; exact location/header/body parsing; unknown/tagged/mixed/resource/stderr diagnostics remain unavailable; no failed process issues authority",
+  "qualified": false
+}

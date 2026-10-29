@@ -1,0 +1,31 @@
+{
+  "source_kernel_execution_constructed": true,
+  "actual_final_success_derived": true,
+  "entry_domain_inhabited": true,
+  "source_input_seeds": [
+    3,
+    5
+  ],
+  "initial_caller_cell": 7,
+  "first_touch": 13,
+  "second_touch": 23,
+  "return_scalar": 36,
+  "return_index": 2,
+  "final_caller_cell": 23,
+  "user_state": 99,
+  "initializer_cells_each": 6,
+  "model": "explicit abstract Int-add relation; not native numerical conformance",
+  "proof_roots": 76,
+  "transitive_theorems": 2441,
+  "axioms": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+  ],
+  "violations": [],
+  "original_raw_example_unchanged": true,
+  "whole_run_premise": false,
+  "source_success_premise": false,
+  "qualification": false,
+  "human_approved": false
+}

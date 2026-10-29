@@ -1,0 +1,53 @@
+[
+  {
+    "id": "Q5_IMPORTED_PROJECT_CLOSURE",
+    "status": "confirmed_clean_source_failure_then_exact_source_addition",
+    "files": [
+      {
+        "relative": "src/merlin/sched/__init__.py",
+        "sha256": "b84e4c42421f5277d338c12ae9726ba256befa5c1491d4928c2da994fc1ee7a0",
+        "bytes": 668,
+        "original": "/home/jeremy/Projects/merlin-loop-verification/src/merlin/sched/__init__.py",
+        "copied": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-clean-source-v1/src/merlin/sched/__init__.py",
+        "reason": "transitive import from bound lean_graph_loops helper"
+      },
+      {
+        "relative": "src/merlin/sched/ir/__init__.py",
+        "sha256": "7783c6bfc27bde3f32164ca70803d6d4d21dde9e812363da2c05693a46fedfd9",
+        "bytes": 935,
+        "original": "/home/jeremy/Projects/merlin-loop-verification/src/merlin/sched/ir/__init__.py",
+        "copied": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-clean-source-v1/src/merlin/sched/ir/__init__.py",
+        "reason": "transitive import from bound lean_graph_loops helper"
+      },
+      {
+        "relative": "src/merlin/sched/ir/expr.py",
+        "sha256": "f33b1c6fb0dd389abb50bcaa2072b057f45bcba866ff1c015a9be8d36e212b12",
+        "bytes": 4922,
+        "original": "/home/jeremy/Projects/merlin-loop-verification/src/merlin/sched/ir/expr.py",
+        "copied": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-clean-source-v1/src/merlin/sched/ir/expr.py",
+        "reason": "transitive import from bound lean_graph_loops helper"
+      },
+      {
+        "relative": "src/merlin/sched/ir/kernel.py",
+        "sha256": "89a52f2d9303cd0d2ce7d985e25ef765f1452aa82b135e1456acd7a28a28f94f",
+        "bytes": 16078,
+        "original": "/home/jeremy/Projects/merlin-loop-verification/src/merlin/sched/ir/kernel.py",
+        "copied": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-clean-source-v1/src/merlin/sched/ir/kernel.py",
+        "reason": "transitive import from bound lean_graph_loops helper"
+      },
+      {
+        "relative": "src/merlin/sched/ir/parse.py",
+        "sha256": "ae66843c9dcbde727eb113f541f9c9c3214ef01c4dc1f0ed8035e32bfae758a3",
+        "bytes": 14514,
+        "original": "/home/jeremy/Projects/merlin-loop-verification/src/merlin/sched/ir/parse.py",
+        "copied": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-clean-source-v1/src/merlin/sched/ir/parse.py",
+        "reason": "transitive import from bound lean_graph_loops helper"
+      }
+    ],
+    "effect": "source-only handoff fails; canonical candidate source inventory omits loaded project Python code",
+    "lean_counterexample": false,
+    "old_qualification_changed": false,
+    "owner": "Q/root",
+    "source_reproduction": "clean-source-v1/prepare-v2"
+  }
+]

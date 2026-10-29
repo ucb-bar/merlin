@@ -1,0 +1,17 @@
+{
+  "status": "REVIEWED_APPLIED_METADATA_BINDING_REPAIR",
+  "path": "src/merlin/verify/buffer_reuse_intake.py",
+  "before": "83bcd7562285ade779e6878f7ba9cf552fd7175832794c7e3ebc140f06abdafb",
+  "after": "575842becf867163b3aacdadb55d4653c05b8f4aac3e0a77beede2098f060768",
+  "added_sources": [
+    "src/merlin/sched/__init__.py",
+    "src/merlin/sched/ir/__init__.py",
+    "src/merlin/sched/ir/expr.py",
+    "src/merlin/sched/ir/kernel.py",
+    "src/merlin/sched/ir/parse.py"
+  ],
+  "proof_query_root_type_IR_changes": false,
+  "qualification_lineage": "Q5/F2 five-case full engineering result remains186-source evidence;191-source isolated freshcheck/replay and SDK extra-file controls separate",
+  "F_safe_boundary": "NEXT-BUFFER/F/delivery-v2/SAFE-BOUNDARY.json",
+  "human_or_native_fidelity_approval": false
+}

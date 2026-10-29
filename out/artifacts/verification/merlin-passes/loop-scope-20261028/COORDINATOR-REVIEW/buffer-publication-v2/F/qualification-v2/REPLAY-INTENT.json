@@ -1,0 +1,20 @@
+{
+  "command": [
+    "/home/jeremy/Projects/merlin/.venv/bin/python",
+    "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/buffer_reuse_qualification_live.py",
+    "--phase",
+    "replay",
+    "--report",
+    "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/retained_two_epochs/REPORT.json",
+    "--output",
+    "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/fresh-process-replay",
+    "--objects",
+    "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/fresh-process-replay",
+    "--q-source-cut",
+    "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/source-cut-v5/SOURCES.json",
+    "--lean",
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean"
+  ],
+  "timeout": 1800,
+  "owned_process_group": true
+}

@@ -61,7 +61,7 @@ theorem rows_heap_iff {Value : Type} (meaning : PureMeaning Value)
 /-- A checked ordinary row body has a capture-independent physical heap
 meaning, so fresh generated controls need not be equated to old registers.
 -/
-theorem row_corresponds {Value Public : Type} (base : Interpretation Value (MemoryWorld Value Public))
+theorem row_corresponds {Value Public : Type} (base : GraphLoopsShape.Interpretation Value (MemoryWorld Value Public))
     (classify : String → MemoryOpcode) (program : Epoch.Uniform)
     (rows columns : Nat) (element : String) (facts : program.Facts rows columns element)
     (store : classify program.storeKey = .store) (loop : classify program.loopKey = .loop)
@@ -93,7 +93,7 @@ execution interval. The upper bound is read from the emitted min result, never
 replaced by the full shape or a Python-provided loop count.
 -/
 theorem TiledInitializer.inner_heap_iff {Value Public : Type}
-    (base : Interpretation Value (MemoryWorld Value Public)) (classify : String → MemoryOpcode)
+    (base : GraphLoopsShape.Interpretation Value (MemoryWorld Value Public)) (classify : String → MemoryOpcode)
     (program : TiledInitializer) (rows columns : Nat) (element : String)
     (facts : program.uniform.Facts rows columns element)
     (store : classify program.uniform.storeKey = .store) (loop : classify program.uniform.loopKey = .loop)

@@ -1,0 +1,19 @@
+{
+  "status": "checked",
+  "mode": "check",
+  "source_root": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1",
+  "python": "/home/jeremy/Projects/merlin/.venv/bin/python",
+  "source_only_copy": true,
+  "new_host_qualification": false,
+  "old_project_objects_supplied": false,
+  "harness_sha256": "fa322c35715c79cea8566979eff58a7346333c7851bf5ea2825cf9872fd0cc12",
+  "supplemental_source_count": 191,
+  "roots": 250,
+  "local_source_refs": 191,
+  "exact_q5_query": true,
+  "reason": "complete actual4 possible-success query and audit checked",
+  "report": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/check-v1/fresh-check/REPORT.json",
+  "consumer_called": true,
+  "final_sha256": "3b0a5fed1763d89d10284f879777ab40d3ea111f418e8595bf185d6ec7156525",
+  "live_revalidated": true
+}

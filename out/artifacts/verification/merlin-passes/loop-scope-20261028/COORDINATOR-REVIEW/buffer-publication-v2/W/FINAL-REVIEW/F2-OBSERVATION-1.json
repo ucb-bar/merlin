@@ -1,0 +1,1454 @@
+{
+  "status": "partial read-only observation of completed case reports; campaign remains running",
+  "cases": [
+    {
+      "case": "three_disjoint_epochs",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/REPORT.json",
+        "sha256": "4e1d017fe2a4d64cb2e7de6bb3f7d7f0882b22d70fc3c1d7f1a7e3d8888623bb",
+        "bytes": 940136
+      },
+      "raw4": [
+        {
+          "bytes": 3662,
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/stage0.mlir",
+          "sha256": "4c4398108d52d19cf4b5abeb0a9743559dfff60827c8e73989cabe11ba2996d4"
+        },
+        {
+          "bytes": 5318,
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/stage1.mlir",
+          "sha256": "2dab38608fcba69fc934007e3bc07c988a2155458cba0188edb5376377a0f24b"
+        },
+        {
+          "bytes": 4962,
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/stage2.mlir",
+          "sha256": "af64ec69fb4bdda09803f995773d5deefe150ca1ed7734cc54ac7cce4222c2b8"
+        },
+        {
+          "bytes": 6042,
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/stage3.mlir",
+          "sha256": "522974d1e2c75e1cf82e4da40a05a76b3358517ba74c585fc55d2c658605709f"
+        }
+      ],
+      "generated_sources_exact": 12,
+      "source_refs_exact": 186,
+      "successful_processes": 125,
+      "processes": [
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/audit.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "--run",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStateAudit.lean",
+            "WholeShape",
+            "WholeReuse",
+            "WholeMemory",
+            "EpochSyntax",
+            "EpochCommands",
+            "EpochPlan",
+            "EpochKernel",
+            "WholeEpoch",
+            "WholeMaterialization",
+            "WholeExpansion",
+            "WholeFinal",
+            "RawChainEntries"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-0.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/ResourceGeometry.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/ResourceGeometry.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-1.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/StateEffects.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/StateEffects.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-10.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsSegmentBounds.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-100.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-101.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterChecked.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-102.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterFunction.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-103.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterSupport.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-104.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochChain.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochChain.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-105.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterChain.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-106.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-107.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-108.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-109.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterEntriesChain.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-11.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsSegmentModel.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-110.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-12.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsSegmentState.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-13.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsUnroll.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-14.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsUnrollGrouping.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-15.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCF.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCF.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-16.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFScope.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFScope.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-17.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFLoops.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFLoops.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-18.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFCoverage.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFCoverage.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-19.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFRect.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFRect.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-2.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsReuse.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsReuse.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-20.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFEffects.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFEffects.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-21.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFOperational.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFOperational.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-22.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFSimulation.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFSimulation.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-23.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFComposition.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFComposition.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-24.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFModes.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModes.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-25.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFModel.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-26.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFWitness.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-27.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFBounds.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-28.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShape.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShape.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-29.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeSSA.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeSSA.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-3.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsReuseProtocol.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsReuseProtocol.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-30.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeBindings.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeBindings.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-31.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeCode.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeCode.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-32.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeSound.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeSound.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-33.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeModule.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeModule.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-34.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeMemory.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeMemory.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-35.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeModel.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeModel.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-36.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeWitness.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeWitness.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-37.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeCountermodels.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeCountermodels.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-38.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochViews.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochViews.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-39.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochSCF.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSCF.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-4.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsReuseSemantics.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsReuseSemantics.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-40.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochCells.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCells.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-41.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochInitializer.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializer.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-42.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochAlpha.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAlpha.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-43.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochPublic.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPublic.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-44.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochFrame.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFrame.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-45.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochNormalize.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochNormalize.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-46.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochScope.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScope.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-47.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochAllocation.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocation.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-48.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochAccess.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAccess.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-49.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochObserver.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserver.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-5.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsReuseGeometry.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsReuseGeometry.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-50.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochSequence.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSequence.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-51.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochPrimitives.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrimitives.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-52.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochMeaning.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMeaning.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-53.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterMeaning.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-54.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterChunks.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-55.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterInitializer.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-56.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochModel.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochModel.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-57.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochLink.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLink.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-58.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochState.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochState.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-59.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterSlots.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-6.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsReuseLifetime.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsReuseLifetime.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-60.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterAllocation.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-61.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterFragments.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-62.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochScalarSteps.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScalarSteps.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-63.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochAllocationSteps.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocationSteps.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-64.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-65.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterObservers.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-66.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterSCF.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-67.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterRows.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-68.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterTiled.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-69.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterScope.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-7.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsReuseModel.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsReuseModel.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-70.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochPrivate.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrivate.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-71.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochMemorySteps.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMemorySteps.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-72.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochInitializerSteps.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializerSteps.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-73.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochCallers.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCallers.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-74.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochObserverSteps.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserverSteps.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-75.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochPlan.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlan.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-76.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochPlanMeaning.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlanMeaning.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-77.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochCommand.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCommand.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-78.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochInvariant.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInvariant.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-79.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochExecution.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochExecution.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-8.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsReuseCountermodels.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsReuseCountermodels.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-80.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochReturn.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochReturn.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-81.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochEntry.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochEntry.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-82.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochFunction.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFunction.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-83.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeAfterRename.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeAfterRename.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-84.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeAfter.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeAfter.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-85.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterPlan.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-86.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterMemorySteps.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-87.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterInvariant.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-88.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterScopedAccess.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-89.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-9.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsSegment.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-90.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterTransport.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-91.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterInitializerLink.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-92.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterExecution.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-93.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsShapeEpochOutcomes.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochOutcomes.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-94.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterBoundary.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-95.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-96.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterDispatch.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-97.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterRetained.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-98.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterAccessLocal.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAccessLocal.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/import-99.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/query-0-WholeShape.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/WholeShape.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/WholeShape.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/query-1-WholeReuse.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/WholeReuse.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/WholeReuse.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/query-10-WholeFinal.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/WholeFinal.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/WholeFinal.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/query-11-RawChainEntries.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/RawChainEntries.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/RawChainEntries.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/query-2-WholeMemory.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/WholeMemory.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/WholeMemory.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/query-3-EpochSyntax.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/EpochSyntax.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/EpochSyntax.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/query-4-EpochCommands.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/EpochCommands.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/EpochCommands.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/query-5-EpochPlan.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/EpochPlan.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/EpochPlan.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/query-6-EpochKernel.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/EpochKernel.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/EpochKernel.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/query-7-WholeEpoch.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/WholeEpoch.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/WholeEpoch.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/query-8-WholeMaterialization.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/WholeMaterialization.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/WholeMaterialization.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/query-9-WholeExpansion.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "-j1",
+            "-o",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/lib/WholeExpansion.olean",
+            "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/WholeExpansion.lean"
+          ],
+          "returncode": 0
+        },
+        {
+          "path": "out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/types.process.json",
+          "command": [
+            "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+            "--run",
+            "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStateAudit.lean",
+            "--statements",
+            "GraphShapeObligation.valid,GraphShapeObligation.accepted,GraphShapeObligation.complete,GraphShapeObligation.memory,GraphShapeObligation.contextual,GraphShapeObligation.call_depth,Merlin.GraphLoopsShape.identical_cast,Merlin.GraphLoopsShape.cast_descriptor,Merlin.GraphLoopsShape.cast_address,Merlin.GraphLoopsShape.static_dimension,Merlin.GraphLoopsShape.Scope.extend,Merlin.GraphLoopsShape.Agreement.define,Merlin.GraphLoopsShape.Agreement.alias,Merlin.GraphLoopsShape.Agreement.define_many,Merlin.GraphLoopsShape.cast_result,Merlin.GraphLoopsShape.dimension_result,Merlin.GraphLoopsShape.preservation,Merlin.GraphLoopsShape.entry_equivalence,Merlin.GraphLoopsShape.Function.preservation,Merlin.GraphLoopsShape.Module.checked_calls,Merlin.GraphLoopsShape.Module.checked_complete,Merlin.GraphLoopsShape.Module.checked_memory,Merlin.GraphLoopsShape.Model.check_sound,Merlin.GraphLoopsShape.Model.checked_complete,Merlin.GraphLoopsShape.Model.checked_memory,Merlin.GraphLoopsShape.Model.checked_context,Merlin.GraphLoopsShape.zero_has_no_coordinate,Merlin.GraphLoopsShape.inconsistent_dimension,Merlin.GraphLoopsShape.observable_cast_countermodel,Merlin.GraphLoopsShape.Countermodels.same_type_different_allocation,Merlin.GraphLoopsShape.Countermodels.same_type_cannot_change_buffer,Merlin.GraphLoopsShape.Countermodels.logging_deletion,Merlin.GraphLoopsShape.Countermodels.trapping_deletion,Merlin.GraphLoopsShape.Countermodels.inconsistent_metadata,Merlin.GraphLoopsShape.Countermodels.same_type_different_base,GraphReuseObligation.valid,GraphReuseObligation.accepted,GraphReuseObligation.complete,GraphReuseObligation.contextual,Merlin.GraphLoopsReuse.Witness.protocol,Merlin.GraphLoopsReuse.Witness.source_inhabited,Merlin.GraphLoopsReuse.Witness.target_inhabited,Merlin.GraphLoopsReuse.Related.read,Merlin.GraphLoopsReuse.Related.allocate,Merlin.GraphLoopsReuse.Related.initialize,Merlin.GraphLoopsReuse.Related.store,Merlin.GraphLoopsReuse.Related.free,Merlin.GraphLoopsReuse.step_forward,Merlin.GraphLoopsReuse.step_backward,Merlin.GraphLoopsReuse.execution_forward,Merlin.GraphLoopsReuse.execution_backward,Merlin.GraphLoopsReuse.checked_observations,Merlin.GraphLoopsReuse.Geometry.every_cell_covered,Merlin.GraphLoopsReuse.Geometry.rectangular_initializes,Merlin.GraphLoopsReuse.LifetimesValid.not_simultaneously_live,Merlin.GraphLoopsReuse.Model.check_sound,Merlin.GraphLoopsReuse.Model.checked_initializer_coverage,Merlin.GraphLoopsReuse.Model.checked_complete_observations,Merlin.GraphLoopsReuse.Model.checked_context,Merlin.GraphLoopsReuse.Countermodels.resource_exhaustion,Merlin.GraphLoopsReuse.Countermodels.pointer_identity,Merlin.GraphLoopsReuse.Countermodels.allocation_call_budget,Merlin.GraphLoopsReuse.Countermodels.stale_cell,Merlin.GraphLoopsReuse.Countermodels.overlapping_live_values,GraphMemorySCFObligation.valid,GraphMemorySCFObligation.accepted,GraphMemorySCFObligation.complete,GraphMemorySCFObligation.chain,GraphMemorySCFObligation.contextual,Merlin.GraphLoopsMemorySCF.EvalPure.frame,Merlin.GraphLoopsMemorySCF.Run.covers,Merlin.GraphLoopsMemorySCF.Run.materializes,Merlin.GraphLoopsMemorySCF.heap_run_iff_log,Merlin.GraphLoopsMemorySCF.segmentation_exact_heaps,Merlin.GraphLoopsMemorySCF.materializes_in_bounds,Merlin.GraphLoopsMemorySCF.related_initialize_logs,Merlin.GraphLoopsMemorySCF.initialization_induced,Merlin.GraphLoopsMemorySCF.step_forward,Merlin.GraphLoopsMemorySCF.step_backward,Merlin.GraphLoopsMemorySCF.execution_forward,Merlin.GraphLoopsMemorySCF.execution_backward,Merlin.GraphLoopsMemorySCF.checked_complete_observations,Merlin.GraphLoopsMemorySCF.execution_modes,Merlin.GraphLoopsMemorySCF.checked_reuse_then_segment,Merlin.GraphLoopsMemorySCF.checked_induced_atomic,Merlin.GraphLoopsMemorySCF.Model.check_sound,Merlin.GraphLoopsMemorySCF.Model.checked_chain,Merlin.GraphLoopsMemorySCF.Model.checked_complete,Merlin.GraphLoopsMemorySCF.Model.checked_context,Merlin.GraphLoopsMemorySCF.Witness.uniform_heap,Merlin.GraphLoopsMemorySCF.Witness.uniform_run_exists,Merlin.GraphLoopsMemorySCF.Witness.uniform_run_values,Merlin.GraphLoopsMemorySCF.Witness.writes_uniform,Merlin.GraphLoopsMemorySCF.Model.checked_outer_control,Merlin.GraphLoopsMemorySCF.Model.checked_inner_control,Merlin.GraphLoopsMemorySCF.Model.checked_initializer_byte_offset,Merlin.GraphLoopsShape.Epoch.offset,Merlin.GraphLoopsShape.Epoch.address,Merlin.GraphLoopsShape.Epoch.erase_read,Merlin.GraphLoopsShape.Epoch.erase_assign,Merlin.GraphLoopsShape.Epoch.store_iff,Merlin.GraphLoopsShape.Epoch.load_iff,Merlin.GraphLoopsShape.Epoch.normalized_eval,Merlin.GraphLoopsShape.Epoch.normalized_invoke,Merlin.GraphLoopsShape.Epoch.normalized_complete,Merlin.GraphLoopsShape.Epoch.heap_execution_forward,Merlin.GraphLoopsShape.Epoch.heap_execution_backward,Merlin.GraphLoopsShape.Epoch.scf_heap_iff,Merlin.GraphLoopsShape.Epoch.Cell.eval,Merlin.GraphLoopsShape.Epoch.uniform_cell_inputs,Merlin.GraphLoopsShape.Epoch.Uniform.inner_corresponds,Merlin.GraphLoopsShape.Epoch.Uniform.outer_corresponds,Merlin.GraphLoopsShape.Epoch.Uniform.eval_iff,Merlin.GraphLoopsShape.Epoch.Uniform.checked_eval,GraphShapeEpochObligation.normalized_syntax,GraphShapeEpochObligation.complete_plain,Merlin.GraphLoopsShape.Epoch.uniform_heap_alpha,Merlin.GraphLoopsShape.Epoch.eval_free_reads,Merlin.GraphLoopsShape.Epoch.merge_heap_writes,Merlin.GraphLoopsShape.Epoch.heap_run_partition,Merlin.GraphLoopsShape.Epoch.initializer_world_partition,Merlin.GraphLoopsShape.Epoch.InitializerLink.checked_execution,Merlin.GraphLoopsShape.Epoch.allocation_epoch,Merlin.GraphLoopsShape.Epoch.release_epoch,Merlin.GraphLoopsShape.Epoch.preseed_fresh_view,Merlin.GraphLoopsShape.Epoch.Touch.eval,Merlin.GraphLoopsShape.Epoch.Touch.caller_effect,Merlin.GraphLoopsShape.Epoch.Touch.invoke,Merlin.GraphLoopsShape.Epoch.Touch.call,Merlin.GraphLoopsShape.Epoch.Atom.eval_suffix,Merlin.GraphLoopsShape.Epoch.sequence_complete,Merlin.GraphLoopsShape.Epoch.constant_atom,Merlin.GraphLoopsShape.Epoch.binary_atom,Merlin.GraphLoopsShape.Epoch.allocate_atom,Merlin.GraphLoopsShape.Epoch.release_atom,Merlin.GraphLoopsShape.Epoch.load_atom,Merlin.GraphLoopsShape.Epoch.store_atom,Merlin.GraphLoopsShape.Epoch.initializer_atom,Merlin.GraphLoopsShape.Epoch.observer_atom,Merlin.GraphLoopsShape.Epoch.InitializerLink.from_registers,Merlin.GraphLoopsShape.Epoch.InitializerLink.clocked,Merlin.GraphLoopsShape.Epoch.registers_assign,Merlin.GraphLoopsShape.Epoch.callers_assign,Merlin.GraphLoopsShape.Epoch.indices_of_typed,Merlin.GraphLoopsShape.Epoch.calls_with_memory,Merlin.GraphLoopsShape.Epoch.returned_step_iff,Merlin.GraphLoopsShape.Epoch.sequence_refused,Merlin.GraphLoopsShape.Epoch.PlanContext.memory_nonCall,Merlin.GraphLoopsShape.Epoch.PlanContext.meaning_memory,Merlin.GraphLoopsShape.Epoch.Command.correspondence,Merlin.GraphLoopsShape.Epoch.Command.assignment,Merlin.GraphLoopsShape.Epoch.Command.pins_preserved,Merlin.GraphLoopsShape.Epoch.Command.preserves,Merlin.GraphLoopsShape.Epoch.commands_forward,Merlin.GraphLoopsShape.Epoch.commands_backward,Merlin.GraphLoopsShape.Epoch.commands_equivalent,Merlin.GraphLoopsShape.Epoch.execution_append,Merlin.GraphLoopsShape.Epoch.execution_single,Merlin.GraphLoopsShape.Epoch.block_equivalent,Merlin.GraphLoopsShape.Epoch.seed_other,Merlin.GraphLoopsShape.Epoch.seed_pinned,Merlin.GraphLoopsShape.Epoch.seed_eval,Merlin.GraphLoopsShape.Epoch.entry_world,Merlin.GraphLoopsShape.Epoch.entry_registers,Merlin.GraphLoopsShape.Epoch.entry_callers,Merlin.GraphLoopsShape.Epoch.zero_call_refused,Merlin.GraphLoopsShape.Epoch.Kernel.depth_one_refused,Merlin.GraphLoopsShape.Epoch.Kernel.depth_equivalent,Merlin.GraphLoopsShape.Epoch.Kernel.complete_equivalent,Merlin.GraphLoopsShape.Epoch.visible_merge,Merlin.GraphLoopsShape.Epoch.observe_clock,Merlin.GraphLoopsShape.Epoch.Kernel.observations,Merlin.GraphLoopsShape.Epoch.epoch_chain,Merlin.GraphLoopsShape.Epoch.shape_outcomes,Merlin.GraphLoopsShape.Epoch.Kernel.checked_chain,GraphShapeEpochObligation.initializer0_syntax,GraphShapeEpochObligation.initializer0_facts,GraphShapeEpochObligation.initializer1_syntax,GraphShapeEpochObligation.initializer1_facts,GraphShapeEpochObligation.initializer2_syntax,GraphShapeEpochObligation.initializer2_facts,GraphShapeEpochObligation.link0_checked,GraphShapeEpochObligation.link0_canonical,GraphShapeEpochObligation.link0_old_configuration,GraphShapeEpochObligation.link1_checked,GraphShapeEpochObligation.link1_canonical,GraphShapeEpochObligation.link1_old_configuration,GraphShapeEpochObligation.link2_checked,GraphShapeEpochObligation.link2_canonical,GraphShapeEpochObligation.link2_old_configuration,GraphShapeEpochObligation.sequence0_syntax,GraphShapeEpochObligation.sequence1_syntax,GraphShapeEpochObligation.sequence2_syntax,GraphShapeEpochObligation.observer0_checked,GraphShapeEpochObligation.observer0_syntax,GraphShapeEpochObligation.observer0_separate,GraphShapeEpochObligation.observer0_call_keys,GraphShapeEpochObligation.commands_atoms,GraphShapeEpochObligation.commands_instructions,GraphShapeEpochObligation.commands_checked,GraphShapeEpochObligation.plan_valid,GraphShapeEpochObligation.kernel_facts,GraphShapeEpochObligation.kernel_instructions,GraphShapeEpochObligation.complete_adapter,GraphShapeEpochObligation.memory_binding,GraphShapeEpochObligation.complete_chain,GraphMemoryAfterMaterialization.accepted,GraphMemoryAfterMaterialization.actual_final_syntax,GraphMemoryAfterExpansion.expansion_checked,GraphMemoryAfterExpansion.all_source_commands,GraphMemoryAfterExpansion.computed_target,GraphMemoryAfterExpansion.expanded_to_actual,GraphMemoryAfterWhole.source_term_exact,GraphMemoryAfterWhole.source_frame_exact,GraphMemoryAfterWhole.source_valid,GraphMemoryAfterWhole.source_normalized,GraphMemoryAfterWhole.source_index_absent,GraphMemoryAfterWhole.boundary_facts,GraphMemoryAfterWhole.actual_materialized,GraphMemoryAfterWhole.complete_actual_chain,GraphMemoryAfterEntries.roster_facts,GraphMemoryAfterEntries.literal_source,GraphMemoryAfterEntries.literal_final,GraphMemoryAfterEntries.kernel_support,GraphMemoryAfterEntries.complete_roster,GraphMemoryAfterEntries.entry0_kernel_parameters,GraphMemoryAfterEntries.entry0_callers,GraphMemoryAfterEntries.entry0_found,GraphMemoryAfterEntries.entry0_member,GraphMemoryAfterEntries.entry0_plain,GraphMemoryAfterEntries.entry0_typed,GraphMemoryAfterEntries.entry0_wrong_arity,GraphMemoryAfterEntries.entry0_external,GraphMemoryAfterEntries.entry0_domain,GraphMemoryAfterEntries.entry1_found,GraphMemoryAfterEntries.entry1_member,GraphMemoryAfterEntries.entry1_plain,GraphMemoryAfterEntries.entry1_typed,GraphMemoryAfterEntries.entry1_wrong_arity,GraphMemoryAfterEntries.entry1_external,GraphMemoryAfterEntries.entry1_domain,GraphMemoryAfterEntries.entry2_found,GraphMemoryAfterEntries.entry2_member,GraphMemoryAfterEntries.entry2_plain,GraphMemoryAfterEntries.entry2_typed,GraphMemoryAfterEntries.entry2_wrong_arity,GraphMemoryAfterEntries.entry2_external,GraphMemoryAfterEntries.entry2_domain,GraphMemoryAfterEntries.entry2_literal_selection,GraphMemoryAfterEntries.entry2_binary_selection,GraphMemoryAfterEntries.entry2_source_execution,GraphMemoryAfterEntries.entry2_source_outcome,GraphMemoryAfterEntries.entry2_final_outcome,GraphMemoryAfterMaterialization.expanded_to_actual,GraphMemoryAfterEntries.every_definition",
+            "WholeShape",
+            "WholeReuse",
+            "WholeMemory",
+            "EpochSyntax",
+            "EpochCommands",
+            "EpochPlan",
+            "EpochKernel",
+            "WholeEpoch",
+            "WholeMaterialization",
+            "WholeExpansion",
+            "WholeFinal",
+            "RawChainEntries"
+          ],
+          "returncode": 0
+        }
+      ],
+      "printed_roots": 255,
+      "audit_theorems": 2343,
+      "std3_only": true,
+      "violations": [],
+      "anonymous_binder_path_only_differences": [
+        "Merlin.GraphLoopsReuse.Countermodels.overlapping_live_values",
+        "Merlin.GraphLoopsReuse.Related.allocate",
+        "Merlin.GraphLoopsReuse.Related.free",
+        "Merlin.GraphLoopsShape.Epoch.Touch.caller_effect",
+        "Merlin.GraphLoopsShape.Epoch.returned_step_iff"
+      ],
+      "consumer_called": true,
+      "final_bytes_identical": true,
+      "sdk_or_project_object_contents_read": false,
+      "full_campaign_qualification": false
+    }
+  ],
+  "no_native_launch": true,
+  "no_object_rehash": true
+}

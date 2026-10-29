@@ -1,0 +1,27 @@
+{
+  "status": "REVIEWED_APPLIED_TWO_FILE_PROOF_CONSTRUCTION_REPAIR",
+  "changes": [
+    {
+      "path": "src/merlin/verify/buffer_reuse_emit.py",
+      "before": "89cfc5a1828648e8ed2f93c91afc9a7e2fdc2b8328c3f8ee121ccac2563752d4",
+      "after": "6c3a080f93d5e3d5fd06e0cac461dbf4c3c0eff0769ed07c2f24e88211dbcc64",
+      "candidate": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/shape-successor/candidate_emit.py"
+    },
+    {
+      "path": "src/merlin/verify/buffer_reuse_intake.py",
+      "before": "3c736c0ae0389640bcd0d011b02e47901bd319a0e49907d561d8f13e056597c3",
+      "after": "83bcd7562285ade779e6878f7ba9cf552fd7175832794c7e3ebc140f06abdafb",
+      "candidate": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/shape-successor/candidate_intake.py"
+    }
+  ],
+  "review": "Unique exact Shape.valid proof-body replacement; count from actual decoded source headers, width equality checked by rfl, exhaustive function cases and all four original conjunction fields discharged; declarations/options/terms/premises/roots unchanged",
+  "complete_required_three_epoch_result": "NEXT-BUFFER/CONTEXT/W/three-epoch-shape/FULL-RESULT.json",
+  "native_development": {
+    "all_query_parts": 12,
+    "roots": 255,
+    "transitive_theorems": 2343,
+    "violations": 0
+  },
+  "frozen_F1": "terminal1/reaped partial preserved",
+  "independent_successor_qualification": false
+}

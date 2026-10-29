@@ -22,8 +22,8 @@ def LiteralAction {Value World : Type} (element key : String) (literal : Literal
     (inputs : List (Runtime Value)) (before : World) (outputs : List (Runtime Value)) (after : World) : Prop :=
   inputs = [] ∧ ∃ value, literal key value ∧ outputs = [.scalar element value] ∧ after = before
 
-def withLiterals {Value World : Type} (base : Interpretation Value World) (opcodes : LiteralOpcodes)
-    (literal : LiteralMeaning Value) : Interpretation Value World where
+def withLiterals {Value World : Type} (base : GraphLoopsShape.Interpretation Value World) (opcodes : LiteralOpcodes)
+    (literal : LiteralMeaning Value) : GraphLoopsShape.Interpretation Value World where
   action := fun key => match literalAt opcodes key with
     | none => base.action key
     | some element => LiteralAction element key literal
@@ -85,7 +85,7 @@ instance (literals : LiteralOpcodes) (module : Module) : Decidable (LiteralModul
   unfold LiteralModuleFacts
   infer_instance
 
-theorem closed_literal_extension {Value World : Type} (base : Interpretation Value World)
+theorem closed_literal_extension {Value World : Type} (base : GraphLoopsShape.Interpretation Value World)
     (literals : LiteralOpcodes) (literal : LiteralMeaning Value) (module : Module) (names : List String)
     (closed : CallClosed module names) (absent : ClosedLiteralAbsent module names literals)
     (name : String) (member : name ∈ names) (inputs : List (Runtime Value))
@@ -104,11 +104,11 @@ theorem closed_literal_extension {Value World : Type} (base : Interpretation Val
 
 def entryMeaning {Value User : Type} (bits : Nat) (indices : IndexOpcodes) (opcodes : Epoch.Opcodes)
     (scalar : Epoch.BinaryMeaning Value) (literals : LiteralOpcodes) (literal : LiteralMeaning Value) :
-    Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)) :=
+    GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)) :=
   withLiterals (finalMeaning bits indices opcodes scalar) literals literal
 
 theorem literal_outcomes_extension {Value User : Type} (bound : Nat)
-    (base : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (base : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (literals : LiteralOpcodes) (literal : LiteralMeaning Value) (module : Module) (names : List String)
     (closed : CallClosed module names) (absent : ClosedLiteralAbsent module names literals)
     (name : String) (member : name ∈ names) (inputs : List (Runtime Value)) (heap : Heap Value) (user : User)
