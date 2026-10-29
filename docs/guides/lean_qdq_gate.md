@@ -20,6 +20,16 @@ code_refs:
 
 # Check Q/DQ lowering in the compiler
 
+The [bounded source profiles](lean_bounded_pass_profiles.md) separate ordinary
+lowering from formal coverage. Unsupported original forms, including per-channel
+i64 zero points, still use ordinary lowering and are logged unverified at the
+end. Both compiler routes have a matched-output regression for that exclusion.
+Admitted sources still block on failed/unsupported targets, unavailable checks
+or broken bindings. Optional source-capture qualification remains strict when
+requested for an admitted source. An excluded source receives neither capture
+qualification nor lowering-proof credit. This changes neither the proposed-model
+status nor numerical approval.
+
 The [numerical contract review packet](../design/qdq_macc_numerical_contract_review.md)
 maps the additive conversion-domain definedness theorem through the actual
 lowering. It leaves the generic gate's unrestricted definedness and source

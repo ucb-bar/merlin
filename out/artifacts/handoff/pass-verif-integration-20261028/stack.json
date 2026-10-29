@@ -25,10 +25,10 @@
     "example": "Dynamic outer loop stays in place.\nIts inner 5 iterations become 2 groups \u00d7 2 lanes + 1 tail.\nZero outer trips still execute no inner work.",
     "claim": "Equal returned values, modeled errors and terminal world, under the common scalar/SCF interpretation.",
     "proof": "Merlin.GraphGateProfileAdjacent.complete2",
-    "limit": "Explicit one-based depth; static selected index64 controls, arbitrary supported dynamic ancestors and partial calls. Actual combined inner-depth qualification now preserves deeper dynamic bodies, with native checks, fresh replay and real Lean callee/stride refusals. Actual source strides remain known positive. Resource limits apply. A source outside the bounded Lean profile runs ordinary lowering and is logged unverified at the end, with zero proof credit. Once source-admitted, failed or unavailable checks block compilation.",
+    "limit": "Explicit one-based depth; static selected index64 controls, arbitrary supported dynamic ancestors and partial calls. Actual combined inner-depth qualification now preserves deeper dynamic bodies, with native checks, fresh replay and real Lean callee/stride refusals. Actual source strides remain known positive. Resource limits apply. Generic runtime data stay arbitrary values; scalar NaN/complex dense literals and normalization-sensitive assembly are excluded. Budgets: raw/query/dense4MiB, syntax/work65536, block4096/depth32. A source outside the bounded Lean profile runs ordinary lowering and is logged unverified at the end, with zero proof credit. Once source-admitted, failed or unavailable checks block compilation.",
     "registered": true,
-    "supported": "Word loops: empty, inline, bulk, tails, supported nesting and full contexts. Generic data: bounded top-level factor-two loop with one opaque body event.",
-    "excluded": "Generic carried values, multiple body events and broader selected nesting; source/control forms outside declared bounds.",
+    "supported": "Word loops: empty, inline, bulk, tails, supported nesting and full contexts. Generic data: exactly one module scf.for, top-level, zero carries, factor2, odd trips>=3, one opaque body event, immediate captured return.",
+    "excluded": "Generic carried values, additional loops (including opaque regions/other entries), effectful suffixes and multiple body events; source/control/literal forms outside declared bounds.",
     "in_all": true
   },
   {
@@ -41,10 +41,10 @@
     "example": "7 groups\n\u2192 segments [3, 3, 1]\nA short final segment retains the original order.",
     "claim": "Scalar route: equal returns, modeled errors and terminal world. Memory route: the whole storage chain's successful-observation relation.",
     "proof": "Merlin.GraphGateProfileAdjacent.complete3",
-    "limit": "Depth is selected at the actual tiling stage after unrolling. Public inner TILE and combined UNROLL\u2192TILE gates/native controls pass with exact intermediate/output custody. Retained deeper-body captures are qualified through the controlled auxiliary projection; actual source stride checks remain strict. Private-buffer tiles permit size2\u201365,536 under a finite resource policy; signed-index64 safety is checked separately. A source outside the bounded Lean profile runs ordinary lowering and is logged unverified at the end, with zero proof credit. Once source-admitted, failed or unavailable checks block compilation.",
+    "limit": "Depth is selected at the actual tiling stage after unrolling. Public inner TILE and combined UNROLL\u2192TILE gates/native controls pass with exact intermediate/output custody. Retained deeper-body captures are qualified through the controlled auxiliary projection; actual source stride checks remain strict. Private-buffer tiles permit size2\u201365,536 under a finite resource policy; signed-index64 safety is checked separately. Generic runtime data stay arbitrary values; scalar NaN/complex dense literals and normalization-sensitive assembly are excluded. Budgets: raw/query/dense4MiB, syntax/work65536, block4096/depth32. A source outside the bounded Lean profile runs ordinary lowering and is logged unverified at the end, with zero proof credit. Once source-admitted, failed or unavailable checks block compilation.",
     "registered": true,
-    "supported": "Word loops: ordered segments and short final tails, supported selected depths and combined word UNROLL\u2192TILE. Private-buffer initializer tiling.",
-    "excluded": "Generic combined UNROLL\u2192TILE; broader generic bodies. Generic singleton TILE qualification is recorded separately.",
+    "supported": "Word loops: ordered segments and short final tails, supported selected depths and combined word UNROLL\u2192TILE. Private-buffer initializer tiling; separately qualified generic singleton TILE (exactly one module scf.for, top-level, zero carries, one opaque event, immediate captured return, tile2..65536).",
+    "excluded": "Generic combined UNROLL\u2192TILE, carried data, extra loops, effectful suffixes and broader generic loop bodies.",
     "in_all": true
   },
   {
@@ -57,7 +57,7 @@
     "example": "Allocate A \u2192 initialize \u2192 use \u2192 free\nAllocate B \u2192 initialize \u2192 use \u2192 free\n\u2192 reuse one private slot for both lifetimes",
     "claim": "Equal sets of possible successful public observations under the explicitly selected total, private, unobservable allocator model.",
     "proof": "GraphMemoryAfterEntries.every_definition",
-    "limit": "Static rank-two i8/i16/i32/i64 rectangular initialization, sequential disjoint private lifetimes. Untiled and tiled actual outputs have proof routes. Explicit total/private/unobservable allocator; no finite-capacity, complete failure-state or native allocator proof. Additive rank-one uniform-seed bridges pass all 33 installed host/compiler/native/replay/mutation cases, including both public routes, fresh-process replay and classified target/component refusals. Default-all memory composition now passes actual untiled and tiled32-tail compiler gates, with a separate complete successful-return/world DCE proof and authentic unchanged CSE observation. Changed memory CSE runs with unverified coverage. Computed prefixes and rank-three source bridges remain engineering. A source outside the bounded Lean profile runs ordinary lowering and is logged unverified at the end, with zero proof credit. Once source-admitted, failed or unavailable checks block compilation.",
+    "limit": "Static rank-two i8/i16/i32/i64 rectangular initialization, sequential disjoint private lifetimes. Untiled and tiled actual outputs have proof routes. Explicit total/private/unobservable allocator; no finite-capacity, complete failure-state or native allocator proof. At the recorded source cut, additive rank-one uniform-seed i32 fixtures passed 33 installed host/compiler/native/replay/mutation cases, including both public routes, fresh-process replay and classified target/component refusals. Default-all memory composition now passes actual untiled and tiled32-tail compiler gates, with a separate complete successful-return/world DCE proof and authentic unchanged CSE observation. Changed memory CSE runs with unverified coverage. Computed prefixes and rank-three source bridges remain engineering. A source outside the bounded Lean profile runs ordinary lowering and is logged unverified at the end, with zero proof credit. Once source-admitted, failed or unavailable checks block compilation.",
     "registered": true,
     "supported": "Static rank-one/rank-two integer views; captured uniform fills; explicit disjoint private lifetimes; untiled or tile2..65536.",
     "excluded": "Computed initializer prefixes; rank3+; dynamic/floating storage; escapes/completion. Allocation failures and native allocator fidelity are outside the theorem.",
@@ -75,7 +75,7 @@
     "proof": "MerlinVerify.Check.TypedModule.check_sound\nMerlinVerify.Check.supportCheck_sound\ncompose_chain\nMerlin.GraphLoopsShape.DeadConstants.checked_complete",
     "limit": "Only modeled effect-free tensor/scalar operations may be erased. Numerical preparation and native lowering are separate boundaries. The memory rule retains partial actions, casts, dimensions and regions; no categorized-error or divergence equivalence. Actual default-all untiled and tile32-tail routes pass. A source outside the bounded Lean profile runs ordinary lowering and is logged unverified at the end, with zero proof credit. Once source-admitted, failed or unavailable checks block compilation.",
     "registered": true,
-    "supported": "Typed tensor rulebook; separate ordinary-memory dead index-constant proof.",
+    "supported": "Typed tensor rulebook; separate ordinary-memory dead index-constant proof with fitting original index constants/materialized dimensions.",
     "excluded": "Unsupported type/op/region rules. Memory categorized errors and divergence are outside its success relation.",
     "in_all": true
   },
@@ -122,7 +122,7 @@
     "example": "set configuration = (3, 5)\nwork\nset configuration = (3, 5)\nwork\n\u2192 retain the first setter and both work calls",
     "claim": "Equal modeled defined-entry observations, successful state and complete error/terminal state, under one admitted instruction interpretation.",
     "proof": "ActualConfigurationElision.complete_entries",
-    "limit": "Explicit selected ISA/effect interpretation, outside all. Constant pure setters, complete actual entries and failure states. Nested instruction regions need another context bridge. Implementation/frame contracts require independent review. A source outside the bounded Lean profile runs ordinary lowering and is logged unverified at the end, with zero proof credit. Once source-admitted, failed or unavailable checks block compilation.",
+    "limit": "Explicit selected ISA/effect interpretation, outside all. Constant pure setters, complete actual entries and failure states. Nested instruction regions need another context bridge. Implementation/frame contracts require independent review. A source outside the bounded Lean profile runs ordinary lowering and is logged unverified at the end, with zero proof credit. Once source-admitted, failed or unavailable checks block compilation. Removed/moved setters are total exact pure overwrites under the selected model; configuration fields have a nonaliasing mapping into the complete memory/return/observer state.",
     "supported": "Straight-line integer instruction entries or Kernel calls under original selected ISA/effect facts; unknown Kernel calls remain barriers.",
     "excluded": "Instruction control/nested regions, dynamic decoded operands and floating metadata. Selected ISA implementation/effect fidelity remains assumed.",
     "in_all": false
@@ -138,7 +138,7 @@
     "example": "for i: for j: set cfg=3; work(i,j)\n\u2192 for i: set cfg=3; for j: work(i,j)\nThe setter remains inside the original outer scope.",
     "claim": "Complete modeled outcome/error/terminal-state equality under one all-environment instruction/effect model, with exact recursive command contexts and terminal joins.",
     "proof": "ActualConfigurationHoist.complete_kernel",
-    "limit": "V1\u2013V5 remain supported; V6 adds recursive positive counted Kernel loops. Original C64 emission/replay binds actual endpoint domains through extent2^63\u22121; ordinary calls retain the one-million cap. 78 installed pytest cases plus five separate legacy checks pass, including three public workers, fresh C64 replay, two genuine mutations and 27 finite native observations. Completion fields and dynamic configuration effects refuse; model/hardware/native/LLVM fidelity remain separate. A source outside the bounded Lean profile runs ordinary lowering and is logged unverified at the end, with zero proof credit. Once source-admitted, failed or unavailable checks block compilation.",
+    "limit": "V1\u2013V5 remain supported; V6 adds recursive positive counted Kernel loops. Original C64 emission/replay binds actual endpoint domains through extent2^63\u22121; ordinary calls retain the one-million cap. At the recorded V6 cut, 78 installed pytest cases plus five separate legacy checks passed, including three public workers, fresh C64 replay, two genuine mutations and 27 finite native observations. Completion fields and dynamic configuration effects refuse; model/hardware/native/LLVM fidelity remain separate. A source outside the bounded Lean profile runs ordinary lowering and is logged unverified at the end, with zero proof credit. Once source-admitted, failed or unavailable checks block compilation. Removed/moved setters are total exact pure overwrites under the selected model; configuration fields have a nonaliasing mapping into the complete memory/return/observer state.",
     "supported": "Positive flat/sibling/recursive counted Kernel loops, literal invariant setters and admitted retained indexed data; original C64 wide-count domain.",
     "excluded": "Dynamic configuration dependencies, completion/staging and unmodeled expressions. All-environment Models and exact original ownership remain required.",
     "in_all": false
@@ -157,6 +157,7 @@
     "limit": "Explicit only, outside all. One fused region with 2\u2013128 static integer pointwise stages; initialized inputs and successful unobservable logical allocation. Trusted Python projection/private-call fidelity. Floating-point, reductions, dynamic/encoded layouts and broader fusion refuse. No physical-buffer, allocation-failure or native/LLVM proof. A source outside the bounded Lean profile runs ordinary lowering and is logged unverified at the end, with zero proof credit. Once source-admitted, failed or unavailable checks block compilation.",
     "supported": "One original group of 2..128 static integer pointwise stages; one public entry, initialized inputs and unread destinations.",
     "excluded": "Multiple fused groups, floating/reduction/effectful forms and broader layouts. Total pure actions/logical allocation are model premises.",
+    "badge": "Complete public results under pure-action model",
     "in_all": false
   }
 ]

@@ -54,7 +54,8 @@ dimensions and nested handlers. It does not classify errors or divergence.
 Original live compiler ownership binds DCE input to the transformed memory
 source, and binds native CSE to the actual later compiler input and runner.
 An authentic unchanged CSE submits zero jobs and receives zero proof credit;
-missing, skip-only and changed memory CSE still refuse. Canonicalization and
+missing and skip-only captures still refuse. Changed memory CSE runs normally
+with explicit unverified coverage and zero proof credit. Canonicalization and
 downstream lowering remain separate trusted boundaries.
 
 Installed default-`all` qualification passes both an untiled extent-three chain
@@ -64,6 +65,13 @@ products match the true untransformed source in finite native comparisons.
 Evidence, including earlier safe refusals, is retained under
 `out/build/default-all-memory-20261029/` (terminal compiler evidence is in
 `installed-qualification-v3/`).
+
+The compiler wrapper uses [bounded original-source admission](lean_bounded_pass_profiles.md).
+Known source exclusions still run ordinary storage transformations and are logged
+unverified at the end. Admitted pairs must pass their actual chain check. The
+direct proof/delivery/replay APIs below remain strict on unsupported inputs;
+an exclusion never manufactures an accepted receipt. The v3 compiler evidence
+above retains its historical source cut; current refreshes are in the handoff.
 The public private-buffer tile resource policy is now 2..65,536; actual signed
 index64 safety checks remain mandatory. This policy does not widen supported
 initializer types or allocator semantics.
@@ -124,8 +132,9 @@ broader element/rank profiles remain separate engineering.
 An additive rank-one bridge now represents the actual single SCF fill loop,
 its exact source/canonical SSA/configuration link and actual optional tiled
 point loops. It derives local private-slot simulations and lifts them through
-the same complete-entry root. All 33 installed qualification cases pass: 12 host
-and 21 SDK/native cases. Actual untiled and tiled chains cover extents 1, 3 and
+the same complete-entry root. At its recorded source cut, all 33 installed
+qualification cases passed: 12 host and 21 SDK/native cases using i32 fixtures.
+Actual untiled and tiled chains cover extents 1, 3 and
 65,536; both routes have fresh-process replay and public compiler delivery.
 The gates audit 250 canonical roots and 2,545 STD3 theorems. Target controls
 include three genuine closed Lean refusals and seven explicit host refusals;

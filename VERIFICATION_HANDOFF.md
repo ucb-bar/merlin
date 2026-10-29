@@ -6,11 +6,28 @@ at invocation completion. Admitted source boundaries still block on unsuccessful
 proofs, unsupported targets, missing tools or custody failures. This supersedes
 the proposed skip/no-op policy. See the [bounded profile catalogue](docs/guides/lean_bounded_pass_profiles.md).
 End coverage is per boundary, finalized after worker join; it grants no proof of
-an unverified suffix or downstream LLVM/native behavior. Current root tests pass
-30 cases (23 input/journal controls, four compiler-policy cases, three real
-source-only recognizer/export checks); buffer/configuration source predicates
-separately pass 30 host checks. Fresh boundary qualification is recorded separately
-from these admission/protocol tests and from historical receipts.
+an unverified suffix or downstream LLVM/native behavior. All ten selectors are
+integrated within their declared profiles; five are selected by `all`. The
+[stack guide](docs/guides/lean_compiler_stack.md) and
+[offline stack](out/artifacts/handoff/pass-verif-integration-20261028/merlin-lean-stack.html)
+show each location, interface, example and theorem relation. Completed gates are
+integrated independently of future model extensions.
+
+The current [handoff](out/artifacts/handoff/pass-verif-integration-20261028/README.md)
+separates proof, replay, protocol and finite native evidence at their exact cuts.
+Generic UNROLL/TILE have four retained fresh proofs and independent audit;
+configuration has a retained three-case/four-query refresh. The compiler matrix's
+11 passes and stale host-test injection failure are recorded; the repaired
+actual host negative and three source-exclusion cases subsequently pass with
+independent artifact review. The latest source-policy cohort passes 37 host
+controls. Final default-all memory refresh is running; its terminal result is
+recorded in the handoff before final publication.
+
+Broader generic bodies/carries/nesting, computed initialization, rank-three
+storage and changed memory CSE are explicit future coverage extensions. They do
+not become assumptions of accepted proofs. Q/DQ remains proposed-model and MACC
+remains draft pending independent numerical review. The profile catalogue lists
+primitive/effect, projection and logical-allocation premises for review.
 
 The [merge qualification](out/artifacts/audits/ledger-review-20261029/merge-README.md)
 combines the ledger/fusion corrections with Graham's published memory-gate
@@ -65,7 +82,7 @@ Private-buffer tile resource policy now permits sizes through 65,536 while
 retaining signed-index64 safety checks. Evidence and earlier safe refusals are
 under `out/build/default-all-memory-20261029/`; `installed-qualification-v3/`
 is the completed historical compiler run before the current admission/controller
-changes. A final current-source refresh is queued separately.
+changes. The final retention-enabled refresh is tracked in the current handoff.
 
 Selected inner-depth unrolling and tiling now preserve supported deeper bodies.
 An actual depth-two unroll→tile gate preserves a dynamic depth-three body;
@@ -91,7 +108,9 @@ All-environment instruction/effect Models remains an explicit premise.
 **The bounded stopping milestone is finishing qualification and publication.**
 Generic-value UNROLL has an installed compiler worker and fresh replay: 41 roots
 and 940 audited declarations per check, standard logical axioms only. Generic
-TILE integration is separately under qualification. Computed initializer prefixes,
+TILE now also passes actual compiler delivery and fresh replay, with 47 roots
+and 929 audited declarations per tree. All four final proof trees bind 91
+current sources without drift. Computed initializer prefixes,
 broader memory ranks and more generic loop bodies are documented future domain
 extensions, not prerequisites for the bounded gates. Rank-one buffer source/target bridges are committed in `5f9fb92de`.
 Their installed qualification now passes all 33 distinct cases: 12 host and 21

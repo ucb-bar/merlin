@@ -14,38 +14,78 @@ unique completed verdicts after the outer worker guard. A successful mixed
 invocation makes only its individual bounded claims, not a preservation claim
 through unverified stages. Standalone proof/replay APIs remain strict.
 
-Current root qualification: **30 passed in 15.10s**, with no skips: 23 synthetic
-input/journal custody controls, four ordinary-transform/real-unavailable-worker
-policy cases and three actual authoritative-export/source-rulebook cases.
-Evidence: `out/build/pass-bounded-models-20261029/root-policy-v1/`. The separate
-installed buffer/configuration source-predicate cohort passes **30/30**. Neither
-cohort is a new boundary proof or numerical approval. Generic loop and refreshed
-configuration runtime qualifications are tracked separately at their exact cuts.
+The bounded implementation is integrated on **`feat/pass-verif-integration`**.
+There are ten selectors, five in `all`; the proposed Q/DQ, draft MACC, host
+fusion and two selected-ISA configuration gates stay explicit. Transformation
+selection remains independent of verification selection. The [stack guide](../../../../docs/guides/lean_compiler_stack.md)
+and [offline stack](merlin-lean-stack.html) give every boundary's interface,
+example, proof relation and supported/excluded cases.
 
-Subsequent focused results retain distinct scopes: 54 corrected host controls
-pass, including the real memory epoch join and rejection of a synthetic sink
-that issues no actual proof job. Eleven registry/identity controls pass. Four
-actual numerical admission/fallback tests pass: bf16/f16 zero initialization is
-admitted, nonzero initialization is excluded, and per-channel i64 DQ matches
-ordinary compilation on both routes with unverified coverage. Source/export
-mutation controls and unexpected host parser failure controls also pass.
-
-Generic UNROLL now has independent installed-worker/replay audit: exact actual
-source/output delivery, 41 roots and 940 audited declarations per tree, standard
-logical axioms only. This remains a bounded arbitrary-Value operational model,
-not concrete primitive/IEEE/native fidelity. Generic TILE is separately under
-qualification. Configuration's first revised three-case SDK cohort passes,
-including four proof invocations and 27 small native observations; pytest removed
-passed-case directories, so those terminal results are not retained-receipt audit
-evidence. A retention-enabled final-source refresh is queued.
-
-Completed implementation commits include `7ba2b8e6a` (generic loop math),
+Completed implementation landmarks include `7ba2b8e6a` (generic loop math),
 `d6661c5b1` (portable projection), `2ba2fbce3` (source profiles), `39877dee3`
-(bounded controller/coverage/worker) and `8a7693738` (configuration consumer and
-replay integration). They remain unpublished until the normal series review
-and remote-tip/attribution checks complete. Broader generic bodies, buffer ranks
-and initializer expressions are documented future extensions; the remaining
-bounded stopping work is qualification, final case lists and publication.
+(bounded controller/coverage/worker), `8a7693738` (configuration consumers and
+replay), `819b6020c` (generic TILE), and `590b34aa5` / `9c7a71678` (failure identity
+and original-source index/grammar exclusions). `594d54068` repairs the host
+mutation test's injection hook while retaining canonical rejection assertions.
+Independent full-series and incremental reviews cleared those commits for normal
+publication; remote-tip/attribution verification is recorded after publication.
+
+Qualification is separated by scope and exact source cut:
+
+- **Generic UNROLL/TILE:** two public compiler tests and four fresh kernel proof
+  invocations, including independent-process replay, passed at the recorded
+  `819b6020c` cut. UNROLL audits 41 roots/940 declarations, TILE 47/929, with only
+  standard logical axioms; all 91 bound sources per receipt matched at that cut.
+  A corrupted TILE inner bound reaches Lean and blocks. The 54 host ABI and
+  compatibility controls pass. Exact generic support is one module `scf.for`,
+  top-level, zero carries, one opaque body event and an immediate captured return.
+  Actual recaptured LLM prefixes surround added probes; the original captures
+  had no selected loops, so these are context-preservation tests, not a claim of
+  optimizing original LLM loops or improving performance.
+- **Configuration:** the retention-enabled final three-case cohort passes with
+  four fresh proof invocations (elision, recursive C64 hoist, replay and a genuine
+  negative query), 27 finite native observations and independently audited
+  retained trees. Accepted positive proofs use only standard logical axioms.
+  The original non-retained three-case run is terminal test evidence only.
+- **Compiler matrix:** the retained 12-case cohort has 11 passes and one stale
+  host-mutation injection failure. Its hook was corrected and the actual negative
+  control passed in the later four-case cohort. The 11 earlier passes include
+  tensor DCE/CSE, word unroll→tile with fresh replay, both Q routes, draft MACC,
+  host fusion on both routes, and actual corrupted-target controls. Those proofs
+  retain their recorded source cut; they are not fresh receipts for later source
+  changes.
+- **Final source-policy corrections:** 37 host controls pass. Four actual
+  compiler cases then pass: a corrupted admitted host target is rejected and
+  quarantined; the oversized-index memory source and per-channel i64 DQ on both
+  routes match ordinary compilation with zero proof jobs and unverified end
+  coverage. Independent audit checks the retained actual endpoints and bindings.
+  The separate 32-case source-policy cohort covers 23 intrinsic memory width
+  controls, three prior-worker failure identity controls and six controller cases.
+- **Default `all` memory:** final untiled/tiled compiler refresh is running with
+  all five defaults, explicit verified/unverified/unchanged coverage assertions,
+  retained proof trees and finite native/reference comparisons. Earlier default
+  memory qualification retains its historical cut; this line will record the
+  terminal refresh before final publication.
+- **Other focused controls:** the corrected host regression cohort passes 246
+  cases (27 deliberately deselected); registry/identity controls pass 11. Earlier
+  root-policy tests pass 30, and buffer/configuration predicates pass 30. These
+  overlapping cohorts are not added into a single all-current test count.
+
+Evidence roots are `out/build/pass-bounded-models-20261029/`, the generic
+`out/build/buffer-rank-one-20261029/llm-context-tile-gate/FINAL-QUALIFICATION.json`,
+and independent audits in `out/build/validator-alignment-20261029/`. The final
+configuration retained run is `buffer-configuration/installed-qualification-final-v2/`
+under the bounded-model root. The latest actual policy controls are
+`final-qualification/policy-entry-v3/`; their independent audit is
+`policy-entry-v3-four-case-audit-v1/RESULT.json` under the validator root.
+
+No new proof placeholders, axioms, protected semantic edits or approval changes
+were found. Q/DQ remains proposed-model and MACC remains draft. Primitive/effect
+interpretations, generic control-role correspondence and logical allocation are
+explicit review points. Broader generic bodies/carries/nesting, computed buffer
+initializers, rank-three storage and changed memory CSE remain future coverage
+extensions. They are listed as unverified compiler cases, not human-approved
+proof premises. LLVM IR/native/hardware correctness is outside this endpoint.
 
 The original scalar-NaN custody hardening passed 137 canonical host tests and a
 26-case classification follow-up. Distinct scalar NaN metadata is refused by
@@ -101,9 +141,10 @@ Earlier proof records retain their own source cuts.
 
 All ten pass families have compiler selectors within their declared profiles.
 Five belong to `all`; Q/DQ, draft MACC, host graph fusion and the two ISA
-configuration checks require explicit selection. **The human-review-only
-milestone remains open:** general LLM operation contexts, computed initializer
-prefixes and broader source/profile coverage still require engineering.
+configuration checks require explicit selection. The earlier broader
+milestone included general LLM operation contexts, computed initializer prefixes
+and broader source coverage. These remain future profile extensions under the
+current bounded endpoint, with no proof credit outside the admitted models.
 Recursive positive counted-Kernel hoisting is qualified in commits `30ec04967`
 and `0990c2806`.
 The proof boundary is Merlin-owned transformations through their output IR, with downstream
@@ -113,7 +154,7 @@ MLIR/LLVM/executable/hardware fidelity separate.
 | --- | --- | --- |
 | Host graph fusion | Actual helper/call/public-output projection, fresh complete-entry proof, canonical gate on both routes, replay, mutations and native references | One fused region of static pure integer pointwise stages; typed total pure-action model and successful unobservable logical allocation |
 | DCE | Typed tensor refinement; separate ordinary-memory dead-index-constant gate qualified in actual default-all routes | Memory relation equates successful complete return/world outcomes; no categorized-error or downstream fidelity proof |
-| CSE | Leading tensor gate; original live memory route binds authentic unchanged native CSE with zero jobs/credit | Changed memory CSE refuses; downstream lowering remains independent |
+| CSE | Leading tensor gate; original live memory route binds authentic unchanged native CSE with zero jobs/credit | Changed memory CSE runs unverified; downstream lowering remains independent |
 | Unrolling | Empty/inline/bulk/tail, siblings, full lexical contexts and explicit inner depths through dynamic ancestors; 20 actual cases, 18 API controls and public native checks | Actual source strides remain known positive; scalar/SCF/resource admission remains |
 | Ordered tiling | Explicit inner depth, partial effects and short tails; independent public TILE and combined UNROLL→TILE one-worker/native controls pass with exact middle/final joins | Static selected index64 controls and supported scalar/SCF contexts |
 | Buffer reuse | Rank-one uniform-seed and rank-two actual untiled/tiled chains, fresh replay and ordinary compiler; rank-one 33-case qualification plus default-all memory composition | Captured rank-one i32 or rank-two i8/i16/i32/i64; possible-success relation under explicit total/private/unobservable allocator |

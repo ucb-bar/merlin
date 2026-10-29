@@ -3,7 +3,7 @@ title: Check redundant configuration writes with Lean
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-28
+last_verified: 2026-10-29
 related: [verification, lean_loop_transform_gate, lean_buffer_reuse_gate]
 code_refs:
   - src/merlin/verify/configuration_elision_intake.py
@@ -18,6 +18,13 @@ code_refs:
 ---
 
 # Check redundant configuration writes with Lean
+
+The current compiler wrapper follows the [bounded profile policy](lean_bounded_pass_profiles.md):
+known original-source exclusions run the ordinary cleanup and receive unverified
+end coverage. Admitted changes require their actual canonical worker verdict.
+Original ISA/effect selection and consumer custody remain enforced. The direct
+proof/replay APIs below still refuse unsupported inputs; saved reports never
+grant delivery authority.
 
 This developer API checks complete before/after modules for bounded straight-line
 constant configuration-write elimination. It starts each invocation with unknown

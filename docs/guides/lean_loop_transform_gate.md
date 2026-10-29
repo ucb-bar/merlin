@@ -3,7 +3,7 @@ title: Check ordered loop unrolling and segmentation with Lean
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-28
+last_verified: 2026-10-29
 related: [verification, lean_pass_gate]
 code_refs:
   - src/merlin/verify/loop_transform_intake.py
@@ -27,6 +27,13 @@ The separate [compiler integration](lean_compiler_stack.md) captures current
 compiler buffers and supports individual unrolling, individual tiling and their
 composition. It reuses this checker without requiring the historical producer
 checkout. The standalone API described below retains its pinned-producer contract.
+
+The compiler also has separately qualified bounded generic-value singleton
+UNROLL and TILE routes; generic UNROLL→TILE composition is excluded. See the
+[case catalogue](lean_bounded_pass_profiles.md) for their exact source grammar.
+Compiler source exclusions run ordinary transforms and are logged unverified
+at invocation end. Once admitted, unsuccessful target/proof/tool checks block.
+Standalone checks below retain strict refusal and live-delivery rules.
 
 The reference checkout must contain revision
 `4499eebb959c0f92cefd92cc6d80646ba66474ed`. The bridge checks its revision and the

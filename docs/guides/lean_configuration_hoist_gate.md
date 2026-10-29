@@ -25,6 +25,12 @@ code_refs:
 
 # Check scoped configuration loop hoisting with Lean
 
+The current compiler wrapper follows the [bounded profile policy](lean_bounded_pass_profiles.md):
+known original-source exclusions run ordinary hoisting and are logged unverified
+at invocation end. Supported sources retain blocking actual-target/proof/tool
+checks and the original selected ISA/effect/C64 owner guards. The direct
+proof/replay APIs below remain strict; unsupported cases receive no proof credit.
+
 The historical direct API checks complete Kernel IR before/after moving one
 invariant configuration setter immediately before a positive counted loop.
 It does not install compiler-wide enforcement or establish native ISA fidelity.
@@ -82,7 +88,7 @@ conflicting writes and clobbers refuse. Every moved setter is still a total
 pure overwrite under `Models`. The new ten-module canonical proof preserves
 complete outcomes, including failure state; finite native comparisons remain
 separate qualification. V1/V2 keep their original nine-module proof closures.
-Installed qualification covers 53 distinct current-source cases, including four
+At its recorded source cut, installed qualification covered 53 distinct cases, including four
 V3 public-producer/worker/native paths, V1/V2 compatibility and a real reversed
 setter-order proof refusal. Completion fields and IV-dependent configuration
 values remain outside this profile. The V6 profile below adds nested Kernel loops.
@@ -92,7 +98,7 @@ loops. Each checked stage retains the actual earlier/later command context,
 global frame and full atom roster; a closed terminal join binds the complete
 actual output. It does not move a setter across another loop. The eleven-module
 canonical proof preserves the same complete outcomes under all-index `Models`.
-Ninety distinct current-source cases pass, including four multi-loop public/
+At its recorded source cut, 90 distinct cases passed, including four multi-loop public/
 worker/native paths, fresh replay, four kernel refusals and V1/V2/V3 compatibility.
 The 153 native initial/failure observations remain finite qualification.
 
@@ -137,7 +143,7 @@ replayed = fresh.replay(report_path, lean=selected_lean, destination=fresh_direc
 c_source = replayed.emit_c(instruction_set, symbol="kernel")
 ```
 
-Installed independent qualification passes 129 distinct cases: 45 consumer
+At its recorded source cut, installed independent qualification passed 129 distinct cases: 45 consumer
 controls, 79 legacy controls and five canonical cases (six SDK invocations,
 including MAX63 replay). It covers 1,000,001 and 2^63−1 symbolically, a real Lean
 changed-count refusal, preserved legacy V4 schemas and 15 small compiled
@@ -205,12 +211,13 @@ The canonical V6 closure has eleven modules. Its private qualification compiles
 the exact library, explicit first/later inner/outer failure probes, six actual
 positive endpoint queries and seven genuine closed-negative endpoint queries.
 Positive obligations audit 31 roots and 502 declarations with only the standard
-three axioms. Installed host qualification passes 73 cases, and five freshly
+three axioms. At the recorded V6 qualification cut, 73 installed host cases passed, and five freshly
 reconstructed legacy profiles retain the same semantic payloads while rejecting
-stale source-cut identities. All five installed public cases pass: three accepted original-owner workers,
-one fresh original-C64 replay and two genuine operand/frame query refusals.
+stale source-cut identities. Five installed public tests passed, exercising three
+accepted original-owner workers, one fresh original-C64 replay and two genuine
+operand/frame query refusals.
 The controlled C fixture contributes 27 finite state/failure observations from
-small 2×3 loops; exact emitted text joins the compiled fixture. This is 78
+small 2×3 loops; exact emitted text joins the compiled fixture. This was 78
 distinct installed pytest cases (73 host plus five public), with five legacy
 reconstruction checks counted separately. The public cohort completes in
 369.28 seconds. Evidence is retained under

@@ -45,12 +45,14 @@ to skip unsupported optimizations or stop compilation for every model exclusion.
 For admitted sources, target/proof/tool/resource/custody failures still block.
 An earlier verified boundary gives no composed proof through an unverified suffix.
 
-Installed source predicates and runtime coverage are being qualified separately.
-The new root cohort passes 30 checks: 23 input/journal protocol controls, four
-ordinary-transform/blocking-worker policy cases and three actual source-only
-rulebook/export checks. Buffer/configuration source predicates pass 30 host
-checks. These are not new whole-compiler or numerical approval claims. The
-chronological coverage estimates below retain their original broader endpoint.
+All ten selectors now have integrated source admission, actual-boundary workers
+and end coverage within the declared models. The generic UNROLL/TILE and
+configuration refreshes have retained fresh proofs/replay with independent
+review; final default-all memory qualification is tracked separately in the
+[handoff](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md).
+Source-predicate/protocol tests are reported separately from semantic proofs and
+finite native tests. The chronological coverage estimates below retain their
+original broader endpoint.
 
 The [Q/DQ and MACC review packet](qdq_macc_numerical_contract_review.md) records
 additive domain/initialized-accumulator proofs and the remaining source-profile,
@@ -77,7 +79,8 @@ the current common typed total pure-action interpretation remains explicit.
 See the [stack guide](../guides/lean_compiler_stack.md#logical-host-graph-fusion)
 and [qualification handoff](../../out/artifacts/audits/host-graph-fusion-20261029/README.md).
 
-This is a completion design, not a claim that the endpoint has been achieved.
+This document retains the broader completion design below; the latest bounded
+endpoint and its qualification status are defined above.
 Current invocation examples and qualified domains are in
 [the compiler stack guide](../guides/lean_compiler_stack.md); dated evidence and
 remaining unavailable checks belong in
@@ -120,14 +123,18 @@ downstream native-fidelity proof. Evidence is retained under
 `out/build/default-all-memory-20261029/installed-qualification-v3/`.
 Private-buffer tile sizes now have a finite 65,536 resource ceiling, separate
 from the existing signed-index64 safety obligations.
-General LLM operation contexts remain engineering. Existing scalar loop
-projection does not admit arbitrary tensor/float data carried through
-`linalg.generic` contexts. Actual recapture inventories also exceed its older
-2,048 weighted-record budget. A private generic-value/index-carrier extension
-has four compiled additive math modules and actual source/target queries under
-qualification; it installs no new production eligibility yet. The correction
-work retains partial outcomes and one shared external interpretation, without
-converting arbitrary tensor/float payloads to mathematical integers.
+The scalar loop projection remains restricted to its word/index source model.
+A separate bounded generic-value route now has installed UNROLL and TILE
+compiler workers, exact output delivery and fresh replay. Its four additive
+math modules and occurrence-aware controls retain arbitrary tensor/float payloads
+without encoding them as mathematical integers. The final four-proof cohort
+passed with 91 source references current at that recorded cut per receipt; UNROLL audits 41 roots/940
+declarations and TILE 47 roots/929 declarations. Partial outcomes and unchanged
+contexts remain explicit. Private LLM-context cases preserve actual recaptured
+prefixes around added SCF probes; the original captures had no selected loops.
+More generic body events, carried data, selected nesting, generic combined
+UNROLL→TILE and whole captures outside the stated budgets are future profile
+extensions, not requirements for this bounded integration milestone.
 
 The effort table below is the earlier scope estimate, not remaining effort.
 Broader buffer ranks, producer-language coverage and numerical/source-contract

@@ -295,7 +295,8 @@ and bulk-plus-remainder modes. Different function definitions can use different
 modes; the final common-registry theorem restores every actual defined entry,
 including supported unchanged dynamic-loop functions. All outer unroll modes
 and standalone tiling preserve supported nested scalar loop bodies, including
-dynamic inner controls and modeled external effects. Explicit selected-depth
+dynamic upper bounds with nonnegative literal lowers, positive literal strides
+and modeled external effects. Explicit selected-depth
 proofs restore unchanged dynamic ancestors and the complete entry roster.
 Tiling supports short final segments. Complete syntax,
 expression/proof expansion, query-size, signed-index and runtime budgets still
@@ -323,11 +324,13 @@ tree-membership changes again before delivery.
 ### Generic data around an ordered loop
 
 The separate generic-value route keeps tensor/float payloads as arbitrary typed
-values. Its initial bounded source has one selected top-level zero-carry SCF loop,
+values. Its bounded source has exactly one `scf.for` in the entire module,
+including opaque regions and other entries. That loop is top-level and zero-carry, with
 three actual constant controls immediately before it, one zero-result body event
 using the IV and one captured data value, and one captured returned value.
-The source/target capture retains the actual opaque prefix, callees, regions,
-metadata, suffix and every other defined entry. Factor-two unrolling requires
+The single captured `func.return` must immediately follow the loop; an effectful
+suffix is excluded. The source/target capture retains the actual opaque prefix,
+callees, regions, metadata, return and every other defined entry. Factor-two unrolling requires
 an odd trip count at least three and fitting signed-index64 controls. More body
 events, carried data or selected nesting require a broader profile.
 
@@ -344,13 +347,28 @@ per-occurrence control roles, raw control joins and the complete-entry roots.
 Freshly audited proof objects issue an owned live completion; delivery uses the
 exact checked output bytes. Saved JSON only locates inputs for a new check.
 
-The installed UNROLL worker and fresh replay have independent qualification.
-Generic TILE uses a separately bounded source/target adapter and is undergoing
-its own qualification; a private proof does not enable a public claim by itself.
+Generic TILE uses `Options(tile_size=32)` with the
+`ordered_loop_segmentation` validation selector. Both singleton routes expose
+`compiler_loop_generic.replay(report_path, lean=..., destination=...)`, which
+performs a fresh check and delivery rather than trusting saved success fields.
+
+Both generic UNROLL and TILE have installed-worker/live-delivery and fresh-replay
+qualification at their recorded `819b6020c` source cut. Generic TILE accepts a nonempty
+top-level loop with the same zero-carry/one-event structure and tile sizes
+2–65536; the actual tile32 public route and a corrupted inner-bound refusal are
+qualified. TILE retains its exact source parameter in its replay request.
 Generic UNROLL→TILE composition is excluded until there is a proved common-model
 join. These operational claims use the explicit occurrence-aware projection
 premise; they do not prove arbitrary opaque actions agree with concrete MLIR,
 IEEE or native implementations.
+
+The generic intake bounds raw IR, generated query and dense storage to 4MiB,
+weighted syntax and proof work to 65,536, block records to 4,096 and region depth
+to 32. Scalar NaN literals, floating-complex dense literals and raw forms needing
+assembly normalization are excluded. Opaque runtime float/complex values are
+retained as values; supported literal forms retain infinities, signed zero and
+exact ordinary dense NaN bytes. These syntax/resource conditions do not grant
+concrete floating-point semantics.
 
 ## Private buffer reuse
 
@@ -410,8 +428,8 @@ the existing reuse theorem with every allocation/free binding intact. Such
 stages appear in `unchanged`, rather than positive rewrite coverage. Initializer
 segmentation is optional; both actual untiled and tiled chains have proof routes.
 
-The current subset uses static rank-two i8/i16/i32/i64 buffers, sequential disjoint
-private lifetimes and complete rectangular initialization. For example, two
+The current subset uses static rank-one/rank-two i8/i16/i32/i64 buffers,
+sequential disjoint private lifetimes and captured uniform initialization. For example, two
 separate `memref<3x2xi32>` allocations can reuse one slot when each is initialized
 before reading and its lifetime ends before the next starts. Caller-visible
 observations and supported unchanged functions are retained. Arbitrary escaping
@@ -422,8 +440,8 @@ establish finite capacity, native allocation failure or native allocator fidelit
 Independent qualification covers fresh untiled gates and exact delivery at each
 admitted integer width. For i8, i16 and i64, 30 finite native observations include
 the true untransformed source, modular overflow and high-bit values. These tests
-qualify the existing width domain. The additive rank-one uniform-seed bridge
-passes all 33 installed host/compiler/native/replay/mutation cases, with 250
+qualify the existing width domain at their recorded source cuts. The additive
+rank-one uniform-seed bridge's i32 fixtures passed 33 installed host/compiler/native/replay/mutation cases, with 250
 roots and 2,545 audited theorems. Both public compiler routes have exact
 delivery and finite native wrap checks; separate fresh-process replay checks
 the corresponding raw chains. Actual one-loop and optional
@@ -499,10 +517,12 @@ and `MERLIN_LOOP_TILE_DEPTH`. Proof selection remains
 `MERLIN_VALIDATE_PASSES`; SDK and authoritative exporter selection remain
 `MERLIN_LEAN_SDK_BIN` and `MERLIN_COMPILER_PYTHON`.
 
-Use the check names appropriate to the input IR. `all` also demands the tensor
-DCE/CSE checks if those boundaries change; scalar/SCF or memory inputs are not
-automatically within the tensor checker's supported domain. Unsupported inputs
-refuse rather than silently dropping a selected check.
+Use the check names appropriate to the input IR. `all` selects five checks and
+applies their original-source profiles. Its admitted explicit-memory route uses
+the separate same-mode memory DCE proof; authentic unchanged native CSE needs no
+job and earns zero proof credit. Changed memory CSE and other known source
+exclusions run ordinarily and are logged unverified. Once a source is admitted,
+failed or unsupported target checking still blocks delivery.
 
 The standalone loop and buffer APIs remain available for developer workflows.
 Their raw reports describe those issuers' narrower scopes; the compiler's
@@ -568,8 +588,8 @@ for the controlled API and independent replay. V6 additionally checks actual
 nested positive counted loops and motions at multiple lexical levels, restoring
 the parent IV environment for surrounding work. Its whole-entry theorem
 preserves partial errors and terminal state under an all-environment Models
-premise. All 78 installed pytest cases and five separate legacy reconstruction
-checks pass, including original C64 emission, fresh replay, two genuine
+premise. At its recorded source cut, 78 installed pytest cases and five separate
+legacy reconstruction checks passed, including original C64 emission, fresh replay, two genuine
 mutation refusals and 27 finite native state/failure observations. The ordinary
 one-million cap remains; the original C64 consumer separately admits symbolic
 positive extents through 2^63−1.

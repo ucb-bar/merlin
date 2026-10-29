@@ -3,7 +3,7 @@ title: Gate dead-code pruning and cse on Merlin's Lean proofs
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-28
+last_verified: 2026-10-29
 related: [verification, compiler_verification, lean_compiler_stack]
 code_refs:
   - src/merlin/verify/pass_validation.py
@@ -37,6 +37,14 @@ code_refs:
 For the integrated loop and private-buffer gates, their compiler locations and
 examples, see [Lean verification through the compiler stack](lean_compiler_stack.md).
 This guide details the two tensor checks.
+
+Compiler admission now follows the [bounded profile catalogue](lean_bounded_pass_profiles.md).
+A known exclusion of the original source runs ordinary lowering and is listed
+unverified at invocation end, with zero proof credit. An admitted changing pair
+still requires an accepted actual-boundary check; unsupported targets, proof
+failures and unavailable tools block. The worker verdict table below describes
+submitted jobs, not source exclusions filtered before submission. Final
+`coverage.json` distinguishes these cases after worker join.
 
 Merlin can check two of its compile steps against the `MerlinVerify` proofs while it compiles: the
 dead-code pruning in preprocessing and the tensor-level `cse` every lowering pipeline starts with.
@@ -219,10 +227,12 @@ records the qualified source points, executed checks, retained evidence and scop
 ## Development integration and gate scope
 
 `feat/pass-verif-integration` retains the original DCE/CSE integration and the
-upstream pass-verification and independent-review histories. Its selector
-registers `prune_dead_pure_tensor_ops`, `cse`, `ordered_loop_unrolling`,
-`ordered_loop_segmentation` and `buffer_reuse`. `--validate-passes all` selects
-all five checks, while transformations themselves remain separately opt-in.
+upstream pass-verification and independent-review histories. It registers ten
+selectors. `--validate-passes all` selects the five defaults:
+`prune_dead_pure_tensor_ops`, `cse`, `ordered_loop_unrolling`,
+`ordered_loop_segmentation` and `buffer_reuse`, while transformations themselves
+remain separately opt-in. Configuration-write elision, configuration hoisting
+and host graph fusion require their explicit selectors; see the stack guide.
 The explicit `lower_quant_ext` selector checks actual xDSL/textual Q/DQ
 lowering under the proposed source semantics and stays outside `all`.
 Optional original-source qualification is separate from specification approval;
