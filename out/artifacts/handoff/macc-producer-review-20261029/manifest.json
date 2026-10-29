@@ -1,0 +1,15 @@
+{
+  "schema": "merlin.macc.producer-review.v1",
+  "applied": false,
+  "source": "src/merlin/llvmlower/passes_xdsl.py",
+  "source_sha256": "b47e810143856d0294351f888cb8680d20031de4878cf4335c16eada54e33427",
+  "candidate_sha256": "d47513ecc8267077fcc3b886ae016fbf0a5530c01434b3c2f7fadadccb7a8df1",
+  "refusal_candidate_sha256": "99bd012b4f7243b4283555182b4128b8d731c1d75477594a0809e00aeac3c54b",
+  "unsupported_alternatives": {
+    "producer-legality.patch": "unchanged source; ZERO draft MACC policy coverage for the module",
+    "producer-legality-reject.patch": "explicit unsupported-policy rejection before any mutation"
+  },
+  "human_must_choose_unsupported_behavior": true,
+  "decision_required": "review producer legality/fallback and source-map preservation separately from draft policy approval",
+  "numerical_policy_reviewed": false
+}

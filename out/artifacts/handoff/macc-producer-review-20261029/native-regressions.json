@@ -1,0 +1,189 @@
+{
+  "schema": "merlin.macc.producer-review.native.v1",
+  "applied": false,
+  "production_source_sha256": "b47e810143856d0294351f888cb8680d20031de4878cf4335c16eada54e33427",
+  "candidate_source_sha256": "d47513ecc8267077fcc3b886ae016fbf0a5530c01434b3c2f7fadadccb7a8df1",
+  "numeric_domain": "finite exactly representable integer examples; no general numeric-policy approval",
+  "cases": [
+    {
+      "format": "bf16",
+      "case": "wrong-multiply",
+      "candidate_count": 0,
+      "source": [
+        [
+          [
+            1.0
+          ]
+        ]
+      ],
+      "production": [
+        [
+          [
+            2.0
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          [
+            1.0
+          ]
+        ]
+      ],
+      "candidate_preserves_this_source_example": true
+    },
+    {
+      "format": "bf16",
+      "case": "nonzero",
+      "candidate_count": 0,
+      "source": [
+        [
+          [
+            1.0
+          ]
+        ]
+      ],
+      "production": [
+        [
+          [
+            0.0
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          [
+            1.0
+          ]
+        ]
+      ],
+      "candidate_preserves_this_source_example": true
+    },
+    {
+      "format": "bf16",
+      "case": "transposed",
+      "candidate_count": 1,
+      "source": [
+        [
+          9.0,
+          8.0
+        ],
+        [
+          19.0,
+          18.0
+        ]
+      ],
+      "production": [
+        [
+          5.0,
+          10.0
+        ],
+        [
+          11.0,
+          24.0
+        ]
+      ],
+      "candidate": [
+        [
+          9.0,
+          8.0
+        ],
+        [
+          19.0,
+          18.0
+        ]
+      ],
+      "candidate_preserves_this_source_example": true
+    },
+    {
+      "format": "f16",
+      "case": "wrong-multiply",
+      "candidate_count": 0,
+      "source": [
+        [
+          [
+            1.0
+          ]
+        ]
+      ],
+      "production": [
+        [
+          [
+            2.0
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          [
+            1.0
+          ]
+        ]
+      ],
+      "candidate_preserves_this_source_example": true
+    },
+    {
+      "format": "f16",
+      "case": "nonzero",
+      "candidate_count": 0,
+      "source": [
+        [
+          [
+            1.0
+          ]
+        ]
+      ],
+      "production": [
+        [
+          [
+            0.0
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          [
+            1.0
+          ]
+        ]
+      ],
+      "candidate_preserves_this_source_example": true
+    },
+    {
+      "format": "f16",
+      "case": "transposed",
+      "candidate_count": 1,
+      "source": [
+        [
+          9.0,
+          8.0
+        ],
+        [
+          19.0,
+          18.0
+        ]
+      ],
+      "production": [
+        [
+          5.0,
+          10.0
+        ],
+        [
+          11.0,
+          24.0
+        ]
+      ],
+      "candidate": [
+        [
+          9.0,
+          8.0
+        ],
+        [
+          19.0,
+          18.0
+        ]
+      ],
+      "candidate_preserves_this_source_example": true
+    }
+  ]
+}

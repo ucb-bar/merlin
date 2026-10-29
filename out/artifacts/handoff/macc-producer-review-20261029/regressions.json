@@ -1,0 +1,168 @@
+{
+  "schema": "merlin.macc.producer-review.regressions.v1",
+  "applied": false,
+  "production_source_sha256": "b47e810143856d0294351f888cb8680d20031de4878cf4335c16eada54e33427",
+  "numerical_policy_reviewed": false,
+  "cases": [
+    {
+      "name": "bf16-named",
+      "production_count": 1,
+      "production_status": "conforms",
+      "candidate_count": 1,
+      "candidate_status": "draft_reference_conformance",
+      "candidate_policy_sites_checked": 1,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "draft_reference_conformance"
+    },
+    {
+      "name": "bf16-generic",
+      "production_count": 1,
+      "production_status": "conforms",
+      "candidate_count": 1,
+      "candidate_status": "draft_reference_conformance",
+      "candidate_policy_sites_checked": 1,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "draft_reference_conformance"
+    },
+    {
+      "name": "bf16-transposed",
+      "production_count": 1,
+      "production_status": "refused",
+      "candidate_count": 1,
+      "candidate_status": "draft_reference_conformance",
+      "candidate_policy_sites_checked": 1,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "draft_reference_conformance"
+    },
+    {
+      "name": "bf16-nonzero",
+      "production_count": 1,
+      "production_status": "refused",
+      "candidate_count": 0,
+      "candidate_status": "unchanged_source_fallback",
+      "candidate_policy_sites_checked": 0,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "explicit_unsupported_policy_before_mutation"
+    },
+    {
+      "name": "bf16-negative-zero",
+      "production_count": 1,
+      "production_status": "refused",
+      "candidate_count": 0,
+      "candidate_status": "unchanged_source_fallback",
+      "candidate_policy_sites_checked": 0,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "explicit_unsupported_policy_before_mutation"
+    },
+    {
+      "name": "bf16-wrong-multiply",
+      "production_count": 1,
+      "production_status": "refused",
+      "candidate_count": 0,
+      "candidate_status": "unchanged_source_fallback",
+      "candidate_policy_sites_checked": 0,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "explicit_unsupported_policy_before_mutation"
+    },
+    {
+      "name": "bf16-wrong-add",
+      "production_count": 1,
+      "production_status": "refused",
+      "candidate_count": 0,
+      "candidate_status": "unchanged_source_fallback",
+      "candidate_policy_sites_checked": 0,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "explicit_unsupported_policy_before_mutation"
+    },
+    {
+      "name": "f16-named",
+      "production_count": 1,
+      "production_status": "conforms",
+      "candidate_count": 1,
+      "candidate_status": "draft_reference_conformance",
+      "candidate_policy_sites_checked": 1,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "draft_reference_conformance"
+    },
+    {
+      "name": "f16-generic",
+      "production_count": 1,
+      "production_status": "conforms",
+      "candidate_count": 1,
+      "candidate_status": "draft_reference_conformance",
+      "candidate_policy_sites_checked": 1,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "draft_reference_conformance"
+    },
+    {
+      "name": "f16-transposed",
+      "production_count": 1,
+      "production_status": "refused",
+      "candidate_count": 1,
+      "candidate_status": "draft_reference_conformance",
+      "candidate_policy_sites_checked": 1,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "draft_reference_conformance"
+    },
+    {
+      "name": "f16-nonzero",
+      "production_count": 1,
+      "production_status": "refused",
+      "candidate_count": 0,
+      "candidate_status": "unchanged_source_fallback",
+      "candidate_policy_sites_checked": 0,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "explicit_unsupported_policy_before_mutation"
+    },
+    {
+      "name": "f16-negative-zero",
+      "production_count": 1,
+      "production_status": "refused",
+      "candidate_count": 0,
+      "candidate_status": "unchanged_source_fallback",
+      "candidate_policy_sites_checked": 0,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "explicit_unsupported_policy_before_mutation"
+    },
+    {
+      "name": "f16-wrong-multiply",
+      "production_count": 1,
+      "production_status": "refused",
+      "candidate_count": 0,
+      "candidate_status": "unchanged_source_fallback",
+      "candidate_policy_sites_checked": 0,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "explicit_unsupported_policy_before_mutation"
+    },
+    {
+      "name": "f16-wrong-add",
+      "production_count": 1,
+      "production_status": "refused",
+      "candidate_count": 0,
+      "candidate_status": "unchanged_source_fallback",
+      "candidate_policy_sites_checked": 0,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "explicit_unsupported_policy_before_mutation"
+    },
+    {
+      "name": "f32-operands",
+      "production_count": 1,
+      "production_status": "invalid_emitted_ir",
+      "candidate_count": 0,
+      "candidate_status": "unchanged_source_fallback",
+      "candidate_policy_sites_checked": 0,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "explicit_unsupported_policy_before_mutation"
+    },
+    {
+      "name": "supported-and-unsupported-module",
+      "production_count": 2,
+      "production_status": "refused",
+      "candidate_count": 0,
+      "candidate_status": "unchanged_source_fallback",
+      "candidate_policy_sites_checked": 0,
+      "unchanged_fallback_establishes_requested_policy": false,
+      "rejection_alternative_status": "explicit_unsupported_policy_before_mutation"
+    }
+  ]
+}

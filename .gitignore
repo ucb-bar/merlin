@@ -455,3 +455,12 @@ merlin/tests/data/lit/.lit_test_times.txt
 # Curated MACC review and remaining compiler-pass integration handoff.
 !/out/artifacts/handoff/macc-pass-integration-20261029/
 !/out/artifacts/handoff/macc-pass-integration-20261029/README.md
+
+# Unapplied producer-correction alternatives and compact review evidence.
+!/out/artifacts/handoff/macc-producer-review-20261029/
+!/out/artifacts/handoff/macc-producer-review-20261029/README.md
+!/out/artifacts/handoff/macc-producer-review-20261029/producer-legality.patch
+!/out/artifacts/handoff/macc-producer-review-20261029/producer-legality-reject.patch
+!/out/artifacts/handoff/macc-producer-review-20261029/manifest.json
+!/out/artifacts/handoff/macc-producer-review-20261029/regressions.json
+!/out/artifacts/handoff/macc-producer-review-20261029/native-regressions.json

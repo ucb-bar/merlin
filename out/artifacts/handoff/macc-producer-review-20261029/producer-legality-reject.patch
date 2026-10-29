@@ -1,0 +1,147 @@
+--- a/src/merlin/llvmlower/passes_xdsl.py
++++ b/src/merlin/llvmlower/passes_xdsl.py
+@@ -466,7 +466,9 @@
+     """
+     from xdsl.dialects import arith, tensor
+     from xdsl.dialects.arith import FastMathFlag, FastMathFlagsAttr
+-    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, BFloat16Type, Float16Type, FloatAttr, TensorType, f32
++    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, BFloat16Type, Float16Type, FloatAttr, NoneAttr, TensorType, f32
++    from math import copysign
++    from xdsl.ir.affine import AffineDimExpr
+     from xdsl.dialects.linalg import ops as L
+     from xdsl.ir import Block, Region
+     from xdsl.ir.affine import AffineMap
+@@ -490,26 +492,107 @@
+     def is_half_tensor(t):
+         return isinstance(t, TensorType) and isinstance(t.element_type, (BFloat16Type, Float16Type))
+
++    def source_body(op):
++        """Bind the complete pure source recurrence before changing its precision."""
++        if len(op.body.blocks) != 1:
++            return False
++        block = op.body.blocks[0]
++        body = list(block.ops)
++        if len(block.args) != 3 or len(body) != 3:
++            return False
++        left, right, accumulator = block.args
++        multiply, add, yielded = body
++        if [x.name for x in body] != ["arith.mulf", "arith.addf", "linalg.yield"]:
++            return False
++        if any(x.attributes for x in body):
++            return False
++        if set(multiply.properties) != {"fastmath"} or set(add.properties) != {"fastmath"} or yielded.properties:
++            return False
++        if multiply.fastmath != FastMathFlagsAttr([]) or add.fastmath != FastMathFlagsAttr([]):
++            return False
++        if tuple(multiply.operands) not in ((left, right), (right, left)):
++            return False
++        if tuple(add.operands) not in ((accumulator, multiply.result), (multiply.result, accumulator)):
++            return False
++        return tuple(yielded.operands) == (add.result,)
++
++    def positive_zero_destination(op):
++        if len(op.outputs) != 1 or len(op.results) != 1:
++            return False
++        output = op.outputs[0]
++        producer = output.owner
++        if getattr(producer, "name", None) == "tensor.splat" and len(producer.operands) == 1:
++            literal = producer.operands[0]
++        elif getattr(producer, "name", None) == "linalg.fill" and len(producer.operands) == 2:
++            literal, empty = producer.operands
++            if getattr(empty.owner, "name", None) != "tensor.empty" or empty.owner.operands:
++                return False
++            blocks = list(producer.body.blocks)
++            if len(blocks) != 1 or len(blocks[0].args) != 2:
++                return False
++            body = list(blocks[0].ops)
++            if len(body) != 1 or body[0].name != "linalg.yield" or tuple(body[0].operands) != (blocks[0].args[0],):
++                return False
++        else:
++            return False
++        owner = literal.owner
++        if getattr(owner, "name", None) != "arith.constant" or not isinstance(owner.value, FloatAttr):
++            return False
++        value = owner.value
++        return value.type == output.type.element_type and value.value.data == 0.0 and copysign(1.0, value.value.data) > 0
++
++    def source_maps(op):
++        maps = op.indexing_maps
++        if maps is None:
++            return op.name == "linalg.matmul"
++        iters = [par, par, red] if op.name == "linalg.matmul" else [getattr(a, "data", a) for a in op.iterator_types]
++        if len(maps) != 3 or red not in iters:
++            return False
++        for attr in maps:
++            affine = attr.data
++            if affine.num_dims != len(iters) or affine.num_symbols != 0:
++                return False
++            if not all(isinstance(e, AffineDimExpr) and 0 <= e.position < len(iters) for e in affine.results):
++                return False
++        out = [e.position for e in maps.data[-1].data.results]
++        return len(out) == len(set(out)) and all(iters[d] == par for d in out)
++
++    def eligible(op):
++        if len(op.inputs) != 2 or len(op.results) != 1:
++            return False
++        types = [operand.type for operand in op.inputs] + [op.results[0].type]
++        if not all(is_half_tensor(t) and all(d >= 0 for d in t.get_shape()) and isinstance(t.encoding, NoneAttr) for t in types):
++            return False
++        if not all(t.element_type == types[-1].element_type for t in types):
++            return False
++        if any(not key.startswith("prov.") for key in op.attributes):
++            return False
++        expected = {"indexing_maps", "operandSegmentSizes"}
++        if op.name == "linalg.generic":
++            expected.add("iterator_types")
++        if not set(op.properties) <= expected:
++            return False
++        return source_body(op) and source_maps(op) and positive_zero_destination(op)
++
+     def is_mul_add_contraction(op):
+-        """A 2-input linalg.generic with a reduction whose body is mulf+addf+yield."""
+-        if op.name != "linalg.generic" or len(op.inputs) != 2:
+-            return False
+-        iters = [a for a in op.iterator_types]
+-        if not any(getattr(a, "data", a) == L.IteratorType.REDUCTION for a in iters):
+-            return False
+-        names = [b.name for b in op.body.blocks[0].ops]
+-        return names == ["arith.mulf", "arith.addf", "linalg.yield"]
+-
++        if op.name != "linalg.generic":
++            return False
++        return any(getattr(a, "data", a) == L.IteratorType.REDUCTION for a in op.iterator_types)
++
++    # Keep the existing whole-module draft denominator atomic. An unsupported
++    # half contraction must not be silently omitted from a partially changed pair.
+     targets = []
+     for op in module.walk():
+-        if op.name == "linalg.matmul" and is_half_tensor(op.results[0].type):
+-            targets.append(("matmul", op))
+-        elif (
+-            is_mul_add_contraction(op)
+-            and is_half_tensor(op.results[0].type)
+-            and all(is_half_tensor(i.type) for i in op.inputs)
+-        ):
+-            targets.append(("generic", op))
++        half_result = any(is_half_tensor(result.type) for result in op.results)
++        candidate = half_result and (op.name in ("linalg.matmul", "linalg.batch_matmul") or is_mul_add_contraction(op))
++        if not candidate:
++            continue
++        parent = op.parent_op()
++        if parent is None or parent.name != "func.func" or len(parent.body.blocks) != 1:
++            raise ValueError("requested f32-accumulation policy: unsupported contraction scope")
++        if op.name not in ("linalg.matmul", "linalg.generic") or not eligible(op):
++            raise ValueError("requested f32-accumulation policy: unsupported contraction legality")
++        targets.append(("matmul" if op.name == "linalg.matmul" else "generic", op))
+     if not targets:
+         return 0
+
+@@ -529,7 +612,7 @@
+         out_t = op.results[0].type
+         f32_t = TensorType(f32, out_t.get_shape())
+         block = op.parent_block()
+-        maps = mm_maps if kind == "matmul" else op.indexing_maps
++        maps = op.indexing_maps if op.indexing_maps is not None else mm_maps
+         iters = mm_iters if kind == "matmul" else op.iterator_types
+
+         # Preserve each operand's own 16-bit type (bf16 or f16); truncate back to the result's.
