@@ -65,7 +65,7 @@ def _stop_group(signum, frame) -> None:
 
 def _require_builtin_result(name, detail):
     if name == "compiler_configuration_hoist_refinement":
-        from .compiler_configuration_hoist_intake import DOMAIN, RELATION
+        from .compiler_configuration_hoist_intake import DOMAINS, RELATION
         from .configuration_hoist_emit import ROOT
         from .gate_errors import GateRejected
 
@@ -73,7 +73,8 @@ def _require_builtin_result(name, detail):
             type(detail) is not dict
             or detail.get("schema") != "merlin.compiler-configuration-hoist.gate.v1"
             or detail.get("status") != "checked"
-            or detail.get("domain") != DOMAIN
+            or type(detail.get("domain")) is not str
+            or detail["domain"] not in DOMAINS
             or detail.get("relation") != RELATION
             or detail.get("representation") != "schedule_kernel"
             or detail.get("compiler_enforcement") is not True

@@ -18,11 +18,13 @@ from .compiler_configuration_intake import _sources as configuration_sources
 from .compiler_configuration_intake import reopen, request
 from .compiler_configuration_kernel import tree
 from .configuration_elision_bridge import canonical, digest, file_ref
-from .configuration_hoist_bridge import project_current
+from .configuration_hoist_bridge import Unsupported, project_current
 from .configuration_hoist_emit import MODULE, ROOT, emit
 from .configuration_hoist_intake import proof_sources
 
 DOMAIN = "current-compiler-one-positive-loop-constant-pure-hoist-v1"
+INDEXED_DOMAIN = "current-compiler-one-positive-loop-indexed-retained-data-hoist-v2"
+DOMAINS = frozenset({DOMAIN, INDEXED_DOMAIN})
 RELATION = "equal_conditional_complete_kernel_error_terminal_state_hoist"
 
 
@@ -33,8 +35,10 @@ def _program(text):
     return tree(kernel)
 
 
-def _sources(selection):
+def _sources(selection, *, indexed=False):
     rows = list(configuration_sources(selection))
+    if indexed:
+        rows.append(file_ref(module_source_path("merlin.verify.compiler_configuration_hoist_indexed")))
     rows += [
         file_ref(module_source_path(name))
         for name in (
@@ -90,6 +94,10 @@ class CurrentHoistCandidate:
             "hardware_model_approved": False,
             "independently_qualified": False,
             "production_enforcement": False,
+            "data_argument_admission": (
+                "trusted_host_index64_bounds" if self.domain == INDEXED_DOMAIN else "static_constants"
+            ),
+            "all_index_model_premise_retained": True,
             "premises": [
                 "trusted complete typed Kernel parser/projection and original selected ISA/effect interpretation",
                 "exact nonaliasing configuration/world cells and complete relevant "
@@ -110,7 +118,15 @@ def prepare(source, final, *, selection):
         raise ValueError("unchanged hoist boundary supplies no positive motion coverage")
     isa = selection.selected_contracts.isa.record()
     effects = json.loads(selection.selected_contracts.effects_json)
-    projection = project_current(_program(source), _program(final), isa=isa, effects=effects)
+    source_tree, final_tree = _program(source), _program(final)
+    domain = DOMAIN
+    try:
+        projection = project_current(source_tree, final_tree, isa=isa, effects=effects)
+    except Unsupported:
+        from .compiler_configuration_hoist_indexed import project
+
+        projection = project(source_tree, final_tree, isa=isa, effects=effects)
+        domain = INDEXED_DOMAIN
     if (
         len(projection["before"]["atoms"]) > selection.max_operations
         or len(projection["fields"]) > selection.max_fields
@@ -131,13 +147,19 @@ def prepare(source, final, *, selection):
         canonical(projection),
         generated["query"],
         tuple(generated["roots"]),
-        canonical(_sources(selection)),
+        canonical(_sources(selection, indexed=domain == INDEXED_DOMAIN)),
         canonical(proof_sources()),
+        domain=domain,
     )
 
 
 def revalidate(candidate):
-    if type(candidate) is not CurrentHoistCandidate or candidate.domain != DOMAIN or candidate.relation != RELATION:
+    if (
+        type(candidate) is not CurrentHoistCandidate
+        or type(candidate.domain) is not str
+        or candidate.domain not in DOMAINS
+        or candidate.relation != RELATION
+    ):
         raise ValueError("exact current complete Kernel hoist candidate required")
     for row in json.loads(candidate.sources_json):
         if file_ref(row["path"]) != row:

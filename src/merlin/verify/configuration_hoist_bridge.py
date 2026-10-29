@@ -190,10 +190,10 @@ def project(record):
     return project_current(record["before"], record["after"], isa=record["isa"], effects=record["effects"])
 
 
-def project_current(source, final, *, isa, effects):
+def project_current(source, final, *, isa, effects, program_decoder=program):
     """Project current complete trees; historical producer selection stays above."""
-    before, (position, loop) = program(source, isa, effects)
-    after, _ = program(final, isa, effects)
+    before, (position, loop) = program_decoder(source, isa, effects)
+    after, _ = program_decoder(final, isa, effects)
     if len(loop["body"]) < 2:
         raise Unsupported("one setup plus nonempty retained body required")
     setup, *body = loop["body"]

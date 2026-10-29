@@ -15,8 +15,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import configuration_elision_runner as runner
+from .compiler_configuration_hoist_intake import DOMAIN as DOMAIN
 from .compiler_configuration_hoist_intake import (
-    DOMAIN,
+    DOMAINS,
     RELATION,
     CurrentHoistCandidate,
     prepare,
@@ -51,7 +52,12 @@ class Completion:
 
 
 def ready(candidate):
-    if type(candidate) is not CurrentHoistCandidate or candidate.domain != DOMAIN or candidate.relation != RELATION:
+    if (
+        type(candidate) is not CurrentHoistCandidate
+        or type(candidate.domain) is not str
+        or candidate.domain not in DOMAINS
+        or candidate.relation != RELATION
+    ):
         raise Unavailable("exact current compiler instruction configuration candidate required")
     generated = emit(json.loads(candidate.projection_json))
     if candidate.query != generated["query"] or list(candidate.roots) != generated["roots"]:
@@ -76,7 +82,7 @@ def check_candidate(candidate, *, lean, destination, timeout=120):
         source_plan=proof_sources,
         relation=RELATION,
     )
-    report.update(schema="merlin.compiler-configuration-hoist.checked.v1", domain=DOMAIN)
+    report.update(schema="merlin.compiler-configuration-hoist.checked.v1", domain=candidate.domain)
     path = Path(destination).resolve() / "REPORT.json"
     path.write_text(canonical(report))
     completion = Completion(candidate.identity, str(path))
@@ -184,7 +190,7 @@ def check(job):
         "schema": "merlin.compiler-configuration-hoist.gate.v1",
         "status": "checked",
         "claim": RELATION,
-        "domain": DOMAIN,
+        "domain": candidate.domain,
         "representation": "schedule_kernel",
         "relation": RELATION,
         "receipt": completion.report,
