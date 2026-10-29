@@ -69,17 +69,21 @@ memory/source profiles remain engineering work. Rank-one uniform-seed buffers
 now pass all 33 installed host/compiler/native/replay/mutation cases through
 the complete-entry root, for actual untiled and tiled output. Computed initializer
 prefixes and rank-three source bridges still need engineering.
-Default-all composition is another concrete integration item: the original
-explicit-memory route runs later scalar DCE that the tensor checker cannot
-represent, and records memory CSE as skipped. Actual probes show one unused
-index-constant deletion on both tiled and untiled outputs. A new same-mode
-memory-context rule must prove that changed stage; authentic unchanged CSE can
-follow the existing no-op contract under its original memory scope. Missing
-records, changed unsupported stages and caller allow-skip flags still refuse.
-The new plan-parametric dead-index-constant library and its theorem probes
-compile in exploratory preflight. The canonical worker, closed actual-pair
-queries and installed default-all compiler qualification remain pending;
-these changes are still staged and unregistered.
+Default-all composition now has installed actual compiler qualification for
+untiled extent-three and tile-size-32 extent-257 tail cases. A plan-parametric
+same-mode DCE theorem relates complete successful returned-value/world outcomes
+after actual dead index-constant deletions. The canonical worker independently
+decodes both endpoints and checks their exact frame and SSA joins. Original
+live memory ownership binds this stage to its compiler source, and binds the
+later native CSE capture to the actual upstream input, pipeline and runner.
+Authentic unchanged CSE follows the zero-job, zero-credit identity contract.
+Missing/skip-only captures, changed memory CSE and caller allow-skip flags still
+refuse. This closes the observed default-all delivery gap for the admitted
+memory profiles; it adds no categorized-error, allocator, canonicalization or
+downstream native-fidelity proof. Evidence is retained under
+`out/build/default-all-memory-20261029/installed-qualification-v3/`.
+Private-buffer tile sizes now have a finite 65,536 resource ceiling, separate
+from the existing signed-index64 safety obligations.
 The effort table below is the earlier scope estimate, not remaining effort.
 Broader buffer ranks, producer-language coverage and numerical/source-contract
 coverage remain engineering; the human-review-only exit has not been reached.

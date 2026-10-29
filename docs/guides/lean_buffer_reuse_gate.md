@@ -45,15 +45,28 @@ LLVM route. That adapter uses this same direct checker and requires its fresh
 completion before compiler products are returned. The API below remains usable
 independently of compiler enforcement.
 
-Select the scoped buffer checks shown in the compiler stack examples. Default
-`all` currently refuses this explicit-memory route: after storage transforms,
-DCE can remove an unused index constant in a memref module, which the existing
-tensor checker cannot model; leading memory CSE is also outside its recorded
-tensor boundary. An actual untiled/tiled counterexample is retained in the
-integration audit. A memory-context dead-constant proof and original memory-CSE
-observation are being staged; neither is installed or qualified yet. Changed
-DCE is not skipped. An actually observed unchanged CSE can use the existing
-zero-job, zero-credit identity contract; a missing/skip-only record cannot.
+The scoped buffer selections shown in the compiler stack examples and default
+`all` now support this explicit-memory route. After storage transforms, a
+separate memory-context DCE checker validates the actual unused index-constant
+deletion. Its complete-entry theorem equates successful returned-value/world
+relations under one shared partial interpretation, retaining calls, casts,
+dimensions and nested handlers. It does not classify errors or divergence.
+Original live compiler ownership binds DCE input to the transformed memory
+source, and binds native CSE to the actual later compiler input and runner.
+An authentic unchanged CSE submits zero jobs and receives zero proof credit;
+missing, skip-only and changed memory CSE still refuse. Canonicalization and
+downstream lowering remain separate trusted boundaries.
+
+Installed default-`all` qualification passes both an untiled extent-three chain
+and a tiled extent-257 chain with tile size 32 and a short tail. Each compiler
+run delivers a BUFFER proof followed by the memory-DCE proof; gated and ungated
+products match the true untransformed source in finite native comparisons.
+Evidence, including earlier safe refusals, is retained under
+`out/build/default-all-memory-20261029/` (terminal compiler evidence is in
+`installed-qualification-v3/`).
+The public private-buffer tile resource policy is now 2..65,536; actual signed
+index64 safety checks remain mandatory. This policy does not widen supported
+initializer types or allocator semantics.
 
 Capture the three complete modules from the selected producer, adding the
 fourth only when segmentation is requested, and record its revision/configuration.

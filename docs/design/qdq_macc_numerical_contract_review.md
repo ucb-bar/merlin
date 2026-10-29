@@ -139,6 +139,17 @@ does not cover arbitrary per-site fusion, NaN payloads or every target FP mode.
 
 ## Paper wording available now
 
+The central compiler-validation claim can cover complete entries and actual
+enforcement, while retaining each check's supported domain and model contracts:
+
+> Merlin validates actual compiler boundaries using checkers whose soundness is
+> proved in Lean. For supported loop and configuration transformations, the proofs
+> cover complete entries and preserve modeled outcomes and state, including
+> failures and surrounding effects. Validation is enforced at the compiler
+> boundary, and products are released only after all requested checks succeed.
+
+The numerical claims remain more specific:
+
 > For the supported Q/DQ domain, translation validation checks actual lowering
 > boundaries against a version-qualified proposed source model. Quantizer
 > definedness is proved conditionally on success of the exact final conversion,
@@ -153,3 +164,9 @@ does not cover arbitrary per-site fusion, NaN payloads or every target FP mode.
 Do not claim approved source semantics, universal quantizer definedness, original
 half-precision equivalence, broader compiler coverage from component lemmas, or
 full imported-project auditing from a report that audits only consumed roots.
+
+Buffer reuse separately preserves successful public observations under the
+explicit allocator model; it does not establish allocation-failure equivalence
+or native allocator correctness. Conditional quantizer definedness does not
+establish general PyTorch/IEEE equivalence. Initialized and mixed-format MACC
+component proofs do not enable those source cases in the compiler gate.
