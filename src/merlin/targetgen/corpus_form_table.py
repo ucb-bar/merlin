@@ -82,6 +82,23 @@ def _squeeze(m: int, n: int) -> dict[str, Any]:
     return {"form": "reshape", "shape": [m, 1, n], "out_shape": [m, n]}  # torch squeeze(1)
 
 
+def _diagonal(m: int, n: int) -> dict[str, Any]:
+    # torch.diagonal(x, 0): element-granular rows (cols=1) at DRAM row pitch n + 1.
+    return {"form": "as_strided", "shape": [m, n], "storage_offset": 0, "sizes": [min(m, n)], "strides": [n + 1]}
+
+
+def _as_strided(m: int, n: int) -> dict[str, Any]:
+    # Overlapping sliding rows over the row-major storage: R rows of n elements at a row pitch of n // 2.
+    pitch = max(n // 2, 1)
+    rows = (m * n - n) // pitch + 1
+    return {"form": "as_strided", "shape": [m, n], "storage_offset": 0, "sizes": [rows, n], "strides": [pitch, 1]}
+
+
+def _upsample(m: int, n: int) -> dict[str, Any]:
+    # torch upsample_nearest2d by 2x2 on channels-last pixel rows [H, W, C]: the contiguous axis C is not resampled.
+    return {"form": "upsample", "shape": [m, 2, n], "scales": [2, 2, 1]}
+
+
 def _concat(m: int, n: int) -> dict[str, Any]:
     return {"sources": ["X0", "X1"], "shapes": [[m, n], [m, n]], "axis": 0}
 
@@ -169,6 +186,9 @@ FORM_TABLE: dict[tuple[str, str], FormEntry] = {
     ("movement", "view"): FormEntry("movement", _flatten, ("copy",)),
     ("movement", "unsqueeze"): FormEntry("movement", _unsqueeze, ("copy",)),
     ("movement", "squeeze"): FormEntry("movement", _squeeze, ("copy",)),
+    ("movement", "diagonal"): FormEntry("movement", _diagonal, ("copy",)),
+    ("movement", "as_strided"): FormEntry("movement", _as_strided, ("copy",)),
+    ("movement", "upsample_nearest"): FormEntry("movement", _upsample, ("copy",)),
     ("movement", "concat"): FormEntry("concat", _concat, ("copy",)),
     ("movement", "select"): FormEntry("movement", _select, ("copy",)),
     ("movement", "split_chunk"): FormEntry("movement", _split_chunk, ("copy",)),
