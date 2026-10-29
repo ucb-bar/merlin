@@ -204,7 +204,7 @@ FORM_TABLE: dict[tuple[str, str], FormEntry] = {
     # with one broadcast constant c; the hardware primitives are the unit-scale accumulating load (c as the
     # accumulator seed) and the weighted integer mesh (w), both documented on the spec row, not on the contract's
     # movement `forms` vocabulary, so none is listed here.
-    ("contraction", "convolution_backward_spatial"): FormEntry("conv_backward_spatial", _conv_backward_spatial),
+    ("contraction", "convolution_backward_spatial"): FormEntry("conv_backward_spatial", _conv_backward_spatial, once=True),
     ("contraction", "convolution_backward"): FormEntry("conv_backward", _conv_backward),
     ("reduction", "cumsum"): FormEntry("prefix_sum", _prefix_sum),
     ("elementwise_map", "tensor_sub"): FormEntry("tensor_sub", _tensor_sub),
