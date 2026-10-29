@@ -3,10 +3,12 @@
 import copy
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from buffer_test_inputs import case_root
 
+from merlin.common.paths import repo_root
 from merlin.verify.buffer_reuse_intake import ALLOCATOR, ROOT, prepare, revalidate
 
 

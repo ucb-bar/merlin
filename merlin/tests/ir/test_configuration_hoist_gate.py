@@ -1,12 +1,15 @@
 """Phase1 cannot authorize a native check, copied token or saved receipt."""
 
 import copy
+import hashlib
 import json
+import os
 import pickle
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from configuration_elision_qualification_cases import declarations
 
 from merlin.common.paths import repo_root
 from merlin.verify import configuration_hoist_gate as gate
@@ -20,14 +23,21 @@ def forbidden(*args, **kwargs):
 
 
 @pytest.fixture(scope="module")
-def candidate():
+def candidate(tmp_path_factory):
     r = json.loads((ROOT / "actual-baseline-v1/ACTUAL.json").read_text())
+    inputs = tmp_path_factory.mktemp("hoist-original-inputs")
+    paths = {}
+    for name, payload in zip(("facts", "software"), declarations(), strict=True):
+        assert hashlib.sha256(payload).hexdigest() == r[name]["sha256"]
+        path = inputs / ("facts.json" if name == "facts" else "software.yaml")
+        path.write_bytes(payload)
+        paths[name] = path
     return prepare(
         r["source"],
         r["final"],
-        reference=repo_root().parent / "merlin-dce-cse-integration",
-        facts=r["facts"]["path"],
-        software=r["software"]["path"],
+        reference=os.environ.get("MERLIN_HOIST_REFERENCE", repo_root().parent / "merlin-dce-cse-integration"),
+        facts=paths["facts"],
+        software=paths["software"],
         target=r["isa"]["target"],
         source_manifest=ROOT.parent / "COORDINATOR/PRODUCER-SOURCE-MANIFEST-e0484f488.json",
     )
