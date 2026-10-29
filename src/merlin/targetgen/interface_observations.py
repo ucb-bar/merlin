@@ -123,6 +123,34 @@ def _joined_movement_broadcasting(operation: str, attributes: dict, sources: lis
                 return None
         return "none"
     return None
+#: The static window parameters each ``window_sum`` mode states (``WINDOW_SUM`` in the command-buffer ABI);
+#: the adaptive modes state none -- their windows follow from the source and result extents alone.
+_WINDOW_SUM_GEOMETRY = {
+    "window": ("kernel", "stride", "padding"),
+    "window_transpose": ("kernel", "stride", "padding"),
+    "fold": ("kernel", "stride", "padding", "dilation"),
+    "reduce": ("dims",),
+    "adaptive": (),
+    "adaptive_transpose": (),
+}
+
+
+def _window_sum_tails(attributes: dict, source: dict | None, result: dict | None) -> str | None:
+    """``zero_pad_valid_window`` for an integer window sum whose geometry the command states exactly.
+
+    The sums are exact integer accumulations over windows whose out-of-range taps are zero (padding) or
+    absent (a clipped window), the same tail rule an integer contraction over static extents is observed
+    by. Nothing is observed unless the operand is an integer, every extent is static and the mode's own
+    geometry parameters are all stated as integer lists: a geometry left implicit stays unresolved.
+    """
+    geometry = _WINDOW_SUM_GEOMETRY.get(attributes.get("mode"))
+    if geometry is None or source is None or not _is_integer(source["dtype"]) or not _static(source, result):
+        return None
+    for key in geometry:
+        values = attributes.get(key)
+        if not isinstance(values, list) or not values or any(type(value) is not int for value in values):
+            return None
+    return "zero_pad_valid_window"
 
 
 def _row(index: int, opcode: str, operation: str, family: str | None, **fields) -> dict:
@@ -209,7 +237,7 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
     """One row per command and per declared epilogue stage, in program order."""
     from merlin.runtime.commandbuffer import bias_tensor_name
     from merlin.targetgen.contract.interface_emit import _NAMED_OPCODE_TO_OP, _OPCODE_TO_OP, _acc_dtype
-    from merlin.targetgen.semantic_families import from_op
+    from merlin.targetgen.semantic_families import from_op, reduction_kind_of_op
 
     tensors = dict(cb.get("tensors") or {})
     accumulator = _acc_dtype(cb)
@@ -313,6 +341,16 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
             observed = _joined_movement_broadcasting(operation, attributes, typed_sources, result)
             if observed is not None:
                 row["broadcasting"] = observed
+        if family == "reduction":
+            # The kind a NAMED reduction computes (a mean or an average pool reduces by sum; the division is a
+            # readout scale applied after it). An op without a known kind observes none, never a guess.
+            kind = reduction_kind_of_op(operation)
+            if kind is not None:
+                row["reduction_kind"] = kind
+            if operation == "window_sum" and len(typed_sources) == 1:
+                tails = _window_sum_tails(attributes, typed_sources[0], result)
+                if tails is not None:
+                    row["tails"] = tails
         if opcode == "RESIDUAL_ADD" and len(typed_sources) == 2 and all(item is not None for item in typed_sources):
             row["tensor_operands"] = 2
             row["expression"] = "affine"
