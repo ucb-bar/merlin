@@ -1,20 +1,28 @@
-# Overnight pass integration — 2026-10-29
+# Current compiler verification checkpoint — 2026-10-29
 
-Continue on **`feat/pass-verif-integration`**. MACC checker commit `ce4369279`
-preserves shared SSA operands and initialization-as-input in local site proofs;
-draft numerical admission is unchanged. Current-source empty/inline/tail unroll
-adapters, mixed-entry composition, nested-body bridges and checked Q/DQ prefix
-composition are in the working tree, under qualification. The exact pinned
-native Q/DQ source environment is now available; the former missing-tool blocker
-has been resolved without changing pins. The user requested continuous progress,
-incremental integration commits and periodic proof/interface documentation.
+Use **`feat/pass-verif-integration`**. The latest committed loop integration is
+`d52a9a135`; indexed-data hoisting is `afc3094c1`, storage-check extraction is
+`1485f4e9c`, and the untiled buffer gate is `8ec30c67e`.
+Nine families have scoped compiler selectors: DCE, CSE, unroll, tile, buffer,
+Q/DQ, MACC, configuration elision and configuration hoist. Five are selected by
+`all`; proposed Q/DQ, draft MACC and ISA-specific configuration gates stay explicit.
 
-Use the [current progress and evidence cuts](out/artifacts/handoff/pass-verif-integration-20261028/README.md),
+The independent validator confirmed the actual unroll→tiling three-buffer chain:
+one canonical compiler job, complete adjacent entry roots, exact delivered output,
+172 current references and 1,690 declarations using STD3 only. Fresh untiled buffer
+qualification now covers all already-admitted i8/i16/i32/i64 widths. Indexed hoist
+admission preserves all-index `Models` and now refuses signed-index64 rendering
+overflows, including unreachable literals. Setter prefixes and selected inner-loop
+depths are undergoing canonical integration. **The human-review-only milestone
+is not yet complete.**
+
+Start at the [current evidence and remaining work](out/artifacts/handoff/pass-verif-integration-20261028/README.md),
+[stack/interfaces/examples](docs/guides/lean_compiler_stack.md),
 [completion scope](docs/design/lean_pass_integration_completion.md) and
-[stack/interface guide](docs/guides/lean_compiler_stack.md). All-pass completion
-and the human-review-only milestone remain open. Production MACC fixes remain
-an unapplied review packet; Q/DQ source specification and MACC numerical policy
-remain proposed/draft.
+[assumption ledger](merlin/lean/LEDGER.md). The offline stack now shows all nine
+registered compiler gates. Q/DQ stays proposed and MACC stays draft pending
+independent review. Local commits have verified attribution; no new remote push
+has been verified. Earlier checkpoints below retain their stated source cuts.
 
 ---
 

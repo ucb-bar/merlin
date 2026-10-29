@@ -10,8 +10,15 @@ default compiler checks concern tensor DCE/CSE, ordered unrolling/segmentation
 and scoped private-buffer reuse. An additional explicitly selected
 `bf16_f32acc_draft_contract` gate checks candidate numerical-reference
 conformance and remains outside `all`. The user has retained draft status until
-independent review. Configuration-write elision and partial loop
-hoisting use separate explicit instruction/effect APIs. Their state relations
+independent review. Configuration-write elision now also has an explicit
+`configuration_write_elision` compiler selector and original-owner hooks for
+instruction IR and straight-line Kernel scheduling. Installed consumer/worker
+qualification includes actual bare instruction and ordinary schedule/native
+paths. `configuration_loop_hoisting` also guards the public producer before its
+ordinary Kernel consumer. Both remain outside `all` and require original selected
+ISA/effect inputs. Hoisting retains its all-index `Models` premise and scoped
+positive-loop profile; finite host bounds/native examples do not discharge it.
+Their state relations
 must not be substituted for a numerical-policy proof or for one another.
 
 The explicit `lower_quant_ext` compiler selector now checks actual xDSL and
@@ -53,7 +60,31 @@ standalone source-profile declarations retain their original limits. The new
 `GraphLoopsShape.Identity` checker bridges unchanged normalization with exact
 complete syntax equality and zero rewrite sites, preserving the original
 changed-normalization checker. One-to-one private reuse plans retain every
-allocation/free binding; actual initializer tiling is still required.
+allocation/free binding. New additive untiled initializer simulation lemmas
+compile through the complete memory-entry chain. The actual three-buffer gate,
+independent-process fresh replay and ordinary compiler delivery now pass, as
+does normalization-only change with identity reuse. This does not broaden the
+allocator premise or the existing rank-two i8/i16/i32/i64 domain, and supplies no native
+allocator or full error/world equivalence.
+
+Current outer-loop unrolling supports empty, full-inline and bulk-plus-tail
+forms, retaining arbitrary supported nested bodies with dynamic inner bounds
+and modeled external effects. Thirty distinct loop-lane tests passed across
+three recorded source cuts (14 mode, 6 mixed-entry and 10 nested-mode cases).
+Actual sibling-loop changes and surrounding partial-effect contexts now have
+checked whole-entry joins, including the actual unroll→tiling intermediate.
+Control facts in local wrappers are discharged from the actual prefix; final
+entry roots retain no source-success premise. Selecting inner loops for
+transformation remains active engineering. Passing test
+logs are not live completion authority; retained final-cut replay remains
+separate. No frozen semantics or new axiom is introduced.
+
+The user-approved MACC producer correction now explicitly rejects unsupported
+half contraction policy requests before mutation and preserves named maps.
+The corrected producer passed 49 structural/checker cases and two native
+regressions; three retained-artifact cases were skipped. This legality approval
+does not approve the draft numerical reference or original half-source
+equivalence. Shared/init operand binding is separately checked by the wrapper.
 
 The draft MACC worker audits exact consumed roots transitively against the
 standard three axioms and scans all imported project declarations for banned
@@ -66,9 +97,12 @@ mode. Qualification results and retained source cuts are in the handoffs.
 Read the [quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md)
 and [current integration checkpoint](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md)
 before resuming numerical work. Completed compiler tests and fresh replay retain
-their recorded source cuts. Native SourceCapture qualification and broader
-campaigns remain outstanding; the handoff distinguishes them from completed
-targeted qualification.
+their recorded source cuts. Four real native SourceCapture examples on both
+compiler routes, checked-prefix composition and source-freshness refusals passed
+the 14-case cohort; seven observer-byte mutation controls also passed. The exact
+pinned CPU wheel and producer are now available and verified in owned scratch.
+Final retained replay after the latest integration source changes and broader
+source/format campaigns remain separate from these completed tests.
 
 ## Modelling choices in the op semantics
 

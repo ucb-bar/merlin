@@ -10,14 +10,56 @@ code_refs:
   - src/merlin/verify/configuration_hoist_capture.py
   - src/merlin/verify/configuration_hoist_bridge.py
   - src/merlin/verify/configuration_hoist_gate.py
+  - src/merlin/verify/compiler_configuration_hoist.py
+  - src/merlin/verify/compiler_configuration_hoist_intake.py
+  - src/merlin/compile/scheduling/configuration_loops.py
   - src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistChecker.lean
 ---
 
 # Check scoped configuration loop hoisting with Lean
 
-This direct developer API checks complete Kernel IR before/after moving one
+The historical direct API checks complete Kernel IR before/after moving one
 invariant configuration setter immediately before a positive counted loop.
 It does not install compiler-wide enforcement or establish native ISA fidelity.
+
+The current compiler also supplies the explicit selector
+`configuration_loop_hoisting`. It guards the actual public producer, joins the
+original active or explicitly supplied validation, and holds the result before
+an ordinary Kernel consumer receives it:
+
+```python
+result = hoist_loop_configuration(
+    kernel, adapter, selected_contracts=original_selected_contracts,
+    pass_validation=validation,
+)
+consume(result.kernel)
+```
+
+`validation.passes` contains the selector. The original typed facts/software
+selection and adapter identity must match; caller labels do not supply
+independent qualification. The static profile supports one positive top-level
+loop and constant setter/body operands. The theorem preserves whole partial
+outcomes, including failures and terminal state, under its original indexed
+`Models` premise for every index. Finite native examples do not discharge that
+premise or establish hardware fidelity. Default producer calls remain free of
+verification dependencies when no validation is selected.
+
+The current-only V2 profile also admits retained data operands expressed with
+the loop IV, sums, scaled terms and selects. Configuration field indices and
+values, and every moved pure-setter operand, remain literal constants. Trusted
+host analysis checks signed-index64 rendering, selected encoding ranges and
+alignment; it checks literals in unreachable branches too. Actual expression
+and binder tokens are retained in the Lean obligation. These finite bounds do
+not weaken or discharge the theorem's all-index `Models` premise.
+
+Use `compiler_configuration_hoist_indexed.proposal_adapter` explicitly to ask
+the producer to consider IV-dependent data. This is an untrusted proposal: the
+canonical worker independently checks the actual original/output pair. The
+ordinary selected adapter keeps its conservative behavior. V1 is attempted
+first and retains its original domain; V2 has a distinct bound profile identity.
+
+This current route has no historical producer-checkout requirement. The
+standalone API below retains its original revision and source-manifest guard.
 
 ```python
 from pathlib import Path

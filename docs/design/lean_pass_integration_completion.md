@@ -48,6 +48,17 @@ remaining unavailable checks belong in
 
 ## What “full proof” means here
 
+The 2026-10-29 implementation checkpoint closes current-owner configuration
+elision/hoist hooks, empty/inline/tail unrolling, actual sibling/prefix/suffix
+context composition, actual unroll→tiling chain composition, and reuse without
+mandatory tiling. Buffer qualification now covers the already admitted four
+integer widths. Indexed-data hoisting adds a separate conservative host-admitted
+profile while retaining the all-index instruction-model premise. Its setter
+prefix extension and selected inner-loop depth are undergoing integration.
+The effort table below is the earlier scope estimate, not remaining effort.
+Broader buffer ranks, producer-language coverage and numerical/source-contract
+coverage remain engineering; the human-review-only exit has not been reached.
+
 The existing theorems prove their stated relations. A theorem quantified over
 arbitrary states or lists can be fully proved even when the compiler adapter
 accepts only one loop shape. The outstanding work includes adapter coverage,

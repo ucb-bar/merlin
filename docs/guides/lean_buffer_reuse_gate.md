@@ -12,15 +12,27 @@ code_refs:
   - src/merlin/verify/buffer_reuse_gate.py
   - src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean
   - src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean
+  - src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterUntiled.lean
+  - src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterUntiledLocal.lean
 ---
 
 # Check private buffer reuse and segmentation with Lean
 
-This direct developer API checks a complete original→normalized→reused→segmented
-boundary. It reconstructs the memory plan from four raw modules, independently
+This direct developer API checks a complete original→normalized→reused boundary,
+with optional final segmentation. It reconstructs the memory plan from three
+or four raw modules, independently
 decodes the complete endpoints and generates Lean obligations linking actual
 source syntax, descriptors, lifetimes, initialization, addresses and final code.
 It does not install compiler-wide enforcement or numerical/hardware approval.
+
+For untiled output, pass `(original, normalized, reused)` to `prepare_chain`.
+The local initializer simulation links that exact actual target to the complete
+memory-entry theorem. An auxiliary epoch hint supplies no delivered compiler
+stage or acceptance authority. Three-buffer checked reports use
+`merlin.buffer-reuse.checked.v3` and `actual_buffers`; the four-buffer report
+remains v2 with `actual4`. Both routes support fresh replay and require the same
+explicit total/private/unobservable allocator model. Neither proves full
+error/world equality or native allocation behavior.
 
 The [compiler stack guide](lean_compiler_stack.md) describes the separate
 `lower_model` adapter, its `buffer_reuse` selector and its explicit memory-source
@@ -76,7 +88,10 @@ nested/cyclic caller graphs are outside its domain.
 
 This subset uses index64 and static normalized integer buffers with checked
 sequential disjoint lifetimes and complete initialization. Its actual-final
-initializer bridge supports the checked rank-two rectangular uniform-loop form.
+initializer bridge supports the checked rank-two rectangular uniform-loop form
+with i8, i16, i32 or i64 elements. All four widths have fresh-gate qualification;
+rank-one/rank-three source bridges remain engineering work even though some
+lower-level allocation/initialization lemmas have broader domains.
 Typed arguments, caller descriptors outside the private partition and the stated
 scalar/literal interpretation are explicit premises. The allocator is modeled as
 total, private and unobservable.

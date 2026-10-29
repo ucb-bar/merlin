@@ -1,61 +1,96 @@
-# Overnight integration work — 2026-10-29
+# Compiler pass verification checkpoint — 2026-10-29
 
-Active branch: **`feat/pass-verif-integration`**. The latest committed checker
-slice is `ce4369279`, preserving repeated MACC SSA operands and initialization
-used as contraction inputs. Further loop and Q/DQ integration is in the working
-tree and is undergoing source-frozen qualification. The active objective still
-covers all current pass interfaces through Merlin output IR; it is not complete.
+Work on **`feat/pass-verif-integration`**. Latest committed checkpoint is
+`d52a9a135` (actual loop contexts and composed chain), following `afc3094c1`
+(indexed-data hoist), `1485f4e9c` (storage-effect helper), `8ec30c67e` (untiled
+buffer gate) and `6942b73b9` (scoped hoist gate),
+`584f31f5f` (bounded loop proof generation), `b4c4705a4` (configuration elision),
+`9409453b6` (final Q/DQ source freshness), `aa6af15c3` (nested inline/tail bodies)
+and `3ff55012b` (approved MACC producer rejection).
 
-Current evidence, with distinct source cuts retained:
+All nine pass families have compiler selectors within their declared profiles.
+Five belong to `all`; Q/DQ, draft MACC and the two ISA configuration checks require
+explicit selection. **The human-review-only milestone remains open:** broader
+inner-loop depth and source/profile coverage are still being extended. The proof
+boundary is Merlin-owned transformations through their output IR, with downstream
+MLIR/LLVM/executable/hardware fidelity separate.
 
-- Current-source empty/full-inline/bulk-plus-tail unroll adapters passed 14
-  targeted cases: operational kernel/audit/delivery, actual corruption refusal,
-  and three compiler→LLVM→native comparisons. Legacy held entry points remain
-  held. An initial native test harness reused a loaded library pathname; fresh
-  process checks diagnosed it, unique per-case library paths fixed the harness,
-  and the three affected native comparisons passed on rerun.
-- A common-registry five-function query covers empty, inline, tail, bulk and an
-  unchanged dynamic-loop entry. Kernel compilation/audit and the real complete
-  compiler/native case passed. One earlier direct delivery test correctly
-  refused concurrent source changes after audit; its isolated stable-cut rerun
-  is pending. Actual corrupt inline and bulk functions were rejected.
-- Nested-body unrolling and standalone tiling queries now compile. The nested
-  body is retained operationally and related with the existing scope checker,
-  not replaced by a trip-count claim. Canonical delivery/mutation/native
-  qualification is running. This does not yet claim arbitrary inner-loop
-  rewrites, multiple sibling changes or all nested inline/tail modes.
-- MACC has 24 new direct checker cases and 29 existing direct regressions
-  passing on the updated checker. Both initialized-input formats passed fresh
-  live delivery and replay. Earlier shared-operand live checks retain their
-  earlier cuts. The new helper theorems audit to the standard three axioms;
-  frozen semantics/specifications and numerical approval are unchanged.
-- Q/DQ's previously missing exact CPU Torch wheel/runtime is provisioned in
-  isolated owned scratch, with the existing wheel hash and pinned producer
-  verified. Real original-program capture/replay passed, including the expected
-  precision-loss refusal. Eight captured xDSL/textual boundaries passed before
-  the later MACC checker rebuild; their old replay correctly refused changed
-  checker provenance. A fresh final source-qualified compiler matrix is running;
-  its first real optional-SourceCapture compiler case passed.
-- Q/DQ now has an explicit checked prefix option joining captured IR to the
-  actual lowering input, with a composed captured-IR→output refinement. Exact
-  input binding remains the default. This claim remains under the proposed
-  source model; native examples do not approve universal framework semantics.
-- Current-compiler configuration elision intake/worker/hook work is prepared in
-  isolated scratch while numerical source bindings are frozen. It is not yet
-  installed in the ordinary compiler; the historical standalone API is intact.
+| Pass family | Integrated behavior and retained evidence | Main scope boundary |
+| --- | --- | --- |
+| Tensor DCE | Existing typed strict-refinement gate, source support and chain composition | Supported pure tensor operations and declared input types |
+| CSE | Existing leading compiler CSE gate with the same typed relation | Tensor checker support; independent downstream lowering |
+| Unrolling | Empty/full-inline/bulk/tail, siblings, partial prefix/suffix contexts and nested retained bodies; complete actual-entry roots and exact compiler delivery | Selecting inner depths is active engineering; scalar/SCF admission and resource budgets remain |
+| Ordered tiling | Siblings, short final tiles and supported nested bodies; actual unroll→tile chain has one canonical job and two honest adjacent roots | Selected controls remain static index64; inner-depth routing is in progress |
+| Buffer reuse | Actual three-buffer untiled or four-buffer tiled chain; direct check, fresh-process replay and ordinary compiler passed; 2,372 audited declarations, eight finite native observations | Rank-two i8/i16/i32/i64 profile, possible-success relation, explicit total/private/unobservable allocator |
+| Q/DQ | 14 native/freshness cases, seven source-byte controls, eight actual lowerings and separate-process replays, final prefix/source-mutation control passed | Proposed source semantics; broader formats/per-group/mixed source graphs and definedness remain separate |
+| MACC | Shared/init SSA binding, fresh live replay, approved atomic producer rejection; 49 producer/checker cases with three historical skips and two native regressions | Draft numerical-reference conformance, not original half-source equivalence or numerical approval |
+| Configuration elision | Original-owner function/bare-instruction/Kernel gates; actual schedule→worker→encoded bytes→native paths; independent retained-work/frame/initial-setter refusals | Straight-line current profiles and explicit original ISA/effect interpretation |
+| Configuration hoist | Original public producer→worker→C/native; static V1 plus indexed-data V2, explicit proposal helper and literal/range/alignment controls | One positive loop; all-index `Models` remains a premise. Multiple setters are undergoing installed V3 qualification |
 
-Do not sum overlapping runs or relabel scratch candidate proofs as compiler
-acceptance. A 21-call tail stress query exceeded its 180-second resource budget;
-no acceptance is claimed for that case. Operational budgets remain explicit.
+The independent validator checks the pass agents' theorem scope, actual input/
+output custody, source bindings, canonical roots, real consumer enforcement and
+negative cases. It found and helped resolve owner forwarding, bare-module intake,
+missing finite observer bindings, stale-source classification, early source
+mutation detection and replay test-harness limits. It has found no wrong proof
+acceptance in the reviewed cuts. Detailed audits are under
+`out/build/validator-alignment-20261029/`.
 
-The unapplied MACC producer-review packet contains real counterexamples and two
-proposals: preserve the unsupported module with zero policy coverage, or reject
-an unsupported policy request before mutation. Installation requires separate
-review under `merlin/lean/AGENT.md`; numerical admission is an independent review.
-Q/DQ per-group and broader precision forms still need semantic/proof coverage.
-Untiled buffer reuse, configuration consumers and general loop/context coverage
-remain engineering tasks. Detailed limits are tracked in the
+These results retain **separate exact source cuts**; overlapping cohorts are not
+one aggregate final-source suite. Saved reports never confer live authority.
+Important retained artifacts:
+
+- `out/build/unroll-modes-20261029/retained-nested-tail-v2/`: genuine complete and
+  adjacent roots, check and separate-process replay, 902 declarations/STD3. Later
+  registry/source changes make this a historical cut. Current context and chain
+  cohorts are retained in the same directory. The independent current-source
+  compiler/native refresh passes: exactly one job, 398 roots, 1,690 STD3
+  declarations and all 172 references current at that cut. Its actual middle and
+  target hashes join exactly; no inherited-control/source-success premises remain.
+  Separate fresh chain replay and genuine control/body/frame refusals also pass.
+- `out/build/buffer-untiled-20261029/`: direct/ordinary compiler proof trees,
+  `fresh-process-replay-v3/`, `normalization-only-v4.xml` and native comparison.
+  Normalization-only change with identity reuse still gets a real full-chain
+  proof (2,367 declarations) without false positive reuse credit. Forty-one
+  legacy host controls pass. Independent `buffer-widths-v1/SUMMARY.json` under
+  `out/build/validator-alignment-20261029/` adds fresh i8/i16/i64 checks, exact
+  delivery, 1,789 current references per width and 30 native observations against
+  the true untransformed source, including wrap/high-bit cases. This qualifies
+  existing widths rather than extending semantics. An earlier combined test hit pytest's 900-second
+  limit; standalone fresh replay passed and the two-build test now has a bounded
+  1,800-second allowance. Earlier source-drift refusals remain retained.
+- `out/build/pass-verif-integration-20261028/qdq-prefix/`: exact pinned native
+  wheel/producer identities, final eight lowering/replay pairs and retained
+  corrected-prefix proof plus actual post-composition foreign-source refusal.
+- `out/build/configuration-compiler-20261029/`: actual current bare/function/
+  Kernel and schedule/native tests, source-mutation-before-proof control and
+  36 legacy elision units. The independent V20 export runs without verifier
+  imports; V6/V24 export/tool incompatibilities are separate baseline findings.
+- `out/build/configuration-hoist-compiler-20261029/installed-v1/`: 70 cases,
+  including both real public-owner/native paths with 15 finite scenarios each.
+  V2 indexed-data public/native and wrong-IV canonical cases passed on recorded
+  cuts; its conservative signed-index64 tightening passed 29 current host cases.
+  A refreshed V1/V2 cohort accompanies installed V3 setter-prefix qualification.
+  V1 remains unchanged and the all-index Models premise is preserved. Default
+  selected adapters remain conservative; broader rewrites use explicit untrusted
+  proposals checked against independently selected original effects.
+
+Remaining engineering: selected inner-loop depth routing, broader buffer ranks
+and element representations beyond the four admitted integer widths, additional
+Q/DQ source forms/precision semantics, and configuration setter-prefix/nested-loop
+coverage. Actual top-level sibling/context and unroll-tail→tiling joins are implemented;
+they are no longer pending bridges.
+Human review remains distinct: proposed Q/DQ semantics/poison/definedness, draft
+MACC accumulation/fusion policy, exact ISA pure-write/frame/failure contracts,
+complete/nonaliasing state and allocator/observer assumptions. Neither native
+examples nor caller qualification labels approve those contracts.
+
+See the [compiler stack and examples](../../../../docs/guides/lean_compiler_stack.md),
+[assumption ledger](../../../../merlin/lean/LEDGER.md) and
 [completion plan](../../../../docs/design/lean_pass_integration_completion.md).
+Frozen semantic/specification definitions and locks remain unchanged. Existing
+repository-wide structure/overfit/provenance findings outside this slice remain
+visible; targeted verification does not certify full CI. No new push has been
+verified; the previous remote authentication failure is a delivery blocker.
 
 Earlier results below retain their stated source cuts.
 

@@ -29,8 +29,8 @@ output IR, leaving only explicit semantic contracts for human review.
 Select transformations to change the compiler's output. Select validation to
 require a proof of their actual input/output boundaries. Both are opt-in.
 `--validate-passes all` selects DCE, CSE, loop and buffer checks. The explicit
-`bf16_f32acc_draft_contract` and proposed-model `lower_quant_ext` checks stay
-outside `all`.
+`bf16_f32acc_draft_contract`, proposed-model `lower_quant_ext` and ISA-specific
+`configuration_write_elision` / `configuration_loop_hoisting` checks stay outside `all`.
 Selecting checks does not enable transformations. A selected, changing boundary that cannot be proved
 stops compilation. An unchanged boundary needs no proof job.
 
@@ -71,9 +71,11 @@ LLVM, object and shared-library products. Each job retains `request.json`,
 | `cse` | The build runner's leading tensor CSE | Two identical pure expressions share one result | Same tensor-stage strict refinement |
 | `ordered_loop_unrolling` | Optional source SCF stage at `lower_model` entry | Two consecutive iterations become two ordered lanes | Same returned values, modeled errors and terminal world in the scalar/SCF interpretation |
 | `ordered_loop_segmentation` | Optional source SCF stage; also the final step of the private-buffer chain | Visit `0..10` as ordered groups of three, retaining the short last group | Scalar route: same return/error/world relation; memory route: the complete chain's successful-observation relation |
-| `buffer_reuse` | Optional source normalization→reuse→segmentation chain | Two initialized, nonoverlapping private lifetimes share storage | Same possible successful public observations, under the explicitly selected allocator model |
+| `buffer_reuse` | Optional source normalization→reuse chain, with optional initializer segmentation | Two initialized, nonoverlapping private lifetimes share storage | Same possible successful public observations, under the explicitly selected allocator model |
 | `bf16_f32acc_draft_contract` (explicit only) | Actual `lower_bf16_matmul_f32acc`, including its optional compiler-entry invocation | Extend half operands, accumulate in f32, truncate once | Conformance to the draft numerical reference; numerical approval remains abstracted |
 | `lower_quant_ext` (explicit only) | Actual xDSL Q/DQ pass or complete textual preprocessing | Expand Q/DQ into the specified ordered scalar operations | Strict typed refinement under the proposed Q/DQ source model; optional fresh original-source correspondence |
+| `configuration_loop_hoisting` (explicit only) | Actual selected `hoist_loop_configuration` before its ordinary Kernel consumer | Move an invariant total setter before a positive counted loop | Whole partial outcome equality, including failures and terminal state, under indexed instruction/frame premises |
+| `configuration_write_elision` (explicit only) | Original selected instruction IR or straight-line Kernel, before its ordinary consumer | Delete a repeated pure setter while retaining work and failure effects | Complete entry error/terminal-state preservation under the original ISA/effect model; no independent implementation approval |
 
 These are separate relations. A buffer success proof does not establish the
 loop checker's error/world equality or finite-memory allocator behavior. No row
@@ -160,17 +162,26 @@ process can replay with no incoming completion authority; saved JSON is input
 to a new check. The standalone pinned-producer workflow still takes its explicit
 `reference` argument.
 
-The supported source domain has one changed top-level loop per changed function,
+The source-SCF route supports multiple changed top-level sibling loops per function,
 scalar entry arguments and word carries without separate fixed arity caps
-(including zero carries), a region-free body, static nonnegative bounds,
+(including zero carries), static nonnegative bounds,
 positive stride and index64. Scalar unroll factors and tile sizes are integers
-at least two. Unrolling requires a nonempty bulk larger than the factor and no
-unroll remainder; tiling supports short final segments. Complete syntax,
+at least two. Unrolling supports empty loops, complete inlining, no-tail bulk
+and bulk-plus-remainder modes. Different function definitions can use different
+modes; the final common-registry theorem restores every actual defined entry,
+including supported unchanged dynamic-loop functions. All outer unroll modes
+and standalone tiling preserve supported nested scalar loop bodies, including
+dynamic inner controls and modeled external effects. The ordinary compiler
+does not yet select inner-depth factors.
+Tiling supports short final segments. Complete syntax,
 expression/proof expansion, query-size, signed-index and runtime budgets still
 apply. External calls retain the modeled state
-and failure semantics. Dynamic/multidimensional tiling and arbitrary nesting
-need additional bridges. Untouched context must also fit the projection;
-unchanged loop-containing definitions currently require another context bridge.
+and failure semantics. Actual prefix/suffix contexts, including partial external
+calls, are composed around each selected rewrite. Local wrapper control equations
+are derived from the actual prefix; they are absent from the final whole-entry
+theorem. Combined unroll→tiling checks join the actual original, intermediate and
+final buffers in one canonical job. Selecting inner-depth rewrites remains active
+engineering. Untouched context must also fit the scalar/SCF projection.
 The gate does not insert a loop-lowering pass to turn
 arbitrary tensor programs into supported source SCF.
 
@@ -191,8 +202,10 @@ merlin-compile ... --loop-tile-size 2 \
 
 The equivalent options are
 `Options(tile_size=2, buffer_allocator="total_private_unobservable")`.
-This selection explicitly states the allocator model and requires tiling.
-The private-buffer proof route retains its tile-size domain of 2..16.
+This selection explicitly states the allocator model. Tiling is optional:
+`Options(buffer_allocator="total_private_unobservable")` checks the actual
+three-buffer normalization→reuse chain and delivers its untiled output. When
+requested, the private-buffer tile-size domain remains 2..16.
 It is separate from source unrolling.
 
 These inputs already own their `memref.alloc`/`memref.dealloc` lifetimes. The
@@ -203,9 +216,12 @@ inference on explicit frees. For an independent untransformed native baseline,
 storage transformations. Explicit tensor features and vector/parallel schedules
 are refused on this route.
 
-The compiler retains four actual modules: original, shape-normalized, reused
-and segmented. `buffer_reuse_intake.prepare_chain` reconstructs the memory plan
-from all four and independently decodes the endpoints. `buffer_reuse_gate.check`
+The compiler retains three actual modules: original, shape-normalized and reused.
+A fourth segmented module is captured only when tiling is requested.
+`buffer_reuse_intake.prepare_chain` reconstructs an untrusted memory-plan hint
+and independently decodes the endpoints. Untiled checking may construct an
+auxiliary epoch hint; the theorem and delivery still bind the actual untiled
+output. `buffer_reuse_gate.check`
 builds the factored query and audits the complete proof closure.
 `GraphMemoryAfterEntries.every_definition` covers the complete supported entry
 roster. The compiler adapter requires its fresh live completion before the
@@ -216,10 +232,10 @@ Normalization and reuse may be unchanged. The separate
 rewrite sites and identical complete source/normalized bindings. The original
 positive normalization checker is unchanged. A one-to-one epoch/slot plan uses
 the existing reuse theorem with every allocation/free binding intact. Such
-stages appear in `unchanged`, rather than positive rewrite coverage. Actual
-initializer segmentation is still required by this complete-chain route.
+stages appear in `unchanged`, rather than positive rewrite coverage. Initializer
+segmentation is optional; both actual untiled and tiled chains have proof routes.
 
-The current subset uses static rank-two integer buffers, sequential disjoint
+The current subset uses static rank-two i8/i16/i32/i64 buffers, sequential disjoint
 private lifetimes and complete rectangular initialization. For example, two
 separate `memref<3x2xi32>` allocations can reuse one slot when each is initialized
 before reading and its lifetime ends before the next starts. Caller-visible
@@ -227,6 +243,11 @@ observations and supported unchanged functions are retained. Arbitrary escaping
 pointers, asynchronous effects, external declarations and callers reaching the
 changed kernel need additional proof routes. The allocator premise does not
 establish finite capacity, native allocation failure or native allocator fidelity.
+
+Independent qualification covers fresh untiled gates and exact delivery at each
+admitted integer width. For i8, i16 and i64, 30 finite native observations include
+the true untransformed source, modular overflow and high-bit values. These tests
+qualify the existing width domain; they do not extend the rank-two source bridge.
 
 ## bf16/f16 MACC draft contract
 
@@ -256,6 +277,10 @@ endpoints, checks equality to the source-derived draft reference, and checks
 strict initialized-operand qualification at every recognized site. The positive
 `Bf16F32AccBoundary.check_sound` theorem also requires a nonempty site set.
 Fresh live completion and replay bind the exact bytes and checker evidence.
+Local site wrappers preserve repeated SSA operands as one input and retain
+copied initialization when that value is also a contraction input. The packing
+lemmas prove unique identities, shared-operand correlation and frozen evaluator
+binding; an alpha check binds target captures back to the actual source IDs.
 
 The result is **draft-policy conformance**: `policy_reviewed=false`, numerical
 policy verdict `abstracted`, and no original-source equivalence claim. The user
@@ -308,24 +333,46 @@ upstream proof components before implementing new ones.
 
 ## Other available Lean interfaces
 
-These interfaces have separate selections and are not extra names in
+These interfaces retain standalone selections and are not extra names in
 `--validate-passes`:
 
 | Interface | Stack location | Example and scope |
 | --- | --- | --- |
 | `lean_checker.verify_scalar_transform` | Shared scalar transformation broker | Prove wrapping `x + 0` equals `x` under a pinned toolchain; `Foundation.lean` uses Lean-MLIR's dialect interface |
 | `loop_transform_gate.transform` | Standalone producer→proof→consumer | Run the pinned unroll/segment producer and deliver only after its complete proof; see [direct loop checking](lean_loop_transform_gate.md) |
-| `buffer_reuse_intake.prepare_chain` + `buffer_reuse_gate.check/deliver` | Standalone four-buffer memory boundary | Check initialized disjoint private lifetimes and guard a direct consumer; see [direct buffer checking](lean_buffer_reuse_gate.md) |
+| `buffer_reuse_intake.prepare_chain` + `buffer_reuse_gate.check/deliver` | Standalone three- or four-buffer memory boundary | Check initialized disjoint private lifetimes and guard a direct consumer; see [direct buffer checking](lean_buffer_reuse_gate.md) |
 | `configuration_elision_intake.prepare` + `configuration_elision_gate.check/deliver` | Selected instruction/configuration IR | Delete a repeated constant setter only under its exact total-overwrite effect contract; preserve modeled errors and terminal state; see [configuration elision](lean_configuration_elision_gate.md) |
 | `configuration_hoist_intake.prepare` + `configuration_hoist_gate.check/deliver` | Counted Kernel IR, after instruction/effect selection and before command emission | Move one invariant pure setter before a positive counted loop; preserve modeled success, failure and terminal state; see [scoped configuration hoisting](lean_configuration_hoist_gate.md) |
 
 ## Configuration writes and loop hoisting
 
-The configuration APIs use explicit selected ISA/effect facts. They are separate
-from the generic compiler selectors above: elision checks complete
-instruction-MLIR modules, while hoisting checks complete counted Kernel text.
-Their owner calls `prepare`, `check`, then `deliver` at that boundary before
-passing the checked bytes to its consumer. Both APIs also support fresh replay.
+Configuration APIs use explicit original selected ISA/effect facts. The compiler
+selector `configuration_write_elision` guards `ConfigurationIRSelection.apply`
+and the configuration stage of `compile_schedule`. Instruction IR may contain
+complete function definitions or a closed bare module; Kernel elision currently
+requires straight-line calls. An active original validation is joined, or the
+owner can pass `pass_validation=validation` explicitly. The result stays held
+until the canonical worker completes. Target scheduling and target emission
+forward that original owner. Ordinary exported compilation remains independent
+of verifier modules when no validation is active.
+
+```python
+selection = ConfigurationIRSelection(selected_contracts, "caller-effect-contract-v1")
+result = selection.apply(original_module, pass_validation=validation)
+consume(result.module)  # the owned gate has joined before apply returns
+```
+
+Here `validation.passes` contains `configuration_write_elision`, and
+`selected_contracts` comes from the original selected facts/software files.
+The caller's effect-contract label is a premise, not independent qualification.
+The older elision `prepare`/`check`/`deliver` API and fresh replay remain available.
+The explicit `configuration_loop_hoisting` selector guards the real counted-
+Kernel producer and joins its original owner before returning the result. It
+requires `selected_contracts=...` on `hoist_loop_configuration`; the default
+route remains verifier-free. Its current profile has one positive top-level
+loop and constant setup/body operands; broader IV-data support is separate.
+Its state relation does not approve numerical policy or the selected
+instruction implementation.
 
 For example, under an effect contract where `work` preserves the configuration
 fields, redundant-write elimination can turn:
@@ -358,9 +405,11 @@ objects are audited before live delivery. Source inventories include the
 prepared request. Saved or copied completions grant no authority.
 
 Use an interpreter with the producer's normal dependencies installed; isolated
-producer capture intentionally ignores `PYTHONPATH`. The elision producer stays
-pinned to `4499eebb959c0f92cefd92cc6d80646ba66474ed`; hoisting pins
+producer capture intentionally ignores `PYTHONPATH`. The historical standalone elision intake stays
+pinned to `4499eebb959c0f92cefd92cc6d80646ba66474ed`; standalone hoisting pins
 `e0484f4886ae0780d0325cdfa998842b61bb647c` and its published source manifest.
+The current compiler selectors instead bind the original live selected inputs;
+they do not require those historical producer checkouts.
 Neither qualification labels nor a software file's review status establish
 native effects. Both relations remain conditional on the documented common
 instruction/state interpretation and nonaliasing field mapping. Human contract

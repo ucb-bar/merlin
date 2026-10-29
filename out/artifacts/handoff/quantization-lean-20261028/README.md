@@ -1,5 +1,35 @@
 # Quantization Lean proof handoff — updated 2026-10-29
 
+## Overnight checker and source integration
+
+MACC checker commit `ce4369279` fixes shared SSA and initialization-as-input
+site reconstruction. Twenty-four new direct cases and both final initialized
+bf16/f16 live-delivery/fresh-replay cases pass; 29 existing direct regressions
+also pass. The added packing lemmas use only the standard three axioms. These
+results improve source/interface coverage without approving the numerical model.
+
+The user approved the explicit unsupported-policy rejection alternative in the
+[producer correction packet](../macc-producer-review-20261029/README.md).
+The selected patch is installed in `3ff55012b`; 49 producer/checker cases
+passed (3 retained-artifact skips), as did two current native regressions. Producer approval is separate from independent numerical admission,
+which remains pending. The packet's other fallback alternative is not selected.
+
+The exact pinned CPU Torch wheel/runtime and producer are now available in owned
+scratch, with wheel bytes, installed members and producer source identity checked.
+Real original-program capture/replay and eight source-qualified compiler pairs
+(four captures × xDSL/textual) have passed. The complete 14-case native/freshness cohort and seven observer mutations
+passed. Fresh retained exact/prefix compiler smokes and all eight final lowering
+boundaries with separate-process replay also passed. The final ordering fix
+`9409453b6` repeats producer/tool reconstruction after prefix composition; its
+positive smoke and genuine post-composition producer-mutation refusal passed. The new explicit
+`SourceCapture(..., prove_prefix=True)` route checks and composes captured IR →
+actual input → lowered output; it does not approve universal source semantics.
+
+Per-group and broader float-precision Q/DQ forms remain outside the formal
+source dispatch. Quantizer definedness remains separate from refinement. The
+[current integration handoff](../pass-verif-integration-20261028/README.md)
+retains exact cuts and failed/interrupted attempts; do not sum overlapping runs.
+
 ## Q/DQ compiler-gate follow-up
 
 The new explicit `lower_quant_ext` selector integrates actual xDSL/textual
