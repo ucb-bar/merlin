@@ -134,6 +134,8 @@ def run_component_origin_round(
             candidate_read_paths=_read_paths(inputs),
             runtime_binds=lambda home: _runtime_binds(inputs, home),
             require_fresh_home=True,
+            **({"max_concurrent_subagents": launch.selected_subagent_count}
+               if launch.selected_subagent_count is not None else {}),
         )
         observation.returned(stdout=C.canonical_json({"exit_code": rc, "transcript": str(transcript)}))
     audit = audit_codex_transcript(transcript, policy.target_experiment, inputs.candidate, policy.build_registry())

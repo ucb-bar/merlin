@@ -62,6 +62,10 @@ class Budget:
     arithmetic_per_element: float = 1.0
     value_arithmetic_per_element: float = 0.25
     payload_bytes_per_element_byte: float = 0.5
+    #: Scalar parameter loads (a scale or stride read from memory only to configure the unit) a
+    #: command-only kernel may execute per call. A kernel configures a handful of registers, once
+    #: or per tile pass; a load repeated per output element exceeds any small bound at real sizes.
+    command_parameter_loads: int = 64
 
 
 @dataclass(frozen=True)
@@ -127,7 +131,9 @@ def _functions(module) -> dict[str, Any]:
     return found
 
 
-def audit_group(site: GroupSite, function: Any | None, budget: Budget = Budget()) -> dict[str, Any]:
+def audit_group(
+    site: GroupSite, function: Any | None, budget: Budget = Budget(), *, input_preparation=None, target=None
+) -> dict[str, Any]:
     """One group's verdict, with the numbers it rests on."""
     row: dict[str, Any] = {
         "group": site.group,
@@ -147,6 +153,7 @@ def audit_group(site: GroupSite, function: Any | None, budget: Budget = Budget()
     if dynamic is None or activity.get("status") != "derived":
         row.update(
             verdict=UNKNOWN,
+            activity_problems=list(activity.get("problems") or [])[:32],
             why="dynamic host work or scalar memory payload could not be counted: "
             + "; ".join(activity.get("problems") or ["unknown scalar memory payload"])[:300],
         )
@@ -158,18 +165,90 @@ def audit_group(site: GroupSite, function: Any | None, budget: Budget = Budget()
     if not isinstance(address_arithmetic, int) or isinstance(address_arithmetic, bool) or address_arithmetic < 0:
         row.update(verdict=UNKNOWN, why="pointer-setup arithmetic has no derived execution count")
         return row
+    address_loop_arithmetic = activity.get("dynamic_address_loop_control_arithmetic", 0)
+    if type(address_loop_arithmetic) is not int or address_loop_arithmetic < 0:
+        row.update(verdict=UNKNOWN, why="address-loop control has no derived execution count")
+        return row
+    pointer_arithmetic = address_arithmetic
+    address_arithmetic += address_loop_arithmetic
     total_arithmetic = sum(int(dynamic.get(name, 0)) for name in _ARITHMETIC)
     arithmetic = total_arithmetic - address_arithmetic
+    if arithmetic < 0:
+        row.update(verdict=UNKNOWN, why="proved address/control counts exceed raw arithmetic")
+        return row
     value_arithmetic = sum(int(dynamic.get(name, 0)) for name in _VALUE_ONLY)
     payload = (activity.get("load_payload_bytes") or 0) + (activity.get("store_payload_bytes") or 0)
+    preparation = None
+    if input_preparation is not None and site.placement != HOST:
+        from merlin.verify.conv_input_preparation import prove_input_preparation
+
+        preparation = prove_input_preparation(function, activity, input_preparation, target=target)
+        row["input_preparation"] = preparation
+        if preparation.get("status") == "proven":
+            # All exclusions are actual closed address/copy execution counts;
+            # ordinary budgets still judge every operation outside that proof.
+            arithmetic -= preparation["arithmetic"] - address_arithmetic
+            arithmetic -= preparation.get("conversions", 0)
+            value_arithmetic -= preparation.get("conversions", 0)
+            payload -= preparation["payload_bytes"]
+            if arithmetic < 0 or value_arithmetic < 0 or payload < 0:
+                row.update(verdict=UNKNOWN, why="input preparation counts exceed original raw accounting")
+                return row
+    if payload > 0 and site.placement != HOST and target is not None:
+        from merlin.verify.host_command_parameters import prove_command_parameters
+
+        parameters = prove_command_parameters(function, activity, target=target)
+        row["command_parameters"] = parameters
+        if parameters.get("status") == "proven":
+            arithmetic -= parameters["arithmetic"] + parameters["conversions"]
+            value_arithmetic -= parameters["conversions"]
+            payload -= parameters["payload_bytes"]
+            if min(arithmetic, value_arithmetic, payload) < 0:
+                row.update(verdict=UNKNOWN, why="command parameter proof exceeds original raw accounting")
+                return row
+    orchestration = None
+    if site.placement != HOST and (
+        arithmetic > site.elements * budget.arithmetic_per_element
+        or value_arithmetic > site.elements * budget.value_arithmetic_per_element
+        or payload > site.elements * max(site.element_bytes, 1) * budget.payload_bytes_per_element_byte
+    ):
+        from merlin.verify.command_orchestration import prove_command_orchestration
+
+        orchestration = prove_command_orchestration(
+            function, activity, target=target, parameter_loads=budget.command_parameter_loads
+        )
+        if orchestration["status"] == "proven" and payload != orchestration["parameter_payload_bytes"]:
+            # Earlier proofs already excluded part of this traffic; the two accountings must agree.
+            orchestration = {
+                "status": "refused",
+                "reason": f"{payload} bytes of host memory traffic are not the "
+                f"{orchestration['parameter_payload_bytes']} bytes of proven configuration loads",
+            }
+        if orchestration["status"] != "proven":
+            row["command_only_refusal"] = orchestration["reason"]
+    command_only = orchestration is not None and orchestration["status"] == "proven"
+    if command_only:
+        # The raw dynamic count remains visible. Only the proven pointer-only
+        # command orchestration is removed from the tensor-compute budget.
+        row["host_command_orchestration_arithmetic"] = arithmetic
+        row["host_command_orchestration_conversions"] = value_arithmetic
+        row["host_command_parameter_loads"] = orchestration["parameter_loads"]
+        row["host_command_parameter_payload_bytes"] = orchestration["parameter_payload_bytes"]
+        arithmetic = 0
+        value_arithmetic = 0
+        payload = 0
     top = (activity.get("block_signatures") or [{}])[0]
     row.update(
-        arithmetic_basis="pointer_offset_provenance_v1",
+        arithmetic_basis=("pointer_only_target_commands_v1" if command_only else "pointer_offset_provenance_v1"),
+        address_loop_basis="closed_induction_address_uses_v1",
         host_arithmetic=arithmetic,
         host_total_arithmetic=total_arithmetic,
         host_address_arithmetic=address_arithmetic,
+        host_pointer_setup_arithmetic=pointer_arithmetic,
+        host_address_loop_control_arithmetic=address_loop_arithmetic,
         host_value_arithmetic=value_arithmetic,
         host_payload_bytes=payload,
+        host_raw_payload_bytes=(activity.get("load_payload_bytes") or 0) + (activity.get("store_payload_bytes") or 0),
         dominant_block={
             "signature": top.get("signature"),
             "trips": top.get("trips"),
@@ -205,13 +284,25 @@ def audit_group(site: GroupSite, function: Any | None, budget: Budget = Budget()
             f"scalar loads and stores move {payload_ratio:.2f}x the group's output "
             f"through the host (budget {budget.payload_bytes_per_element_byte})"
         )
-    if breaches:
+    refusal = row.get("command_only_refusal")
+    dominant = f"Dominant block: {compact_signature(top.get('signature'))!r} x{top.get('trips')}"
+    if breaches and refusal and value_arithmetic == 0 and payload == 0:
+        # No tensor value is computed or moved: the integer work is unproven, not shown to be compute.
+        row.update(
+            verdict=HOST_COMPUTE,
+            why=f"placed on {site.placement}: {'; '.join(breaches)}, with no float arithmetic or scalar "
+            f"memory traffic; the command-only exemption fails on {refusal[:160]}. {dominant}",
+        )
+    elif breaches:
         row.update(
             verdict=HOST_COMPUTE,
             why=f"placed on {site.placement} and the host still works at element scale: "
             + "; ".join(breaches)
-            + f". Dominant block: {compact_signature(top.get('signature'))!r} "
-            f"x{top.get('trips')}",
+            # Float or conversion work at element scale already shows the compute; otherwise
+            # say which construct kept the integer work from counting as orchestration.
+            + (f"; the command-only exemption fails on {refusal[:120]}"
+               if refusal and value_per_element <= budget.value_arithmetic_per_element else "")
+            + f". {dominant}",
         )
     else:
         row.update(verdict=CLEAN, why="host work stays at command scale")
@@ -245,10 +336,21 @@ def compact_signature(signature: Any, *, limit: int = 160) -> str:
     return text if len(text) <= limit else text[: limit - 4].rstrip() + " ..."
 
 
-def audit(module: Any, sites: Sequence[GroupSite], budget: Budget = Budget()) -> dict[str, Any]:
+def audit(
+    module: Any, sites: Sequence[GroupSite], budget: Budget = Budget(), *, input_preparation=None, target=None
+) -> dict[str, Any]:
     """Audit every group site against the functions of an emitted LLVM-dialect module."""
     functions = _functions(module)
-    rows = [audit_group(site, functions.get(site.symbol), budget) for site in sites]
+    rows = [
+        audit_group(
+            site,
+            functions.get(site.symbol),
+            budget,
+            input_preparation=(input_preparation or {}).get(site.symbol),
+            target=target,
+        )
+        for site in sites
+    ]
     judged = [row for row in rows if row["placement"] != HOST]
     counts: dict[str, int] = {}
     for row in rows:

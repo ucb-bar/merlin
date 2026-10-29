@@ -174,8 +174,52 @@ def _price(region, calibration):
     )
 
 
-def complete_component_cost(observation, calibration_document, *, scope, qualified_domains,
-                            applicability_domain=None, applicability_coordinates=None):
+def component_region_accounting(regions, *, stages=COMPLETE_STAGES):
+    """Check the existing complete-region ownership independently of cost units.
+
+    This is accounting data, not evidence that a timer or region boundary has
+    the declared meaning. Inclusive ancestors suppress their contained regions
+    from the sum; repeated stage labels do not imply overlap or zero work.
+    """
+    if type(stages) is not tuple or stages != COMPLETE_STAGES:
+        raise ValueError("component accounting must include every complete execution stage")
+    if any(type(region) is not ComponentCostRegion for region in regions):
+        raise TypeError("component accounting requires typed regions")
+    by_id = {region.id: region for region in regions}
+    if len(by_id) != len(regions):
+        raise ValueError("cost region identities are duplicated")
+    covered, included = set(), []
+    for region in regions:
+        region.__post_init__()
+        ancestry, parent, contained = {region.id}, region.parent, False
+        while parent is not None:
+            if parent not in by_id or parent in ancestry:
+                raise ValueError("cost region containment is missing or cyclic")
+            ancestry.add(parent)
+            owner = by_id[parent]
+            if owner.accounting == "inclusive" and not set(region.stages) <= set(owner.stages):
+                raise ValueError("inclusive parent does not cover contained complete-cost stages")
+            contained |= owner.accounting == "inclusive"
+            parent = owner.parent
+        covered.update(region.stages)
+        if not contained:
+            included.append(region.id)
+    return {
+        "included": tuple(included),
+        "covered": tuple(stage for stage in stages if stage in covered),
+        "missing": tuple("missing complete-cost stage " + stage for stage in stages if stage not in covered),
+    }
+
+
+def complete_component_cost(
+    observation,
+    calibration_document,
+    *,
+    scope,
+    qualified_domains,
+    applicability_domain=None,
+    applicability_coordinates=None,
+):
     """Price both regimes, exposing contained regions without counting them twice."""
     if type(observation) is not ComponentFeatureObservation or type(scope) is not ComponentCostScope:
         raise TypeError("component cost requires typed observation and scope")
@@ -198,28 +242,11 @@ def complete_component_cost(observation, calibration_document, *, scope, qualifi
     reports, totals = {}, {}
     for regime in ("cold", "warm"):
         regions = getattr(observation, regime)
-        by_id = {region.id: region for region in regions}
-        if len(by_id) != len(regions):
-            raise ValueError("cost region identities are duplicated")
-        covered, prices, included = set(), {}, []
-        for region in regions:
-            ancestry, parent = {region.id}, region.parent
-            contained = False
-            while parent is not None:
-                if parent not in by_id or parent in ancestry:
-                    raise ValueError("cost region containment is missing or cyclic")
-                ancestry.add(parent)
-                owner = by_id[parent]
-                if owner.accounting == "inclusive" and not set(region.stages) <= set(owner.stages):
-                    raise ValueError("inclusive parent does not cover contained complete-cost stages")
-                contained |= owner.accounting == "inclusive"
-                parent = owner.parent
-            prices[region.id] = _price(region, calibration)
-            covered.update(region.stages)
-            if not contained:
-                included.append(region.id)
+        accounting = component_region_accounting(regions, stages=scope.stages)
+        prices = {region.id: _price(region, calibration) for region in regions}
+        included = accounting["included"]
         missing = list(domain_missing)
-        missing.extend("missing complete-cost stage " + stage for stage in scope.stages if stage not in covered)
+        missing.extend(accounting["missing"])
         missing.extend(reason for ident in included for reason in prices[ident].missing)
         if missing:
             total = CycleInterval.unknown(*dict.fromkeys(missing))
@@ -279,7 +306,7 @@ def validate_complete_cost_report(report):
         raise ValueError("complete component report identity/regime is invalid")
 
     def interval(raw):
-        if set(raw) != {"lo", "hi", "resolved", "provenance", "missing"}:
+        if set(raw) != {"lo", "hi", "resolved", "provenance", "missing"} or type(raw["resolved"]) is not bool:
             raise ValueError("complete component interval schema is invalid")
         value = CycleInterval(raw["lo"], raw["hi"], tuple(raw["provenance"]), tuple(raw["missing"]))
         if value.to_dict() != dict(raw) or (

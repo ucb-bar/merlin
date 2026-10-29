@@ -95,6 +95,20 @@ class Bound:
         return out
 
 
+def boundary_witnesses(bound: Bound) -> dict[str, int | None]:
+    """Adjacent positive source probes for an independently derived scalar.
+
+    These comparisons establish arithmetic relations to the selected number.
+    A tensor axis, physical capacity or tiling interpretation still needs its
+    own evidence. A missing bound or impossible positive lower witness stays
+    explicit rather than removing its requested comparison.
+    """
+    value = bound.value
+    if value is None:
+        return {"<": None, "=": None, ">": None}
+    return {"<": value - 1 if value > 1 else None, "=": value, ">": value + 1}
+
+
 @dataclass
 class FormBounds:
     """Every regime boundary one target states, derived from its own facts."""

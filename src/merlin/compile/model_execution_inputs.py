@@ -84,17 +84,37 @@ def require_elf_isa_supported(arch: list[str], host_isa: str, *, require_scalar:
         raise ModelExecutionInputError(f"ELF ISA is not {compatibility} with selected CPU: {missing or arch}")
 
 
-def selected_firrtl(path: str | Path, *, target: str, config: str) -> dict[str, str]:
-    """Read one explicitly selected RTL facts document and recheck its FIRRTL bytes."""
+def selected_firrtl(path: str | Path, *, target: str, config: str, source_relocations=None) -> dict[str, str]:
+    """Read one explicitly selected RTL facts document and recheck the FIRRTL ``config`` executes.
+
+    Facts of ``config`` itself yield their own FIRRTL input. Facts of another configuration yield
+    the FIRRTL of their verified simulation correspondence to ``config`` (see
+    :func:`merlin.targetgen.rtl.unit_correspondence.execution_binding`), byte-verified on disk and
+    marked with ``facts_config``; anything else refuses.
+    """
     lexical = Path(path)
     if lexical.is_symlink() or not lexical.is_file():
         raise ModelExecutionInputError("selected RTL facts are missing or a symlink")
     source = lexical.resolve()
-    document = json.loads(source.read_text(encoding="utf-8"))
+    raw = source.read_bytes()
+    original_document = json.loads(raw)
+    from merlin.targetgen.rtl.source_relocations import relocate_operand_sources
+
+    try:
+        document = relocate_operand_sources(original_document, source_relocations)
+    except ValueError as exc:
+        raise ModelExecutionInputError(str(exc)) from exc
     facts = document.get("facts") or {}
     origin = facts.get("source") or {}
     inputs = document.get("inputs") or {}
     rows = inputs.get("firrtl_inputs") or []
+    if inputs.get("target") == target and origin.get("config") != config:
+        # Cross-configuration correspondence retains its original independently
+        # checked source selection. ISA/target-FIRRTL moves cannot rewrite it.
+        result = _corresponding_firrtl(original_document, source, target=target, config=config)
+        if source.read_bytes() != raw or relocate_operand_sources(original_document, source_relocations) != document:
+            raise ModelExecutionInputError("selected source inputs changed before publication")
+        return result
     if inputs.get("target") != target or origin.get("config") != config or len(rows) != 1:
         raise ModelExecutionInputError("selected RTL facts do not name the board target/config and one FIRRTL input")
     row = rows[0]
@@ -110,7 +130,7 @@ def selected_firrtl(path: str | Path, *, target: str, config: str) -> dict[str, 
         or file_sha256(firrtl) != digest
     ):
         raise ModelExecutionInputError("selected RTL facts have no byte-verified FIRRTL input")
-    return {
+    result = {
         "path": str(source),
         "sha256": file_sha256(source),
         "firrtl": str(firrtl.resolve()),
@@ -118,6 +138,55 @@ def selected_firrtl(path: str | Path, *, target: str, config: str) -> dict[str, 
         "target": target,
         "config": config,
     }
+    if source.read_bytes() != raw or relocate_operand_sources(original_document, source_relocations) != document:
+        raise ModelExecutionInputError("selected source inputs changed before publication")
+    return result
+
+
+def _corresponding_firrtl(document: dict, source: Path, *, target: str, config: str) -> dict[str, str]:
+    from merlin.targetgen.rtl.unit_correspondence import ExecutionBindingError, execution_binding
+
+    try:
+        binding = execution_binding(document, config=config)
+    except ExecutionBindingError as exc:
+        raise ModelExecutionInputError(
+            "selected RTL facts do not name the board target/config and one FIRRTL input"
+        ) from exc
+    firrtl = Path(str(binding["firrtl"].get("path") or ""))
+    digest = binding["firrtl"]["sha256"]
+    if not firrtl.is_absolute() or firrtl.is_symlink() or not firrtl.is_file() or file_sha256(firrtl) != digest:
+        raise ModelExecutionInputError("selected RTL facts have no byte-verified corresponding simulation FIRRTL")
+    return {
+        "path": str(source),
+        "sha256": file_sha256(source),
+        "firrtl": str(firrtl.resolve()),
+        "firrtl_sha256": digest,
+        "target": target,
+        "config": config,
+        "facts_config": binding["facts_config"],
+    }
+
+
+def selected_execution_firrtl(path: str | Path, *, target: str) -> dict[str, str]:
+    """Select the bound runner's FIRRTL, retaining the original facts identity.
+
+    Legacy backends without a bound runner retain their explicitly selected facts
+    configuration. Cross-configuration admission is always owned by selected_firrtl.
+    """
+    from merlin.runtime.backends import base as backends
+    from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+
+    backend = backends.get_backend(target)
+    if isinstance(backend, BoundRoCCBackend):
+        config = backend._block()["config"]  # noqa: SLF001 -- original selected runner, not facts provenance
+        source_relocations = backend.operand_source_relocations(path)
+    else:
+        document = json.loads(Path(path).read_text(encoding="utf-8"))
+        config = ((document.get("facts") or {}).get("source") or {}).get("config")
+        source_relocations = None
+    if not isinstance(config, str) or not config:
+        raise ModelExecutionInputError("selected execution has no explicit configuration")
+    return selected_firrtl(path, target=target, config=config, source_relocations=source_relocations)
 
 
 def native_engine(target: str, simulator: str, facts: dict[str, str]):
@@ -136,7 +205,7 @@ def native_engine(target: str, simulator: str, facts: dict[str, str]):
         from merlin.targetgen import gsim_emulator
 
         env_var = getattr(backend, "GSIM_EMU_ENV", None)
-        citation = gsim_emulator.citation(target, env_var=env_var)
+        citation = gsim_emulator.citation(target, env_var=env_var, backend=backend)
         receipt = citation.get("receipt") or {}
         if (
             citation.get("available") is not True
@@ -150,7 +219,10 @@ def native_engine(target: str, simulator: str, facts: dict[str, str]):
         engine_path = Path(str(citation.get("path") or ""))
         selected_path = getattr(backend, "gsim_path", None)
         prepare = getattr(backend, "prepare_gsim_command", None)
-        if not callable(selected_path) or not callable(prepare) or not engine_path.is_file():
+        from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+
+        bound_execution = isinstance(backend, BoundRoCCBackend)
+        if not callable(selected_path) or (not callable(prepare) and not bound_execution) or not engine_path.is_file():
             raise ModelExecutionInputError("GSIM backend lacks a citable engine or command revalidator")
         if Path(selected_path()).resolve() != engine_path.resolve() or file_sha256(engine_path) != citation.get(
             "binary_sha256"
@@ -158,11 +230,17 @@ def native_engine(target: str, simulator: str, facts: dict[str, str]):
             raise ModelExecutionInputError("GSIM backend would run different engine bytes than its citation")
 
         def revalidate() -> None:
-            current = gsim_emulator.citation(target, env_var=env_var)
+            if bound_execution:
+                backend.verify_execution_inputs()
+            current = gsim_emulator.citation(target, env_var=env_var, backend=backend)
             if current != citation or file_sha256(engine_path) != citation["binary_sha256"]:
                 raise ModelExecutionInputError("GSIM engine citation or binary changed during qualification")
 
-        return backend, citation, revalidate, prepare
+        # The bound runner owns its exact argv/environment and checks the ELF
+        # and engine identities across execution. Legacy runners instead supply
+        # a separately prepared command for the same checks.
+        revalidate()
+        return backend, citation, revalidate, prepare if callable(prepare) else None
 
     if simulator == "verilator":
         from merlin.common import provenance

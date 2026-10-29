@@ -17,6 +17,83 @@ from merlin.targetgen.rtl.hw_graph import parse_generic_hw
 LIMITS = EvaluationLimits(source_bytes=16384, nodes=64, scalar_bits=64, cases=4096, bit_work=2_000_000)
 
 
+def _replicate_shift_source():
+    return """builtin.module {
+      "hw.module"() ({
+      ^bb0(%value: i2, %amount: i8):
+        %copies = "comb.replicate"(%value) : (i2) -> i8
+        %shifted = "comb.shru"(%copies, %amount) {twoState} : (i8, i8) -> i8
+        "hw.output"(%copies, %shifted) : (i8, i8) -> ()
+      }) {sym_name = "UnrelatedUnit", parameters = [], module_type = !hw.modty<input value : i2,
+        input amount : i8, output copies : i8, output shifted : i8>} : () -> ()
+    }"""
+
+
+def test_replication_and_unsigned_shift_preserve_every_bit_and_overshift():
+    cases = tuple({"value": value, "amount": amount} for value in range(4) for amount in (0, 1, 7, 8, 255))
+    expected = []
+    for case in cases:
+        repeated = int(format(case["value"], "02b") * 4, 2)
+        expected.append({"copies": repeated, "shifted": repeated // 2 ** case["amount"]})
+    observed = _prepare(_replicate_shift_source())
+    assert observed.evaluate(cases) == tuple(expected)
+    assert tuple(expression.kind for expression in observed.expressions) == ("comb.replicate", "comb.shru")
+    assert observed.expressions[0].parameter == 4
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        '"comb.replicate"(%value) : (i2) -> i1',
+        '"comb.replicate"(%value) : (i2) -> i7',
+        '"comb.replicate"(%value, %amount) : (i2, i8) -> i8',
+        '"comb.replicate"(%value) {twoState} : (i2) -> i8',
+        '"comb.replicate"(%value) {sv.namehint = true} : (i2) -> i8',
+        '"comb.replicate"(%value) {unknown} : (i2) -> i8',
+    ],
+)
+def test_replication_requires_exact_full_width_multiple_and_typed_fields(replacement):
+    source = _replicate_shift_source().replace('"comb.replicate"(%value) : (i2) -> i8', replacement)
+    if replacement.endswith("-> i1"):
+        source = source.replace("i8", "i1")
+    elif replacement.endswith("-> i7"):
+        source = source.replace("i8", "i7")
+    with pytest.raises(ValueError):
+        _prepare(source)
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        '"comb.shru"(%copies, %value) : (i8, i2) -> i8',
+        '"comb.shru"(%copies) : (i8) -> i8',
+        '"comb.shru"(%copies, %amount) {twoState = false} : (i8, i8) -> i8',
+        '"comb.shru"(%copies, %amount) {sv.namehint = true} : (i8, i8) -> i8',
+        '"comb.shru"(%copies, %amount) {unknown} : (i8, i8) -> i8',
+    ],
+)
+def test_unsigned_shift_requires_same_typed_width_and_bounded_semantics(replacement):
+    source = _replicate_shift_source().replace('"comb.shru"(%copies, %amount) {twoState} : (i8, i8) -> i8', replacement)
+    with pytest.raises(ValueError):
+        _prepare(source)
+
+
+def test_unused_malformed_shift_cannot_escape_complete_source_roster():
+    source = _replicate_shift_source().replace(
+        '"hw.output"(%copies', '%unused = "comb.shru"(%copies, %value) : (i8, i2) -> i8\n "hw.output"(%copies'
+    )
+    with pytest.raises(ValueError):
+        _prepare(source)
+
+
+def test_replication_is_bounded_before_result_expansion():
+    source = _replicate_shift_source().replace(
+        '"comb.replicate"(%value) : (i2) -> i8', '"comb.replicate"(%value) : (i2) -> i1000000000'
+    )
+    with pytest.raises(ValueError):
+        _prepare(source)
+
+
 def _source():
     return """builtin.module {
       "hw.module"() ({

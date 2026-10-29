@@ -1,0 +1,124 @@
+{
+  "rows": [
+    {
+      "arm": 0,
+      "dirty": true,
+      "physical": 1627,
+      "predicted": 1495,
+      "relative_error": -0.08113091579594345,
+      "report": {
+        "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/0.report.json",
+        "sha256": "135d5624e23a65e8cec4095cff17a009a7eedb77ecf72c2538ef50578862fd78"
+      },
+      "scope": {
+        "path": "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/0.scope.json",
+        "sha256": "3d8ecf479f108f650b758ab7d224a625b32ff0b04485d3ba3ba632421115ca2a"
+      },
+      "argv": [
+        "taskset",
+        "-c",
+        "29",
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/model.json",
+        "--timing-report=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/0.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/0.scope.json",
+        "--timing-input-sha256=352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/program.elf"
+      ],
+      "features": {
+        "modeled.cache.l1d.coherence_protocol_cycles": 1280,
+        "modeled.cache.l1d.response_completion_cycles": 1664,
+        "modeled.cache.l1d.response_first_cycles": 640,
+        "modeled.cache.l1d.response_last_cycles": 1024,
+        "modeled.cache.l1d.response_wormhole": 128,
+        "modeled.cache.l1i.hits": 62,
+        "modeled.cache.l2.hits": 256,
+        "modeled.coherence_probes": 128,
+        "modeled.coherence_writeback_bytes": 8192
+      },
+      "baseline_stdout_identical": true,
+      "stdout_sha256": "03f9c0ee4984b054e1887a72cb5e74d61553400f8133511deb83709d99550fbf"
+    },
+    {
+      "arm": 1,
+      "dirty": false,
+      "physical": 872,
+      "predicted": 751,
+      "relative_error": -0.13876146788990829,
+      "report": {
+        "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/1.report.json",
+        "sha256": "752786b16c1e98f83aa940cab889d32c85303d759a7dc0ff71ae7bbb9fe1c9f0"
+      },
+      "scope": {
+        "path": "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/1.scope.json",
+        "sha256": "ec3323c7b25bcd184ba44aeba3c00b5b9ad60bf46916dadce68cd1e4ef613290"
+      },
+      "argv": [
+        "taskset",
+        "-c",
+        "29",
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/model.json",
+        "--timing-report=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/1.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/1.scope.json",
+        "--timing-input-sha256=352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/program.elf"
+      ],
+      "features": {
+        "modeled.cache.l1d.coherence_protocol_cycles": 512,
+        "modeled.cache.l1d.response_completion_cycles": 1280,
+        "modeled.cache.l1d.response_first_cycles": 256,
+        "modeled.cache.l1d.response_last_cycles": 256,
+        "modeled.cache.l1d.response_wormhole": 128,
+        "modeled.cache.l1i.hits": 62,
+        "modeled.cache.l2.hits": 128,
+        "modeled.coherence_probes": 128
+      },
+      "baseline_stdout_identical": true,
+      "stdout_sha256": "03f9c0ee4984b054e1887a72cb5e74d61553400f8133511deb83709d99550fbf"
+    }
+  ],
+  "elf": {
+    "path": "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/program.elf",
+    "sha256": "352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2"
+  },
+  "physical_evidence": {
+    "path": "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-readout-coherence-diagnostic-v1/readout-v1.json",
+    "sha256": "4c35fe1f018940843ca7b2c2367ed2b5ad17ed03fc70ff6bded6af38cec18445"
+  },
+  "baseline_runtime": {
+    "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/runtime.json",
+    "sha256": "f04d9d81da5643a65188c9b63a18c2204e30922fa7153f3fe6d566ad33f77131"
+  },
+  "observer": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+    "sha256": "d147ddf66f7977c4217cb2bf78344d893c1a2b5402923a49e242a988699a6515"
+  },
+  "model": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/model.json",
+    "sha256": "cc11a1462413958fa81b2ad77971dd4a759e7f4808c4346dbb5c5238676efb90"
+  },
+  "parameter_origin": "Public passive 256-response trace: first C to credit visibility9 cycles; D handshake precedes credit visibility by1 per DMA xactBusy register, therefore pipeline_cycles8. Measured shared stage, not a per-arm fit.",
+  "new_gsim_runs": 0,
+  "qualification_issued": false,
+  "spike_commit": "d055c81",
+  "remaining_gaps": [
+    "Readout A admission remains coupled to private-probe start; first modeled row/probe22 vs observed A26/B32.",
+    "Existing enclosing command latency floor hides clean-path response improvement.",
+    "No independent <=4% complete-case qualification; calibration denial unchanged."
+  ]
+}

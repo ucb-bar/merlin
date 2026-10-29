@@ -40,8 +40,8 @@ def extract_queued_movement_context(
     trace digest accompany every result. Missing task ownership, external address placement, physical
     resources or entry-state evidence remain explicit; none is replaced with a synthetic rate.
     """
-    from merlin.kernels.decode.rocc import funct_table_for
-    from merlin.kernels.endpoints import endpoints_for
+    from merlin.compile.analysis.compute_endpoints import endpoints_for
+    from merlin.compile.analysis.rocc_commands import funct_table_for
     from merlin.targetgen.rocc import decode
 
     actual_sha = hashlib.sha256(artifact_text.encode()).hexdigest()

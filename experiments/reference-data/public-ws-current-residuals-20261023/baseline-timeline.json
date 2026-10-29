@@ -1,0 +1,365 @@
+{
+  "schema": "merlin.public_ws_queue_timeline.v1",
+  "source_trace": {
+    "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/submit-trace.jsonl",
+    "sha256": "334c53bbd060304efca1254926351e44c945b731ce3571233d52950c2026c5e1"
+  },
+  "drain_trace": {
+    "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/drain-trace.jsonl",
+    "sha256": "45305a0dc6d935b6ec8276bc417f19a34927491481e064644ad4b896b760d454"
+  },
+  "events": [
+    {
+      "event": 19,
+      "instruction_index": 11358,
+      "action": "submit_detached",
+      "earliest": 18432,
+      "start": 18432,
+      "ready": 18444,
+      "latency": 12,
+      "resources": [
+        {
+          "id": 7,
+          "occupancy": 16
+        },
+        {
+          "id": 13,
+          "occupancy": 16
+        }
+      ]
+    },
+    {
+      "event": 21,
+      "instruction_index": 11358,
+      "action": "submit_detached",
+      "earliest": 18445,
+      "start": 18448,
+      "ready": 18465,
+      "latency": 17,
+      "resources": [
+        {
+          "id": 7,
+          "occupancy": 17
+        },
+        {
+          "id": 12,
+          "occupancy": 17
+        },
+        {
+          "id": 13,
+          "occupancy": 17
+        }
+      ]
+    },
+    {
+      "event": 22,
+      "instruction_index": 11358,
+      "action": "submit_detached",
+      "earliest": 18488,
+      "start": 18488,
+      "ready": 18504,
+      "latency": 16,
+      "resources": [
+        {
+          "id": 16,
+          "occupancy": 16
+        }
+      ]
+    },
+    {
+      "event": 40,
+      "instruction_index": 11364,
+      "action": "submit_detached",
+      "earliest": 18465,
+      "start": 18465,
+      "ready": 18482,
+      "latency": 17,
+      "resources": [
+        {
+          "id": 7,
+          "occupancy": 17
+        },
+        {
+          "id": 12,
+          "occupancy": 17
+        },
+        {
+          "id": 13,
+          "occupancy": 17
+        }
+      ]
+    },
+    {
+      "event": 41,
+      "instruction_index": 11364,
+      "action": "submit_detached",
+      "earliest": 18505,
+      "start": 18505,
+      "ready": 18521,
+      "latency": 16,
+      "resources": [
+        {
+          "id": 16,
+          "occupancy": 16
+        }
+      ]
+    },
+    {
+      "event": 59,
+      "instruction_index": 11370,
+      "action": "submit_detached",
+      "earliest": 18482,
+      "start": 18482,
+      "ready": 18499,
+      "latency": 17,
+      "resources": [
+        {
+          "id": 7,
+          "occupancy": 17
+        },
+        {
+          "id": 12,
+          "occupancy": 17
+        },
+        {
+          "id": 13,
+          "occupancy": 17
+        }
+      ]
+    },
+    {
+      "event": 60,
+      "instruction_index": 11370,
+      "action": "submit_detached",
+      "earliest": 18522,
+      "start": 18522,
+      "ready": 18538,
+      "latency": 16,
+      "resources": [
+        {
+          "id": 16,
+          "occupancy": 16
+        }
+      ]
+    },
+    {
+      "event": 78,
+      "instruction_index": 11376,
+      "action": "submit_detached",
+      "earliest": 18499,
+      "start": 18499,
+      "ready": 18516,
+      "latency": 17,
+      "resources": [
+        {
+          "id": 7,
+          "occupancy": 17
+        },
+        {
+          "id": 12,
+          "occupancy": 17
+        },
+        {
+          "id": 13,
+          "occupancy": 17
+        }
+      ]
+    },
+    {
+      "event": 79,
+      "instruction_index": 11376,
+      "action": "submit_detached",
+      "earliest": 18539,
+      "start": 18539,
+      "ready": 18555,
+      "latency": 16,
+      "resources": [
+        {
+          "id": 16,
+          "occupancy": 16
+        }
+      ]
+    },
+    {
+      "event": 97,
+      "instruction_index": 11382,
+      "action": "submit_detached",
+      "earliest": 18516,
+      "start": 18516,
+      "ready": 18533,
+      "latency": 17,
+      "resources": [
+        {
+          "id": 7,
+          "occupancy": 17
+        },
+        {
+          "id": 12,
+          "occupancy": 17
+        },
+        {
+          "id": 13,
+          "occupancy": 17
+        }
+      ]
+    },
+    {
+      "event": 98,
+      "instruction_index": 11382,
+      "action": "submit_detached",
+      "earliest": 18556,
+      "start": 18556,
+      "ready": 18572,
+      "latency": 16,
+      "resources": [
+        {
+          "id": 16,
+          "occupancy": 16
+        }
+      ]
+    },
+    {
+      "event": 116,
+      "instruction_index": 11388,
+      "action": "submit_detached",
+      "earliest": 18533,
+      "start": 18533,
+      "ready": 18550,
+      "latency": 17,
+      "resources": [
+        {
+          "id": 7,
+          "occupancy": 17
+        },
+        {
+          "id": 12,
+          "occupancy": 17
+        },
+        {
+          "id": 13,
+          "occupancy": 17
+        }
+      ]
+    },
+    {
+      "event": 117,
+      "instruction_index": 11388,
+      "action": "submit_detached",
+      "earliest": 18573,
+      "start": 18573,
+      "ready": 18589,
+      "latency": 16,
+      "resources": [
+        {
+          "id": 16,
+          "occupancy": 16
+        }
+      ]
+    },
+    {
+      "event": 133,
+      "instruction_index": 11394,
+      "action": "submit_detached",
+      "earliest": 18551,
+      "start": 18551,
+      "ready": 18563,
+      "latency": 12,
+      "resources": [
+        {
+          "id": 7,
+          "occupancy": 16
+        },
+        {
+          "id": 13,
+          "occupancy": 16
+        }
+      ]
+    },
+    {
+      "event": 135,
+      "instruction_index": 11394,
+      "action": "submit_detached",
+      "earliest": 18564,
+      "start": 18567,
+      "ready": 18584,
+      "latency": 17,
+      "resources": [
+        {
+          "id": 7,
+          "occupancy": 17
+        },
+        {
+          "id": 12,
+          "occupancy": 17
+        },
+        {
+          "id": 13,
+          "occupancy": 17
+        }
+      ]
+    },
+    {
+      "event": 136,
+      "instruction_index": 11394,
+      "action": "submit_detached",
+      "earliest": 18607,
+      "start": 18607,
+      "ready": 18623,
+      "latency": 16,
+      "resources": [
+        {
+          "id": 16,
+          "occupancy": 16
+        }
+      ]
+    },
+    {
+      "event": 154,
+      "instruction_index": 11400,
+      "action": "submit_detached",
+      "earliest": 18584,
+      "start": 18584,
+      "ready": 18601,
+      "latency": 17,
+      "resources": [
+        {
+          "id": 7,
+          "occupancy": 17
+        },
+        {
+          "id": 12,
+          "occupancy": 17
+        },
+        {
+          "id": 13,
+          "occupancy": 17
+        }
+      ]
+    },
+    {
+      "event": 155,
+      "instruction_index": 11400,
+      "action": "submit_detached",
+      "earliest": 18624,
+      "start": 18624,
+      "ready": 18640,
+      "latency": 16,
+      "resources": [
+        {
+          "id": 16,
+          "occupancy": 16
+        }
+      ]
+    }
+  ],
+  "interpretation": "Modeled event times, not physical counters. Tile seven starts after a separately scheduled PRELOAD reservation; this is the isolated candidate correction.",
+  "counter_window": {
+    "opening_csr_start": 18496,
+    "closing_csr_start": 18642
+  },
+  "barrier": {
+    "frontier": 18497,
+    "device_horizon": 18640,
+    "wait_cycles": 143
+  }
+}

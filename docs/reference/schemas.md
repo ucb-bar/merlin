@@ -19,7 +19,9 @@ The schemas are the cross-workstream coordination contract (see [Contracts](cont
 | `dialect_requirement` | Dialect Requirement | What a *validated interface candidate* requires from a target dialect (L6): the ops, types and verifier conditions a target must provide to implement the abs… |
 | `dse_axis_triage` | DSE Axis Triage | The key DSE-guidance output: a ranking of accelerator DSE axes by how much of the measured/trace-derived target gap each axis can actually close for a given… |
 | `dse_result` | DSE Result | Results of comparing variants (baseline / software_visible / hardware_managed / oracle) for a candidate feature, with measurable cost-model parameters. Owned… |
+| `evidence_repair` | Sealed Evidence Repair Receipt | The record an operator-approved repair of sealed Phase 0 evidence leaves beside the derivation it repaired (`<derivation>.repair-receipt-<TS>.json`). Sealed… |
 | `evidence_report` | Evidence Report Index | Machine-readable index of the source evidence TargetGen collected for a target: the files discovered (docs, Scala/Chisel, examples) with short filename/first… |
+| `evidence_seal` | Sealed Evidence Record | The seal an operator places beside a reviewed Phase 0 derivation (`<derivation>.evidence-seal.json`): the digest of every member, so verification can name ea… |
 | `exactness_contract` | Exactness Contract | Per form, how far a program's output may differ from its reference: exact (the default and the only default) or bounded by a stated number of output LSB (and… |
 | `exploitability_report` | Exploitability Report | How much of the oracle benefit a compiler can actually capture for a feature across a parameter sweep (the 'compiler exploitability' of an abstraction). Owne… |
 | `instruction_semantics` | Instruction Semantics | Versioned, target-owned descriptions of exact instruction computations, typed operands/results, legal parameter domains, and memory effects. Phase 0 binds th… |
@@ -28,6 +30,7 @@ The schemas are the cross-workstream coordination contract (see [Contracts](cont
 | `llvm_extension_plan` | LLVM Extension Plan | Records whether and how a target needs LLVM-project changes. The default posture is out-of-tree (TableGen fragments / intrinsic headers / runtime calls) with… |
 | `llvm_requirement` | LLVM Requirement | Whether a mined abstraction needs LLVM-project (backend/MC) support — the L8 record. Emitted by kernel mining per interface candidate, feeding TargetGen's ll… |
 | `metrics` | Metrics | The Merlin-owned common metrics schema. All backends and target adapters normalize their raw counters into these common names so results are comparable acros… |
+| `model_check_report` | Full-Model Check Report | One judgement of a device submission on complete quantized models: build and link status, the fixed-denominator offload census, per-kernel exactness on froze… |
 | `paper_run_result` | Frozen Compiler Paper Run Result | One lifecycle-complete cell in the K1 paper matrix. A cell distinguishes build, execution, correctness, task quality, exact timing scope, peak memory, execut… |
 | `paper_study` | Frozen Compiler Paper Study | Versioned input contract for a holdout-safe compiler comparison. Development workloads and paper models are disjoint; the compiler policy is frozen before an… |
 | `policy_rule` | Policy Rule | A compiler heuristic distilled from kernel evidence: when a condition holds, take these scheduling actions. Owned by kernel-mining; consumed by DSE and (late… |

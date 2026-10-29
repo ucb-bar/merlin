@@ -7,6 +7,7 @@ import json
 import shutil
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -111,7 +112,9 @@ def test_actual_dispatch_configuration_order_and_primary_cleanup(tmp_path, monke
     from merlin.targetgen import target_experiment
 
     events = []
-    config = _config(tmp_path, driver, lambda: events.append("tools") or ("cca_tools",))
+    config = replace(
+        _config(tmp_path, driver, lambda: events.append("tools") or ("cca_tools",)), sim_per_capsule_timeout=3600
+    )
     ws = tmp_path / "workspace"
     ws.mkdir()
     public, policy, contract = (tmp_path / p for p in ("public", "policy", "contract"))
@@ -129,6 +132,7 @@ def test_actual_dispatch_configuration_order_and_primary_cleanup(tmp_path, monke
         events.append("start")
         assert workspace == ws and observed.context == config.context
         assert observed.tools == ("cca_tools",) and observed.sim_max_jobs == 7
+        assert observed.sim_per_capsule_timeout == 3600
         assert (observed.capsules_root, observed.policy_root, observed.contract) == (public, policy, contract)
         return owned
 
@@ -263,7 +267,8 @@ def test_sandbox_composition_preserves_original_order_and_payload(tmp_path, monk
         "environment",
         "compose",
     ]
-    assert events[0][1:] == ((workspace, bundle), {"repo": tmp_path})
+    # The operator's Claude state is never part of the base; a claude launch stages its own home.
+    assert events[0][1:] == ((workspace, bundle), {"repo": tmp_path, "include_claude_home": False})
     expected = [
         "bwrap",
         "base",
@@ -275,6 +280,8 @@ def test_sandbox_composition_preserves_original_order_and_payload(tmp_path, monk
         "MERLIN_MODEL_HOST_LANE_SNAPSHOT_REQUIRED",
         "--unsetenv",
         "MERLIN_MODEL_HOST_LANE_SNAPSHOT_RECORD",
+        "--unsetenv",
+        "MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION",
         "extra",
     ]
     assert events[4][1:] == ((expected, workspace, bundle), {"repo": tmp_path})

@@ -7,16 +7,18 @@ source attribution does not freeze arbitrary closure state or the Python interpr
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
 from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import yaml
 
@@ -24,14 +26,25 @@ from merlin.benchharness import repo_sha
 from merlin.targetgen.sandbox import bwrap as _BWS
 from merlin.targetgen.target_experiment import load_target_experiment
 
+from . import author_subagents as AS
+from . import authoring_conformance as AC
+from . import compiler_library as CL
 from . import corpus_inputs as CI
+from . import fresh_backend as FB
 from . import oot_history as _oot_history
 from . import run_inputs as RI
+from . import skill_staging as SK
 from . import source_inputs as SI
 from . import treatments as T
 from .context import InvocationContext, readback_record, verify_readback_record
 from .options import RunOptions
+from .providers import codex_context as CTX
 from .workspaces import select_workspace_root
+
+if TYPE_CHECKING:
+    from merlin.targetgen.compiler_library import CompilerLibrarySelection
+
+    from .task_staging import TaskStagingConfig
 
 _MODEL_HOST_SNAPSHOT_ROOT_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT"
 _MODEL_HOST_SNAPSHOT_REQUIRED_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_REQUIRED"
@@ -52,6 +65,27 @@ def _verify_public_build_budget(options: RunOptions, environment: dict) -> None:
     prior = recorded.get("public_object_build_budget_s", 0) if type(recorded) is dict else None
     if type(prior) is not int or prior != options.public_object_build_budget_s:
         raise RuntimeError("resume refused: public object-build advisory selection changed")
+
+
+def _client_selection(options) -> dict | None:
+    from .providers.codex_runtime import selection_record
+
+    return selection_record(options)
+
+
+def _verify_client_selection(options, environment: dict) -> None:
+    prior = (environment.get("run_config") or {}).get("codex_max_subagents")
+    if prior != options.codex_max_subagents:
+        raise RuntimeError("explicit Codex delegation limit changed")
+    AS.verify_resume(options, environment.get("run_config") or {})
+    CTX.verify_resume(options, environment.get("run_config") or {})
+    SK.verify_resume(options, environment.get("run_config") or {})
+    from .telemetry import token_budget
+
+    token_budget.verify_resume(options, environment.get("run_config") or {})
+    recorded = (environment.get("run_config") or {}).get("codex_runtime")
+    if recorded != _client_selection(options):
+        raise RuntimeError("explicit client selection changed")
 
 
 def _verify_phase0_handoff(corpus_review: dict | None, workload_coverage: dict | None) -> None:
@@ -91,14 +125,34 @@ class RunRequest:
     # Read after task staging, not while constructing the invocation: tools.txt may
     # be changed by a trusted task stager, and the receipt must bind served tools.
     resolved_tools: Callable[[], tuple[str, ...]]
+    compiler_library_selection: CompilerLibrarySelection | None = None
+    task_staging_config: TaskStagingConfig | None = None
 
     @property
     def run_config(self) -> dict:
         a = self.options
+        from .construction_study import selection as study_selection
+        from .telemetry import token_budget
+
         return {
             "schedule": a.schedule,
+            "compiler_execution": a.compiler_execution,
+            "sandbox_reuse": getattr(a, "sandbox_reuse", "per_call"),
+            "compiler_access": a.compiler_access,
+            **({"author_profile": a.author_profile} if a.author_profile else {}),
+            "full_compiler_manifest_sha256": a.full_compiler_manifest_sha256,
+            "reference_experiments_sha256": a.reference_experiments_sha256,
+            **({"reference_experiments_tasks": "off"} if a.reference_experiments_tasks == "off" else {}),
             "session_mode": (
-                "submission_qualification"
+                "offline_construction_study"
+                if getattr(a, "offline_actions", "")
+                else "joint_campaign"
+                if getattr(a, "joint_campaign", "")
+                else "codex_canary"
+                if a.codex_canary
+                else "preflight_only"
+                if a.preflight_only
+                else "submission_qualification"
                 if a.qualify_submission
                 else "legacy_progress_only"
                 if a.continuous
@@ -112,12 +166,24 @@ class RunRequest:
             "qa_timeout_s": a.qa_timeout,
             "grade_interval_s": a.grade_interval,
             "selfcheck_protocol": 3,
+            **({"joint_campaign_policy": hashlib.sha256(Path(a.joint_campaign).read_bytes()).hexdigest()}
+               if getattr(a, "joint_campaign", "") else {}),
+            **({"joint_epoch_review": hashlib.sha256(Path(a.joint_epoch).read_bytes()).hexdigest()}
+               if getattr(a, "joint_epoch", "") else {}),
             "launcher_argv": list(self.launcher_argv),
+            **({"construction_study": study} if (study := study_selection(a)) is not None else {}),
+            **({"live_conformance_feedback": True} if a.live_conformance_feedback else {}),
             **(
                 {"public_object_build_budget_s": a.public_object_build_budget_s}
                 if a.public_object_build_budget_s
                 else {}
             ),
+            **({"codex_runtime": _client_selection(a)} if a.codex_binary else {}),
+            **({"codex_max_subagents": a.codex_max_subagents} if a.codex_max_subagents is not None else {}),
+            **({"author_subagents": subagents} if (subagents := AS.selection(a)) is not None else {}),
+            **({CTX.KEY: author_context} if (author_context := CTX.selection(a)) is not None else {}),
+            **({SK.KEY: author_skills} if (author_skills := SK.selection(a)) is not None else {}),
+            **({"author_token_budget": budget} if (budget := token_budget.selection(a)) is not None else {}),
             **({"readback_policy": readback_record(self.context)} if self.context.readback_policy is not None else {}),
         }
 
@@ -175,6 +241,8 @@ class PreparedRun:
     transport: WorkspaceTransport
     stage_task: TaskStager
     private_full_model_spec: Path | None = None
+    instruction_selection: Path | None = None
+    compiler_library_binding: bytes | None = None
 
     @property
     def scope_roots(self) -> dict:
@@ -184,9 +252,46 @@ class PreparedRun:
             "contract": self.contract_root,
         }
 
+    @property
+    def selected_codex_runtime(self):
+        from .providers.codex_runtime import select
+
+        library = CL.verify(self.request, self.environment, self.compiler_library_binding)
+        runtime = select(
+            self.request.options,
+            self.request.context,
+            self.bundle,
+            self.workspace,
+            self.run_dir,
+            compiler_library_selection=library,
+        )
+        observed = None if runtime is None else runtime.record()
+        if observed != self.environment.get("codex_runtime_policy"):
+            raise RuntimeError("explicit client permission/runtime selection changed")
+        return runtime
+
     def verify_inputs(self) -> None:
+        FB.origin(self.request.options, self.workspace, prior=self.environment)
+        CL.verify(self.request, self.environment, self.compiler_library_binding)
+        from . import public_software_declaration as PSD
+
+        PSD.verify(self.environment.get(PSD.KEY), self.workspace, self.bundle, repo=self.request.context.repo)
+        from .feedback import hidden_capsule_policy
+        from .feedback.capsule_certification import verify_scope
+
+        verify_scope(getattr(self.request.options, "validation_scope", "full"), self.environment)
+
+        hidden_capsule_policy.verify_record(
+            hidden_capsule_policy.resolve(
+                self.request.context.descriptor, getattr(self.request.options, "hidden_capsule_mode", "")
+            ),
+            self.environment.get("hidden_capsule_validation"),
+        )
         verify_readback_record(self.request.context, self.environment.get("readback_policy"))
         _verify_public_build_budget(self.request.options, self.environment)
+        AC.verify_live_selection(self.request.options, self.environment)
+        _verify_client_selection(self.request.options, self.environment)
+        self.selected_codex_runtime
         if self.environment.get("public_object_build_selection") != _public_build_selection(
             self.request.context.target, self.request.options.public_object_build_budget_s
         ):
@@ -224,6 +329,21 @@ class PreparedRun:
                     root=self.run_dir / "private_full_model_input" / "sources",
                     target=self.request.context.target,
                 )
+        instruction = self.environment.get("private_instruction_selection")
+        if instruction is not None:
+            from merlin.compile.model_execution_inputs import file_sha256
+
+            from .feedback import private_instruction_declaration
+
+            if (
+                self.instruction_selection is None
+                or str(self.instruction_selection) != instruction.get("frozen_path")
+                or file_sha256(self.instruction_selection) != instruction.get("sha256")
+            ):
+                raise RuntimeError("frozen operator-private instruction selection changed")
+            private_instruction_declaration.read(
+                self.instruction_selection, target=self.request.context.target
+            ).verify()
         corpus_record = self.environment.get("public_corpus_input")
         if corpus_record is not None:
             view = CI.resolve(
@@ -342,8 +462,66 @@ def phase_run_dir(context, arm: str, run_id: str, *, resume: bool) -> Path:
     return context.phase_runs / run_id
 
 
+def validate_preflight_options(a: RunOptions) -> None:
+    """Pure selection checks, before native probes and when reopening preparation."""
+    from .author_profiles import validate_options as validate_author_profile
+
+    validate_author_profile(a)
+    reference = (a.reference_experiments, a.reference_experiments_sha256)
+    if any(reference):
+        if (not all(reference) or len(reference[1]) != 64
+                or any(char not in "0123456789abcdef" for char in reference[1])):
+            raise ValueError("reference experiment feedback requires its explicit selection and exact SHA256")
+    if a.reference_experiments_tasks not in ("on", "off") or (
+            a.reference_experiments_tasks == "off" and not a.reference_experiments):
+        raise ValueError("withheld reference experiment tasks require an explicit selection")
+    if a.compiler_execution == "snapshot_external_v1" and a.sandbox != "bwrap":
+        raise ValueError("snapshot_external_v1 requires bwrap isolation")
+    full_sources = (a.full_compiler_root, a.full_compiler_manifest, a.full_compiler_manifest_sha256)
+    if a.compiler_access == "full_compiler":
+        if a.compiler_execution != "snapshot_external_v1" or not all(full_sources):
+            raise ValueError("full_compiler requires snapshot_external_v1 and the complete public source selection")
+    elif any(full_sources):
+        raise ValueError("full compiler inputs require --compiler-access full_compiler")
+    ambient_seal = os.environ.get("MERLIN_CORPUS_SEAL", "").strip()
+    if a.corpus_seal and ambient_seal and a.corpus_seal != ambient_seal:
+        raise ValueError("explicit corpus seal differs from the environment selection")
+    if a.preflight_only or a.codex_canary:
+        if (
+            (a.preflight_only and a.codex_canary)
+            or a.resume
+            or a.seed_submission
+            or a.qualify_submission
+            or a.seal_current
+            or a.continuous
+            or a.no_oracle
+            or a.skip_hidden
+            or a.allow_unsandboxed
+            or a.sandbox != "bwrap"
+        ):
+            raise ValueError("preflight-only requires fresh isolated readiness without bypasses or a candidate")
+        seal = Path(a.corpus_seal)
+        if not a.corpus_seal or not seal.is_absolute() or not seal.is_file() or seal.resolve() != seal or not a.bundle:
+            raise ValueError("preflight-only requires an explicit canonical corpus seal and bundle identity")
+
+
 def validate_options(a: RunOptions) -> int | None:
     """Pre-initialization refusals shared by native and installed admission."""
+    validate_preflight_options(a)
+    from .construction_study import validate as validate_study
+    validate_study(a)
+    FB.validate(a)
+    from . import joint_control
+    joint_control.validate(a)
+    if a.instruction_selection and (not a.private_full_model_spec or a.sandbox != "bwrap"):
+        raise ValueError("instruction selection requires a sandboxed private full-model declaration")
+    if a.native_result_format_selection and (not a.private_full_model_spec or a.sandbox != "bwrap"):
+        raise ValueError("native result selection requires a sandboxed private full-model declaration")
+    from .providers.codex_runtime import validate_options as validate_client
+
+    validate_client(a)
+    if a.codex_canary and not 0 < a.round_timeout <= 600:
+        raise ValueError("Codex canary requires an explicit 1..600 second round timeout")
     if a.qualify_submission:
         if a.resume or a.seed_submission or a.seal_current or a.continuous:
             raise RuntimeError("unpaid qualification requires a fresh run and one selected submission")
@@ -385,16 +563,48 @@ def validate_options(a: RunOptions) -> int | None:
 def prepare(
     request: RunRequest, transport: WorkspaceTransport, stage_task: TaskStager, *, workspace_leases: list
 ) -> PreparedRun | int:
+    """Close all preparation verification scopes before returning or refusing."""
+    from merlin.common.cpu_pool import PREPARATION, cpu_priority
+
+    # Preparation shares the compute pool; its leased steps queue behind author and grade work.
+    with cpu_priority(PREPARATION), ExitStack() as snapshot_scopes:
+        return _prepare(
+            request,
+            transport,
+            stage_task,
+            workspace_leases=workspace_leases,
+            snapshot_scopes=snapshot_scopes,
+        )
+
+
+def _prepare(
+    request: RunRequest,
+    transport: WorkspaceTransport,
+    stage_task: TaskStager,
+    *,
+    workspace_leases: list,
+    snapshot_scopes: ExitStack,
+) -> PreparedRun | int:
     """Prepare/resume a run, returning its original refusal code or admitted inputs.
 
     Call inside workspace_session and keep that wrapper active through authoring and
     completion. Appending the acquired lease preserves uncertain-exit protection if
     preparation or the later continuation raises. No child or paid agent starts here.
     """
+    from merlin.compile.model_execution_inputs import file_sha256
+
     a, context, treatment = request.options, request.context, request.treatment
     refusal = validate_options(a)
     if refusal is not None:
         return refusal
+    from merlin.targetgen.sandbox.preflight import SnapshotGuardUnavailable, require_snapshot_guards
+
+    try:
+        _guard_preflight = require_snapshot_guards()
+    except SnapshotGuardUnavailable as exc:
+        print(f"REFUSING: {exc}", file=sys.stderr)
+        print(json.dumps(exc.record, sort_keys=True), file=sys.stderr)
+        return 4
     if request.bundle_manifest.name != "input_bundle_manifest.yaml":
         raise ValueError("admission requires the bundle's canonical input_bundle_manifest.yaml path")
     arm = a.arm
@@ -404,8 +614,28 @@ def prepare(
         return load_target_experiment(context.descriptor)
 
     bundle = yaml.safe_load(request.bundle_manifest.read_text())
+    from merlin.targetgen.tool_profile import verify_tool_profile
+
+    if (a.preflight_only or a.codex_canary) and (not isinstance(bundle, dict) or bundle.get("bundle_id") != a.bundle):
+        raise ValueError("preflight bundle identity differs from the explicitly selected manifest")
+    if not isinstance(bundle, dict):
+        raise ValueError("bundle identity requires a manifest mapping")
+    from . import author_profiles as AP
+
+    _author_profile = AP.resolve(a.author_profile)
+    if _author_profile is not None:
+        AP.verify_bundle(_author_profile, bundle)
+        if _author_profile.fresh10 and not _author_profile.coverage:
+            from .fresh10_sources import verify_library
+
+            verify_library(_author_profile.name, request.compiler_library_selection)
+        elif request.compiler_library_selection is not None and not _author_profile.seeded:
+            raise ValueError("scratch author profiles cannot acquire a legacy additional SDK")
+    elif bundle.get("author_profile") is not None:
+        raise ValueError("versioned profile bundle requires its explicit author-profile option")
+    _compiler_tool_profile = verify_tool_profile(bundle)
     bundle_dir = request.bundle_manifest.parent
-    _corpus_seal = os.environ.get("MERLIN_CORPUS_SEAL", "").strip()
+    _corpus_seal = a.corpus_seal or os.environ.get("MERLIN_CORPUS_SEAL", "").strip()
     if a.qualify_submission and not _corpus_seal:
         raise RuntimeError("unpaid qualification requires an explicitly selected reviewed corpus seal")
     if _corpus_seal:
@@ -416,8 +646,13 @@ def prepare(
     if run_dir.exists() and not a.resume and not orchestration_owned(run_dir):
         print(f"run dir exists, refusing to overwrite: {run_dir}", file=sys.stderr)
         return 2
+    from . import joint_control
+    joint_control.configure(a, run_dir, resume=_resuming)
     _source_context = request.source_context
     _environment_path = run_dir / "environment.yaml"
+    from .feedback import hidden_capsule_policy
+
+    _hidden_capsule_policy = hidden_capsule_policy.resolve(context.descriptor, getattr(a, "hidden_capsule_mode", ""))
     if _resuming:
         try:
             _environment_record = yaml.safe_load(_environment_path.read_text())
@@ -425,8 +660,37 @@ def prepare(
             raise RuntimeError(f"resume refused: environment record unreadable: {exc}") from exc
         if not isinstance(_environment_record, dict):
             raise RuntimeError("resume refused: environment record is not a mapping")
+        from .feedback import sandbox_pool
+
+        # A resumed run keeps the sandbox mechanism it started with (none recorded: one per call).
+        _run_config["sandbox_reuse"] = sandbox_pool.adopt_recorded(_environment_record.get("run_config"))
+        prior_mode = (_environment_record.get("run_config") or {}).get("compiler_execution", "profile_strict_v1")
+        if prior_mode != a.compiler_execution:
+            raise RuntimeError(
+                "resume refused: compiler execution treatment changed; use a new checkpoint continuation")
+        if (_environment_record.get("run_config") or {}).get("author_profile", "") != a.author_profile:
+            raise RuntimeError("resume refused: versioned author profile changed")
+        prior_access = (_environment_record.get("run_config") or {}).get("compiler_access", "selected_library")
+        prior_manifest = (_environment_record.get("run_config") or {}).get("full_compiler_manifest_sha256", "")
+        if (prior_access, prior_manifest) != (a.compiler_access, a.full_compiler_manifest_sha256):
+            raise RuntimeError("resume refused: editable compiler source selection changed")
+        prior_reference = (_environment_record.get("run_config") or {}).get("reference_experiments_sha256", "")
+        if prior_reference != a.reference_experiments_sha256:
+            raise RuntimeError("resume refused: reference experiment feedback selection changed")
+        prior_tasks = (_environment_record.get("run_config") or {}).get("reference_experiments_tasks", "on")
+        if prior_tasks != a.reference_experiments_tasks:
+            raise RuntimeError("resume refused: reference experiment task serving changed")
+        from .feedback.capsule_certification import verify_scope
+
+        verify_scope(getattr(a, "validation_scope", "full"), _environment_record)
         verify_readback_record(context, _environment_record.get("readback_policy"))
+        hidden_capsule_policy.verify_record(
+            _hidden_capsule_policy,
+            _environment_record.get("hidden_capsule_validation"),
+        )
         _verify_public_build_budget(a, _environment_record)
+        AC.verify_live_selection(a, _environment_record)
+        _verify_client_selection(a, _environment_record)
         _implementation_sources = _environment_record.get("implementation_sources")
         SI.verify(_implementation_sources, **_source_context)
     else:
@@ -453,6 +717,9 @@ def prepare(
     # this invocation is about to replace, refuse before ``rmtree`` can erase the only copy.
     _seed_source_preflight = None
     _seed_source = a.qualify_submission or a.seed_submission
+    if getattr(a, "joint_epoch", "") and not _resuming:
+        from .joint_epochs import selected as selected_epoch
+        _seed_source = selected_epoch(a)["source"]
     if _seed_source:
         _seed_source_preflight = RI.validate_seed_submission_source(_seed_source, ws / "submission")
     # Never infer abandonment from a stale directory or a missing run record. It may contain the only
@@ -464,6 +731,9 @@ def prepare(
 
     workspace_leases.append(_storage.acquire(ws_root, owner="phase1-qa-workspace"))
     run_dir.mkdir(parents=True, exist_ok=True)
+    _guard_receipt = run_dir / f"snapshot_guard_preflight.{_guard_preflight['observed_at_ns']}.json"
+    with _guard_receipt.open("x", encoding="utf-8") as stream:
+        json.dump(_guard_preflight, stream, sort_keys=True, indent=2)
     # The compiler history lives beside the run record, outside the agent's writable workspace. Only a
     # sandboxed run keeps one: copy mode is a diagnostic that launches no tools and is never admitted.
     if a.sandbox == "bwrap":
@@ -506,11 +776,45 @@ def prepare(
     else:
         assembly = transport.assemble(bundle, ws, a.sandbox, context=context)
         denied_names, viol, copy_report = assembly.denied_names, assembly.violations, assembly.copy_report
+    from . import public_software_declaration as PSD
+
+    _public_software = (
+        _environment_record.get(PSD.KEY)
+        if _resuming
+        else (PSD.stage(ws, bundle, repo=context.repo) if a.sandbox == "bwrap" else None)
+    )
+    PSD.verify(_public_software, ws, bundle, repo=context.repo)
     _seed_submission_record = None
-    if _seed_source:
+    if getattr(a, "joint_epoch", "") and not _resuming:
+        from .joint_epochs import seed as seed_epoch
+        _seed_submission_record = seed_epoch(a, ws, run_dir)
+    elif a.joint_campaign and a.seed_submission:
+        from .joint_seed import stage as stage_reviewed_seed
+        _seed_submission_record = stage_reviewed_seed(a, ws, run_dir)
+    elif _seed_source:
         _seed_submission_record = RI.seed_submission(
-            ws, _seed_source_preflight, run_dir, require_stable_source=bool(a.qualify_submission)
+            ws,
+            _seed_source_preflight,
+            run_dir,
+            require_stable_source=bool(a.qualify_submission),
+            require_lineage=bool(a.seed_submission),
         )
+    _full_compiler_record = None
+    if a.compiler_access == "full_compiler":
+        from . import full_compiler_workspace as FCW
+
+        selection = FCW.select(a.full_compiler_root, a.full_compiler_manifest, a.full_compiler_manifest_sha256)
+        if _author_profile is not None:
+            AP.verify_sources(_author_profile, selection, bundle=bundle)
+        if _resuming:
+            _full_compiler_record = _environment_record.get("full_compiler_workspace")
+            if (not isinstance(_full_compiler_record, dict)
+                    or _full_compiler_record.get("selection") != selection.record()):
+                raise RuntimeError("resume refused: full compiler baseline selection changed")
+        else:
+            _full_compiler_record = FCW.stage(selection, ws / "submission")
+    if _author_profile is not None:
+        AP.stage_record(ws, run_dir, _author_profile, selection if a.compiler_access == "full_compiler" else None)
     _bundle_snapshot_record = None
     _model_host_lane_snapshot = None
     _hidden_snapshot_record = None
@@ -518,6 +822,15 @@ def prepare(
     _corpus_review = None
     _semantic_model_snapshot = None
     _semantic_diagnostic = None
+    _selected_public_facts = None
+    if a.sandbox == "bwrap":
+        from merlin.common.bundle_snapshot import verified_snapshot_scope
+
+        # Assembly and seed staging are complete. The scope reuses only verified
+        # immutable snapshot content within this preparation and rehashes it fully
+        # on close, including every refusal/exception, before anything is returned.
+        snapshot_scopes.enter_context(verified_snapshot_scope(ws, bundle, repo=context.repo))
+
     if _corpus_seal and a.sandbox != "bwrap":
         raise RuntimeError("sealed corpus admission requires a verified native bwrap input snapshot")
     if a.sandbox == "bwrap":
@@ -538,11 +851,15 @@ def prepare(
         _bundle_snapshot_record = _BWS.snapshot_record(ws)
         from .frozen_facts import select as select_frozen_facts
 
-        select_frozen_facts(ws, _BWS.frozen_selected_rtl_facts(ws, bundle, repo=context.repo))
+        _selected_public_facts = _BWS.frozen_selected_rtl_facts(ws, bundle, repo=context.repo)
+        select_frozen_facts(ws, _selected_public_facts)
         _corpus_view = CI.resolve(ws, bundle, _corpus_record, repo=context.repo, reviewed_roots=_reviewed_corpus_roots)
         _verify_phase0_handoff(_corpus_review, _corpus_view.workload_coverage)
         _public_root, _policy_root = _corpus_view.public, _corpus_view.policy
         _contract_root = _corpus_view.contract
+        from .feedback.public_scalability import install as install_scalability
+
+        install_scalability(_te(), _corpus_view.scalability)
         if _corpus_seal:
             from . import semantic_diagnostics as _SD
 
@@ -598,6 +915,18 @@ def prepare(
         _hidden_snapshot_record = RI.subtree_snapshot_record(_hidden_dir)
         if _hidden_snapshot_record["n_capsules"] <= 0:
             raise RuntimeError(f"hidden capsule snapshot contains no capsules: {_hidden_snapshot_record['path']}")
+        if _corpus_seal and not _resuming:
+            from ..phase0.coverage_commitment import admitted_source_roots
+            from .trace_readiness import require_ready as require_trace_ready
+
+            require_trace_ready(
+                admitted_source_roots(_policy_root, _public_root, contract=_contract_root),
+                target=context.target,
+                contract=_contract_root,
+                output=run_dir / "trace_readiness.json",
+                hidden_roots=_hidden_dir,
+                expected_hidden_capsules=_hidden_snapshot_record["n_capsules"],
+            )
         if _te_setup.host_lane is not None:
             _, _model_host_lane_snapshot = _te_setup.resolve_host_lane(root=_snapshot_root / "repo")
             _model_host_lane_snapshot["run_snapshot"] = _bundle_snapshot_record
@@ -614,8 +943,6 @@ def prepare(
     _private_full_model_spec = None
     _private_full_model_record = None
     if a.private_full_model_spec:
-        from merlin.compile.model_execution_inputs import file_sha256
-
         _private_source = Path(a.private_full_model_spec).absolute()
         if _private_source.is_symlink() or not _private_source.is_file():
             raise RuntimeError("operator-private full-model specification is absent or indirect")
@@ -636,6 +963,39 @@ def prepare(
         }
     if _resuming and _environment_record.get("private_full_model_spec") != _private_full_model_record:
         raise RuntimeError("resume refused: operator-private full-model specification changed")
+
+    from .feedback import private_instruction_declaration
+
+    _instruction_selection, _instruction_record = private_instruction_declaration.freeze_for_run(
+        a.instruction_selection,
+        target=context.target,
+        run_dir=run_dir,
+        prior=_environment_record.get("private_instruction_selection") if _resuming else None,
+        resuming=_resuming,
+    )
+    from .feedback import private_result_format_selection
+
+    _, _native_result_record = private_result_format_selection.freeze_for_run(
+        a.native_result_format_selection,
+        target=context.target,
+        run_dir=run_dir,
+        prior=_environment_record.get("native_result_format_selection") if _resuming else None,
+        resuming=_resuming,
+    )
+
+    # Operator-side selfcheck brokers inherit the same pinned host build inputs as formal grading.
+    # Install before authoring; preparing only during formal grading is too late for selfchecks.
+    from .feedback import public_owned_host_selection
+
+    public_owned_host_selection.install_for_session(
+        _private_full_model_spec,
+        _instruction_selection,
+        target=context.target,
+        run_dir=run_dir,
+        selected_facts=_selected_public_facts,
+        selected_facts_sha256=file_sha256(_selected_public_facts) if _selected_public_facts is not None else None,
+        descriptor=context.descriptor,
+    )
 
     if _resuming and _environment_record.get("corpus_review") != _corpus_review:
         raise RuntimeError("resume refused: operator corpus-review identity changed or was removed")
@@ -664,6 +1024,11 @@ def prepare(
     if _resuming and _environment_record.get("public_object_build_selection") != _public_build_selection_record:
         raise RuntimeError("resume refused: public object-build tool/source selection changed")
 
+    _library_binding = CL.freeze_for_run(
+        request, run_dir, prior=_environment_record.get(CL.KEY) if _resuming else None, resuming=_resuming
+    )
+    _library_identity = CL.encoded(_library_binding)
+
     # Stage every prompt/document before provenance is written.  On resume these bytes are NEVER rebuilt
     # from the current worktree; they must match the treatment record from the first invocation.
     if not _resuming:
@@ -671,10 +1036,81 @@ def prepare(
             treatment.stage_task(arm, ws, run_dir, sandbox=a.sandbox, bundle_dir=bundle_dir)
         else:
             stage_task(arm, ws, run_dir, sandbox=a.sandbox, task_scope=_task_scope_record, policy_root=_policy_root)
+        from merlin.targetgen.public_codegen_budget import policy_from_profile, require_public_members
+
+        from .resource_prompt import append_resource_guidance
+
+        resource_policy = policy_from_profile(bundle.get("compiler_tool_profile") or {})
+        if resource_policy is not None:
+            from merlin.targetgen.capsule_common import discover_capsules
+
+            public_members = discover_capsules(
+                [_policy_root] if _policy_root is not None else _te().graded_roots(),
+                labels={"public", "dev"},
+                contract=_contract_root or context.repo / "merlin/contract",
+            )
+            excluded = set(_te().effective_exclusions(row.get("name") for row in public_members))
+            require_public_members(
+                resource_policy, (row.get("name") for row in public_members if row.get("name") not in excluded)
+            )
+        if _author_profile is not None and not _author_profile.fresh10:
+            from .profile_guidance import append_profile_guidance
+
+            append_profile_guidance(
+                ws, run_dir, a, context=context,
+                public_roots=[_public_root] if _public_root is not None else _te().graded_roots(),
+                contract=_contract_root or context.repo / "merlin/contract",
+            )
+        else:
+            append_resource_guidance(
+                ws,
+                run_dir,
+                a,
+                **({"public_codegen_policy": resource_policy} if resource_policy is not None else {}),
+                **({"task_staging_config": request.task_staging_config} if request.task_staging_config is not None else {}),
+            )
     elif not (ws / "TASK.md").is_file():
         raise RuntimeError("resume refused: sealed workspace TASK.md is missing")
 
+    if not _resuming:
+        CL.append_guidance(ws, run_dir, _library_binding, request.compiler_library_selection,
+                           repo=context.repo, descriptor=context.descriptor,
+                           staging_record=_full_compiler_record)
+        PSD.append_guidance(_public_software, ws, run_dir)
+        from .capability_inventory import stage_selected as stage_capabilities
+
+        capability_append = (stage_capabilities if _author_profile is None or _author_profile.modern or _author_profile.fresh10
+                             else (lambda *args, **kwargs: None))
+        capability_append(
+            ws, run_dir, context=context,
+            public_roots=[_public_root] if _public_root is not None else _te().graded_roots(),
+            contract=_contract_root or context.repo / "merlin/contract",
+            excluded=_te().effective_exclusions,
+        )
+    if not _resuming:
+        from .construction_study import stage as stage_study
+        from .feedback.reference_experiments import stage_guidance
+        from .feedback.reference_map import stage as stage_reference_map
+
+        stage_reference_map(ws, run_dir)  # the same pinned map in every arm, before the selection's section
+        stage_guidance(ws, run_dir)
+        stage_study(ws, run_dir, a)
+        if _author_profile is not None and _author_profile.fresh10:
+            from . import fresh10_disclosure
+
+            fresh10_disclosure.stage_task(ws, run_dir, _author_profile.name, a)
+        _skills_record = _run_config.get(SK.KEY) or {}
+        if (CTX.selection(a) or {}).get("task_skills"):
+            from .task_disclosure import stage as stage_disclosure
+
+            # after every TASK.md append, before the treatment seal; staged author skills carry the
+            # feedback-file guide, so the generated one is left out
+            stage_disclosure(ws, run_dir, feedback=not _skills_record.get("enabled"))
+        if _skills_record.get("enabled"):
+            SK.stage(ws, run_dir, _skills_record)  # beside the task-* skills, before the treatment seal
     _resolved_tool_ids = request.resolved_tools()
+    CL.verify(request, {CL.KEY: _library_binding}, _library_identity)
+    verify_tool_profile(bundle, tools=tuple(_resolved_tool_ids))
     if (
         _hidden_snapshot_record is not None
         and _hidden_snapshot_record["n_capsules"] != _task_scope_record["held_out_capsules"]
@@ -687,6 +1123,9 @@ def prepare(
     if _resuming:
         _identity = {
             "run_id": a.run_id,
+            "lineage_id": (
+                ((_environment_record.get("seed_submission") or {}).get("lineage") or {}).get("lineage_id") or a.run_id
+            ),
             "arm": arm,
             "sandbox": a.sandbox,
             "bundle_id": bundle["bundle_id"],
@@ -736,8 +1175,14 @@ def prepare(
             contract_root=_contract_root,
         )
     if not _resuming:
+        from .providers.codex_runtime import select as select_client
+
+        _backend_origin = FB.origin(a, ws, compiler_library=request.compiler_library_selection)
+        _library_snapshot = CL.verify(request, {CL.KEY: _library_binding}, _library_identity)
+        _client_runtime = select_client(a, context, bundle, ws, run_dir, compiler_library_selection=_library_snapshot)
         _environment_record = {
             "run_id": a.run_id,
+            "lineage_id": ((_seed_submission_record or {}).get("lineage") or {}).get("lineage_id") or a.run_id,
             "arm": arm,
             "model": a.model,
             "effort": a.effort,
@@ -749,8 +1194,14 @@ def prepare(
             "background_model": a.background_model or None,
             "sandbox": a.sandbox,
             "qa_loop": not bool(a.qualify_submission),
+            "validation_scope": getattr(a, "validation_scope", "full"),
             **({"qualification_only": True} if a.qualify_submission else {}),
             "run_config": _run_config,
+            **({"full_compiler_workspace": _full_compiler_record} if _full_compiler_record is not None else {}),
+            **({CL.KEY: _library_binding} if _library_binding is not None else {}),
+            **({PSD.KEY: _public_software} if _public_software is not None else {}),
+            "hidden_capsule_validation": _hidden_capsule_policy,
+            **({"codex_runtime_policy": _client_runtime.record()} if _client_runtime is not None else {}),
             **(
                 {"public_object_build_selection": _public_build_selection_record}
                 if _public_build_selection_record is not None
@@ -762,6 +1213,7 @@ def prepare(
             "workspace_path": str(ws),
             "workspace_copy_report": copy_report,
             "seed_submission": _seed_submission_record,
+            **({"backend_origin": _backend_origin} if _backend_origin is not None else {}),
             "operator_errata": _operator_errata_record,
             "bundle_input_snapshot": _bundle_snapshot_record,
             "bundle_manifest_sha256": _bundle_manifest_sha256,
@@ -772,12 +1224,15 @@ def prepare(
             "hidden_capsule_snapshot": _hidden_snapshot_record,
             "model_host_lane_snapshot": _model_host_lane_snapshot,
             "private_full_model_spec": _private_full_model_record,
+            "private_instruction_selection": _instruction_record,
+            **({"native_result_format_selection": _native_result_record} if _native_result_record is not None else {}),
             "repo_sha": repo_sha(repo=context.repo),
             "bundle_id": bundle["bundle_id"],
             "condition": bundle.get("condition", "legacy"),
             # The explicit list remains convenient for analysis; treatment_snapshot binds it to the
             # source declarations and to the exact task/docs that instructed the agent.
             "resolved_tools": list(_resolved_tool_ids),
+            **({"compiler_tool_profile": _compiler_tool_profile} if _compiler_tool_profile is not None else {}),
             "treatment_snapshot": _treatment_snapshot,
             "implementation_sources": _implementation_sources,
             "invocation_treatment": _invocation_treatment,
@@ -814,6 +1269,15 @@ def prepare(
     from merlin.targetgen import capsule_runner as _CRpf
 
     _te_pf = _te()
+    if context.readback_policy is not None and not a.no_oracle:
+        from merlin.targetgen.contract.readback_policy import MEMORY_TRANSPORTS
+
+        from .context import readback_kwargs
+
+        if context.readback_policy in MEMORY_TRANSPORTS:
+            # Construct the original full ladder before authoring; a global
+            # memory override must be supported by every selected engine.
+            _CRpf.qa_checkpoint_adapters(_te_pf.target, _te_pf.sim_via, **readback_kwargs(context))
     _ora_ok, _ora_why = _CRpf.oracle_available(_te_pf.target, _te_pf.sim_via)
     (run_dir / "oracle_preflight.yaml").write_text(
         yaml.safe_dump(
@@ -874,18 +1338,27 @@ def prepare(
     # The receipt is host-private, and a failed probe refuses before authoring.
     from . import tooling_readiness as _TRpf
 
-    _tooling = _TRpf.run(
-        context,
-        _te_pf,
-        ws,
-        bundle,
-        tuple(_resolved_tool_ids),
-        _public_root,
-        run_dir,
-        _bundle_snapshot_record,
-        _bundle_manifest_sha256,
-        without_tools=tuple(a.without_tool),
-    )
+    if a.qualify_submission:
+        _tooling = {
+            "status": "not_required",
+            "checks": [],
+            "scope": "unpaid frozen-submission qualification starts no author or authoring-tool clients; "
+            "formal compiler, oracle, isolation and input-integrity gates remain required",
+        }
+        (run_dir / "tooling_readiness.yaml").write_text(yaml.safe_dump(_tooling, sort_keys=False))
+    else:
+        _tooling = _TRpf.run(
+            context,
+            _te_pf,
+            ws,
+            bundle,
+            tuple(_resolved_tool_ids),
+            _public_root,
+            run_dir,
+            _bundle_snapshot_record,
+            _bundle_manifest_sha256,
+            without_tools=tuple(a.without_tool),
+        )
     if _tooling["status"] == "no_go":
         failed = [f"{check['name']}: {check['detail']}" for check in _tooling["checks"] if not check["ok"]]
         print(
@@ -945,4 +1418,6 @@ def prepare(
         transport,
         stage_task,
         _private_full_model_spec,
+        _instruction_selection,
+        _library_identity,
     )

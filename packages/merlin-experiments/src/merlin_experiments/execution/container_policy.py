@@ -68,7 +68,57 @@ def mount_from_source(source: Path, destination: str, *, read_only: bool) -> Con
     return result
 
 
-def mounts_from_strict_policy(argv: tuple[str, ...]) -> tuple[ContainerMount, ...]:
+def selected_environment(values):
+    """Validate bounded original process data, never grant an environment policy."""
+    if type(values) is not tuple or len(values) > 32:
+        raise StageGateError("selected container environment requires bounded immutable pairs")
+    result = {}
+    for row in values:
+        if type(row) is not tuple or len(row) != 2:
+            raise StageGateError("selected container environment requires exact name/value pairs")
+        key, value = row
+        if (
+            type(key) is not str
+            or not key
+            or len(key) > 128
+            or any(not (c.isascii() and (c.isalnum() or c == "_")) for c in key)
+            or type(value) is not str
+            or len(value.encode()) > 8192
+            or any(c in value for c in "\x00\n\r")
+            or key in result
+        ):
+            raise StageGateError("selected container environment contains invalid or duplicate data")
+        result[key] = value
+    return result
+
+
+def mounts_from_strict_policy(
+    argv: tuple[str, ...],
+    *,
+    original_environment: tuple[tuple[str, str], ...] | None = None,
+) -> tuple[ContainerMount, ...]:
+    mounts, _ = _convert_strict_policy(argv, original_environment=original_environment)
+    return mounts
+
+
+@dataclass(frozen=True)
+class ContainerPolicyPlan:
+    mounts: tuple[ContainerMount, ...]
+    namespace_masks: tuple[str, ...]
+    environment: tuple[tuple[str, str], ...]
+
+
+def prepare_strict_policy(argv, *, original_environment, mask_workspace):
+    """Consume explicit original masks without granting a broader source view."""
+    expected = selected_environment(original_environment)
+    root = Path(mask_workspace)
+    if root.is_symlink() or root.resolve() != root or not root.is_dir() or any(root.iterdir()):
+        raise StageGateError("container masks require an empty canonical private owner")
+    mounts, masks = _convert_strict_policy(argv, original_environment=original_environment, mask_workspace=root)
+    return ContainerPolicyPlan(mounts, masks, tuple(expected.items()))
+
+
+def _convert_strict_policy(argv, *, original_environment=None, mask_workspace=None):
     """Consume the exact current component tool policy language, without executing it.
 
     The caller must verify the original ComponentView/runtime/candidate owners;
@@ -84,9 +134,11 @@ def mounts_from_strict_policy(argv: tuple[str, ...]) -> tuple[ContainerMount, ..
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONNOUSERSITE": "1",
     }
+    if original_environment is not None:
+        environment = selected_environment(original_environment)
     if not argv:
         raise StageGateError("container conversion needs the verified original tool policy")
-    observed, seen_env, seen_scopes, mounts, cwd = set(), {}, {}, [], None
+    observed, seen_env, seen_scopes, mounts, cwd, masks = set(), {}, {}, [], None, []
     index = 1
     try:
         while index < len(argv):
@@ -103,13 +155,38 @@ def mounts_from_strict_policy(argv: tuple[str, ...]) -> tuple[ContainerMount, ..
                 seen_env[key] = value
                 index += 3
             elif flag in scopes:
+                if flag == "--tmpfs" and argv[index + 1] != scopes[flag]:
+                    if mask_workspace is None:
+                        raise StageGateError("original namespace mask has no explicit container owner")
+                    target = PurePosixPath(argv[index + 1])
+                    if (
+                        not target.is_absolute()
+                        or str(target) != argv[index + 1]
+                        or ".." in target.parts
+                        or str(target) in {"/", "/dev", "/proc", "/sys"}
+                    ):
+                        raise StageGateError("unsupported original namespace mask")
+                    if str(target) in masks or len(masks) >= 256:
+                        raise StageGateError("duplicate or excessive original namespace masks")
+                    masks.append(str(target))
+                    index += 2
+                    continue
                 if flag in seen_scopes:
                     raise StageGateError("duplicate original namespace grant")
                 seen_scopes[flag] = argv[index + 1]
                 index += 2
             elif flag in ("--ro-bind", "--bind"):
                 source, destination = argv[index + 1 : index + 3]
+                if source == "/dev/null" and flag == "--ro-bind" and mask_workspace is not None:
+                    if len(mounts) >= 2048:
+                        raise StageGateError("original container mask/mount roster exceeds its bound")
+                    empty = mask_workspace / "empty-mask"
+                    if not empty.exists():
+                        empty.write_bytes(b"")
+                    source = str(empty)
                 mounts.append(mount_from_source(Path(source), destination, read_only=flag == "--ro-bind"))
+                if len(mounts) > 2048:
+                    raise StageGateError("original container mount roster exceeds its bound")
                 index += 3
             elif flag == "--chdir":
                 if cwd is not None:
@@ -124,7 +201,7 @@ def mounts_from_strict_policy(argv: tuple[str, ...]) -> tuple[ContainerMount, ..
         raise StageGateError("original tool policy is missing its closed isolation/environment scopes")
     if cwd is None or cwd not in {row.destination for row in mounts}:
         raise StageGateError("original tool policy lacks its exact mounted working directory")
-    return tuple(mounts)
+    return tuple(mounts), tuple(masks)
 
 
 def verify_owned_container(row, *, image_id, name, token):
@@ -141,7 +218,7 @@ def verify_owned_container(row, *, image_id, name, token):
     return identity
 
 
-def _verify_created_container(row, *, image_id, mounts, command, cwd, timeout_s, masks):
+def _verify_created_container(row, *, image_id, mounts, command, cwd, timeout_s, masks, environment=None):
     config, host = row["Config"], row["HostConfig"]
     expected = {
         "NetworkMode": "none",
@@ -175,3 +252,10 @@ def _verify_created_container(row, *, image_id, mounts, command, cwd, timeout_s,
         != {(str(item.source), item.destination, not item.read_only) for item in mounts}
     ):
         raise StageGateError("owned container differs from its exact original isolation/mount/command plan")
+    if environment is not None:
+        actual = config.get("Env")
+        if type(actual) is not list or any(type(value) is not str or "=" not in value for value in actual):
+            raise StageGateError("owned container omitted its original selected environment")
+        observed = selected_environment(tuple(tuple(value.split("=", 1)) for value in actual))
+        if observed != selected_environment(environment):
+            raise StageGateError("owned container changed its original selected environment")

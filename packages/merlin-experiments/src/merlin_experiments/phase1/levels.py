@@ -67,6 +67,22 @@ LEVELS = (
         "treatment": "rtlchecks",
         "parent": "EL4",
     },
+    {
+        "id": "EL5",
+        "name": "RTL + ISA-derived instruction dialect",
+        "bundle_arm": "merlin_isa",
+        "runner_arm": "merlin_assisted",
+        "treatment": "rtlchecks",
+        "parent": "EL4",
+    },
+    {
+        "id": "EL6",
+        "name": "ISA generation + interactive Lean proof tooling",
+        "bundle_arm": "merlin_lean",
+        "runner_arm": "merlin_assisted",
+        "treatment": "rtlchecks",
+        "parent": "EL5",
+    },
 )
 
 _BY_ARM = {level["bundle_arm"]: level["id"] for level in LEVELS}
@@ -121,7 +137,7 @@ def level_for_phase1(config: Mapping[str, object]) -> str | None:
         matches = [name for name, stem in _ALL_ARMS.items() if bundle.startswith(stem + "_")]
         if matches:
             selected = max(matches, key=lambda name: len(_ALL_ARMS[name]))
-            if selected in {"merlin_rtlchecks", "merlin_pass_catalog"}:
+            if selected in {"merlin_rtlchecks", "merlin_pass_catalog", "merlin_isa", "merlin_lean"}:
                 inferred = _BY_ARM[selected] if arm == "merlin_assisted" and treatment == "rtlchecks" else None
                 return inferred if declared in (None, inferred) else None
             if selected in {"merlin_assisted", "merlin_eqsat", "merlin_verify"}:
@@ -134,6 +150,8 @@ def level_for_phase1(config: Mapping[str, object]) -> str | None:
         if declared == "EL4-P" and treatment == "rtlchecks":
             inferred = declared
         if declared in ("EL3-E", "EL4-V") and treatment == "baseline":
+            inferred = declared
+        if declared in ("EL5", "EL6") and treatment == "rtlchecks":
             inferred = declared
     else:
         inferred = _BY_ARM.get(arm) if treatment == "baseline" else None

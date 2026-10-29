@@ -90,3 +90,37 @@ def bind_host_transform_chain(recipe: Path, receipt: Path, *, source: Path, sele
     record["host_transform_chain"] = _identity(receipt)
     record["selected_host_llvm_ir"] = output
     write_pretty_json(recipe, record)
+
+
+def bind_ciface_annotation(recipe: Path, before: str, after: str, report: dict) -> None:
+    """Extend the returned witness through the ordinary ABI annotation only.
+
+    Retain the upstream witness and independently reproduce the exact annotation.
+    This does not authorize arbitrary text changes or alter any lifetime premise.
+    """
+    from . import ciface_inline
+
+    def identity(text: str) -> dict:
+        payload = text.encode("utf-8")
+        return {"sha256": sha256_bytes(payload), "bytes": len(payload)}
+
+    record = json.loads(recipe.read_text())
+    selected, expected = ciface_inline.inline_wide_ciface_implementations(before)
+    if (
+        record.get("schema") != "merlin.lowering_recipe.v1"
+        or record.get("status") != "returned"
+        or record.get("returned_llvm_ir") != identity(before)
+        or selected != after
+        or expected != report
+        or "ciface_boundary_inline" in record
+    ):
+        raise ValueError("ABI annotation differs from the actual returned LLVM and ordinary repair")
+    record["upstream_returned_llvm_ir"] = identity(before)
+    record["returned_llvm_ir"] = identity(after)
+    record["ciface_boundary_inline"] = {
+        "input": identity(before),
+        "selected": identity(after),
+        "report": report,
+        "implementation": _identity(Path(ciface_inline.__file__)),
+    }
+    write_pretty_json(recipe, record)

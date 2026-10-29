@@ -7,6 +7,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | package | purpose |
 |---|---|
 | `merlin` | merlin: compiler-centered HW/SW abstraction exploration. |
+| `merlin.agentreport.campaign` | Campaign figure: one agentic compiler-construction campaign drawn as a single stitched run. |
 | `merlin.agentreport.phase1` | Post-hoc Phase 1 run, treatment and model reports with explicit artifact inputs. |
 | `merlin.baselines` | External-baseline K1-RVV comparison harness. |
 | `merlin.baselines.exo_kernels` | EXO kernel sources for the K1-RVV whole-model baseline arm. |
@@ -15,6 +16,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.common` | Shared utilities: schema loading/validation, IO, common types. |
 | `merlin.compare` | merlin.compare — unified, spec-driven, versioned comparison driver. |
 | `merlin.compile` | Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, and mesh execution. |
+| `merlin.compile.analysis` | Target-agnostic analyses that derive facts from IR, shapes and a target's own derived tables. |
 | `merlin.compile.scheduling` | Scheduling passes over a target's derived on-chip geometry. |
 | `merlin.design_pressure` | Design-pressure analysis: workload region -> cutpoints -> pressure metrics -> emitted reports. |
 | `merlin.design_pressure.cutpoints` | Compiler cut points for analysis: the IR levels a workload region is observed at (graph, linalg, dispatch, bufferized, loop, trace), one module per cut point. |
@@ -40,6 +42,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.liveness` | HW-agnostic *liveness / progress* oracle — an L2.5 tier between functional (L2) and RTL (L3). |
 | `merlin.llvmlower` | Whole-model lowering: linalg-on-tensors MLIR -> LLVM IR -> RVV objects. |
 | `merlin.mining` | RVV target-package machinery: fork an iteration of the RVV codegen (a transform-dialect SCHEDULE + cflags, captured as data), build it in isolation, measure it on coupled targets (spike correctness +… |
+| `merlin.model_check` | Build, run and judge complete quantized models for a device submission. |
 | `merlin.perf` | The performance layer: what a target's legal choices cost. |
 | `merlin.perf.deps` | Dependence primitives: what an instruction defines and uses, what is live, and what that costs. |
 | `merlin.perf.layer_bench` | Per-layer RTL evidence: build one small layer program, run it on a cycle-accurate engine, keep the receipt. |
@@ -57,7 +60,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.sched.codegen` | Emit a kernel as one C function: counted loops around the target's own instruction statements. |
 | `merlin.sched.contract` | Numerics contracts (see :mod:`merlin.sched.contract.registry`). |
 | `merlin.sched.ir` | Kernel IR ``mk``: loop nests over a target's schedule instructions (see ``kernel`` and ``expr``). |
-| `merlin.sched.isa` | A target's schedule instruction set: the calls a kernel schedule may make, and how each is checked. |
+| `merlin.sched.isa` | Instruction declarations and the legacy explicit backend lookup bridge. |
 | `merlin.sched.mach` | The machine a schedule is written against. |
 | `merlin.sched.primitives` | The scheduling language: semantics-preserving rewrites of a kernel, each with a proof obligation. |
 | `merlin.semantic_compiler` | Typed, target-independent native semantic compiler components. |
@@ -66,9 +69,9 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.targetgen.contract` | Experiment-ABI contract layer. |
 | `merlin.targetgen.evidence` | Evidence layer: deterministically discover source files and detect concepts. |
 | `merlin.targetgen.fixed_format` | Building device images for targets whose ISA is a fixed-format re-encoding of a stock one. |
-| `merlin.targetgen.generate` | Generate the merlin-target-<name>/ repository skeleton and its artifacts. |
+| `merlin.targetgen.generate` | Lazy public compiler generators; selected components do not import sibling tools. |
 | `merlin.targetgen.ingest` | Ingest layer: record TargetGen inputs as a SourceManifest. |
-| `merlin.targetgen.oot_starterkit` | OOT starter kit — hw-agnostic, answer-free framework plumbing for authoring an MLIR OOT backend. |
+| `merlin.targetgen.oot_starterkit` | Lazy, target-neutral authoring plumbing and separately selectable transforms. |
 | `merlin.targetgen.oracle_helpers` | Target-independent subprocess helpers for program execution and ISA introspection. |
 | `merlin.targetgen.rocc` | The RoCC coprocessor interface: decoding a trace of it, and emitting one. |
 | `merlin.targetgen.rtl` | merlin-rtl-introspect: extract structure-only facts from elaborated RTL (CIRCT/FIRRTL). |
@@ -76,9 +79,10 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.targetgen.semantic_search` | Bounded semantic instruction selection and scratchpad allocation. |
 | `merlin.targetgen.synthesize` | Synthesize the five plan artifacts from collected evidence. |
 | `merlin.targetgen.validate` | Validation layer: check synthesized plans + the generated repo, render a report. |
+| `merlin.transforms` | Target-independent xDSL transformations with explicit verification handoff. |
 | `merlin.triton` | Triton as a target-independent KERNEL FRONTEND to Merlin (not a per-target backend). |
 | `merlin.validation` | Structural/artifact validation for generated target repos + contract plans. |
-| `merlin.verify` | Compiler-pass verification: the static (lit/FileCheck) and formal (SMT) layers. |
+| `merlin.verify` | Compiler-pass verification: static (lit/FileCheck) and formal (SMT/Lean) checks. |
 | `merlin.verify.lean` | Python side of the Lean verification layer: stage capture, certificates, export and receipts. |
 | `merlin.xdsl_dialects` | merlin's core dialects in xDSL (the default prototyping plane). |
 | `merlin.xdsl_dialects.lowering` | Staged lowering across the core dialects. |
@@ -93,9 +97,15 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin_experiments.phase1.brokers` | Host-only Phase-1 tool brokers; public clients remain in merlin.benchharness. |
 | `merlin_experiments.phase1.feedback` | Host-only functional feedback, independent grading and certificate promotion. |
 | `merlin_experiments.phase1.providers` | Host-only agent transports; import individual providers to observe their runtime defaults. |
+| `merlin_experiments.phase1.seed_prep` | (no module docstring — add one) |
 | `merlin_experiments.phase1.telemetry` | Host-owned phase-1 timeline analysis, retained evidence and timing reports. |
 | `merlin_experiments.phase1.tools` | Public standalone Phase 1 clients, copied individually into candidate workspaces. |
 | `merlin_experiments.phase2` | Performance experiment contracts and frozen functional admission. |
 | `merlin_experiments.phase2.claims` | Measured-claim decisions; frozen declaration identities are not Python import APIs. |
 | `merlin_experiments.phase2.whole_model_measured` | Phase 2 ``whole_model_measured`` mode: a candidate compiler measured as a WHOLE MODEL on hardware. |
+| `merlin_experiments.post_freeze` | Operator preparation and evidence intake after compiler freezing. |
+| `merlin_experiments.timing_probes` | Operator timing-calibration probes, derived from a target's own timing space and data. |
 | `merlin_experiments.tracking` | Experiment tracking views: a static HTML dashboard and a live terminal view, from records only. |
+| `merlin_experiments.tracking.console` | The experiment command console: discover, track, inspect and diagnose any experiment from its records. |
+| `merlin_experiments.tracking.console.sources` | Console sources: one bounded, read-only reader per concern, each ``read(ctx) -> section``. |
+| `merlin_timing` | Portable timing calibration and validation without compiler dependencies. |

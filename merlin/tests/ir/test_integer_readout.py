@@ -137,3 +137,64 @@ def test_narrow_domain_repeated_sentinel_and_proof_tampering():
 def test_refuse_nonmonotone_or_invalid_scales(scales):
     with pytest.raises(ValueError):
         derive(scales)
+
+
+@pytest.mark.parametrize("scale", [1.0, 0.0625, 0.125, 0.4307985291804076, 0.75])
+@pytest.mark.parametrize("relu", [False, True])
+def test_rational_scalar_ir_consumed_with_complete_transition_boundary_inputs(scale, relu):
+    from merlin.llvmlower.integer_readout import emit_rational_scalar_ir
+    from merlin.compile.scheduling.dense_contracts import DenseIntegerReadout
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.runtime.linalg_numpy import evaluate as evaluate_ir
+
+    ir, receipt = emit_rational_scalar_ir([scale], relu=relu)
+    graph = DenseIntegerReadout(ir, "i8", "neutral_readout", ()).graph()
+    assert graph.input_bits == (32,) and graph.output_bits == 8
+    points = {-(1 << 31), (1 << 31) - 1, -24, -8, 0, 8, 24}
+    for threshold in receipt["source"]["thresholds"]:
+        points.update(x for x in (threshold - 1, threshold, threshold + 1)
+                      if -(1 << 31) <= x < (1 << 31))
+    values = np.array(sorted(points), dtype=np.int32)
+    actual, = evaluate_ir(parse_mlir_text(ir), [values])
+    # The source oracle computes binary32 conversion/multiply/nearest-even,
+    # independently of the emitted integer operations and proof partition.
+    expected = [quantized(int(x), [scale], relu) for x in values]
+    assert actual.tolist() == expected
+
+
+@pytest.mark.parametrize("scales", [[0.01], [1e-9], [2.0 ** -25], [2.0 ** 40]])
+def test_rational_refuses_double_rounding_or_integer_range(scales):
+    from merlin.llvmlower.integer_readout import emit_rational_scalar_ir
+    with pytest.raises(ValueError, match="no exact signed-i64"):
+        emit_rational_scalar_ir(scales)
+
+
+@pytest.mark.parametrize("scales", [[0], [-0.5], [float("inf")], [float("nan")]])
+def test_rational_refuses_nonpositive_scale(scales):
+    from merlin.llvmlower.integer_readout import emit_rational_scalar_ir
+    with pytest.raises(ValueError, match="positive finite"):
+        emit_rational_scalar_ir(scales)
+
+
+@pytest.mark.parametrize("shift", [-1, 64])
+def test_readout_refuses_poison_constant_shifts(shift):
+    from merlin.compile.scheduling.dense_contracts import DenseIntegerReadout
+    ir = f"""module {{func.func @readout(%x:i64)->i8 {{
+      %shift=arith.constant {shift}:i64
+      %v=arith.shrsi %x,%shift:i64
+      %r=arith.trunci %v:i64 to i8
+      func.return %r:i8
+    }}}}"""
+    with pytest.raises(ValueError, match="non-total"):
+        DenseIntegerReadout(ir, "i8", "bad", ()).graph()
+
+
+def test_readout_refuses_dynamic_shift():
+    from merlin.compile.scheduling.fusion_semantics import scalar_graph
+    ir = b"""module {func.func @readout(%x:i64,%shift:i64)->i8 {
+      %v=arith.shrsi %x,%shift:i64
+      %r=arith.trunci %v:i64 to i8
+      func.return %r:i8
+    }}"""
+    with pytest.raises(ValueError, match="non-total"):
+        scalar_graph(ir, 128, 65536)

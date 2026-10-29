@@ -8,9 +8,32 @@ from __future__ import annotations
 
 import copy
 import json
+from merlin.frontends.linalg_integer_seams import SCHEMA as INTEGER_SEAM_SCHEMA, validate as validate_integer_seam, recognize as recognize_integer_seam
 from collections.abc import Mapping
+from merlin.frontends.linalg_quantization_seams import (
+    SCHEMA as QUANTIZATION_SEAM_SCHEMA,
+    validate as validate_quantization_seam,
+    recognize as recognize_quantization_seam,
+)
 
 from merlin.common.digest import is_sha256
+from merlin.frontends.connected_index_source_body import SCHEMA as CONNECTED_INDEX_SCHEMA, screen as screen_connected_index
+from merlin.frontends.bounded_control_source_body import (
+    SCHEMA as BOUNDED_CONTROL_SCHEMA, ROLES as BOUNDED_CONTROL_ROLES,
+    validate as validate_bounded_control, screen as screen_bounded_control,
+)
+from merlin.frontends.linalg_embedding_gather import (
+    SCHEMA as EMBEDDING_GATHER_SCHEMA,
+)
+from merlin.frontends.linalg_embedding_gather import (
+    recognize as recognize_embedding_gather,
+)
+from merlin.frontends.linalg_embedding_gather import (
+    validate_source_body as validate_embedding_gather_body,
+)
+from merlin.frontends.linalg_mixed_patterns import SCHEMA as MIXED_SCHEMA
+from merlin.frontends.linalg_mixed_patterns import recognize as recognize_mixed
+from merlin.frontends.linalg_mixed_patterns import validate_declaration as validate_mixed
 from merlin.targetgen.host_linkage_contract import (
     required_composite_math_symbol,
     validate_linkage_contract,
@@ -84,6 +107,10 @@ def validate_host_capabilities(
                 STATIC_F32_MAXIMUM_SOURCE_BODY_SCHEMA,
                 validate_static_f32_maximum_source_body,
             )
+            from merlin.frontends.linalg_f32_reductions import (
+                STATIC_F32_SUM_SOURCE_BODY_SCHEMA,
+                validate_static_f32_sum_source_body,
+            )
             from merlin.frontends.linalg_math_patterns import (
                 STATIC_F32_MATH_SOURCE_BODY_SCHEMA,
                 validate_static_f32_math_source_body,
@@ -125,7 +152,14 @@ def validate_host_capabilities(
             if set(row) - allowed or not (row.get("ops") or row.get("families") or row.get("family")):
                 raise ValueError(f"host capability {row['id']} has unsupported fields or no selector")
             body = row["source_body"]
-            if isinstance(body, dict) and body.get("schema") == STATIC_BOOLEAN_SOURCE_BODY_SCHEMA:
+            if isinstance(body, dict) and body.get("schema") == BOUNDED_CONTROL_SCHEMA:
+                validate_bounded_control(body)
+                op, inputs, outputs = BOUNDED_CONTROL_ROLES[body["operation"]]
+                if (row.get("ops") != [op] or "families" in row or "family" in row
+                        or row["signature"] != {"ordered_operand_dtypes": inputs, "ordered_result_dtypes": outputs}
+                        or row.get("numerical_contract", {}).get("status") != "unreviewed"):
+                    raise ValueError("bounded control needs one exact scalar ABI and placement-only declaration")
+            elif isinstance(body, dict) and body.get("schema") == STATIC_BOOLEAN_SOURCE_BODY_SCHEMA:
                 validate_static_boolean_source_body(body)
             elif isinstance(body, dict) and body.get("schema") == DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA:
                 validate_dynamic_boolean_cast_source_body(body)
@@ -135,6 +169,12 @@ def validate_host_capabilities(
                 validate_static_composite_math_source_body(body)
                 if required_composite_math_symbol(body["schema"], body["operation"]) and "linkage_contract" not in row:
                     raise ValueError("composite math source requires an exact selected linkage contract")
+            elif isinstance(body, dict) and body.get("schema") == EMBEDDING_GATHER_SCHEMA:
+                validate_embedding_gather_body(body)
+                if row.get("signature", {}).get("ordered_operand_dtypes") != ["i64", "bf16"] or row.get(
+                    "signature", {}
+                ).get("ordered_result_dtypes") != ["bf16"]:
+                    raise ValueError("embedding gather declaration has a different exact typed signature")
             elif isinstance(body, dict) and body.get("schema") == STATIC_PROJECTED_POINTWISE_BODY_SCHEMA:
                 validate_static_projected_pointwise_source_body(body)
             elif isinstance(body, dict) and body.get("schema") == STATIC_INTEGER_REDUCTION_SOURCE_BODY_SCHEMA:
@@ -165,8 +205,8 @@ def validate_host_capabilities(
                     or results != (["i64", "i64"] if body["operation"] == "i64_min_first_index" else ["i64"])
                 ):
                     raise ValueError("integer-reduction source_body needs one exact frontend selector and typed ABI")
-            elif isinstance(body, dict) and body.get("schema") == PREPARED_INDEX_SOURCE_BODY_SCHEMA:
-                validate_prepared_index_source_body(body)
+            elif isinstance(body, dict) and body.get("schema") in {PREPARED_INDEX_SOURCE_BODY_SCHEMA, CONNECTED_INDEX_SCHEMA}:
+                validate_prepared_index_source_body(dict(body, schema=PREPARED_INDEX_SOURCE_BODY_SCHEMA))
                 operands = row["signature"].get("ordered_operand_dtypes")
                 results = row["signature"].get("ordered_result_dtypes")
                 expected = INDEX_ROLES[body["operation"]]
@@ -197,7 +237,11 @@ def validate_host_capabilities(
                     or row["signature"]
                     != {
                         "family": "reduction",
-                        "ordered_operand_dtypes": ["f32", "f32", "i64"],
+                        "ordered_operand_dtypes": [
+                            "bf16" if body["operation"] == "bf16_extended_f32_literal_boundary_count_i64" else "f32",
+                            "f32",
+                            "i64",
+                        ],
                         "ordered_result_dtypes": ["i64"],
                     }
                     or not isinstance(row.get("numerical_contract"), dict)
@@ -220,6 +264,25 @@ def validate_host_capabilities(
                     or row["numerical_contract"].get("status") != "unreviewed"
                 ):
                     raise ValueError("f32 maximum source_body needs one exact typed placement-only selector")
+            elif isinstance(body, dict) and body.get("schema") == STATIC_F32_SUM_SOURCE_BODY_SCHEMA:
+                validate_static_f32_sum_source_body(body)
+                if (row.get("ops") != ["aten.sum.dim_IntList"] or "families" in row or "family" in row
+                        or row["signature"] != {"family": "reduction",
+                            "ordered_operand_dtypes": ["f32", "f32"], "ordered_result_dtypes": ["f32"]}
+                        or row.get("numerical_contract", {}).get("status") != "unreviewed"):
+                    raise ValueError("f32 sum source_body needs one exact typed placement-only selector")
+            elif isinstance(body, dict) and body.get("schema") == MIXED_SCHEMA:
+                validate_mixed(body)
+                if required_composite_math_symbol(body["schema"], body["operation"]) and "linkage_contract" not in row:
+                    raise ValueError("mixed math source requires its exact selected linkage contract")
+                if row.get("numerical_contract", {}).get("status") != "unreviewed":
+                    raise ValueError("mixed source-body routing declares no numerical qualification")
+            elif isinstance(body, dict) and body.get("schema") == QUANTIZATION_SEAM_SCHEMA:
+                validate_quantization_seam(body)
+            elif isinstance(body, dict) and body.get("schema") == INTEGER_SEAM_SCHEMA:
+                validate_integer_seam(body)
+                if row.get("numerical_contract", {}).get("status") != "unreviewed":
+                    raise ValueError("integer seam routing declares no numerical qualification")
             else:
                 validate_static_pointwise_source_body(body)
         if "quantization_parameters" in row["signature"]:
@@ -381,11 +444,64 @@ def _screen_f32_maximum_source_body(
     }
 
 
+def _screen_f32_sum_source_body(declaration, row, signature, source_operations, source_context):
+    """Reprove every +zero-initialized addf reduction at the selected width."""
+    from dataclasses import asdict
+
+    from merlin.common import mlir_query as mq
+    from merlin.frontends.linalg_f32_reductions import recognize_static_f32_sum
+    from merlin.frontends.linalg_patterns import InvalidLinalgPattern
+    from merlin.targetgen.application_inventory import operation_structure
+
+    width = _selected_index_bits(source_context)
+    if width is None:
+        return {"status": "unknown", "reason": "f32 sum needs a selected compiler index observation"}
+    if not source_operations:
+        return {"status": "unknown", "reason": "f32 sum requires parsed source operations"}
+    if (type(source_operations) is not tuple or type(row.get("count")) is not int
+            or row["count"] != len(source_operations) or row.get("mlir_operation") != "linalg.reduce"
+            or row.get("frontend_op") != "aten.sum.dim_IntList"
+            or len({id(op) for op in source_operations}) != len(source_operations)):
+        return {"status": "unsupported", "reason": "f32 sum source occurrence roster differs"}
+    patterns = []
+    for op in source_operations:
+        if mq.attr_str(op, "prov.aten") != "aten.sum.dim_IntList":
+            return {"status": "unsupported", "reason": "f32 sum source frontend identity differs"}
+        try:
+            pattern = recognize_static_f32_sum(op, index_bits=width)
+        except InvalidLinalgPattern as error:
+            return {"status": "unsupported", "reason": f"f32 sum structural proof refused: {error}"}
+        structure = operation_structure(op)
+        if (row.get("ordered_operand_types") != structure["ordered_operand_types"]
+                or row.get("ordered_result_types") != structure["ordered_result_types"]
+                or signature.get("family") != "reduction"
+                or signature.get("ordered_operand_dtypes") != ["f32", "f32"]
+                or signature.get("ordered_result_dtypes") != ["f32"]
+                or signature.get("rank") != len(pattern.output_shape)):
+            return {"status": "unsupported", "reason": "f32 sum source differs from observed typed ABI"}
+        patterns.append(json.loads(json.dumps(asdict(pattern))))
+    return {"status": "admitted", "reason": "every source root is a selected-width +zero addf reduction",
+            "proof": {"schema": declaration["source_body"]["schema"], "declaration": declaration["id"],
+                      "operation": declaration["source_body"]["operation"],
+                      "patterns": patterns,
+                      "selected_index_observation": copy.deepcopy(source_context["selected_index_observation"])}}
+
+
 def _screen_source_body(
     declaration: dict, row: dict, signature: dict, source_operations: tuple | None, source_context: Mapping | None
 ) -> dict:
     """Match every supplied parsed occurrence; never treat an omitted source as evidence."""
     from dataclasses import asdict
+    from merlin.frontends.linalg_f32_reductions import STATIC_F32_SUM_SOURCE_BODY_SCHEMA
+
+    if declaration["source_body"]["schema"] == STATIC_F32_SUM_SOURCE_BODY_SCHEMA:
+        return _screen_f32_sum_source_body(declaration, row, signature, source_operations, source_context)
+
+    if declaration["source_body"]["schema"] == CONNECTED_INDEX_SCHEMA:
+        return screen_connected_index(declaration, row, signature, source_operations, source_context)
+
+    if declaration["source_body"]["schema"] == BOUNDED_CONTROL_SCHEMA:
+        return screen_bounded_control(declaration, row, signature, source_operations, source_context)
 
     from merlin.common import mlir_query as mq
     from merlin.frontends.bucketize_source import (
@@ -447,7 +563,8 @@ def _screen_source_body(
         if any(not bucketize_pattern_fits_index(pattern, width) for pattern in patterns):
             return {"status": "unsupported", "reason": "bucketize source tensor exceeds selected signed index span"}
         if (
-            signature.get("ordered_operand_dtypes") != ["f32", "f32", "i64"]
+            any(signature.get("ordered_operand_dtypes") != list(pattern.ordered_types[:3]) for pattern in patterns)
+            or any(pattern.operation != declaration["source_body"]["operation"] for pattern in patterns)
             or signature.get("ordered_result_dtypes") != ["i64"]
             or type(signature.get("rank")) is not int
             or any(signature["rank"] != len(pattern.shape) for pattern in patterns)
@@ -478,11 +595,15 @@ def _screen_source_body(
     try:
         body = declaration["source_body"]
         recognizer = {
+            INTEGER_SEAM_SCHEMA: recognize_integer_seam,
+            QUANTIZATION_SEAM_SCHEMA: recognize_quantization_seam,
+            MIXED_SCHEMA: recognize_mixed,
             STATIC_BOOLEAN_SOURCE_BODY_SCHEMA: recognize_static_boolean_body,
             DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA: recognize_dynamic_boolean_cast_body,
             STATIC_F32_MATH_SOURCE_BODY_SCHEMA: recognize_static_f32_math_body,
             STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA: recognize_static_composite_math_body,
             STATIC_PROJECTED_POINTWISE_BODY_SCHEMA: recognize_static_projected_pointwise,
+            EMBEDDING_GATHER_SCHEMA: recognize_embedding_gather,
         }.get(body["schema"], recognize_static_pointwise)
         patterns = tuple(recognizer(op) for op in source_operations)
     except InvalidLinalgPattern as exc:
@@ -528,6 +649,8 @@ def admit_host_operation(
     source_context: Mapping | None = None,
 ) -> dict:
     """Screen every selected host profile independently from accelerator admission."""
+    from merlin.targetgen.host_admission_preparation import PreparedHostCapabilities
+
     if selected is None:
         return {
             "status": "unknown",
@@ -536,10 +659,11 @@ def admit_host_operation(
             "reason": "no selected per-operation host capability spec",
             "profiles": [],
         }
-    if not isinstance(selected, dict):
+    prepared = type(selected) is PreparedHostCapabilities
+    if not isinstance(selected, dict) and not prepared:
         raise ValueError("selected host capabilities must be a profile mapping")
     profiles = []
-    for name, selection in sorted(selected.items()):
+    for name, selection in selected._items() if prepared else sorted(selected.items()):
         if not isinstance(selection, dict):
             raise ValueError("selected host capability profile must be a mapping")
         document = selection.get("capability_spec")
@@ -554,16 +678,17 @@ def admit_host_operation(
                 }
             )
             continue
-        validate_host_capabilities(
-            document, package_sha256=selection.get("package_sha256"), dtype_strategy=selection.get("dtype_strategy")
-        )
+        if not prepared:
+            validate_host_capabilities(
+                document, package_sha256=selection.get("package_sha256"), dtype_strategy=selection.get("dtype_strategy")
+            )
         pinned = (
             is_sha256(selection.get("package_sha256"))
             and is_sha256(selection.get("capability_spec_sha256"))
             and document["compiler"].get("package_sha256") == selection["package_sha256"]
         )
         decisions = []
-        for declaration in document["operations"]:
+        for declaration in selected._declarations(name, row) if prepared else document["operations"]:
             # A named selector is narrower than a semantic family. A package
             # schedule matching linalg.matmul must not admit an unrelated
             # linalg.generic merely because both describe contractions. Family

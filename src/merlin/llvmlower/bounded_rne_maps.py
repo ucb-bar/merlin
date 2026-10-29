@@ -12,7 +12,23 @@ from dataclasses import dataclass
 
 from xdsl.ir import SSAValue
 
-from .late_quant_rne import _identity, _Instruction, _match
+from .late_quant_rne import _identity, _Instruction, _match, _match_intrinsic
+
+
+def _roundeven_intrinsic(operation):
+    """The exact scalar intrinsic emitted by ordinary host rounding."""
+    from merlin.common.mlir_query import op_name
+    from xdsl.dialects.builtin import f32
+
+    return (
+        op_name(operation) == "llvm.intr.roundeven"
+        and len(operation.operands) == len(operation.results) == 1
+        and operation.operands[0].type == operation.results[0].type == f32
+        and not operation.regions
+        and not operation.successors
+        and not operation.properties
+        and not set(operation.attributes) - {"op_name__"}
+    )
 
 
 @dataclass(frozen=True)
@@ -76,6 +92,8 @@ def prove_scalar_bounded_rne(block) -> ScalarRneProof | None:
         elif op.name in ("arith.minimumf", "arith.maximumf") and len(operands) == 2:
             opcode, typ = "call", dtype(result.type)
             callee = "llvm.minimum.f32" if op.name == "arith.minimumf" else "llvm.maximum.f32"
+        elif _roundeven_intrinsic(op):
+            opcode, typ, callee = "call", "float", "llvm.roundeven.f32"
         elif op.name in ("arith.fptosi", "arith.sitofp") and len(operands) == 1:
             opcode = "fptosi" if op.name == "arith.fptosi" else "sitofp"
             typ, output_type = dtype(op.operands[0].type), dtype(result.type)
@@ -108,7 +126,7 @@ def prove_scalar_bounded_rne(block) -> ScalarRneProof | None:
     yielded = ops[-1].operands[0]
     token = values.get(yielded, "")
     final = definitions.get(_identity(token))
-    proof = _match(final, definitions) if final is not None else None
+    proof = (_match(final, definitions) or _match_intrinsic(final, definitions)) if final is not None else None
     if proof is None:
         return None
     raw = reverse.get(_identity(proof["raw_input"]))

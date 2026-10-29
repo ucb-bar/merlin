@@ -53,7 +53,7 @@ def test_the_compiler_actually_carries_the_lowering_this_relies_on():
     from merlin.targetgen import linalg_lower as LL
 
     src = inspect.getsource(LL)
-    assert "convolution_im2col_matmul" in src
+    assert "is_gathered_conv_op" in src  # the gathered-window convolution, under either spelling
     assert "linalg.matmul" in src
 
 

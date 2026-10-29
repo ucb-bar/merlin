@@ -134,3 +134,66 @@ def test_dynamic_rank_and_plain_matrix_refuse():
     _, value = fixture()
     with pytest.raises(ValueError, match="flat-to-matrix"):
         prove_segmented_matrix(value.owner.operands[0])
+
+
+def grouped_query_view(m=16, groups=4, heads=8, k=64, group=2):
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+
+    owner = f"tensor<{m}x{groups}x{heads}x{k}xi8>"
+    sliced = f"tensor<{m}x1x{heads}x{k}xi8>"
+    permuted = f"tensor<1x{heads}x{m}x{k}xi8>"
+    flat = f"tensor<{heads*m*k}xi8>"
+    matrix = f"tensor<{heads*m}x{k}xi8>"
+    module = parse_mlir_text(f'''module {{func.func @forward(%q:{owner})->{matrix} {{
+      %s=tensor.extract_slice %q[0,{group},0,0][{m},1,{heads},{k}][1,1,1,1]
+        :{owner} to {sliced}
+      %e=tensor.empty():{permuted}
+      %t=linalg.transpose ins(%s:{sliced}) outs(%e:{permuted}) permutation=[1,2,0,3]
+      %f=tensor.collapse_shape %t [[0,1,2,3]]:{permuted} into {flat}
+      %v=tensor.expand_shape %f [[0,1]] output_shape [{heads*m},{k}]:{flat} into {matrix}
+      return %v:{matrix}
+    }}}}''')
+    module.verify()
+    value = next(op.results[0] for op in module.walk() if op.name == "tensor.expand_shape")
+    return module, value
+
+
+@pytest.mark.parametrize("m,groups,heads,k,group", [(16, 4, 8, 64, 2), (19, 2, 3, 33, 1), (1, 3, 2, 5, 0)])
+def test_source_permuted_query_view_has_exact_disjoint_interleaved_rows(m, groups, heads, k, group):
+    module, value = grouped_query_view(m, groups, heads, k, group)
+    original = text(module, generic=True)
+    proof = prove_segmented_matrix(value)
+    source = np.arange(m * groups * heads * k).reshape(m, groups, heads, k)
+    expected = source[:, group:group+1, :, :].transpose(1, 2, 0, 3).reshape(heads*m, k)
+    offsets = [proof.address.offset(row, col) for row in range(heads*m) for col in range(k)]
+    assert len(set(offsets)) == expected.size
+    np.testing.assert_array_equal(source.ravel()[offsets].reshape(expected.shape), expected)
+    assert proof.address.row_stride == groups * heads * k
+    assert proof.address.segment_stride == k
+    assert proof.address.origin == group * heads * k
+    assert proof.owner is next(iter(module.body.block.ops)).body.block.args[0]
+    assert text(module, generic=True) == original
+    runs = list(proof.address.split_rows(max(0, m-1), min(m+2, heads*m-max(0, m-1))))
+    for start, count, offset in runs:
+        for step in range(count):
+            assert offset + step * proof.address.row_stride == proof.address.offset(start+step)
+
+
+def test_interleaved_partial_last_segment_checks_earlier_physical_endpoint():
+    # Logical last row is physical offset4; the preceding full segment ends103.
+    with pytest.raises(ValueError, match="endpoint"):
+        SegmentedRows(4, 4, 3, 50, 4, 103, 1, "i8")
+    valid = SegmentedRows(4, 4, 3, 50, 4, 108, 1, "i8")
+    assert list(valid.split_rows(0, 4)) == [(0, 3, 0), (3, 1, 4)]
+    with pytest.raises(ValueError, match="segments overlap"):
+        SegmentedRows(6, 5, 3, 12, 3, 100, 1, "i8")
+
+
+def test_non_identity_transpose_scalar_region_refuses():
+    from xdsl.dialects.linalg.ops import TransposeOp
+
+    module, value = grouped_query_view()
+    transpose = next(op for op in module.walk() if isinstance(op, TransposeOp))
+    transpose.body.block.last_op.operands = (transpose.body.block.args[1],)
+    with pytest.raises(ValueError, match="changes source values"):
+        prove_segmented_matrix(value)

@@ -1,8 +1,402 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+`public_source_roles` is explicit prospective operator setup, never a historical
+score correction or execution certificate. Select the exact mode0600 full-roster
+profile with the original live private-exclusion owner. Preserve explicit source
+guards; every undeclared intent requires a new operator role and reason, including
+refused/unavailable members. Join exact original request/declaration/loader and
+capture/profile pins through requirements and the live writer scope. Functional
+sources retain complete reference, arithmetic and actual-realization checks on
+the model route, with no performance objective. New formal freezes require the
+whole selected objective roster and retain every functional obligation; serialized
+profile/binding records cannot replace the live owner. V1/V2 defaults and existing
+manifests remain unchanged. New roles on reused captures do not change historical
+capture chronology or retrospectively qualify their old publications.
+
+Public-program selection v2 explicitly selects native_integer_v1 and materialized
+capture v3. Preserve complete typed golden.json outputs and exact per-output
+policies; legacy floating captures retain their historical reference format.
+The ordinary writer needs the original verified sealed attestation and live
+realization owner. Promotion and freezing require a real operator-private hash
+selection, never a saved public overlap verdict. Original integer contractions
+are hashed from actual typed semantics independently of output names; every
+expected-output leaf remains protected in live and frozen author views.
+
+`operator_exclusion_issuer` is trusted operator-only intake, never a candidate
+hook. It consumes exact original protected-inventory pointers, verifies original
+release/producer/complete source ownership, and creates an exclusive mode0600
+hash-only selection outside every author/publication root. V2 adds conservative
+typed-IR exclusion using the same parser-backed projection on both sides; V1 is
+unchanged. Unknown semantics, source aliases, failed lineage and parse-budget
+denials refuse without partial files. Do not infer compiler or model numerical
+qualification from a newer release used only as a private-source inventory.
+
+`operator_dense_projection` is private transient exclusion intake, never compiler
+input or an execution transform. Hash every original byte and preserve the
+existing typed canonicalizer. Resource placeholders are allowed only for checked
+immediate-function-body dense initializers, whose values the original projection
+already omits. Check full hexadecimal storage length, original registered literal
+grammar, every marker's actual typed owner, and independent streaming/compact/
+decoded-memory ceilings. Never elide contraction-region constants, unknown
+elements or unbounded literal forms; no projected source leaves enter author
+inputs or publication. Original ordinary-source intake remains unchanged.
+
+Explicit `operator_streaming_exclusion_issuer` uses the unchanged typed signature
+and V2 private reader. Separate streaming byte limits do not enlarge compact
+parse ceilings. `validation_sources_v2` may compose only a selected source leaf
+alias owned by the exact original sealed catalog role with an ordinary current
+target; complete source bytes must match the original seal and the full alias
+binding is re-resolved before issuance. Preserve every selected identity, refuse
+alias chains/ancestors, and never claim historical link spelling was sealed.
+No partial selection, protected names/shapes/answers or byte-only fallback may
+escape trusted intake. Original ordinary-source alias refusals remain unchanged.
+Streaming private intake verifies the entire original generation but selects
+only its committed `hidden` capsule roles; `public` and `dev` Phase1 sources
+remain reusable. Unknown roles refuse. The separately selected protected model
+source inventory remains complete and independent of those capsule labels.
+
+`operator_windowed_ir` is an explicit private allocation route, not a semantic
+summary. Reconstruct every original operation/region with exact SSA and aliases,
+verify the complete final module and recheck all initializer owners. Parser
+windows, aggregate syntax and external RSS/CPU limits remain hard gates.
+
+Explicit private-selection V5 selects `operator_registered_exclusion` on BOTH
+sides. Require actual registered maps/iterators, complete typed outputs and
+scalar ownership; iterator coordinates must name valid enclosing generic loops.
+No guessed operation family, unknown effect or numerical grant is permitted.
+
+Explicit private-selection V6 selects `operator_capture_exclusion` on BOTH
+sides. The original scalar-body reader binds every SSA use, attribute, type and
+result. Pure captures require actual entry-argument ownership or a complete
+dominating registered pure producer DAG, including exact initializer storage.
+Streaming initializer hashes must come from the original scan and checked typed
+owners; unknown resources, effects, foreign blocks and forward uses refuse.
+V1–V5 interpretations and original public resource ceilings remain unchanged.
+`operator_identity_resources` is separate explicit operator-only provisioning.
+Bind original inventory, finite resource limits, shared CPU namespace and one
+immutable deadline. Lease per source, retain external RSS/CPU/scratch supervision
+and refuse incomplete/over-budget work before writing any selected hash file.
+It grants no semantic, numerical, compiler or corpus admission.
+
+`sealed_native_materialization` explicitly composes complete original integer
+references when the old producer receipt omitted them. Reopen the original live
+seal, preserve every producer field/member and every source byte, and bind the
+new receipt to the original receipt bytes and exact sealed program. A framework
+catalog remains owned by its original receipt-bound metadata digest. This
+composition is byte evidence only: the ordinary writer must still recheck the
+original seal, complete outputs, source arithmetic and actual realization owner.
+Apply the selected public payload bound before array loading; never reinterpret
+the loader/source text ceiling as the complete capture payload ceiling.
+
+Explicit private-selection V4 selects `operator_structured_exclusion` on BOTH
+sides. Registered tensor reductions require complete dimensions, tensor/scalar
+ABI and ownership; their versioned hashes do not grant execution support.
+Older signatures and selection interpretations remain unchanged.
+
+Explicit private-selection V3 selects `operator_mixed_exclusion` on BOTH sides.
+Linalg keeps the exact V1 typed hashes; the restricted original merlin_iface raw
+signed-i8/i32 value algebra is checked completely and reified as generic/named
+linalg semantic images before invoking that same canonicalizer. Named images
+widen signed inputs explicitly before homogeneous i32 multiplication. Require
+all original declarations, SSA, attributes, zero-initial contraction, raw commit
+and pack/evict ownership. Changed readouts, initialization, continuations, unknown
+operations or unowned effects refuse. Images may conservatively overexclude;
+they are neither numerical execution nor compiler support. V1/V2 reader meanings
+and default issuer behavior remain unchanged; never ignore an unreadable grammar
+as zero contractions or use a byte-only fallback.
+
+`sealed_native_program` reopens original sealed native stages with complete
+integral golden.json outputs, exact source leaves and receipt-bound metadata.
+Relocate metadata paths only; never modify captured bytes or use lossy output-zero
+golden.npy for complete integer references. Source sealing and diagnostic output
+success do not replace the live realization owner or formal cohort admission.
+
+`development_reduced_models` freezes complete public depth-reduced PyTorch graphs.
+Extract pinned upstream arithmetic definitions unchanged, preserve every distinct
+stage and self/cross-attention period, and forbid weight/config network loading.
+Meta construction is structural evidence only. Missing selected whole-graph
+numerical contracts remain explicit refusals; no FP tolerance or int8 recipe is
+inferred from model availability. Dependency leaf pins do not replace the full
+original sealed runtime closure. Keep all prior cohort manifests unchanged.
+
+`connected_integer_bounds` reconstructs typed source intervals for every operation,
+additive reduction prefix and complete live-out. Undefined storage, non-linear
+recurrences, unknown effects and overflowing intermediates refuse. Source i32 is
+not a claim of a 32-bit physical mesh MAC; selected executable panel/MAC/accumulator
+scope requires a separately checked target correspondence before admission. Do not
+replace that obligation with final-output equality or a legacy 20-bit full-K rule.
+Pure named transposes require exact source-yield bodies, types and permutations.
+Static insertions require complete initialized destination storage, same signed
+element type, exact operand segmentation and bounded nonreducing slice geometry;
+preserve intervals for untouched cells. Neither source layout proof supplies
+target placement or native convolution qualification.
+
+`connected_integer_qualification` is an explicit original-host realization scope.
+Its unchanged native source attestation, exact source/portable interface, every
+signed input and every exact output policy remain required. Diagnostic sidecars
+are not owners. Missing executable correspondence refuses; check panel bounds
+separately from full i32 accumulation and keep old isolated-group admission intact.
+
+`development_test_audit` requires explicit positive M/N/K resource granules; never
+assume a square target tile. Shape-only convolution controls do not prove a stem
+role. It preserves all source IDs and reports requirement members,
+actual recorded execution/refusal, coarse capacity brackets and semantic duplicates.
+Do not infer device lease, bank arbitration, physical row floors, complete reduced
+models or queue/overlap effects from shapes; those remain explicit obligations.
+
+`development_controls` adds complete integer RHS ownership/version controls,
+strided/padded convolution with an escaping packing live-out, and grouped-head KV
+epoch replacement with old/new state live-outs. SSA replacement is not an in-place
+alias proof; QK/readout/PV mixing is not softmax attention. Independent references
+must retain every result. `development_decisive_roster` derives independent axis
+tails, queue-window source counts and adjacent joint SP/ACC placements from exact
+resource pins and explicit reservation/buffer-copy assumptions. Physical effects
+remain UNEXERCISED until actual DMA, ownership, completion and placement prove
+them. A fenced schedule or bounded-panel compiler does not exercise a nominal
+full-source queue or joint-capacity case merely by executing it.
+
+`development_capture_intake` reopens complete original and supplementary references
+under independent pins before diagnostic capture. Preserve the full source roster,
+numerical policy, ABI and complete-call boundary. Reused reference bytes are not a
+fresh execution. Seed-allocation lower bounds and contraction counts only deny
+costly capture; they establish no process-memory or emitted-program upper bound.
+
+`development_shape_supplement` adds public projection/control shapes while
+preserving the original source cohort. Pin the selected public configuration
+implementation before resolving omitted defaults; unsupported defaults remain
+UNKNOWN. Preserve the connector's pixel shuffle and width equations: pre-shuffle
+vision tokens are not automatically language-prefix tokens. Keep upper-envelope
+controls separate from actual invocation proxies, reused prefix work once, and
+denoising10 versus decoder32. Expert-depth, extra-prefix-token and full connected
+model gaps remain explicit until their public implementation proves them.
+
+`development_blocked_reference` reconstructs exact original signed inputs in
+bounded coordinate panels and reuses the independent checked integer-matmul
+owner. Write every original output and evaluate every declared scalar product;
+preserve NHWC padding/stride, RHS orientation, readout and grouped KV state.
+Parameter chains reconstruct original immutable parameter seeds panel by panel,
+including every repeated use. Snapshot the complete prior narrow state before
+writing any output panel; output-map reuse must not change source SSA semantics.
+The eager-source seed lower bound includes parameters, independently of bounded
+reference preparation.
+`development_reference_supplement` binds separate cost admissions to the old
+complete manifest and its unchanged source/seed/ABI/numeric identities. Its
+verifier reopens complete NPY output bytes; reused evidence is not a fresh run.
+Reserve admitted work/output costs even on failure. A reference-only memory
+bound does not admit the unchanged eager source loader: retain its separate
+arange peak-memory lower bound and all compiler/contract/timing refusals.
+
+Opt-in `development_attention` sources express complete QK, causal/explicit
+mask, softmax and PV with GQA and carried KV. They retain real integer QK work
+and an explicitly FP32 semantic softmax/PV diagnostic, not an invented selected
+probability quantization. Final O and KV state are live-outs; exposing the whole
+score matrix would prevent its legal elimination. Keep selected floating/PV
+numeric policies UNKNOWN and ordinary writer admission refused until the
+original contract owner supplies them. Independent float errors are diagnostics,
+never a new tolerance, timing result or FlashAttention implementation claim.
+
+`development_envelopes` derives public architecture-informed source requests
+from content-pinned public configs and a separately disclosed operator envelope.
+Occurrence proxies sample joint shapes; they are never latency weights. Keep
+every spectrum-selection denial and original capacity request/refusal. V2
+`development_patterns`, composition and reuse factories preserve exact declared
+integer arithmetic and all live-outs. Spatial sources currently use explicit
+packing and integer GEMM, not a qualified native convolution instruction.
+Generated integer saturation uses same-type `maximum`/`minimum` bounds because
+the selected frontend's integer `clamp` decomposition constructs a floating
+attribute and refuses `i32`. Keep half-up division before saturation, signed
+endpoints and independent complete-output references unchanged. Regenerated
+loaders acquire new source hashes; do not rewrite previously frozen capsules.
+`development_reference` owns an independently implemented NumPy exact reference.
+`development_parameter_stress` varies real immutable parameter payloads in a
+complete connected integer graph. Preserve signed input dtype, every parameter
+use and both exact live-outs. Explicit immutable sharing changes storage only;
+do not infer device residency from it. Keep capture, packed bytes, object build,
+whole-program link and actual execution evidence distinct. Retain larger budget
+refusals and preserve all earlier frozen cohort manifests.
+`development_composition_preflight` joins the original public source/task/return
+checker and complete pointer-layout planner before a build. Select the actual
+row granule and unchanged original storage/artifact ceilings. Count parameters,
+inputs, all temporaries and live-outs, and recheck the complete captured weight
+namespace and file identities. A structural/storage pass supplies no numerical,
+state, device-execution, timing, private-exclusion or writer authority.
+`development_cohort` freezes byte inventories, ABI, complete-call boundaries and
+per-member coverage before capture. Bound reference costs before allocation;
+sum-of-source payloads prove neither simultaneous liveness nor physical traffic.
+`development_capture` is a bounded diagnostic using the ordinary capture/writer,
+not a sealed source-exclusion or hardware/software admission authority. Retain
+UNKNOWN complete rooflines and baseline execution until original owners qualify
+them. Public architecture inspection removes any future unseen-workload claim.
+
+`development_sources` constructs fresh explicit-public grouped-head integer
+mixing programs and stages them through the existing workload-roster owner.
+Retain exact declared readout arithmetic, complete scores/results/KV live-outs,
+overflow and aggregate logical budgets. No validation metadata, quantization
+selection, full-model, accelerator or cohort qualification is implied. The
+ordinary installed capture/writer integration retains the known CPU Torch K=1
+integer-matmul failure against an independent reference.
+
+`shape_spectrum` plans bounded joint tuples from explicitly public development
+metadata. Preserve semantic/layout partitions, correlations, occupied bins,
+extrema and budget-denied members. Occurrences are sampling proxies, never
+latency weights. The result grants no source, private-exclusion, accelerator or
+cohort admission; protected validation metadata cannot enter that public route.
+Older shape-free automatic policies retain their original meaning.
+
+Explicit ordinary `public_joint_boundaries` v2 selects typed connected cuts:
+casts with original dtype literals, integer representations, higher-rank batch
+contractions/broadcasting and reduction composition. Keep v1 float-only replay
+unchanged. Preserve every original live-out, exact integer references and each
+floating output's original tolerance through an explicit per-output policy.
+Observed dense input permutations are retained; other strided/effect domains
+remain UNKNOWN. Source widths price logical payload only at facts-derived row
+widths, never physical packing, simultaneous allocation or lifetime. New source
+cases still pass ordinary capture, private exclusion and discovery/freeze.
+
+Ordinary `public_joint_boundaries` v1 selects the shared public boundary factory.
+`public_boundary_semantics` replays exact original public typed calls and derives
+connected cuts/dimension equalities; `public_boundaries` emits changed bounded
+ATen loaders through normal generation-time sealed capture and model writing.
+Reopen the original context before freezing loaders and every fresh captured
+call, schema, type and published reference before staged exclusion/discovery.
+Summed logical tensor volumes at selected store row widths are pressure probes,
+never physical placement, simultaneous allocations or lifetime proofs. Preserve
+complete original programs separately and every unsupported/budget-denied UNKNOWN.
+
+Ordinary recipe `performance_source_programs` v1 selects the complete descriptor's
+unchanged public performance roster as connected dev members. Require every
+original sealed capture, selected loader/profile, finite ABI/payload budgets and
+operator-private exclusion before derivation publishes any source member. Keep
+the full original graph and host eager input/output closure through the existing
+materializer/writer and normal frozen input owner. Whole-program placement uses
+the same software screen as iteration sources. Purpose metadata may report only
+observed operations and existing conditional form boundaries; absent movement,
+conversion, physical mapping, runtime and timing remain UNKNOWN. A source basis
+is an alternative to an RTL trait rationale, never execution qualification.
+
+Explicit `public_joint_boundaries` v3 derives functional probes exclusively from
+the declared independent public graphs, selected software/numerical contracts
+and facts. Its derivation refuses private model-shape inputs before opening
+them. Expected arrays and candidate compiler results have no selection role.
+The original private exclusion requirement above remains part of v1/v2. V3
+still requires original sealed source and fresh source/execution admission;
+source independence alone establishes none of those verdicts.
+
+Original call-source v11 / automatic v18 / declared v11 opt in to shared original reduction-shape factories. Keep mean dimensions/keepdim/dtype, softmax signed dimension/dtype, and layer-normalization normalized-shape/affine/epsilon/cudnn bindings exact. Converter v6/declared selector v5 and stable factory v5/ledger v7 preserve every original call/cohort ID and all prior versions. Fresh literal-bound geometry establishes no numerical/reference/effect/packing or phase admission; missing prerequisites remain mandatory.
+
+
+Original call-source v10 / automatic v17 / declared v10 opt in to exact typed
+contiguous reshape construction. Preserve original literal dimensions and -1,
+shape/stride premises, ordered storage/result and Tensor(a) declarations.
+Fixed products admit only legal fresh factorizations, never capacity evidence;
+impossible requested extents stay required unavailable. Converter selection v5,
+declared selector v4 and stable factory v4/ledger v6 retain complete original
+call/cohort IDs beside every numerical/effect/packing UNKNOWN. Prior versions
+retain their meanings; construction issues no reference or phase admission.
+
+Local packing intake v2 explicitly selects source-byte, local-memory,
+hierarchy and interval metadata budgets. Reuse the freshly serialized original
+core and its exact live hardware production root/container; preserve v1 local
+partitions and add separate conditional occurrence-to-memory bit facts. Retain
+every memory port and state/read/opaque/unsupported cut, original undefined
+memory domains and all command/axis/capacity/effect UNKNOWNs. Declared Phase 0
+run v6 carries this selector through the ordinary packing intake while keeping
+all v5 source/reference and mandatory requirements. Structural data grants no
+packing-domain, numerical, physical or grading admission; saved records cannot
+recreate live source authority or upgrade prior observations.
+
 Profiles declare tests; sweeps expand them; writer constructs and validates capsules;
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
+Profiles also own declaration-order Cartesian products and one-level variant
+formatting; sweeps retain their existing import names and expansion semantics.
+
+`operator_exclusion.select(path, sha256)` is a fixed operator-only selection of
+an ordinary private content-pinned JSON hash list. Never discover protected
+programs or shapes, put this selection in declarations/receipts/bundles, or expose
+matches in author feedback. Its typed contraction hashes include every actual
+matmul node's ordered input/result geometry, storage and selected arithmetic;
+names, graph topology and source bundle identity cannot hide an equal node.
+The operator passes the opaque selection directly to `declared_run.run` or
+`generation.generate_target`. `staging.write_staged` checks complete emitted
+public/dev sources before any new member is promoted. Unknown source structure,
+source/policy drift and exclusions share one generic refusal; hidden source
+cohorts retain their private scope. This safeguard grants no numerical/runtime
+qualification. Generation propagates that refusal without matched-member error
+rows. Default legacy calls do not discover or select an exclusion list.
+
+Original call-source v9 / automatic v16 / declared v9 add bounded `triu`
+construction for the exact original signed diagonal/default, positive rank of
+at least two and same input/result storage and shape relation. Preserve the
+last-two-axis semantics with independent fresh geometry and complete rank,
+logical input/output and aggregate source budgets. Stable factory v3/ledger v5
+retain all original call/cohort IDs, including fulfilled source prerequisites;
+scalar-conversion selection/receipt v4 and declared selection v3 retain the
+unchanged scalar sub-roster and observer v2. Earlier versions retain their
+meanings. Construction grants no reference, effect, packing, numerical or phase
+admission, and unsupported original formats remain required.
+
+Original call-source v8 / automatic v15 / declared v8 explicitly select bounded
+typed `to.dtype` and metadata-assertion factories. Retain original storage/rank,
+cast flags and dtype/device/layout conditions; non-None size/stride requirements
+remain unavailable rather than borrowing example geometry. Replay the selected
+native zero-return bridge and preserve the Python None slot separately from zero
+dispatcher results. Stable factory v2/ledger v4 keep every original selector ID,
+cohort and candidate blocker, including fulfilled original call-binding IDs.
+Binding state does not discharge effects or numerical admission. Scalar-conversion selection/receipt v3 replays the
+complete v8 source roster and the unchanged scalar sub-roster/native observer v2.
+Old versions, independent reference/packing choices and all numerical, alias,
+effect, hardware and phase-admission requirements keep their meanings.
+
+Original call-source v7 and scalar-conversion selection/receipt v2 explicitly
+select signed64 integer-literal construction through the same original live
+schema Tensor getter. Retain every original cohort and require exact native
+wrapped storage, fresh promotion/readout observations, registered importer/body
+joins and separate complete preallocation bounds for both dispatch outputs.
+Prior source, automatic, reference, review and numerical policies are unchanged;
+finite observed promotion establishes no whole-domain or mandatory admission.
+
+Automatic policy/receipt v14 explicitly selects original call-source v7 and
+the same native Tensor-binding facet in schema intake v2 or v3. Declared run v7
+connects the complete original source roster to the actual fixed registered
+scalar converter with input-only public source/parser and complete product/
+promotion budget declarations; live original owners derive all selection hashes.
+Its source-construction route retains v4 performance and mandatory requirements.
+Reference and local-memory selections are independent explicit additions, never
+fallbacks. Their absence preserves all missing numeric/effect/packing premises
+and blocked phases. Old v13/v6 factories and v5/v6 caller grammars are unchanged.
+
+Declared run v7 additionally selects source requirement ledger v3. The fixed
+`original_factory_prerequisites` owner derives every original call and all three
+cohorts before inspecting construction outcomes, then replays live schema/basis
+owners and exact source bytes. Stable selector IDs include fulfilled factories;
+the full `original_prerequisite_ids` union retains every coverage ID. Historical
+`original_required_ids`, ledger APIs, missing-row semantics and nonfactory or
+candidate blockers remain unchanged. Constructed source is separate from all
+numerical, hardware, effect, runtime and phase admission.
+
+Original call-source v6 / automatic policy and receipt v13 explicitly adds the
+bounded scalar mul/div factory. Every original call and guard/private slot,
+aggregate cost and missing admission remains required. Keep old versions and
+numeric/reference/review meanings unchanged; FloatLiteral preservation and a
+constructed loader grant no registered conversion or numerical/domain authority.
+
+`original_scalar_conversion` is a separate opt-in live consumer of that complete
+scalar guard/private source roster. The fixed observer records real registered
+importer entry/return without replacing registry functions; overrides refuse.
+Check exact public source bytes, original typed arguments, complete native
+products, the core SSA/body relation and actual selected stock parser before
+issuing construction data. Keep wrapped-number source correspondence,
+numeric/reference/owner, effects/resources and every mandatory admission unknown.
+Old source, reference and automatic versions keep their meanings.
+
+Original call-source v5 / automatic policy v12 selects typed broadcast-add forms;
+original reference selection/roster v5 and standard-IR v4 explicitly select the
+same vocabulary. Preserve every original call and guard/private slot, complete
+aggregate logical budgets and all unavailable policies/owners/effect/resource
+requirements. Original positive extents supply singleton/equality relations only,
+never generated sizes, objective weights or packing roles. Earlier versions keep
+their meanings; new finite source/reference products grant no mandatory admission.
 
 `source_preparation_release` replays the complete original source ledger and
 optional finite semantic cases into a live versioned input owner. Preserve all
@@ -29,6 +423,11 @@ source and process pins with JSON scalar types preserved; completed parser
 refusals and interrupted deadlines remain distinct. Unsupported original slots
 stay required. This private data checks neither compiled body semantics nor
 candidate execution, numerical stress, physical effects or Phase 1 release.
+Pointwise standard-IR replay explicitly shares only its selected canonical
+stock-parser tool pin during one bounded verification. Reopen complete tool
+content before and after, retain every original invocation/ENV/argv/role/member
+join and every fresh reader/input/output pin. Actual native observation remains
+fresh; historical v1 and absence of this opt-in retain their original behavior.
 
 `memory_port_intake` observes the complete local typed Seq memory/port roster
 from the same live independently reproduced public core. Fixed native generic
@@ -102,6 +501,19 @@ guard and private transfer commitment to fixed full-reference replay. No supplie
 factory, receipt, target encoding or accepted status is an input. Legacy request
 versions stay closed; v4 still retains all missing requirements and blocked later
 phases, with hardware guards and measured baselines unestablished.
+
+Explicit source-preparation v2 derives the shared template and objectives from
+live minimal software and RTL intake. The declared caller selects only a pinned,
+closed construction policy; workload/query selectors and arbitrary factories
+refuse before issuance. Normal generation rederives that complete template before
+writing, then uses existing sweep, aggregate-budget, source-screen and exact
+reference owners. Real signed casts and axis reductions use component-program
+v2. Every member retains its purpose, numerical policy, complete output boundary,
+source tier and limits. Joint adjacent source probes use observed memory depth,
+volume and optional array dimensions; physical axis/capacity/tail mappings remain
+UNKNOWN. Missing semantics and metadata-budget refusals retain mandatory rows.
+The explicit host source basis substitutes for a required RTL trait only for
+source preparation; saved execution labels cannot satisfy its execution gate.
 
 `component_source_demand` is a separate explicit private v1 source-contract
 consumer. Replay the same live source selectors and every complete original
@@ -389,6 +801,17 @@ Historical v8/v9 meanings and every original numerical admission, unsupported
 owner, effect and hardware gap remain unchanged. Factory construction and
 ordinary upstream source parsing grant no whole-domain numerical authority.
 
+Automatic policy/receipt v11 explicitly selects source record v4, adding exact
+original rank-two transpose forms. Original reference selection/roster v4 and
+declared reference/standard selections v3 use a separate finite storage policy;
+standard IR selection/request/roster v3 binds the exact ordinary converter.
+Preserve original axes and Tensor(a) schema alias while using fresh bounded
+rectangular geometry. Check every output element's exact storage bytes and
+separately reopen actual native strides, storage contact and unchanged finite
+input bytes. Those observations grant no effect domain, physical ownership,
+temporal behavior, hardware mapping, semantic-review owner or release authority.
+Keep every old version, guard/private identity and unsupported original slot.
+
 `operator_schema_intake` observes captured graph-level schemas against clean
 tracked public function declarations and the actual registered native schemas.
 The fixed reader retains typed alias sets, exact original argument/result joins
@@ -513,3 +936,62 @@ conversion failure, opaque frontend output and stock parser refusal give no
 source credit. These finite private observations do not grant original semantic
 ownership, numerical admission, stress-domain coverage, hardware or runtime
 effects, compiled semantics, or Phase 1 release.
+
+Original semantic review/cases v2 explicitly admits pointwise policy v2 while
+preserving legacy v1. Pin every selected tracked public implementation context,
+complete original schema/default/type/policy selector and unchanged input domain.
+The fixed pointwise probe producer requires fresh bounded extents and explicit
+complete logical/source/output budgets before shaped allocation. Supplementary
+native full-output checks and actual reference-traversal stress never replace an
+original guard/private slot. Source preparation v2 carries these finite reviewed
+facets through the same live source chain; all original mandatory unknown domains,
+effects, mappings, runtime and pending candidate predicates survive unchanged.
+
+The optional `generation_scope: phase1-functional` retains full roster expansion
+and all ordinary nonperformance, hidden and application admission. Only existing
+`_perf` members are deferred before capsule writing. Keep every resolved claim in
+the byte-bound `phase2-deferred.json` ledger and preserve it during release
+preparation. Deferred claims are neither written members nor Phase 2 readiness;
+omission retains historical full generation. Do not reuse this selector to omit
+other mandatory obligations or change sealed capture freshness.
+
+`capture_recipe` reads only the selected frozen software recipe index, checks
+exact bytes and semantic digests, and refuses ambiguous selections. Generation
+retains its callback alias; this helper cannot supply a hardware-only default.
+
+`parallel_capture` schedules independent generation-time operation captures in bounded
+batches (up to eight workers, clipped by CPU affinity and available memory). Copy
+observed-facts/import contexts into each worker. Model and materialized-source writes
+remain ordered because they may reuse sibling groups. Each sealed adapter keeps
+thread-local attestations; serialize shared source staging and slot allocation.
+Staging snapshots/publication are locked; admission and failure accounting retain
+source declaration order. Parallel scheduling never skips issue, replay, attestation,
+publication exclusion, required members, or ordinary software/hardware admission.
+
+`development_admission_plan` binds a complete readiness/source/reference/role
+inventory before emitting proposed original-owner work. Reopen selected source
+and full reference leaves pre/post, retain every unavailable member and original
+refusal, and preserve exact original supplement/request correspondence. Exact
+original declared-purpose matches may add a prospective coverage binding; unknown
+mappings remain refused. A deterministic job plan is not capture, admission,
+resource reservation, execution, timing or a new performance objective.
+
+`connected_source_context` is an operator-only, call-local carrier for exact connected source projections. It reconstructs the original window and reopens both source files before transporting a selected compiler index observation into `account_program`. Its reduction/control facts are source premises only, never copied capture ordinals or host/link/numerical grants. Missing original trace association and missing host declarations must remain refused.
+
+`connected_index_context` rechecks closed mask-count and literal-index forms on that reconstructed window against separately pinned capture model/trace/receipt metadata. Its distinct observation schema does not satisfy the full-capture index-proof schema: preparation ancestry, selected host placement and linked numerical obligations remain separate. Reopen original pins after proof; never transplant old operation ordinals, accept a changed literal because its shape matches, or use these source facts to force accelerator-eligible operations onto the host.
+
+`generation_paths` checks output and evidence destinations against retained and
+selected source corpora before generation. `generation` keeps the existing
+helper import; no source path is rewritten by this check.
+
+`performance_demand` derives performance cases from pinned captured programs'
+value-free contraction inventories under a declared per-target policy (coverage
+target, tile-relative regime classes, storage/cost bounds, one holdout per class).
+It selects shapes only; programs go through the native interface IR and holdouts
+leave as an owner-only hidden-profile sidecar for the ordinary writer.
+`case_redundancy` collapses exact duplicates (same program bytes, point, stimulus
+and comparison) and gives each contraction work shape one performance scorer;
+others are declared `performance_scope: excluded` and stay graded. Family points
+and whole models never collapse. Generation applies it after writing and records
+the correctness size-class distribution against the recipe's declared classes.
+`performance_corpus` is the CLI glue (`corpus performance-demand` / `performance-epoch`).

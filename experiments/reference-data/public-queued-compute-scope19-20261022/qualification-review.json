@@ -1,0 +1,94 @@
+{
+  "ancestry": {
+    "path": "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/ws-accumulate-replay-v1/full-ancestry.json",
+    "sha256": "bc7ef567f8823baf38e4f4bf418805f46ab3553ccb00224b54b8f0182bf1155d"
+  },
+  "current_candidate_coverage": "No exact24-family replay under combined9ce62 candidate yet; fetch-only888abf replay is not interchangeable with current row-admission provider.",
+  "evidence": [
+    {
+      "path": "workspace/tasks/el4-joint-integration-20261021/merlin/experiments/reference-data/public-queue-capacity-validation-20261022/prespecified-plan.json",
+      "sha256": "d71aa4db11c18c92232f2c56d090272d3ad303dbc694977e0cac8cb06cce286b"
+    },
+    {
+      "path": "workspace/tasks/el4-joint-integration-20261021/merlin/experiments/reference-data/public-queue-capacity-validation-20261022/physical-comparison.json",
+      "sha256": "69702701858217bc61bb051c04835537156e86702897e1426523288d31fef3b5"
+    },
+    {
+      "path": "workspace/tasks/el4-joint-integration-20261021/merlin/experiments/reference-data/public-queue-capacity-validation-20261022/frontend-structure-review.json",
+      "sha256": "41a7191e3b9d04c16cf3a0d7b5521154d9283415530f3333c5bdc6e02c7df20e"
+    },
+    {
+      "path": "workspace/tasks/el4-joint-integration-20261021/merlin/experiments/reference-data/public-fetch-refill-replay-20261022/queue/completion.json",
+      "sha256": "87f2a1b46823522f74dc1eddc8c3e238d9a4406adbd7687c00eb07e18dc0040b"
+    }
+  ],
+  "failed_pairs": [
+    {
+      "estimated_fenced_minus_queued": -44,
+      "estimated_queued_over_fenced": 1.1419354838709677,
+      "gate": false,
+      "jobs": 1,
+      "physical_fenced_minus_queued": 9,
+      "physical_queued_over_fenced": 0.9726443768996961,
+      "ratio_gate": false,
+      "relative_ratio_error": 0.1740524193548385,
+      "rep": 0,
+      "sign_gate": true,
+      "sign_material_threshold": 32
+    }
+  ],
+  "failed_state_deltas": [
+    {
+      "absolute_residual": 53.0,
+      "arm": 0,
+      "estimated_first_minus_warm": 51.0,
+      "gate": false,
+      "limit_cycles": 32,
+      "physical_first_minus_warm": -2.0
+    }
+  ],
+  "maximum_relative_error": 0.10625,
+  "median_relative_error": 0.046153846153846156,
+  "next_replay": {
+    "arm": "warm11queued",
+    "bounds": {
+      "annotated_runs_initial_max": 1,
+      "per_run_s": 120,
+      "physical_runs": 0,
+      "trace_bytes_max": 16777216,
+      "trace_events_max": 32768
+    },
+    "comparator_condition": "Only if a same-runtime queued/fenced differential is needed; otherwise one trace first.",
+    "elf": {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf",
+      "sha256": "9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63"
+    },
+    "execute": false,
+    "instrumentation": "existing bounded modeled-event sink; preserve exact fullprogram24numeric+16warmup outputs, fixed model/ELF/counter scope and allprices",
+    "optional_comparator_scope": 22,
+    "qualification": "No new qualification from this replay; modeled queue activity is not a physical occupancy measurement.",
+    "question": "What actually bounds admitted queued work under the composed candidate: CPU arrival, execute feed, accumulator output resource, or reservation/controller occupancy?",
+    "scope_occurrence": 19
+  },
+  "remaining_blockers": [
+    "Committed-PC-only frontend cannot reproduce all independent fetch/refill history while backend waits at fences; first-use residual remains. Existing exact RTL review supports missing mechanism but not its full causal magnitude.",
+    "Issued22commands exceeds capacity16 but does not prove simultaneous physical queue saturation; no observed physical occupancy/backpressure census.",
+    "24occurrences are one related source family. Subsequent frontend investigations make development use explicit; no independent multi-source qualification.",
+    "No coverage grant for FP/host packing, translation misses, cache replacement/backpressure, transpose/tails, or fullmodels from this family.",
+    "Deep-K and small candidate improvements are development checks. Automatic2priceWS/PRELOAD fit cannot compensate arbitrary structural CPU/memory errors; denial remains."
+  ],
+  "retained_gates": {
+    "all24_scope_error": true,
+    "all_controlled_warm_stable": true,
+    "all_depth_slopes": true,
+    "all_numeric": true,
+    "all_paired_throughput": false,
+    "all_state_deltas": false,
+    "median_relative_error": true,
+    "model_unchanged": true
+  },
+  "schema": "operator.queued_compute_qualification_review.v1",
+  "scope": "one full-tile nonaccumulating WS family, preloaded operands, inclusive compute/fence/readout; no independent in-window physical stage attribution",
+  "source_applicability": "All measured PRELOAD output packets use overwrite0x80000000, so accumulating-WS selector is not directly eligible. Pre-window row path can still alter modeled history.",
+  "status": "read_only_no_runs"
+}

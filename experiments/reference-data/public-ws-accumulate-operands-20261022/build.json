@@ -1,0 +1,56 @@
+{
+  "fitting_allowed": false,
+  "model": {
+    "path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/model.json",
+    "sha256": "9ce62bab015df550d3849f501672dc9a9a1c4ea0c04233029caecf86bb7a56dd"
+  },
+  "model_delta": [
+    "libraries[-1]",
+    "target.scheduling.split_ws_accumulate_operands"
+  ],
+  "new_physical_runs": 0,
+  "parent_runtime": {
+    "path": "workspace/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/runtime-selection-v2.json",
+    "sha256": "318f9a631735b6e31481de4d406a32d3af3df6a667af6a658479a4a49560ddb9"
+  },
+  "provider_build": {
+    "path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/provider-build.json",
+    "sha256": "a003d9633a6a791aa49d11f23e55a28c1a417876fcb5238cfc662c77ce395280"
+  },
+  "qualified": false,
+  "runtime": {
+    "path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/runtime.json",
+    "sha256": "df2c2bf35cd33353e2f6c7e92c317ad44f1b85089bba3846dd46e6f442dfa6e9"
+  },
+  "schema": "merlin.provisional_accumulating_ws_candidate.v1",
+  "source_commit": "990f57095ebe43a50c472c81b7d3d3c91761b633",
+  "source_pins": [
+    {
+      "path": "workspace/tasks/el4-joint-performance-feedback-20261021/spike-timing/examples/gemmini/timing/README.md",
+      "sha256": "f2c0d09d51a7a8cd743154349e1055423628354e12fb94ac534cdee32562cb8a"
+    },
+    {
+      "path": "workspace/tasks/el4-joint-performance-feedback-20261021/spike-timing/examples/gemmini/timing/bridge.cpp",
+      "sha256": "0c995689322dad68e4ffb2567e928a9d2570a46a3c652eae73224e00eb7113a0"
+    },
+    {
+      "path": "workspace/tasks/el4-joint-performance-feedback-20261021/spike-timing/examples/gemmini/timing/provider.hpp",
+      "sha256": "14766c6515056a196ce2724f72f52c2d1d3a5c44e9c1a6d2a76bba1cb7617a58"
+    },
+    {
+      "path": "workspace/tasks/el4-joint-performance-feedback-20261021/spike-timing/examples/gemmini/timing/staged.hpp",
+      "sha256": "23f64d07aa8d0098f585ba275efdbbd52737861fda05985902ce3a97c7bb1466"
+    },
+    {
+      "path": "workspace/tasks/el4-joint-performance-feedback-20261021/spike-timing/examples/gemmini/timing/streamed_readout.hpp",
+      "sha256": "9b4ba32a70089f91c65727be83408a10fd983a2ae78124c2029bdca06f18e918"
+    },
+    {
+      "path": "workspace/tasks/el4-joint-performance-feedback-20261021/spike-timing/examples/gemmini/timing/scratchpad_load.hpp",
+      "sha256": "73f8346198a7285e2002d83341871fbae2d4e12939af79d46198a55544e7677a"
+    }
+  ],
+  "unchanged_hardware": true,
+  "unchanged_observer": true,
+  "unchanged_prices": true
+}

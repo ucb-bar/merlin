@@ -36,6 +36,7 @@ def isolated_build(tmp_path, monkeypatch):
     monkeypatch.setattr(DB, "_objcopy", lambda: "test-objcopy")
     monkeypatch.setattr(exact_offload, "_package_sha256", lambda _path: digest)
     monkeypatch.setattr(device_shim, "kernel_abi_for", lambda _target: SimpleNamespace(symbol="kernel"))
+    monkeypatch.setattr(DB, "executable_kernel_entry", lambda _target: "kernel")
     monkeypatch.setattr(oot_runner, "load_package", lambda _path: SimpleNamespace(target=target))
     monkeypatch.setattr(toolchain, "mlir_translate", lambda: "test-translate")
     monkeypatch.setattr(toolchain, "clang", lambda: "test-clang")
@@ -63,6 +64,15 @@ def isolated_build(tmp_path, monkeypatch):
         return SimpleNamespace(text="/* synthetic shim */", symbols=tuple(signatures), skipped=())
 
     monkeypatch.setattr(oot_runner, "run_entrypoint", emit)
+    from merlin.targetgen import capsule_common
+
+    def lower(pkg, path, generated, *, timeout, **kwargs):
+        artifact = emit(pkg, "emit_target_artifact", path, timeout=timeout).stdout
+        generated.mkdir(parents=True, exist_ok=True)
+        (generated / "lowered.llvm.mlir").write_text(artifact)
+        return {}, artifact
+
+    monkeypatch.setattr(capsule_common, "lower_interface", lower)
     monkeypatch.setattr(DB, "_run", run)
     monkeypatch.setattr(device_shim, "emit_translation_unit", shim)
 
@@ -86,6 +96,15 @@ def isolated_build(tmp_path, monkeypatch):
     return build, state, calls
 
 
+def test_exact_build_refuses_missing_selected_executable_entry(isolated_build, monkeypatch):
+    build, _state, calls = isolated_build
+    monkeypatch.setattr(DB, "executable_kernel_entry", lambda _target: "different_selected_entry")
+    result = build()
+    assert not result.ok and len(result.skipped) == 2
+    assert all("contract-named LLVM kernel entry" in reason for _symbol, reason in result.skipped)
+    assert [stage for stage, _name in calls] == ["emit", "emit"]
+
+
 @pytest.mark.parametrize("stage", ["emit", "translate", "clang", "rename"])
 def test_kernel_timeout_preserves_other_kernel_and_names_stage(isolated_build, stage):
     build, state, calls = isolated_build
@@ -98,7 +117,7 @@ def test_kernel_timeout_preserves_other_kernel_and_names_stage(isolated_build, s
     assert result.skipped[0][0] == "a_slow"
     assert "timed out" in result.skipped[0][1] and "3" in result.skipped[0][1]
     expected_stage = {
-        "emit": "emit_target_artifact",
+        "emit": "package lowering",
         "translate": "mlir-translate",
         "clang": "clang",
         "rename": "symbol rename",

@@ -13,6 +13,69 @@ from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import host_surfaces as HS
 
 
+@pytest.mark.parametrize(
+    ("source", "repo", "relative"),
+    [
+        ("/selected/repo", "/selected/repo", "repo"),
+        ("/selected/repo/nested/input", "/selected/repo", "repo/nested/input"),
+        ("/selected/repository/input", "/selected/repo", "external/selected/repository/input"),
+        ("/elsewhere/input", "/selected/repo", "external/elsewhere/input"),
+        ("/selected/input", "/", "repo/selected/input"),
+    ],
+)
+def test_snapshot_mapping_preserves_component_boundaries(source, repo, relative, tmp_path):
+    assert BW._snapshot_path(tmp_path, Path(source), Path(repo)) == tmp_path / relative
+
+
+@pytest.mark.parametrize("bound", ["workspace", "bundle_inputs"])
+@pytest.mark.parametrize("relationship", ["equal", "child", "parent", "alias"])
+def test_host_locations_reject_lexical_and_resolved_overlap(tmp_path, bound, relationship):
+    workspace = tmp_path / "run" / "workspace"
+    workspace.mkdir(parents=True)
+    selected = workspace if bound == "workspace" else BW.bundle_snapshot_root(workspace)
+    selected.mkdir(exist_ok=True)
+    source = {
+        "equal": selected,
+        "child": selected / "nested" / "input",
+        "parent": selected.parent,
+        "alias": tmp_path / "alias",
+    }[relationship]
+    if relationship == "alias":
+        source.symlink_to(selected, target_is_directory=True)
+    with pytest.raises(RuntimeError, match="overlaps"):
+        BW._validate_host_locations(workspace, [(str(source), source)])
+    sibling = selected.with_name(selected.name + "-independent")
+    BW._validate_host_locations(workspace, [(str(sibling), sibling)])
+
+
+@pytest.mark.parametrize("fault", ["destination", "escape", "symlink", "missing"])
+def test_deep_external_snapshot_records_keep_fresh_path_checks(tmp_path, fault):
+    workspace, repo = tmp_path / "run" / "workspace", tmp_path / "repo"
+    destination = tmp_path / "private" / Path(*("nested" for _ in range(24))) / "input"
+    root = BW.bundle_snapshot_root(workspace)
+    relative = Path("external", *destination.parts[1:])
+    frozen = root / relative
+    frozen.parent.mkdir(parents=True)
+    frozen.write_text("private input")
+    expected = str(destination)
+    record = {"path": expected, "destination": expected, "snapshot": str(relative)}
+    assert BW._snapshot_records(workspace, repo, [expected], [record], canonical=True) == [
+        (expected, destination, frozen)
+    ]
+    if fault == "destination":
+        record["destination"] = str(destination.with_name("input-sibling"))
+    elif fault == "escape":
+        record["snapshot"] = "../outside"
+    elif fault == "symlink":
+        other = frozen.with_name("other")
+        frozen.rename(other)
+        frozen.symlink_to(other.name)
+    else:
+        frozen.unlink()
+    with pytest.raises(RuntimeError, match="invalid|escapes|declared destination|symlink|incomplete"):
+        BW._snapshot_records(workspace, repo, [expected], [record], canonical=True)
+
+
 @pytest.fixture
 def private_bundle(tmp_path, monkeypatch):
     monkeypatch.setenv("MERLIN_BUNDLE_CAS", "")
@@ -56,6 +119,27 @@ def test_private_only_bundle_has_no_candidate_input_binds(private_bundle):
     assert grants == []
     assert not BW.is_exposed(BW.base_argv(workspace, bundle, repo=repo), hidden / "secret.bin")
     assert BW.snapshot_input_paths(workspace, bundle, [hidden], repo=repo)[0].is_dir()
+
+
+def test_flat_host_file_roster_keeps_all_inputs_private_and_detects_missing_siblings(private_bundle):
+    repo, workspace, bundle, hidden = private_bundle
+    paths = [hidden / "secret.bin"]
+    for index in range(32):
+        path = hidden / "libraries" / str(index // 8) / f"module{index}"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(str(index).encode())
+        paths.append(path)
+    bundle["allowed"] = [{"path": "inputs/public.txt"}]
+    bundle["host_inputs"] = [{"path": str(path)} for path in paths]
+    manifest = BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    assert BW.verify_bundle_snapshot(workspace, bundle, repo=repo) == manifest
+    bindings = BW.base_argv(workspace, bundle, repo=repo)
+    assert all(not BW.is_exposed(bindings, path) for path in paths)
+    frozen = BW.snapshot_input_paths(workspace, bundle, [paths[-1]], repo=repo)[0]
+    frozen.parent.chmod(0o700)
+    frozen.unlink()
+    with pytest.raises(RuntimeError, match="missing|differs|incomplete"):
+        BW.verify_bundle_snapshot(workspace, bundle, repo=repo)
 
 
 @pytest.mark.parametrize("use_store", [False, True])
@@ -227,7 +311,7 @@ def test_frozen_corpus_answers_stay_masked_after_source_removal_and_runtime_rebi
     weight.write_bytes(b"private weights")
     hidden = corpus / "hidden/holdout"
     hidden.mkdir(parents=True)
-    (hidden / "capsule.yaml").write_text("private holdout\n")
+    (hidden / "capsule.yaml").write_text("name: holdout\nlabel: hidden\n")
     workspace = tmp_path / "run/workspace"
     workspace.mkdir(parents=True)
     bundle = {"allowed": [{"path": "merlin/contract/capsules"}]}
@@ -618,3 +702,158 @@ def test_malformed_host_input_declarations_fail_closed(private_bundle, entries):
     with pytest.raises(RuntimeError, match="host_inputs"):
         BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
     assert not BW.bundle_snapshot_root(workspace).exists()
+
+
+def test_public_directory_cycle_is_refused_with_indexed_private_paths(private_bundle):
+    repo, workspace, bundle, _ = private_bundle
+    public = repo / "inputs" / "cycle-root"
+    public.mkdir()
+    (public / "loop").symlink_to(public, target_is_directory=True)
+    with pytest.raises(RuntimeError, match="directory cycle"):
+        BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    assert not BW.bundle_snapshot_root(workspace).exists()
+
+
+def test_private_alias_translation_parses_mounts_once_per_policy_call(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    frozen = tmp_path / "frozen"
+    source.mkdir()
+    frozen.mkdir()
+    records = []
+    for index in range(24):
+        original = source / str(index)
+        copy = frozen / str(index)
+        original.write_text("private input")
+        copy.write_bytes(original.read_bytes())
+        records.append((str(original), original, copy))
+    calls = 0
+    original_mounts = HS._mounts
+
+    def counted_mounts(argv):
+        nonlocal calls
+        calls += 1
+        return original_mounts(argv)
+
+    monkeypatch.setattr(HS, "_mounts", counted_mounts)
+    surfaces = HS._private_path_surfaces(["--ro-bind", str(source), "/alias"], records, set())
+    assert calls == 1
+    paths = {surface.path for surface in surfaces}
+    assert {record[1] for record in records} <= paths
+    assert {record[2] for record in records} <= paths
+    assert {Path("/alias") / str(index) for index in range(24)} <= paths
+
+
+def test_private_alias_index_skips_disjoint_mount_sources(tmp_path, monkeypatch):
+    private = tmp_path / "private"
+    private.write_text("host input")
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    argv = ["--ro-bind", str(private), "/selected-alias"]
+    for index in range(32):
+        source = unrelated / str(index)
+        source.mkdir()
+        argv.extend(["--ro-bind", str(source), f"/unrelated/{index}"])
+    calls = 0
+    original_alias = HS._bind_alias
+
+    def counted_alias(*args):
+        nonlocal calls
+        calls += 1
+        return original_alias(*args)
+
+    monkeypatch.setattr(HS, "_bind_alias", counted_alias)
+    surfaces = HS._private_path_surfaces(argv, [(str(private), private, private)], set())
+    assert calls == 1
+    assert {surface.path for surface in surfaces} == {private, Path("/selected-alias")}
+
+
+def test_support_alias_index_keeps_destination_reexposure_and_contract_exemption(tmp_path):
+    from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface
+
+    private = tmp_path / "owner"
+    private.mkdir()
+    public = tmp_path / "public.txt"
+    public.write_text("control")
+    protected = AnswerSurface("owner", private, "dir", "backend", ("contracts",))
+    denied_destination = private / "implementation" / "alias.txt"
+    allowed_destination = private / "contracts" / "public.txt"
+    mounts = [
+        ("expose", str(public), str(denied_destination)),
+        ("expose", str(public), str(allowed_destination)),
+    ]
+    projected = BW._support_bind_surfaces(mounts, [protected])
+    paths = [surface.path for surface in projected]
+    assert paths[0] == private
+    assert denied_destination in paths
+    assert allowed_destination not in paths
+
+
+def test_host_mask_compaction_keeps_public_exception_and_late_reexposure(private_bundle):
+    repo, workspace, bundle, hidden = private_bundle
+    bundle["allowed"] = [{"path": "inputs/public.txt"}]
+    BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    earlier_directory_mask = ["--tmpfs", str(repo / "inputs")]
+    compact = BW._bundle_mount_args(workspace, bundle, repo, visibility_prefix=earlier_directory_mask)
+    assert not any(state == "hide" and destination == str(hidden) for state, _, destination in BW._mounts(compact))
+    composed = earlier_directory_mask + compact
+    assert BW.is_exposed(composed, repo / "inputs/public.txt")
+    assert not BW.is_exposed(composed, hidden / "secret.bin")
+    late = [*composed, "--ro-bind", str(repo / "inputs"), str(repo / "inputs")]
+    assert BW.is_exposed(late, hidden / "secret.bin")
+    reapplied = BW.reapply_bundle_snapshot(late, workspace, bundle, repo=repo)
+    assert not BW.is_exposed(reapplied, hidden / "secret.bin")
+    assert BW.is_exposed(reapplied, repo / "inputs/public.txt")
+
+
+def test_host_mask_compaction_counts_platform_prefix_and_preserves_standalone(private_bundle):
+    repo, workspace, bundle, hidden = private_bundle
+    bundle["allowed"] = []
+    BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    assert BW._bundle_mount_args(workspace, bundle, repo, visibility_prefix=[]) == []
+    platform_prefix = ["--ro-bind", str(repo), str(repo)]
+    required = BW._bundle_mount_args(workspace, bundle, repo, visibility_prefix=platform_prefix)
+    assert required == ["--tmpfs", str(hidden)]
+    assert not BW.is_exposed(platform_prefix + required, hidden / "secret.bin")
+    assert BW._bundle_mount_args(workspace, bundle, repo) == required
+
+
+@pytest.mark.parametrize("when", ["before reading", "between records"])
+def test_record_validation_refuses_an_internal_same_bytes_parent_alias(private_bundle, monkeypatch, when):
+    repo, workspace, bundle, hidden = private_bundle
+    second = hidden / "second.bin"
+    second.write_bytes(b"second private input")
+    bundle["allowed"] = [{"path": "inputs/public.txt"}]
+    bundle["host_inputs"] = [{"path": str(hidden / "secret.bin")}, {"path": str(second)}]
+    manifest = BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    root = BW.bundle_snapshot_root(workspace)
+    first = root / manifest["host_records"][0]["snapshot"]
+    parent = first.parent
+    parent.parent.chmod(0o700)
+    alternate = parent.with_name(parent.name + "-same-bytes")
+
+    def alias():
+        parent.rename(alternate)
+        parent.symlink_to(alternate, target_is_directory=True)
+
+    if when == "before reading":
+        alias()
+    else:
+        resolve = Path.resolve
+        changed = False
+
+        def observed(path, *args, **kwargs):
+            nonlocal changed
+            result = resolve(path, *args, **kwargs)
+            if path == first and not changed:
+                changed = True
+                alias()
+            return result
+
+        monkeypatch.setattr(Path, "resolve", observed)
+    try:
+        with pytest.raises(RuntimeError, match="symlink|escapes"):
+            BW._snapshot_records(workspace, repo, manifest["host_inputs"], manifest["host_records"], canonical=True)
+    finally:
+        if parent.is_symlink():
+            parent.unlink()
+            alternate.rename(parent)

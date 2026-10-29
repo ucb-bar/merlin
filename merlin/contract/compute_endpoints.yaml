@@ -49,6 +49,7 @@ endpoints:
         - LOOP_WS_CONFIG_STRIDES_AB
         - LOOP_WS_CONFIG_STRIDES_DC
         - LOOP_WS_CONFIG_SPAD_AB
+        - LOOP_WS_CONFIG_SPAD_C
         - LOOP_CONV_WS
         - LOOP_CONV_WS_CONFIG_1
         - LOOP_CONV_WS_CONFIG_2

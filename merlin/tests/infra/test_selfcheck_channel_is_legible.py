@@ -44,7 +44,7 @@ def test_the_broker_says_which_request_it_claimed_before_it_runs_anything() -> N
     # that ran one would be testing the child.
     text = (feedback_source("selfcheck_broker")).read_text(encoding="utf-8")
     claim = text.index('ch / f"claimed_{rid}"')
-    spawn = text.index("proc = subprocess.Popen(inherited_python_command(argv2)")
+    spawn = text.index("worker_pool_command(inherited_python_command(argv2)")
     assert claim < spawn
     assert '"queued_behind_this"' in text[claim : claim + 400]
 
@@ -55,7 +55,11 @@ def test_a_queued_client_is_told_it_is_queued_and_by_how_much(tmp_path: Path) ->
     strings = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str)]
     joined = "\n".join(strings)
     assert "queued, not yet claimed" in joined and "claimed by the grader after" in joined
+    # The concurrency it states is the grader's own record: one slot for the single-lane broker,
+    # the ordinary lane's size when a shared CPU pool sizes several (see test_selfcheck_variants).
     assert "serves one request at a time" in joined
+    assert "self-check request(s) at once" in joined
+    assert 'ch / "broker_health.json"' in text
     # And it reads the marker the broker actually writes.
     assert 'claimed = ch / f"claimed_{rid}"' in text
     marker = json.loads(json.dumps({"claimed_at_unix_ns": 1, "queued_behind_this": 3}))

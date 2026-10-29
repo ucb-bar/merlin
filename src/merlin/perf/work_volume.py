@@ -142,6 +142,33 @@ def work_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramWork:
             command_buffer, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
     except (TypeError, ValueError):
         artifact_sha256 = ""
+    params = command_buffer.get("params")
+    projection = params.get("source_owned_host_projection") if isinstance(params, Mapping) else None
+    if projection is not None:
+        # The original host owns storage/epilogues outside the independently
+        # retained private compiler projection. Never price an empty public
+        # pointer roster as zero work or claim the projection covers host MACs.
+        from dataclasses import replace
+
+        device = projection.get("device_command_buffer") if isinstance(projection, Mapping) else None
+        if not isinstance(device, Mapping) or (
+            isinstance(device.get("params"), Mapping) and "source_owned_host_projection" in device["params"]
+        ):
+            return ProgramWork(
+                (),
+                0,
+                True,
+                ("source-owned host has no bounded device work projection",),
+                artifact_sha256=artifact_sha256,
+            )
+        work = work_from_command_buffer(device)
+        return replace(
+            work,
+            is_lower_bound=True,
+            refusals=(*work.refusals, "original host work outside the device projection is uncounted"),
+            artifact_sha256=artifact_sha256,
+            basis="source_owned_device_projection",
+        )
     tensors = command_buffer.get("tensors")
     instructions = command_buffer.get("commands")
     if not isinstance(tensors, Mapping) or not isinstance(instructions, Sequence) \
@@ -263,7 +290,7 @@ def _unknown_evidence(refusal: str, compiler_provenance: str) -> tuple[dict[str,
     return work, artifact
 
 
-def command_buffer_evidence(command_buffer: Any, *, compiler_provenance: str
+def command_buffer_evidence(command_buffer: Any, *, compiler_provenance: str, store: Any = None
                             ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Return the ``(work_volume, command_buffer_artifact)`` pair a perf consumer reads.
 
@@ -276,19 +303,31 @@ def command_buffer_evidence(command_buffer: Any, *, compiler_provenance: str
     Never returns a zero total for unpriceable work: an unknown stays ``exact_macs=None`` with the
     counter's own refusals attached, and a buffer that is absent or not serialisable evidence yields
     the same explicit UNKNOWN rather than a missing key.
+
+    With ``store`` (the directory of the result that will carry the artifact) the raw buffer is written
+    there once, as the canonical bytes the digest is taken over, and the artifact REFERENCES it
+    (:mod:`merlin.perf.command_buffer_store`) instead of embedding it: an expanded buffer carries every
+    canonical input tensor, up to 88 MB of integers per decoder-scale case. Readers load it with
+    :func:`merlin.perf.command_buffer_store.load_command_buffer`, which re-checks the digest.
     """
     if not isinstance(command_buffer, Mapping):
         return _unknown_evidence(NO_COMMAND_BUFFER_REFUSAL, compiler_provenance)
+    from merlin.perf.command_buffer_store import canonical_bytes, store_canonical
+
     try:
-        canonical = json.dumps(command_buffer, sort_keys=True, separators=(",", ":"))
+        canonical = canonical_bytes(command_buffer)
         # Round-tripped, so the bytes a reader re-digests are the bytes this digest was taken over.
-        replayed = json.loads(canonical)
+        replayed = json.loads(canonical) if store is None else None
     except (TypeError, ValueError) as exc:
         return _unknown_evidence(
             f"command buffer is not serialisable evidence and cannot be priced: {exc}",
             compiler_provenance)
     work = work_from_command_buffer(command_buffer).to_dict()
-    artifact = {"command_buffer": replayed,
-                "artifact_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+    sha256 = hashlib.sha256(canonical).hexdigest()
+    if store is not None:
+        artifact = {"artifact_sha256": sha256, "compiler_provenance": str(compiler_provenance),
+                    **store_canonical(command_buffer, canonical, sha256, store)}
+        return work, artifact
+    artifact = {"command_buffer": replayed, "artifact_sha256": sha256,
                 "compiler_provenance": str(compiler_provenance)}
     return work, artifact

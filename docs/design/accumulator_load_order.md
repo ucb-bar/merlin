@@ -3,9 +3,9 @@ title: "Design note: accumulator loads are ordered by issue, not by completion"
 kind: design
 status: current
 owner: verification
-last_verified: 2026-10-07
+last_verified: 2026-10-26
 related: [open_coded_nest_costs, capsule_phase_split, agentic_experiment_integrity]
-code_refs: [examples/gemmini/verification/acc_race/acc_race_repro.c, examples/gemmini/verification/acc_race/vend_repro.c, examples/gemmini/verification/acc_race/classify.py, examples/gemmini/verification/acc_race/fence_vendor_resadd.py, merlin/tests/gemmini/test_acc_race_repro.py]
+code_refs: [examples/gemmini/verification/acc_race/acc_race_repro.c, examples/gemmini/verification/acc_race/vend_repro.c, examples/gemmini/verification/acc_race/classify.py, examples/gemmini/verification/acc_race/fence_vendor_resadd.py, merlin/tests/gemmini/test_acc_race_repro.py, src/merlin/targetgen/completion_order.py, src/merlin/targetgen/rtl/command_ordering.py, packages/merlin-experiments/src/merlin/targetgen/completion_order_gate.py]
 ---
 
 # Accumulator loads are ordered by issue, not by completion
@@ -133,3 +133,14 @@ different IDs out of order. It was built into a Verilator `GemminiRocketConfig`;
    every run. What changes the outcome is timing context, such as a different repetition or
    different code around the kernel. "Non-deterministic" here means timing-dependent, not random per
    run.
+6. **The decision is static, at L2, over the executed stream.** The same hazard appeared in the
+   scratchpad: a 16-row zero fill and the rows gathered into it, back to back in the load queue,
+   wrong on FireSim in 8 of 12 runs while Spike and GSIM passed. `merlin.targetgen.completion_order`
+   now decides every local memory at once. It reads the command stream the functional run executed
+   (its commit log) and the target's derived ordering facts (`facts.command_ordering`, observed by
+   driving the dispatch module the contract names: each funct's queue, same-queue release at issue
+   or completion, tracked cross-queue overlaps, span formulas, and whether a queue's writes can land
+   out of order). It reports a pair only when no ordering path exists. A flagged pair fails the
+   functional tier with the command indices and rows. An undecidable stream is recorded as
+   `unknown` with its reasons, never as clear. Its verdict replaces the accumulator-only rule above
+   as the trigger of the perturbation sweep.

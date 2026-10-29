@@ -15,12 +15,13 @@ structure; neither parses text.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
-from typing import Any, Iterator, Mapping
+from typing import Any
 
 from .expr import Expr, ExprError, as_expr, evaluate, free_vars, render
 
-DTYPE_BYTES = {"i8": 1, "i16": 2, "i32": 4, "f32": 4}
+DTYPE_BYTES = {"i8": 1, "i16": 2, "i32": 4, "f32": 4, "f64": 8}
 ACCESS = ("read", "write", "readwrite")
 
 
@@ -140,6 +141,12 @@ class Loop:
     var: str
     extent: int
     body: tuple
+    #: Explicit completion-token ownership: (local block argument, incoming token).
+    iter_args: tuple[tuple[str, str], ...] = ()
+    #: Body tokens passed to the next iteration, in block-argument order.
+    yields: tuple[str, ...] = ()
+    #: Final tokens bound in the enclosing lexical scope.
+    results: tuple[str, ...] = ()
 
 
 #: What separates one printed attribute from the next. Named because the READER splits on it and the
@@ -208,7 +215,10 @@ def _print_body(body, depth: int, lines: list[str]) -> None:
     pad = "  " * depth
     for s in body:
         if isinstance(s, Loop):
-            lines.append(f"{pad}for {s.var} in 0..{s.extent}:")
+            carried = (" carry(" + ",".join(f"{name}={value}" for name, value in s.iter_args)
+                       + ") yield(" + ",".join(s.yields) + ") result(" + ",".join(s.results) + ")"
+                       if s.iter_args or s.yields or s.results else "")
+            lines.append(f"{pad}for {s.var} in 0..{s.extent}{carried}:")
             _print_body(s.body, depth + 1, lines)
         else:
             # The asynchrony decorates the call rather than replacing it, so a synchronous kernel prints
@@ -331,6 +341,9 @@ def _token_errors(kernel: Kernel) -> list[str]:
     tracks dependencies it is fine, on one where the compiler must separate them it is a wrong answer --
     so that question belongs to a machine-aware check and deliberately is not asked here.
     """
+    from .events import has_carried_events, lexical_event_errors
+    if has_carried_events(kernel.body):
+        return lexical_event_errors(kernel)
     errors: list[str] = []
     produced: set[str] = set()
 

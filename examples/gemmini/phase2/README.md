@@ -1,10 +1,49 @@
 # Phase 2: performance optimization
 
+`continuing_campaign.py --campaign-root PATH --watchdog` runs the persistent diagnostic
+controller for an explicitly configured campaign. Its manifest fixes the task
+directory, compiler freeze and final deadlines, checkpoint interval, required
+roster and measured targets. The controller dispatches immutable `job-requests`
+through owned child processes with bounded timeouts, reopens candidate and
+hardware evidence, and writes durable receipts, checkpoints and the scoreboard.
+Author workers share the campaign's SQLite work queue; their selected work
+follows the lowest current conservative roofline fraction. Missing metrics take
+priority. Cycle estimates select provisional candidates; complete paired
+FireSim results supply measured speedups. Instruction counts select no winner.
+
+Each candidate request pins its ELF, complete numerical observation, annotated
+Spike report and model, and the roofline evidence, assumptions and uncertainty.
+Changed models require baseline replay. Hardware ingestion compares each arm
+with the baseline in its actual batch and retains every required capsule.
+Conditional necessary floors and independent feasible schedules remain labelled
+as bounds; they cannot satisfy a qualified attainable-roofline target. Failed
+multi-row reviews leave the previous scoreboard intact. Compiler edits stop at
+the configured freeze; hardware, validation and model replay jobs may continue
+through the final deadline. Shutdown drains owned jobs and infers no scientific
+success from process completion. The watchdog restarts a failed controller.
+An interrupted job resumes only through its explicit `resume_argv` contract;
+otherwise it records `recovery_required` and continues independent work. Remote
+experiment adapters must resume the recorded owned command rather than submit
+a second experiment. The controller verifies immutable dispatched requests.
+
+Use the [shared workload protocol](../protocol/README.md) and archive its
+[per-run bindings](../protocol/run-manifest.template.yaml): exact full-model
+shapes, recipes, host math, quality metrics and measured latency scope must agree
+across experiments. The offline section reader reports real continuation PPL
+separately from KL, using retained outputs. Select explicit Phase 2 stop budgets; historical templates do not
+silently select the current workload or budget.
+
 Use the reviewed derivation's `phase_corpora.phase2` selection, not Phase 1's
 functional or Phase 0-only diagnostic members. Carry the same selected SW-spec
 and hardware-evidence identities with the exact frozen functional compiler.
 Changing operation admission, formats or hardware selection requires renewed
 functional qualification; it is not merely another performance knob.
+
+Before authoring, follow the [bounded preparation procedure](preparation.md) to
+audit coverage, validate any surrogate and freeze finite measurement budgets.
+The optional [public Autocomp-shape supplement](benchmarks/README.md) stages
+ten explicitly selected shape families through the ordinary workload roster.
+Its source and scored-admission gates remain separate from the full-model objective.
 
 Phase 2 consumes a frozen functional compiler; it does not tune Merlin's shared
 implementation for Gemmini. Target-specific generated compiler code stays in the
@@ -13,6 +52,19 @@ Its workloads answer a different question from Phase 1's network-compile bar:
 they measure placement, cycles and model-level cost after functional capability
 has been established. A fast Phase 2 objective is not a substitute for a
 successful ResNet-50 or SmolVLA whole-model compile and correctness receipt.
+
+The intended fast timing path is the annotated Spike observer calibrated from
+Phase 1 capsule records for the selected FireSim-source-aligned gSIM elaboration.
+Its current profile has no cycle prices, so it cannot yet rank candidates.
+Fit on complete capsule call-cycle labels, validate on held-out gSIM capsules,
+and record the error and supported shapes before using it to screen Phase 2
+candidates. This yields a gSIM-surrogate timing model. It does not require a
+U250 runner or measurements. Board-cycle prediction is a separate claim that
+requires matched FireSim measurements and a transfer validation.
+The existing `whole-model-objective.json` still selects gSIM as its certifier
+and must be revised after calibration before a Spike-timing campaign starts;
+the functional Spike machine in `whole-model-machines.yaml` supplies
+correctness only.
 
 After the Phase 1 compiler is frozen, an owner-only form audit must compare a
 held-out capture with the iteration-derived form scope. It reports both the
@@ -155,6 +207,35 @@ claim one. The prepared, read-only objective records each decision
 (`mechanism_derivation`, `fused_region_decision`). This enables mechanisms for the Phase 2 agent, not hand-authored
 Gemmini transformations, and does not make a diagnostic or unreviewed capsule
 eligible for a verified run.
+
+Ordinary serial host lowering now selects the existing checked uniform-fill/copy
+forwarding and contiguous-copy specialization passes. The actual rewrite reports
+are retained in `automatic-host-copies.json` and lowering statistics. Use
+`MERLIN_AUTOMATIC_HOST_COPIES=0` or `-automatic-host-copies` in optional pass
+selection for an explicit control. Host implementations and allocator changes
+belong in Merlin; accelerator compiler authoring is not needed for them.
+
+`host-elementwise-fusion` is an explicit additional host pass selection. It runs
+the existing guarded elementwise fusion after named operations are generalized,
+allowing transposes and broadcasts to enter consumer loops. The saved-model API
+also accepts `host_elementwise_fusion=True` for the scalar host lane. The pass
+stays off by default: earlier vectorized-host experiments found that broad fusion
+could hurt contraction scheduling. Pair full outputs and actual host/accelerator
+cycle windows before selecting it for a workload. This changes the host lowering,
+not the numerical recipe or Phase 1's accelerator corpus.
+
+For a retained-object chain diagnostic, set `group_profile: true` in the explicit
+`merlin.chain_image.selection.v1` input to `python -m merlin.model_check.chain_image`.
+The guest resets each program's trace before every invocation and dumps it after
+the measured window. `chain_image_readback` requires one framed profile per
+selected step and reconciles group plus gap cycles against that step's counter.
+Dropped calls make attribution incomplete; their remaining window is never
+reported as measured host-only work. Gaps include wrapper bookkeeping.
+The builder can add the reset hook to an old Merlin-generated profiling object
+using its pinned original source and ABI flags. This explicit host-support
+rebuild gets separate source/object and compiler-invocation receipts; graph,
+device and weight objects stay retained. Instrumented timings are diagnostic
+and must be compared with an uninstrumented full-chain observation.
 
 ### Exactness: which forms may differ from their reference
 

@@ -23,7 +23,7 @@ UNKNOWN = "UNKNOWN"
 
 def validate_roles(roles: object) -> list[str]:
     """Declared role names, checked against the closed vocabulary; duplicates and unknowns refused."""
-    from merlin.kernels.roles import ROLES
+    from merlin.compile.analysis.instruction_roles import ROLES
 
     if roles is None:
         return []
@@ -43,27 +43,28 @@ def derive_role_taxonomy(target: str) -> dict[str, Any]:
     Call inside the frozen contract/facts scope (``observed_contract`` / ``observed_facts``) so the
     derivation reads the selected evidence rather than an ambient cache.
     """
-    from merlin.kernels.decode.rocc import funct_table_for
-    from merlin.kernels.endpoints import endpoints_for
-    from merlin.kernels.roles import ROLES
+    from merlin.compile.analysis.compute_endpoints import endpoints_for
+    from merlin.compile.analysis.instruction_roles import ROLES
+    from merlin.compile.analysis.rocc_commands import funct_table_for, policy_instruction_declarations
     from merlin.perf.task_instruction_evidence import declared_instruction_set
 
     # The same composition ``target_instruction_facts`` makes, without requiring the target's runtime
     # backend: the taxonomy needs only the RTL-derived name table and the declared endpoint roles. The
     # ISA constants (the custom opcode) are the scanner's business and are recorded when available.
     try:
-        names = funct_table_for(target).get("names") or {}
+        names, provenance = policy_instruction_declarations(funct_table_for(target))
         endpoints = endpoints_for(target)
         if not endpoints:
             # No endpoint binds a role to any of this target's instructions, so every instruction would
             # come back role-less and a prohibited role would match nothing -- a policy that cannot fail,
             # reading as derived. Unknown, with the reason, instead.
-            from merlin.kernels.endpoints import spec_path
+            from merlin.compile.analysis.compute_endpoints import spec_path
 
             raise LookupError(f"no compute endpoint in {spec_path()} declares instruction roles for {target!r}")
         facts: dict[str, Any] = {
             "target": target,
             "instruction_names": names,
+            "instruction_provenance": provenance,
             "roles_by_selector": {
                 str(selector): sorted({role for endpoint in endpoints for role in endpoint.roles_of(name)})
                 for selector, name in names.items()
@@ -80,10 +81,12 @@ def derive_role_taxonomy(target: str) -> dict[str, Any]:
         }
     if declared.get("status") != "derived":
         return {"schema": TAXONOMY_SCHEMA, "target": target, "status": UNKNOWN, "reason": declared.get("reason")}
-    by_role: dict[str, list[dict[str, str]]] = {role: [] for role in sorted(ROLES)}
-    unroled: list[dict[str, str]] = []
+    by_role: dict[str, list[dict[str, Any]]] = {role: [] for role in sorted(ROLES)}
+    unroled: list[dict[str, Any]] = []
     for row in declared.get("instructions") or ():
         instruction = {"selector": str(row["funct"]), "name": str(row["name"])}
+        if "provenance" in row:
+            instruction["provenance"] = copy.deepcopy(row["provenance"])
         roles = row.get("roles")
         if not roles:
             unroled.append(instruction)

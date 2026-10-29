@@ -48,6 +48,9 @@ os.environ.setdefault("MERLIN_BOARD_CATALOG", str(_CHECKOUT_ROOT / "examples/boa
 # the operator chose one: a test that needs support selects it (a vendored provider or a fixture),
 # and the tests of the default itself delete the variable (merlin/tests/infra/test_example_support.py).
 os.environ.setdefault("MERLIN_TARGET_PATH", "")
+# A seal asks for chattr +i where the host permits it (merlin.common.immutability). A suite run with
+# that privilege would leave tmp trees nobody can delete, so tests opt in explicitly instead.
+os.environ.setdefault("MERLIN_SEAL_IMMUTABLE", "off")
 _REPLAY_ROOT = (
     Path(os.environ["MERLIN_REPLAY_PYTHONPATH"]).resolve() if os.environ.get("MERLIN_REPLAY_PYTHONPATH") else None
 )
@@ -196,3 +199,24 @@ def _assert_library_is_this_checkout() -> None:
 
 if _REPLAY_ROOT or not os.environ.get("MERLIN_ALLOW_FOREIGN_PACKAGE"):
     _assert_library_is_this_checkout()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _private_content_store(tmp_path_factory):
+    """Give the whole session a private bundle content store unless one is chosen explicitly.
+
+    The default store is the repository's ``out/artifacts/cache/bundle-inputs-cas``, which a live run
+    launched from this checkout also uses. Store objects are hard-linked into every frozen tree, so a
+    test that tampers with its frozen copy (chmod, then write) rewrites the shared inode: measured,
+    a tamper test truncated a live run's frozen software specification and every later grade failed
+    "original snapshot input content differs from its marker". Tests that need the default location
+    clear the variable themselves.
+    """
+    if "MERLIN_BUNDLE_CAS" in os.environ:
+        yield
+        return
+    os.environ["MERLIN_BUNDLE_CAS"] = str(tmp_path_factory.mktemp("bundle-inputs-cas"))
+    try:
+        yield
+    finally:
+        os.environ.pop("MERLIN_BUNDLE_CAS", None)

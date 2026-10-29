@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from merlin.common import mlir_query as mq
-from merlin.kernels import shapes as KS
+from merlin.compile.analysis import contraction_shapes as KS
 
 from .compute_groups import (
     CAST,
@@ -127,10 +127,8 @@ def capsule_entry(
             }
         )
         return entry
-    from merlin.targetgen import model_coverage
-
     def walked() -> Mapping[int, tuple]:
-        return model_coverage._contraction_extents(root.parent_op().parent_op()) if root.parent_op() is not None else {}
+        return KS.contraction_extents(root.parent_op().parent_op()) if root.parent_op() is not None else {}
 
     # One walk of the whole module. A caller stating many groups passes the table in, because
     # recomputing it per group is quadratic in the model; a root the table does not hold is read afresh.
@@ -288,6 +286,8 @@ def _operand_sum_entry(group: Group, *, name: str | None) -> dict[str, Any]:
         "N": features,
         "lhs_scale": float(group.operand_sum["lhs_scale"]),
         "rhs_scale": float(group.operand_sum["rhs_scale"]),
+        **({"source_scales": list(group.operand_sum["source_scales"])}
+           if "source_scales" in group.operand_sum else {}),
         "bound_lsb": int(group.operand_sum["bound_lsb"]),
         "epilogue": ["relu"] if group.operand_sum.get("relu") else [],
         "scale_granularity": "tensor",

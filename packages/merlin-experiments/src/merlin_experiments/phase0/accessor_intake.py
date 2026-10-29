@@ -136,8 +136,8 @@ def _invoke(executable: Path, words: tuple[int, ...], names: list[str], destinat
         capture_output=True,
         timeout=30,
     )
-    (destination / "stdout.txt").write_bytes(completed.stdout)
-    (destination / "stderr.txt").write_bytes(completed.stderr)
+    # The invocation record already retains both exact process streams. The
+    # decode receipt below pins those files; another copy can be hundreds of MB.
     if completed.returncode:
         raise RtlIntakeRefusal("actual native accessor invocation failed")
     return _rows(completed.stdout, words, names)

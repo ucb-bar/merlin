@@ -30,6 +30,8 @@ def test_public_catalog_uses_phase_tools_with_unchanged_workspace_names():
         (prefix + "selfcheck", "agent_selfcheck.py"),
         (prefix + "simjob", "simjob.py"),
         (prefix + "await_verdict", "await_verdict.py"),
+        (prefix + "model_check", "agent_model_check.py"),
+        (prefix + "result_details", "qa_result_details.py"),
         (prefix + "isa", "isa_tools.py"),
         (prefix + "cca", "cca_contract.py"),
         (prefix + "cca", "action_catalog.py"),

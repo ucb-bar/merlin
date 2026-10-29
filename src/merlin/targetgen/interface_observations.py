@@ -17,6 +17,8 @@ from it here, into the same row vocabulary a captured application's operations u
 * ``aliasing``: ``disjoint_inputs_outputs`` when the destination names no operand.
 * epilogue stages on a commit or a named command become fused ``elementwise_map`` rows observed as
   ``composed_with`` the carrier's family, with ``scale_granularity: tensor`` for a scalar scale.
+* a fully declared signed-i8 ``MAXPOOL2D`` macro with exactly ``acc_scale,maxpool`` is observed as
+  movement and its ordered readout components, retaining the original macro on every row.
 
 Residency and readout bookkeeping (pack, evict, a stage-less commit) are support rows. Nothing here
 names a target or an opcode's hardware meaning beyond the grammar's own families.
@@ -24,6 +26,7 @@ names a target or an opcode's hardware meaning beyond the grammar's own families
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 _ROW_MAJOR = "row_major_contiguous"
@@ -65,6 +68,44 @@ def _row(index: int, opcode: str, operation: str, family: str | None, **fields) 
     }
 
 
+#: Command attributes that state GEOMETRY (the command-buffer ABI's window and store-path fields).
+#: They are integer lists by definition and say nothing about how a readout scales its values.
+_GEOMETRY_ATTRIBUTES = frozenset(
+    {"kernel", "stride", "padding", "dilation", "pool_in_dims", "pool_size", "pool_stride", "pool_padding"}
+)
+
+
+#: Command attributes that RECORD one scale per tensor the command names, in operand order and then
+#: the result (a residual sum's ``source_scales`` is ``[lhs, rhs, out]``). They are arrays over
+#: tensors, not over a tensor's channels, so they state a per-tensor granularity when they hold exactly
+#: one scalar for each named tensor.
+_PER_TENSOR_RECORDS = frozenset({"source_scales"})
+
+
+def _scalar(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _per_tensor_scales(attributes: dict, operands: dict | None = None) -> bool:
+    """Whether every multiplier a command states is one value for the whole tensor: no attribute other
+    than its stage list and its geometry is an array or a mapping (a per-channel scale would be one).
+
+    A per-tensor record is the exception only in its exact form, one scalar per tensor of
+    ``operands``; any other length or a nested entry remains an array and so not per-tensor."""
+    named = len(operands) if operands else None
+    return all(
+        not isinstance(value, (list, dict))
+        or (
+            key in _PER_TENSOR_RECORDS
+            and isinstance(value, list)
+            and len(value) == named
+            and all(_scalar(item) for item in value)
+        )
+        for key, value in attributes.items()
+        if key != "epilogue" and key not in _GEOMETRY_ATTRIBUTES and value is not None
+    )
+
+
 def _stage_rows(
     *,
     index: int,
@@ -76,14 +117,12 @@ def _stage_rows(
     accumulator: str,
     destination_declared: bool,
     attributes: dict,
+    column_source: dict | None = None,
+    operands: dict | None = None,
 ) -> list[dict]:
     from merlin.targetgen.semantic_families import from_op
 
-    scalar_scales = all(
-        not isinstance(value, (list, dict))
-        for key, value in attributes.items()
-        if key != "epilogue" and value is not None
-    )
+    scalar_scales = _per_tensor_scales(attributes, operands)
     return [
         _row(
             index,
@@ -96,18 +135,147 @@ def _stage_rows(
             result_dtypes=[result_dtype] if result_dtype else [],
             layout=_ROW_MAJOR if destination_declared else None,
             aliasing="disjoint_inputs_outputs",
+            **(
+                {"logical_output_column_source": {**column_source, "attributes": attributes}}
+                if column_source is not None and "acc_scale_by_column" in attributes
+                else {}
+            ),
             composed_observation={
                 "epilogues": [stage],
                 "composed_with": [producer] if producer else [],
-                "scale_granularity": "tensor" if scalar_scales else None,
+                "scale_granularity": "tensor"
+                if scalar_scales
+                else "channel"
+                if "acc_scale_by_column" in attributes
+                else None,
             },
         )
         for stage in stages
     ]
 
 
+def _pool_components(index: int, command: dict, tensors: dict, accumulator: str) -> list[dict] | None:
+    """Observe the declared scaled-pool macro as a copy and its ordered readout.
+
+    This is a source decomposition, not a new target capability: each component
+    still needs independent SW and hardware admission. Preserve the actual macro
+    and its geometry on every row. Other reductions, stage orders, dtypes, and
+    undeclared geometry retain their ordinary (possibly refused) observations.
+    """
+    if command.get("opcode") != "MAXPOOL2D" or accumulator != "i32":
+        return None
+    operands = command.get("operands") or {}
+    attrs = command.get("attributes") or {}
+    allowed = {
+        "name",
+        "epilogue",
+        "output_dtype",
+        "acc_scale",
+        "pool_in_dims",
+        "pool_size",
+        "pool_stride",
+        "pool_padding",
+        "pool_pad_value",
+    }
+    if (
+        set(operands) != {"src", "dst"}
+        or operands["src"] == operands["dst"]
+        or set(attrs) - allowed
+        or attrs.get("epilogue") != ["acc_scale", "maxpool"]
+        or attrs.get("output_dtype") != "i8"
+        or type(attrs.get("acc_scale")) not in (int, float)
+        or attrs["acc_scale"] <= 0
+    ):
+        return None
+    try:
+        if not math.isfinite(attrs["acc_scale"]):
+            return None
+    except OverflowError:
+        return None
+    src, dst = (_typed(tensors, operands[key]) for key in ("src", "dst"))
+    if not _static(src, dst) or any(
+        item["dtype"] != "i8" or len(item["shape"]) != 2 or any(type(x) is not int for x in item["shape"])
+        for item in (src, dst)
+    ):
+        return None
+    geometry = {}
+    for key, arity in (("pool_in_dims", 2), ("pool_size", 2), ("pool_stride", 2), ("pool_padding", 4)):
+        value = attrs.get(key, [0, 0, 0, 0] if key == "pool_padding" else None)
+        if (
+            not isinstance(value, (list, tuple))
+            or len(value) != arity
+            or any(type(x) is not int or x < (0 if key == "pool_padding" else 1) for x in value)
+        ):
+            return None
+        geometry[key] = list(value)
+    pad = attrs.get("pool_pad_value")
+    if (pad is not None and (type(pad) is not int or not -128 <= pad <= 127)) or (
+        any(geometry["pool_padding"]) and pad is None
+    ):
+        return None
+    from merlin.runtime.tensor import pool_out_dims
+
+    h, w = geometry["pool_in_dims"]
+    oh, ow = pool_out_dims(h, w, geometry["pool_size"], geometry["pool_stride"], geometry["pool_padding"])
+    if min(oh, ow) <= 0 or src["shape"][0] % (h * w):
+        return None
+    batches = src["shape"][0] // (h * w)
+    if dst["shape"] != [batches * oh * ow, src["shape"][1]]:
+        return None
+    provenance = {
+        "source_macro": {
+            "mlir_operation": "merlin_iface.maxpool2d",
+            "operands": dict(operands),
+            "attributes": dict(attrs),
+            "input_type": src,
+            "output_type": dst,
+        },
+        "observation_basis": "declared_scaled_pool_components_v1",
+    }
+    carrier = _row(
+        index,
+        "MAXPOOL2D",
+        "movement",
+        "movement",
+        disposition="unclassified",
+        ordered_operand_types=[src],
+        ordered_result_types=[{"shape": src["shape"], "dtype": accumulator}],
+        operand_dtypes=["i8"],
+        accumulator_dtypes=[accumulator],
+        result_dtypes=[accumulator],
+        layout=_ROW_MAJOR,
+        aliasing="disjoint_inputs_outputs",
+        component_index=0,
+        component_input_dtype="i8",
+        component_output_dtype=accumulator,
+        **provenance,
+    )
+    stages = _stage_rows(
+        index=index,
+        opcode="MAXPOOL2D",
+        stages=["acc_scale", "maxpool"],
+        producer="movement",
+        # The admission vocabulary describes the carrier's signed input format;
+        # the accumulator ABI and component edges state the i32 -> i8 readout.
+        operand_dtype="i8",
+        result_dtype="i8",
+        accumulator=accumulator,
+        destination_declared=True,
+        attributes=attrs,
+    )
+    for stage_index, row in enumerate(stages, start=1):
+        row.update(
+            provenance,
+            component_index=stage_index,
+            component_input_dtype=accumulator if stage_index == 1 else "i8",
+            component_output_dtype="i8",
+        )
+    return [carrier, *stages]
+
+
 def command_rows(cb: dict[str, Any]) -> list[dict]:
     """One row per command and per declared epilogue stage, in program order."""
+    from merlin.runtime.commandbuffer import bias_tensor_name
     from merlin.targetgen.contract.interface_emit import _NAMED_OPCODE_TO_OP, _OPCODE_TO_OP, _acc_dtype
     from merlin.targetgen.semantic_families import from_op
 
@@ -115,8 +283,17 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
     accumulator = _acc_dtype(cb)
     resident: dict[str, str] = {}
     produced_by: dict[str, tuple[str | None, str | None]] = {}
+    column_sources: dict[str, dict] = {}
+    # Accumulator handles' extents, so a commit's tensor is typed like a declared one: its readout
+    # dtype over its producer's extent. A later command reading that tensor (a residual add of two
+    # committed readouts, a contraction over a committed tensor) is then observed with its operand.
+    handle_shapes: dict[str, list] = {}
     rows: list[dict] = []
     for index, command in enumerate(cb.get("commands") or []):
+        components = _pool_components(index, command, tensors, accumulator)
+        if components is not None:
+            rows.extend(components)
+            continue
         opcode = str(command.get("opcode"))
         operands = dict(command.get("operands") or {})
         attributes = dict(command.get("attributes") or {})
@@ -132,6 +309,10 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
             continue
         if opcode == "COMMIT":
             stages = [str(stage) for stage in attributes.get("epilogue") or []]
+            source_shape = handle_shapes.get(str(operands.get("src")))
+            if destination is not None and _typed(tensors, destination) is None and source_shape is not None:
+                tensors[str(destination)] = {"dtype": attributes.get("output_dtype") or accumulator,
+                                             "shape": list(source_shape), "role": "committed"}
             producer, producer_dtype = produced_by.get(str(operands.get("src")), (None, None))
             rows.append(_row(index, opcode, operation, None, disposition="support_required"))
             rows.extend(
@@ -145,6 +326,18 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
                     accumulator=accumulator,
                     destination_declared=_typed(tensors, destination) is not None,
                     attributes=attributes,
+                    column_source={
+                        **column_sources[str(operands.get("src"))],
+                        "disjoint": column_sources[str(operands.get("src"))]["disjoint"]
+                        and destination not in column_sources[str(operands.get("src"))]["operand_names"]
+                        and destination != attributes.get("bias"),
+                        "result": _typed(tensors, destination),
+                        "bias": _typed(tensors, bias_tensor_name(operands, attributes, op=operation))
+                        if any(stage in {"bias", "bias_add"} for stage in stages)
+                        else None,
+                    }
+                    if str(operands.get("src")) in column_sources
+                    else None,
                 )
             )
             continue
@@ -156,12 +349,26 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
             lhs, rhs = (typed_sources + [None, None])[:2]
             if lhs is not None and rhs is not None and len(lhs["shape"]) >= 2 and len(rhs["shape"]) >= 2:
                 result = {"dtype": accumulator, "shape": [*lhs["shape"][:-1], rhs["shape"][-1]]}
+        if result is not None and destination is not None:
+            handle_shapes[str(destination)] = list(result["shape"])
         operand_dtype = next((item["dtype"] for item in typed_sources if item is not None and item["dtype"]), None)
         # A standalone operand sum is an elementwise operation, but its readout is not attached
         # to every possible elementwise map. Preserve its specific carrier so a SW declaration
         # cannot accidentally license ReLU after an unrelated map on the same family.
         carrier = epilogue_carrier(operation, family)
         produced_by[str(destination)] = (carrier, operand_dtype)
+        if operation in {"matmul", "conv2d"} and len(typed_sources) >= 2:
+            column_sources[str(destination)] = {
+                "operation": operation,
+                "lhs": typed_sources[0],
+                "rhs": typed_sources[1],
+                "operand_names": [resident.get(str(name), str(name)) for name in sources],
+                "disjoint": destination not in sources and destination != attributes.get("bias"),
+                "result": _typed(tensors, destination),
+                "bias": _typed(tensors, bias_tensor_name(operands, attributes, op=operation))
+                if any(stage in {"bias", "bias_add"} for stage in attributes.get("epilogue") or ())
+                else None,
+            }
         row = _row(
             index,
             opcode,
@@ -183,7 +390,7 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
             # rule a commit's stages are observed by. A command with no multiplier states none.
             stated = {key: value for key, value in attributes.items() if key != "epilogue" and value is not None}
             multiplied = any(isinstance(value, float) for value in stated.values())
-            scalar = all(not isinstance(value, (list, dict)) for value in stated.values())
+            scalar = _per_tensor_scales(attributes, operands)
             row["composed_observation"] = {
                 "epilogues": [],
                 "composed_with": [],
@@ -223,6 +430,8 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
                     accumulator=accumulator,
                     destination_declared=_typed(tensors, destination) is not None,
                     attributes=attributes,
+                    column_source=column_sources.get(str(destination)),
+                    operands=operands,
                 )
             )
     return rows

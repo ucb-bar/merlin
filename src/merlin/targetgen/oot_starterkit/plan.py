@@ -110,6 +110,9 @@ def _plan_shape_problems(plan: Mapping[str, Any]) -> list[str]:
     except ImportError as exc:
         raise RuntimeError("mixed-program plan validation requires jsonschema") from exc
     schema = json.loads(data_path("contract", "schemas", "mixed_program_plan.schema.json").read_text())
+    # This relative label is not a fetchable base URI. All references are local
+    # fragments; preserve their constraints without remote schema discovery.
+    schema.pop("$id", None)
     return [
         f"plan schema {e.json_path}: {e.message}"
         for e in sorted(Draft202012Validator(schema).iter_errors(plan), key=lambda e: e.json_path)
@@ -309,7 +312,43 @@ def _source_plan_problems(
     return problems
 
 
-def _lowered_task_problems(text: str, plan: Mapping[str, Any], command_buffer: Mapping[str, Any]) -> list[str]:
+def _selected_lowered_entry(functions, abi):
+    """Select the declared entry and only its exact no-argument completion shim."""
+    from xdsl.dialects import llvm
+
+    if (set(abi) != {"entry_symbol", "completion_symbol", "completion_asm"}
+            or not isinstance(abi["entry_symbol"], str) or not abi["entry_symbol"].isidentifier()):
+        return None, "lowered task ABI requires an explicit entry identity"
+    entry, completion, instruction = (abi[key] for key in
+                                     ("entry_symbol", "completion_symbol", "completion_asm"))
+    if completion is not None and (not isinstance(completion, str) or not completion.isidentifier()
+                                   or completion == entry or not isinstance(instruction, str) or not instruction.strip()):
+        return None, "lowered completion requires a distinct declared symbol and instruction"
+    selected = [fn for fn in functions if fn.sym_name.data == entry]
+    if len(selected) != 1 or any(fn.sym_name.data not in {entry, completion} for fn in functions):
+        return None, "lowered artifact has no unique selected entry or has an unselected helper"
+    helpers = [fn for fn in functions if fn.sym_name.data == completion]
+    if len(helpers) > 1:
+        return None, "lowered artifact has duplicate completion helpers"
+    for helper in helpers:
+        blocks = list(helper.body.blocks)
+        ops = list(blocks[0].ops) if len(blocks) == 1 else []
+        if (helper.function_type.inputs or helper.function_type.is_variadic
+                or not isinstance(helper.function_type.output, llvm.LLVMVoidType)
+                or helper.linkage.linkage.data != "external" or helper.CConv.convention.data != "ccc"
+                or len(blocks) != 1 or blocks[0].args or len(ops) != 2
+                or not isinstance(ops[0], llvm.InlineAsmOp) or not isinstance(ops[1], llvm.ReturnOp)
+                or ops[0].operands or ops[0].results or ops[1].operands
+                or ops[0].asm_string.data != instruction or ops[0].constraints.data != "~{memory}"
+                or ops[0].has_side_effects is None
+                or any("merlin.global_task" in op.attributes or "merlin.source_op_index" in op.attributes
+                       for op in helper.walk())):
+            return None, "lowered completion differs from the declared fence-only ABI"
+    return selected[0], None
+
+
+def _lowered_task_problems(text: str, plan: Mapping[str, Any], command_buffer: Mapping[str, Any],
+                           lowered_abi: Mapping[str, str] | None = None) -> list[str]:
     from xdsl.parser import Parser
 
     from merlin.perf.task_cfg_evidence import analyze_task_cfg
@@ -319,9 +358,14 @@ def _lowered_task_problems(text: str, plan: Mapping[str, Any], command_buffer: M
         module = Parser(make_llvm_context(), text).parse_module()
         module.verify()
     functions = [op for op in module.body.block.ops if op.name == "llvm.func" and op.body.blocks]
-    if len(functions) != 1:
-        return ["lowered artifact requires one defined llvm.func kernel"]
-    fn = functions[0]
+    if lowered_abi is None:
+        if len(functions) != 1:
+            return ["lowered artifact requires one defined llvm.func kernel"]
+        fn = functions[0]
+    else:
+        fn, finding = _selected_lowered_entry(functions, lowered_abi)
+        if finding:
+            return [finding]
     if len(fn.body.blocks[0].args) != len(command_buffer["kernel_abi"]["args"]):
         return ["lowered kernel pointer arity differs from kernel_abi.args"]
     task_ids = {row["task_index"] for row in plan["tasks"]}
@@ -354,7 +398,8 @@ def _lowered_task_problems(text: str, plan: Mapping[str, Any], command_buffer: M
 
 
 def validate_mixed_program_plan(
-    source: bytes | str, command_buffer: Mapping[str, Any], lowered_mlir: str | None = None
+    source: bytes | str, command_buffer: Mapping[str, Any], lowered_mlir: str | None = None,
+    *, lowered_abi: Mapping[str, str] | None = None
 ) -> dict[str, Any]:
     """Public preflight only; a successful result is never a grading certificate."""
     from xdsl.utils.exceptions import ParseError, VerifyException
@@ -372,7 +417,7 @@ def validate_mixed_program_plan(
             findings = _source_plan_problems(inventory, command_buffer, plan)
             abi = command_buffer.get("kernel_abi")
             if lowered_mlir is not None and isinstance(abi, Mapping) and abi.get("kind") == "whole_program":
-                findings += _lowered_task_problems(lowered_mlir, plan, command_buffer)
+                findings += _lowered_task_problems(lowered_mlir, plan, command_buffer, lowered_abi)
         return {
             "ok": not findings,
             "findings": findings,

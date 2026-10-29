@@ -33,6 +33,7 @@ class BucketizeSourcePattern:
     right: bool
     comparison: str
     count_range: tuple[int, int]
+    input_dtype: str = "f32"
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,7 @@ class BucketizeSource:
 
 STATIC_BUCKETIZE_SOURCE_BODY_SCHEMA = "merlin.static_bucketize_source_body.v1"
 BUCKETIZE_COUNT_OPERATION = "f32_literal_boundary_count_i64"
+BF16_BUCKETIZE_COUNT_OPERATION = "bf16_extended_f32_literal_boundary_count_i64"
 
 
 @dataclass(frozen=True)
@@ -79,7 +81,7 @@ def validate_static_bucketize_source_body(declaration: object) -> dict[str, str]
         not isinstance(declaration, dict)
         or set(declaration) != {"schema", "operation"}
         or declaration.get("schema") != STATIC_BUCKETIZE_SOURCE_BODY_SCHEMA
-        or declaration.get("operation") != BUCKETIZE_COUNT_OPERATION
+        or declaration.get("operation") not in {BUCKETIZE_COUNT_OPERATION, BF16_BUCKETIZE_COUNT_OPERATION}
     ):
         raise InvalidLinalgPattern("source_body requires the closed literal bucketize v1 declaration")
     return declaration
@@ -144,9 +146,10 @@ def recognize_static_bucketize_body(op) -> StaticBucketizeHostPattern:
     from xdsl.dialects.builtin import IntegerAttr
 
     shell = _checked_static_indexed_linalg_shell(op)
-    if len(shell.body) != 4 or type(shell.body[0]) is not arith.CmpfOp:
+    comparison_index = 1 if shell.ordered_types == ("bf16", "f32", "i64", "i64") else 0
+    if len(shell.body) != 4 + comparison_index or type(shell.body[comparison_index]) is not arith.CmpfOp:
         raise InvalidLinalgPattern("bucketize source has no closed comparison body")
-    predicate = shell.body[0].properties.get("predicate")
+    predicate = shell.body[comparison_index].properties.get("predicate")
     if (
         not isinstance(predicate, IntegerAttr)
         or str(predicate.type) != "i64"
@@ -159,9 +162,9 @@ def recognize_static_bucketize_body(op) -> StaticBucketizeHostPattern:
     if fact["status"] != "source_dense_non_decreasing_non_nan_proved":
         raise InvalidLinalgPattern("bucketize boundary ordering/non-NaN premise is not proved")
     return StaticBucketizeHostPattern(
-        BUCKETIZE_COUNT_OPERATION,
+        BF16_BUCKETIZE_COUNT_OPERATION if pattern.input_dtype == "bf16" else BUCKETIZE_COUNT_OPERATION,
         pattern.input_shape,
-        ("f32", "f32", "i64", "i64"),
+        (pattern.input_dtype, "f32", "i64", "i64"),
         pattern.boundary_count,
         pattern.right,
         pattern.comparison,
@@ -223,7 +226,7 @@ def recognize_bucketize_source(op, *, right: bool) -> BucketizeSourcePattern:
     if (
         len(boundary_shape) != 1
         or shell.output_shapes != (input_shape,)
-        or shell.ordered_types != ("f32", "f32", "i64", "i64")
+        or shell.ordered_types not in {("f32", "f32", "i64", "i64"), ("bf16", "f32", "i64", "i64")}
     ):
         raise InvalidLinalgPattern("bucketize input, boundary, and output tensor types differ")
     boundary_count = boundary_shape[0]
@@ -253,6 +256,15 @@ def recognize_bucketize_source(op, *, right: bool) -> BucketizeSourcePattern:
         raise InvalidLinalgPattern("bucketize init does not use the checked zero")
 
     args, body = shell.args, shell.body
+    input_value = args[0]
+    if shell.ordered_types[0] == "bf16":
+        if len(body) != 5:
+            raise InvalidLinalgPattern("bf16 bucketize requires one exact extension before its count")
+        extension, *body = body
+        _owned_operation(extension, arith.ExtFOp, set())
+        if tuple(extension.operands) != (args[0],) or len(extension.results) != 1 or str(extension.results[0].type) != "f32":
+            raise InvalidLinalgPattern("bf16 bucketize extension is not exact bf16-to-f32")
+        input_value = extension.results[0]
     if len(body) != 4:
         raise InvalidLinalgPattern("bucketize body is not compare, select, add, yield")
     compare, select, add, yld = body
@@ -266,7 +278,7 @@ def recognize_bucketize_source(op, *, right: bool) -> BucketizeSourcePattern:
         or predicate.value.data != expected_predicate
         or not isinstance(fastmath, arith.FastMathFlagsAttr)
         or fastmath.data
-        or tuple(compare.operands) != (args[1], args[0])
+        or tuple(compare.operands) != (args[1], input_value)
         or len(compare.results) != 1
         or str(compare.results[0].type) != "i1"
     ):
@@ -305,7 +317,7 @@ def recognize_bucketize_source(op, *, right: bool) -> BucketizeSourcePattern:
         or tuple(yld.operands) != (add.results[0],)
     ):
         raise InvalidLinalgPattern("bucketize does not yield exactly the new accumulator")
-    return BucketizeSourcePattern(input_shape, boundary_count, right, "ule" if right else "ult", (0, boundary_count))
+    return BucketizeSourcePattern(input_shape, boundary_count, right, "ule" if right else "ult", (0, boundary_count), shell.ordered_types[0])
 
 
 def screen_bucketize_source(model_path: Path, trace_path: Path, ordinals: tuple[int, ...]) -> BucketizeSource:
@@ -378,7 +390,7 @@ def screen_bucketize_source(model_path: Path, trace_path: Path, ordinals: tuple[
             and row.get("source_ids") == [source_id]
             and row.get("destination_ids") == [destination_id]
         ]
-        if len(relations) != 1 or relations[0].get("kind") != "introduced":
+        if len(relations) != 1 or relations[0].get("kind") not in {"identity", "introduced"}:
             raise InvalidLinalgPattern("bucketize trace lacks an exact selected transformation relation")
 
     if (

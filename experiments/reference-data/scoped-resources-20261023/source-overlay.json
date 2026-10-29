@@ -1,0 +1,19 @@
+{
+  "schema": "merlin.scoped_observer_source_overlay.v1",
+  "spike_commit": "472bd25",
+  "base_observer_commit": "dc308242cd9504b5052cf20469382a32d2452f21",
+  "base_selected_source_identity": "79eb1f1b511a1b9f2267532de252965712e65c91e95b91b6df46dab81fdc52b3",
+  "base_selected_leaves": {
+    "riscv/annotated_timing.cc": "4eca6a60c493d7787b4cc412750ec50a9c18c7dac01837b73a403ffc4839b633",
+    "riscv/annotated_timing_memory.cc": "cf0241fa75fb215dab700a884a521c93db40e0aec29b9d720db315956ba9e312",
+    "timing/memory.hpp": "ab17eabe63b297899bf86e1ffe5ece51a8e3741769f2008e047bc96938812e2f",
+    "timing/core/include/merlin_timing/cache_response_timeline.hpp": "28f5bfa4c6c8f989e54567c509018f3a70a3eedb7a0a2ea2fc99e016ff1fd551",
+    "timing/core/include/merlin_timing/engine.hpp": "a3ad0ac903e091d5e3384534eec8379f24d42b6294adc1c496eea146082b044d"
+  },
+  "candidate_compiled_leaves": {
+    "riscv/annotated_timing.cc": "f0acc9febb62ef9e35f0c1bae3023639ccae043552879a680d894b3dfd4a7ea4",
+    "timing/scoped_resources.hpp": "1cf996be47c9d3d20302353027adfd4fccbb972c16df759f9cb2ea446732a7f6"
+  },
+  "engine_abi_changed": false,
+  "conditional_mmio_patch_imported": false
+}

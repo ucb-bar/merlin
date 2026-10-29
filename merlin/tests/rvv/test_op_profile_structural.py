@@ -8,12 +8,12 @@ import subprocess
 from io import StringIO
 
 import pytest
-from xdsl.dialects import func
+from xdsl.dialects import arith, builtin, func
 from xdsl.printer import Printer
 
 from merlin.llvmlower import op_profile, toolchain
 from merlin.llvmlower.op_profile_structural import _parse_text as parse
-from merlin.llvmlower.op_profile_structural import instrument_module
+from merlin.llvmlower.op_profile_structural import instrument_module, verify_instrumentation
 
 SOURCE = """module {
   func.func private @bump(%x: memref<4xi32>) {
@@ -83,6 +83,51 @@ def test_cached_input_module_is_never_mutated_and_existing_marker_refuses():
     assert str(module) == original
 
 
+@pytest.mark.parametrize("fault", ["id", "missing", "body", "callee", "abi", "table", "metadata", "extra"])
+def test_actual_marker_and_unchanged_source_checker_rejects_mutations(fault):
+    source = parse(SOURCE)
+    selected, table = instrument_module(source)
+    original_text, selected_text = generic(SOURCE), str(selected)
+    verify_instrumentation(source, selected, table)
+    assert str(selected) == selected_text and generic(SOURCE) == original_text
+    fn = next(op for op in selected.body.block.ops
+              if isinstance(op, func.FuncOp) and op.sym_name.data == "forward")
+    constant, marker = list(fn.body.block.ops)[:2]
+    if fault == "id":
+        constant.properties["value"] = builtin.IntegerAttr(4, builtin.i32)
+    elif fault == "missing":
+        fn.body.block.erase_op(marker)
+        fn.body.block.erase_op(constant)
+    elif fault == "body":
+        addition = next(op for op in fn.walk() if isinstance(op, arith.AddiOp))
+        addition.operands = [addition.operands[0], addition.operands[0]]
+    elif fault == "callee":
+        marker.properties["callee"] = builtin.SymbolRefAttr("bump")
+        marker.operands = [fn.body.block.args[0]]
+    elif fault == "abi":
+        declaration = next(op for op in selected.body.block.ops
+                          if isinstance(op, func.FuncOp) and op.sym_name.data == op_profile.MARK_SYM)
+        declaration.attributes["llvm.emit_c_interface"] = builtin.UnitAttr()
+    elif fault == "table":
+        table[0]["result_type"] = "i7"
+    elif fault == "metadata":
+        fn.attributes["unknown_effects"] = builtin.UnitAttr()
+    else:
+        selected.body.block.add_op(func.FuncOp.external("unrecorded", [], []))
+    with pytest.raises(op_profile.OpProfileError, match="profile"):
+        verify_instrumentation(source, selected, table)
+
+
+def test_profile_checker_retains_negative_zero_source_words():
+    source = parse("module { func.func @forward() -> f32 { %z = arith.constant -0.0 : f32\n return %z : f32 } }")
+    selected, table = instrument_module(source)
+    constant = next(op for op in selected.walk()
+                    if isinstance(op, arith.ConstantOp) and isinstance(op.value, builtin.FloatAttr))
+    constant.properties["value"] = builtin.FloatAttr(0.0, builtin.f32)
+    with pytest.raises(op_profile.OpProfileError, match="metadata"):
+        verify_instrumentation(source, selected, table)
+
+
 def test_named_typed_selection_keeps_legacy_positional_api_and_refuses_multiple():
     source = SOURCE.replace("func.func @forward(", "func.func @selected(")
     selected, table = op_profile.instrument(source, ["selected"], structural=True)
@@ -140,6 +185,14 @@ def test_actual_compiled_outputs_and_effect_interval_marker_order(tmp_path):
     if not all(tool.is_file() for tool in (translate, opt, clang)):
         pytest.skip("selected native MLIR toolchain unavailable")
     selected, table = op_profile.instrument(SOURCE, structural=True)
+    from xdsl.dialects.builtin import UnitAttr
+
+    broken = parse(selected)
+    marker = next(op for op in broken.body.block.ops
+        if isinstance(op, func.FuncOp) and op.sym_name.data == op_profile.MARK_SYM)
+    marker.attributes["llvm.emit_c_interface"] = UnitAttr()
+    stream = StringIO()
+    Printer(stream=stream, print_generic_format=True).print_op(broken)
     support = tmp_path / "support.c"
     support.write_text("""#include <stdint.h>
 int32_t marker_ids[64];
@@ -153,7 +206,7 @@ void invoke(int32_t *values) {
   _mlir_ciface_forward(&d);
 }
 """)
-    for name, source in [("original", SOURCE), ("selected", selected)]:
+    for name, source in [("original", SOURCE), ("selected", selected), ("broken_abi", stream.getvalue())]:
         input_path = tmp_path / (name + ".mlir")
         lowered = tmp_path / (name + ".llvm.mlir")
         llvm = tmp_path / (name + ".ll")
@@ -178,11 +231,14 @@ void invoke(int32_t *values) {
         subprocess.run(
             [str(translate), "--mlir-to-llvmir", str(lowered), "-o", str(llvm)], check=True, capture_output=True
         )
-        subprocess.run(
-            [str(clang), "-O2", "-shared", "-fPIC", str(llvm), str(support), "-o", str(so)],
-            check=True,
+        linked = subprocess.run(
+            [str(clang), "-O2", "-shared", "-fPIC", "-Wl,-z,defs", str(llvm), str(support), "-o", str(so)],
             capture_output=True,
         )
+        if name == "broken_abi":
+            assert linked.returncode != 0 and b"_mlir_ciface_merlin_prof_mark" in linked.stderr
+            continue
+        assert linked.returncode == 0, linked.stderr
         library = ctypes.CDLL(str(so))
         values = (ctypes.c_int32 * 4)(1, 22, 33, 44)
         library.invoke.argtypes = [ctypes.POINTER(ctypes.c_int32)]
@@ -193,7 +249,8 @@ void invoke(int32_t *values) {
         assert list(ids)[:count] == (list(range(len(table) + 1)) if name == "selected" else [])
 
 
-def test_ordinary_generic_model_build_profiles_and_executes_on_rv64gc(tmp_path):
+@pytest.mark.parametrize("backend,padded", [("rvv", False), ("scalar", False), ("scalar", True)])
+def test_ordinary_generic_model_build_profiles_and_executes_on_rv64gc(tmp_path, backend, padded):
     import numpy as np
 
     from merlin.runtime.backends import spike, spike_model
@@ -217,23 +274,75 @@ def test_ordinary_generic_model_build_profiles_and_executes_on_rv64gc(tmp_path):
         return %out : tensor<5xf32>
       }
     }"""
+    # The second complete result models carried state. Profiling must preserve
+    # both results, not merely the printed prefix of the first tensor.
+    source = source.replace("%x: tensor<5xf32>) -> tensor<5xf32>",
+        "%x: tensor<5xf32>, %state: tensor<5xf32>) -> (tensor<5xf32>, tensor<5xf32>)")
+    source = source.replace("return %out : tensor<5xf32>", """
+        %next = linalg.generic {
+          indexing_maps = [affine_map<(i)->(i)>, affine_map<(i)->(i)>, affine_map<(i)->(i)>],
+          iterator_types = ["parallel"]
+        } ins(%state, %out: tensor<5xf32>, tensor<5xf32>) outs(%empty: tensor<5xf32>) {
+        ^bb0(%old: f32, %value: f32, %unused: f32):
+          %sum = arith.addf %old, %value : f32
+          linalg.yield %sum : f32
+        } -> tensor<5xf32>
+        return %out, %next : tensor<5xf32>, tensor<5xf32>""")
+    if padded:
+        source = source.replace("%next = linalg.generic", """%v = arith.constant -7.0 : f32
+        %pad = tensor.splat %v : tensor<8xf32>
+        %next = linalg.generic""").replace(
+            "return %out, %next : tensor<5xf32>, tensor<5xf32>", """
+        %padded = "tensor.insert_slice"(%next,%pad) <{static_offsets=array<i64:1>,
+          static_sizes=array<i64:5>,static_strides=array<i64:1>,operandSegmentSizes=array<i32:1,1,0,0,0>}>
+          : (tensor<5xf32>,tensor<8xf32>) -> tensor<8xf32>
+        return %out, %padded : tensor<5xf32>, tensor<8xf32>""").replace(
+            "-> (tensor<5xf32>, tensor<5xf32>)", "-> (tensor<5xf32>, tensor<8xf32>)")
     (bundle / "model.mlir").write_text(generic(source))
-    (bundle / "weights.safetensors.manifest.json").write_text('{"0":{"kind":"input","name":"values"}}')
+    (bundle / "weights.safetensors.manifest.json").write_text(
+        '{"0":{"kind":"input","name":"values"},"1":{"kind":"input","name":"state"}}')
     values = np.array([-5, -0.75, 0, 1.25, 7], dtype=np.float32)
-    np.savez(bundle / "inputs.npz", in0=values)
-    built = spike_model.build(
-        bundle,
-        work,
-        arena_mb=1,
-        op_profile=True,
-        cflags_override=["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"],
-    )
-    ran = spike_model.run(built["elf"], mem_bytes=built["mem_bytes"], isa="rv64gc", timeout=60)
-    np.testing.assert_array_equal(ran["outputs"], values + np.float32(2))
-    table = json.loads((work / "op_profile_table.json").read_text())
-    assert [row["mlir_op"] for row in table] == ["tensor.empty", "linalg.generic"]
-    assert table[1]["body_ops"] == ["arith.addf", "arith.constant"]
-    measurements = op_profile.parse_prof_lines(ran["console"])
-    assert set(measurements) == {0, 1}
-    assert all(hits == 1 for ticks, hits in measurements.values())
-    assert ran["metrics"]["prof_marks"] == 3
+    state = np.array([3, 4, 5, 6, 7], dtype=np.float32)
+    np.savez(bundle / "inputs.npz", in0=values, in1=state)
+    from merlin.compile.baremetal_model import read_full_outputs
+    from merlin.runtime.operation_profile import summarize
+    from merlin.runtime.out_bin import binary_console_diagnostics
+
+    results = []
+    for selected in (False, True):
+        built = spike_model.build(
+            bundle, work / str(selected), arena_mb=1, op_profile=selected, full_readback=True, backend=backend,
+            cflags_override=[
+                "-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin",
+            ],
+        )
+        raw = spike_model.run_raw(built["elf"], mem_bytes=built["mem_bytes"], isa="rv64gc", timeout=60)
+        outputs, _metrics = read_full_outputs(raw, bundle, built["build_hash"])
+        np.testing.assert_array_equal(outputs[0], values + np.float32(2))
+        expected_state = state + values + np.float32(2)
+        if padded:
+            expected_state = np.concatenate([[-7], expected_state, [-7, -7]]).astype(np.float32)
+            destination = json.loads((work / str(selected) / "lower/automatic-host-destinations.json").read_text())
+            assert destination["rewrites"] == 1
+        np.testing.assert_array_equal(outputs[1], expected_state)
+        text = binary_console_diagnostics(raw).decode()
+        results.append(outputs)
+        (work / str(selected) / "console.bin").write_bytes(raw)
+        if not selected:
+            assert not op_profile.parse_prof_lines(text)
+            continue
+        table = json.loads((work / str(selected) / "op_profile_table.json").read_text())
+        assert (work / str(selected) / "op_profile_table.json").read_bytes() == (
+            work / str(selected) / "lower/op_profile_table.json").read_bytes()
+        report = summarize(table, text)
+        (work / str(selected) / "operation_profile.json").write_text(json.dumps(report))
+        assert report["executions"] == 1 and report["marks"] == len(table) + 1
+        assert report["inter_invocation_counter_ticks"] == 0
+        assert all(row["hits"] == 1 for row in report["operations"])
+    for plain, profiled in zip(*results, strict=True):
+        np.testing.assert_array_equal(plain, profiled)
+    if not padded:
+        assert [row["mlir_op"] for row in table] == ["tensor.empty", "linalg.generic", "linalg.generic"]
+        assert table[1]["body_ops"] == ["arith.addf", "arith.constant"]
+    else:
+        assert any(row["mlir_op"] == "tensor.extract_slice" for row in table)

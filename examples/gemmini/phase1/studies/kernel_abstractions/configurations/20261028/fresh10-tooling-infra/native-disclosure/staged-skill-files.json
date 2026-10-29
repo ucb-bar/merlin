@@ -1,0 +1,398 @@
+[
+  {
+    "bytes": 3857,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/cycle-model-and-gsim/SKILL.md",
+    "relative": ".agents/skills/cycle-model-and-gsim/SKILL.md",
+    "sha256": "3cbf063b9c9923e6ba5d410e69ed5eb1a920bbd7bee1da7f6f70c530bb3b7b35"
+  },
+  {
+    "bytes": 3624,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/cycle-model-and-gsim/reference/trust.md",
+    "relative": ".agents/skills/cycle-model-and-gsim/reference/trust.md",
+    "sha256": "24cd5b69a7eb2d21e409f515bc4d605460dce12f889b963477f875e820e05830"
+  },
+  {
+    "bytes": 4232,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/delegate-to-helpers/SKILL.md",
+    "relative": ".agents/skills/delegate-to-helpers/SKILL.md",
+    "sha256": "27ece20b3fa4d5dd28f0f161eec5aebc1edee094a41c78e25cf8a944adf79e6d"
+  },
+  {
+    "bytes": 4925,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/feedback-files/SKILL.md",
+    "relative": ".agents/skills/feedback-files/SKILL.md",
+    "sha256": "245f63e397b907674b82631dc52ef547b2050a58a6286e7283104b766e281d6a"
+  },
+  {
+    "bytes": 4115,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/feedback-files/scripts/qa_status.py",
+    "relative": ".agents/skills/feedback-files/scripts/qa_status.py",
+    "sha256": "54d255380c40ca19b6a00d912972fe0abd3fac4d7d67ce533a7356ce67e6a3ae"
+  },
+  {
+    "bytes": 4613,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/fix-failure-cluster/SKILL.md",
+    "relative": ".agents/skills/fix-failure-cluster/SKILL.md",
+    "sha256": "23c642116777b933837c90ac43a6277a7963bfbcfab826c5b8a0aba4ccefd66b"
+  },
+  {
+    "bytes": 9239,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/fix-failure-cluster/scripts/clusters.py",
+    "relative": ".agents/skills/fix-failure-cluster/scripts/clusters.py",
+    "sha256": "cf6491525ded568e7d428a364716495b06771f4119bf3efadd4f2d2776531e9c"
+  },
+  {
+    "bytes": 4420,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/inspect-artifacts/SKILL.md",
+    "relative": ".agents/skills/inspect-artifacts/SKILL.md",
+    "sha256": "c6e6de26ab9e0b3368fa8b2d16b23d4d316370a198cbecd5f01cc90fde4c0e9a"
+  },
+  {
+    "bytes": 5642,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/inspect-artifacts/reference/layout.md",
+    "relative": ".agents/skills/inspect-artifacts/reference/layout.md",
+    "sha256": "8aec747c2a5952b911870c176381fb493e5fe7d486d8aeca5bab5187e41f349c"
+  },
+  {
+    "bytes": 11931,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/inspect-artifacts/scripts/case_artifacts.py",
+    "relative": ".agents/skills/inspect-artifacts/scripts/case_artifacts.py",
+    "sha256": "6d71512e4b9ae17493052dbcf9defc99662ed71e2bda07e9058a916ec948132e"
+  },
+  {
+    "bytes": 3747,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/inspect-ir/SKILL.md",
+    "relative": ".agents/skills/inspect-ir/SKILL.md",
+    "sha256": "970c25ec9e49057507da6cfe69168da28202c60a43b4996318ad6fa4dee83cb4"
+  },
+  {
+    "bytes": 4461,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/inspect-ir/reference/stages.md",
+    "relative": ".agents/skills/inspect-ir/reference/stages.md",
+    "sha256": "944c3c86a57083cc9a66d868989543dd0f6e949b14851024968a968bcf83f7f2"
+  },
+  {
+    "bytes": 15007,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/inspect-ir/scripts/dump_stages.py",
+    "relative": ".agents/skills/inspect-ir/scripts/dump_stages.py",
+    "sha256": "bc2c26b9882988d245ed951931afa73d93967f61563a239d255db78bd54c3a19"
+  },
+  {
+    "bytes": 4173,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/inspect-kernel/SKILL.md",
+    "relative": ".agents/skills/inspect-kernel/SKILL.md",
+    "sha256": "33187e857cd41fe2eab0a61b0ceb00f6475ae32ec980963826c17f48c5d8a3f0"
+  },
+  {
+    "bytes": 5666,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/inspect-kernel/reference/products.md",
+    "relative": ".agents/skills/inspect-kernel/reference/products.md",
+    "sha256": "e7e379420c22035c6ebb26ab061baf89b470b3ccf814eb78da8ae6876358b51b"
+  },
+  {
+    "bytes": 10991,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/inspect-kernel/scripts/build_kernel.py",
+    "relative": ".agents/skills/inspect-kernel/scripts/build_kernel.py",
+    "sha256": "989a61637e1982a25ac223d133eb12f9b0c969e7961eb89e413e848eb2c54072"
+  },
+  {
+    "bytes": 9221,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/inspect-kernel/scripts/loop_map.py",
+    "relative": ".agents/skills/inspect-kernel/scripts/loop_map.py",
+    "sha256": "e4cb18ed3145e3d939c933a834ba231a7b8235cbc8276d2ad47cadc7f2a98631"
+  },
+  {
+    "bytes": 4952,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/inspect-model/SKILL.md",
+    "relative": ".agents/skills/inspect-model/SKILL.md",
+    "sha256": "13622a762f8bb713f9288100e69b52c11719075d1434d4e10d2297945bca2eab"
+  },
+  {
+    "bytes": 6401,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/inspect-model/reference/model-case-format.md",
+    "relative": ".agents/skills/inspect-model/reference/model-case-format.md",
+    "sha256": "c70be91252fc6b4116517349584098ee9a2c84b1e093143def8eb6a8ca1f6b65"
+  },
+  {
+    "bytes": 9220,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/inspect-model/scripts/model_summary.py",
+    "relative": ".agents/skills/inspect-model/scripts/model_summary.py",
+    "sha256": "9cfacf9f38388d6a20c449434abd30a74417b20dcd91fed6afd8c5c5b039f881"
+  },
+  {
+    "bytes": 2768,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/performance-feedback-levels/SKILL.md",
+    "relative": ".agents/skills/performance-feedback-levels/SKILL.md",
+    "sha256": "d2414c989049cf1e2c90955fe8b2f94ccbbfcac59fd7c02bf56eeb5191e0db3e"
+  },
+  {
+    "bytes": 4937,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/performance-feedback-levels/reference/signal-map.md",
+    "relative": ".agents/skills/performance-feedback-levels/reference/signal-map.md",
+    "sha256": "0a8694efb0436008e375fd5d734f9d03bcdca35cc2dae7b5bb3b37597d78ac31"
+  },
+  {
+    "bytes": 3874,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/read-command-buffer/SKILL.md",
+    "relative": ".agents/skills/read-command-buffer/SKILL.md",
+    "sha256": "46a9f518e963c8e5f6b01b4d1b28e453e12480d9f1c716092acfa63700d152dd"
+  },
+  {
+    "bytes": 12975,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/read-command-buffer/scripts/summarize_command_buffer.py",
+    "relative": ".agents/skills/read-command-buffer/scripts/summarize_command_buffer.py",
+    "sha256": "74337975c51232ac2697692cf6c4380b13db90f0f5746608583e76946aa79919"
+  },
+  {
+    "bytes": 3080,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/roofline-and-utilization/SKILL.md",
+    "relative": ".agents/skills/roofline-and-utilization/SKILL.md",
+    "sha256": "76a5f3e11e7276607f3afd69a8ab837845123396ea8273545bca80098300c58c"
+  },
+  {
+    "bytes": 6074,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/roofline-and-utilization/reference/fields.md",
+    "relative": ".agents/skills/roofline-and-utilization/reference/fields.md",
+    "sha256": "18304abc9eaa3f326527ec918c782d052de36479c237a15f41a72f9215199092"
+  },
+  {
+    "bytes": 2493,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/roofline-and-utilization/reference/levers.md",
+    "relative": ".agents/skills/roofline-and-utilization/reference/levers.md",
+    "sha256": "8ba7ae9b00fd84e9e0fb7cfc560ec86c38a72838dcd374c4cdc6100163fdd395"
+  },
+  {
+    "bytes": 36323,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/roofline-and-utilization/scripts/perf_summary.py",
+    "relative": ".agents/skills/roofline-and-utilization/scripts/perf_summary.py",
+    "sha256": "c81cceb8f32d27c98d2d7f564d78086d9e6c114982208574928ee0bcfb014b67"
+  },
+  {
+    "bytes": 4414,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/task-available-tools/SKILL.md",
+    "relative": ".agents/skills/task-available-tools/SKILL.md",
+    "sha256": "6b2200e4bd1c05a981b12d0fd11b5130ce1b898e8a058a29a045bbcbd4fab549"
+  },
+  {
+    "bytes": 1804,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/task-build-against-the-whole-public-corpus/SKILL.md",
+    "relative": ".agents/skills/task-build-against-the-whole-public-corpus/SKILL.md",
+    "sha256": "731d8da07ad3d3ef10c288507dbb8bf3f0e3444209c499baff351e1bf7da0172"
+  },
+  {
+    "bytes": 3766,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/task-joint-editable-compiler-development/SKILL.md",
+    "relative": ".agents/skills/task-joint-editable-compiler-development/SKILL.md",
+    "sha256": "5e98f8fd6ca5a3809a97dc89387f38b7ae8b14e9a6db1311ded363bede0b9ba2"
+  },
+  {
+    "bytes": 1973,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/task-joint-shared-cpu-scheduling/SKILL.md",
+    "relative": ".agents/skills/task-joint-shared-cpu-scheduling/SKILL.md",
+    "sha256": "43fcf35a5f10efdbc4fa510751df39b26510f75ad880c03773eed5d4696377e4"
+  },
+  {
+    "bytes": 4984,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/task-model-deployment-and-numerical-boundaries/SKILL.md",
+    "relative": ".agents/skills/task-model-deployment-and-numerical-boundaries/SKILL.md",
+    "sha256": "adada68b7c3e0ff787bf371976755d9b599017e9403f2e1afc5f66520f2467ac"
+  },
+  {
+    "bytes": 2911,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/task-one-evolving-compiler-parallel-bounded-work/SKILL.md",
+    "relative": ".agents/skills/task-one-evolving-compiler-parallel-bounded-work/SKILL.md",
+    "sha256": "e7c25336c53bf9021e3ad59f5b1efa41fa36d7af6485a56b860ac12ba1f325d1"
+  },
+  {
+    "bytes": 1861,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/task-phase-1-gemmini-compiler-for-complete-models/SKILL.md",
+    "relative": ".agents/skills/task-phase-1-gemmini-compiler-for-complete-models/SKILL.md",
+    "sha256": "670b76a5d3da3712ca90f7ed51a5615b776b93fe03136341ba0087bc0c370d7b"
+  },
+  {
+    "bytes": 1944,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/task-required-public-spike-scalability-suite/SKILL.md",
+    "relative": ".agents/skills/task-required-public-spike-scalability-suite/SKILL.md",
+    "sha256": "b23a35c54485b61f58eab337bc5bc04e2ace62a3a7cfdd5d244692c35a334344"
+  },
+  {
+    "bytes": 2630,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/task-runtime-scope-generated-for-this-launch-authoritative/SKILL.md",
+    "relative": ".agents/skills/task-runtime-scope-generated-for-this-launch-authoritative/SKILL.md",
+    "sha256": "93c831d2ce2aa76a383aad408e88d390481be8b784533fefd7a51e3af2daf241"
+  },
+  {
+    "bytes": 2590,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.agents/skills/task-selected-fresh10-compiler-capabilities/SKILL.md",
+    "relative": ".agents/skills/task-selected-fresh10-compiler-capabilities/SKILL.md",
+    "sha256": "ac2a8e82b3eeba203b09e9afc48a0c908fa1e812293c5968a307ccdeeab7d695"
+  },
+  {
+    "bytes": 3857,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/cycle-model-and-gsim/SKILL.md",
+    "relative": ".claude/skills/cycle-model-and-gsim/SKILL.md",
+    "sha256": "3cbf063b9c9923e6ba5d410e69ed5eb1a920bbd7bee1da7f6f70c530bb3b7b35"
+  },
+  {
+    "bytes": 3624,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/cycle-model-and-gsim/reference/trust.md",
+    "relative": ".claude/skills/cycle-model-and-gsim/reference/trust.md",
+    "sha256": "24cd5b69a7eb2d21e409f515bc4d605460dce12f889b963477f875e820e05830"
+  },
+  {
+    "bytes": 4232,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/delegate-to-helpers/SKILL.md",
+    "relative": ".claude/skills/delegate-to-helpers/SKILL.md",
+    "sha256": "27ece20b3fa4d5dd28f0f161eec5aebc1edee094a41c78e25cf8a944adf79e6d"
+  },
+  {
+    "bytes": 4925,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/feedback-files/SKILL.md",
+    "relative": ".claude/skills/feedback-files/SKILL.md",
+    "sha256": "245f63e397b907674b82631dc52ef547b2050a58a6286e7283104b766e281d6a"
+  },
+  {
+    "bytes": 4115,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/feedback-files/scripts/qa_status.py",
+    "relative": ".claude/skills/feedback-files/scripts/qa_status.py",
+    "sha256": "54d255380c40ca19b6a00d912972fe0abd3fac4d7d67ce533a7356ce67e6a3ae"
+  },
+  {
+    "bytes": 4613,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/fix-failure-cluster/SKILL.md",
+    "relative": ".claude/skills/fix-failure-cluster/SKILL.md",
+    "sha256": "23c642116777b933837c90ac43a6277a7963bfbcfab826c5b8a0aba4ccefd66b"
+  },
+  {
+    "bytes": 9239,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/fix-failure-cluster/scripts/clusters.py",
+    "relative": ".claude/skills/fix-failure-cluster/scripts/clusters.py",
+    "sha256": "cf6491525ded568e7d428a364716495b06771f4119bf3efadd4f2d2776531e9c"
+  },
+  {
+    "bytes": 4420,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/inspect-artifacts/SKILL.md",
+    "relative": ".claude/skills/inspect-artifacts/SKILL.md",
+    "sha256": "c6e6de26ab9e0b3368fa8b2d16b23d4d316370a198cbecd5f01cc90fde4c0e9a"
+  },
+  {
+    "bytes": 5642,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/inspect-artifacts/reference/layout.md",
+    "relative": ".claude/skills/inspect-artifacts/reference/layout.md",
+    "sha256": "8aec747c2a5952b911870c176381fb493e5fe7d486d8aeca5bab5187e41f349c"
+  },
+  {
+    "bytes": 11931,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/inspect-artifacts/scripts/case_artifacts.py",
+    "relative": ".claude/skills/inspect-artifacts/scripts/case_artifacts.py",
+    "sha256": "6d71512e4b9ae17493052dbcf9defc99662ed71e2bda07e9058a916ec948132e"
+  },
+  {
+    "bytes": 3747,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/inspect-ir/SKILL.md",
+    "relative": ".claude/skills/inspect-ir/SKILL.md",
+    "sha256": "970c25ec9e49057507da6cfe69168da28202c60a43b4996318ad6fa4dee83cb4"
+  },
+  {
+    "bytes": 4461,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/inspect-ir/reference/stages.md",
+    "relative": ".claude/skills/inspect-ir/reference/stages.md",
+    "sha256": "944c3c86a57083cc9a66d868989543dd0f6e949b14851024968a968bcf83f7f2"
+  },
+  {
+    "bytes": 15007,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/inspect-ir/scripts/dump_stages.py",
+    "relative": ".claude/skills/inspect-ir/scripts/dump_stages.py",
+    "sha256": "bc2c26b9882988d245ed951931afa73d93967f61563a239d255db78bd54c3a19"
+  },
+  {
+    "bytes": 4173,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/inspect-kernel/SKILL.md",
+    "relative": ".claude/skills/inspect-kernel/SKILL.md",
+    "sha256": "33187e857cd41fe2eab0a61b0ceb00f6475ae32ec980963826c17f48c5d8a3f0"
+  },
+  {
+    "bytes": 5666,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/inspect-kernel/reference/products.md",
+    "relative": ".claude/skills/inspect-kernel/reference/products.md",
+    "sha256": "e7e379420c22035c6ebb26ab061baf89b470b3ccf814eb78da8ae6876358b51b"
+  },
+  {
+    "bytes": 10991,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/inspect-kernel/scripts/build_kernel.py",
+    "relative": ".claude/skills/inspect-kernel/scripts/build_kernel.py",
+    "sha256": "989a61637e1982a25ac223d133eb12f9b0c969e7961eb89e413e848eb2c54072"
+  },
+  {
+    "bytes": 9221,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/inspect-kernel/scripts/loop_map.py",
+    "relative": ".claude/skills/inspect-kernel/scripts/loop_map.py",
+    "sha256": "e4cb18ed3145e3d939c933a834ba231a7b8235cbc8276d2ad47cadc7f2a98631"
+  },
+  {
+    "bytes": 4952,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/inspect-model/SKILL.md",
+    "relative": ".claude/skills/inspect-model/SKILL.md",
+    "sha256": "13622a762f8bb713f9288100e69b52c11719075d1434d4e10d2297945bca2eab"
+  },
+  {
+    "bytes": 6401,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/inspect-model/reference/model-case-format.md",
+    "relative": ".claude/skills/inspect-model/reference/model-case-format.md",
+    "sha256": "c70be91252fc6b4116517349584098ee9a2c84b1e093143def8eb6a8ca1f6b65"
+  },
+  {
+    "bytes": 9220,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/inspect-model/scripts/model_summary.py",
+    "relative": ".claude/skills/inspect-model/scripts/model_summary.py",
+    "sha256": "9cfacf9f38388d6a20c449434abd30a74417b20dcd91fed6afd8c5c5b039f881"
+  },
+  {
+    "bytes": 2768,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/performance-feedback-levels/SKILL.md",
+    "relative": ".claude/skills/performance-feedback-levels/SKILL.md",
+    "sha256": "d2414c989049cf1e2c90955fe8b2f94ccbbfcac59fd7c02bf56eeb5191e0db3e"
+  },
+  {
+    "bytes": 4937,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/performance-feedback-levels/reference/signal-map.md",
+    "relative": ".claude/skills/performance-feedback-levels/reference/signal-map.md",
+    "sha256": "0a8694efb0436008e375fd5d734f9d03bcdca35cc2dae7b5bb3b37597d78ac31"
+  },
+  {
+    "bytes": 3874,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/read-command-buffer/SKILL.md",
+    "relative": ".claude/skills/read-command-buffer/SKILL.md",
+    "sha256": "46a9f518e963c8e5f6b01b4d1b28e453e12480d9f1c716092acfa63700d152dd"
+  },
+  {
+    "bytes": 12975,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/read-command-buffer/scripts/summarize_command_buffer.py",
+    "relative": ".claude/skills/read-command-buffer/scripts/summarize_command_buffer.py",
+    "sha256": "74337975c51232ac2697692cf6c4380b13db90f0f5746608583e76946aa79919"
+  },
+  {
+    "bytes": 3080,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/roofline-and-utilization/SKILL.md",
+    "relative": ".claude/skills/roofline-and-utilization/SKILL.md",
+    "sha256": "76a5f3e11e7276607f3afd69a8ab837845123396ea8273545bca80098300c58c"
+  },
+  {
+    "bytes": 6074,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/roofline-and-utilization/reference/fields.md",
+    "relative": ".claude/skills/roofline-and-utilization/reference/fields.md",
+    "sha256": "18304abc9eaa3f326527ec918c782d052de36479c237a15f41a72f9215199092"
+  },
+  {
+    "bytes": 2493,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/roofline-and-utilization/reference/levers.md",
+    "relative": ".claude/skills/roofline-and-utilization/reference/levers.md",
+    "sha256": "8ba7ae9b00fd84e9e0fb7cfc560ec86c38a72838dcd374c4cdc6100163fdd395"
+  },
+  {
+    "bytes": 36323,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-infra-preflight/workspace/.claude/skills/roofline-and-utilization/scripts/perf_summary.py",
+    "relative": ".claude/skills/roofline-and-utilization/scripts/perf_summary.py",
+    "sha256": "c81cceb8f32d27c98d2d7f564d78086d9e6c114982208574928ee0bcfb014b67"
+  }
+]

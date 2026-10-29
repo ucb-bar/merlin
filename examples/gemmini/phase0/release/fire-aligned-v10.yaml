@@ -1,0 +1,73 @@
+# Operator-only release preparation for the fire-aligned EL4 Phase 1 launch.
+#
+# This is the single source of the arguments passed to
+# merlin_experiments.corpus.release.prepare(...) and of the seal statement for
+# the reviewed Phase 0 release that the Phase 1 launch config
+# (../../phase1/launch/el4-fire-aligned.yaml) consumes. It selects inputs; it
+# does not review a corpus, qualify numerics or replace the release's own seal.
+#
+#   python -m merlin_experiments.phase1.launch_config render \
+#       --config examples/gemmini/phase1/launch/el4-fire-aligned.yaml \
+#       --task-root "$TASK_ROOT" --prep "$PREP" --out "$PREP"
+#
+# writes release-prepare.json (these exact prepare() arguments) next to the
+# launch environment; `verify` compares an existing release's
+# private/preparation.json and seal against this file.
+#
+# Never granted to an author sandbox or copied into a release payload
+# (merlin/tests/infra/test_launch_config_not_author_visible.py).
+schema: merlin.phase0.release_config.v1
+id: gemmini-fire-aligned-v10
+target: gemmini
+
+# ${TASK_ROOT} and ${PREP} come from --task-root/--prep. Every value below may
+# be overridden with --var NAME=VALUE (for example RELEASE_VERSION=18 to check
+# the earlier release); a new release always takes a new, unused version.
+variables:
+  REPO: ${TASK_ROOT}/merlin
+  RELEASE_VERSION: "19"
+  RELEASE: ${REPO}/out/artifacts/protocols/gemmini/phase0-fire-aligned-v10-timed-v${RELEASE_VERSION}
+  PHASE0_RUN: ${REPO}/out/runs/gemmini/phase0/fire-aligned-v10
+  # Fire-aligned 30 MHz capability contract with the kernel-call timing selection.
+  TARGET_CONTRACT: ${REPO}/out/artifacts/probes/gemmini/fire-aligned-30mhz/selected/target_contract-v5-kernel-timed.json
+
+prepare:
+  run_dir: ${PHASE0_RUN}
+  output: ${RELEASE}
+  generated_only: true
+  selected_levels: [EL4]
+  selected_variants: [public_v0]
+  kernel_timing_selection:
+    path: ${TARGET_CONTRACT}
+    sha256: 9c6456af508d44c11a3073a110b12f6fb02f98d60263539ef1b51e1379f3f639
+  lean_toolchain_manifest:
+    path: ${PREP}/lean-toolchain.json
+    sha256: 4fc4831d2a47d77f2301b8a318652bc04594e9f87e8fec00ed42d53e9dff570f
+  host_index_bits: 64
+  phase1_policy_descriptor:
+    path: ${PREP}/phase1-policy-descriptor.yaml
+    sha256: 0e8b9b11f588cc33a71cdc38041d899f44a1f8f0d94cdbc3bd8efb2ba30f6d64
+
+# Post-preparation assertions (prepare_release.py): the frozen descriptor's
+# private full-model roster compiles this many whole programs, and whole-model
+# execution is deferred to the separate post-experiment check.
+expect:
+  whole_programs: 6
+  whole_model_execution: deferred_post_experiment
+
+seal:
+  descriptor: ${RELEASE}/payload/experiment/target_experiment.yaml
+  seal: ${RELEASE}/private/seal.json
+  # Separate post-experiment grading descriptor bound into the numerics launch record.
+  post_experiment_descriptor:
+    path: ${PREP}/post-experiment-descriptor.yaml
+    sha256: 4ac45372e52573a31d2afddfa702d9044219ba34e8da5acfd0d00fd6e05085c7
+  reviewed_by: Claude operator under explicit user authorization to optimize the Phase1 harness and launch fresh empty-origin runs
+  review_note: >-
+    Source-qualified infrastructure recovery of same EL4 experiment. Original
+    numerical files, variants, admission policy and Smol waiver unchanged and
+    rehashed; retained host twin numerical outputs match; their original source
+    identities remain explicit. Fresh EMPTY-origin compiler: no seed, prior
+    candidate, compiler or transcript; new author session with a 5-hour
+    authoring cap, high effort, target convergence about 2 hours. Full
+    qualification preserved.

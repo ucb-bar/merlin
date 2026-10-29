@@ -1,0 +1,136 @@
+{
+  "schema": "merlin.public_model_residual_analysis.v1",
+  "method": "retained reports only; no new simulator execution or fitting",
+  "rows": [
+    {
+      "capsule": "SY_contraction_i8_aligned",
+      "scoped_instructions": 68,
+      "scoped_features": {
+        "device.requested_read_bytes": 1024,
+        "device.requested_write_bytes": 1024,
+        "modeled.cache.l1d.coherence_protocol_cycles": 160,
+        "modeled.cache.l1i.hits": 66,
+        "modeled.cache.l1i.misses": 4,
+        "modeled.cache.l2.hits": 40,
+        "modeled.cache.l2.misses": 20,
+        "modeled.coherence_probes": 16,
+        "modeled.coherence_writeback_bytes": 1024,
+        "modeled.dram_request_bytes": 1280,
+        "target.class.compute_ws": 2,
+        "target.class.config": 5,
+        "target.class.fence": 3,
+        "target.class.load": 5,
+        "target.class.preload": 2,
+        "target.class.store": 1,
+        "target.zero_fill_elements": 256
+      },
+      "report": "cases/SY_contraction_i8_aligned/report.json"
+    },
+    {
+      "capsule": "SY_conv_k3x3_s1x1_d1x1_pad1x1",
+      "scoped_instructions": 8881,
+      "scoped_features": {
+        "device.requested_read_bytes": 1152,
+        "device.requested_write_bytes": 1024,
+        "modeled.cache.l1d.coherence_protocol_cycles": 250,
+        "modeled.cache.l1d.hits": 1169,
+        "modeled.cache.l1d.misses": 3,
+        "modeled.cache.l1i.hits": 9020,
+        "modeled.cache.l1i.misses": 9,
+        "modeled.cache.l2.hits": 68,
+        "modeled.cache.l2.misses": 21,
+        "modeled.coherence_probes": 25,
+        "modeled.coherence_writeback_bytes": 1600,
+        "modeled.dram_request_bytes": 1344,
+        "target.class.compute_ws": 3,
+        "target.class.config": 5,
+        "target.class.fence": 5,
+        "target.class.load": 7,
+        "target.class.preload": 3,
+        "target.class.store": 1,
+        "target.zero_fill_elements": 256
+      },
+      "report": "cases/SY_conv_k3x3_s1x1_d1x1_pad1x1/report.json"
+    },
+    {
+      "capsule": "SY_movement_i8_sub_tile",
+      "scoped_instructions": 30,
+      "scoped_features": {
+        "device.requested_read_bytes": 8,
+        "device.requested_write_bytes": 32,
+        "modeled.cache.l1d.coherence_protocol_cycles": 10,
+        "modeled.cache.l1i.hits": 29,
+        "modeled.cache.l1i.misses": 2,
+        "modeled.cache.l2.hits": 2,
+        "modeled.cache.l2.misses": 3,
+        "modeled.coherence_probes": 1,
+        "modeled.coherence_writeback_bytes": 64,
+        "modeled.dram_request_bytes": 192,
+        "target.class.config": 2,
+        "target.class.fence": 3,
+        "target.class.load": 1,
+        "target.class.store": 1
+      },
+      "report": "cases/SY_movement_i8_sub_tile/report.json"
+    }
+  ],
+  "confirmed": [
+    "Exact scoped residuals are movement -35, matmul +243, convolution +241 cycles.",
+    "Matmul and convolution both export one16x16 i32 output object1024 bytes. Both initialize that output before the measured entry-through-completion call.",
+    "Matmul has68 scoped instructions,15 custom instructions,2 WS computes,2 PRELOADs,5 LOADs including256 zero-fill elements,one store and3 fences. No scoped CPU load/store/FP/divide instructions.",
+    "Matmul modeled scoped memory events include4 I-cache misses,20 L2 misses,16 dirty-L1 coherence probes,1024 coherence writeback bytes and160 aggregate probe-service cycles.",
+    "Resource activity is tagged whole_trace and additive=false. It cannot identify the kernel critical path or apportion the243-cycle error."
+  ],
+  "hypotheses": [
+    {
+      "id": "shared_output_phase",
+      "status": "open",
+      "support": "Matmul and convolution have almost equal absolute residual despite68 versus8881 scoped instructions and2 versus3 WS computes; same output geometry.",
+      "counterevidence": "Retained isolated8-readout diagnostics underpredict both dirty and clean total times. No evidence supports reducing common readout or probe prices."
+    },
+    {
+      "id": "zero_fill_and_load_service",
+      "status": "open",
+      "support": "Both kernels include256 zero-fill elements and one fixed accumulator tile. No exact model timeline retained to distinguish zero-fill local service, ordinary DMA waits and dependency holds.",
+      "required_evidence": "Actual scoped event earliest/start/ready/dependencies/resources on exact already-observed ELF; do not infer service from instruction counts."
+    }
+  ],
+  "retained_readout_crosscheck": {
+    "physical_receipt_sha256": "4c35fe1f018940843ca7b2c2367ed2b5ad17ed03fc70ff6bded6af38cec18445",
+    "model_replay_receipt_sha256": "3b8459bbb93b1ce466f488afa3b956669ff7f6a021033cc85a2a269dfd6e21b3",
+    "rows": [
+      {
+        "name": "coherence-0",
+        "dirty": true,
+        "physical_cycles": 1627,
+        "estimated_cycles": 1471,
+        "error_cycles": -156,
+        "elf_sha256": "352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2",
+        "scope_sha256": "3d8ecf479f108f650b758ab7d224a625b32ff0b04485d3ba3ba632421115ca2a",
+        "report_sha256": "70a97651dba02f9aef0b9bd5f3ef0aaab1e0e80c0f5a773ddd9668384205651e",
+        "purpose": "development evidence, not independent qualification"
+      },
+      {
+        "name": "coherence-1",
+        "dirty": false,
+        "physical_cycles": 872,
+        "estimated_cycles": 751,
+        "error_cycles": -121,
+        "elf_sha256": "352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2",
+        "scope_sha256": "ec3323c7b25bcd184ba44aeba3c00b5b9ad60bf46916dadce68cd1e4ef613290",
+        "report_sha256": "8643ed2744023f1e809de1338671ef85953ece0ee8c34a1404ecb19c403fc7e6",
+        "purpose": "development evidence, not independent qualification"
+      }
+    ],
+    "physical_dirty_minus_clean": 755,
+    "modeled_dirty_minus_clean": 720,
+    "conclusion": "Opposite error direction from new candidate matmul; reject blanket readout price reduction."
+  },
+  "rejected_attributions": [
+    "Do not sum whole-trace resource busy_unit_cycles or compare modeled_horizon3120 to the564-cycle physical window.",
+    "Do not assign all160 scoped coherence service cycles to critical-path delay; overlap may hide portions.",
+    "Do not convert retired instructions or functional mcycle console to physical cycles.",
+    "Do not infer a243-cycle fence penalty or scalar correction from the residual."
+  ],
+  "next_evidence": "An observer-only causal event timeline on this exact retained matmul can identify model serialization without more physical measurements. A physical sub-interval remains unavailable in the original two-counter harness."
+}

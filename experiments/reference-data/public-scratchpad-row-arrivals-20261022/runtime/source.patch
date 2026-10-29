@@ -1,0 +1,476 @@
+diff --git a/examples/gemmini/timing/README.md b/examples/gemmini/timing/README.md
+index 49d8769..98427a4 100644
+--- a/examples/gemmini/timing/README.md
++++ b/examples/gemmini/timing/README.md
+@@ -311,3 +311,37 @@ Readout stays 753 against 1,521/1,603. Consequently complete-call predictions
+ remain inaccurate and no whole-SoC qualification or automatic fit reopening
+ follows from this change. This is an optional structural hypothesis pending
+ further independent coverage, not an activated replacement.
++
++### Inactive aligned identity-scale scratchpad row arrivals
++
++`target.scheduling.scratchpad_row_loads=1` selects a provisional producer for
++nonzero, aligned sixteen-byte int8 scratchpad rows, at most sixteen rows per
++command, exact float identity scale, positive aligned stride, and no pixel
++repetition. The bridge requires explicit selected transaction/identity-queue
++facts and translation-hit/FIFO-response assumptions. Other load forms retain
++the legacy model; this selector supplies no new accuracy claim for those forms.
++Malformed selected phases and incomplete memory effects propagate UNKNOWN.
++
++Each row observes the unchanged memory model at request admission. Sixteen
++transaction credits release at modeled last incoming beat acceptance, separately
++from the three-entry identity FIFO and final SRAM write. The registered beat
++merger, identity input/FIFO and optional pixel-repeater path determine first
++write arrival. A scratchpad bank reserves one write acceptance cycle, not the
++whole external memory latency. Command dependencies and aggregate destination
++publication remain conservative, including existing local-service floors.
++
++This is a bounded approximation: translation misses/retries and arbitrary
++out-of-order TL response arbitration are not represented by the selected path.
++The identity queue conservatively includes upstream buffering in its capacity.
++Existing scalar resource frontiers cannot recover all earlier idle gaps after
++future reservations; cross-command overlap is conservative. No existing CPU,
++cache, memory or accelerator price is changed. The selected LoadController
++issues individual logical rows; StreamReader's strict useful-byte size choice
++selects sixteen-byte requests for these aligned sixteen-byte rows. Its maximum
++sixty-four-byte transaction size does not imply cross-row coalescing.
++
++Three retained exact-ELF public comparisons, with all output values checked,
++give movement108 (unchanged), matmul851 (previous807), and convolution11061
++(previous11088). Their physical development labels are143,564,10847 respectively.
++The matmul regression is retained, not compensated by changing a scalar price.
++These comparisons neither qualify this candidate nor reopen calibration.
+diff --git a/examples/gemmini/timing/bridge.cpp b/examples/gemmini/timing/bridge.cpp
+index bc4428d..4b91fb0 100644
+--- a/examples/gemmini/timing/bridge.cpp
++++ b/examples/gemmini/timing/bridge.cpp
+@@ -61,7 +61,8 @@ G::HardwareConfig hardware(Services &s) {
+   return {integer(s, "dim"), integer(s, "scratchpad_rows"), integer(s, "accumulator_rows"),
+           integer(s, "element_bytes"), integer(s, "accumulator_bytes"), integer(s, "address_bits"),
+           bool(first), bool(full), activation, normalizations, arrival,
+-          s.number("target.scheduling.accumulator_streamed_readout")==std::optional<double>{1}};
++          s.number("target.scheduling.accumulator_streamed_readout")==std::optional<double>{1},
++          s.number("target.scheduling.scratchpad_row_loads")==std::optional<double>{1}};
+ }
+ 
+ G::Parameters parameters(Services &s) {
+@@ -196,6 +197,24 @@ std::optional<G::StagedConfig> staged_config(Services &services) {
+         fact("write_issue_queue_entries",5),fact("accumulator_scale_pipeline_stages",8),
+         fact("writer_transaction_entries",16),fact("writer_beat_bytes",16)};
+   }
++  if(const auto selected=services.number("target.scheduling.scratchpad_row_loads")) {
++    if(*selected!=1 || !result.conservative_local_store_holds ||
++        services.number("target.assumptions.scratchpad_load_translation_hits")!=std::optional<double>{1} ||
++        services.number("target.assumptions.scratchpad_load_fifo_responses")!=std::optional<double>{1})
++      throw std::invalid_argument("row loads require explicit translation/FIFO assumptions and storage hazards");
++    const auto fact=[&](const char *key,std::size_t expected) {
++      if(services.number(std::string("target.hardware.")+key)!=std::optional<double>{double(expected)})
++        throw std::invalid_argument(std::string("unsupported scratchpad row-load fact: ")+key);
++      return expected;
++    };
++    fact("dim",16);fact("element_bytes",1);fact("reader_beat_bytes",16);
++    fact("reader_translation_queue_entries",1);fact("reader_tlb_queue_entries",1);
++    fact("reader_beat_merger_stages",1);fact("identity_scale_input_stages",1);
++    fact("identity_scale_output_stages",1);fact("scratchpad_singleported",1);
++    result.scratchpad_load_stream=G::ScratchpadLoadConfig{
++        fact("reader_transaction_entries",16),fact("identity_scale_queue_entries",3),2,
++        3+integer(services,"first_layer_optimizations")};
++  }
+   if (result.allow_disjoint_scratchpad_banks || result.conservative_local_store_holds)
+     result.scratchpad_bank_rows = count("scratchpad_bank_rows");
+   if (result.conservative_local_store_holds) {
+diff --git a/examples/gemmini/timing/export_config.py b/examples/gemmini/timing/export_config.py
+index c3b99a2..0debb89 100644
+--- a/examples/gemmini/timing/export_config.py
++++ b/examples/gemmini/timing/export_config.py
+@@ -127,7 +127,7 @@ def export_bundle(document: dict, destination: Path, profile: str = "stock_u250"
+ 
+     root = Path(__file__).absolute().parent
+     payloads = {}
+-    for name in ("README.md", "bridge.cpp", "provider.hpp", "staged.hpp", "streamed_readout.hpp"):
++    for name in ("README.md", "bridge.cpp", "provider.hpp", "staged.hpp", "streamed_readout.hpp", "scratchpad_load.hpp"):
+         path = root / name
+         if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
+             raise ValueError("provider sources must not be symlinks")
+diff --git a/examples/gemmini/timing/provider.hpp b/examples/gemmini/timing/provider.hpp
+index 03e5ad8..fb7de86 100644
+--- a/examples/gemmini/timing/provider.hpp
++++ b/examples/gemmini/timing/provider.hpp
+@@ -69,6 +69,7 @@ struct HardwareConfig {
+   // Selected first-data pipeline before full-width ACC StreamWriter requests.
+   std::optional<Cycle> accumulator_readout_arrival = std::nullopt;
+   bool accumulator_streamed_readout = false;
++  bool scratchpad_row_loads = false;
+ };
+ 
+ // An absent binding is an unknown resource, never an assumed single-lane queue.
+@@ -94,6 +95,7 @@ struct TransferPhase {
+   std::uint64_t row_bytes=0;
+   std::vector<Transfer> row_transfers{};
+   TransferHook row_memory{};
++  bool scratchpad_load = false;
+ };
+ // Explicit v2 timing-only hook; the v1 functional/count path stays unchanged.
+ using SubmitHook = std::function<Result(const std::string &, const Event &,
+@@ -195,6 +197,7 @@ private:
+     std::uint64_t stride = 0;
+     std::uint32_t block_stride = 0, pixels = 1;
+     bool shrunk = false, valid = false;
++    std::uint32_t scale = 0;
+   };
+   struct ExecuteState {
+     std::uint32_t a_stride = 0, c_stride = 0;
+@@ -347,7 +350,7 @@ private:
+     demands_.push_back({*resource, 1, occupancy});
+   }
+   Result submit(const std::string &kind, std::optional<ResourceId> resource,
+-                std::uint64_t bytes, std::uint64_t macs, Cycle arrival = 0) {
++                std::uint64_t bytes, std::uint64_t macs, Cycle arrival = 0, bool row_load = false) {
+     add(primitive_classes_[kind], 1);
+     auto latency = priced(kind + ".latency", bytes, macs);
+     const auto occupancy = priced(kind + ".occupancy", bytes, macs);
+@@ -361,8 +364,9 @@ private:
+       const bool streamed = arrival && submit_hook_ && h_.accumulator_streamed_readout &&
+           transfers_.size()==1 && transfers_[0].row_bytes==std::uint64_t(h_.dim)*h_.accumulator_bytes &&
+           transfers_[0].address%transfers_[0].row_bytes==0;
+-      if(streamed) {
++      if(streamed || row_load) {
+         phase=TransferPhase{arrival,{}};phase->row_bytes=transfers_[0].row_bytes;
++        phase->scratchpad_load=row_load;
+         phase->row_memory=transfer_hook_;
+         for(std::uint64_t r=0;r<transfers_[0].rows;++r) {
+           auto row=transfers_[0];row.address+=r*row.row_stride;row.rows=1;
+@@ -382,7 +386,7 @@ private:
+       if (!effects.minimum_latency) missing("external_transfer_latency");
+       else if (arrival > std::numeric_limits<Cycle>::max() - *effects.minimum_latency)
+         missing("external_transfer_arrival_overflow");
+-      else if (latency && !streamed) latency = std::max(*latency, *effects.minimum_latency + arrival);
++      else if (latency && !streamed && !row_load) latency = std::max(*latency, *effects.minimum_latency + arrival);
+     } else if (!transfers_.empty()) {
+       bool write = transfers_.front().write;
+       std::uint64_t payload = 0;
+@@ -428,7 +432,7 @@ private:
+       else {
+         auto &load = loads_[id];
+         load = {rs2, std::uint32_t((rs1 >> 16) & 65535), std::uint32_t((rs1 >> 8) & 255),
+-                bool((rs1 >> 2) & 1), true};
++                bool((rs1 >> 2) & 1), true, std::uint32_t(rs1 >> 32)};
+         if (!load.pixels) load.pixels = 1;
+         if (!h_.first_layer_optimizations && load.pixels > 1) fail("pixel_extension_unavailable", true);
+         writes_.push_back(state(id));
+@@ -513,7 +517,11 @@ private:
+     }
+     if (dram) transfer(dram, p.rows, std::uint64_t(p.cols) * width, load.stride, false);
+     else add(counters_.zero_fill_elements, std::uint64_t(p.rows) * p.cols);
+-    return submit("load", resources_.load, event_reads_ + event_writes_, 0);
++    const bool row_load = h_.scratchpad_row_loads && submit_hook_ && transfer_hook_ &&
++        dram && !accumulator && !load.shrunk && load.scale==0x3f800000u && load.pixels==1 &&
++        h_.dim==16 && h_.element_bytes==1 && p.cols==16 && p.rows && p.rows<=16 &&
++        dram%16==0 && load.stride && load.stride%16==0;
++    return submit("load", resources_.load, event_reads_ + event_writes_, 0, 0, row_load);
+   }
+   Result store(std::uint64_t dram, std::uint64_t encoded) {
+     reads_.push_back(state(3));
+diff --git a/examples/gemmini/timing/scratchpad_load.hpp b/examples/gemmini/timing/scratchpad_load.hpp
+new file mode 100644
+index 0000000..373f74c
+--- /dev/null
++++ b/examples/gemmini/timing/scratchpad_load.hpp
+@@ -0,0 +1,67 @@
++#ifndef GEMMINI_SCRATCHPAD_LOAD_HPP
++#define GEMMINI_SCRATCHPAD_LOAD_HPP
++#include "provider.hpp"
++#include <merlin_timing/reservations.hpp>
++
++namespace gemmini_annotated_spike {
++// Narrow provisional producer: aligned one-beat int8 rows, identity scaling,
++// translation hits. Existing memory observations price each actual row. FIFO
++// responses are a conservative approximation, not a claim of TL response order.
++struct ScratchpadLoadConfig {
++  std::size_t transactions=16, scale_entries=3;
++  Cycle translation_stages=2, identity_stages=3;
++};
++struct ScratchpadLoadResult {
++  std::optional<Cycle> complete, requests_complete;
++  std::vector<Cycle> requested, response, written;
++};
++class ScratchpadLoadStream {
++public:
++  explicit ScratchpadLoadStream(ScratchpadLoadConfig config)
++      : c_(config), transactions_(config.transactions), scale_(config.scale_entries) {
++    if(config.transactions!=16 || config.scale_entries!=3 || config.translation_stages!=2 ||
++        (config.identity_stages!=3 && config.identity_stages!=4))
++      throw std::invalid_argument("unsupported scratchpad identity row pipeline");
++  }
++  ScratchpadLoadResult schedule(std::size_t rows, Cycle begin,
++      const std::function<Result(std::size_t,Cycle)> &memory,
++      const std::function<Result(std::size_t,Cycle)> &write) {
++    ScratchpadLoadResult out;
++    if(!rows || rows>16 || !response_frontier_ ||
++        begin>std::numeric_limits<Cycle>::max()-1048576) return out;
++    Cycle request=begin+c_.translation_stages, complete=begin;
++    for(std::size_t row=0;row<rows;++row) {
++      const auto tx=transactions_.allocate(request);
++      if(!tx)return out;
++      const auto fetched=memory(row,tx->admitted);
++      if(!fetched.start || !fetched.ready || *fetched.start<tx->admitted ||
++          *fetched.ready<*fetched.start || *fetched.ready>std::numeric_limits<Cycle>::max()-16) {
++        response_frontier_.reset();return out;
++      }
++      // Capacity includes the identity FIFO only; treating its upstream input
++      // register as part of this capacity is conservative under backpressure.
++      const auto slot=scale_.allocate(std::max(*fetched.ready,*response_frontier_));
++      if(!slot || slot->admitted>std::numeric_limits<Cycle>::max()-16) {
++        response_frontier_.reset();return out;
++      }
++      // XactTracker releases on last incoming beat, NOT destination publication.
++      transactions_.release(*tx,slot->admitted+1);
++      const auto stored=write(row,slot->admitted+c_.identity_stages);
++      if(!stored.start || !stored.ready || *stored.start<slot->admitted+c_.identity_stages ||
++          *stored.ready!=*stored.start+1) {response_frontier_.reset();return out;}
++      scale_.release(*slot,*stored.start+1);
++      response_frontier_=slot->admitted+1;
++      request=*fetched.start+1;
++      complete=std::max(complete,*stored.ready);
++      out.requested.push_back(*fetched.start);out.response.push_back(slot->admitted);
++      out.written.push_back(*stored.start);
++    }
++    out.complete=complete;out.requests_complete=request;return out;
++  }
++private:
++  ScratchpadLoadConfig c_;
++  merlin_timing::ReservationWindow transactions_,scale_;
++  std::optional<Cycle> response_frontier_=Cycle{0};
++};
++} // namespace gemmini_annotated_spike
++#endif
+diff --git a/examples/gemmini/timing/staged.hpp b/examples/gemmini/timing/staged.hpp
+index dbc6015..e0d6aa2 100644
+--- a/examples/gemmini/timing/staged.hpp
++++ b/examples/gemmini/timing/staged.hpp
+@@ -3,6 +3,7 @@
+ 
+ #include "provider.hpp"
+ #include "streamed_readout.hpp"
++#include "scratchpad_load.hpp"
+ #include <merlin_timing/reservations.hpp>
+ #include <memory>
+ #include <set>
+@@ -35,6 +36,7 @@ struct StagedConfig {
+   bool ws_feed_queue_release = false;
+   bool ws_resident_mul_pre_pairing = false;
+   std::optional<ReadoutStreamConfig> readout_stream;
++  std::optional<ScratchpadLoadConfig> scratchpad_load_stream;
+   std::vector<ResourceId> scratchpad_bank_resources;
+   std::optional<ResourceId> accumulator_storage_resource;
+ };
+@@ -146,6 +148,11 @@ public:
+         std::uint64_t(config_.scratchpad_bank_resources.size()) * config_.scratchpad_bank_rows != scratchpad_rows_ ||
+         !config_.accumulator_storage_resource))
+       throw std::invalid_argument("conservative local-store resource mapping is incomplete");
++    if(config_.scratchpad_load_stream) {
++      if(!config_.conservative_local_store_holds || dim_!=16)
++        throw std::invalid_argument("scratchpad row loads require selected local resources and DIM16");
++      load_stream_=std::make_unique<ScratchpadLoadStream>(*config_.scratchpad_load_stream);
++    }
+     for (std::size_t i = 0; i < 3; ++i) {
+       reservations_[i] = std::make_unique<merlin_timing::ReservationWindow>(config.reservations[i]);
+       controllers_[i] = std::make_unique<merlin_timing::ReservationWindow>(config.controller_entries[i]);
+@@ -377,6 +384,7 @@ private:
+   ValueId execute_configuration_;
+   std::array<std::unique_ptr<Window>, 3> reservations_, controllers_;
+   std::array<std::unique_ptr<Window>, 2> dma_;
++  std::unique_ptr<ScratchpadLoadStream> load_stream_;
+   std::unique_ptr<Command> pending_;
+   std::optional<Window::Ticket> preload_retirement_;
+   std::optional<std::size_t> last_data_group_;
+@@ -539,7 +547,8 @@ private:
+     command.split_ws = command.split_ws && known && command.latency && command.occupancy &&
+         *command.latency >= *command.occupancy && *command.occupancy >= dim_;
+     command.demands.push_back({config_.controller_resources[command.group], 1, command.occupancy});
+-    if (config_.conservative_local_store_holds) {
++    if (config_.conservative_local_store_holds &&
++        !(command.transfer_phase && command.transfer_phase->scratchpad_load)) {
+       // A declared conservative abstraction: hold every touched local store
+       // through the whole effect, including gaps during DMA/mesh service. This
+       // admits less overlap than the RTL and never invents a second SP port.
+@@ -563,7 +572,56 @@ private:
+         known ? command.latency : std::nullopt, true, {command.retained.data(), command.retained.size()}};
+     Result result;
+     std::optional<Cycle> feed_ready;
+-    if (command.transfer_phase && (!command.transfer_phase->rows.empty() ||
++    std::optional<Cycle> load_requests_complete;
++    if(command.transfer_phase && command.transfer_phase->scratchpad_load) {
++      const auto &phase=*command.transfer_phase;
++      const auto count=phase.row_transfers.size();
++      if(!load_stream_ || command.group!=0 || command.kind!="load" || !known ||
++          !command.latency || !command.occupancy || !phase.row_memory ||
++          phase.row_bytes!=16 || !count || count>16 || command.writes.size()!=count)
++        return unknown(effect);
++      for(const auto value:command.writes)
++        if(value<local_base_ || value-local_base_>=scratchpad_rows_) return unknown(effect);
++      // Reserve controller only after the row request schedule is known. The
++      // admission checks its existing frontier without reserving DMA latency
++      // on a scratchpad bank. All source/WAR/WAW edges were checked above.
++      auto initial=command.demands;
++      for(auto &d:initial) {if(!d.occupancy)return unknown(effect);d.occupancy=0;}
++      Event admission=effect;admission.writes={};admission.latency=0;
++      admission.demands={initial.data(),initial.size()};admission.hold_reads_until_ready=false;
++      const auto admitted=engine_.submit_detached(admission);
++      if(!admitted.start)return unknown(effect);
++      const auto streamed=load_stream_->schedule(count,*admitted.start,
++          [&](std::size_t row,Cycle at) {
++        const auto memory=phase.row_memory({&phase.row_transfers[row],1});
++        for(const auto &d:memory.demands) {
++          for(auto bank:config_.scratchpad_bank_resources) if(d.resource==bank)return Result{};
++          for(const auto &local:command.demands) if(d.resource==local.resource)return Result{};
++        }
++        Event transfer{at,{memory.reads.data(),memory.reads.size()},
++            {memory.writes.data(),memory.writes.size()},
++            {memory.demands.data(),memory.demands.size()},memory.minimum_latency,true};
++        return engine_.submit_detached(transfer);
++      },[&](std::size_t row,Cycle at) {
++        const ValueId destination=command.writes[row];
++        const auto bank=(destination-local_base_)/config_.scratchpad_bank_rows;
++        const Demand port{config_.scratchpad_bank_resources.at(bank),1,Cycle{1}};
++        Event write{at,{},{&destination,1},{&port,1},Cycle{1}};
++        return engine_.submit_detached(write);
++      });
++      if(!streamed.complete || !streamed.requests_complete ||
++          *command.latency>std::numeric_limits<Cycle>::max()-*admitted.start) return unknown(effect);
++      auto controller=command.demands;
++      for(auto &d:controller)d.occupancy=std::max(*d.occupancy,*streamed.requests_complete-*admitted.start);
++      Event request_hold{*admitted.start,{},{},{controller.data(),controller.size()},Cycle{0}};
++      const auto held=engine_.submit_detached(request_hold);
++      if(held.start!=admitted.start)return unknown(effect);
++      Event publish=effect;publish.earliest=std::max(*streamed.complete,*admitted.start+*command.latency);
++      publish.demands={};publish.latency=0;
++      const auto done=engine_.submit_detached(publish);
++      result={admitted.issue,admitted.start,done.ready,done.unknown};
++      load_requests_complete=streamed.requests_complete;
++    } else if (command.transfer_phase && (!command.transfer_phase->rows.empty() ||
+         !command.transfer_phase->row_transfers.empty())) {
+       const auto &phase=*command.transfer_phase;
+       const auto row_count=phase.row_transfers.empty()?phase.rows.size():phase.row_transfers.size();
+@@ -691,7 +749,7 @@ private:
+     const bool split_release = config_.ws_feed_queue_release && command.split_ws;
+     // ExecuteController pops single MUL only at about_to_fire_all_rows, not
+     // when it starts consuming its FIFO entry. Other subsets retain legacy.
+-    auto fifo_release=split_release ? feed_ready : result.start;
++    auto fifo_release=load_requests_complete ? load_requests_complete : split_release ? feed_ready : result.start;
+     if (command.preload_feed_lifetime && result.start && command.occupancy && command.latency) {
+       const auto consumed=std::max(*command.occupancy,*command.latency);
+       fifo_release=consumed<=std::numeric_limits<Cycle>::max()-*result.start ?
+diff --git a/examples/gemmini/timing/tests/provider_test.cpp b/examples/gemmini/timing/tests/provider_test.cpp
+index e404755..55254d3 100644
+--- a/examples/gemmini/timing/tests/provider_test.cpp
++++ b/examples/gemmini/timing/tests/provider_test.cpp
+@@ -328,6 +328,26 @@ void disabled_normalization_feature() {
+ }
+ 
+ int main() {
++  // Opt-in row producer eligibility is decoded from actual load configuration,
++  // not a caller label. Partial, nonidentity, zero-fill and ACC retain legacy.
++  for(unsigned variant=0;variant<6;++variant) {
++    auto hw=hardware();hw.dim=16;hw.scratchpad_row_loads=true;
++    auto e=engine();bool selected=false;unsigned memory_calls=0;
++    G::TargetObserver p(e,hw,prices(),resources(),0,[&](merlin_timing::View<G::Transfer>) {
++      ++memory_calls;return G::TransferEffects{{},{},{},merlin_timing::Cycle{1}};
++    },[&](const std::string &kind,const Event &event,std::optional<merlin_timing::Cycle>,
++        std::uint32_t,std::uint64_t,std::uint64_t,const std::optional<G::TransferPhase> &phase) {
++      if(kind=="load")selected=phase && phase->scratchpad_load;
++      return e.submit(event);
++    });
++    p.observe_command(0,0,1ull|(1ull<<8)|(16ull<<16)|
++        (std::uint64_t(variant==1?0x40000000u:0x3f800000u)<<32),32);
++    p.observe_command(0,2,variant==2?0:variant==3?4097:4096,
++        packet(variant==4?0x80000000:0,2,variant==5?15:16));
++    assert(selected==(variant==0));
++    assert(memory_calls==(variant==0 || variant==2?0u:1u));
++  }
++
+   disabled_normalization_feature();
+   assert(G::registered_primitive_class("normalize7") && G::registered_primitive_class("unknown"));
+   assert(!G::registered_primitive_class("normalize8") && !G::registered_primitive_class("store_act5"));
+diff --git a/examples/gemmini/timing/tests/run_tests.py b/examples/gemmini/timing/tests/run_tests.py
+index eae71ee..c5a0cb7 100644
+--- a/examples/gemmini/timing/tests/run_tests.py
++++ b/examples/gemmini/timing/tests/run_tests.py
+@@ -30,6 +30,7 @@ def main():
+     queried_prices = set()
+     for name, sources in (("provider_test", [root / "tests/provider_test.cpp"]),
+                           ("staged_test", [root / "tests/staged_test.cpp"]),
++                          ("scratchpad_load_test", [root / "tests/scratchpad_load_test.cpp"]),
+                           ("streamed_readout_test", [root / "tests/streamed_readout_test.cpp"]),
+                           ("execute_service_test", [root / "tests/execute_service_test.cpp"]),
+                           ("bridge_test", [root / "bridge.cpp", root / "tests/bridge_test.cpp"])):
+diff --git a/examples/gemmini/timing/tests/scratchpad_load_test.cpp b/examples/gemmini/timing/tests/scratchpad_load_test.cpp
+new file mode 100644
+index 0000000..6db6ebe
+--- /dev/null
++++ b/examples/gemmini/timing/tests/scratchpad_load_test.cpp
+@@ -0,0 +1,31 @@
++#include "scratchpad_load.hpp"
++#include <cassert>
++using namespace gemmini_annotated_spike;
++int main() {
++  // Requests remain independent of destination-bank delay until the bounded
++  // identity queue fills. Never release a transaction at request submission.
++  ScratchpadLoadStream stream({16,3,2,3});
++  const auto result=stream.schedule(16,0,[](std::size_t,Cycle at) {
++    return Result{at,at,at+20,merlin_timing::UnknownReason::none};
++  },[](std::size_t,Cycle at) {
++    const auto accepted=std::max(Cycle{100},at);
++    return Result{at,accepted,accepted+1,merlin_timing::UnknownReason::none};
++  });
++  assert(result.complete && result.requested[0]==2 && result.response[0]==22);
++  assert(result.response[1]==23 && result.response[2]==24);
++  assert(result.response[3]>=101 && result.written[0]==100);
++  assert(result.requests_complete==18); // not destination completion
++  ScratchpadLoadStream delayed({16,3,2,4});
++  const auto floor=delayed.schedule(1,0,[](std::size_t,Cycle at) {
++    return Result{at,at,at+10,merlin_timing::UnknownReason::none};
++  },[](std::size_t,Cycle at){return Result{at,at,at+1,merlin_timing::UnknownReason::none};});
++  assert(floor.complete==17);
++  const auto unknown=delayed.schedule(1,0,[](std::size_t,Cycle){return Result{};},
++      [](std::size_t,Cycle){assert(false);return Result{};});
++  assert(!unknown.complete);
++  const auto poisoned=delayed.schedule(1,0,[](std::size_t,Cycle){assert(false);return Result{};},
++      [](std::size_t,Cycle){assert(false);return Result{};});
++  assert(!poisoned.complete);
++  bool rejected=false;try { ScratchpadLoadStream invalid({16,4,2,3}); }
++  catch(const std::invalid_argument &) {rejected=true;}assert(rejected);
++}
+diff --git a/examples/gemmini/timing/tests/staged_test.cpp b/examples/gemmini/timing/tests/staged_test.cpp
+index af10a95..303a7f3 100644
+--- a/examples/gemmini/timing/tests/staged_test.cpp
++++ b/examples/gemmini/timing/tests/staged_test.cpp
+@@ -31,6 +31,28 @@ static std::vector<ResourceSpec> epoch_resources() {
+ }
+ 
+ int main() {
++  // Row loads reserve SRAM only when data arrives; actual destination and
++  // resource hazards still hold. An earlier unrelated read can use the gap.
++  for(const Cycle blocked:{0u,100u}) {
++    auto selected=epoch_config();selected.scratchpad_load_stream=ScratchpadLoadConfig{};
++    auto specs=epoch_resources();specs.push_back({11,1,0});
++    Engine e(128,specs);StagedObserver p(e,selected,100,{},0,64,16,32);
++    if(blocked) {const Demand hold{6,1,blocked};Event prior{0,{},{},{&hold,1},blocked};e.submit_detached(prior);}
++    const ValueId destination=0;
++    Event load{0,{},{&destination,1},{},Cycle{11}};
++    TransferPhase phase{0,{}};phase.row_bytes=16;phase.scratchpad_load=true;
++    phase.row_transfers.push_back({4096,1,16,16,false});
++    phase.row_memory=[](View<Transfer> rows) {
++      assert(rows.size==1 && !rows.data[0].write && rows.data[0].row_bytes==16);
++      return TransferEffects{{},{},{{11,1,Cycle{1}}},Cycle{20}};
++    };
++    const auto loaded=p.submit("load",load,2,2,4096,0,phase);
++    assert(loaded.start==1 && loaded.ready==std::max(Cycle{27},blocked+1));
++    assert(e.ready(destination)==loaded.ready);
++    const ValueId read=destination;Event consumer{0,{&read,1},{},{},Cycle{1}};
++    const auto used=e.submit_detached(consumer);assert(used.start==loaded.ready);
++    const auto report=e.report();assert(report.complete);
++  }
+   // Streamed row services retain their exact memory dependencies and final
+   // local read hazard; shared memory congestion backpressures finite queues.
+   for(const Cycle blocked:{0u,100u}) {

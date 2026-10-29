@@ -17,11 +17,64 @@ def test_parser_fields_have_exactly_one_typed_owner():
     assert dataclasses.asdict(parse_options(["--run-id", "probe"], environ={})) == values
 
 
+def test_validation_scope_is_explicit_closed_and_legacy_full_by_default():
+    assert parse_options(["--run-id", "probe"], environ={}).validation_scope == "full"
+    selected = parse_options(["--run-id", "probe", "--validation-scope", "capsules"], environ={})
+    assert selected.validation_scope == "capsules"
+    with pytest.raises(SystemExit):
+        parse_options(["--run-id", "probe", "--validation-scope", "none"], environ={})
+
+
 def test_readback_policy_is_explicit_and_closed():
     assert parse_options(["--run-id", "probe"], environ={"MERLIN_READBACK_POLICY": "out_b64_v1"}).readback_policy == ""
     assert parse_options(["--run-id", "probe", "--readback-policy", "out_b64_v1"]).readback_policy == "out_b64_v1"
     with pytest.raises(SystemExit):
         parse_options(["--run-id", "probe", "--readback-policy", "digest_only"])
+
+
+def test_compiler_boundary_is_explicit_and_not_selected_by_environment():
+    options = parse_options(["--run-id", "probe"], environ={"MERLIN_COMPILER_EXECUTION_MODE": "snapshot_external_v1"})
+    assert options.compiler_execution == "profile_strict_v1"
+    selected = parse_options(["--run-id", "probe", "--compiler-execution", "snapshot_external_v1"])
+    assert selected.compiler_execution == "snapshot_external_v1"
+    with pytest.raises(SystemExit):
+        parse_options(["--run-id", "probe", "--compiler-execution", "unchecked"])
+
+
+def test_reference_experiments_require_explicit_paired_selection():
+    from merlin_experiments.phase1.session import validate_preflight_options
+
+    ordinary = parse_options(["--run-id", "probe"], environ={"MERLIN_REFERENCE_EXPERIMENTS": "/unselected.json"})
+    assert ordinary.reference_experiments == ordinary.reference_experiments_sha256 == ""
+    selected = parse_options([
+        "--run-id", "probe", "--reference-experiments", "/operator/selection.json",
+        "--reference-experiments-sha256", "a" * 64,
+    ], environ={})
+    validate_preflight_options(selected)
+    assert selected.reference_experiments_sha256 == "a" * 64
+    for overrides in (
+        {"reference_experiments_sha256": ""},
+        {"reference_experiments": ""},
+        {"reference_experiments_sha256": "x" * 64},
+    ):
+        with pytest.raises(ValueError, match="reference experiment"):
+            validate_preflight_options(dataclasses.replace(selected, **overrides))
+
+
+
+def test_withheld_reference_tasks_require_the_same_explicit_selection():
+    from merlin_experiments.phase1.session import validate_preflight_options
+
+    assert parse_options(["--run-id", "probe"], environ={}).reference_experiments_tasks == "on"
+    withheld = parse_options([
+        "--run-id", "probe", "--reference-experiments", "/operator/selection.json",
+        "--reference-experiments-sha256", "a" * 64, "--reference-experiments-tasks", "off",
+    ], environ={})
+    validate_preflight_options(withheld)
+    assert withheld.reference_experiments_tasks == "off"
+    with pytest.raises(ValueError, match="withheld reference experiment tasks"):
+        validate_preflight_options(dataclasses.replace(withheld, reference_experiments="",
+                                                       reference_experiments_sha256=""))
 
 
 def test_public_object_build_probe_is_explicit_and_bounded():

@@ -60,6 +60,16 @@ def operation_form(op: str | None, *, carrier_op: str | None = None) -> str | No
         return "permutation"
     if carrier_op in ("linalg.copy", "memref.copy", "merlin_iface.movement"):
         return "copy"
+    # These typed tensor operations carry distinct transfer geometries. A
+    # declaration for a plain copy does not establish indexed extraction,
+    # insertion into a larger tensor, or concatenation of many inputs.
+    tensor_forms = {
+        "tensor.extract_slice": "slice_extract",
+        "tensor.insert_slice": "slice_insert",
+        "tensor.concat": "concatenation",
+    }
+    if carrier_op in tensor_forms:
+        return tensor_forms[carrier_op]
     if carrier_op is not None:
         return None
     if op in ("transpose", "permute"):
@@ -217,11 +227,12 @@ _OP_FAMILY: dict[str, str] = {
     # the capsule exists to test whether the two are joined, so claiming the add as its own family here
     # would count the seam as evidence for a standalone elementwise capability nobody claimed.
     "residual_seam": "contraction",
+    "sibling_feed": "contraction",
     "linear": "contraction",
     "fused_matmul_bias": "contraction",
     "gemv_batched": "contraction",
     "k_chain": "contraction",
-    # a weight-stationary matmul that REUSES the resident weight across calls -- the reuse is a
+    # a matmul that REUSES the resident weight across calls -- the reuse is a
     # scheduling property, the payload is still a reduce-over-k product.
     "resident_reuse": "contraction",
     "patch_embed": "contraction",
@@ -243,6 +254,8 @@ _OP_FAMILY: dict[str, str] = {
     # The hardware was never the constraint: gemmini's contraction capability already declares
     # `transpose: True`. The taxonomy was.
     "sdpa": "attention",
+    # The ATen spelling of the same fused pattern, as a captured frontend graph names it.
+    "scaled_dot_product_attention": "attention",
     "attention": "attention",
     "attention_full": "attention",
     # the same fused pattern with the score scale supplied as a full elementwise tensor (a mask/scale
@@ -250,6 +263,8 @@ _OP_FAMILY: dict[str, str] = {
     "attention_scaled": "attention",
     "attention_qk": "contraction",
     "attention_pv": "contraction",
+    # both operands are runtime activations (no stored weight); still a single reduce-over-k product
+    "activation_matmul": "contraction",
     # the MX-format piece keeps the composite: it carries the scale-block handling, not just a product
     "attention_mx": "attention",
     # softmax / normalization: reduction + elementwise composites
@@ -370,7 +385,8 @@ _OP_FAMILY: dict[str, str] = {
     "act_quantize": "elementwise_map",
     "act_amax": "reduction",
     "contraction": "contraction",
-    "convolution_im2col_matmul": "contraction",
+    "convolution_im2col_matmul": "contraction",  # read alias (legacy_labels.CONV_OP_ALIASES)
+    "convolution_gathered_matmul": "contraction",
     "gather": "movement",
     "view": "movement",
     "squeeze": "movement",
@@ -381,6 +397,8 @@ _OP_FAMILY: dict[str, str] = {
     "permute": "movement",
     "reshape": "movement",
     "expand": "movement",
+    # Repeats each slice along one axis: a broadcast copy, like ``expand`` materialized.
+    "repeat_interleave": "movement",
     "pack": "movement",
     "copy": "movement",
     # ...captured-model movement spellings. A constant fill writes a value per element with no arithmetic
@@ -545,6 +563,21 @@ def families_from_roles(roles) -> frozenset[str]:
         if r in ISA_ROLE_FAMILY and ISA_ROLE_FAMILY[r][1] and all(req in standalone for req in ISA_ROLE_FAMILY[r][1])
     }
     return frozenset(standalone | conditional)
+
+
+def carrier_provenance_family(prov_family: str, *, carrier_op: str, reduces: bool | None) -> str:
+    """Correct an enclosing contraction tag using the actual carrier's work.
+
+    A parallel generic is deliberately unknown: its region's op name cannot
+    prove a family. A named transpose independently specifies permutation.
+    Other tags and carriers retain their original capture vocabulary.
+    """
+    if prov_family == "contraction":
+        if carrier_op == "linalg.generic" and reduces is False:
+            return ""
+        if carrier_op == "linalg.transpose":
+            return "layout"
+    return prov_family
 
 
 def from_prov(prov_family: str | None, prov_op: str | None = None) -> str | None:

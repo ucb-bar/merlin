@@ -1,0 +1,478 @@
+diff --git a/riscv/annotated_timing.cc b/riscv/annotated_timing.cc
+index 29be1d7..ba4ca51 100644
+--- a/riscv/annotated_timing.cc
++++ b/riscv/annotated_timing.cc
+@@ -3,6 +3,7 @@
+ #include "memory.hpp"
+ #include "model.hpp"
+ #include "counter_taint.hpp"
++#include "event_trace.hpp"
+ #include "fp_operand_timing.hpp"
+ #include "../timing/integer_divider_timing.hpp"
+ #include "processor.h"
+@@ -63,6 +64,7 @@ public:
+   std::optional<merlin_timing::ResourceId> issue_resource;
+   std::optional<Cycle> issue_cost, branch_taken, branch_not_taken;
+   merlin_timing::Engine engine;
++  std::unique_ptr<EventTrace> event_trace;
+   std::string report_path, elf_digest, input_digest;
+   std::map<std::string, std::uint64_t> features;
+   std::set<std::string> unresolved;
+@@ -94,11 +96,16 @@ public:
+   Impl(const std::string &path, const std::string &output, const std::string &elf,
+        const std::string &input, const std::vector<std::string> &libraries,
+        std::function<unsigned(std::uint64_t, std::size_t)> classify,
+-       const std::string &scope_binding)
++       const std::string &scope_binding, const std::string &event_trace_path)
+       : model(path), engine(model.max_values, model.resources), report_path(output),
+         elf_digest(sha256_file(elf)), input_digest(input), counter_memory(model.max_memory_entries),
+         memory_kind(std::move(classify)) {
+     model.bind_scope(scope_binding, elf_digest, input_digest);
++    if (!event_trace_path.empty()) {
++      if (!model.scope_pc_pair) throw std::invalid_argument("event trace requires an exact counter PC scope");
++      event_trace = std::make_unique<EventTrace>(event_trace_path);
++      event_trace->header(model.digest, elf_digest, model.scope_binding_digest);
++    }
+     for (const auto *name : cpu_feature_classes) {
+       add_feature(name, 0);
+       const std::string kind(name);
+@@ -241,6 +248,14 @@ public:
+   void begin(processor_t *processor, std::uint64_t address, std::uint64_t instruction) {
+     if (in_instruction) throw std::logic_error("nested architectural instruction observation");
+     in_instruction = true; pc = address; bits = instruction;
++    if (event_trace) {
++      if (!event_trace->full() && windows.size() == model.scope_window &&
++          (counter_pending || pc == model.scope_begin_pc))
++        engine.trace_sink([this](const merlin_timing::Trace &record) {
++          event_trace->record(record, pc, bits, decode_cpu(bits).kind, instructions);
++        });
++      else engine.trace_sink({});
++    }
+     accesses.clear(); access_overflow = false; command_pending = false;
+     const auto decoded = decode_cpu(bits);
+     fp_special = false;
+@@ -463,6 +478,7 @@ public:
+     finished = true;
+     if (in_instruction) unsafe("instruction observation is unfinished");
+     if (trapped) unsafe("trapping instruction timing and exception transition are unsupported");
++    if (event_trace) event_trace->finish(completed && exit_code == 0);
+     const auto observed = engine.report();
+     if (counter_pending) unsafe("unmatched cycle counter boundary");
+     std::optional<Cycle> estimate = observed.modeled_makespan;
+@@ -595,8 +611,8 @@ Session::Session(const std::string &model, const std::string &report,
+                  const std::string &elf, const std::string &input_digest,
+                  const std::vector<std::string> &libraries,
+                  std::function<unsigned(std::uint64_t, std::size_t)> memory_kind,
+-                 const std::string &scope_binding)
+-    : impl_(std::make_unique<Impl>(model, report, elf, input_digest, libraries, std::move(memory_kind), scope_binding)) {
++                 const std::string &scope_binding, const std::string &event_trace_path)
++    : impl_(std::make_unique<Impl>(model, report, elf, input_digest, libraries, std::move(memory_kind), scope_binding, event_trace_path)) {
+   if (active) throw std::logic_error("only one annotated session is supported");
+   active = this;
+ }
+diff --git a/spike_main/spike.cc b/spike_main/spike.cc
+index 3151625..505c05d 100644
+--- a/spike_main/spike.cc
++++ b/spike_main/spike.cc
+@@ -86,6 +86,7 @@ static void help(int exit_code = 1)
+   fprintf(stderr, "  --dm-no-impebreak     Debug module won't support implicit ebreak in program buffer\n");
+   fprintf(stderr, "  --blocksz=<size>      Cache block size (B) for CMO operations(powers of 2) [default 64]\n");
+   fprintf(stderr, "  --instructions=<n>    Stop after n instructions\n");
++  fprintf(stderr, "  --timing-event-trace=<jsonl> Bounded modeled dependency/resource diagnostic, no physical timing claims\n");
+   fprintf(stderr, "  --timing-model=<json> Annotate execution with a pinned approximate timing model\n");
+   fprintf(stderr, "  --timing-scope-binding=<json> Exact ELF/input/counter-PC binding for counter_pc_pair policy\n");
+   fprintf(stderr, "  --timing-report=<json> Write separate timing observations; guest counters unchanged\n");
+@@ -338,7 +339,7 @@ int main(int argc, char** argv)
+   bool log_commits = false;
+   const char *log_path = nullptr;
+   std::vector<std::function<extension_t*()>> extensions;
+-  std::string timing_model, timing_report, timing_input_digest, timing_scope_binding;
++  std::string timing_model, timing_report, timing_input_digest, timing_scope_binding, timing_event_trace;
+   const char* initrd = NULL;
+   const char* dtb_file = NULL;
+   uint16_t rbb_port = 0;
+@@ -373,6 +374,7 @@ int main(int argc, char** argv)
+   };
+ 
+   option_parser_t parser;
++  parser.option(0, "timing-event-trace", 1, [&](const char* value){timing_event_trace = value;});
+   parser.option(0, "timing-model", 1, [&](const char* value){timing_model = value;});
+   parser.option(0, "timing-report", 1, [&](const char* value){timing_report = value;});
+   parser.option(0, "timing-input-sha256", 1, [&](const char* value){timing_input_digest = value;});
+@@ -475,6 +477,10 @@ int main(int argc, char** argv)
+   if (!*argv1)
+     help();
+ 
++  if (!timing_event_trace.empty() && timing_model.empty()) {
++    fprintf(stderr, "--timing-event-trace requires a timing model and exact counter scope\n");
++    return 1;
++  }
+   if (timing_model.empty() != timing_report.empty()) {
+     fprintf(stderr, "--timing-model and --timing-report must be selected together\n");
+     return 1;
+@@ -573,7 +579,7 @@ int main(int argc, char** argv)
+     }
+     try {
+       timing = std::make_unique<spike_timing::Session>(timing_model, timing_report, s.target_program(), timing_input_digest, timing_libraries,
+-          [&s](std::uint64_t address, std::size_t bytes) { return s.classify_timing_memory(address, bytes); }, timing_scope_binding);
++          [&s](std::uint64_t address, std::size_t bytes) { return s.classify_timing_memory(address, bytes); }, timing_scope_binding, timing_event_trace);
+       s.get_core(0)->get_mmu()->register_memtracer(timing.get());
+     } catch (const std::exception& error) {
+       fprintf(stderr, "Timing model setup failed: %s\n", error.what());
+diff --git a/timing/core/README.md b/timing/core/README.md
+index 92b5710..2c9b8a4 100644
+--- a/timing/core/README.md
++++ b/timing/core/README.md
+@@ -99,3 +99,20 @@ and its executable checks. Version 1 exports retain their exact original roster
+ and remain verifiable without being rewritten. The simulator's source package
+ must retain the manifest of its exact canonical export; copied vendor bytes are
+ a versioned source snapshot, never another maintained implementation.
++
++## Optional modeled-event diagnostics
++
++`Engine::trace_sink` installs a synchronous opt-in observer of actual scheduling
++constraints and results. Submit records include the prior token writer/readers,
++resource lanes and queued starts, earliest/frontier bounds and issue/start/ready.
++Detached issue restoration and explicit advance/publish/reset/barrier operations
++are recorded separately. No sink means no trace capture or trace allocations.
++Callbacks must not mutate the engine; callback errors fail the diagnostic caller.
++These are modeled dependencies, not measured hardware stalls. A selected-window
++consumer must retain unknown, tied and outside-window predecessors explicitly.
++
++The Spike observer's `--timing-event-trace=<jsonl>` requires an exact counter-PC
++scope, records that selected window only, and caps collection at 32,768 events
++and 16 MiB. The final row identifies truncation and normal execution completion.
++The normal report remains authoritative; tracing changes neither prices nor
++scheduling. Diagnostic runtime/library identities must be pinned separately.
+diff --git a/timing/core/include/merlin_timing/engine.hpp b/timing/core/include/merlin_timing/engine.hpp
+index 243500d..881b76b 100644
+--- a/timing/core/include/merlin_timing/engine.hpp
++++ b/timing/core/include/merlin_timing/engine.hpp
+@@ -5,6 +5,7 @@
+ #include <cstddef>
+ #include <cstdint>
+ #include <initializer_list>
++#include <functional>
+ #include <limits>
+ #include <optional>
+ #include <stdexcept>
+@@ -70,6 +71,29 @@ struct Result {
+   std::optional<Cycle> ready;
+   UnknownReason unknown = UnknownReason::none;
+ };
++// Diagnostic copies describe scheduling constraints, never hardware observations.
++// Event views remain valid only during the synchronous callback.
++struct TraceValue {
++  ValueId id;
++  std::optional<Cycle> writer, readers;
++};
++struct TraceResource {
++  ResourceId id;
++  std::vector<Cycle> lanes, queued_starts;
++  std::size_t queue_capacity;
++  bool known;
++};
++struct Trace {
++  const char *action = nullptr;
++  Event event{};
++  std::optional<ValueId> token;
++  std::optional<Cycle> requested;
++  std::optional<Cycle> frontier_before, frontier_after;
++  Cycle horizon_before = 0, horizon_after = 0;
++  std::vector<TraceValue> values;
++  std::vector<TraceResource> resources;
++  Result result{};
++};
+ struct ResourceReport {
+   ResourceId id;
+   std::uint64_t reservations;
+@@ -115,6 +139,10 @@ public:
+   Engine(Engine &&) noexcept = default;
+   Engine &operator=(Engine &&) noexcept = default;
+ 
++  // An empty sink adds no diagnostic allocations or state capture. The sink
++  // must not mutate this Engine. Callback failures fail the diagnostic caller.
++  void trace_sink(std::function<void(const Trace &)> sink) { trace_ = std::move(sink); }
++
+   std::optional<Cycle> ready(ValueId value) const {
+     if (value >= values_.size())
+       throw std::out_of_range("value id exceeds scoreboard bound");
+@@ -134,25 +162,21 @@ public:
+   // reservation ownership must be managed separately by the selected adapter.
+   // The original submit/barrier semantics and v1 callers are unchanged.
+   Result submit_detached(const Event &event) {
+-    const auto saved = issue_;
+-    try {
+-      const auto result = submit(event);
+-      issue_ = saved;
+-      return result;
+-    } catch (...) {
+-      issue_ = saved;
+-      throw;
+-    }
++    if (trace_) return traced_submit(event, true);
++    return detached(event);
+   }
+   void advance_issue(std::optional<Cycle> admission) {
+-    if (!admission || !issue_) { issue_.reset(); return; }
+-    issue_ = std::max(*issue_, *admission);
++    const auto before = issue_;
++    if (!admission || !issue_) issue_.reset();
++    else issue_ = std::max(*issue_, *admission);
++    if (trace_) mutation("advance_issue", before, horizon_, {}, admission);
+   }
+   void reset(ValueId value) {
+     const auto done = last_use(value);
+     if (!issue_ || !done || *done > *issue_)
+       throw std::logic_error("cannot recycle a live or unknown scoreboard value");
+     values_[static_cast<std::size_t>(value)] = {*issue_, *issue_};
++    if (trace_) mutation("reset", issue_, horizon_, value, issue_);
+   }
+ 
+   // Attach an already scheduled asynchronous result to a reusable value token.
+@@ -164,14 +188,22 @@ public:
+       throw std::logic_error("cannot publish over a live or unknown scoreboard value");
+     if (completion && *completion < *issue_)
+       throw std::invalid_argument("published result cannot precede the issue frontier");
++    const auto horizon_before = horizon_;
+     values_[static_cast<std::size_t>(value)] = {completion, Cycle{0}};
+     if (completion)
+       horizon_ = std::max(horizon_, *completion);
+     else
+       count(unknown_events_);
++    if (trace_) mutation("publish", issue_, horizon_before, value, completion);
+   }
+ 
+   Result submit(const Event &event) {
++    if (trace_) return traced_submit(event, false);
++    return submit_impl(event);
++  }
++
++private:
++  Result submit_impl(const Event &event) {
+     validate(event);
+     count(events_);
+     selected_.clear();
+@@ -277,16 +309,20 @@ public:
+     return {issue, start, completion, completion ? UnknownReason::none : UnknownReason::missing_latency};
+   }
+ 
++public:
+   // Drain all modeled work. This has no implicit fence-instruction price.
+   // Once prior work has unknown timing, a global drain also has unknown timing.
+   std::optional<Cycle> barrier() {
++    const auto before = issue_;
+     if (unknown_events_ != 0 || accounting_overflow_) {
+       issue_.reset();
++      if (trace_) mutation("barrier", before, horizon_, {}, {});
+       return std::nullopt;
+     }
+     issue_ = std::max(*issue_, horizon_);
+     for (auto &resource : resources_)
+       resource.retire(*issue_);
++    if (trace_) mutation("barrier", before, horizon_, {}, issue_);
+     return issue_;
+   }
+ 
+@@ -335,6 +371,50 @@ private:
+   std::uint64_t events_ = 0;
+   std::uint64_t unknown_events_ = 0;
+   bool accounting_overflow_ = false;
++  std::function<void(const Trace &)> trace_;
++
++  Result detached(const Event &event) {
++    const auto saved = issue_;
++    try {
++      const auto result = submit_impl(event);
++      issue_ = saved;
++      return result;
++    } catch (...) { issue_ = saved; throw; }
++  }
++  Result traced_submit(const Event &event, bool is_detached) {
++    validate(event);
++    Trace record{}; record.action = is_detached ? "submit_detached" : "submit";
++    record.event = event;
++    record.frontier_before = issue_;
++    record.horizon_before = horizon_;
++    for (const auto view : {event.reads, event.retained_reads, event.writes})
++      for (std::size_t i = 0; i < view.size; ++i) {
++        const auto &value = values_[static_cast<std::size_t>(view[i])];
++        record.values.push_back({view[i], value.writer, value.readers});
++      }
++    for (std::size_t i = 0; i < event.demands.size; ++i) {
++      const auto &resource = *find(event.demands[i].resource);
++      record.resources.push_back({resource.spec.id, resource.lanes, resource.queue,
++                                 resource.spec.queue_capacity, resource.known});
++    }
++    const auto result = is_detached ? detached(event) : submit_impl(event);
++    record.result = result;
++    record.frontier_after = issue_;
++    record.horizon_after = horizon_;
++    trace_(record);
++    return result;
++  }
++  void mutation(const char *action, std::optional<Cycle> before, Cycle horizon_before,
++                std::optional<ValueId> token, std::optional<Cycle> requested) {
++    Trace record{}; record.action = action;
++    record.token = token;
++    record.requested = requested;
++    record.frontier_before = before;
++    record.frontier_after = issue_;
++    record.horizon_before = horizon_before;
++    record.horizon_after = horizon_;
++    trace_(record);
++  }
+ 
+   static bool addition(Cycle a, Cycle b) { return b <= std::numeric_limits<Cycle>::max() - a; }
+   void count(std::uint64_t &value) {
+diff --git a/timing/core/tests/test_engine.cpp b/timing/core/tests/test_engine.cpp
+index cae5d62..a922b7f 100644
+--- a/timing/core/tests/test_engine.cpp
++++ b/timing/core/tests/test_engine.cpp
+@@ -274,8 +274,41 @@ static void invalid_inputs() {
+   require(engine.report().events == 0, "refused malformed inputs must not partially mutate event accounting");
+ }
+ 
++static void diagnostic_trace_equivalence() {
++  Engine plain(4, {{1, 1, 1}}), traced(4, {{1, 1, 1}});
++  const ValueId x = 1;
++  const Demand demand{1, 1, 5};
++  std::size_t records = 0;
++  bool raw = false, resource = false, detached = false, drain = false;
++  traced.trace_sink([&](const Trace &t) {
++    ++records;
++    if (std::string(t.action) == "submit" && t.event.reads.size) {
++      raw = t.values.front().writer == 8 && t.result.issue == 8;
++    }
++    if (std::string(t.action) == "submit_detached") {
++      resource = t.resources.front().lanes.front() == 5 && t.result.start == 5;
++      detached = t.frontier_after == t.frontier_before;
++    }
++    if (std::string(t.action) == "barrier") drain = t.frontier_after == t.horizon_before;
++  });
++  auto same = [](Result a, Result b) {
++    require(a.issue == b.issue && a.start == b.start && a.ready == b.ready && a.unknown == b.unknown,
++            "diagnostics must preserve all scheduling results");
++  };
++  same(plain.submit({0, {}, {&x, 1}, {&demand, 1}, 8}), traced.submit({0, {}, {&x, 1}, {&demand, 1}, 8}));
++  same(plain.submit_detached({0, {}, {}, {&demand, 1}, 2}), traced.submit_detached({0, {}, {}, {&demand, 1}, 2}));
++  same(plain.submit({0, {&x, 1}, {}, {}, 2}), traced.submit({0, {&x, 1}, {}, {}, 2}));
++  require(plain.barrier() == traced.barrier(), "diagnostics preserve drains");
++  require(records == 4 && raw && resource && detached && drain, "trace records actual constraints and detached frontier");
++  require(plain.report().modeled_makespan == traced.report().modeled_makespan, "diagnostic horizon unchanged");
++  traced.trace_sink({});
++  traced.submit({0, {}, {}, {}, 1});
++  require(records == 4, "disabled diagnostics invoke no callback");
++}
++
+ int main() {
+   try {
++    diagnostic_trace_equivalence();
+     dependencies_and_overlap();
+     mutable_hazards_and_recycling();
+     asynchronous_publication();
+@@ -287,7 +320,7 @@ int main() {
+     cache_slot_identity();
+     bounded_streaming();
+     invalid_inputs();
+-    std::cout << "11 timing core cases passed\n";
++    std::cout << "12 timing core cases passed\n";
+   } catch (const std::exception &failure) {
+     std::cerr << failure.what() << '\n';
+     return 1;
+diff --git a/timing/event_trace.hpp b/timing/event_trace.hpp
+new file mode 100644
+index 0000000..10e342d
+--- /dev/null
++++ b/timing/event_trace.hpp
+@@ -0,0 +1,77 @@
++#ifndef SPIKE_TIMING_EVENT_TRACE_HPP
++#define SPIKE_TIMING_EVENT_TRACE_HPP
++#include "model.hpp"
++#include <fstream>
++#include <sstream>
++#include <stdexcept>
++
++namespace spike_timing {
++// Operator diagnostic, not physical timing or a qualification record. Fixed
++// bounds stop collection without modifying scheduling or silently dropping rows.
++class EventTrace {
++public:
++  static constexpr std::size_t max_events = 32768, max_bytes = 16 * 1024 * 1024;
++  explicit EventTrace(const std::string &path) : out_(path, std::ios::out | std::ios::trunc) {
++    if (!out_) throw std::runtime_error("cannot open timing event trace");
++  }
++  void header(const std::string &model, const std::string &elf, const std::string &scope) {
++    append("{\"schema\":\"merlin.modeled_event_trace.v1\",\"model_sha256\":" + json_string(model) +
++           ",\"elf_sha256\":" + json_string(elf) + ",\"scope_binding_sha256\":" + json_string(scope) +
++           ",\"meaning\":\"modeled constraints; not physical stalls\"}");
++  }
++  bool full() const { return truncated_; }
++  void record(const merlin_timing::Trace &r, std::uint64_t pc, std::uint64_t bits,
++              const char *cpu_kind, std::uint64_t instruction) {
++    if (truncated_) return;
++    if (events_ >= max_events) { truncated_ = true; return; }
++    std::ostringstream s;
++    s << "{\"event\":" << events_ << ",\"pc\":" << pc << ",\"instruction_bits\":" << bits
++      << ",\"instruction_index\":" << instruction << ",\"cpu_kind\":" << json_string(cpu_kind)
++      << ",\"action\":" << json_string(r.action) << ",\"earliest\":" << r.event.earliest
++      << ",\"frontier_before\":" << number(r.frontier_before) << ",\"frontier_after\":" << number(r.frontier_after)
++      << ",\"horizon_before\":" << r.horizon_before << ",\"horizon_after\":" << r.horizon_after
++      << ",\"token\":" << number(r.token) << ",\"requested\":" << number(r.requested)
++      << ",\"latency\":" << number(r.event.latency)
++      << ",\"hold_reads_until_ready\":" << (r.event.hold_reads_until_ready ? "true" : "false")
++      << ",\"issue\":" << number(r.result.issue) << ",\"start\":" << number(r.result.start)
++      << ",\"ready\":" << number(r.result.ready) << ",\"unknown\":" << json_string(merlin_timing::name(r.result.unknown));
++    ids(s, "reads", r.event.reads); ids(s, "retained_reads", r.event.retained_reads); ids(s, "writes", r.event.writes);
++    s << ",\"values_before\":["; bool first = true;
++    for (const auto &v : r.values) { comma(s, first); s << "{\"id\":" << v.id << ",\"writer\":" << number(v.writer) << ",\"readers\":" << number(v.readers) << '}'; }
++    s << "],\"resources_before\":["; first = true;
++    for (std::size_t i = 0; i < r.resources.size(); ++i) {
++      const auto &v = r.resources[i]; const auto &d = r.event.demands[i]; comma(s, first);
++      s << "{\"id\":" << v.id << ",\"units\":" << d.units << ",\"occupancy\":" << number(d.occupancy)
++        << ",\"queue_capacity\":" << v.queue_capacity << ",\"known\":" << (v.known ? "true" : "false");
++      ids(s, "lanes", merlin_timing::View<merlin_timing::Cycle>{v.lanes.data(), v.lanes.size()});
++      ids(s, "queued_starts", merlin_timing::View<merlin_timing::Cycle>{v.queued_starts.data(), v.queued_starts.size()}); s << '}';
++    }
++    s << "]}";
++    if (append(s.str())) ++events_;
++  }
++  void finish(bool completed) {
++    // Reserve 256 bytes in append for this explicit completion/truncation row.
++    out_ << "{\"summary\":true,\"events\":" << events_ << ",\"truncated\":" << (truncated_ ? "true" : "false")
++         << ",\"execution_completed\":" << (completed ? "true" : "false") << "}\n";
++    out_.flush();
++    if (!out_) throw std::runtime_error("cannot finish timing event trace");
++  }
++private:
++  std::ofstream out_;
++  std::size_t events_ = 0, bytes_ = 0;
++  bool truncated_ = false;
++  static std::string number(std::optional<std::uint64_t> n) { return n ? std::to_string(*n) : "null"; }
++  static void comma(std::ostream &s, bool &first) { if (!first) s << ','; first = false; }
++  template<class T> static void ids(std::ostream &s, const char *name, merlin_timing::View<T> values) {
++    s << ",\"" << name << "\":[";
++    for (std::size_t i = 0; i < values.size; ++i) { if (i) s << ','; s << values[i]; } s << ']';
++  }
++  bool append(const std::string &line) {
++    if (line.size() + 1 > max_bytes - 256 - bytes_) { truncated_ = true; return false; }
++    out_ << line << '\n'; bytes_ += line.size() + 1;
++    if (!out_) throw std::runtime_error("cannot write timing event trace");
++    return true;
++  }
++};
++}
++#endif
+diff --git a/timing/observer.hpp b/timing/observer.hpp
+index 3d3752a..99c9969 100644
+--- a/timing/observer.hpp
++++ b/timing/observer.hpp
+@@ -19,7 +19,7 @@ public:
+           const std::string &elf, const std::string &input_digest,
+           const std::vector<std::string> &libraries,
+           std::function<unsigned(std::uint64_t, std::size_t)> memory_kind,
+-          const std::string &scope_binding = "");
++          const std::string &scope_binding = "", const std::string &event_trace_path = "");
+   ~Session();
+   bool interested_in_range(std::uint64_t, std::uint64_t, access_type type) override;
+   void trace(std::uint64_t address, std::size_t bytes, access_type type) override;

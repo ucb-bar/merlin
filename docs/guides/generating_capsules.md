@@ -3,8 +3,8 @@ title: Generating capsules for a target
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-08
-related: [adding_a_target, gemmini_experiment, capsule_bench, integrations, phase0_specification]
+last_verified: 2026-10-15
+related: [adding_a_target, phase0_phase1_setup, capsule_bench, integrations, phase0_specification]
 code_refs:
   - experiments/catalog.yaml
   - packages/merlin-experiments/src/merlin_experiments/phase0/__main__.py
@@ -18,7 +18,7 @@ code_refs:
   - src/merlin/targetgen/group_capsule_entries.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/model_forms.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/form_perf.py
-  - src/merlin/kernels/endpoints.py
+  - src/merlin/compile/analysis/compute_endpoints.py
   - src/merlin/perf/isa_prohibition.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/instruction_roles.py
 ---
@@ -27,11 +27,13 @@ code_refs:
 
 Phase 0 derives tests; it does not certify a compiler. Start with an experiment in
 [the catalog](../../experiments/catalog.yaml), not a script in a legacy corpus directory.
-Install Merlin and the optional `merlin-experiments` distribution. Target support is the
-provider vendored at `examples/<example>/support` unless `MERLIN_TARGET_PATH` selects another;
-a Phase 1 launch records that effective selection in the child's environment, so a resume cannot
-pick up different support code. Provision RTL facts and capture/toolchain dependencies
-explicitly; an example recipe alone does not make them available. See [integrations](integrations.md).
+Install Merlin and the optional `merlin-experiments` distribution. Select a reviewed
+execution contract and exact RTL facts. The ordinary
+[neutral runtime](../reference/neutral_runtime_tooling.md) consumes these as data,
+without executable target support. Provider-bound workflows separately record
+their implementation selected by `MERLIN_TARGET_PATH`; resumes preserve that
+selection. Provision capture and toolchain dependencies explicitly; an example
+recipe alone does not make them available. See [integrations](integrations.md).
 
 ## Find the inputs
 
@@ -66,6 +68,25 @@ also needs an explicit cheaper sibling; it does not certify an unrun simulator.
 The installed generator lives in `merlin_experiments.phase0`; shared derivation primitives
 remain in core. There is no need to copy generation scripts into `out/`. Generated capsules
 are artifacts, not new library code or files to sync into a wheel.
+
+### Capsule files and access
+
+Materialization preserves these members when present. A file in the operator's
+corpus is not automatically an author grant; the frozen sandbox policy selects
+and masks each role, and private cohorts remain inaccessible.
+
+| Files | Role and access |
+| --- | --- |
+| `capsule.yaml`, `capsule.interface.mlir` | Semantic request and logical ABI; public cases supply the reviewed author view |
+| `capsule.pytorch.py`, `capsule.linalg.mlir`, `README.md` | Eligible public source grounding and description |
+| `golden.yaml`, `golden.npz` | Independent reference policy/data; answers remain operator-only |
+| `capsule.weights.safetensors`, its `.manifest.json` | Optional whole-program compile/runtime inputs; masked from authors |
+| `expected_instruction_coverage.yaml` | Grader-side instruction coverage expectations; not a compiler implementation |
+| `frontend-trace.json`, `frontend-source.mlir`, `frontend-evidence.json`, `pytorch-opset.json`, `source-capture-receipt.json` | Source lineage and frontend evidence; access requires explicit review and redaction |
+
+See [`materialize.py`](../../src/merlin/targetgen/contract/materialize.py) for
+the retained file roster. Capsule input selection never authorizes expected
+values, private paths or reference compiler code as feedback.
 
 The tracked `merlin/contract/capsules/` tree is retained historical benchmark input,
 not the destination for a new Phase 0 run. Existing descriptors and frozen input
@@ -139,13 +160,20 @@ writes two derived stages into the byte-bound plan:
   `phase2-capsule-coverage.json` → `form_perf_coverage` lists every class at or above the
   template's share threshold and whether it has a member and a vendor bar.
 
+A descriptor may also declare `workload_spec.performance_applications`: independent workloads, disjoint
+from the iteration roster, whose captures are passed with `corpus derive --performance-capture LABEL=PATH`.
+They feed only the form-perf scope, so the Phase 2 cohort can carry the same forms at the extents where
+on-chip capacity, tiling and movement decide the cost, while Phase 1 model forms and source capsules still
+read the iteration roster alone. The declared roster must be selected exactly; each application records its
+`workload_role` in the scope.
+
 Both stages refuse held-out models by name (the descriptor's claim roster and the reviewed
 evaluation-only models in `merlin/contract/claim_models.yaml`). A group capsule reaches disk only
 through `phase0.group_forms.write_group_capsule`, under `group_binding` -- the corpus binding with an
 accumulator the recipe, contract or RTL facts state, never a literal.
 
 An experiment's `policy.prohibited_instruction_roles` names closed-vocabulary roles
-(`merlin.kernels.roles`). Phase 0 resolves them against the target's derived instruction taxonomy
+(`merlin.compile.analysis.instruction_roles`). Phase 0 resolves them against the target's derived instruction taxonomy
 and records the result as `instruction_policy` in `MANIFEST.yaml` and `coverage/generation.json`;
 Phase 1 receives it in `MERLIN_PROHIBITED_INSTRUCTION_ROLES` and every phase command carries it.
 Declaring a role does not by itself scan a program; enforcement is a separate whole-ELF check.
@@ -178,13 +206,15 @@ merlin experiment corpus prepare /configured/out/runs/gemmini/phase0/example-1 \
 merlin experiment corpus inspect /configured/out/artifacts/protocols/gemmini-review-1
 ```
 
-The default preparation mode is historical: it combines the descriptor-selected source pool
-with receipt-declared generated members and retains classified hand-authored members. For a
-generated-only public release, select `--generated-only` explicitly. That mode copies public
+The default preparation mode is generated-only (`--generated-only`). It copies public
 capsules only from the selected, immutable Phase 0 run output; it never falls back to the
 descriptor's legacy capsule tree. If Phase 0 emitted no hidden cohort, provide a separate
 operator-owned `--private-baseline /absolute/hidden-category` or preparation refuses the
 empty hidden grade. A `--retirements` review is incompatible with generated-only mode.
+An explicit `--historical-overlay` combines the selected source pool with generated
+members and retains classified hand-authored members. Both modes refuse public
+capsules whose metadata identifies a held-out validation source, including renamed
+captures; reviewed Phase 1 admission repeats that check for older releases.
 Neither mode edits the source corpus or silently approves a different grading population.
 Generated-only preparation still requires nonempty native admission and an operator seal;
 it does not assert numerical, model-wide, or hardware correctness.
@@ -255,3 +285,17 @@ For definition-based cross-target comparison, use
 Legacy corpus trees remain migration inputs where explicitly selected. They are not the
 entry point for a new experiment, and stale files there cannot substitute for the newly
 generated, reviewed and sealed population.
+
+For a functional Phase 1 launch, select `--phase0-generation-scope phase1-functional`
+on `merlin experiment run`, or `generation_scope: phase1-functional` in the
+capsule-derivation adapter configuration. The direct Phase 0 CLI uses
+`--generation-scope phase1-functional`. Omission retains full generation.
+
+This selection expands the complete authored roster, then defers only `_perf`
+members before writing capsules and goldens. Public functional members, hidden
+members, model slices, negative probes, and application coverage retain their
+ordinary admission checks. The output's `phase2-deferred.json` retains every
+resolved performance entry, claim, template, facts and selected requirement
+identity; the manifest binds its bytes, and release preparation copies it.
+The ledger is pending work: it issues no performance capsule, measurement, or
+Phase 2 readiness. Phase 2 needs a separately completed full preparation run.

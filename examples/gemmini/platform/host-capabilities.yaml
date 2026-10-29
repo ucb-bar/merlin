@@ -1,0 +1,1080 @@
+# Separate declaration beside the immutable host compiler, not a compiler payload edit.
+schema: merlin.host_capabilities.v1
+status: reviewed
+review:
+  decision: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md"
+  scope: the 150 host placements proposed by the RTL facts in W1_SEAL_REVIEW.md
+  addendum: "operator approval 2026-10-03 in this session: exact rank-3/4 i8/f32/i64 dequantize_per_tensor host contract only; finite native checks do not prove device execution"
+  primitive_addendum: "operator approval 2026-10-06 in this session: only the eight exact typed scalar-host primitive declarations below; finite saved probes do not certify all inputs, emitted compiler, accelerator, or RTL execution"
+  selected_source_addendum: "Selected-lowering build/link/host-placement review only: exact typed source bodies, selected index bounds and linked-image checks remain mandatory; the historical source-only review leaves numerical contracts unreviewed unless separately reviewed below. Source-call-to-symbol routing is not proved."
+  library_numerical_policy_addendum: "Codex authored-policy review 2026-10-11: only the selected sin/cos/tanh-GELU approximation assumptions below; no operator corpus-sealing approval or blanket execution/accuracy qualification."
+compiler:
+  package_sha256: 89e00e39c929ec0310b0a60d1860d2d8fa833b7ef1a57af5775092c24d5ebb9a
+  dtype_strategy: int8_w8a8
+# Per-operation host declarations for the operations the RTL facts place on the host. Each names the
+# exact frontend ops and the observed dtypes/ranks, nothing wider. The selected scalar package's
+# ISA fits the Rocket DTS, and one saved dequantization capture has a bit-exact Spike receipt.
+# The reviewed statuses are semantic screens, not proof that every host operation lowers or executes.
+operations:
+  - id: host_f32_elementwise_exact
+    ops: [aten.mul.Tensor, aten.add.Tensor, aten.add.Scalar, aten.div.Tensor, aten.relu.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {dtypes: [f32], ordered_result_dtypes: [f32], ranks: [2, 3, 4]}
+    numerical_contract:
+      status: reviewed
+      semantics: {arithmetic: ieee754_binary32, rounding: round_to_nearest_even, subnormals: preserved,
+                  per_element: correctly_rounded_single_operation, nan: riscv_canonical_nan}
+      evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "observed f32 signatures and arith.mulf/addf/divf/maximumf bodies in the captured graph; emitted scalar-package execution remains an obligation"}
+  - id: host_f32_elementwise_transcendental
+    ops: [aten.rsqrt.default, aten.pow.Tensor_Scalar, aten.sigmoid.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {dtypes: [f32], ordered_result_dtypes: [f32], ranks: [3]}
+    numerical_contract:
+      status: reviewed
+      semantics: {arithmetic: ieee754_binary32, rounding: round_to_nearest_even, subnormals: preserved,
+                  transcendental_accuracy: selected_lowering_approximation_not_correctly_rounded}
+      evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "observed f32 signatures and math.rsqrt/math.powf/math.exp+arith.negf bodies in the captured graph; emitted scalar-package execution remains an obligation"}
+  - id: host_f32_exp_rank1
+    status: reviewed
+    ops: [aten.exp.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32], ranks: [1]}
+    numerical_contract:
+      status: reviewed
+      semantics: {arithmetic: ieee754_binary32, transcendental_accuracy: selected_lowering_approximation_not_correctly_rounded, all_input_accuracy: unqualified, device_execution: unqualified}
+      evidence:
+        reviewed_by: "codex-operator for copparihollmann, 2026-10-10"
+        review_sha256: 8feeba17bc5692a634b7009b86f669b0223d508e904b7b8780e993fd197bb28d
+        basis: "Exact rank-1 f32 math.exp source without fast-math; stock libm lowering matched independently rounded math.exp on 1038 finite native probes (maximum 0 ulp). The same IR built an object with the selected scalar RV64 flags. RV64 execution, nonfinite behavior and all-input accuracy remain unqualified; candidate lowering and numerical execution are separate mandatory gates."
+  - id: host_f32_reduction
+    ops: [aten.native_layer_norm.default, aten._softmax.default, aten.mean.dim]
+    families: [reduction, elementwise_map]
+    placement: host
+    signature: {dtypes: [f32], ordered_result_dtypes: [f32], ranks: [1, 2, 3, 4]}
+    numerical_contract:
+      status: reviewed
+      semantics: {arithmetic: ieee754_binary32, rounding: round_to_nearest_even, subnormals: preserved,
+                  accumulator: f32, reduction_order: selected_lowering, epsilon: graph_parameter}
+      evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "observed f32 linalg.reduce/linalg.generic signatures (addf, divf, maximumf, subf, exp, rsqrt bodies); emitted scalar-package execution remains an obligation"}
+  - id: host_review_prepared_f32_maximum
+    status: reviewed
+    ops: [aten.amax.default]
+    placement: host
+    signature: {family: reduction, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_f32_maximum_source_body.v1, operation: arith.maximumf}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, original_to_prepared_equivalence: not_proved, PyTorch_numerical_equivalence: not_proved, all_input_native_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {exact_prepared_source_body: required, selected_index_observation: required, all_source_roots_reproved: required, candidate_capture_elf_join: required, reviewed_by: "operator approval 2026-10-07 of review SHA256 2d185844f009a1552a1313d035cba628bfee0cec7878cc6d943ad406a66ec3ca"}
+  - id: host_i32_to_f32_cast
+    ops: [aten._to_copy.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {ordered_operand_dtypes: [i32, f32], ordered_result_dtypes: [f32], ranks: [1, 2, 3, 4]}
+    numerical_contract:
+      status: reviewed
+      semantics: {conversion: signed_int32_to_ieee754_binary32, rounding: round_to_nearest_even, exact_range: "|x| <= 2^24"}
+      evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "observed i32->f32 signature with arith.sitofp body in the captured graph; emitted scalar-package execution remains an obligation"}
+  - id: host_quantize_per_tensor_int8
+    ops: [quantized_decomposed.quantize_per_tensor.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {ordered_operand_dtypes: [f32, f32, i64], ordered_result_dtypes: [i8], ranks: [2, 3, 4], quantization_parameters: {zero_point: 0, quant_min: -128, quant_max: 127}}
+    numerical_contract:
+      status: reviewed
+      semantics: {formula: "q = clamp(roundeven(x * (1/scale)) + zero_point, quant_min, quant_max)",
+                  rounding: round_half_to_even, scale_granularity: tensor, zero_point: 0,
+                  quant_min: -128, quant_max: 127, scale_dtype: f32}
+      evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "selected int8 recipe (activation: tensor, static, symmetric, quant_min -128, quant_max 127); host quantize lowering roundeven(x*(1/s)) in llvmlower/passes_quant_int.py; observed f32,f32,i64->i8 signature"}
+  - id: host_dequantize_per_tensor
+    status: reviewed
+    ops: [quantized_decomposed.dequantize_per_tensor.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {ordered_operand_dtypes: [i8, f32, i64], ordered_result_dtypes: [f32], ranks: [3, 4], quantization_parameters: {zero_point: 0}}
+    numerical_contract:
+      status: reviewed
+      semantics: {formula: "f32(i8 - zero_point) * scale", scale_granularity: tensor, zero_point: 0}
+      evidence:
+        reviewed_by: "operator approval 2026-10-03 in this session"
+        basis: "Fresh preselected sealed int8 captures of residual_cnn and causal_decoder have this exact typed signature. Independent rank-3 and rank-4 PyTorch probe captures and native-host qualifications matched their exact input goldens at zero tolerance. The selected standard-dialect lowering uses signed integer-to-f32 conversion, subtraction of the zero point, then multiplication by the f32 scale. These finite checks support this narrowly reviewed declaration, not RVV/device execution or every scale, shape and value."
+  - id: host_embedding_gather
+    ops: [aten.embedding.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {ordered_operand_dtypes: [i64, f32], ordered_result_dtypes: [f32], ranks: [3]}
+    numerical_contract:
+      status: reviewed
+      semantics: {arithmetic: exact_copy, index_dtype: i64, index_domain: "0 <= index < num_embeddings (out-of-range not admitted)"}
+      evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "observed i64,f32->f32 signature with linalg.index/arith.index_cast/tensor.extract body (pure gather) in the captured graph"}
+  - id: host_f32_value_only_max_pool
+    status: reviewed
+    ops: [aten.max_pool2d_with_indices.default]
+    families: [reduction]
+    placement: host
+    signature: {ordered_operand_dtypes: [f32, f32, f32], ordered_result_dtypes: [f32], ranks: [4]}
+    numerical_contract:
+      status: reviewed
+      semantics:
+        arithmetic: ieee754_binary32
+        layout: static_nchw
+        output: values_only_indices_must_be_unused
+        geometry: floor
+        padding: negative_infinity
+        reduction_order: selected_lowering
+        equal_values: first_maximum
+        nan: last_encountered_nan
+      evidence:
+        reviewed_by: "operator approval 2026-10-06 in this session"
+        basis: "Independent selected scalar-package Spike geometry and tie checks matched exactly (six and three output values). Admission additionally requires the fail-closed source check of static geometry, floor mode, unused indices, negative-infinity padding and exact ordered reduction. Finite checks do not prove all values, Rocket RTL execution or whole-model correctness; no BF16 or accelerator support is admitted."
+  - id: host_f32_batched_contraction
+    ops: [aten.bmm.default]
+    families: [contraction]
+    placement: host
+    signature: {ordered_operand_dtypes: [f32, f32, f32], ordered_result_dtypes: [f32], accumulator_dtype: f32, ranks: [3]}
+    numerical_contract:
+      status: reviewed
+      semantics: {arithmetic: ieee754_binary32, product_rounding: round_to_nearest_even, accumulator: f32,
+                  reduction_order: selected_lowering, subnormals: preserved, fma_contraction: selected_lowering}
+      evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "observed f32 bmm signature (accum f32, rank 3); RTL facts admit only int8 operands on the accelerator datapath; emitted scalar-package execution remains an obligation"}
+  # The ordered operands below include the output/init operand of each lowering.
+  # Only these exact typed/rank selectors were approved on 2026-10-06.
+  - id: host_f32_neg_rank4
+    status: reviewed
+    ops: [aten.neg.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32], ranks: [4]}
+    numerical_contract:
+      status: reviewed
+      semantics: {operation: ieee754_binary32_sign_bit_negation, flags: none, native_nonfinite: unqualified}
+      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen and independent finite selected-scalar-package probe; nonfinite native execution and all-input correctness remain unqualified."}
+  - id: host_f32_ge_scalar_rank4
+    status: reviewed
+    ops: [aten.ge.Scalar]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, i1], ordered_result_dtypes: [i1], ranks: [4]}
+    numerical_contract:
+      status: reviewed
+      semantics: {comparison: ordered_greater_or_equal, signed_zero: compares_equal, nan: false}
+      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen and independent finite selected-scalar-package probe; all-input and RTL execution remain unqualified."}
+  - id: host_review_f32_oeq_scalar_rank4
+    status: reviewed
+    ops: [aten.eq.Scalar]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, i1], ordered_result_dtypes: [i1], ranks: [4]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.cmpf, predicate: oeq}
+    numerical_contract:
+      status: reviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, comparison: ordered_equal, nan_result: false, signed_zero_equal: true, original_to_prepared_equivalence: not_proved, full_model_numerical_equivalence: not_run, existing_numerical_tolerance: unchanged}
+      evidence: {reviewed_by: "operator approval 2026-10-07 of exact Eq-only review SHA-256 885f5fe380c57db016e4a727ed7b1230dfd5ff95a0006c573d741b8085f1dcb7", neutral_source_sha256: 85bdb646a68d5987bc9c1d9b77a11b10aacd8de2d77e709b3181c5b543778a92, neutral_native_receipt_sha256: ae6108825481d49c479f4cdb218336bfd21a08f1b0b7a662542ef39e6b9b22aa, selected_index_and_elf_join: required, all_input_numerical_equivalence: not_claimed}
+  - id: host_f32_where_rank4
+    status: reviewed
+    ops: [aten.where.self]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, f32, f32, f32], ordered_result_dtypes: [f32], ranks: [4]}
+    numerical_contract:
+      status: reviewed
+      semantics: {selection: predicate_selected_operand, arithmetic_on_selected_value: none}
+      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen and independent finite selected-scalar-package probe; all-input and RTL execution remain unqualified."}
+  - id: host_i64_scalar_eq_le_rank1
+    status: reviewed
+    ops: [aten.eq.Scalar, aten.le.Scalar, aten.eq.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i1], ordered_result_dtypes: [i1], ranks: [1]}
+    numerical_contract:
+      status: reviewed
+      semantics: {comparison: exact_signed_integer_equality_or_order, integer_dtype: i64}
+      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen and saved rank-1 signed-endpoint Spike probe; 18 output words matched, not an all-input or RTL proof."}
+  - id: host_i64_tensor_le_rank1_rank4
+    status: reviewed
+    ops: [aten.le.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i1], ordered_result_dtypes: [i1], ranks: [1, 4]}
+    numerical_contract:
+      status: reviewed
+      semantics: {comparison: exact_signed_integer_order, integer_dtype: i64}
+      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen and independent rank-1/rank-4 finite probes; no all-input or RTL proof."}
+  - id: host_i64_add_rank1
+    status: reviewed
+    ops: [aten.add.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i64], ordered_result_dtypes: [i64], ranks: [1]}
+    numerical_contract:
+      status: reviewed
+      semantics: {arithmetic: twos_complement_modulo_2_64, signed_no_wrap: false}
+      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen and independent selected-scalar-package probe checking every result bit; no all-input or RTL proof."}
+  - id: host_i1_to_f32_rank1_rank4
+    status: reviewed
+    ops: [aten._to_copy.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, f32], ordered_result_dtypes: [f32], ranks: [1, 4]}
+    numerical_contract:
+      status: reviewed
+      semantics: {conversion: unsigned_boolean_to_ieee754_binary32, exact_values: [0, 1], signed_i1_conversion: excluded}
+      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen; saved signed-endpoint compare capture lowers Boolean conversion as uitofp i1 and matches all 18 output words on Spike, not RTL or all-input proof."}
+  - id: host_i64_to_f32_rank1_rank3
+    status: reviewed
+    ops: [aten._to_copy.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, f32], ordered_result_dtypes: [f32], ranks: [1, 3]}
+    numerical_contract:
+      status: reviewed
+      semantics: {conversion: signed_int64_to_ieee754_binary32, rounding: round_to_nearest_even, execution: selected_startup_and_isa_path}
+      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen and independent finite selected-scalar-package probe; all-input and RTL execution remain unqualified."}
+  # Reviewed selected-source placement; all new numerical contracts remain
+  # unreviewed. Parsed body, index bounds and exact linked build are mandatory.
+  - id: host_review_f32_add_r1
+    status: reviewed
+    ops: [aten.add.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, f32], ordered_result_dtypes: [f32], ranks: [1]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.addf}
+    numerical_contract: {status: unreviewed, semantics: {operation: ieee754_binary32_add, rounding: round_to_nearest_even, nan: selected_riscv_canonical_nan, nonfinite_native: unqualified}, evidence: {neutral_case: matrix_f32_add}}
+  - id: host_review_f32_mul_r1
+    status: reviewed
+    ops: [aten.mul.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, f32], ordered_result_dtypes: [f32], ranks: [1]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.mulf}
+    numerical_contract: {status: unreviewed, semantics: {operation: ieee754_binary32_multiply, rounding: round_to_nearest_even, nan: selected_riscv_canonical_nan, nonfinite_native: unqualified}, evidence: {neutral_case: matrix_f32_mul}}
+  - id: host_review_f32_sub_r1_4
+    status: reviewed
+    ops: [aten.sub.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, f32], ordered_result_dtypes: [f32], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.subf}
+    numerical_contract: {status: unreviewed, semantics: {operation: ieee754_binary32_subtract, rounding: round_to_nearest_even, nan: selected_riscv_canonical_nan, nonfinite_native: unqualified}, evidence: {neutral_case: matrix_f32_sub}}
+  - id: host_review_f32_neg_r1_3
+    status: reviewed
+    ops: [aten.neg.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32], ranks: [1, 2, 3]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.negf}
+    numerical_contract: {status: unreviewed, semantics: {operation: ieee754_binary32_sign_bit_negation, flags: none, native_nonfinite: unqualified}, evidence: {neutral_case: matrix_f32_neg}}
+  - id: host_review_f32_le_r1_4
+    status: reviewed
+    ops: [aten.le.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, i1], ordered_result_dtypes: [i1], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.cmpf, predicate: ole}
+    numerical_contract: {status: unreviewed, semantics: {comparison: ordered_less_or_equal, signed_zero: compares_equal, nan: false, native_nonfinite: unqualified}, evidence: {neutral_case: matrix_f32_le}}
+  - id: host_review_f32_select_r1_3
+    status: reviewed
+    ops: [aten.where.self]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, f32, f32, f32], ordered_result_dtypes: [f32], ranks: [1, 2, 3]}
+    source_body: {schema: merlin.static_projected_pointwise_body.v1, operation: arith.select}
+    numerical_contract: {status: unreviewed, semantics: {selection: predicate_selected_operand, operand_maps: source_proved_static_singleton_or_scalar_projection, arithmetic_on_selected_value: none, native_nonfinite: unqualified}, evidence: {neutral_case: matrix_f32_select, source_schema: merlin.static_projected_pointwise_body.v1, selected_index_and_elf_join: required}}
+  - id: host_review_f32_nonzero_r1_4
+    status: reviewed
+    ops: [aten._to_copy.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, i1], ordered_result_dtypes: [i1], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_boolean_body.v1, operation: f32_nonzero_to_i1}
+    numerical_contract: {status: unreviewed, semantics: {comparison: unordered_not_equal_positive_zero, source_predicate: UNE, signed_zero: false, nan: true, native_nonfinite: unqualified}, evidence: {neutral_case: matrix_f32_nonzero}}
+  - id: host_review_i64_add_r2_4
+    status: reviewed
+    ops: [aten.add.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i64], ordered_result_dtypes: [i64], ranks: [2, 3, 4]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.addi}
+    numerical_contract: {status: unreviewed, semantics: {arithmetic: twos_complement_modulo_2_64, signed_no_wrap: false}, evidence: {neutral_case: matrix_i64_add}}
+  - id: host_review_i64_sub_r1_4
+    status: reviewed
+    ops: [aten.sub.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i64], ordered_result_dtypes: [i64], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.subi}
+    numerical_contract: {status: unreviewed, semantics: {arithmetic: twos_complement_modulo_2_64, signed_no_wrap: false}, evidence: {neutral_case: matrix_i64_sub}}
+  - id: host_review_i64_mul_r1_4
+    status: reviewed
+    ops: [aten.mul.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i64], ordered_result_dtypes: [i64], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.muli}
+    numerical_contract: {status: unreviewed, semantics: {arithmetic: twos_complement_modulo_2_64, signed_no_wrap: false}, evidence: {neutral_case: matrix_i64_mul}}
+  - id: host_review_i64_le_r2_3
+    status: reviewed
+    ops: [aten.le.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i1], ordered_result_dtypes: [i1], ranks: [2, 3]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.cmpi, predicate: sle}
+    numerical_contract: {status: unreviewed, semantics: {comparison: exact_signed_integer_less_or_equal, integer_dtype: i64}, evidence: {neutral_case: matrix_i64_le}}
+  - id: host_review_i64_to_f32_r2_4
+    status: reviewed
+    ops: [aten._to_copy.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, f32], ordered_result_dtypes: [f32], ranks: [2, 4]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.sitofp}
+    numerical_contract: {status: unreviewed, semantics: {conversion: signed_int64_to_ieee754_binary32, rounding: round_to_nearest_even, execution: selected_startup_and_isa_path}, evidence: {neutral_case: matrix_i64_to_f32}}
+  - id: host_review_i1_to_f32_r2_3
+    status: reviewed
+    ops: [aten._to_copy.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, f32], ordered_result_dtypes: [f32], ranks: [2, 3]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.uitofp}
+    numerical_contract: {status: unreviewed, semantics: {conversion: unsigned_boolean_to_ieee754_binary32, exact_values: [0, 1], signed_i1_conversion: excluded}, evidence: {neutral_case: matrix_i1_to_f32}}
+  - id: host_review_i1_to_i64_r1_4
+    status: reviewed
+    ops: [aten._to_copy.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i64], ordered_result_dtypes: [i64], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.extui}
+    numerical_contract: {status: unreviewed, semantics: {conversion: unsigned_boolean_to_signed_int64, exact_values: [0, 1], signed_i1_conversion: excluded}, evidence: {neutral_case: matrix_i1_to_i64}}
+  - id: host_review_i1_and_r1_4
+    status: reviewed
+    ops: [aten.bitwise_and.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i1, i1], ordered_result_dtypes: [i1], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.andi}
+    numerical_contract: {status: unreviewed, semantics: {operation: exact_boolean_and, input_domain: i1}, evidence: {neutral_case: matrix_i1_and}}
+  - id: host_review_i1_xor_r1_4
+    status: reviewed
+    ops: [aten.bitwise_xor.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i1, i1], ordered_result_dtypes: [i1], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.xori}
+    numerical_contract: {status: unreviewed, semantics: {operation: exact_boolean_xor, input_domain: i1}, evidence: {neutral_case: matrix_i1_xor}}
+  - id: host_review_i1_not_r1_4
+    status: reviewed
+    ops: [aten.bitwise_not.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i1], ordered_result_dtypes: [i1], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_boolean_body.v1, operation: i1_not}
+    numerical_contract: {status: unreviewed, semantics: {operation: exact_boolean_not, input_domain: i1}, evidence: {neutral_case: matrix_i1_not}}
+  - id: host_review_i1_mul_projected_r1_4
+    status: reviewed
+    ops: [aten.mul.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i1, i1], ordered_result_dtypes: [i1], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_boolean_body.v1, operation: i1_mul_singleton_projected}
+    numerical_contract: {status: unreviewed, semantics: {operation: exact_boolean_multiply, input_domain: i1, maps: independent_ascending_or_singleton_zero_input_maps_either_or_both_operands_rank0_allowed}, evidence: {neutral_cases: [matrix_i1_mul_lhs_projected, matrix_i1_mul_rhs_projected]}}
+  - id: host_review_literal_i64_arange_start_step_r1
+    status: reviewed
+    ops: [aten.arange.start_step]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64], ordered_result_dtypes: [i64], ranks: [1]}
+    numerical_contract: {status: unreviewed, semantics: {operation: prepared_literal_signed_i64_half_open_range, literals: fixed_start_end_nonzero_step, extent: exact_direction_consistent_and_representable_in_selected_signed_index_width, final_values: representable_i64, dynamic_inputs: excluded, original_to_prepared_equivalence: not_proved}, evidence: {mandatory_private_witness: literal_arange_host_support, neutral_case: raw_i64_exact_golden}}
+  - id: host_review_f32_le_projected_r1_4
+    status: reviewed
+    ops: [aten.le.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, i1], ordered_result_dtypes: [i1], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_projected_pointwise_body.v1, operation: arith.cmpf, predicate: ole}
+    numerical_contract: {status: unreviewed, semantics: {comparison: ordered_less_or_equal, signed_zero: compares_equal, nan: false, native_nonfinite: unqualified}, evidence: {neutral_case: matrix_f32_le}}
+  - id: host_review_i64_add_projected_r2_4
+    status: reviewed
+    ops: [aten.add.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i64], ordered_result_dtypes: [i64], ranks: [2, 3, 4]}
+    source_body: {schema: merlin.static_projected_pointwise_body.v1, operation: arith.addi}
+    numerical_contract: {status: unreviewed, semantics: {arithmetic: twos_complement_modulo_2_64, signed_no_wrap: false}, evidence: {neutral_case: matrix_i64_add}}
+  - id: host_review_i64_sub_projected_r1_4
+    status: reviewed
+    ops: [aten.sub.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i64], ordered_result_dtypes: [i64], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_projected_pointwise_body.v1, operation: arith.subi}
+    numerical_contract: {status: unreviewed, semantics: {arithmetic: twos_complement_modulo_2_64, signed_no_wrap: false}, evidence: {neutral_case: matrix_i64_sub}}
+  - id: host_review_i64_le_projected_r2_3
+    status: reviewed
+    ops: [aten.le.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i1], ordered_result_dtypes: [i1], ranks: [2, 3]}
+    source_body: {schema: merlin.static_projected_pointwise_body.v1, operation: arith.cmpi, predicate: sle}
+    numerical_contract: {status: unreviewed, semantics: {comparison: exact_signed_integer_less_or_equal, integer_dtype: i64}, evidence: {neutral_case: matrix_i64_le}}
+  - id: host_review_i1_and_projected_r1_4
+    status: reviewed
+    ops: [aten.bitwise_and.Tensor]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i1, i1], ordered_result_dtypes: [i1], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_projected_pointwise_body.v1, operation: arith.andi}
+    numerical_contract: {status: unreviewed, semantics: {operation: exact_boolean_and, input_domain: i1}, evidence: {neutral_case: matrix_i1_and}}
+  - id: host_review_selected_libm_sinf_f32
+    status: reviewed
+    ops: [aten.sin.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_f32_math_source_body.v1, operation: math.sin}
+    linkage_contract:
+      schema: merlin.host_linkage_contract.v1
+      supplier: selected_math_archive
+      archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
+      symbols: [sinf]
+    numerical_contract:
+      status: reviewed
+      semantics:
+        scope: selected_source_arithmetic_and_selected_library_approximation
+        arithmetic: ieee754_binary32
+        source_body:
+          schema: merlin.static_f32_math_source_body.v1
+          operation: math.sin
+        transcendental_accuracy: selected_library_approximation_not_correctly_rounded
+        all_input_accuracy: unqualified
+        pytorch_bit_exactness: not_claimed
+        global_ulp_or_absolute_bound: not_claimed
+        nonfinite_and_snan: unqualified
+        existing_numerical_tolerance: unchanged
+        source_call_to_symbol_routing: must_be_proved_after_compilation
+        selected_symbol_origin: must_be_proved_after_link
+        rounding: round_to_nearest_even
+        ordered_operations: exact_selected_parsed_source_body
+        selected_libm_archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
+        scalar_abi: sinf_f32_to_f32
+      evidence:
+        reviewed_by: Codex authored-policy review, 2026-10-11
+        review_sha256: 992a78ce61f312aeeba662cc66112d9bfabf8cdf849c68549a60ed0305a85384
+        review_source: examples/gemmini/verification/host_library_numerical_policy_review.yaml
+        basis: Selected immutable library approximation is the declared policy; strict
+          PyTorch finite controls remain failed and all source/link/model gates remain
+          mandatory.
+        all_input_accuracy: unqualified
+  - id: host_review_selected_libm_cosf_f32
+    status: reviewed
+    ops: [aten.cos.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_f32_math_source_body.v1, operation: math.cos}
+    linkage_contract:
+      schema: merlin.host_linkage_contract.v1
+      supplier: selected_math_archive
+      archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
+      symbols: [cosf]
+    numerical_contract:
+      status: reviewed
+      semantics:
+        scope: selected_source_arithmetic_and_selected_library_approximation
+        arithmetic: ieee754_binary32
+        source_body:
+          schema: merlin.static_f32_math_source_body.v1
+          operation: math.cos
+        transcendental_accuracy: selected_library_approximation_not_correctly_rounded
+        all_input_accuracy: unqualified
+        pytorch_bit_exactness: not_claimed
+        global_ulp_or_absolute_bound: not_claimed
+        nonfinite_and_snan: unqualified
+        existing_numerical_tolerance: unchanged
+        source_call_to_symbol_routing: must_be_proved_after_compilation
+        selected_symbol_origin: must_be_proved_after_link
+        rounding: round_to_nearest_even
+        ordered_operations: exact_selected_parsed_source_body
+        selected_libm_archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
+        scalar_abi: cosf_f32_to_f32
+      evidence:
+        reviewed_by: Codex authored-policy review, 2026-10-11
+        review_sha256: 992a78ce61f312aeeba662cc66112d9bfabf8cdf849c68549a60ed0305a85384
+        review_source: examples/gemmini/verification/host_library_numerical_policy_review.yaml
+        basis: Selected immutable library approximation is the declared policy; strict
+          PyTorch finite controls remain failed and all source/link/model gates remain
+          mandatory.
+        all_input_accuracy: unqualified
+  - id: host_review_prepared_ordered_f32_cumsum_f64
+    status: reviewed
+    ops: [aten.cumsum.default]
+    families: [reduction]
+    placement: host
+    signature: {family: reduction, ordered_operand_dtypes: [f32], ordered_result_dtypes: [f32], compute_dtypes: [f64]}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_scan_build_link_routing_only, input: f32, ordered_carry: f64, per_prefix_output: f32, reset: source_proved_axis_lane, selected_isa_f64: required, rne_result_claim: withheld_without_linked_rounding_state_proof, pytorch_original_to_prepared_equivalence: not_proved, nonfinite_and_snan: unqualified, existing_numerical_tolerance: unchanged}
+      evidence: {mandatory_private_source_witness: ordered_f32_scan_support_v7, finite_neutral_raw_outputs: 22_of_22_exact, selected_index_and_elf_join: existing, compiled_numeric_equivalence: not_proved}
+  - id: host_review_literal_clamp_upper_f32
+    status: reviewed
+    ops: [aten.clamp.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_composite_math_body.v1, operation: clamp_upper_literal}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, literal_identity: exact_source_f32_bits, ordered_operations: exact_closed_source_body, pytorch_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {source_schema: merlin.static_composite_math_source.v1, selected_index_and_elf_join: required}
+  - id: host_review_literal_clamp_lower_f32
+    status: reviewed
+    ops: [aten.clamp.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_composite_math_body.v1, operation: clamp_lower_literal}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, literal_identity: exact_source_f32_bits, ordered_operations: exact_closed_source_body, pytorch_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {source_schema: merlin.static_composite_math_source.v1, selected_index_and_elf_join: required}
+  - id: host_review_reciprocal_f32
+    status: reviewed
+    ops: [aten.reciprocal.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_composite_math_body.v1, operation: reciprocal_f32}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, literal_identity: exact_source_f32_bits, ordered_operations: exact_closed_source_body, pytorch_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {source_schema: merlin.static_composite_math_source.v1, selected_index_and_elf_join: required}
+  - id: host_review_reciprocal_i64_to_f32
+    status: reviewed
+    ops: [aten.reciprocal.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_composite_math_body.v1, operation: reciprocal_signed_i64_to_f32}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, literal_identity: exact_source_f32_bits, ordered_operations: exact_closed_source_body, pytorch_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {source_schema: merlin.static_composite_math_source.v1, selected_index_and_elf_join: required}
+  - id: host_review_literal_base_pow_f32
+    status: reviewed
+    ops: [aten.pow.Scalar]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_composite_math_body.v1, operation: literal_base_pow_f32}
+    linkage_contract:
+      schema: merlin.host_linkage_contract.v1
+      supplier: selected_math_archive
+      archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
+      symbols: [powf]
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, literal_identity: exact_source_f32_bits, ordered_operations: exact_closed_source_body, pytorch_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {source_schema: merlin.static_composite_math_source.v1, selected_index_and_elf_join: required, selected_archive_supplier_join: required, source_call_to_symbol_routing: not_proved}
+  - id: host_review_tanh_gelu_f32
+    status: reviewed
+    ops: [aten.gelu.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_composite_math_body.v1, operation: tanh_gelu_f32}
+    linkage_contract:
+      schema: merlin.host_linkage_contract.v1
+      supplier: selected_math_archive
+      archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
+      symbols: [tanhf]
+    numerical_contract:
+      status: reviewed
+      semantics:
+        scope: selected_source_arithmetic_and_selected_library_approximation
+        arithmetic: ieee754_binary32
+        source_body:
+          schema: merlin.static_composite_math_body.v1
+          operation: tanh_gelu_f32
+        transcendental_accuracy: selected_library_approximation_not_correctly_rounded
+        all_input_accuracy: unqualified
+        pytorch_bit_exactness: not_claimed
+        global_ulp_or_absolute_bound: not_claimed
+        nonfinite_and_snan: unqualified
+        existing_numerical_tolerance: unchanged
+        source_call_to_symbol_routing: must_be_proved_after_compilation
+        selected_symbol_origin: must_be_proved_after_link
+        rounding: round_to_nearest_even
+        ordered_operations: exact_selected_parsed_source_body
+        selected_libm_archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
+      evidence:
+        reviewed_by: Codex authored-policy review, 2026-10-11
+        review_sha256: 992a78ce61f312aeeba662cc66112d9bfabf8cdf849c68549a60ed0305a85384
+        review_source: examples/gemmini/verification/host_library_numerical_policy_review.yaml
+        basis: Selected immutable library approximation is the declared policy; strict
+          PyTorch finite controls remain failed and all source/link/model gates remain
+          mandatory.
+        all_input_accuracy: unqualified
+  - id: host_review_i64_scalar_ge
+    status: reviewed
+    ops: [aten.ge.Scalar]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i1], ordered_result_dtypes: [i1]}
+    source_body: {schema: merlin.static_projected_pointwise_body.v1, operation: arith.cmpi, predicate: sge}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, operation: signed_integer_sge, frontend_numerical_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {source_schema: merlin.static_projected_pointwise_body.v1, selected_index_and_elf_join: required}
+  - id: host_review_i64_scalar_lt
+    status: reviewed
+    ops: [aten.lt.Scalar]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i1], ordered_result_dtypes: [i1]}
+    source_body: {schema: merlin.static_projected_pointwise_body.v1, operation: arith.cmpi, predicate: slt}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, operation: signed_integer_slt, frontend_numerical_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {source_schema: merlin.static_projected_pointwise_body.v1, selected_index_and_elf_join: required}
+  - id: host_review_boolean_sum_extension
+    status: reviewed
+    ops: [aten.sum.dim_IntList]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i64], ordered_result_dtypes: [i64]}
+    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.extui}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, operation: unsigned_boolean_to_i64_extension, frontend_numerical_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {source_schema: merlin.static_pointwise_source_body.v1, selected_index_and_elf_join: required}
+  - id: host_review_static_i64_sum
+    status: reviewed
+    ops: [aten.sum.dim_IntList]
+    placement: host
+    signature: {family: reduction, ordered_operand_dtypes: [i64, i64], ordered_result_dtypes: [i64]}
+    source_body: {schema: merlin.static_integer_reduction_source_body.v1, operation: sum}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, original_to_prepared_equivalence: not_proved, compiled_numerical_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {source_schema: merlin.static_integer_reduction_source_body.v1, selected_index_observation: required, exact_source_ordinal_reproof: required, candidate_capture_and_elf_join: required}
+  - id: host_review_static_boolean_cumsum
+    status: reviewed
+    ops: [aten.cumsum.default]
+    placement: host
+    signature: {family: reduction, ordered_operand_dtypes: [i1, i64], ordered_result_dtypes: [i64]}
+    source_body: {schema: merlin.static_integer_reduction_source_body.v1, operation: cumsum}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, original_to_prepared_equivalence: not_proved, compiled_numerical_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {source_schema: merlin.static_integer_reduction_source_body.v1, selected_index_observation: required, exact_source_ordinal_reproof: required, candidate_capture_and_elf_join: required}
+  - id: host_review_static_i64_cumsum
+    status: reviewed
+    ops: [aten.cumsum.default]
+    placement: host
+    signature: {family: reduction, ordered_operand_dtypes: [i64, i64], ordered_result_dtypes: [i64]}
+    source_body: {schema: merlin.static_integer_reduction_source_body.v1, operation: cumsum}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, original_to_prepared_equivalence: not_proved, compiled_numerical_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {source_schema: merlin.static_integer_reduction_source_body.v1, selected_index_observation: required, exact_source_ordinal_reproof: required, candidate_capture_and_elf_join: required}
+  - id: host_review_static_i64_min_first_index
+    status: reviewed
+    ops: [aten.min.dim]
+    placement: host
+    signature: {family: reduction, ordered_operand_dtypes: [i64, i64, i64], ordered_result_dtypes: [i64, i64]}
+    source_body: {schema: merlin.static_integer_reduction_source_body.v1, operation: i64_min_first_index}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, original_to_prepared_equivalence: not_proved, compiled_numerical_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {source_schema: merlin.static_integer_reduction_source_body.v1, selected_index_observation: required, exact_source_ordinal_reproof: required, candidate_capture_and_elf_join: required}
+  - id: host_review_prepared_index_boolean_extension
+    status: reviewed
+    ops: [aten.index.Tensor]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i64], ordered_result_dtypes: [i64]}
+    source_body: {schema: merlin.prepared_index_source_body.v1, operation: boolean_extension}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, original_to_prepared_equivalence: not_proved, compiled_numerical_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {independent_capture_trace_source_reproof: required, selected_index_observation: required, complete_compute_root_admission: required, candidate_capture_and_elf_join: required}
+  - id: host_review_prepared_index_mask_sum
+    status: reviewed
+    ops: [aten.index.Tensor]
+    placement: host
+    signature: {family: reduction, ordered_operand_dtypes: [i64, i64], ordered_result_dtypes: [i64]}
+    source_body: {schema: merlin.prepared_index_source_body.v1, operation: mask_sum}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, original_to_prepared_equivalence: not_proved, compiled_numerical_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {independent_capture_trace_source_reproof: required, selected_index_observation: required, complete_compute_root_admission: required, candidate_capture_and_elf_join: required}
+  - id: host_review_prepared_literal_boolean_index
+    status: reviewed
+    ops: [aten.index.Tensor]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i1], ordered_result_dtypes: [i1]}
+    source_body: {schema: merlin.prepared_index_source_body.v1, operation: literal_indexed_extract}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, original_to_prepared_equivalence: not_proved, compiled_numerical_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {independent_capture_trace_source_reproof: required, literal_index_bounds: required, selected_index_observation: required, complete_compute_root_admission: required, candidate_capture_and_elf_join: required}
+  - id: host_review_literal_bucketize_count
+    status: reviewed
+    ops: [aten.bucketize.Tensor]
+    placement: host
+    signature: {family: reduction, ordered_operand_dtypes: [f32, f32, i64], ordered_result_dtypes: [i64]}
+    source_body: {schema: merlin.static_bucketize_source_body.v1, operation: f32_literal_boundary_count_i64}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, original_to_prepared_equivalence: not_proved, compiled_numerical_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {exact_source_body: required, source_dense_nondecreasing_non_nan_boundaries: required, independent_capture_trace_right_flag_reproof: required, selected_index_observation: required, complete_compute_root_admission: required, candidate_capture_and_elf_join: required}
+  - id: host_review_bf16_extended_literal_bucketize_count
+    status: reviewed
+    ops: [aten.bucketize.Tensor]
+    placement: host
+    signature: {family: reduction, ordered_operand_dtypes: [bf16, f32, i64], ordered_result_dtypes: [i64]}
+    source_body: {schema: merlin.static_bucketize_source_body.v1, operation: bf16_extended_f32_literal_boundary_count_i64}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: selected_prepared_source_build_link_host_placement_only, original_to_prepared_equivalence: not_proved, compiled_numerical_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {exact_bf16_to_f32_extension: required, source_dense_nondecreasing_non_nan_boundaries: required, independent_capture_trace_right_flag_reproof: required, selected_index_observation: required, complete_compute_root_admission: required, candidate_capture_and_elf_join: required}
+  # Exact mixed-precision routing; native numerical gates remain mandatory.
+  - id: host_review_mixed_matmul_f32
+    status: "reviewed"
+    ops: ["aten.mm.default"]
+    placement: "host"
+    signature: {"family": "contraction", "ordered_operand_dtypes": ["f32", "f32", "f32"], "ordered_result_dtypes": ["f32"], "ranks": [2]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+  - id: host_review_mixed_f64_f64_arith_addf
+    status: "reviewed"
+    ops: ["aten.add.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [1]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_f64_arith_addf"}
+  - id: host_review_mixed_bf16_bf16_arith_addf
+    status: "reviewed"
+    families: [elementwise_map]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["bf16", "bf16", "bf16"], "ordered_result_dtypes": ["bf16"], "ranks": [1, 2, 3, 4]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_bf16_arith_addf"}
+  - id: host_review_mixed_f64_arith_constant_arith_divf
+    status: "reviewed"
+    ops: ["aten.reciprocal.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [1]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_arith_constant_arith_divf"}
+  - id: host_review_mixed_f64_arith_constant_math_powf
+    status: "reviewed"
+    ops: ["aten.pow.Scalar"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [1]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_arith_constant_math_powf"}
+    linkage_contract: {schema: merlin.host_linkage_contract.v1, supplier: selected_math_archive, archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934, symbols: [pow]}
+  - id: host_review_mixed_bf16_f32_arith_extf_arith_addf
+    status: "reviewed"
+    ops: ["aten.add.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["bf16", "f32", "f32"], "ordered_result_dtypes": ["f32"], "ranks": [3]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_f32_arith_extf_arith_addf"}
+  - id: host_review_mixed_f64_f32_arith_extf_arith_mulf
+    status: "reviewed"
+    ops: ["aten.mul.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f32", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [2]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_f32_arith_extf_arith_mulf"}
+  - id: host_review_mixed_bf16_f32_arith_extf_arith_mulf
+    status: "reviewed"
+    ops: ["aten.mul.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["bf16", "f32", "f32"], "ordered_result_dtypes": ["f32"], "ranks": [3]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_f32_arith_extf_arith_mulf"}
+  - id: host_review_mixed_bf16_arith_extf
+    status: "reviewed"
+    families: [elementwise_map]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["bf16", "f32"], "ordered_result_dtypes": ["f32"], "ranks": [1, 2, 3, 4]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_arith_extf"}
+  - id: host_review_mixed_f64_f64_arith_mulf
+    status: "reviewed"
+    ops: ["aten.mul.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [1]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_f64_arith_mulf"}
+  - id: host_review_mixed_bf16_bf16_arith_mulf
+    status: "reviewed"
+    ops: ["aten.mul.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["bf16", "bf16", "bf16"], "ordered_result_dtypes": ["bf16"], "ranks": [3]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_bf16_arith_mulf"}
+  - id: host_review_mixed_i1_f64_f64_arith_select
+    status: "reviewed"
+    ops: ["aten.where.self"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["i1", "f64", "f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [1]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "i1_f64_f64_arith_select"}
+  - id: host_review_mixed_i64_arith_sitofp
+    status: "reviewed"
+    ops: ["aten._to_copy.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["i64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [1]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "i64_arith_sitofp"}
+  - id: host_review_mixed_f64_f64_arith_subf
+    status: "reviewed"
+    ops: ["aten.sub.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [1]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_f64_arith_subf"}
+  - id: host_review_mixed_f64_arith_truncf
+    status: "reviewed"
+    ops: ["aten._to_copy.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f32"], "ordered_result_dtypes": ["f32"], "ranks": [2]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_arith_truncf"}
+  - id: host_review_mixed_f32_arith_truncf
+    status: "reviewed"
+    families: [elementwise_map]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f32", "bf16"], "ordered_result_dtypes": ["bf16"], "ranks": [1, 2, 3, 4]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f32_arith_truncf"}
+  - id: host_review_mixed_f64_math_cos
+    status: "reviewed"
+    ops: ["aten.cos.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [2]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_math_cos"}
+    linkage_contract: {schema: merlin.host_linkage_contract.v1, supplier: selected_math_archive, archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934, symbols: [cos]}
+  - id: host_review_mixed_f64_math_sin
+    status: "reviewed"
+    ops: ["aten.sin.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [2]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_math_sin"}
+    linkage_contract: {schema: merlin.host_linkage_contract.v1, supplier: selected_math_archive, archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934, symbols: [sin]}
+  - id: host_review_mixed_quant_ext_quantize_per_tensor_i8
+    status: "reviewed"
+    ops: ["quantized_decomposed.quantize_per_tensor.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["bf16", "f32", "i64"], "ordered_result_dtypes": ["i8"], "ranks": [2, 3, 4], "quantization_parameters": {"zero_point": 0, "quant_min": -128, "quant_max": 127}}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+  - id: host_review_mixed_quant_ext_dequantize_per_tensor_bf16
+    status: "reviewed"
+    ops: ["quantized_decomposed.dequantize_per_tensor.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["i8", "f32", "i64"], "ordered_result_dtypes": ["bf16"], "ranks": [2, 3, 4], "quantization_parameters": {"zero_point": 0}}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+
+  - id: host_review_bf16_named_matmul
+    status: reviewed
+    placement: host
+    ops: ["aten.addmm.default"]
+    signature: {"family": "contraction", "ordered_operand_dtypes": ["bf16", "bf16", "bf16"], "ordered_result_dtypes": ["bf16"], "ranks": [2]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+  - id: host_review_f32_convolution_named_matmul
+    status: reviewed
+    placement: host
+    ops: ["aten.convolution.default"]
+    signature: {"family": "contraction", "ordered_operand_dtypes": ["f32", "f32", "f32"], "ordered_result_dtypes": ["f32"], "ranks": [2]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+  - id: host_review_f32_projected_bias_add
+    status: reviewed
+    placement: host
+    families: ["elementwise_map"]
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f32", "f32", "f32"], "ordered_result_dtypes": ["f32"], "ranks": [1, 2, 3, 4]}
+    source_body: {"schema": "merlin.static_projected_pointwise_body.v1", "operation": "arith.addf"}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+  - id: host_review_bf16_scalar_fill
+    status: reviewed
+    placement: host
+    ops: ["linalg.fill"]
+    signature: {"family": "movement", "ordered_operand_dtypes": ["bf16", "bf16"], "ordered_result_dtypes": ["bf16"], "ranks": [2]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+  - id: host_review_literal_upper_compare_select_f32
+    status: reviewed
+    ops: [aten.clamp.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_composite_math_body.v1, operation: clamp_upper_literal_compare_select}
+    numerical_contract:
+      status: unreviewed
+      semantics: {ordered_operations: "finite_f32_literal; ogt(input,bound); select(bound,input)", equal_and_unordered: original_input, literal_identity: exact_source_f32_bits, scope: source_build_link_host_placement_only, native_equivalence: unqualified}
+      evidence: {source_schema: merlin.static_composite_math_body.v1, selected_index_and_elf_join: required}
+
+  - id: host_review_bf16_embedding_copy
+    status: reviewed
+    ops: [aten.embedding.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, bf16], ordered_result_dtypes: [bf16], ranks: [3]}
+    source_body: {schema: merlin.static_embedding_gather_body.v1, operation: bf16_embedding_gather}
+    numerical_contract:
+      status: unreviewed
+      semantics: {arithmetic: none, selection: exact_captured_table_row_and_output_column, index_domain: "0 <= index < table_rows; out-of-range inputs are not admitted", scope: conditional_source_build_link_host_placement_only, native_equivalence: unqualified}
+      evidence: {source_schema: merlin.static_embedding_gather_body.v1, selected_index_and_elf_join: required}
+
+  - id: host_source_roundeven_f32
+    status: reviewed
+    ops: [aten.round.default]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_f32_math_source_body.v1, operation: math.roundeven}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: source_host_placement_only, rounding: half_even, native_equivalence: unqualified, existing_numerical_tolerance: unchanged}
+      evidence: {basis: exact_static_unary_source_body, selected_lowering_and_complete_outputs: required}
+  - id: host_source_literal_interval_f32
+    status: reviewed
+    ops: [aten.clamp.default]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_composite_math_body.v1, operation: clamp_literal_interval_f32}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: source_host_placement_only, ordered_operations: maximum_then_minimum, bounds: exact_finite_source_literals, existing_numerical_tolerance: unchanged}
+      evidence: {basis: exact_static_scalar_SSA_body, selected_lowering_and_complete_outputs: required}
+  - id: host_source_bounded_roundeven_cast_i8
+    status: reviewed
+    ops: [aten._to_copy.default]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, i8], ordered_result_dtypes: [i8]}
+    source_body: {schema: merlin.static_composite_math_body.v1, operation: fptosi_i8_of_rounded_literal_interval}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: source_host_placement_only, input: proved_roundeven_then_integral_i8_interval_clamp, nonfinite_native: unqualified, existing_numerical_tolerance: unchanged}
+      evidence: {basis: exact_same_shape_producer_chain, selected_lowering_and_complete_outputs: required}
+
+  - id: host_source_static_f32_exp
+    status: reviewed
+    ops: [aten.exp.default]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_f32_math_source_body.v1, operation: math.exp}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: exact_static_source_host_build_only, selected_libm_accuracy: unqualified, existing_numerical_tolerance: unchanged}
+      evidence: {basis: exact_unflagged_unary_scalar_body, selected_lowering_and_complete_outputs: required}
+  - id: host_source_projected_f32_subtract
+    status: reviewed
+    ops: [aten.sub.Tensor]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_projected_pointwise_body.v1, operation: arith.subf}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: exact_static_source_host_build_only, broadcast: source_affine_projection, existing_numerical_tolerance: unchanged}
+      evidence: {basis: exact_unflagged_scalar_SSA_and_projected_tensor_maps, selected_lowering_and_complete_outputs: required}
+  - id: host_source_static_f32_sum
+    status: reviewed
+    ops: [aten.sum.dim_IntList]
+    placement: host
+    signature: {family: reduction, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_f32_sum_source_body.v1, operation: arith.addf}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: exact_prepared_source_host_build_only, initial_bits: positive_zero, reduction_order: selected_lowering, framework_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {basis: exact_closed_addf_reduction_source, selected_compiler_index_observation: required, selected_lowering_and_complete_outputs: required}
+
+evidence:
+  source: Content identity of the host package selected by descriptor.yaml.
+  inspected_package:
+    backend: scalar
+    lowering: generic linalg-to-loops, no RVV transform schedule
+    target_architecture: rv64gc_zba_zbb_zbs_zfh
+    selected_rocket_compatibility: march_subset_of_pinned_dts
+    qualification: one saved rank-4 dequantization capture passed bit-exact Spike; other operations remain unqualified
+  qualification:
+    status: diagnostic_saved_capture_spike
+    execution_receipts:
+      - out/artifacts/probes/rocket-host-scalar-qualification-20261003-v2/qualification.json
+  unknowns:
+    - Spike qualification does not prove execution on Rocket RTL or FireSim.
+    - Declarations are reviewed screens of observed signatures, not admitted emitted lowering for every operation.
+    - Every host lowering and partitioned-model route needs its own numerical qualification.

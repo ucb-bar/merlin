@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin.operation_optimization_catalog.v1",
+  "title": "Per-operation optimization catalog",
+  "description": "Reviewed, architecture-agnostic optimization principles keyed by operation families derived from case declarations. Cross-references (catalog ids, skills, recipes, family ids) are checked by merlin_experiments.phase1.operation_optimizations.validate.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "scope", "review", "claim_policy", "general", "families"],
+  "properties": {
+    "schema": {"const": "merlin.operation_optimization_catalog.v1"},
+    "scope": {"type": "string", "minLength": 1},
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reviewed_on", "basis"],
+      "properties": {
+        "status": {"enum": ["reviewed", "draft"]},
+        "reviewed_on": {"type": "string", "format": "date", "minLength": 10, "maxLength": 10},
+        "basis": {"type": "string", "minLength": 1}
+      }
+    },
+    "claim_policy": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "general": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "focus", "principles", "mechanisms", "evidence"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "focus": {"$ref": "#/$defs/sentence"},
+        "principles": {"$ref": "#/$defs/principles"},
+        "mechanisms": {"$ref": "#/$defs/mechanisms"},
+        "evidence": {"$ref": "#/$defs/evidence"}
+      }
+    },
+    "families": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "applies_when", "panel_family", "related", "focus", "principles",
+                     "mechanisms", "evidence"],
+        "properties": {
+          "id": {"$ref": "#/$defs/identifier"},
+          "title": {"type": "string", "minLength": 1},
+          "applies_when": {"$ref": "#/$defs/sentence"},
+          "panel_family": {"anyOf": [{"$ref": "#/$defs/identifier"}, {"type": "null"}]},
+          "related": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
+          "focus": {"$ref": "#/$defs/sentence"},
+          "principles": {"$ref": "#/$defs/principles"},
+          "mechanisms": {"$ref": "#/$defs/mechanisms"},
+          "evidence": {"$ref": "#/$defs/evidence"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {"type": "string", "minLength": 1, "maxLength": 64},
+    "sentence": {"type": "string", "minLength": 1, "maxLength": 600},
+    "roles": {"type": "array", "uniqueItems": true, "minItems": 1, "items": {"$ref": "#/$defs/identifier"}},
+    "principles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "text"],
+        "properties": {
+          "id": {"$ref": "#/$defs/identifier"},
+          "kind": {"enum": ["principle", "pitfall", "evidence"]},
+          "text": {"$ref": "#/$defs/sentence"},
+          "uses_instruction_roles": {"$ref": "#/$defs/roles"}
+        }
+      }
+    },
+    "mechanisms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "id"],
+        "properties": {
+          "kind": {"enum": ["catalog", "skill", "recipe"]},
+          "id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "use": {"$ref": "#/$defs/sentence"},
+          "uses_instruction_roles": {"$ref": "#/$defs/roles"}
+        }
+      }
+    },
+    "evidence": {"type": "array", "items": {"$ref": "#/$defs/sentence"}}
+  }
+}

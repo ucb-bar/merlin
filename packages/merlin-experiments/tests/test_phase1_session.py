@@ -141,6 +141,7 @@ def test_unpaid_qualification_uses_formal_child_and_refuses_selected_source_drif
             bundle_dir=project / "input_bundles/fixture",
             public_root=public,
             private_full_model_spec=private_spec,
+            instruction_selection=project / "private-instruction-selection.json",
             contract_root=None,
             scope_roots={"public_roots": [public], "hidden_roots": [hidden], "contract": None},
             environment={
@@ -158,6 +159,8 @@ def test_unpaid_qualification_uses_formal_child_and_refuses_selected_source_drif
         calls.append(argv)
         assert "merlin_experiments.phase1.feedback.formal" in argv
         assert "--private-full-model-spec" in argv
+        assert "--instruction-selection" in argv
+        assert argv[argv.index("--instruction-selection") + 1].endswith("private-instruction-selection.json")
         assert "--hidden-capsules" in argv
         assert argv[argv.index("--qa-timeout") + 1] == "3217"
         return subprocess.CompletedProcess(argv, 1)
@@ -172,6 +175,36 @@ def test_unpaid_qualification_uses_formal_child_and_refuses_selected_source_drif
     assert len(receipt["initial_candidate_sha256"]) == 64
     assert len(receipt["graded_source_sha256"]) == 64
     assert len(calls) == 1
+    assert "--validation-scope" not in calls[0]
+
+    # The same real formal invocation preserves protected host inputs while
+    # forwarding the explicitly selected capsule boundary to the child.
+    from dataclasses import replace
+
+    capsule = prepared("capsule-formal")
+    capsule.request.options = replace(capsule.request.options, validation_scope="capsules")
+    assert formal_invocation.run(capsule, public_capsules=public, selected_rtl_facts=None) == 1
+    assert calls[-1][calls[-1].index("--validation-scope") + 1] == "capsules"
+
+    # Fresh unpaid capsule qualification must select the same scope, not enter
+    # any full-model requirement resolver after its capsule formal child exits.
+    from merlin_experiments.phase1.feedback import capsule_certification as CC
+    from merlin_experiments.phase1.feedback import certification, private_full_models
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(formal_invocation.subprocess, "run", lambda argv, **kw: subprocess.CompletedProcess(argv, 0))
+        scoped.setattr(certification, "_official_grade_result", lambda *a, **kw: pytest.fail("full-model gate"))
+        scoped.setattr(private_full_models, "requirements_for", lambda *a: pytest.fail("full-model requirements"))
+        scoped.setattr(CC, "verify", lambda *a, **kw: {"receipt": {"path": "technical", "sha256": "selected"}})
+        assert qualification.execute(capsule) == 0
+    qualified = json.loads((capsule.run_dir / "submission_qualification.json").read_text())
+    assert qualified["validation_scope"] == "capsules"
+    assert qualified["official_grade"]["validation_scope"] == "capsules"
+    assert qualified["official_grade"]["capsule_certification"] == {"path": "technical", "sha256": "selected"}
+    assert qualified["capsule_complete"] is True
+    for field in ("authoring_converged", "external_full_models_complete", "overall_release_qualified",
+                  "phase2_iteration_ready"):
+        assert qualified[field] is False
 
     def changed_during_formal(argv, **_kwargs):
         (selected / "compiler.py").write_text("# changed while the child ran\n")
@@ -393,6 +426,72 @@ def test_readback_selection_is_frozen_across_real_admission_and_resume(project, 
         _run(_request(project, resume=True), lambda _: pytest.fail("resume dropped frozen output transport"))
 
 
+def test_incompatible_global_memory_policy_refuses_before_authoring(project, monkeypatch):
+    from merlin.runtime.backends import base
+    from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+    from merlin.targetgen import capsule_runner as CR
+    from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1
+
+    _external_substitutes(monkeypatch)
+    backend = BoundRoCCBackend("fixture", "{}", None)
+    monkeypatch.setattr(base, "get_backend", lambda target: backend)
+
+    def original_ladder(target, sim_via, *, readback_policy):
+        assert target == "fixture" and readback_policy.transport == COHERENT_DUMP_V1
+        return {"L2": CR.simulator_adapter("spike", target, readback_policy=readback_policy)}
+
+    monkeypatch.setattr(CR, "qa_checkpoint_adapters", original_ladder)
+    monkeypatch.setattr(CR, "oracle_available", lambda *a: pytest.fail("readback admission was deferred"))
+    request = _request(project)
+    request = dataclasses.replace(
+        request, context=dataclasses.replace(request.context, readback_policy=COHERENT_DUMP_V1)
+    )
+    with pytest.raises(ValueError, match="incompatible with selected engine 'spike'"):
+        _run(request, lambda _: pytest.fail("authoring started with incompatible readback"))
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_live_conformance_selection_is_frozen_across_admission_and_resume(project, monkeypatch, enabled):
+    _external_substitutes(monkeypatch)
+    base = _request(project)
+    request = dataclasses.replace(base, options=dataclasses.replace(base.options, live_conformance_feedback=enabled))
+
+    def admitted(prepared):
+        prepared.verify_inputs()
+        assert prepared.environment["run_config"].get("live_conformance_feedback", False) is enabled
+        return 0
+
+    assert _run(request, admitted) == 0
+    resumed = dataclasses.replace(request, options=dataclasses.replace(request.options, resume=True))
+    assert _run(resumed, admitted) == 0
+    with pytest.raises(RuntimeError, match="feedback selection changed"):
+        changed = dataclasses.replace(
+            resumed, options=dataclasses.replace(resumed.options, live_conformance_feedback=not enabled)
+        )
+        _run(changed, lambda _: pytest.fail("resume changed live workflow feedback selection"))
+
+
+@pytest.mark.parametrize("scope", ["full", "capsules"])
+def test_validation_scope_is_admitted_and_cannot_change_on_resume(project, monkeypatch, scope):
+    _external_substitutes(monkeypatch)
+    base = _request(project)
+    request = dataclasses.replace(base, options=dataclasses.replace(base.options, validation_scope=scope))
+
+    def admitted(prepared):
+        prepared.verify_inputs()
+        assert prepared.environment["validation_scope"] == scope
+        return 0
+
+    assert _run(request, admitted) == 0
+    resumed = dataclasses.replace(request, options=dataclasses.replace(request.options, resume=True))
+    assert _run(resumed, admitted) == 0
+    changed = dataclasses.replace(resumed, options=dataclasses.replace(
+        resumed.options, validation_scope="capsules" if scope == "full" else "full",
+    ))
+    with pytest.raises(ValueError, match="validation scope differs"):
+        _run(changed, lambda _: pytest.fail("resume changed validation scope"))
+
+
 def test_public_object_build_selection_is_frozen_and_cannot_be_enabled_on_resume(project, monkeypatch):
     _external_substitutes(monkeypatch)
     selection = {"trusted_source_pins_sha256": "a" * 64, "clang": {"sha256": "b" * 64}}
@@ -515,12 +614,48 @@ def test_real_prepare_retains_views_and_post_staging_tool_observation(project, m
     assert not storage_lifecycle.blockers(observed[0].workspace.parent, require_terminal=True)
 
 
+def test_public_only_prepare_pins_selected_facts_without_a_private_spec(project, monkeypatch):
+    from hashlib import sha256
+
+    from merlin_experiments.phase1.feedback import public_owned_host_selection as selection
+
+    _external_substitutes(monkeypatch)
+    facts_dir = project / "facts"
+    facts_dir.mkdir()
+    facts = facts_dir / "facts.json"
+    facts.write_text(json.dumps({"inputs": {"target": "fixture"}, "facts": {}}))
+    manifest = project / "input_bundles/fixture/input_bundle_manifest.yaml"
+    bundle = yaml.safe_load(manifest.read_bytes())
+    bundle["selected_rtl_facts_file"] = str(facts)
+    bundle["allowed"].append({"path": str(facts_dir) + "/"})
+    manifest.write_text(yaml.safe_dump(bundle))
+    install = selection.install_for_session
+    observed = []
+
+    def observe(spec, declaration, **kwargs):
+        assert spec is None and declaration is None
+        frozen = kwargs["selected_facts"]
+        assert frozen != facts and frozen.read_bytes() == facts.read_bytes()
+        assert kwargs["selected_facts_sha256"] == sha256(frozen.read_bytes()).hexdigest()
+        observed.append(frozen)
+        return install(spec, declaration, **kwargs)
+
+    monkeypatch.setattr(selection, "install_for_session", observe)
+    assert _run(_request(project), lambda prepared: 0) == 0
+    assert len(observed) == 1
+
+
 def test_reviewed_semantic_diagnostic_is_private_and_resume_bound(project, monkeypatch):
     _external_substitutes(monkeypatch)
+    (project / "merlin/contract/claim_models.yaml").write_text("claim_models: [held_out_fixture]\n")
     from merlin_experiments.corpus import release
 
+    from merlin.runtime.backends import base
     from merlin.targetgen import capsule_runner
 
+    # The synthetic target declares no RoCC trace modes. Keep the real capsule
+    # discovery/readiness check while supplying its explicit fixture backend.
+    monkeypatch.setattr(base, "get_backend", lambda target: SimpleNamespace(rocc_semantics=None))
     monkeypatch.setattr(capsule_runner, "qa_loop_adapters", lambda *_args, **_kwargs: {"L0": object()})
     monkeypatch.setattr(capsule_runner, "oracle_adapters", lambda *_args, **_kwargs: {"L0": object()})
 
@@ -570,14 +705,69 @@ def test_treatment_gets_authored_bundle_and_resumes_without_restaging(project, m
         prepared.verify_inputs()
         assert prepared.environment["resolved_tools"] == ["treatment-after-stage"]
         task = (prepared.workspace / "TASK.md").read_text()
-        assert task == "Treatment task from " + str(project / "input_bundles/fixture")
-        observed.append(prepared.resuming)
+        assert task.startswith("Treatment task from " + str(project / "input_bundles/fixture"))
+        assert task.count("## Resource allocation and scheduling") == 1
+        assert (prepared.run_dir / "TASK.md").read_text() == task
+        observed.append((prepared.resuming, task))
         return 0
 
     assert _run(request, continuation) == 0
     resumed = dataclasses.replace(_request(project, resume=True), treatment=treatment)
     assert _run(resumed, continuation) == 0
-    assert observed == [False, True]
+    assert [resuming for resuming, _task in observed] == [False, True]
+    assert observed[0][1] == observed[1][1]
+
+
+def test_reference_guidance_reaches_fresh_author_and_resumes_as_sealed_prior(project, monkeypatch):
+    from merlin_experiments.phase1.brokers.selfcheck import _submission_digest
+    from merlin_experiments.phase1.feedback import reference_experiments as reference
+
+    from merlin.common.digest import sha256_file
+    from merlin.verify.lean_contract import document_digest
+
+    _external_substitutes(monkeypatch)
+    context = dict(compiler_sha256=_submission_digest(project / "unstarted"), source_sha256="a" * 64,
+                   environment_sha256="b" * 64, reference_sha256="c" * 64, visibility="public",
+                   evaluator=dict(identity="fixture-owner", sha256="d" * 64))
+    task = dict(task_id="schedule-consumer", kind="adapter_gap", status="blocked",
+                summary="Connect the scheduling dialect to actual emission", goals=["schedule.consumed"],
+                evidence=[dict(status="unknown", pointer="/gaps/0", value="RAW_EVIDENCE_CANARY")],
+                hypotheses=[dict(summary="A source/effect adapter may enable existing passes", basis="inferred")],
+                requests=[], acceptance=dict(mechanism_checks=["emitted_change"], held_out_required=True),
+                next_action=dict(route="adapter", action="construct_reconstruction_adapter", gaps=["binding.adapter"]))
+    packet = dict(schema=reference.PACKET_SCHEMA, context=context,
+                  execution_context_identity=document_digest(context), tasks=[task])
+    packet["identity"] = document_digest(packet)
+    packet_path = project / "reference-packet.json"
+    packet_path.write_text(json.dumps(packet))
+    selection = project / "reference-selection.json"
+    selection.write_text(json.dumps(dict(schema=reference.SCHEMA, current_context=context,
+        packet=dict(path=str(packet_path), sha256=sha256_file(packet_path)))))
+    sha = sha256_file(selection)
+    observed = []
+
+    def continuation(prepared):
+        prepared.verify_inputs()
+        path = prepared.workspace / "REFERENCE_EXPERIMENTS.json"
+        raw = path.read_bytes()
+        assert raw == (prepared.run_dir / path.name).read_bytes()
+        assert len(raw) <= 64 << 10 and b"RAW_EVIDENCE_CANARY" not in raw
+        assert "schedule.consumed" in raw.decode()
+        assert "REFERENCE_EXPERIMENTS.json" in (prepared.workspace / "TASK.md").read_text()
+        observed.append(raw)
+        (prepared.workspace / "submission/backend.py").write_text("# newly authored compiler\n")
+        guidance = reference.project(current_compiler_sha256=_submission_digest(prepared.workspace / "submission"))
+        assert guidance["status"] == "prior_reference_guidance"
+        assert guidance["required_selfchecks"] == []
+        return 0
+
+    with reference.invocation(selection, sha):
+        for resuming in (False, True):
+            request = _request(project, resume=resuming)
+            request = dataclasses.replace(request, options=dataclasses.replace(request.options,
+                reference_experiments=str(selection), reference_experiments_sha256=sha))
+            assert _run(request, continuation) == 0
+    assert observed[0] == observed[1]
 
 
 def test_admission_observation_order_remains_source_then_snapshot_task_receipt_probe(project, monkeypatch):
@@ -910,3 +1100,30 @@ with MonkeyPatch.context() as patch:
             timeout=40,
         )
         assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_guard_exhaustion_refuses_before_workspace_materialization(project, monkeypatch, capsys):
+    from merlin.targetgen.sandbox import preflight
+
+    _external_substitutes(monkeypatch)
+    record = {'selected': True, 'status': 'unavailable', 'reason': 'inotify_watch_limit',
+              'resource_errno': 28,
+              'fallback': 'Full independent snapshot payload and path verification remains required.'}
+    def refuse():
+        raise preflight.SnapshotGuardUnavailable(record)
+    monkeypatch.setattr(preflight, 'require_snapshot_guards', refuse)
+    assert _run(_request(project), lambda prepared: pytest.fail('guard exhaustion reached author')) == 4
+    assert not (project / 'out').exists()
+    assert 'inotify_watch_limit' in capsys.readouterr().err
+
+
+def test_guard_preflight_receipt_survives_successful_ordinary_preparation(project, monkeypatch):
+    from merlin.targetgen.sandbox import preflight
+
+    _external_substitutes(monkeypatch)
+    record = {'schema': 'merlin.snapshot_guard_preflight.v1', 'selected': True, 'status': 'ready',
+              'observed_at_ns': 12345, 'scope': 'tiny allocation/mutation probe only'}
+    monkeypatch.setattr(preflight, 'require_snapshot_guards', lambda: record)
+    assert _run(_request(project), lambda prepared: 0) == 0
+    paths = list(project.rglob('snapshot_guard_preflight.12345.json'))
+    assert len(paths) == 1 and json.loads(paths[0].read_bytes()) == record

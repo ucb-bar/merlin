@@ -1,0 +1,112 @@
+{
+  "after": {
+    "provenance_path": "workspace/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/model.json",
+    "sha256": "01971a26e8b367fe22361a294785be31969ec3473735025608d22399b0ac96b6"
+  },
+  "before": {
+    "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+    "sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869"
+  },
+  "changes": [
+    {
+      "after": "79eb1f1b511a1b9f2267532de252965712e65c91e95b91b6df46dab81fdc52b3",
+      "before": "bb07aaf1c2ae46e4810530e610981a936f4bab670882506c5d194b6596fce40b",
+      "path": "domain.feature_engine_sha256"
+    },
+    {
+      "after": [
+        "2dbd8445376cdda0df63abcf217c7a19f974d34a16ada21b549ed82fffd718eb",
+        "f34cda12a4e8eea631e92df32d7dda35fe5dedecc9a06b7932dc22376f9d78d9"
+      ],
+      "before": [
+        "2dbd8445376cdda0df63abcf217c7a19f974d34a16ada21b549ed82fffd718eb",
+        "4c4b4f26f5bf543da4bbc5707ed141c2b1fb14eba9320185ae93910e429a2a6b"
+      ],
+      "path": "libraries"
+    },
+    {
+      "after": {
+        "assumptions": "demand_only_immediate_replay_no_backpressure",
+        "beat_bytes": 16,
+        "beat_interval_cycles": 1,
+        "first_response_cycles": 6,
+        "line_visible_after_last_cycles": 1,
+        "lookup_response_cycles": 2,
+        "request_accept_cycles": 2,
+        "schema": "merlin.provisional_fetch_refill.v1"
+      },
+      "before": null,
+      "path": "memory.fetch_refill_timeline"
+    },
+    {
+      "after": 1,
+      "before": null,
+      "path": "target.assumptions.reader_a_ready_with_transaction_credit"
+    },
+    {
+      "after": 1,
+      "before": null,
+      "path": "target.assumptions.scratchpad_load_fifo_responses"
+    },
+    {
+      "after": 1,
+      "before": null,
+      "path": "target.assumptions.scratchpad_load_translation_hits"
+    },
+    {
+      "after": 1,
+      "before": null,
+      "path": "target.hardware.identity_scale_input_stages"
+    },
+    {
+      "after": 1,
+      "before": null,
+      "path": "target.hardware.identity_scale_output_stages"
+    },
+    {
+      "after": 3,
+      "before": null,
+      "path": "target.hardware.identity_scale_queue_entries"
+    },
+    {
+      "after": 16,
+      "before": null,
+      "path": "target.hardware.reader_beat_bytes"
+    },
+    {
+      "after": 1,
+      "before": null,
+      "path": "target.hardware.reader_beat_merger_stages"
+    },
+    {
+      "after": 1,
+      "before": null,
+      "path": "target.hardware.reader_tlb_queue_entries"
+    },
+    {
+      "after": 16,
+      "before": null,
+      "path": "target.hardware.reader_transaction_entries"
+    },
+    {
+      "after": 1,
+      "before": null,
+      "path": "target.hardware.reader_translation_queue_entries"
+    },
+    {
+      "after": 1,
+      "before": null,
+      "path": "target.hardware.scratchpad_singleported"
+    },
+    {
+      "after": 1,
+      "before": null,
+      "path": "target.scheduling.scratchpad_request_admission"
+    },
+    {
+      "after": 1,
+      "before": null,
+      "path": "target.scheduling.scratchpad_row_loads"
+    }
+  ]
+}

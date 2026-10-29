@@ -9,6 +9,24 @@ import pytest
 from merlin.targetgen.operation_accounting import admit_operation_row, build_operation_accounting
 
 
+def test_parsed_application_sources_are_capture_bound(tmp_path):
+    from merlin.targetgen.application_inventory import application_demand_inventory
+
+    raw = b"builtin.module { func.func @forward(%x: tensor<2xf32>) -> tensor<2xf32> { func.return %x : tensor<2xf32> } }"
+    capture = tmp_path / "model.mlir"
+    capture.write_bytes(raw)
+    inventory = application_demand_inventory(
+        {"sample": capture}, "test_device", detailed=True,
+        capability_contract={"name": "test_device", "compute_units": []}, include_graph=True,
+    )
+    report = build_operation_accounting(inventory, application_sources={"sample": raw})
+    assert report["applications"]["sample"]["capture_sha256"] == inventory["applications"]["sample"]["capture_sha256"]
+    with pytest.raises(ValueError, match="selected capture bytes"):
+        build_operation_accounting(inventory, application_sources={"sample": raw + b"\n"})
+    with pytest.raises(ValueError, match="exact selected application roster"):
+        build_operation_accounting(inventory, application_sources={})
+
+
 @pytest.mark.parametrize(
     "carrier, form, status",
     [

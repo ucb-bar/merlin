@@ -1,0 +1,347 @@
+{
+  "archives": [
+    {
+      "destination": "originals/models",
+      "format": "tar.zst",
+      "input_root": "input",
+      "members": [
+        {
+          "format": "elf",
+          "id": "jack-resnet50",
+          "member": "resnet50.elf",
+          "model": "resnet50",
+          "sha256": "97decefb6ff3852d01ce69d30f60d97f7f13bb6ce86815081899da66b87765fd"
+        },
+        {
+          "format": "elf",
+          "id": "jack-smolvla",
+          "member": "smolvla.elf",
+          "model": "smolvla",
+          "sha256": "e598857dd6001d177868d34dac598a333a4c393dc9202734e6587456b121196b"
+        },
+        {
+          "format": "elf",
+          "id": "jack-tinyllama",
+          "member": "tinyllama.elf",
+          "model": "tinyllama",
+          "sha256": "f7a70f3a9ad2791956a808ae5aa212043614307e8ed5d5ab22328af41534de65"
+        }
+      ],
+      "path": "three-model-elves-20261027.tar.zst",
+      "sha256": "08c580525b718b4086f568233e9a837d8e21095a698b65fd8e3ca203a9c1acf3"
+    },
+    {
+      "destination": "originals/supplied-source",
+      "format": "zip",
+      "input_root": "input",
+      "members": [
+        {
+          "format": "c_source",
+          "id": "supplied-exo-llm-c",
+          "member": "exo_llm.c",
+          "sha256": "d177c24a8099161e5388eee0e33ac534916bb87e96373f1b1d1f8dc9e1456109"
+        },
+        {
+          "format": "c_source",
+          "id": "supplied-exo-llm-h",
+          "member": "exo_llm.h",
+          "sha256": "793fcd421365cf0f0a2850f8007a4aa340bef86313d09710db269f8b8d55190f"
+        }
+      ],
+      "path": "exo-tinyllama-v2-314961814-rocc-source.zip",
+      "sha256": "61d5c4e6023cb50862e20e3d25c806713d2047f5a0b724ee547c3d1073f1f52a"
+    }
+  ],
+  "contract": {
+    "input_root": "contract",
+    "sha256": "0edff5c6f55668cf828caacd64054b1c6fc53ea9a3bccbc1c42266eac1764678"
+  },
+  "facts": {
+    "input_root": "facts",
+    "sha256": "b8ff28edc096392cec356f9fececdf17ba70cd3e4b02e6c5931aedc43bb117af"
+  },
+  "files": [
+    {
+      "destination": "originals/upstream-exo/apps/gemmini/src/exo/matmul.py",
+      "format": "python_schedule",
+      "id": "upstream-exo-matmul",
+      "input_root": "upstream",
+      "origin": {
+        "kind": "public_repository",
+        "path": "apps/gemmini/src/exo/matmul.py",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "url": "https://github.com/exo-lang/exo"
+      },
+      "path": "apps/gemmini/src/exo/matmul.py",
+      "sha256": "76e5f8163916ff6c411f402e99fcd37f150d6ff838c7b92ab1329d19de558347"
+    },
+    {
+      "destination": "originals/upstream-exo/apps/gemmini/src/exo/conv.py",
+      "format": "python_schedule",
+      "id": "upstream-exo-conv",
+      "input_root": "upstream",
+      "origin": {
+        "kind": "public_repository",
+        "path": "apps/gemmini/src/exo/conv.py",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "url": "https://github.com/exo-lang/exo"
+      },
+      "path": "apps/gemmini/src/exo/conv.py",
+      "sha256": "11fb72594bcc3a4c5f06e03b024e1e943e8b7be75f97b1f709d0f2ee79814c71"
+    },
+    {
+      "destination": "originals/upstream-exo/LICENSE.md",
+      "format": "license",
+      "id": "upstream-exo-LICENSE",
+      "input_root": "upstream",
+      "origin": {
+        "kind": "public_repository",
+        "path": "LICENSE.md",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "url": "https://github.com/exo-lang/exo"
+      },
+      "path": "LICENSE.md",
+      "sha256": "1d182f2d26230d4369b8062d97eb961920b418a96fff45570f662b304f9afe26"
+    },
+    {
+      "destination": "originals/upstream-exo/public-reference/generated/gemmini_lib.c",
+      "format": "c_source",
+      "id": "upstream-exo-gemmini_lib-c",
+      "input_root": "bundle",
+      "origin": {
+        "executed_in_this_task": false,
+        "kind": "upstream_derived_public_artifact",
+        "member": "public-reference/generated/gemmini_lib.c",
+        "original_bundle_manifest_sha256": "376225fe1afdb6df5bb24a87dd98d624426db6570c3c259b776e236c14e9487f",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "semantic_equivalence": "unknown",
+        "upstream_url": "https://github.com/exo-lang/exo"
+      },
+      "path": "public-reference/generated/gemmini_lib.c",
+      "sha256": "d8e458b7eab4477f89f211d42e3eaeaa1272b690dee95b6f85176885f147a88c"
+    },
+    {
+      "destination": "originals/upstream-exo/public-reference/generated/gemmini_lib.h",
+      "format": "c_header",
+      "id": "upstream-exo-gemmini_lib-h",
+      "input_root": "bundle",
+      "origin": {
+        "executed_in_this_task": false,
+        "kind": "upstream_derived_public_artifact",
+        "member": "public-reference/generated/gemmini_lib.h",
+        "original_bundle_manifest_sha256": "376225fe1afdb6df5bb24a87dd98d624426db6570c3c259b776e236c14e9487f",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "semantic_equivalence": "unknown",
+        "upstream_url": "https://github.com/exo-lang/exo"
+      },
+      "path": "public-reference/generated/gemmini_lib.h",
+      "sha256": "c0321ca4dca631cc9dac180408e0cd573cd432e365207041c3e8c01a5f9b4098"
+    },
+    {
+      "destination": "originals/upstream-exo/public-reference/elf/matmul_512x512x512.elf",
+      "format": "elf",
+      "id": "upstream-exo-matmul_512x512x512-elf",
+      "input_root": "bundle",
+      "origin": {
+        "executed_in_this_task": false,
+        "kind": "upstream_derived_public_artifact",
+        "member": "public-reference/elf/matmul_512x512x512.elf",
+        "original_bundle_manifest_sha256": "376225fe1afdb6df5bb24a87dd98d624426db6570c3c259b776e236c14e9487f",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "semantic_equivalence": "unknown",
+        "upstream_url": "https://github.com/exo-lang/exo"
+      },
+      "path": "public-reference/elf/matmul_512x512x512.elf",
+      "sha256": "92f44d811042a49b51616e864609be17251aa0a418facd1cabe2a57a7ae76771"
+    },
+    {
+      "destination": "originals/upstream-exo/public-reference/elf/conv_3_input58_valid.elf",
+      "format": "elf",
+      "id": "upstream-exo-conv_3_input58_valid-elf",
+      "input_root": "bundle",
+      "origin": {
+        "executed_in_this_task": false,
+        "kind": "upstream_derived_public_artifact",
+        "member": "public-reference/elf/conv_3_input58_valid.elf",
+        "original_bundle_manifest_sha256": "376225fe1afdb6df5bb24a87dd98d624426db6570c3c259b776e236c14e9487f",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "semantic_equivalence": "unknown",
+        "upstream_url": "https://github.com/exo-lang/exo"
+      },
+      "path": "public-reference/elf/conv_3_input58_valid.elf",
+      "sha256": "bbd0f851063a1e09446fbfc7770a1095d1dcfc6e21e946c776d101963040efad"
+    },
+    {
+      "destination": "originals/upstream-exo/public-reference/headers/gemmini.h",
+      "format": "c_header",
+      "id": "upstream-exo-gemmini-h",
+      "input_root": "bundle",
+      "origin": {
+        "executed_in_this_task": false,
+        "kind": "upstream_derived_public_artifact",
+        "member": "public-reference/headers/gemmini.h",
+        "original_bundle_manifest_sha256": "376225fe1afdb6df5bb24a87dd98d624426db6570c3c259b776e236c14e9487f",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "semantic_equivalence": "unknown",
+        "upstream_url": "https://github.com/exo-lang/exo"
+      },
+      "path": "public-reference/headers/gemmini.h",
+      "sha256": "06988403de641bbf22fea84e76debd863ab3185498f2b48ceb4b475d4af0914e"
+    },
+    {
+      "destination": "originals/upstream-exo/public-reference/headers/gemmini_params.h",
+      "format": "c_header",
+      "id": "upstream-exo-gemmini_params-h",
+      "input_root": "bundle",
+      "origin": {
+        "executed_in_this_task": false,
+        "kind": "upstream_derived_public_artifact",
+        "member": "public-reference/headers/gemmini_params.h",
+        "original_bundle_manifest_sha256": "376225fe1afdb6df5bb24a87dd98d624426db6570c3c259b776e236c14e9487f",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "semantic_equivalence": "unknown",
+        "upstream_url": "https://github.com/exo-lang/exo"
+      },
+      "path": "public-reference/headers/gemmini_params.h",
+      "sha256": "d6db18f8edbfeb854780286d8c2afb81ae3b9103224522478a9047d5550272e5"
+    },
+    {
+      "destination": "originals/upstream-exo/public-reference/platform/gemm_malloc.c",
+      "format": "c_source",
+      "id": "upstream-exo-gemm_malloc-c",
+      "input_root": "bundle",
+      "origin": {
+        "executed_in_this_task": false,
+        "kind": "upstream_derived_public_artifact",
+        "member": "public-reference/platform/gemm_malloc.c",
+        "original_bundle_manifest_sha256": "376225fe1afdb6df5bb24a87dd98d624426db6570c3c259b776e236c14e9487f",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "semantic_equivalence": "unknown",
+        "upstream_url": "https://github.com/exo-lang/exo"
+      },
+      "path": "public-reference/platform/gemm_malloc.c",
+      "sha256": "5c39bf34f6a0f21f8a0433fce382e884b8d4829178af26487694b518400a9f29"
+    },
+    {
+      "destination": "originals/upstream-exo/public-reference/platform/gemm_malloc.h",
+      "format": "c_header",
+      "id": "upstream-exo-gemm_malloc-h",
+      "input_root": "bundle",
+      "origin": {
+        "executed_in_this_task": false,
+        "kind": "upstream_derived_public_artifact",
+        "member": "public-reference/platform/gemm_malloc.h",
+        "original_bundle_manifest_sha256": "376225fe1afdb6df5bb24a87dd98d624426db6570c3c259b776e236c14e9487f",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "semantic_equivalence": "unknown",
+        "upstream_url": "https://github.com/exo-lang/exo"
+      },
+      "path": "public-reference/platform/gemm_malloc.h",
+      "sha256": "efb76a29ce5f2a90b95cb133149fb9ac87f491c2a847998406ffff6b7f48a01f"
+    },
+    {
+      "destination": "originals/upstream-exo/public-reference/platform/gemm_acc_malloc.c",
+      "format": "c_source",
+      "id": "upstream-exo-gemm_acc_malloc-c",
+      "input_root": "bundle",
+      "origin": {
+        "executed_in_this_task": false,
+        "kind": "upstream_derived_public_artifact",
+        "member": "public-reference/platform/gemm_acc_malloc.c",
+        "original_bundle_manifest_sha256": "376225fe1afdb6df5bb24a87dd98d624426db6570c3c259b776e236c14e9487f",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "semantic_equivalence": "unknown",
+        "upstream_url": "https://github.com/exo-lang/exo"
+      },
+      "path": "public-reference/platform/gemm_acc_malloc.c",
+      "sha256": "ae1131ccaa4ab215b974b2bd898f0908cbebe7a2d20080d19c9ba67c21433cab"
+    },
+    {
+      "destination": "originals/upstream-exo/public-reference/platform/gemm_acc_malloc.h",
+      "format": "c_header",
+      "id": "upstream-exo-gemm_acc_malloc-h",
+      "input_root": "bundle",
+      "origin": {
+        "executed_in_this_task": false,
+        "kind": "upstream_derived_public_artifact",
+        "member": "public-reference/platform/gemm_acc_malloc.h",
+        "original_bundle_manifest_sha256": "376225fe1afdb6df5bb24a87dd98d624426db6570c3c259b776e236c14e9487f",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "semantic_equivalence": "unknown",
+        "upstream_url": "https://github.com/exo-lang/exo"
+      },
+      "path": "public-reference/platform/gemm_acc_malloc.h",
+      "sha256": "e314b0a86f410a7d99d1cec3cbbc101e3f731cc2a8fe9ec6ad80a3467eaebd0f"
+    },
+    {
+      "destination": "originals/upstream-exo/licenses/gemmini-rocc-tests-LICENSE.txt",
+      "format": "license",
+      "id": "upstream-exo-gemmini-rocc-tests-LICENSE-txt",
+      "input_root": "bundle",
+      "origin": {
+        "executed_in_this_task": false,
+        "kind": "upstream_derived_public_artifact",
+        "member": "licenses/gemmini-rocc-tests-LICENSE.txt",
+        "original_bundle_manifest_sha256": "376225fe1afdb6df5bb24a87dd98d624426db6570c3c259b776e236c14e9487f",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "semantic_equivalence": "unknown",
+        "upstream_url": "https://github.com/exo-lang/exo"
+      },
+      "path": "licenses/gemmini-rocc-tests-LICENSE.txt",
+      "sha256": "c3b204bde93ad5054b0797fdbbb23a36e68d25672dc2d5ed39c3f69299457fac"
+    },
+    {
+      "destination": "originals/upstream-exo/licenses/riscv-test-env-LICENSE.txt",
+      "format": "license",
+      "id": "upstream-exo-riscv-test-env-LICENSE-txt",
+      "input_root": "bundle",
+      "origin": {
+        "executed_in_this_task": false,
+        "kind": "upstream_derived_public_artifact",
+        "member": "licenses/riscv-test-env-LICENSE.txt",
+        "original_bundle_manifest_sha256": "376225fe1afdb6df5bb24a87dd98d624426db6570c3c259b776e236c14e9487f",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "semantic_equivalence": "unknown",
+        "upstream_url": "https://github.com/exo-lang/exo"
+      },
+      "path": "licenses/riscv-test-env-LICENSE.txt",
+      "sha256": "43b7309213293b4323d65301a90e05472579abcd51feb260a850354bcb49ff8f"
+    },
+    {
+      "destination": "originals/upstream-exo/licenses/riscv-tests-LICENSE.txt",
+      "format": "license",
+      "id": "upstream-exo-riscv-tests-LICENSE-txt",
+      "input_root": "bundle",
+      "origin": {
+        "executed_in_this_task": false,
+        "kind": "upstream_derived_public_artifact",
+        "member": "licenses/riscv-tests-LICENSE.txt",
+        "original_bundle_manifest_sha256": "376225fe1afdb6df5bb24a87dd98d624426db6570c3c259b776e236c14e9487f",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "semantic_equivalence": "unknown",
+        "upstream_url": "https://github.com/exo-lang/exo"
+      },
+      "path": "licenses/riscv-tests-LICENSE.txt",
+      "sha256": "43b7309213293b4323d65301a90e05472579abcd51feb260a850354bcb49ff8f"
+    },
+    {
+      "destination": "originals/upstream-exo/licenses/rocc-software-LICENSE.txt",
+      "format": "license",
+      "id": "upstream-exo-rocc-software-LICENSE-txt",
+      "input_root": "bundle",
+      "origin": {
+        "executed_in_this_task": false,
+        "kind": "upstream_derived_public_artifact",
+        "member": "licenses/rocc-software-LICENSE.txt",
+        "original_bundle_manifest_sha256": "376225fe1afdb6df5bb24a87dd98d624426db6570c3c259b776e236c14e9487f",
+        "revision": "defe17283d15553ca9d6ad70b2e9f4c22ff36ce2",
+        "semantic_equivalence": "unknown",
+        "upstream_url": "https://github.com/exo-lang/exo"
+      },
+      "path": "licenses/rocc-software-LICENSE.txt",
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+    }
+  ],
+  "schema": "merlin.reference_database_inputs.v1",
+  "target": "gemmini"
+}

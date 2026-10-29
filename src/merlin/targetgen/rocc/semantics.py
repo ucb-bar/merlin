@@ -1,0 +1,661 @@
+"""Generic RoCC operand semantics, driven entirely by a target's RTL facts and contract.
+
+This is the host-side ``rocc_semantics`` capability :mod:`merlin.targetgen.rocc.decode` requires
+(``isa_constants``, ``decode_instruction``, ``instruction_funct``), written once for every RoCC
+accelerator instead of once per support package. Nothing here names an accelerator:
+
+* the funct-code -> class vocabulary is the contract's ``encoding.semantic_class`` (and the CONFIG
+  refinement ``encoding.config_subtype``), each code range-checked against the RTL-derived field width;
+* the custom opcode, funct3 and the systolic DIM are RTL facts (``funct_decode_table``,
+  ``arrays[mesh]``);
+* every operand field's bit position and width is an RTL fact: the ``register_bundle_layouts``
+  interface CIRCT extracted from the target's own Scala Bundles;
+* which bundle field each decoded value comes from, and how it is interpreted (raw integer, float32
+  bits, a local-address flag, an all-ones sentinel), is the contract's ``rocc_operand_roles`` block —
+  the human-reviewed ABI annotation the RTL cannot ground on its own.
+
+A field whose bundle or role is not declared is left UNKNOWN (omitted or ``None``, per the class's
+``unresolved`` policy); no field is ever decoded at an assumed offset.
+
+``rtl_checks`` (an attribute of this module) is :mod:`merlin.targetgen.rtl_checks_generic`, the
+structural-check capability :func:`merlin.targetgen.rtl_checks.selected_checks` resolves as
+``rocc_semantics.rtl_checks``.
+"""
+
+from __future__ import annotations
+
+import copy
+import struct
+from typing import Any
+
+from merlin.common.facts_view import interface as _facts_interface
+
+#: Width of the R-type ``funct7`` field that carries a RoCC instruction's identity. This is the RISC-V
+#: RoCC transport itself (``.insn r opcode, funct3, funct7, rd, rs1, rs2``), not a property of any
+#: accelerator; it is used only when the facts record carries no decoder-observed width of its own.
+ROCC_FUNCT7_WIDTH = 7
+
+#: Contract keys this module reads.
+OPERAND_ROLES_KEY = "rocc_operand_roles"
+
+_OPERANDS = ("rs1", "rs2")
+
+
+class OperandRolesError(ValueError):
+    """The contract's ``rocc_operand_roles`` block is malformed."""
+
+
+# --------------------------------------------------------------------------------------------- inputs
+def _load_manifest(target: str):
+    # Looked up through the module attribute at call time, so a caller may substitute the manifest.
+    from merlin.targetgen import target_experiment
+
+    return target_experiment.load_capability_manifest(target)
+
+
+def _load_facts(target: str) -> dict:
+    from merlin.targetgen.rtl import facts
+
+    return facts.load_facts(target)
+
+
+def _f32_bits(value: float) -> int:
+    return struct.unpack("<I", struct.pack("<f", float(value)))[0]
+
+
+def _f32_from_bits(bits: int) -> float:
+    return struct.unpack("<f", struct.pack("<I", bits & 0xFFFFFFFF))[0]
+
+
+def bundle_layouts(facts: dict) -> dict:
+    """``{bundle name: layout}`` from the facts' ``register_bundle_layouts`` interface ({} if none)."""
+    body = facts.get("facts", facts) if isinstance(facts, dict) else {}
+    block = _facts_interface(body, "register_bundle_layouts") or {}
+    bundles = block.get("bundles")
+    return bundles if isinstance(bundles, dict) else {}
+
+
+def field_slot(layout: dict | None, field: str) -> tuple[int, int] | None:
+    """``(offset, width)`` of ``field`` in a CIRCT-extracted bundle layout, or ``None`` (UNKNOWN).
+
+    A field whose RTL width is a generator parameter carries the software ABI's ``slot_width`` (the
+    bits the operand reserves for it); that slot is what an encoder packs and so what a decoder reads.
+    """
+    if not isinstance(layout, dict):
+        return None
+    spec = (layout.get("fields") or {}).get(field)
+    if not isinstance(spec, dict):
+        return None
+    offset = spec.get("offset")
+    width = spec.get("width")
+    if not isinstance(width, int):
+        width = spec.get("slot_width")
+    if type(offset) is int and type(width) is int and offset >= 0 and width > 0:
+        return offset, width
+    return None
+
+
+def _numeric_code_map(declared: object, *, field: str, width: object) -> dict[int, str]:
+    """Import a code-indexed contract map across YAML/JSON boundaries.
+
+    JSON requires object keys to be strings, whereas authored YAML uses integer keys. Accept the two
+    unambiguous representations, then use the RTL-derived field width to reject codes the instruction
+    cannot carry. Malformed or colliding spellings never become aliases, and labels are unique because
+    :func:`instruction_funct` inverts these maps.
+    """
+    if type(width) is not int or width <= 0:
+        raise ValueError(f"{field} has no positive RTL-derived code width")
+    if not isinstance(declared, dict) or not declared:
+        raise ValueError(f"{field} must be a nonempty code-to-class mapping")
+    normalized: dict[int, str] = {}
+    for source, label in declared.items():
+        if type(source) is int:
+            code = source
+        elif type(source) is str:
+            try:
+                code = int(source)
+            except ValueError as exc:
+                raise ValueError(f"{field} has a nonnumeric code {source!r}") from exc
+            if str(code) != source:
+                raise ValueError(f"{field} has a noncanonical decimal code {source!r}")
+        else:
+            raise ValueError(f"{field} has a noninteger code {source!r}")
+        if code < 0 or code >= (1 << width):
+            raise ValueError(f"{field} code {code} exceeds its {width}-bit field")
+        if code in normalized:
+            raise ValueError(f"{field} has colliding spellings for code {code}")
+        if not isinstance(label, str) or not label:
+            raise ValueError(f"{field} code {code} has no class label")
+        normalized[code] = label
+    if len(set(normalized.values())) != len(normalized):
+        raise ValueError(f"{field} has duplicate class labels")
+    return normalized
+
+
+# ------------------------------------------------------------------------------- operand-role program
+def operand_roles(contract: dict | None) -> dict:
+    """The contract's ``rocc_operand_roles`` block, or ``{}`` when the target declares none."""
+    block = (contract or {}).get(OPERAND_ROLES_KEY)
+    if block is None:
+        return {}
+    if not isinstance(block, dict):
+        raise OperandRolesError(f"{OPERAND_ROLES_KEY} must be a mapping")
+    return block
+
+
+def local_address_flags(roles: dict, addr_len: object) -> dict[str, int]:
+    """``{flag role: bit mask}`` for the local-address flag bits, counted down from the address MSB."""
+    flags = roles.get("local_address_flags") or {}
+    if not flags:
+        return {}
+    if type(addr_len) is not int or addr_len <= 0:
+        raise OperandRolesError("local_address_flags need a positive encoding.addr_len")
+    out: dict[str, int] = {}
+    for name, spec in flags.items():
+        offset = (spec or {}).get("msb_offset") if isinstance(spec, dict) else None
+        if type(offset) is not int or not 0 <= offset < addr_len:
+            raise OperandRolesError(f"local_address_flags.{name} needs an msb_offset inside addr_len")
+        out[str(name)] = 1 << (addr_len - 1 - offset)
+    return out
+
+
+def _named_constants(roles: dict, flags: dict[str, int]) -> dict[str, int]:
+    """``rocc_operand_roles.isa_constants``: names composed from flags or a float32 scalar."""
+    out: dict[str, int] = {}
+    for name, spec in (roles.get("isa_constants") or {}).items():
+        if not isinstance(spec, dict):
+            raise OperandRolesError(f"isa_constants.{name} must be a mapping")
+        if "flags" in spec:
+            value = 0
+            for flag in spec["flags"] or ():
+                if flag not in flags:
+                    raise OperandRolesError(f"isa_constants.{name} names undeclared flag {flag!r}")
+                value |= flags[flag]
+            out[str(name)] = value
+        elif "f32_bits" in spec:
+            out[str(name)] = _f32_bits(spec["f32_bits"])
+        else:
+            raise OperandRolesError(f"isa_constants.{name} declares neither flags nor f32_bits")
+    return out
+
+
+def encoding_fields(declared: dict, *, target: str | None = None, contract: dict | None = None) -> dict:
+    """Complete ``declared`` (a contract ``encoding`` block) with ``readout_bits`` derived from the
+    contract's local-address flags, without mutating it. Returns it unchanged when the target's
+    contract (``contract`` or the one ``target`` resolves) declares no ``readout_bits`` composition."""
+    encoding = dict(declared)
+    if "readout_bits" in encoding or encoding.get("addr_len") is None:
+        return encoding
+    if contract is None:
+        if target is None:
+            return encoding
+        contract = _load_manifest(target).contract
+    roles = operand_roles(contract)
+    names = roles.get("readout_bits") or {}
+    if not names:
+        return encoding
+    constants = _named_constants(roles, local_address_flags(roles, int(encoding["addr_len"])))
+    missing = [v for v in names.values() if v not in constants]
+    if missing:
+        raise OperandRolesError(f"readout_bits names undeclared isa_constants {missing}")
+    encoding["readout_bits"] = {str(k): constants[v] for k, v in names.items()}
+    return encoding
+
+
+def derived_readout_bits(addr_len: int, *, target: str | None = None, contract: dict | None = None) -> dict[str, int]:
+    """``encoding.readout_bits`` for an ``addr_len``-bit local address, composed from the contract.
+
+    The values are the contract's ``rocc_operand_roles.readout_bits`` names evaluated over its declared
+    local-address flags (bit offsets from the address MSB) and float32 scalars, for the given width.
+    Nothing is assumed about which flags exist: a contract (``contract``, or the one ``target``
+    resolves) that declares no ``readout_bits`` composition yields ``{}``.
+    """
+    if type(addr_len) is not int or addr_len <= 0:
+        raise OperandRolesError(f"addr_len must be a positive integer, got {addr_len!r}")
+    if contract is None:
+        if target is None:
+            raise OperandRolesError("derived_readout_bits needs the target (or its contract) whose roles compose it")
+        contract = _load_manifest(target).contract
+    completed = encoding_fields({"addr_len": addr_len}, contract=contract)
+    return dict(completed.get("readout_bits") or {})
+
+
+_INTERPRETATIONS = {"int", "operand", "raw", "f32", "flag", "flag_choice", "all_ones", "equals", "const"}
+
+
+def _compile_field(cls: str, spec: dict, layouts: dict, flags: dict[str, int]) -> list[dict]:
+    """One declared field -> zero or more executable steps with RTL-resolved offsets/widths."""
+    if not isinstance(spec, dict):
+        raise OperandRolesError(f"{cls}: a field entry must be a mapping")
+    if "names" in spec:  # every listed bundle field the RTL layout carries, each as a plain int
+        bundle = spec.get("bundle")
+        steps = []
+        for name in spec["names"] or ():
+            slot = field_slot(layouts.get(bundle), str(name))
+            if slot is not None:
+                steps.append(
+                    {
+                        "name": str(name),
+                        "as": "int",
+                        "operand": spec.get("operand"),
+                        "offset": slot[0],
+                        "width": slot[1],
+                        "omit_unresolved": True,
+                    }
+                )
+        return steps
+    name = spec.get("name")
+    if not isinstance(name, str) or not name:
+        raise OperandRolesError(f"{cls}: a field entry has no name")
+    if "all" in spec:
+        return [{"name": name, "as": "all_equals", "predicates": copy.deepcopy(spec["all"]),
+                 **({"set": spec["set"], "clear": spec["clear"]} if "set" in spec else {})}]
+    if "const" in spec:
+        return [{"name": name, "as": "const", "value": spec["const"]}]
+    if "from" in spec:
+        return [{"name": name, "as": "equals", "from": str(spec["from"]), "value": spec.get("equals")}]
+    kind = spec.get("as", "int")
+    if kind not in _INTERPRETATIONS:
+        raise OperandRolesError(f"{cls}.{name}: unknown interpretation {kind!r}")
+    operand = spec.get("operand")
+    if operand not in _OPERANDS:
+        raise OperandRolesError(f"{cls}.{name}: operand must be one of {_OPERANDS}")
+    step: dict[str, Any] = {"name": name, "as": kind, "operand": operand}
+    if kind in ("operand", "raw"):
+        return [step]
+    slot = field_slot(layouts.get(spec.get("bundle")), str(spec.get("field")))
+    if slot is None:
+        # The RTL layout does not carry this field: the value stays UNKNOWN, never an assumed offset.
+        step.update(offset=None, width=None)
+    else:
+        step.update(offset=slot[0], width=slot[1])
+    if kind in ("flag", "flag_choice"):
+        flag = spec.get("flag")
+        if flag not in flags:
+            raise OperandRolesError(f"{cls}.{name}: names undeclared local-address flag {flag!r}")
+        step["mask"] = flags[flag]
+        if kind == "flag_choice":
+            step["set"], step["clear"] = spec.get("set"), spec.get("clear")
+    return [step]
+
+
+def _compile_classes(roles: dict, layouts: dict, flags: dict[str, int]) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for cls, spec in (roles.get("classes") or {}).items():
+        if not isinstance(spec, dict):
+            raise OperandRolesError(f"classes.{cls} must be a mapping")
+        policy = spec.get("unresolved", "omit")
+        if policy not in ("omit", "null"):
+            raise OperandRolesError(f"classes.{cls}.unresolved must be omit|null")
+        steps: list[dict] = []
+        for field in spec.get("fields") or ():
+            steps.extend(_compile_field(str(cls), field, layouts, flags))
+        out[str(cls)] = {"unresolved": policy, "fields": steps}
+    return out
+
+
+# ------------------------------------------------------------------------------------- ISA constants
+def isa_constants(target: str) -> dict:
+    """Derive the RoCC ISA constants for ``target`` from its RTL facts + contract. No target is baked
+    in — the caller passes the target it is grading; the decoder holds no default."""
+    manifest = _load_manifest(target)
+    enc = dict(manifest.encoding)
+    roles = operand_roles(manifest.contract)
+    facts = _load_facts(target)["facts"]
+    mesh = next((a for a in facts.get("arrays", []) if a.get("name") == "mesh"), {})
+    fdt = _facts_interface(facts, "funct_decode_table") or {}
+    layouts = bundle_layouts(facts)
+
+    width = fdt.get("width") if type(fdt.get("width")) is int else ROCC_FUNCT7_WIDTH
+    funct_class = _numeric_code_map(enc.get("semantic_class"), field="semantic_class", width=width)
+
+    config = roles.get("config") or {}
+    selector = config.get("selector") or {}
+    selector_slot = field_slot(layouts.get(selector.get("bundle")), str(selector.get("field")))
+    config_subtype: dict[int, str] = {}
+    if enc.get("config_subtype") is not None or config:
+        config_subtype = _numeric_code_map(
+            enc.get("config_subtype"), field="config_subtype", width=selector_slot[1] if selector_slot else None
+        )
+
+    flags = local_address_flags(roles, enc.get("addr_len"))
+    out: dict[str, Any] = {"DIM": mesh.get("rows")}
+    out.update(_named_constants(roles, flags))
+    out.update(
+        {
+            "CUSTOM_OPCODE": fdt.get("custom_opcode"),
+            "FUNCT3": fdt.get("funct3"),
+            "FUNCT_CLASS": funct_class,
+            "CONFIG_SUBTYPE": config_subtype,
+        }
+    )
+    for key, bundle in (config.get("publish_layouts") or {}).items():
+        out[str(key)] = layouts.get(bundle)
+
+    sentinel = roles.get("retain_sentinel")
+    if isinstance(sentinel, dict) and sentinel.get("value") == "all_ones":
+        slot = field_slot(layouts.get(sentinel.get("bundle")), str(sentinel.get("field")))
+        if slot is not None:
+            out["RETAIN_SENTINEL"] = (1 << slot[1]) - 1
+
+    # The executable decode program: which bundle slot each decoded field reads, resolved against THIS
+    # facts record. Carried in the ISA dict so decode_instruction needs no second lookup.
+    out["CONFIG_CLASS"] = config.get("class")
+    out["CONFIG_SELECTOR"] = (
+        {"operand": selector.get("operand", "rs1"), "offset": selector_slot[0], "width": selector_slot[1]}
+        if selector_slot
+        else None
+    )
+    out["OPERAND_FIELDS"] = _compile_classes(roles, layouts, flags)
+    return out
+
+
+# --------------------------------------------------------------------------------------------- decode
+def _extract(raw: int | None, step: dict) -> int | None:
+    if raw is None or step.get("offset") is None:
+        return None
+    return (raw >> step["offset"]) & ((1 << step["width"]) - 1)
+
+
+def _known_bits(operand, *, word_bits=None):
+    known = operand.get("known_bits")
+    if known is None:
+        return None
+    if (operand.get("kind") != "unknown" or operand.get("raw") is not None
+            or type(known) is not dict or set(known) != {"mask", "value", "width"}):
+        raise ValueError("partial register observation requires explicit unknown-word bit identities")
+    width, mask, value = known["width"], known["mask"], known["value"]
+    if (type(width) is not int or not 0 < width <= 256 or (word_bits is not None and width != word_bits)
+            or type(mask) is not int or type(value) is not int or not 0 <= mask < (1 << width)
+            or not 0 <= value < (1 << width) or value & ~mask):
+        raise ValueError("partial register observation exceeds its proved width or mask")
+    return width, mask, value
+
+
+def _extract_operand(operand, step, *, flag_mask=None):
+    raw = operand.get("raw") if operand.get("kind") == "const" else None
+    if raw is not None:
+        return _extract(raw, step)
+    known = _known_bits(operand)
+    if known is None or step.get("offset") is None:
+        return None
+    width, mask, value = known
+    offset, field_width = step["offset"], step["width"]
+    if offset + field_width > width:
+        return None
+    needed = (1 << field_width) - 1
+    if flag_mask is not None:
+        if type(flag_mask) is not int or flag_mask <= 0 or flag_mask & ~needed:
+            return None
+        needed = flag_mask
+    required = needed << offset
+    if mask & required != required:
+        return None
+    return (value >> offset) & needed
+
+
+def _decode_fields(program: dict, rs1: dict, rs2: dict) -> dict:
+    ops = {"rs1": rs1, "rs2": rs2}
+    raws = {k: (v.get("raw") if v.get("kind") == "const" else None) for k, v in ops.items()}
+    keep_none = program["unresolved"] == "null"
+    dec: dict = {}
+    for step in program["fields"]:
+        kind, name = step["as"], step["name"]
+        if kind == "const":
+            dec[name] = step["value"]
+            continue
+        if kind == "operand":
+            dec[name] = dict(ops[step["operand"]])
+            continue
+        if kind == "all_equals":
+            values = [None if dec.get(predicate["from"]) is None else
+                      dec[predicate["from"]] == predicate["equals"] for predicate in step["predicates"]]
+            value = False if False in values else None if None in values else True
+            if value is not None and "set" in step:
+                value = step["set"] if value else step["clear"]
+        elif kind == "equals":
+            src = dec.get(step["from"])
+            value = (src == step["value"]) if src is not None else None
+        elif kind == "raw":
+            value = raws[step["operand"]]
+        else:
+            bits = _extract_operand(ops[step["operand"]], step,
+                                    flag_mask=step.get("mask") if kind in ("flag", "flag_choice") else None)
+            if bits is None:
+                value = None
+            elif kind == "int":
+                value = bits
+            elif kind == "f32":
+                value = _f32_from_bits(bits)
+            elif kind == "flag":
+                value = bool(bits & step["mask"])
+            elif kind == "flag_choice":
+                value = step["set"] if (bits & step["mask"]) else step["clear"]
+            else:  # all_ones
+                value = bits == (1 << step["width"]) - 1
+        if value is not None or (keep_none and not step.get("omit_unresolved")):
+            dec[name] = value
+    return dec
+
+
+def decode_instruction(funct: int, rs1: dict, rs2: dict, isa: dict) -> tuple[str, dict]:
+    """Return (class, decoded-fields) for one ``.insn`` given resolved operands and the target ``isa``."""
+    base = isa["FUNCT_CLASS"].get(funct, "UNKNOWN")
+    programs = isa.get("OPERAND_FIELDS") or {}
+    if base != "UNKNOWN" and base == isa.get("CONFIG_CLASS"):
+        selector = isa.get("CONFIG_SELECTOR")
+        operand = {"rs1": rs1, "rs2": rs2}.get((selector or {}).get("operand"), rs1)
+        code = _extract_operand(operand, selector) if selector else None
+        sub = isa["CONFIG_SUBTYPE"].get(code) if code is not None else None
+        if sub is None:
+            return "UNKNOWN", {}
+        program = programs.get(sub)
+        return sub, (_decode_fields(program, rs1, rs2) if program else {})
+    program = programs.get(base)
+    if program is None:
+        return base, {}
+    return base, _decode_fields(program, rs1, rs2)
+
+
+def _class_to_funct(isa: dict) -> dict[str, int]:
+    """``class-name -> func7`` from FUNCT_CLASS, plus the CONFIG subtypes (which share the CONFIG funct)."""
+    inv = {v: k for k, v in isa["FUNCT_CLASS"].items()}
+    config = inv.get(isa.get("CONFIG_CLASS")) if isa.get("CONFIG_CLASS") else None
+    if config is not None:
+        for sub in isa["CONFIG_SUBTYPE"].values():
+            inv[sub] = config
+    return inv
+
+
+def instruction_funct(name: str, rs1: int, isa: dict) -> int:
+    """The funct7 for class ``name``; a CONFIG subtype also requires ``rs1`` to select it."""
+    classes = _class_to_funct(isa)
+    funct = classes.get(name)
+    if funct is None:
+        raise ValueError(f"unknown instruction class {name!r}; legal classes: {sorted(classes)}")
+    want = next((bits for bits, sub in isa["CONFIG_SUBTYPE"].items() if sub == name), None)
+    if want is not None:
+        selector = isa.get("CONFIG_SELECTOR")
+        if not selector:
+            raise ValueError(f"{name} is a CONFIG subtype but the RTL facts carry no selector field layout")
+        mask = (1 << selector["width"]) - 1
+        got = (rs1 >> selector["offset"]) & mask
+        expr = f"(rs1 & {mask:#x})" if selector["offset"] == 0 else f"((rs1 >> {selector['offset']}) & {mask:#x})"
+        if got != want:
+            raise ValueError(
+                f"{name} requires {expr} == {want}; got rs1={rs1} ({expr} == {got}). "
+                f"Set the low {selector['width']} bits of rs1 to select the subtype."
+                if selector["offset"] == 0
+                else f"{name} requires {expr} == {want}; got rs1={rs1} ({expr} == {got})."
+            )
+    return funct
+
+
+def __getattr__(name: str):
+    if name == "rtl_checks":
+        from merlin.targetgen import rtl_checks_generic
+
+        return rtl_checks_generic
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _interface(facts, name):
+    body = facts.get("facts", {})
+    interfaces = body.get("interfaces", []) if type(body) is dict else []
+    if type(interfaces) is not list:
+        raise ValueError("RTL interfaces must be a list")
+    matches = [item for item in interfaces if type(item) is dict and item.get("name") == name]
+    if len(matches) != 1:
+        raise ValueError("selected RTL interface is missing or ambiguous")
+    return matches[0]
+
+
+def _uint(value, width):
+    return type(value) is int and 0 <= value < (1 << width)
+
+
+class BoundSemantics:
+    """A detached data selection, with no provider imports or file generation."""
+
+    def __init__(self, *, target, contract, facts):
+        if type(target) is not str or not target or type(contract) is not dict or contract.get("name") != target:
+            raise ValueError("semantics require the selected named contract")
+        if type(facts) is not dict:
+            raise ValueError("semantics require selected RTL facts")
+        self._target = target
+        self._facts = copy.deepcopy(facts)
+        table = _interface(facts, "funct_decode_table")
+        codes = table.get("legal_funct")
+        if type(codes) is not list or not codes or any(not _uint(code, 7) for code in codes):
+            raise ValueError("RoCC instruction codes must be explicit funct7 values")
+        if len(set(codes)) != len(codes):
+            raise ValueError("RoCC instruction codes must be unique")
+        if not _uint(table.get("custom_opcode"), 7) or not _uint(table.get("funct3"), 3):
+            raise ValueError("RoCC transport encoding must be explicit in facts")
+        roles = contract.get("rocc_operand_roles")
+        if type(roles) is not dict or set(roles) != {"version", "word_bits", "instructions"}:
+            raise ValueError("RoCC operand roles require a complete versioned declaration")
+        if (
+            type(roles["version"]) is not int
+            or roles["version"] != 1
+            or type(roles["word_bits"]) is not int
+            or roles["word_bits"] not in (32, 64)
+        ):
+            raise ValueError("unsupported operand declaration version or register width")
+        self._width = roles["word_bits"]
+        instructions = roles["instructions"]
+        if type(instructions) is not list or not instructions or len(instructions) > 128:
+            raise ValueError("operand roles require a bounded instruction roster")
+        self._instructions = {}
+        layouts = None
+        for instruction in instructions:
+            if type(instruction) is not dict or set(instruction) != {"funct", "class", "operands"}:
+                raise ValueError("malformed instruction role binding")
+            code, label, operands = instruction["funct"], instruction["class"], instruction["operands"]
+            if not _uint(code, 7) or code not in codes or code in self._instructions:
+                raise ValueError("instruction role lacks a unique RTL code")
+            if type(label) is not str or not label.isidentifier() or label in {"UNKNOWN", "FENCE"}:
+                raise ValueError("instruction role requires a distinct semantic label")
+            if type(operands) is not dict or set(operands) - {"rs1", "rs2"}:
+                raise ValueError("instruction operands must bind original register slots")
+            fields = {}
+            for slot, binding in operands.items():
+                if type(binding) is not dict or set(binding) != {"bundle"} or type(binding["bundle"]) is not str:
+                    raise ValueError("operand must select one extracted register bundle")
+                if layouts is None:
+                    layouts = _interface(facts, "register_bundle_layouts").get("bundles")
+                bundle = layouts.get(binding["bundle"]) if type(layouts) is dict else None
+                if (
+                    type(bundle) is not dict
+                    or type(bundle.get("width")) is not int
+                    or bundle.get("width") != self._width
+                ):
+                    raise ValueError("selected operand bundle has an unknown or mismatched width")
+                roster = bundle.get("fields")
+                if type(roster) is not dict or not roster or len(roster) > self._width:
+                    raise ValueError("operand bundle requires explicit bounded fields")
+                occupied = 0
+                fields[slot] = {}
+                for name, field in roster.items():
+                    if type(name) is not str or not name.isidentifier() or type(field) is not dict:
+                        raise ValueError("malformed operand field")
+                    offset, width = field.get("offset"), field.get("width")
+                    if type(offset) is not int or type(width) is not int or offset < 0 or width <= 0:
+                        raise ValueError("operand field layout must be exactly resolved")
+                    if offset + width > self._width:
+                        raise ValueError("operand field exceeds the selected register width")
+                    mask = ((1 << width) - 1) << offset
+                    if occupied & mask:
+                        raise ValueError("operand fields overlap")
+                    occupied |= mask
+                    fields[slot][name] = (offset, width)
+            self._instructions[code] = (label, fields)
+        self._isa = {
+            "CUSTOM_OPCODE": table["custom_opcode"],
+            "FUNCT3": table["funct3"],
+            "FUNCT_CLASS": {code: value[0] for code, value in self._instructions.items()},
+        }
+        self.operand_observer = None
+        if contract.get("rocc_operand_protocol") is not None:
+            from .normalized_operands import BoundOperandObserver
+
+            self.operand_observer = BoundOperandObserver(
+                target=target, protocol=contract["rocc_operand_protocol"], facts=facts,
+                raw_isa=self._isa, word_bits=self._width,
+            )
+        self.legal_codes = frozenset(codes)
+        self.complete_decode = table.get("scope") == "complete_rocc_funct7" and table.get("complete_isa") is True
+        from merlin.targetgen.rtl_checks_generic import BoundChecks
+
+        self.rtl_checks = BoundChecks(self, contract.get("rtl_checks"))
+
+    def isa_constants(self, target):
+        if target != self._target:
+            raise ValueError("semantics selection belongs to a different target")
+        return copy.deepcopy(self._isa)
+
+    def _selected(self, isa):
+        if isa != self._isa:
+            raise ValueError("instruction decode must use its selected ISA data")
+
+    def decode_instruction(self, funct, rs1, rs2, isa):
+        self._selected(isa)
+        instruction = self._instructions.get(funct) if _uint(funct, 7) else None
+        if instruction is None:
+            return "UNKNOWN", {}
+        label, fields = instruction
+        decoded = {}
+        for slot, operand in (("rs1", rs1), ("rs2", rs2)):
+            if type(operand) is not dict:
+                raise ValueError("operand observation must retain its register slot")
+            raw = operand.get("raw")
+            _known_bits(operand, word_bits=self._width)
+            if type(raw) is int and -(1 << (self._width - 1)) <= raw < 0:
+                raw += 1 << self._width
+            if raw is not None and not _uint(raw, self._width):
+                raise ValueError("operand observation exceeds the selected register width")
+            for name, (offset, width) in fields.get(slot, {}).items():
+                decoded[f"{slot}.{name}"] = (
+                    (raw >> offset) & ((1 << width) - 1) if raw is not None
+                    else _extract_operand(operand, {"offset": offset, "width": width})
+                )
+        return label, decoded
+
+    def instruction_funct(self, name, rs1, isa):
+        self._selected(isa)
+        matches = [code for code, (label, _) in self._instructions.items() if label == name]
+        if len(matches) != 1:
+            raise ValueError("instruction label has no unique selected encoding")
+        if not (_uint(rs1, self._width) or type(rs1) is int and -(1 << (self._width - 1)) <= rs1 < 0):
+            raise ValueError("assembly operand exceeds the selected register width")
+        return matches[0]
+
+
+def bind(*, target, contract, facts):
+    """Bind one selected contract/facts snapshot without native execution."""
+    original = BoundSemantics(target=target, contract=contract, facts=facts)
+    if "rocc_operand_selection" in contract:
+        from .selected_operand_protocol import bind_selected_observer
+
+        original.operand_observer = bind_selected_observer(original, contract["rocc_operand_selection"])
+    return original

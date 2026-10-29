@@ -1,0 +1,112 @@
+{
+  "activation_gates": [
+    "explicit reviewed runtime/model selection change",
+    "preserve fit denial and provisional confidence",
+    "review new A-ready assumption/coverage; independentvalidation later"
+  ],
+  "checks": [
+    "bounded streamcredit/backpressure/unknown/refusal test",
+    "staged destination/resource hazard checks",
+    "old providerdecodedeligibility checks",
+    "bridge unchangedprofile tests",
+    "three sameELF bounded namespace runs with all declared outputs exact"
+  ],
+  "comparisons": [
+    {
+      "candidate_estimate": 108,
+      "capsule": "SY_movement_i8_sub_tile",
+      "complete_outputs": true,
+      "first_trial_estimate": 108,
+      "incumbent_estimate": 108,
+      "output_bytes": 32,
+      "physical_cycles": 143,
+      "proof": {
+        "path": "SY_movement_i8_sub_tile/observation.json",
+        "sha256": "4c8724e80aee517c3527171056f396afdd710759bd257cbbe68b03f729050ea4"
+      },
+      "qualified": false,
+      "relative_error": -0.2447552447552448
+    },
+    {
+      "candidate_estimate": 657,
+      "capsule": "SY_contraction_i8_aligned",
+      "complete_outputs": true,
+      "first_trial_estimate": 851,
+      "incumbent_estimate": 807,
+      "output_bytes": 1024,
+      "physical_cycles": 564,
+      "proof": {
+        "path": "SY_contraction_i8_aligned/observation.json",
+        "sha256": "7287932f2e8312a519288e9b01c0a584a81f63b88797b5f1e2fc62916b79b8fc"
+      },
+      "qualified": false,
+      "relative_error": 0.1648936170212767
+    },
+    {
+      "candidate_estimate": 11021,
+      "capsule": "SY_conv_k3x3_s1x1_d1x1_pad1x1",
+      "complete_outputs": true,
+      "first_trial_estimate": 11061,
+      "incumbent_estimate": 11088,
+      "output_bytes": 1024,
+      "physical_cycles": 10847,
+      "proof": {
+        "path": "SY_conv_k3x3_s1x1_d1x1_pad1x1/observation.json",
+        "sha256": "1c6c0363750f97c9691074b22d90895522a0ce1d29adddb6949dece61a0355eb"
+      },
+      "qualified": false,
+      "relative_error": 0.016041301742417247
+    }
+  ],
+  "explicit_assumptions": [
+    "translation hits",
+    "A ready when sourcecredit exists",
+    "conservativeFIFO responses",
+    "3-entry identitycapacity includesupstreambuffer conservatively"
+  ],
+  "implementation_identity_changes": [
+    "libraries[-1]"
+  ],
+  "new_model_fields": [
+    "target.scheduling.scratchpad_request_admission",
+    "target.assumptions.reader_a_ready_with_transaction_credit"
+  ],
+  "new_physical_runs": 0,
+  "not_packaged": [
+    "ELFs",
+    "input/output/golden values",
+    "candidatecompiler source",
+    "private reference labels"
+  ],
+  "observer_only_replays": 3,
+  "parent_evidence": "../public-native-model-comparison-20261022/index.json",
+  "preserved": [
+    "all CPU/memory/device prices",
+    "memory and CPU profiles",
+    "resource capacities",
+    "architectural/source/ELF/output/counter scope custody",
+    "destination hazards and response backpressure"
+  ],
+  "previous_trial": "../public-scratchpad-row-arrivals-20261022/index.json",
+  "request_boundary": "Allocate16-source credit before2translation stages; next request may be accepted independently of modeled response/cacheline RAW readiness; shared ingress frontier1/cycle; recyclecredit onlyafterincomingbeat.",
+  "schema": "merlin.public_request_admission_trial.v1",
+  "selected_firrtl": {
+    "sha256": "b7d9826b1c9f16fd00bc757b4334a7f330a842c6a494e0c28608dc351b305bf0",
+    "slice_lines": [
+      143575,
+      143962
+    ]
+  },
+  "spike_commits": [
+    "a2d7faf",
+    "a29f431"
+  ],
+  "status": "inactive conditional provisional approximation; no qualification",
+  "unknowns": [
+    "No timing qualification or statisticalcoverage from3developmentcases",
+    "A ready assumption does not establish arbitrary interconnect/MSHR admission",
+    "Other load shapes/types retain legacy estimator, notnewrow-path accuracy",
+    "Scalar resource frontiers remain conservative for gaps scheduled out of order",
+    "No physical per-event trace for assignment of residualerrors"
+  ]
+}

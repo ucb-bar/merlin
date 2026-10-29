@@ -107,6 +107,13 @@ have no ABI entry yet; they are recorded as debt in `build_tools/scripts/undocum
 Maps to command-buffer opcode `RES_PACK` (`operands: {src, dst}`, `attributes: {layout}`).
 
 ### `merlin_iface.matmul` — matmul against a resident weight
+
+An optional attribute dictionary preserves source metadata on this operation.
+For original sibling source transport, `prov.region_id` is the original root's
+string identity and `prov.source_node_ids` is its ordered string list. They
+carry no execution or coverage permission: the target must bind real compute
+intervals to the corresponding source member and the original owner must verify
+the identities against its source roster. Unannotated matmuls remain unchanged.
 ```mlir
 %acc0 = merlin_iface.matmul %A0, %W_res :
         (tensor<16x16xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>
@@ -129,8 +136,13 @@ Maps to `COMMIT` (`operands: {src, dst}`, `attributes: {epilogue, output_dtype, 
   requant or activation — it lands on the accumulator, which is why the vector is `i32` on an
   `i8 x i8 -> i32` datapath and not `i8`.
 - `output_dtype ∈ {i32, i8}` — `i32` = full-width readout, `i8` = scaled/clamped readout.
-- `acc_scale : f32` — required iff `"acc_scale"` is in `epilogue`. The `: f32` suffix is honest:
+- `acc_scale : f32` — scalar multiplier for an `"acc_scale"` epilogue stage. Select exactly one of
+  `acc_scale` and `acc_scale_by_column` for that stage. The `: f32` suffix is honest:
   the requant applies an **f32 multiply, round-to-nearest-even, clamp to i8**.
+- `acc_scale_by_column = [<gain> : f32, ...]` — the explicit alternative, with one finite float32
+  multiplier per final-axis output column. Every row uses that same vector. Integer conversion,
+  multiplication, ties-to-even rounding and narrowing retain the scalar stage's order. This declares
+  arithmetic; target admission and the schedule of scale changes must be proved separately.
 - `"maxpool"` — the one epilogue stage that CHANGES the result extent, because the store path fuses
   pooling into the accumulator readout. It reshapes the `M` rows to `[batch, H, W]` using
   `pool_in_dims = [H, W]`, walks `pool_size` at `pool_stride` over `pool_padding`, and commits

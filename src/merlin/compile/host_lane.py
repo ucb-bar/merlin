@@ -192,8 +192,10 @@ def host_lane_identity(package_dir: "str | Path") -> dict:
         from ..mining.registry import load_rvv_package
 
         out["dtype_strategy"] = load_rvv_package(d).dtype_strategy
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001 -- recorded, so an absent loader is not a missing field
+        # The package loader is operator-owned (withheld from a public compiler tree); say which
+        # reason left the field empty instead of letting None read as "the package declares none".
+        out["dtype_strategy_unavailable"] = f"{type(exc).__name__}: {exc}"
     try:
         for name, art in load_artifacts().items():
             resolved = art.resolve()

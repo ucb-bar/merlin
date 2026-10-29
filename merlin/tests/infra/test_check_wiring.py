@@ -132,80 +132,68 @@ def test_a_worker_importing_its_sibling_by_bare_name_counts_as_a_caller(tmp_path
 
 
 @pytest.mark.parametrize(
-    "launch",
+    "selection",
     [
-        'subprocess.run([python, str(Path(__file__).with_name("worker.py"))])',
-        "subprocess.run([python, str(WORKER)])",
-        "_run([python, str(WORKER)])",
-        "_outer([python, str(WORKER)])",
-        "launch([python, str(WORKER)])",
-        'subprocess.run([python, str(pathlib.Path(__file__).with_name("worker.py"))])',
+        'from merlin.common.paths import module_source_path\nreader = module_source_path("merlin.perf.reader")\n',
+        'from merlin.common.paths import module_source_path as select\nreader = select(module="merlin.perf.reader")\n',
+        'import merlin.common.paths\nreader = merlin.common.paths.module_source_path("merlin.perf.reader")\n',
+        'import merlin.common.paths as P\nreader = P.module_source_path("merlin.perf.reader")\n',
+        'from merlin.common import paths as P\nreader = P.module_source_path("merlin.perf.reader")\n',
     ],
 )
-def test_subprocess_script_calls_wire_separate_interpreter_workers(tmp_path, launch):
-    base = "src/merlin/verify"
-    caller = f"{base}/caller.py"
+def test_canonical_literal_source_selection_wires_an_isolated_reader(tmp_path, selection):
     gate = _gate(
         _tree(
             tmp_path,
             {
-                caller: (
-                    "import subprocess\nimport pathlib\nfrom pathlib import Path\n"
-                    "from subprocess import run as launch\n"
-                    'WORKER = Path(__file__).with_name("worker.py")\n'
-                    "def _run(argv):\n    return subprocess.run(argv, capture_output=True)\n"
-                    "def _outer(argv):\n    return _run(argv)\n" + launch + "\n"
-                ),
-                f"{base}/worker.py": 'if __name__ == "__main__":\n    print("execute native observer")\n',
-                "pyproject.toml": '[project.scripts]\ncheck = "merlin.verify.caller:main"\n',
+                f"{_PERF}/reader.py": "def main(): ...\n",
+                "build_tools/worker.py": selection,
             },
         )
     )
-    assert "merlin.verify.worker" in gate._imports(tmp_path / caller)
     assert gate.unwired() == []
 
 
 @pytest.mark.parametrize(
-    "source",
+    "selection",
     [
-        'WORKER = Path(__file__).with_name("worker.py")\n',
-        '# subprocess.run([python, str(Path(__file__).with_name("worker.py"))])\n',
-        "def unused(argv):\n    return argv\nunused([python, str(WORKER)])\n",
-        'subprocess.run([python, str(Path(__file__).with_name("missing.py"))])\n',
+        'from other.paths import module_source_path\nmodule_source_path("merlin.perf.reader")\n',
+        'module_source_path("merlin.perf.reader")\n',
+        "from merlin.common.paths import module_source_path\n"
+        'request = "merlin.perf.reader"\nmodule_source_path(request)\n',
+        'from merlin.common.paths import module_source_path\nmodule_source_path("merlin.perf." + "reader")\n',
+        'from merlin.common.paths import module_source_path\nmodule_source_path("merlin.perf.reader", extra=True)\n',
+        'from merlin.common.paths import module_source_path\nmodule_source_path(other="merlin.perf.reader")\n',
+        'from merlin.common.paths import module_source_path\n"module_source_path(merlin.perf.reader)"\n',
     ],
 )
-def test_dormant_or_missing_script_paths_do_not_wire_workers(tmp_path, source):
-    base = "src/merlin/verify"
+def test_computed_or_unbound_source_requests_do_not_wire_a_module(tmp_path, selection):
     gate = _gate(
         _tree(
             tmp_path,
             {
-                f"{base}/caller.py": (
-                    "import subprocess\nfrom pathlib import Path\n"
-                    'WORKER = Path(__file__).with_name("worker.py")\n' + source
-                ),
-                f"{base}/worker.py": 'if __name__ == "__main__":\n    print("execute native observer")\n',
-                "pyproject.toml": '[project.scripts]\ncheck = "merlin.verify.caller:main"\n',
+                f"{_PERF}/reader.py": "def main(): ...\n",
+                "build_tools/worker.py": selection,
             },
         )
     )
-    assert gate.unwired() == [f"{base}/worker.py"]
+    assert gate.unwired() == [f"{_PERF}/reader.py"]
 
 
-def test_script_launch_needs_an_executable_worker(tmp_path):
-    base = "src/merlin/verify"
-    files = {
-        f"{base}/worker.py": "def observe(): ...\n",
-        f"{base}/caller.py": (
-            "from subprocess import run as launch\nfrom pathlib import Path\n"
-            'launch([python, str(Path(__file__).with_name("worker.py"))])\n'
-        ),
-        "pyproject.toml": '[project.scripts]\ncheck = "merlin.verify.caller:main"\n',
-        "merlin/tests/ir/test_worker.py": "from merlin.verify import worker\n",
-    }
-    gate = _gate(_tree(tmp_path, files))
-    assert gate.unwired() == [f"{base}/worker.py"]
-    assert "merlin.verify.worker" not in gate._imports(tmp_path / base / "caller.py")
+def test_a_test_only_source_selection_is_not_a_production_caller(tmp_path):
+    gate = _gate(
+        _tree(
+            tmp_path,
+            {
+                f"{_PERF}/reader.py": "def main(): ...\n",
+                "merlin/tests/infra/test_reader.py": (
+                    "from merlin.common.paths import module_source_path\n"
+                    'reader = module_source_path("merlin.perf.reader")\n'
+                ),
+            },
+        )
+    )
+    assert gate.unwired() == [f"{_PERF}/reader.py"]
 
 
 def test_a_target_workflow_under_examples_is_a_production_caller(tmp_path: Path) -> None:
@@ -455,3 +443,83 @@ def test_every_declared_prefix_dispatcher_exists_and_publishes_its_prefix() -> N
         path = repo_root() / relative
         assert path.is_file(), relative
         assert gate._published_constant(gate._tree(path), constant), (relative, constant)
+
+
+@pytest.mark.parametrize(
+    "launch",
+    [
+        'subprocess.run([python, str(Path(__file__).with_name("worker.py"))])',
+        "subprocess.run([python, str(WORKER)])",
+        "_run([python, str(WORKER)])",
+        "_outer([python, str(WORKER)])",
+        "launch([python, str(WORKER)])",
+        'subprocess.run([python, str(pathlib.Path(__file__).with_name("worker.py"))])',
+    ],
+)
+def test_subprocess_script_calls_wire_separate_interpreter_workers(tmp_path, launch):
+    base = "src/merlin/verify"
+    caller = f"{base}/caller.py"
+    gate = _gate(
+        _tree(
+            tmp_path,
+            {
+                caller: (
+                    "import subprocess\nimport pathlib\nfrom pathlib import Path\n"
+                    "from subprocess import run as launch\n"
+                    'WORKER = Path(__file__).with_name("worker.py")\n'
+                    "def _run(argv):\n    return subprocess.run(argv, capture_output=True)\n"
+                    "def _outer(argv):\n    return _run(argv)\n" + launch + "\n"
+                ),
+                f"{base}/worker.py": 'if __name__ == "__main__":\n    print("execute native observer")\n',
+                "pyproject.toml": '[project.scripts]\ncheck = "merlin.verify.caller:main"\n',
+            },
+        )
+    )
+    assert "merlin.verify.worker" in gate._imports(tmp_path / caller)
+    assert gate.unwired() == []
+
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'WORKER = Path(__file__).with_name("worker.py")\n',
+        '# subprocess.run([python, str(Path(__file__).with_name("worker.py"))])\n',
+        "def unused(argv):\n    return argv\nunused([python, str(WORKER)])\n",
+        'subprocess.run([python, str(Path(__file__).with_name("missing.py"))])\n',
+    ],
+)
+def test_dormant_or_missing_script_paths_do_not_wire_workers(tmp_path, source):
+    base = "src/merlin/verify"
+    gate = _gate(
+        _tree(
+            tmp_path,
+            {
+                f"{base}/caller.py": (
+                    "import subprocess\nfrom pathlib import Path\n"
+                    'WORKER = Path(__file__).with_name("worker.py")\n' + source
+                ),
+                f"{base}/worker.py": 'if __name__ == "__main__":\n    print("execute native observer")\n',
+                "pyproject.toml": '[project.scripts]\ncheck = "merlin.verify.caller:main"\n',
+            },
+        )
+    )
+    assert gate.unwired() == [f"{base}/worker.py"]
+
+
+
+def test_script_launch_needs_an_executable_worker(tmp_path):
+    base = "src/merlin/verify"
+    files = {
+        f"{base}/worker.py": "def observe(): ...\n",
+        f"{base}/caller.py": (
+            "from subprocess import run as launch\nfrom pathlib import Path\n"
+            'launch([python, str(Path(__file__).with_name("worker.py"))])\n'
+        ),
+        "pyproject.toml": '[project.scripts]\ncheck = "merlin.verify.caller:main"\n',
+        "merlin/tests/ir/test_worker.py": "from merlin.verify import worker\n",
+    }
+    gate = _gate(_tree(tmp_path, files))
+    assert gate.unwired() == [f"{base}/worker.py"]
+    assert "merlin.verify.worker" not in gate._imports(tmp_path / base / "caller.py")
+

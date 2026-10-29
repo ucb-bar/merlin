@@ -1,0 +1,50 @@
+{
+  "members": [
+    {
+      "bytes": 5102,
+      "path": "analysis.json",
+      "sha256": "d2fd60bed9a5130d93c704f7dcb7e009a86621162a0c7179a1fefc666627ba7d"
+    },
+    {
+      "bytes": 46067,
+      "path": "events.jsonl.gz",
+      "sha256": "2af04f6c1832ab19968a37bdb120de73bf8f964e324df22c04ffdff9e136b8ba"
+    },
+    {
+      "bytes": 656,
+      "path": "full-ancestry.json",
+      "sha256": "60725c0a3cf5f8ce4d0cfe3a95fb81156bf1691ffb4aa34dcfba8b279fcfca65"
+    },
+    {
+      "bytes": 3061,
+      "path": "index.json",
+      "sha256": "426dd6d865e3de2984b2989eb23b5169fc49db3331d671d78e1275812cb55e1f"
+    },
+    {
+      "bytes": 3417,
+      "path": "plan.json",
+      "sha256": "79ee8972a60a8a60f6ce35dd94e1550634fe2f8c44cf87b424fe8ee81db3b6ff"
+    },
+    {
+      "bytes": 4996,
+      "path": "qualification-review.json",
+      "sha256": "1de8a69f7637362361b013e8e5f236a219040fc1b9ba6cdf3cc7557f9bf43ac7"
+    },
+    {
+      "bytes": 14731,
+      "path": "report.json",
+      "sha256": "fd98e56963799188cb247610bbe724934db9035b625f149d43ef93f2e5d24376"
+    },
+    {
+      "bytes": 1995,
+      "path": "stdout.txt",
+      "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+    },
+    {
+      "bytes": 14287,
+      "path": "transport-refusal.json",
+      "sha256": "cc58d8a35d68f936f0a5d877a22f053522c82569c05e5354c0df9db856f9484b"
+    }
+  ],
+  "schema": "operator.retained_reference_manifest.v1"
+}

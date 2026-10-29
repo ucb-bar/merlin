@@ -1,0 +1,351 @@
+{
+  "schema": "operator.public_frontend_layout_interpretation.v1",
+  "created_at": "2026-10-22T11:57:28.255078+00:00",
+  "status": "frozen_before_any_physical_execution",
+  "plan": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/plan.json",
+    "sha256": "83560d424ded692f9117eb01d1b7f296e6ac4e6b5c035c0e4319bdc3b61dc046"
+  },
+  "elf": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf",
+    "sha256": "cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e"
+  },
+  "completion": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/completion.json",
+    "sha256": "89ec872381de1107c33693b8a1d7466344c8085a2c0a588df8026ec9d147b0d9"
+  },
+  "model": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+    "sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869"
+  },
+  "reason": "Frozen observer reports first-everIcachemisses also3L2misses/192DRAMbytes; repeated fence.i yields3L2hits/noDRAM. Therefore explicit instruction invalidation does not establish lower-level coldness. Groups are predefined from executed history and unchanged frozen-model facts, not physical labels or fitted residuals.",
+  "groups": {
+    "first_ever_after_instruction_invalidation": {
+      "occurrences": [
+        {
+          "layout": 0,
+          "rep": 0,
+          "state": 0,
+          "occurrence": 0,
+          "estimated_cycles": 173,
+          "scope_instructions": 50,
+          "report": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/00.json",
+            "sha256": "0804d87ce719fac96648ad22322bec168d8a9f30694279763a66b796ae975495"
+          },
+          "scope": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/00.json",
+            "sha256": "de13bdd09b940e14d26f52443730fd5a2c54b818fd05ada4231e58f0bdfbce3c"
+          }
+        },
+        {
+          "layout": 44,
+          "rep": 0,
+          "state": 0,
+          "occurrence": 0,
+          "estimated_cycles": 173,
+          "scope_instructions": 50,
+          "report": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/06.json",
+            "sha256": "8df4dfcfc63a1218201535d6d444c3aa50c6c98d8b40ba503cac69f22710cf3f"
+          },
+          "scope": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/06.json",
+            "sha256": "4bb78839d379aa5dcb2f850eda21a3ce7c389728e073f4e7603fcb11b17507d0"
+          }
+        }
+      ],
+      "physical_cold_state_claim": false
+    },
+    "repeated_instruction_invalidation": {
+      "occurrences": [
+        {
+          "layout": 0,
+          "rep": 1,
+          "state": 0,
+          "occurrence": 3,
+          "estimated_cycles": 125,
+          "scope_instructions": 50,
+          "report": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/02.json",
+            "sha256": "06768287ce99607d3e1f53301bce173ec3880f3a13fc930f8d88c7d07cb6c9b6"
+          },
+          "scope": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/02.json",
+            "sha256": "09146158f4afb4eee00a982734c07a1b56136c82be500e76181f43833d401d84"
+          }
+        },
+        {
+          "layout": 0,
+          "rep": 2,
+          "state": 0,
+          "occurrence": 6,
+          "estimated_cycles": 125,
+          "scope_instructions": 50,
+          "report": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/04.json",
+            "sha256": "8d9ebc914cbfbbff734c521b91998f3570a7a0fc18b1b2528341b35c946ce1fb"
+          },
+          "scope": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/04.json",
+            "sha256": "59420d701b97670674cb7fb1a1556656949bc16599c25eb4990bcc3612e0193b"
+          }
+        },
+        {
+          "layout": 44,
+          "rep": 1,
+          "state": 0,
+          "occurrence": 3,
+          "estimated_cycles": 125,
+          "scope_instructions": 50,
+          "report": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/08.json",
+            "sha256": "0ebcca9c7d35903df0eab642ae306f942cfb8d406eb90f441f4361787820e2d9"
+          },
+          "scope": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/08.json",
+            "sha256": "af9c11a935b17a30230fccd11aea0d2c279a1e2e84113eb8338039a4acee1540"
+          }
+        },
+        {
+          "layout": 44,
+          "rep": 2,
+          "state": 0,
+          "occurrence": 6,
+          "estimated_cycles": 125,
+          "scope_instructions": 50,
+          "report": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/10.json",
+            "sha256": "bfb1313a1cabe0995024086c9269e1770b5f46046b7c770205d8a67c820adc0e"
+          },
+          "scope": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/10.json",
+            "sha256": "93ade267ee8c2c1343c96540155884eb8951e5e7f02cd1c3521c82d2d7f55e49"
+          }
+        }
+      ],
+      "physical_cold_state_claim": false
+    },
+    "prewarmed": {
+      "occurrences": [
+        {
+          "layout": 0,
+          "rep": 0,
+          "state": 1,
+          "occurrence": 2,
+          "estimated_cycles": 122,
+          "scope_instructions": 50,
+          "report": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/01.json",
+            "sha256": "0c2360865fea92a177f2c834aba5a33edff8f0c4ac58d89d4b2e5e3cfff09c47"
+          },
+          "scope": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/01.json",
+            "sha256": "695f322d30e1f546eba222b51676e62f46c557aa93a9590e718b3e198760fc9a"
+          }
+        },
+        {
+          "layout": 0,
+          "rep": 1,
+          "state": 1,
+          "occurrence": 5,
+          "estimated_cycles": 122,
+          "scope_instructions": 50,
+          "report": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/03.json",
+            "sha256": "76230147c9ca0fff15b571d5fb302b65e92159f5749d7fdd3e2a65db244f8770"
+          },
+          "scope": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/03.json",
+            "sha256": "c80926f2febefa078d7fe6481978d20c735230dcbc25427c55764659a5b254f6"
+          }
+        },
+        {
+          "layout": 0,
+          "rep": 2,
+          "state": 1,
+          "occurrence": 8,
+          "estimated_cycles": 122,
+          "scope_instructions": 50,
+          "report": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/05.json",
+            "sha256": "91b9278c2af9b3e109a2afc228417bc701bbb9996dcb57e4ae58b5b3ee0e13dd"
+          },
+          "scope": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/05.json",
+            "sha256": "f09cfe60a1962ef4b30377df410e3fe6c182c14132117d440e87b09920cf3673"
+          }
+        },
+        {
+          "layout": 44,
+          "rep": 0,
+          "state": 1,
+          "occurrence": 2,
+          "estimated_cycles": 122,
+          "scope_instructions": 50,
+          "report": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/07.json",
+            "sha256": "2c6d79304b124044159099bbc0e7df8c5ba6cea798072761f44124c89f4d196e"
+          },
+          "scope": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/07.json",
+            "sha256": "61f74538e3056541a9f6ae73e9630d7ca723981b00cdca5a0e2c3c4dc29576ce"
+          }
+        },
+        {
+          "layout": 44,
+          "rep": 1,
+          "state": 1,
+          "occurrence": 5,
+          "estimated_cycles": 122,
+          "scope_instructions": 50,
+          "report": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/09.json",
+            "sha256": "80c323e9af86ce12fb81004c6da1c945c7feb8608ab0bc009725a6427ae56bc5"
+          },
+          "scope": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/09.json",
+            "sha256": "80d921fb781b27c71d5603f4888710c7ba46025987c423a78e56283eff621a79"
+          }
+        },
+        {
+          "layout": 44,
+          "rep": 2,
+          "state": 1,
+          "occurrence": 8,
+          "estimated_cycles": 122,
+          "scope_instructions": 50,
+          "report": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/11.json",
+            "sha256": "2426233ccf921bd67c3e9e05e257fd04e5c350ba36930e1363446be8b43d7c51"
+          },
+          "scope": {
+            "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/11.json",
+            "sha256": "1dd8b0f72d2d4db4dcfaecc745bfe7c25042aa627d667b00fe6fe9d3cb15f0ea"
+          }
+        }
+      ],
+      "physical_cold_state_claim": false
+    }
+  },
+  "contrasts": {
+    "first_ever": "[first0rep0-warm0rep0]-[first44rep0-warm44rep0]",
+    "repeated_invalidated": "For eachrep1and2 separately compute [invalidated0rep-warm0rep]-[invalidated44rep-warm44rep]; report both plus median.",
+    "prewarmed": "Report each matchedrep layout0-minus-layout44 and median; do not assume zero physical code-placement cost.",
+    "original_pooled": "Retain originalplan pooled median contrast and fullranges, explicitly heterogeneous first-ever/later lower-level history. No occurrence discarded."
+  },
+  "interpretation": {
+    "directional_signal": "For eachfirst-ever/repeated contrast, positive >max(16cycles,3%mean matched invalidated durations) supports layout-sensitive first-use cost; negative beyondthreshold opposes directional hypothesis; otherwise inconclusive. Does not uniquely identify speculativefetch.",
+    "model_disagreement": "Frozenmodel predicts zero layout contrast for everygroup; report residual against same max(16cycles,20%abs physicalcontrast) diagnostic threshold. Never infer missprice fromtotal.",
+    "stability": "Report prewarmed3sample and repeated-invalidated2sample ranges; range>max(16cycles,5%median) marks unstable. First-ever singleton has no repeatability claim. Retain originalpooledrange asdescriptive; do notpromote orqualify.",
+    "all_outputs": "All12 measured and6 unreportedwarmups exact256outputvalues+32guards each; rawresults kept.",
+    "qualification": "No model qualification, no parameterfit, no privateinput, no claim physicalfrontendstate known fromcommitted trace."
+  },
+  "frozen_model_observations": [
+    {
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/00.json",
+        "sha256": "0804d87ce719fac96648ad22322bec168d8a9f30694279763a66b796ae975495"
+      },
+      "estimated_cycles": 173,
+      "features": {
+        "modeled.cache.l1d.coherence_protocol_cycles": 0,
+        "modeled.cache.l1d.hits": 0,
+        "modeled.cache.l1d.misses": 0,
+        "modeled.cache.l1i.hits": 47,
+        "modeled.cache.l1i.misses": 3,
+        "modeled.cache.l2.hits": 0,
+        "modeled.cache.l2.misses": 3,
+        "modeled.dram_request_bytes": 192
+      }
+    },
+    {
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/01.json",
+        "sha256": "0c2360865fea92a177f2c834aba5a33edff8f0c4ac58d89d4b2e5e3cfff09c47"
+      },
+      "estimated_cycles": 122,
+      "features": {
+        "modeled.cache.l1d.coherence_protocol_cycles": 0,
+        "modeled.cache.l1d.hits": 0,
+        "modeled.cache.l1d.misses": 0,
+        "modeled.cache.l1i.hits": 50,
+        "modeled.cache.l1i.misses": 0,
+        "modeled.cache.l2.hits": 0,
+        "modeled.cache.l2.misses": 0,
+        "modeled.dram_request_bytes": 0
+      }
+    },
+    {
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/02.json",
+        "sha256": "06768287ce99607d3e1f53301bce173ec3880f3a13fc930f8d88c7d07cb6c9b6"
+      },
+      "estimated_cycles": 125,
+      "features": {
+        "modeled.cache.l1d.coherence_protocol_cycles": 0,
+        "modeled.cache.l1d.hits": 0,
+        "modeled.cache.l1d.misses": 0,
+        "modeled.cache.l1i.hits": 47,
+        "modeled.cache.l1i.misses": 3,
+        "modeled.cache.l2.hits": 3,
+        "modeled.cache.l2.misses": 0,
+        "modeled.dram_request_bytes": 0
+      }
+    },
+    {
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/06.json",
+        "sha256": "8df4dfcfc63a1218201535d6d444c3aa50c6c98d8b40ba503cac69f22710cf3f"
+      },
+      "estimated_cycles": 173,
+      "features": {
+        "modeled.cache.l1d.coherence_protocol_cycles": 0,
+        "modeled.cache.l1d.hits": 0,
+        "modeled.cache.l1d.misses": 0,
+        "modeled.cache.l1i.hits": 47,
+        "modeled.cache.l1i.misses": 3,
+        "modeled.cache.l2.hits": 0,
+        "modeled.cache.l2.misses": 3,
+        "modeled.dram_request_bytes": 192
+      }
+    },
+    {
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/07.json",
+        "sha256": "2c6d79304b124044159099bbc0e7df8c5ba6cea798072761f44124c89f4d196e"
+      },
+      "estimated_cycles": 122,
+      "features": {
+        "modeled.cache.l1d.coherence_protocol_cycles": 0,
+        "modeled.cache.l1d.hits": 0,
+        "modeled.cache.l1d.misses": 0,
+        "modeled.cache.l1i.hits": 50,
+        "modeled.cache.l1i.misses": 0,
+        "modeled.cache.l2.hits": 0,
+        "modeled.cache.l2.misses": 0,
+        "modeled.dram_request_bytes": 0
+      }
+    },
+    {
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/reports/08.json",
+        "sha256": "0ebcca9c7d35903df0eab642ae306f942cfb8d406eb90f441f4361787820e2d9"
+      },
+      "estimated_cycles": 125,
+      "features": {
+        "modeled.cache.l1d.coherence_protocol_cycles": 0,
+        "modeled.cache.l1d.hits": 0,
+        "modeled.cache.l1d.misses": 0,
+        "modeled.cache.l1i.hits": 47,
+        "modeled.cache.l1i.misses": 3,
+        "modeled.cache.l2.hits": 3,
+        "modeled.cache.l2.misses": 0,
+        "modeled.dram_request_bytes": 0
+      }
+    }
+  ],
+  "counter_semantics": "Both assembled CSRinclusive spans51instructions; all12 scoped observerreports count50instructions. OpeningCSR excluded, selectedcomplete interval consistent.",
+  "budget_correction": "Use actual cumulative ledger balance at physical authorization; prior wall duration598.056103912 differs from charged duration. No reset or inferred spent total.",
+  "physical_runs": 0
+}

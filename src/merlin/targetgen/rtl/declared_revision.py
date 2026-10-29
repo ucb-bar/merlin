@@ -74,3 +74,53 @@ def declared_revision(
     gitlinks = tuple(sorted(gitlink_rows.items()))
     verify_declared_revision(root, revision, gitlinks)
     return revision, gitlinks
+
+
+#: Verified (path, size, mtime_ns) -> sha256, so a pinned 80 MB FIRRTL is hashed once per change.
+_DIGESTS: dict[tuple[str, int, int], str] = {}
+
+
+def _content_sha256(path: Path) -> str:
+    import hashlib
+
+    st = path.stat()
+    key = (str(path), st.st_size, st.st_mtime_ns)
+    if key not in _DIGESTS:
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                digest.update(chunk)
+        _DIGESTS[key] = digest.hexdigest()
+    return _DIGESTS[key]
+
+
+def verify_artifact_digests(source) -> None:
+    """Refuse a declared elaboration whose PRESENT artifacts are not the pinned bytes.
+
+    An absent artifact is left to the caller (absence is reported as such elsewhere); an artifact that
+    exists with different bytes is a different elaboration and is never read in place of the pinned one.
+    """
+    if not source.artifact_sha256:
+        return
+    found = source.artifacts()
+    for role, expected in source.artifact_sha256:
+        path = Path(found[role])
+        if path.is_file() and _content_sha256(path) != expected:
+            raise RtlSourceInvalid(
+                f"{source.target}: {path} has sha256 {_content_sha256(path)}, but {source.origin} pins the "
+                f"{role} of {source.config} to {expected}; refusing a different elaboration"
+            )
+
+
+def declared_artifact_pins(block: Mapping[str, Any], *, where: str) -> tuple[tuple[str, str], ...]:
+    """Parse an elaboration block's optional ``artifact_sha256`` (``fir``/``hierarchy`` -> sha256)."""
+    pins = block.get("artifact_sha256") or {}
+    if not isinstance(pins, Mapping) or any(
+        role not in ("fir", "hierarchy")
+        or not isinstance(value, str)
+        or len(value) != 64
+        or any(c not in "0123456789abcdef" for c in value)
+        for role, value in pins.items()
+    ):
+        raise RtlSourceInvalid(f"{where} artifact_sha256 must map fir/hierarchy to lowercase sha256")
+    return tuple(sorted(pins.items()))

@@ -75,6 +75,106 @@ _INTEGER_NONLINEAR_DEFAULT = "off in the compute datapath (select explicitly)"
 
 REGISTRY: tuple[OptionalPass, ...] = (
     OptionalPass(
+        name="finite-integer-math",
+        summary="memoize exact pure scalar math over small integer domains",
+        changes="evaluate the original arithmetic on the executing CPU once per domain value, then reuse exact results",
+        exactness=EXACT,
+        default="off; explicit cost choice for nonempty ordinary scalar tensor lowering",
+        stage="lowering",
+        switch="MERLIN_FINITE_INTEGER_MATH",
+    ),
+    OptionalPass(
+        name="contraction-row-slice",
+        summary="restrict a zero-seeded integer product to its sole static row observer",
+        changes="push contiguous row slices through fixed pure epilogues and views before device group binding",
+        exactness=EXACT,
+        default="off; explicit source choice before constructing a device/source owner",
+        stage="lowering",
+        switch="MERLIN_CONTRACTION_ROW_SLICE",
+    ),
+    OptionalPass(
+        name="automatic-host-gathers",
+        summary="pack static windows directly from a logically zero-padded image",
+        changes="replace a private padded image with bounds-guarded source reads; retain complete gather and call ABI",
+        exactness=EXACT,
+        default="off; explicit storage/traffic-only choice in checked serial host lowering, timing unknown",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_GATHERS",
+        on_by_default=False,
+    ),
+    OptionalPass(
+        name="automatic-host-optimizations",
+        summary="compose exact scalar accumulation, squared sums and smaller-domain source math",
+        changes=(
+            "select existing typed rewrites after ordinary serial tensor fusion, retaining unknown-cost alternatives"
+        ),
+        exactness=EXACT,
+        default="on for ordinary serial Python lowering; explicit schedules and opt-outs retain precedence",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_OPTIMIZATIONS",
+        on_by_default=True,
+    ),
+    OptionalPass(
+        name="automatic-host-copies",
+        summary="remove private uniform-copy buffers and specialize disjoint contiguous copy suffixes",
+        changes="run checked post-bufferization copy passes in ordinary serial host lowering",
+        exactness=EXACT,
+        default="on for ordinary serial Python lowering; unsupported storage retains its original route",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_COPIES",
+        on_by_default=True,
+    ),
+    OptionalPass(
+        name="automatic-host-permutations",
+        summary="forward sole-use pointwise writes directly into a permuted tensor result",
+        changes="retain scalar body, input maps and loop order while removing an intermediate materialization",
+        exactness=EXACT,
+        default="on in ordinary serial host lowering for checked static pointwise outputs within IR budgets",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_PERMUTATIONS",
+        on_by_default=True,
+    ),
+    OptionalPass(
+        name="automatic-host-rounding",
+        summary="compact closed bounded integer rounding through the standard LLVM intrinsic",
+        changes="replace residual rounding arithmetic after destination selection, preserving exact integer values",
+        exactness=EXACT,
+        default="on in ordinary serial source lowering for independently checked bounded observations",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_ROUNDING",
+        on_by_default=True,
+    ),
+    OptionalPass(
+        name="automatic-host-destinations",
+        summary="forward closed pointwise writes into fresh padded tensor destinations",
+        changes="initialize only the exact exterior and retain original interior arithmetic and tensor ownership",
+        exactness=EXACT,
+        default="on in ordinary serial host lowering for checked static regions within IR budgets",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_DESTINATIONS",
+        on_by_default=True,
+    ),
+    OptionalPass(
+        name="automatic-host-rows",
+        summary="schedule closed source normalization islands one complete row at a time",
+        changes="retain source arithmetic/reduction order and restrict private tensor intermediates to one row",
+        exactness=EXACT,
+        default="on in ordinary serial source lowering when logical row state decreases",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_ROWS",
+        on_by_default=True,
+    ),
+    OptionalPass(
+        name="automatic-host-numerics",
+        summary="legalize bounded pure host quantization under the captured numerical policy",
+        changes="replace eligible scalar rounding calls with checked ties-to-even integer arithmetic",
+        exactness=EXACT,
+        default="on with the explicitly selected captured quantization policy",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_NUMERICS",
+        on_by_default=True,
+    ),
+    OptionalPass(
         name="int-softmax-table",
         summary="integer softmax: table-read numerator, int32 row sum, per-row P quantization",
         changes=(
@@ -120,6 +220,37 @@ REGISTRY: tuple[OptionalPass, ...] = (
         stage="lowering",
         switch="MERLIN_FUSION_GUARD",
         on_by_default=True,
+    ),
+    OptionalPass(
+        name="host-elementwise-fusion",
+        summary="fuse host elementwise operations after named-op generalization",
+        changes=(
+            "run the existing guarded fusion a second time so named transposes and broadcasts "
+            "can enter consumer loops; measure allocation, memory work and full outputs"
+        ),
+        exactness=EXACT,
+        default="off; scalar host experiments only until independently measured",
+        stage="lowering",
+        feature="fuse_elementwise_after_generalize",
+    ),
+    OptionalPass(
+        name="prepare-repeated-pointwise",
+        summary="prepare pure pointwise values before an exact repeated broadcast",
+        changes=("derive repeated coordinates through static tensor views and retain each scalar "
+                 "operation on the smaller domain; immutable scale words must repeat exactly"),
+        exactness=EXACT,
+        default="off; explicit source-bound host experiment",
+        stage="lowering",
+        switch="MERLIN_PREPARE_REPEATED_POINTWISE",
+    ),
+    OptionalPass(
+        name="host-bounded-rne",
+        summary="legalize proved bounded host rounding with explicit scalar RNE conversion",
+        changes="select the existing late RV64GC clamp and ties-to-even conversion without changing frm",
+        exactness=EXACT,
+        default="off; explicit scalar host experiment",
+        stage="lowering",
+        switch="MERLIN_HOST_BOUNDED_RNE",
     ),
     OptionalPass(
         name="sink-deallocs",
@@ -196,6 +327,104 @@ REGISTRY: tuple[OptionalPass, ...] = (
         default="off",
         stage="capture",
         capture_key="quant_integer_nonlinear",
+    ),
+)
+
+# Historical host recipes already use these common compiler mechanisms. Give
+# them the same discoverable CLI/build selection as other passes; do not copy
+# their implementations or enable numerical changes merely by listing them.
+_HOST_FEATURE_PASSES = (
+    ("scalar-contraction", "scalar_contraction_accumulator", "source-ordered scalar contraction accumulator"),
+    ("scalar-contraction-two", "scalar_contraction_accumulator_2_outputs", "two independent ordered accumulators"),
+    ("scalar-contraction-four", "scalar_contraction_accumulator_4_outputs", "four independent ordered accumulators"),
+    ("scalar-contraction-eight", "scalar_contraction_accumulator_8_outputs", "eight independent ordered accumulators"),
+    (
+        "scalar-contraction-rectangular",
+        "scalar_contraction_accumulator_2x4_outputs",
+        "two-row four-column accumulator tile",
+    ),
+    (
+        "scalar-contraction-masked",
+        "scalar_contraction_masked_observation",
+        "skip fully discarded tiles under explicit floating effect permissions",
+    ),
+    ("scalar-reduction-unroll-two", "unroll_scalar_contraction_reduction_by_2", "ordered reduction unroll by two"),
+    ("scalar-reduction-unroll-four", "unroll_scalar_contraction_reduction_by_4", "ordered reduction unroll by four"),
+    ("scalar-squared-sum", "scalar_squared_sum_accumulator", "source-ordered scalar squared-sum accumulator"),
+    (
+        "broadcast-math-hoist",
+        "hoist_broadcast_source_rsqrt",
+        "hoist source math to its proved smaller broadcast domain",
+    ),
+    (
+        "pointwise-fma-division-two",
+        "packet_scalar_pointwise_fma_division_2",
+        "two independent pointwise FMA/division lanes",
+    ),
+    (
+        "pointwise-fma-division-four",
+        "packet_scalar_pointwise_fma_division_4",
+        "four independent pointwise FMA/division lanes",
+    ),
+    ("pointwise-broadcast-two", "packet_scalar_pointwise_broadcast_2", "two independent broadcast pointwise lanes"),
+    ("pointwise-multiplication-four", "packet_scalar_pointwise_multiplication_4", "four source multiplication lanes"),
+    (
+        "pointwise-two-products-four",
+        "packet_scalar_pointwise_two_multiplications_4",
+        "four lanes of two ordered products",
+    ),
+    (
+        "bufferized-result-identity",
+        "canonicalize_bufferized_result_identity",
+        "forward an unchanged loop-carried result buffer",
+    ),
+    ("quantize-round-convert", "fuse_quantize_round_convert", "fuse a proved bounded integer observation"),
+    ("fma-intrinsic", "lower_fma_to_intrinsic", "retain source FMA as an LLVM intrinsic"),
+    (
+        "captured-quantization-scope",
+        "respect_captured_quantization_scope",
+        "preserve original captured quantization boundaries",
+    ),
+    ("outline-merge-loops", "outline_llvm_loops_merge_identical", "outline and merge identical LLVM loops"),
+    ("source-observation", "source_observation_closed_scalar_i8", "discover closed typed scalar integer observations"),
+    ("weight-quantize-hoist", "hoist_weight_invariant_quantize", "hoist proved invariant weight quantization"),
+    (
+        "constant-weight-quantize",
+        "prequantize_constant_weights",
+        "evaluate immutable constant weight quantization at build time",
+    ),
+    ("weight-layout-prepack", "prepack_weight_layout", "prepack source weight layouts with original binding checks"),
+)
+REGISTRY += tuple(
+    OptionalPass(
+        name=name,
+        summary=summary,
+        changes=summary,
+        exactness=EXACT,
+        default="off; explicit schedule, source/effect contracts and applicability checks remain required",
+        stage="lowering",
+        feature=feature,
+    )
+    for name, feature, summary in _HOST_FEATURE_PASSES
+)
+REGISTRY += (
+    OptionalPass(
+        name="activation-polynomial",
+        summary="use the selected f32 activation polynomial",
+        changes="approximate only provenance-scoped activations under an explicit numerical contract",
+        exactness=NUMERICS_CHANGING,
+        default="off; explicit numerical permission required",
+        stage="lowering",
+        feature="approximate_transcendental_activation",
+    ),
+    OptionalPass(
+        name="activation-polynomial-fma",
+        summary="fuse evaluation of the selected activation polynomial",
+        changes="evaluate the explicitly selected activation polynomial with fused multiply-add",
+        exactness=NUMERICS_CHANGING,
+        default="off; explicit numerical permission required",
+        stage="lowering",
+        feature="fuse_activation_polynomial_fma",
     ),
 )
 

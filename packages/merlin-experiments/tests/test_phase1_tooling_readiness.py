@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import yaml
 from merlin_experiments.phase1 import tooling_readiness as R
 
@@ -74,6 +75,32 @@ def test_assisted_missing_selected_grant_fails_before_sandbox(tmp_path, monkeypa
     assert any(row["name"].startswith("grant:xdsl_kit:") and not row["ok"] for row in result["checks"])
 
 
+@pytest.mark.parametrize("name", ["xs-f6-v1/inherited", "xs-f6-v1/dense-epochs", "xs-el-v1/el4"])
+def test_versioned_profile_probes_exact_supplied_tools(tmp_path, monkeypatch, name):
+    from merlin_experiments.phase1.author_profiles import resolve
+    from merlin_experiments.phase1.feedback import snapshot_execution
+
+    context, te, ws = _inputs(tmp_path)
+    profile = resolve(name)
+    bundle = dict(bundle_id="selected", arm="merlin_assisted", allowed=[],
+                  author_profile=profile.record(), tools=list(profile.tools))
+    monkeypatch.setattr(snapshot_execution, "selected", lambda: True)
+    probes = []
+
+    def live_probe(_context, _te, _ws, _bundle, tools):
+        probes.append(tools)
+        return R._check("selected_sandbox_authoring", True, "test probe")
+
+    monkeypatch.setattr(R, "_live_probe", live_probe)
+    result = R.assess(context, te, ws, bundle, profile.tools, tmp_path)
+    assert result["status"] == "ready", result
+    assert probes == [profile.tools]
+    probes.clear()
+    changed = tuple(set(profile.tools) ^ {"cca_tools"})
+    assert R.assess(context, te, ws, bundle, changed, tmp_path)["status"] == "no_go"
+    assert probes == []
+
+
 def test_selected_source_grants_survive_a_different_installed_python(tmp_path, monkeypatch):
     _, te, _ = _inputs(tmp_path)
     source = tmp_path / "source"
@@ -100,6 +127,56 @@ def test_selected_source_grants_still_fail_when_one_is_missing(tmp_path, monkeyp
     monkeypatch.setattr(R, "python_source_dir", lambda: tmp_path / "unrelated-install")
     checks = R._grant_checks(te, {"allowed": allowed}, ("merlin_infra",))
     assert sum(not check["ok"] for check in checks) == 1
+
+
+def test_a_registry_path_the_bundle_records_as_denied_is_withheld_not_missing(tmp_path, monkeypatch):
+    # Substrate v15 withholds author-inaccessible modules from tool grants and records each as a denial;
+    # readiness must accept that, but a path that is neither granted nor denied still refuses the launch.
+    _, te, _ = _inputs(tmp_path)
+    source = tmp_path / "source"
+    logical = R.TR.spec("merlin_infra").bundle_paths
+
+    def path(item):
+        return str(source / "merlin" / item.removeprefix("merlin/python/merlin/")) + ("/" if item.endswith("/") else "")
+
+    allowed = [{"path": path(item)} for item in logical[:-1]]
+    monkeypatch.setattr(R, "python_source_dir", lambda: tmp_path / "unrelated-install")
+    denied_bundle = {"allowed": allowed, "denied": [{"path": path(logical[-1])}]}
+    checks = R._grant_checks(te, denied_bundle, ("merlin_infra",))
+    assert all(check["ok"] for check in checks)
+    assert "recorded denial" in checks[-1]["detail"]
+    assert sum(not check["ok"] for check in R._grant_checks(te, {"allowed": allowed}, ("merlin_infra",))) == 1
+
+
+def test_new_verification_profile_accepts_exact_legacy_client_leaves(tmp_path, monkeypatch):
+    _, te, _ = _inputs(tmp_path)
+    root = tmp_path / "selected-src" / "merlin"
+    monkeypatch.setattr(R, "python_source_dir", lambda: tmp_path / "unrelated-install")
+    allowed = [
+        {"path": str(root / "common") + "/"},
+        {"path": str(root / "verify/cli.py")},
+        {"path": str(root / "xdsl_dialects/opt.py")},
+    ]
+    bundle = {"allowed": allowed, "compiler_tool_profile": {"schema": "merlin.compiler_tool_profile.v1"}}
+    checks = R._grant_checks(te, bundle, ("verify_seam",))
+    assert len(checks) == 2 and all(check["ok"] for check in checks)
+    assert "verify/cli.py" in checks[0]["detail"]
+    allowed.remove({"path": str(root / "verify/cli.py")})
+    assert not R._grant_checks(te, bundle, ("verify_seam",))[0]["ok"]
+
+
+def test_historical_verification_profile_still_requires_its_directory_grant(tmp_path, monkeypatch):
+    _, te, _ = _inputs(tmp_path)
+    root = tmp_path / "selected-src" / "merlin"
+    monkeypatch.setattr(R, "python_source_dir", lambda: tmp_path / "unrelated-install")
+    allowed = [
+        {"path": str(root / "common") + "/"},
+        {"path": str(root / "verify/cli.py")},
+        {"path": str(root / "xdsl_dialects/opt.py")},
+    ]
+    assert not R._grant_checks(te, {"allowed": allowed}, ("verify_seam",))[0]["ok"]
+    allowed.append({"path": str(root / "verify") + "/"})
+    assert all(check["ok"] for check in R._grant_checks(te, {"allowed": allowed}, ("verify_seam",)))
 
 
 def test_assisted_selected_snapshot_probe_failure_is_no_go(tmp_path, monkeypatch):
@@ -205,6 +282,8 @@ def test_filecheck_lookup_includes_declared_sim_family(tmp_path, monkeypatch):
     sim_bin = tmp_path / "sim-tools" / "bin"
     sim_bin.mkdir(parents=True)
     (sim_bin / "FileCheck").write_text("tool")
+    monkeypatch.setattr(toolchain.ToolchainPaths, "from_checkout",
+                        lambda: SimpleNamespace(llvm=tmp_path / "absent-primary-toolchain"))
     monkeypatch.setattr(toolchain, "_sim", lambda selected: toolchain.SimToolchain(path_dirs=(str(sim_bin),)))
     monkeypatch.setattr(R.BW, "resolve_grant", lambda path, repo: tmp_path / "facts.json")
     monkeypatch.setattr(R.BW, "snapshot_input_paths", lambda ws, bundle, sources, repo: [frozen])
@@ -274,3 +353,91 @@ def test_selected_release_facts_replace_the_legacy_pin(tmp_path, monkeypatch):
     monkeypatch.setattr(compiler, "compile_checks", lambda *args: {"kernel": "CHECK: op"})
     monkeypatch.setattr(runner, "find_filecheck", lambda *args: "/bin/FileCheck")
     assert all(row["ok"] for row in R._frozen_rtl_checks(te, ws, bundle, capsule.parent, repo=context.repo))
+
+
+def test_common_readiness_exercises_host_broker_not_only_imports(tmp_path, monkeypatch):
+    """CPU transport control; external Lean completion is explicitly synthetic."""
+    import hashlib
+
+    from merlin.transforms import client
+
+    monkeypatch.chdir(tmp_path)
+    seen = []
+
+    def call(workspace, source_ir, options, **kwargs):
+        seen.append((workspace, source_ir, options))
+        return {
+            "status": "verified",
+            "source_sha256": hashlib.sha256(source_ir.encode()).hexdigest(),
+            "transformed_ir": "builtin.module {}",
+            "compiler_tool_profile_sha256": "a" * 64,
+            "receipts": [
+                {"method": "lean_kernel", "status": "verified", "query_sha256": "b" * 64, "toolchain_sha256": "c" * 64}
+            ],
+        }
+
+    monkeypatch.setattr(client, "apply_transform", call)
+    script = R._sandbox_probe("synthetic", (), "", common_substrate=True, common_profile_sha256="a" * 64)
+    exec(compile(script, "<common readiness>", "exec"), {})
+    assert len(seen) == 1
+    assert "arith.addi" in seen[0][1]
+    assert "coverage" not in seen[0][2] and "toolchain" not in seen[0][2]
+
+
+@pytest.mark.parametrize("status", ["unknown", "unchanged", "refuted"])
+def test_importable_common_modules_do_not_establish_readiness(tmp_path, monkeypatch, status):
+    from merlin.transforms import client
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(client, "apply_transform", lambda *_args, **_kwargs: {"status": status})
+    script = R._sandbox_probe("synthetic", (), "", common_substrate=True)
+    with pytest.raises(AssertionError):
+        exec(compile(script, "<common readiness>", "exec"), {})
+
+
+def test_common_probe_uses_original_broker_with_private_frozen_manifest(tmp_path, monkeypatch):
+    from merlin_experiments import frozen_python
+
+    context, _, ws = _inputs(tmp_path)
+    context.readback_policy = None
+    calls, manifests = [], []
+    monkeypatch.setattr(R.BW, "frozen_selected_rtl_facts", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(frozen_python, "inherited_python_command", lambda argv: argv)
+
+    class Process:
+        def __init__(self, argv, **kwargs):
+            calls.append(argv)
+            manifest = Path(argv[argv.index("--compiler-bundle-manifest") + 1])
+            assert not manifest.is_relative_to(ws)
+            assert manifest.stat().st_mode & 0o077 == 0
+            manifests.append(manifest)
+            assert yaml.safe_load(manifest.read_text())["compiler_tool_profile"]["sha256"] == "a" * 64
+
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(R.subprocess, "Popen", Process)
+    with R.public_probe_session(context, ws, {"compiler_tool_profile": {"sha256": "a" * 64}}, ()) as script:
+        assert "apply_transform" in script and len(calls) == 1
+        assert calls[0][2] == "merlin_experiments.phase1.brokers.selfcheck"
+        assert manifests[0].exists()
+    assert not manifests[0].exists()
+    assert (ws / ".qa_channel/STOP").exists()
+
+
+def test_fresh_lowest_level_missing_snapshot_is_no_go(tmp_path):
+    context, _, ws = _inputs(tmp_path)
+    run_dir = tmp_path / "receipt"
+    run_dir.mkdir()
+    result = R.run(
+        context, None, ws, {"arm": "raw_baseline", "compiler_tool_profile": {}}, (), tmp_path, run_dir, None, "frozen"
+    )
+    assert result["status"] == "no_go"
+
+
+def test_cca_spine_probe_skips_withheld_cca_modules_and_keeps_rtl_backend():
+    denied = {"denied": [{"path": "/sdk/merlin/kernels/cca_contract.py"}]}
+    assert R._cca_withheld(denied) and not R._cca_withheld({"denied": [{"path": "/sdk/merlin/common/x.py"}]})
+    withheld = R._sandbox_probe("t", ("cca_spine",), "", withheld_cca=True)
+    assert "merlin.kernels" not in withheld and "rtl_backend" in withheld
+    assert "from merlin.kernels import cca_contract" in R._sandbox_probe("t", ("cca_spine",), "")

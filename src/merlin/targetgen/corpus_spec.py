@@ -21,15 +21,15 @@ from typing import Any
 
 from merlin.targetgen.capsule_dram import dtype_bits
 
+from .capsule_intent import _semantic_block as _semantic_block
+from .corpus_pool import build as build_maxpool2d
+from .corpus_sibling_feed import build as _build_sibling_feed
+
 # canonical dtype token -> (capsule.yaml spelling, MLIR spelling, is_integer). Keyed on the dtype, never
 # on a target — a target selects its dtypes via its compute-unit contract.
-#
-# The WIDTH is deliberately absent. It used to be a fourth literal column, and it was a second copy of a
-# fact the format registry already owns: it read 1 byte/element for mxfp6 and mxfp4, which are 6- and
-# 4-bit formats, so the two authorities disagreed about how large an MX tensor is. Nothing was
-# mis-addressed only because the one consumer read it on the integer path, where the literal happened to
-# be right. `dtype_info` derives the width from the registry instead, so there is one source and a new
-# format is a registry entry rather than an edit here.
+# Element widths come from the format registry through `dtype_info`, not this
+# spelling table. Sub-byte formats must retain their actual widths in address
+# calculations.
 _DTYPE = {
     "int8": ("i8", "i8", True),
     "i8": ("i8", "i8", True),
@@ -112,6 +112,9 @@ class CorpusBinding:
     scale_block: int | None = None
     # instruction-class source: a callable (op, output_dtype, epilogue, movement) -> [class,...]
     classes_for: Callable[..., list[str]] = field(default=lambda **_: [])
+    # Explicit data-only readout selection. None preserves legacy backend discovery;
+    # an empty mapping is an explicit absence and must not discover another provider.
+    readout_inputs: dict | None = None
 
     def cap_dtype(self, token: str) -> str:
         return dtype_info(token)[0]
@@ -389,7 +392,20 @@ def _classes_source(te, contract: dict, *, taxonomy: dict | None = None) -> Call
     """The instruction-class deriver for a matmul-family op. Two regimes, chosen by what the target ships:
     a self-hosted-ISA target (an ``isa_definition.py`` is present) derives its classes from the taxonomy;
     a RoCC/command target derives the RoCC semantic classes from its ``encoding`` map. Never hardcoded."""
+    # Explicit effect declarations avoid provider discovery and legacy issue schedules.
+    enc = contract.get("encoding") or {}
+    if "corpus_required_classes" in enc or "class_family" in enc:
+        from merlin.targetgen.corpus_effect_classes import source
+
+        return source(enc)
+
     from merlin.targetgen import isa_taxonomy as IT
+
+    from .corpus_instruction_roles import selected_classes
+
+    explicit_roles = selected_classes(contract)
+    if explicit_roles is not None:
+        return explicit_roles
 
     # A compute unit may declare that it IS a matrix extension whose encodings are derived by the
     # matrix-unit reader (``matrix_units.yaml``). That surface ships no isa_definition.py and no RoCC
@@ -500,7 +516,13 @@ def profile_datapath(profile: dict, *, numeric_only: bool = False) -> dict:
 
 
 def derive_binding(
-    te, datapath: dict, *, contract: dict | None = None, facts: dict | None = None, taxonomy: dict | None = None
+    te,
+    datapath: dict,
+    *,
+    contract: dict | None = None,
+    facts: dict | None = None,
+    taxonomy: dict | None = None,
+    defer_classes: bool = False,
 ) -> CorpusBinding:
     """Derive the per-target binding from the descriptor + the profile's ``datapath`` block (compare +
     tolerances + optional requant-output dtype — the numeric contract the manifest does not yet carry)."""
@@ -526,6 +548,11 @@ def derive_binding(
     integer = dtype_info(accum)[3]
     scaling = datapath.get("scaling") or cu.get("scaling")
     tiers = datapath.get("required_oracle_tiers") or sorted(inferred_oracle_tiers(te.target, te.sim_via))
+    readout_inputs = None
+    if (c.get("runner") or {}).get("backend") == "chipyard_rocc":
+        from merlin.runtime.backends.chipyard_rocc import readout_metadata
+
+        readout_inputs = readout_metadata(c)
     return CorpusBinding(
         target=te.target,
         tile_dim=_tile_dim(te.target, c, operand=operand, facts=facts),
@@ -543,7 +570,10 @@ def derive_binding(
         subnormal_operand_flush=bool(datapath.get("subnormal_operand_flush", False)),
         inapplicable_tiers=_inapplicable_tiers(datapath, tiers),
         semantic_defaults=dict(datapath.get("semantic_defaults") or {}),
-        classes_for=_classes_source(te, c, taxonomy=taxonomy),
+        classes_for=(lambda **kw: _classes_source(te, c, taxonomy=taxonomy)(**kw))
+        if defer_classes
+        else _classes_source(te, c, taxonomy=taxonomy),
+        readout_inputs=readout_inputs,
     )
 
 
@@ -700,12 +730,25 @@ def requant_shift_for(entry: dict, binding: CorpusBinding, epilogue: list[str], 
 
 def _readout_selectors(binding: CorpusBinding):
     """The target's declared readouts, or ``None`` when it describes none (UNKNOWN, never 'anything goes')."""
-    from merlin.targetgen.readout_facet import epilogue_readouts
+    from merlin.targetgen.readout_facet import ReadoutSupportError, epilogue_readouts, validated_readouts
+
+    if binding.readout_inputs is not None:
+        return validated_readouts(binding.readout_inputs.get("readouts")) or None
 
     try:
         return epilogue_readouts(binding.target) or None
+    except ReadoutSupportError:
+        raise  # selected support owes readout facts and cannot serve them: refuse, never "unknown"
     except Exception:  # noqa: BLE001 -- an unreadable declaration evidences nothing
         return None
+
+
+def _readout_routes(binding: CorpusBinding):
+    from merlin.targetgen.readout_facet import epilogue_stage_routes, validated_stage_routes
+
+    if binding.readout_inputs is not None:
+        return validated_stage_routes(binding.readout_inputs.get("stage_routes"))
+    return epilogue_stage_routes(binding.target)
 
 
 def _readout_selector_for(
@@ -723,15 +766,12 @@ def _readout_selector_for(
     by a check that had the declaration available the whole time. Generation is where this is cheap to
     find out.
     """
-    from merlin.targetgen.readout_facet import epilogue_readouts, epilogue_stage_routes
     from merlin.verify.epilogue_applicability import selectors_applying
 
-    readouts = epilogue_readouts(binding.target)
+    readouts = _readout_selectors(binding)
     if not readouts:
         return None
-    routes = tuple(
-        route for route in epilogue_stage_routes(binding.target) if route.operand_role in available_operand_roles
-    )
+    routes = tuple(route for route in _readout_routes(binding) if route.operand_role in available_operand_roles)
     applying = selectors_applying(readouts, epilogue, routes=routes, composition="contraction")
     if applying:
         return applying[0]
@@ -782,6 +822,17 @@ def _resolve_output_dtype(
     silently substituted default.
     """
     declared = (entry or {}).get("output_dtype")
+    if (entry or {}).get("outcome") == "refuse":
+        # A MUST-REFUSE capsule states, on purpose, a computation no readout performs: that is what it
+        # tests (merlin.targetgen.expected_refusal). The readout check below, which keeps every other
+        # capsule honest, is exactly the fact it relies on, so it is not applied; the committed width is
+        # the entry's own, else the requantized width the stages would narrow to.
+        if declared:
+            dtype_info(str(declared))
+            return str(declared)
+        if binding.requant_output_dtype and any(st in epilogue for st in REQUANTIZING_STAGES):
+            return binding.requant_output_dtype
+        return binding.accum_dtype
     if declared:
         dtype_info(str(declared))  # raises on an unknown token -- fail closed, never fall back
         # AN AUTHOR MAY CHOOSE THE WIDTH; NOBODY MAY CHOOSE ONE THE HARDWARE CANNOT HONOUR. The
@@ -793,13 +844,10 @@ def _resolve_output_dtype(
         if epilogue:
             _selectors = _readout_selectors(binding)
             if _selectors is not None:
-                from merlin.targetgen.readout_facet import epilogue_stage_routes
                 from merlin.verify.epilogue_applicability import selectors_applying
 
                 routes = tuple(
-                    route
-                    for route in epilogue_stage_routes(binding.target)
-                    if route.operand_role in available_operand_roles
+                    route for route in _readout_routes(binding) if route.operand_role in available_operand_roles
                 )
                 _ok = selectors_applying(
                     _selectors,
@@ -853,9 +901,9 @@ def _pool_epilogue(entry: dict, *, rows: int, in_dims: tuple[int, int] | None, o
 
     Pooling on this class of target is FUSED onto the store path -- the store config carries
     ``pool_size``/``pool_stride``/``pool_out_dim``/``porows``/``pocols``/``orows``/``ocols``/``upad``/
-    ``lpad`` and the mvout writes the pooled window -- so a standalone pooling capsule is not the
-    honest capsule for it (the eligibility oracle refuses one as a false fallback). The geometry
-    therefore rides on the fused op's own attributes, in the ABI's own vocabulary.
+    ``lpad`` and the mvout writes the pooled window. Geometry therefore rides on the readout's
+    attributes. A standalone source pool can use movement plus this readout when the capability
+    oracle admits that composition; it does not require an independent pooling engine.
 
     ``in_dims`` is the spatial extent the committed ROWS unflatten to. A conv2d DERIVES it (it is the
     conv's own ``Ho x Wo``); a contraction has no spatial extent of its own, so its entry must DECLARE
@@ -1003,6 +1051,8 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     ``fused_matmul_bias`` is the same weight-stationary contraction with its bias epilogue forced on --
     a distinct op name rather than a flag because the L5 fusion claim compares it against the two
     capsules it replaces, and a group whose members differ only by an attribute cannot be named."""
+    from merlin.targetgen.contract import matmul_interface as MSE
+
     D = binding.tile_dim
     M = entry.get("M_tiles", 1) * D if "M" not in entry else entry["M"]
     K = entry.get("K_tiles", 1) * D if "K" not in entry else entry["K"]
@@ -1013,7 +1063,8 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     if op == "fused_matmul_bias" and not any(s in _BIAS_STAGES for s in epilogue):
         # Ahead of _resolve_output_dtype, which reads the epilogue to decide the committed dtype.
         epilogue.insert(0, "bias_add")
-    acc_scale = entry.get("acc_scale")
+    readout = MSE.acc_scale_parameters(entry, epilogue, N, op=entry.get("name", op))
+    acc_scale = readout.get("acc_scale")
     output_dtype = _resolve_output_dtype(
         binding,
         epilogue,
@@ -1038,8 +1089,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     requant_shift = requant_shift_for(entry, binding, epilogue, op=op)
     if requant_shift is not None:
         attrs["requant_shift"] = requant_shift
-    if acc_scale is not None:
-        attrs["acc_scale"] = acc_scale
+    attrs.update(readout)
     if entry.get("semantic"):
         attrs["semantic"] = entry["semantic"]
     expected = {
@@ -1066,8 +1116,6 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "vcs": "optional",
         "firesim": "optional",
     }
-    from merlin.targetgen.contract import matmul_interface as MSE
-
     mlir = MSE.emit_interface_mlir(
         lhs=lhs,
         weight=weight,
@@ -1078,6 +1126,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         epilogue=epilogue,
         output_dtype=odt,
         acc_scale=acc_scale,
+        acc_scale_by_column=readout.get("acc_scale_by_column"),
         comment=entry.get("comment", ""),
         pool_attrs=pool_attrs or None,
         commit_rows=commit_rows,
@@ -1171,7 +1220,10 @@ def build_resident_reuse(entry: dict, binding: CorpusBinding) -> tuple[dict, str
         "numeric_policy": _numeric_policy(binding, binding.accum_dtype, None),
         "expected": {
             "instruction_classes": binding.classes_for(op="matmul", output_dtype=adt),
-            "modes": {"resident_reuse": True},
+            "modes": {"resident_reuse": sum(
+                (mm.get("M", mm.get("M_tiles", 1) * D) + D - 1) // D
+                for mm in entry["matmuls"]
+            ) > 1},
         },
         "required_oracle_tiers": list(binding.tiers),
         "vcs": "optional",
@@ -1408,6 +1460,17 @@ def build_residual_add(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "bound_lsb": entry.get("bound_lsb"),
     }
     lhs_scale, rhs_scale, bound = residual_add_params(attrs, op=str(entry.get("name", "residual_add")))
+    ordered_scales = entry.get("source_scales")
+    ordered_text = ""
+    if ordered_scales is not None:
+        import math
+
+        if (type(ordered_scales) is not list or len(ordered_scales) != 3
+                or any(type(value) not in (int, float) or not math.isfinite(value) or value <= 0
+                       for value in ordered_scales)):
+            raise ValueError("residual source_scales requires three positive finite ordered scalars")
+        attrs["source_scales"] = list(ordered_scales)
+        ordered_text = "source_scales = [" + ", ".join(f"{float(value)!r} : f32" for value in ordered_scales) + "], "
     idt, midt = binding.cap_dtype(binding.operand_dtype), binding.mlir_dtype(binding.operand_dtype)
     attrs["output_dtype"] = idt
     if entry.get("semantic"):
@@ -1441,6 +1504,7 @@ def build_residual_add(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         f'  %{rhs} = merlin_iface.tensor {{name = "{rhs}", role = "input"}} : tensor<{M}x{N}x{midt}>',
         f'  %{out} = merlin_iface.residual_add %{lhs}, %{rhs} {{name = "{out}", epilogue = [{epi}], '
         f"lhs_scale = {lhs_scale} : f32, rhs_scale = {rhs_scale} : f32, bound_lsb = {bound} : i64, "
+        f"{ordered_text}"
         f'output_dtype = "{idt}"}} : (tensor<{M}x{N}x{midt}>, tensor<{M}x{N}x{midt}>) '
         f"-> tensor<{M}x{N}x{midt}>",
         "}",
@@ -1913,8 +1977,8 @@ def build_gemv_batched(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
 
 
 def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
-    """An im2col conv2d capsule (op == conv2d): NHWC IFM + pre-im2col'd weight [KH*KW*Ci, Cout] -> a resident
-    matmul over conv windows, output [Ho*Wo, Cout]. Reuses the runtime's canonical conv geometry so the golden
+    """A conv2d capsule (op == conv2d): NHWC IFM and a weight laid out ``[tap_h, tap_w, channel] x Cout``
+    (``[KH*KW*Ci, Cout]``), output ``[Ho*Wo, Cout]``. Reuses the runtime's canonical conv geometry so the golden
     (capsule_golden conv2d branch) and the harness agree. Native operand dtype (e.g. int8)."""
     from merlin.runtime.commandbuffer import conv_out_dims
 
@@ -1939,6 +2003,19 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     )
     idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(output_dtype)
     midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(output_dtype)
+    weight_spec = {"name": weight, "role": "weight", "shape": [Kdim, cout], "dtype": idt}
+    if "weight_storage_encoding" in entry:
+        from merlin.perf.storage_encoding import GroupedAxesStorage
+
+        storage = GroupedAxesStorage.from_dict(entry["weight_storage_encoding"])
+        storage.validate()
+        if storage.logical_shape != (Kdim, cout) or storage.dtype != midt:
+            raise ValueError("convolution weight storage differs from its original logical matrix")
+        weight_spec.update(shape=list(storage.physical_shape), storage_encoding=storage.to_dict())
+    weight_type = "tensor<" + "x".join(map(str, weight_spec["shape"])) + f"x{midt}>"
+    from merlin.targetgen.contract.interface_emit import _fmt_attrs
+
+    weight_attrs = _fmt_attrs({key: value for key, value in weight_spec.items() if key not in ("shape", "dtype")})
     attrs = {
         "ifm": ifm,
         "weight": weight,
@@ -1952,7 +2029,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "layout": "nhwc",
         "epilogue": epilogue,
         "output_dtype": odt,
-        "semantic": "conv2d_im2col",
+        "semantic": "conv2d",
     }
     # A pooling epilogue is fused onto the conv's store path (the fused conv loop takes the window and
     # stores the pooled result), so it rides on this op's own attributes. ``pool_in_dims`` is DERIVED
@@ -1971,19 +2048,10 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     bias, bias_dt = _bias_operand(entry, epilogue, cout, binding, "conv2d")
     if bias:
         attrs["bias"] = bias
-    acc_scale = entry.get("acc_scale")
-    if "acc_scale" in epilogue:
-        if acc_scale is None:
-            raise ValueError(
-                f"{entry.get('name', 'conv2d')}: an 'acc_scale' epilogue stage needs its `acc_scale` "
-                f"multiplier; a stage declared without one would be applied at an assumed 1.0"
-            )
-        attrs["acc_scale"] = acc_scale
-    elif acc_scale is not None:
-        raise ValueError(
-            f"{entry.get('name', 'conv2d')}: declares acc_scale = {acc_scale!r} but no 'acc_scale' "
-            f"epilogue stage; the multiplier would be carried into the capsule and read by nothing"
-        )
+    from merlin.targetgen.contract import matmul_interface as MSE
+
+    readout = MSE.acc_scale_parameters(entry, epilogue, cout, op=entry.get("name", "conv2d"))
+    attrs.update(readout)
     cap = {
         "name": entry["name"],
         "kind": entry["kind"],
@@ -1992,7 +2060,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "label": entry.get("label", "public"),
         "interface_mlir": "capsule.interface.mlir",
         "inputs": [
-            {"name": weight, "role": "weight", "shape": [Kdim, cout], "dtype": idt},
+            weight_spec,
             {"name": ifm, "role": "input", "shape": [1, H, W, ci], "dtype": idt},
             *([{"name": bias, "role": "bias", "shape": [cout], "dtype": bias_dt}] if bias else []),
         ],
@@ -2012,7 +2080,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     L = _iface_prelude(binding.target, entry.get("comment", ""))
     L += [
         f'  %{ifm} = merlin_iface.tensor {{name = "{ifm}", role = "input"}} : tensor<1x{H}x{W}x{ci}x{midt}>',
-        f'  %{weight} = merlin_iface.tensor {{name = "{weight}", role = "weight"}} : tensor<{Kdim}x{cout}x{midt}>',
+        f'  %{weight} = merlin_iface.tensor {weight_attrs} : {weight_type}',
         *(
             [
                 f'  %{bias} = merlin_iface.tensor {{name = "{bias}", role = "bias"}} : '
@@ -2022,13 +2090,13 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
             else []
         ),
         f'  %{weight}_res = merlin_iface.resident_pack %{weight} {{layout = "packed_conv_rhs"}} '
-        f": (tensor<{Kdim}x{cout}x{midt}>) -> !merlin_iface.resident",
+        f": ({weight_type}) -> !merlin_iface.resident",
         f"  %{out} = merlin_iface.conv2d %{ifm}, %{weight}_res {{kernel = [{kh}, {kw}, {ci}, {cout}], "
         f"stride = [{stride[0]}, {stride[1]}], padding = [{padding[0]}, {padding[1]}, {padding[2]}, {padding[3]}], "
         f'dilation = [{dilation[0]}, {dilation[1]}], name = "{out}", epilogue = [{epi}], '
         f'output_dtype = "{odt}"'
         + (f", requant_shift = {requant_shift} : i64" if requant_shift is not None else "")
-        + (f", acc_scale = {acc_scale} : f32" if "acc_scale" in epilogue else "")
+        + MSE.acc_scale_mlir_attrs(readout)
         + (f', bias = "{bias}"' if bias else "")
         + f', layout = "nhwc"{_pool_mlir_attrs(pool_attrs)}}} '
         f": (tensor<1x{H}x{W}x{ci}x{midt}>, !merlin_iface.resident) -> tensor<{out_rows}x{cout}x{modt}>",
@@ -2122,7 +2190,8 @@ def build_host_island_seam(entry: dict, binding: CorpusBinding) -> tuple[dict, s
     }
 
     # Standard MLIR only.  The provenance attributes describe placement obligations to any backend;
-    # they do not encode a target command or target name.
+    # they do not encode a target command or target name. These node identities
+    # name the generated direct-IR operations, not an observed framework capture.
     lines = [
         'builtin.module attributes {prov.level = "linalg-on-tensors"} {',
         f"  func.func @forward(%{a}: tensor<{M}x{K}x{midt}>, "
@@ -2138,7 +2207,8 @@ def build_host_island_seam(entry: dict, binding: CorpusBinding) -> tuple[dict, s
         f'iterator_types = ["parallel", "parallel", "reduction"]}} '
         f"ins(%{a}, %{w0} : tensor<{M}x{K}x{midt}>, tensor<{K}x{H}x{midt}>) "
         f"outs(%acc0_init : tensor<{M}x{H}x{madt}>) attrs = "
-        f'{{prov.region_id = "contraction_0", prov.op = "matmul", prov.family = "contraction"}} {{',
+        f'{{prov.region_id = "contraction_0", prov.source_node_ids = ["direct_ir.contraction_0"], '
+        f'prov.op = "matmul", prov.family = "contraction"}} {{',
         f"    ^bb_acc0(%lhs: {midt}, %rhs: {midt}, %acc: {madt}):",
         f"      %lhs_wide = arith.extsi %lhs : {midt} to {madt}",
         f"      %rhs_wide = arith.extsi %rhs : {midt} to {madt}",
@@ -2152,7 +2222,8 @@ def build_host_island_seam(entry: dict, binding: CorpusBinding) -> tuple[dict, s
         f"    %narrow = linalg.generic {{indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, "
         f'affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]}} '
         f"ins(%acc0 : tensor<{M}x{H}x{madt}>) outs(%narrow_empty : tensor<{M}x{H}x{midt}>) "
-        f'attrs = {{prov.region_id = "requant_0", prov.op = "requant", '
+        f'attrs = {{prov.region_id = "requant_0", prov.source_node_ids = ["direct_ir.requant_0"], '
+        f'prov.op = "requant", '
         f'prov.family = "elementwise_map", prov.placement = "accelerator_epilogue"}} {{',
         f"    ^bb0(%x: {madt}, %unused: {midt}):",
         f"      %clamp_lo = arith.maxsi %x, %lo : {madt}",
@@ -2169,7 +2240,8 @@ def build_host_island_seam(entry: dict, binding: CorpusBinding) -> tuple[dict, s
             f"    %host = linalg.generic {{indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, "
             f'affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]}} '
             f"ins(%narrow : tensor<{M}x{H}x{midt}>) outs(%host_empty : tensor<{M}x{H}x{midt}>) "
-            f'attrs = {{prov.region_id = "host_island_0", prov.op = "xor_low_bit", '
+            f'attrs = {{prov.region_id = "host_island_0", prov.source_node_ids = ["direct_ir.host_island_0"], '
+            f'prov.op = "xor_low_bit", '
             f'prov.family = "host_scalar", prov.placement = "host_required"}} {{',
             f"    ^bb1(%x: {midt}, %unused: {midt}):",
             f"      %mapped = arith.xori %x, %xor_mask : {midt}",
@@ -2188,7 +2260,8 @@ def build_host_island_seam(entry: dict, binding: CorpusBinding) -> tuple[dict, s
         f'iterator_types = ["parallel", "parallel", "reduction"]}} '
         f"ins({middle}, %{w1} : tensor<{M}x{H}x{midt}>, tensor<{H}x{N}x{midt}>) "
         f"outs(%acc1_init : tensor<{M}x{N}x{madt}>) attrs = "
-        f'{{prov.region_id = "contraction_1", prov.op = "matmul", prov.family = "contraction"}} {{',
+        f'{{prov.region_id = "contraction_1", prov.source_node_ids = ["direct_ir.contraction_1"], '
+        f'prov.op = "matmul", prov.family = "contraction"}} {{',
         f"    ^bb_acc1(%lhs: {midt}, %rhs: {midt}, %acc: {madt}):",
         f"      %lhs_wide = arith.extsi %lhs : {midt} to {madt}",
         f"      %rhs_wide = arith.extsi %rhs : {midt} to {madt}",
@@ -2332,6 +2405,7 @@ def build_scope_chain(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
 
 # op -> builder, for the driver to dispatch on the entry's declared op.
 BUILDERS: dict[str, Callable[[dict, CorpusBinding], tuple[dict, str]]] = {
+    "maxpool2d": build_maxpool2d,
     "matmul": build_matmul,
     "linear": build_matmul,
     "fused_matmul_bias": build_matmul,
@@ -2346,9 +2420,8 @@ BUILDERS: dict[str, Callable[[dict, CorpusBinding], tuple[dict, str]]] = {
     #
     # It is the one family of the four the ABI contract's `host_refusal_evidence` adjudicates with a
     # FACET (`readout_facet.operand_sum`) rather than with an epilogue stage -- i.e. the one that has a
-    # standalone witness on the device and therefore earns a standalone builder. The other three
-    # (quantize, minmax, pool) are readout STAGES there, and a standalone builder for them would
-    # declare a capability no target in this repo evidences.
+    # standalone witness on the device. Quantize, minmax and pool are readout stages;
+    # maxpool2d above composes movement with readout, rather than claiming a pool engine.
     "add": build_residual_add,
     "residual_seam": build_residual_seam,
     "resident_reuse": build_resident_reuse,
@@ -2375,121 +2448,86 @@ def build_component_program(entry: dict, binding: CorpusBinding) -> tuple[dict, 
 BUILDERS["component_program"] = build_component_program
 
 
+def build_spatial_producer_pool(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """Two separately rounded original source operations; no coefficient collapse."""
+    from .corpus_spatial_pair import build as build_pair
+
+    return build_pair(entry, binding)
+
+
+BUILDERS["spatial_producer_pool"] = build_spatial_producer_pool
+
+
+def build_quantized_producer_sum(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """Preserve the original producer Q1 and ordered residual Q2/activation."""
+    from .corpus_quantized_sum import build as build_pair
+    return build_pair(entry, binding)
+
+
+BUILDERS["quantized_producer_sum"] = build_quantized_producer_sum
+BUILDERS["sibling_feed"] = _build_sibling_feed  # sibling contractions, merged, feeding a contraction
+
+
+def activation_matmul_program(entry: dict, binding: CorpusBinding) -> dict:
+    """The typed DAG of an activation x activation contraction whose result feeds a reshape.
+
+    Both operands are runtime ``input`` tensors in the operand dtype: no stored weight, so nothing can
+    be packed or made resident ahead of the call, and no scale stream, because a host epilogue applies
+    the scales. The product accumulates in the accumulator dtype and is published through a row-major
+    reshape to ``[N, M]``, so the contraction's consumer is data movement rather than a readout stage.
+    """
+    D = binding.tile_dim
+    M = entry.get("M", entry.get("M_tiles", 1) * D)
+    K = entry.get("K", entry.get("K_tiles", 1) * D)
+    N = entry.get("N", entry.get("N_tiles", 1) * D)
+    if any(type(extent) is not int or extent < 1 for extent in (M, K, N)):
+        raise ValueError(f"{entry.get('name')}: activation matmul needs resolved positive M, K and N")
+    from .component_program import SCHEMA_V2
+
+    lhs, rhs, out = entry.get("lhs", "A0"), entry.get("rhs", "B0"), entry.get("out", "Y0")
+    return {
+        "schema": SCHEMA_V2,
+        "inputs": [
+            {"name": lhs, "role": "input", "shape": [M, K], "dtype": "operand"},
+            {"name": rhs, "role": "input", "shape": [K, N], "dtype": "operand"},
+        ],
+        "nodes": [
+            {"name": "product", "op": "matmul", "inputs": [lhs, rhs]},
+            {"name": "moved", "op": "reshape", "inputs": ["product"], "shape": [N, M]},
+        ],
+        "outputs": [{"name": out, "value": "moved"}],
+    }
+
+
+def build_activation_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """An activation x activation contraction followed by a reshape (op == activation_matmul).
+
+    Written as the generic component program so the reference is the independent exact integer
+    evaluator and the written program is screened operation by operation like any captured source.
+    """
+    return build_component_program({**entry, "program": activation_matmul_program(entry, binding)}, binding)
+
+
+BUILDERS["activation_matmul"] = build_activation_matmul
+
+#: Builders whose capsule is a generic component program derived from the entry's own extents.
+COMPONENT_PROGRAM_SOURCES: dict[str, Callable[[dict, CorpusBinding], dict]] = {
+    "activation_matmul": activation_matmul_program,
+}
+
+
+def entry_component_program(entry: dict, binding: CorpusBinding) -> dict | None:
+    """The typed component program an entry will be written as, or ``None`` when it is not one."""
+    op = entry.get("op")
+    if op == "component_program":
+        return entry.get("program")
+    source = COMPONENT_PROGRAM_SOURCES.get(str(op))
+    return source(entry, binding) if source is not None else None
+
+
 #: Capsule kind -> the generalization axis it probes. A fact about what the capsule tests, not an
 #: opinion about it, so it is derived rather than re-typed on every entry.
 _AXIS_BY_KIND: dict[str, str] = {"isa": "seen", "layer": "composition", "model_slice": "composition", "model": "model"}
-
-
-def _semantic_block(entry: dict, binding: CorpusBinding) -> dict:
-    """The capsule's generalization-intent block: half derived, half authorial.
-
-    ``semantic_family`` is DERIVED from the op — the same mapping the eligibility oracle and the
-    leave-one-family-out splitter already fall back to, so a generated capsule and a graded capsule can
-    never disagree about which family they belong to.
-
-    ``must_accelerate`` / ``generalization_axis`` are NOT derivable: they are the author's claim about
-    what this capsule is for, so they come from the profile entry (or the profile's
-    ``datapath.semantic_defaults``). ⚠️ ``must_accelerate`` defaults to FALSE on purpose. It is the
-    strongest assertion in the block — an eligible region that falls back is a hard failure — and
-    defaulting it true would turn every generated capsule into a gate the moment this lands.
-
-    Emitting this here is what stops a corpus regeneration from silently deleting the annotation:
-    before, the 40 radiance blocks were hand-written and ``_write_capsule`` dumps the dict wholesale,
-    so a regen would have zeroed the only working generalization annotation in the repo.
-    """
-    from merlin.targetgen import semantic_families as _sf
-
-    defaults = dict(getattr(binding, "semantic_defaults", None) or {})
-    # ⚠️ NOT ``entry["semantic"]`` -- a profile entry already uses that key for a free-form op-semantics
-    # label ("quantized_linear", "matmul_mxu0") that flows into ``operation.attributes.semantic``.
-    # Reusing it here would collide with 12 existing entries across gemmini and atlas and crash the
-    # generator, so the generalization-intent override gets a key of its own.
-    raw = entry.get("generalization")
-    authored = dict(raw) if isinstance(raw, dict) else {}
-    fam = authored.get("semantic_family") or _sf.from_op(entry.get("op", "matmul"))
-    block: dict = {}
-    if fam:
-        block["semantic_family"] = fam
-    # The axis follows the capsule KIND, which is a fact about what the capsule tests rather than an
-    # opinion: an ``isa`` capsule exercises a primitive the corpus has SEEN, a ``model_slice`` exercises
-    # a COMPOSITION of primitives, and a whole ``model`` is the end-to-end integration case. Deriving it
-    # keeps 40 annotations from having to be re-typed and keeps a new capsule from being mislabelled.
-    kind = entry.get("kind", "isa")
-    axis = authored.get("generalization_axis") or defaults.get("generalization_axis") or _AXIS_BY_KIND.get(kind, "seen")
-    block["generalization_axis"] = axis
-    # A whole-model capsule spans families by construction, is never held out (see
-    # generalization_splits), and is expected to contain regions the target cannot run -- so it must
-    # never carry must_accelerate, whatever the corpus default says.
-    #
-    # ⚠️ NEITHER MAY A CAPSULE THAT FORBIDS THE MESH. `lanes.forbid: [on_mesh]` is the negative lane:
-    # the capsule exists to prove the compiler does NOT put this work on the accelerator, and
-    # `must_accelerate: true` demands the opposite. Emitting both produces a capsule that cannot pass
-    # under any behaviour, and it is produced by exactly the combination that looks safest -- a
-    # corpus-wide `semantic_defaults: {must_accelerate: true}` meeting a host-only capsule. Measured:
-    # declaring that default on one profile gave `SY_host_only_elementwise_map` and
-    # `SY_host_only_reduction` `forbid: [on_mesh]` alongside `must_accelerate: true`. The lane
-    # declaration is the more specific statement and wins, structurally rather than by an exception
-    # list -- the same treatment `kind == "model"` already gets above.
-    lanes = entry.get("lanes") or {}
-    forbids_mesh = "on_mesh" in {str(x) for x in (lanes.get("forbid") or ())}
-    must_default = False if (kind == "model" or forbids_mesh) else bool(defaults.get("must_accelerate", False))
-    # An AUTHORED `true` cannot override the negative lane either: the contradiction is the same
-    # whichever half asserted it, and a capsule declaring both is an authoring error to report rather
-    # than a preference to honour.
-    authored_must = authored.get("must_accelerate", must_default)
-    if forbids_mesh and bool(authored_must):
-        raise ValueError(
-            f"{entry.get('name', '<unnamed>')}: lanes.forbid names 'on_mesh' while must_accelerate is "
-            f"true. The negative lane exists to prove this work does NOT reach the accelerator, so the "
-            f"two demands cannot both hold and the capsule could not pass under any behaviour"
-        )
-    block["must_accelerate"] = bool(authored_must)
-    # WHY the strongest assertion was withheld. The schema has a field for it, and for the interop and
-    # host-island capsules it is the whole contract: they withhold ``must_accelerate`` on purpose,
-    # because host-lane work is the behaviour under test rather than a fallback failure, and the demand
-    # they DO make is `lanes.require`. That reason was hand-written into the capsule after generation
-    # and therefore deleted by the next regeneration -- measured on three gemmini capsules at once --
-    # which left a withheld assertion looking like an author who simply never made one. Same argument
-    # as the block around it: emit it from the profile so a regen preserves it.
-    reason = authored.get("not_asserted_reason", defaults.get("not_asserted_reason"))
-    if reason:
-        block["not_asserted_reason"] = reason
-    block["eligible"] = authored.get("eligible", defaults.get("eligible", "auto"))
-    # FAMILIES THIS CAPSULE FUSES, so that a fused-only family can be covered at all.
-    #
-    # A target may declare a family reachable ONLY in composition -- `elementwise_map` with
-    # `composed_with: [contraction]` on the target measured here. A standalone elementwise capsule would
-    # then be the WRONG capsule (the eligibility oracle refuses it as a false fallback), so the only
-    # capsule that can ever evidence that cell is a contraction with an epilogue. Crediting a capsule for
-    # exactly one family therefore left such a cell permanently uncoverable while the requirement kept
-    # demanding it -- a gap no capsule could close, reported forever as corpus debt.
-    #
-    # Derived, not declared: each epilogue stage the capsule carries is resolved to its family through
-    # the same op->family table everything else uses, and kept only when the manifest says that family
-    # composes with this capsule's own. A stage whose family does not resolve is recorded rather than
-    # dropped, because silently withholding coverage a capsule earned is the failure this replaces.
-    fused, unresolved = _fused_families(entry, fam, binding)
-    if fused:
-        block["composed_families"] = sorted(fused)
-    if unresolved:
-        block["composed_families_unresolved"] = sorted(unresolved)
-    # ANY OTHER AUTHORED KEY SURVIVES. The block above consumes the keys it knows and, until this,
-    # silently dropped the rest -- so a capsule synthesized to discharge a NAMED obligation could not
-    # say which one, and the coverage reader had to re-derive the answer from attributes. That works
-    # only when the obligation is expressible in attributes: a `padUNKNOWN` convolution window is not,
-    # because the member can only spell zero padding, so the obligation it was built for could never
-    # be matched by it. Carrying the reference is what closes that, and it is general rather than a
-    # special case for one axis.
-    for key, value in authored.items():
-        if key not in block and key not in (
-            "must_accelerate",
-            "eligible",
-            "not_asserted_reason",
-            "semantic_family",
-            "generalization_axis",
-        ):
-            block[key] = value
-    return block
 
 
 def _fused_families(entry: dict, family: str | None, binding: CorpusBinding) -> tuple[set, set]:

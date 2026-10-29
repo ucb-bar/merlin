@@ -156,6 +156,15 @@ def test_public_preflight_accepts_structural_plan_without_claiming_execution():
     assert validate_mixed_program_plan(SOURCE, cb, LOWERED)["ok"]
 
 
+@pytest.mark.parametrize("extent", [[0], [-1, 0], [0, "1"], [0, 0, 0]])
+def test_local_schema_range_references_reject_invalid_extents(extent):
+    cb = _buffer()
+    cb["params"]["global_program_plan"]["prologue_instruction_range"] = extent
+    result = validate_mixed_program_plan(SOURCE, cb)
+    assert not result["ok"]
+    assert any("plan schema $.prologue_instruction_range" in finding for finding in result["findings"])
+
+
 def test_output_writer_requires_one_task_owning_its_exact_source_result():
     assert validate_mixed_program_plan(SOURCE, _split_output_tasks(writers=(1,)))["ok"]
     for writers in ((), (0,), (0, 1)):
@@ -307,3 +316,36 @@ def test_cli_explains_unowned_hoisted_constant_without_changing_refusal(tmp_path
     assert not result["ok"]
     assert "planned task emits no owned computation or control flow" in result["findings"]
     assert any("hoisted constant" in row and "source-owned" in row for row in result["authoring_guidance"])
+
+
+def _with_completion(body=None, name='finish'):
+    completion = body or '''"llvm.inline_asm"() <{asm_string = "selected fence", constraints = "~{memory}", has_side_effects}> : () -> ()
+      llvm.return'''
+    return LOWERED.rsplit('}', 1)[0] + f' llvm.func @{name}() {{ {completion} }}\n}}'
+
+
+def test_selected_completion_helper_preserves_entry_task_checks():
+    abi = {'entry_symbol': 'kernel', 'completion_symbol': 'finish', 'completion_asm': 'selected fence'}
+    emitted = _with_completion()
+    assert not validate_mixed_program_plan(SOURCE, _buffer(), emitted)['ok']
+    assert validate_mixed_program_plan(SOURCE, _buffer(), emitted, lowered_abi=abi)['ok']
+    assert not validate_mixed_program_plan(SOURCE, _buffer(), _with_completion(name='unselected'), lowered_abi=abi)['ok']
+    assert not validate_mixed_program_plan(SOURCE, _buffer(), emitted.replace('selected fence', 'other fence'), lowered_abi=abi)['ok']
+    tagged = emitted.replace('has_side_effects}>', 'has_side_effects}> {merlin.global_task = 0 : i64}')
+    assert not validate_mixed_program_plan(SOURCE, _buffer(), tagged, lowered_abi=abi)['ok']
+    orphan = emitted.replace('merlin.global_task = 0 : i64', 'merlin.global_task = -1 : i64')
+    assert not validate_mixed_program_plan(SOURCE, _buffer(), orphan, lowered_abi=abi)['ok']
+    empty_completion = _with_completion(body='llvm.return')
+    assert not validate_mixed_program_plan(SOURCE, _buffer(), empty_completion, lowered_abi=abi)['ok']
+
+
+def test_declared_riscv_toolchain_admits_only_architectural_completion():
+    from merlin.targetgen.contract.harness_abi import lowered_plan_abi
+    contract = {"harness_abi": {"entry_symbol": "kernel", "fence_symbol": "finish"},
+                "runner": {"backend": "native", "native": {"toolchain": {"cflags": ["-march=rv64gc"]}}}}
+    abi = lowered_plan_abi(contract, target="test")
+    emitted = _with_completion().replace("selected fence", "fence")
+    assert validate_mixed_program_plan(SOURCE, _buffer(), emitted, lowered_abi=abi)["ok"]
+    assert not validate_mixed_program_plan(SOURCE, _buffer(), emitted.replace('asm_string = "fence"', 'asm_string = "nop"'), lowered_abi=abi)["ok"]
+    contract["runner"]["native"]["toolchain"]["cflags"] = ["-march=other"]
+    assert not validate_mixed_program_plan(SOURCE, _buffer(), emitted, lowered_abi=lowered_plan_abi(contract, target="test"))["ok"]

@@ -1,0 +1,55 @@
+{
+  "schema": "merlin.public_readout_request_build.v1",
+  "argv": [
+    "g++",
+    "-std=c++17",
+    "-O2",
+    "-fPIC",
+    "-shared",
+    "-I<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing",
+    "-I<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/timing/core/include",
+    "-I<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/examples/gemmini/timing",
+    "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/examples/gemmini/timing/bridge.cpp",
+    "-o",
+    "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/libtiming_provider.so"
+  ],
+  "source_pins": [
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/examples/gemmini/timing/bridge.cpp",
+      "sha256": "08060245d3ebdee3110f16ba3f363f69c147affa4cb450a67826b1535c7063ff"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/examples/gemmini/timing/provider.hpp",
+      "sha256": "14766c6515056a196ce2724f72f52c2d1d3a5c44e9c1a6d2a76bba1cb7617a58"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/examples/gemmini/timing/staged.hpp",
+      "sha256": "76f3370f38cf902599a46cf512a399e73154c5dab61a0d73ecd2f421df7177b5"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/examples/gemmini/timing/streamed_readout.hpp",
+      "sha256": "50a0db7c118c3588f7ad98a6c0b15f7f7b51908056df577004a085f60557eeee"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/examples/gemmini/timing/scratchpad_load.hpp",
+      "sha256": "73f8346198a7285e2002d83341871fbae2d4e12939af79d46198a55544e7677a"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/timing/provider.hpp",
+      "sha256": "acc2d0a921a651405ffadd2d52ff6c2ab17e47c95c2fb6265cb3f721076b233a"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/timing/core/include/merlin_timing/engine.hpp",
+      "sha256": "a3ad0ac903e091d5e3384534eec8379f24d42b6294adc1c496eea146082b044d"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/timing/core/include/merlin_timing/reservations.hpp",
+      "sha256": "672ed5be138226533b49a8c38c91b2623494b5162286862ed7fcc48f77e37c65"
+    }
+  ],
+  "provider": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/libtiming_provider.so",
+    "sha256": "ee4d095264dd95dd3c7b8355aaf9f0cce7a811187251a74c90ba784f0f621bcd"
+  },
+  "wall_s": 2.725218180043157
+}

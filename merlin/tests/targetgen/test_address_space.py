@@ -45,6 +45,26 @@ def _space(target: str = TARGET):
     return sp
 
 
+@pytest.mark.parametrize("edge,width,dtype", [(3, 8, "int8"), (7, 32, "int32")])
+def test_conflicting_sram_and_linked_datapath_width_is_unknown(edge, width, dtype):
+    facts = {
+        "arrays": [{"name": "array", "rows": edge, "cols": edge}],
+        "datapaths": [{"name": "buffer", "dtype": dtype}],
+        "memories": [{
+            "name": "buffer", "bytes": edge * width * 8, "depth": 64,
+            "source": "firrtl_census", "row_elems": edge,
+            "elem_bits": width * 2, "row_bits_rtl": edge * width * 2,
+        }],
+    }
+    space = derive_address_space("synthetic-width-conflict", facts=facts)
+    store = space.store("buffer")
+    assert store.element_bits is None and store.element_dtype is None
+    assert any(item.quantity == "element_bits" and item.store == "buffer" for item in space.unknowns)
+    # The separately declared physical row width is still knowable; it cannot
+    # repair the conflicting element-format claim.
+    assert store.row_bytes == edge * width * 2 // 8
+
+
 # ------------------------------------------------------------------ the derivation, against real RTL
 
 

@@ -1,0 +1,26 @@
+# fresh10 pair, common settings (user decision 2026-10-28): both arms on one final export, the sealed
+# xs_capsules corpus (152 public cases), SDK V24 + substrate v17, the fresh9-cca treatment (CCA tools,
+# reference kernels, reference map, reference experiment tasks off), fresh10 guidance, 12 h clocks and
+# 20 CPUs per arm. Arms: fresh-campaign-fresh10-seeded.yaml (A) and fresh-campaign-fresh10-cca.yaml (B).
+extends: /work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs_capsules/fresh-campaign-xs_capsules-overrides.yaml
+id: gemmini-open-compiler-fresh10-common
+run:
+  # 12 h clock. final_model_s 7200 (2 h, twice fresh9's 1 h on a clock twice as long); the policy's
+  # drain_s stays 3600, already the joint-control maximum. Authoring freezes at 11 h.
+  max_wall_s: 43200
+  final_model_s: 7200
+  # CPUs per arm and helpers: prepare.sh CORES / HELPERS -> fresh-campaign-fresh10-resources.yaml.
+plan:
+  # The reference-analysis broker imports merlin.mining (reference_experiments.record_analysis); without
+  # packages/merlin-mining every reference-analysis call returned analysis_dependency_unavailable (CCA check
+  # 2026-10-28, .tmp/cca-check). Campaign/broker environment only: the author sandbox sets its own PYTHONPATH.
+  environment:
+    PYTHONPATH: ${FRAMEWORK}/src:${FRAMEWORK}/packages/merlin-experiments/src:${FRAMEWORK}/packages/merlin-timing/src:${FRAMEWORK}/packages/merlin-mining/src:${REFERENCE_ANALYSIS_DEPS}
+  reference_guidance: "on"
+  reference_experiment_tasks: "off"
+  guidance: ${TASK}/.tmp/fresh/fresh10-guidance.md
+inputs:
+  # Preparation children run at normal priority; preparation_cpus (arm specs) is every CPU outside the two runs.
+  nice: 0
+seal:
+  reviewed_by: copparihollmann@gmail.com

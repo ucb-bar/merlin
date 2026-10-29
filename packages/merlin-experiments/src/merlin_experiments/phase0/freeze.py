@@ -22,6 +22,68 @@ def _input_owner(path: Path) -> str:
     return hashlib.sha256(str(path.absolute()).encode()).hexdigest()
 
 
+def _pinned_selection(plan: dict, command: dict, *, key: str, field: str, label: str):
+    from .m2m_runtime import read_runtime_reuse
+
+    selected = command.get(field)
+    path, pin = plan.get("input_paths", {}).get(key), plan.get("inputs", {}).get(key)
+    if selected is None and path is None and pin is None:
+        return None
+    if (
+        selected is None
+        or path is None
+        or not isinstance(pin, dict)
+        or pin.get("path") != path
+        or fingerprint(path) != pin.get("sha256")
+        or read_runtime_reuse(Path(path)) != selected
+    ):
+        raise ValueError(f"{label} differs from its pinned input bytes")
+    return selected
+
+
+def _runtime_reuse(plan: dict, command: dict):
+    return _pinned_selection(
+        plan,
+        command,
+        key="phase0:capture-runtime-reuse-selection",
+        field="phase0_capture_runtime_reuse",
+        label="capture runtime selection",
+    )
+
+
+def _rtl_source_relocations(plan: dict, command: dict):
+    return _pinned_selection(
+        plan,
+        command,
+        key="phase0:rtl-source-relocations-selection",
+        field="phase0_rtl_source_relocations",
+        label="RTL source relocation selection",
+    )
+
+
+def _verify_relocations(evidence, selected):
+    observed = json.loads(evidence.views_json).get("rtl_source_relocations")
+    if selected is None:
+        if observed is not None:
+            raise ValueError("frozen RTL source relocation lacks its explicit selection")
+        return
+    expected = (
+        {
+            "schema": "merlin.phase0.rtl_source_relocation.v1",
+            "facts_sha256": evidence.raw_facts_sha256,
+            "sources": [
+                {"original_path": original, "replacement_path": row["path"], "sha256": row["sha256"]}
+                for original, row in sorted(selected.items())
+            ],
+            "scope": "byte-identical recorded source custody only; no new extraction or hardware qualification",
+        }
+        if selected
+        else None
+    )
+    if observed != expected:
+        raise ValueError("frozen RTL source relocation differs from its selected source/facts binding")
+
+
 def _model_root(evidence, software_path: str) -> Path | None:
     """Resolve the declared model owner only while observing the live selection."""
     from merlin.targetgen.software_spec import software_spec_references
@@ -49,6 +111,11 @@ def selection(command: dict, target: str):
         software_spec=inputs.get("software_spec"),
         conformance_spec=inputs.get("conformance_spec"),
         prohibited_roles=(command.get("instruction_policy") or {}).get("prohibited_instruction_roles") or (),
+        **(
+            {"rtl_source_relocations": command["phase0_rtl_source_relocations"]}
+            if "phase0_rtl_source_relocations" in command
+            else {}
+        ),
     )
 
 
@@ -70,7 +137,7 @@ def selected_inputs(command: dict, target: str) -> tuple[dict[str, str], dict]:
 
 
 def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
-    """Own only receipt-bound iteration payloads selected by the synthesis profile."""
+    """Own receipt-bound public payloads selected by the ordinary synthesis profile."""
     from merlin.targetgen.capsule_source import materialized_model_artifacts
 
     value = command.get("inputs", {}).get("synth_profile")
@@ -80,6 +147,13 @@ def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
     document = yaml.safe_load(profile.read_bytes())
     result = {}
     for entry in (document or {}).get("capsules", []):
+        if entry.get("public_boundary"):
+            from .public_boundaries import selected_loader
+
+            loader = selected_loader(entry, profile.parent)
+            result[loader] = (profile.parent, loader.relative_to(profile.parent).as_posix())
+            context = profile.parent / entry["public_boundary"]["source_context"]["path"]
+            result[context] = (profile.parent, context.relative_to(profile.parent).as_posix())
         binding = entry.get("materialized_capture")
         if not binding:
             continue
@@ -88,6 +162,13 @@ def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
             raise ValueError("frozen materialized capture must be contained beside its synthesis profile")
         source = profile.parent / relative
         resolved = {**binding, "path": str(source)}
+        selected_profile = None
+        if binding.get("profile_path"):
+            relative_profile = Path(binding["profile_path"])
+            if relative_profile.is_absolute() or ".." in relative_profile.parts:
+                raise ValueError("frozen materialized profile must be contained beside its synthesis profile")
+            selected_profile = profile.parent / relative_profile
+            resolved["profile_path"] = str(selected_profile)
         loader = None
         if binding.get("loader_path"):
             relative_loader = Path(binding["loader_path"])
@@ -114,6 +195,14 @@ def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
             if hashlib.sha256(loader.read_bytes()).hexdigest() != binding.get("loader_sha256"):
                 raise ValueError("selected materialized loader changed before freezing")
             result[loader] = (profile.parent, loader.relative_to(profile.parent).as_posix())
+        if selected_profile is not None:
+            if (
+                selected_profile.is_symlink()
+                or not selected_profile.is_file()
+                or hashlib.sha256(selected_profile.read_bytes()).hexdigest() != binding.get("profile_sha256")
+            ):
+                raise ValueError("selected materialized profile changed before freezing")
+            result[selected_profile] = (profile.parent, selected_profile.relative_to(profile.parent).as_posix())
     return result
 
 
@@ -147,8 +236,11 @@ def stage(plan: dict) -> dict:
         return frozen
     if not command.get("phase0_evidence"):
         raise ValueError("explicit software selection lacks planned Phase 0 evidence")
+    runtime_reuse = _runtime_reuse(frozen, command)
+    relocations = _rtl_source_relocations(frozen, command)
     target, run_root = frozen["target"], Path(frozen["run_dir"])
     evidence = selection(command, target)
+    _verify_relocations(evidence, relocations)
     from .component_semantic_basis import ComponentSemanticBasis
 
     basis = ComponentSemanticBasis.from_recipe(command["inputs"].get("recipe"))
@@ -300,7 +392,14 @@ def stage(plan: dict) -> dict:
         m2m_receipt.chmod(0o444)
         if CONFIG_ENV in command["env"]:
             command["env"][CONFIG_ENV] = json.dumps(
-                m2m_runtime.sealed_capture_config(selected_m2m, artifact_root), sort_keys=True
+                m2m_runtime.sealed_capture_config(
+                    selected_m2m,
+                    artifact_root,
+                    execution_timeout_seconds=command.get("phase0_capture_timeout_seconds"),
+                    bwrap=command.get("phase0_bwrap"),
+                    runtime_reuse=runtime_reuse,
+                ),
+                sort_keys=True,
             )
         frozen["phase0_m2m_runtime_receipt"] = str(m2m_receipt)
         frozen["input_paths"]["phase0:m2m_runtime_receipt"] = str(m2m_receipt)
@@ -350,6 +449,8 @@ def stage(plan: dict) -> dict:
 
 def _verify_frozen_sources(plan: dict) -> dict:
     """Verify archived source and command bindings without consulting live owners."""
+    runtime_reuse = _runtime_reuse(plan, plan["phases"]["0"])
+    relocations = _rtl_source_relocations(plan, plan["phases"]["0"])
     snapshot = Path(plan["phase0_source_snapshot"])
     receipt = source_snapshot.verify(snapshot)
     command = plan["phases"]["0"]
@@ -365,6 +466,7 @@ def _verify_frozen_sources(plan: dict) -> dict:
     from .evidence import load_exported_evidence
 
     evidence = load_exported_evidence(plan["phase0_evidence_bundle"])
+    _verify_relocations(evidence, relocations)
     if evidence.target != plan["target"]:
         raise ValueError("frozen Phase 0 evidence identity changed")
     paths = plan["phase0_frozen_source_paths"]
@@ -409,7 +511,14 @@ def _verify_frozen_sources(plan: dict) -> dict:
             raise ValueError("frozen Phase 0 Model2MLIR runtime routing changed")
         if CONFIG_ENV in command["env"] or command["env"].get("MERLIN_PHASE0_EVIDENCE_MODE") == "verified":
             expected = json.dumps(
-                m2m_runtime.sealed_capture_config(selected_m2m, Path(plan["phase0_evidence_bundle"])), sort_keys=True
+                m2m_runtime.sealed_capture_config(
+                    selected_m2m,
+                    Path(plan["phase0_evidence_bundle"]),
+                    execution_timeout_seconds=command.get("phase0_capture_timeout_seconds"),
+                    bwrap=command.get("phase0_bwrap"),
+                    runtime_reuse=runtime_reuse,
+                ),
+                sort_keys=True,
             )
             if command["env"].get(CONFIG_ENV) != expected:
                 raise ValueError("frozen Phase 0 sealed Model2MLIR source routing changed; freeze a new run")

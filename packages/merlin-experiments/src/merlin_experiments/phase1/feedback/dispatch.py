@@ -8,6 +8,10 @@ from merlin.targetgen.rtl_engine_policy import ELABORATED_RTL as _ELABORATED_RTL
 from merlin_experiments.phase1.context import InvocationContext
 
 _NEUTRAL_SIM = "contract"
+#: The selection a self-check makes when no single engine is named: every tier the official grade
+#: selects (``capsule_runner.qa_checkpoint_adapters``), so one request runs each capsule's whole
+#: mandatory ladder with the grade's own adapters. It names a selection policy, never an engine.
+REQUIRED_SIM = "required"
 
 
 def _sim_via(context: InvocationContext) -> str:
@@ -67,9 +71,33 @@ def allowed_sims(context: InvocationContext) -> tuple[str, ...]:
     # inherited pin reached the child but `_adapters` directly constructed whichever engine the request
     # named, so a GSIM-only run could still launch Verilator from the sandbox broker.
     required = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip()
+    # REQUIRED_SIM is always accepted: it selects the grade's own adapters, which already honour the
+    # pin, so it can never reach an engine the pin excludes.
     if required:
-        return ("spike", required) if required in engines else ("spike",)
-    return ("spike",) + engines
+        return ("spike", required, REQUIRED_SIM) if required in engines else ("spike", REQUIRED_SIM)
+    return ("spike",) + engines + (REQUIRED_SIM,)
+
+
+def grade_selection_for(sim: str | None) -> str | None:
+    """An author request naming the experiment's pinned RTL engine asks for the grade's own selection.
+
+    Under a pin the staged in-sandbox self-check shim fills ``--sim`` with the pinned engine by
+    default, so an unflagged author request arrives naming it. That engine's single-engine ladder is
+    the same tiers (the functional screen plus the engine at L3), so serving it with the grade's own
+    adapters changes no tier: the request certifies exactly as the grade does, under the grade's
+    certificate instrument. ``spike``, any other name, and an engine whose legacy ladder has another
+    shape (VCS's historical L4 rung) keep their own meaning. Promotion jobs are not author requests
+    and are never passed through here.
+    """
+    from .. import joint_control
+    if joint_control.selected() is not None:
+        return sim
+    from merlin_experiments.phase1.feedback.selfcheck import SIM_TIER
+
+    required = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip()
+    if not sim or not required or sim != required or SIM_TIER.get(sim) != "L3":
+        return sim
+    return REQUIRED_SIM
 
 
 def cert_sim(cert_tier: str, *, context: InvocationContext) -> str | None:

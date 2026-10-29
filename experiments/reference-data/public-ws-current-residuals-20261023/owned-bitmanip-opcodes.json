@@ -1,0 +1,239 @@
+{
+  "window": {
+    "begin_pc": 2147484616,
+    "end_pc": 2147484664
+  },
+  "instructions": 3136,
+  "bitmanip_count": 537,
+  "counts": {
+    "SLLI_UW": 4,
+    "SH3ADD": 9,
+    "MAXU": 6,
+    "BSETI": 4,
+    "MAX": 256,
+    "MIN": 256,
+    "SH2ADD": 2
+  },
+  "pcs": {
+    "0x8000019a": {
+      "name": "SLLI_UW",
+      "asm": "slli.uw a5, a5, 3",
+      "bits": "0x837979b"
+    },
+    "0x800001a6": {
+      "name": "SH3ADD",
+      "asm": "sh3add  a5, a3, t0",
+      "bits": "0x2056e7b3"
+    },
+    "0x800001aa": {
+      "name": "SH3ADD",
+      "asm": "sh3add  a3, a3, t6",
+      "bits": "0x21f6e6b3"
+    },
+    "0x80000214": {
+      "name": "SH3ADD",
+      "asm": "sh3add  a5, s4, a4",
+      "bits": "0x20ea67b3"
+    },
+    "0x800010e4": {
+      "name": "MAXU",
+      "asm": "maxu    a2, a1, a2",
+      "bits": "0xac5f633"
+    },
+    "0x8000111e": {
+      "name": "MAXU",
+      "asm": "maxu    a1, a0, a5",
+      "bits": "0xaf575b3"
+    },
+    "0x80001a1c": {
+      "name": "BSETI",
+      "asm": "bseti   a2, zero, 61",
+      "bits": "0x2bd01613"
+    },
+    "0x800017ea": {
+      "name": "BSETI",
+      "asm": "bseti   a5, zero, 48",
+      "bits": "0x2b001793"
+    },
+    "0x800015a2": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x800015a6": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x800015b2": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x800015b6": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x800015c2": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x800015c6": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x800015d2": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x800015d6": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x800015e2": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x800015e6": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x800015f2": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x800015f6": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x80001602": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x80001606": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x80001612": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x80001616": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x80001620": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x80001624": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x8000162e": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x80001632": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x8000163c": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x80001640": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x8000164a": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x8000164e": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x80001658": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x8000165c": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x80001666": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x8000166a": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x80001674": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x80001678": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x80001682": {
+      "name": "MAX",
+      "asm": "max     a5, a5, a1",
+      "bits": "0xab7e7b3"
+    },
+    "0x80001686": {
+      "name": "MIN",
+      "asm": "min     a5, a5, a4",
+      "bits": "0xae7c7b3"
+    },
+    "0x80001c12": {
+      "name": "BSETI",
+      "asm": "bseti   a2, zero, 61",
+      "bits": "0x2bd01613"
+    },
+    "0x800018b0": {
+      "name": "BSETI",
+      "asm": "bseti   a5, zero, 48",
+      "bits": "0x2b001793"
+    },
+    "0x80001704": {
+      "name": "SH2ADD",
+      "asm": "sh2add  a1, a3, a0",
+      "bits": "0x20a6c5b3"
+    },
+    "0x8000170e": {
+      "name": "SH2ADD",
+      "asm": "sh2add  a0, a0, a3",
+      "bits": "0x20d54533"
+    }
+  }
+}

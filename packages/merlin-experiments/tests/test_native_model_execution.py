@@ -5,7 +5,9 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import subprocess
 from contextlib import contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -56,10 +58,10 @@ def test_build_renderer_forwards_scratch_only_when_source_claim_is_nonempty(tmp_
         observed.append((cb, target, inputs, None))
         return "legacy"
 
-    backend = SimpleNamespace(__file__=str(source), build_source_paths=lambda: (), render_harness=legacy_render)
-    monkeypatch.setattr(backends, "get_backend", lambda _target: backend)
     recipe = HarnessBuildRecipe(tmp_path / "unused", (), (), tmp_path / "unused.ld", 0)
-    monkeypatch.setattr(backends, "harness_build_recipe", lambda _target: recipe)
+    backend = SimpleNamespace(__file__=str(source), build_source_paths=lambda: (), render_harness=legacy_render,
+                              harness_build_recipe=lambda: recipe)
+    monkeypatch.setattr(backends, "get_backend", lambda _target: backend)
     cb, inputs = {}, {"arg0": [1]}
     assert _build_service_for("synthetic", source_owned_mutables=()).render(
         cb, target="synthetic", inputs=inputs
@@ -71,10 +73,14 @@ def test_build_renderer_forwards_scratch_only_when_source_claim_is_nonempty(tmp_
         return "scratch"
 
     backend.render_harness = scratch_render
-    assert _build_service_for("synthetic", source_owned_mutables=("tmp0",)).render(
+    service = _build_service_for("synthetic", source_owned_mutables=("tmp0",))
+    assert service.render(
         cb, target="synthetic", inputs=inputs
     ) == "scratch"
     assert observed[-1] == (cb, "synthetic", inputs, ("tmp0",))
+    source.write_text("# renderer source changed\n")
+    with pytest.raises(ValueError, match="source/tool pin changed"):
+        service.render(cb, target="synthetic", inputs=inputs)
 
 
 def test_native_frozen_leaf_binding_excludes_source_written_intermediate(tmp_path, monkeypatch):
@@ -396,6 +402,7 @@ def test_native_entry_guard_accepts_registered_pretty_llvm_definition(tmp_path, 
     """The production mixed-program spelling must reach the next native ABI check."""
     from merlin.runtime.backends import base as backends
 
+    monkeypatch.setattr(backends, "get_backend", lambda _target: SimpleNamespace())
     monkeypatch.setattr(
         backends,
         "harness_build_recipe",
@@ -420,9 +427,10 @@ def test_native_entry_guard_accepts_registered_pretty_llvm_definition(tmp_path, 
         capture_bundle=capture,
         target="synthetic",
         out_dir=tmp_path / "output",
+        complete_call_timing=False,
     )
     assert result["status"] == "incomplete"
-    assert "one declared whole-model output is required" in result["failure"]["detail"]
+    assert "complete unique whole-model outputs are required" in result["failure"]["detail"]
 
 
 def test_native_binding_refusal_code_is_preserved_in_durable_receipt(tmp_path, monkeypatch):
@@ -430,6 +438,7 @@ def test_native_binding_refusal_code_is_preserved_in_durable_receipt(tmp_path, m
     from merlin.targetgen import golden_store
     from merlin.targetgen import native_model_execution as native
 
+    monkeypatch.setattr(backends, "get_backend", lambda _target: SimpleNamespace())
     monkeypatch.setattr(
         backends,
         "harness_build_recipe",
@@ -460,6 +469,7 @@ def test_native_binding_refusal_code_is_preserved_in_durable_receipt(tmp_path, m
         target="synthetic",
         out_dir=out,
         numeric_policy={"compare": "exact_int"},
+        complete_call_timing=False,
     )
     assert result["status"] == "incomplete"
     assert result["failure"]["code"] == code
@@ -705,7 +715,8 @@ def test_frozen_tier_policy_allows_explicit_empty_prohibitions_but_not_empty_tie
     monkeypatch.setattr(
         target_experiment,
         "load_target_experiment",
-        lambda path: SimpleNamespace(target="synthetic", capsule_corpus=corpus / "isa"),
+        lambda path: SimpleNamespace(target="synthetic", capsule_corpus=corpus / "isa",
+                                     descriptor_sha256=_digest(descriptor)["sha256"]),
     )
     policy = _frozen_model_policy(capsule, target="synthetic")
     assert policy["prohibited_instruction_roles"] == []
@@ -726,6 +737,12 @@ def test_only_family_matched_roles_count_as_device_work():
     assert work["contraction"] == {3}
     assert work["elementwise_map"] == set()
     assert work["movement"] == set()
+    partial_table = {"names": {3: "MAC"}}
+    assert _verified_work_functs_by_family([endpoint], partial_table, work_roles_only=True)["contraction"] == {3}
+    with pytest.raises(NativeModelExecutionError, match="endpoint roles"):
+        _verified_work_functs_by_family([endpoint], partial_table)
+    with pytest.raises(NativeModelExecutionError, match="endpoint roles"):
+        _verified_work_functs_by_family([endpoint], {"names": {2: "LOOP_CONFIG"}}, work_roles_only=True)
     with pytest.raises(NativeModelExecutionError, match="verified spatial"):
         _verified_work_functs_by_family([{"engine": "host", "exposure": "rocc"}], table)
 
@@ -755,13 +772,32 @@ def test_candidate_compute_command_must_be_on_every_returning_cfg_path():
     assert _mandatory_command_blocks(function, {entry_command})
 
 
+def _kernel_symbol_elf(*, size=4, symbol="kernel"):
+    import struct
+    names = b"\0.names\0.text\0.strings\0.symbols\0"
+    strings = b"\0" + symbol.encode() + b"\0"
+    header = bytearray(64)
+    header[:7] = b"\x7fELF\x02\x01\x01"
+    struct.pack_into("<HHIQQQIHHHHHH", header, 16, 1, 243, 1, 0, 0, 64, 0, 64, 0, 0, 64, 5, 1)
+    start = 64 + 5 * 64
+    sections = [bytes(64), struct.pack("<IIQQQQIIQQ", 1, 3, 0, 0, start, len(names), 0, 0, 1, 0)]
+    start += len(names)
+    sections.append(struct.pack("<IIQQQQIIQQ", 8, 1, 4, 0, start, 8, 0, 0, 1, 0))
+    start += 8
+    sections.append(struct.pack("<IIQQQQIIQQ", 14, 3, 0, 0, start, len(strings), 0, 0, 1, 0))
+    start += len(strings)
+    sections.append(struct.pack("<IIQQQQIIQQ", 23, 2, 0, 0, start, 24, 3, 0, 8, 24))
+    row = struct.pack("<IBBHQQ", 1, 2, 0, 2, 0, size)
+    return bytes(header) + b"".join(sections) + names + b"opaque00" + strings + row
+
+
 def test_kernel_inventory_requires_symbol_scoped_derived_command_words(tmp_path, monkeypatch):
     import subprocess
 
     from merlin.llvmlower import toolchain
 
     path = tmp_path / "kernel.o"
-    path.write_bytes(b"object bytes are read by the disassembler")
+    path.write_bytes(_kernel_symbol_elf())
     disassembler = tmp_path / "llvm-objdump"
     disassembler.write_bytes(b"selected tool pin")
     monkeypatch.setattr(toolchain, "objdump", lambda: disassembler)
@@ -770,14 +806,20 @@ def test_kernel_inventory_requires_symbol_scoped_derived_command_words(tmp_path,
     def disassemble(argv, **kwargs):
         commands.append(argv)
         return subprocess.CompletedProcess(
-            argv, 0, "Disassembly of section .text:\n00000000 <kernel>:\n  0: 0800002b <unknown>\n", ""
+            argv,
+            0,
+            "Disassembly of section .text:\n00000000 <kernel>:\n  0: 0800002b <unknown>\n  4: 1000002b <unknown>\n",
+            "",
         )
 
     monkeypatch.setattr(subprocess, "run", disassemble)
     table = {"custom_opcode": 0x2B, "legal_funct": [4], "names": {"4": "MAC"}}
     words, functs = _kernel_command_inventory(path, symbol="kernel", table=table)
     assert words == [0x0800002B] and functs == [4]
-    assert "--disassemble-symbols=kernel" in commands[0]
+    assert "--section=.text" in commands[0]
+    assert "--start-address=0" in commands[0]
+    assert "--stop-address=4" in commands[0]
+    assert not any(arg.startswith("--disassemble-symbols=") for arg in commands[0])
     table["legal_funct"] = []
     with pytest.raises(NativeModelExecutionError, match="unrecognized custom command"):
         _kernel_command_inventory(path, symbol="kernel", table=table)
@@ -951,6 +993,8 @@ def test_real_grade_rollup_withholds_legacy_tiers_cost_and_numeric_for_candidate
     package, capsules = tmp_path / "package", tmp_path / "capsules"
     package.mkdir()
     capsules.mkdir()
+    tool = package / "compiler.py"
+    tool.write_text("# Existing declared tool; this fixture tests model audit rollup.\n")
     capsule = {"name": "M", "kind": "model", "label": "public", "semantic": {"must_accelerate": True}}
     row = {
         "capsule": "M",
@@ -979,7 +1023,9 @@ def test_real_grade_rollup_withholds_legacy_tiers_cost_and_numeric_for_candidate
             },
         },
     }
-    monkeypatch.setattr(grade_module, "load_package", lambda *a, **k: SimpleNamespace(integrity_exempt=False))
+    monkeypatch.setattr(
+        grade_module, "load_package", lambda *a, **k: SimpleNamespace(integrity_exempt=False, tool=tool)
+    )
     monkeypatch.setattr(grade_module, "integrity_scan", lambda *a, **k: None)
     monkeypatch.setattr(grade_module, "build_package", lambda *a, **k: None)
     monkeypatch.setattr(grade_module.CR, "discover_capsules", lambda *a, **k: [capsule])
@@ -1450,6 +1496,7 @@ def test_all_host_relabel_cannot_hide_independently_eligible_source_operation(tm
 def test_model_runner_grades_submitted_whole_program_without_legacy_baseline(tmp_path, monkeypatch, verification_fails):
     from merlin.targetgen import capsule_runner as runner
     from merlin.targetgen import native_model_execution as native
+    from merlin.targetgen import owned_host_model_execution as owned
 
     generated, run_path = tmp_path / "generated", tmp_path / "run"
     source = tmp_path / "capsule"
@@ -1479,18 +1526,18 @@ def test_model_runner_grades_submitted_whole_program_without_legacy_baseline(tmp
         yield tmp_path, {"construction": "frozen"}, verify
 
     def execute(**kwargs):
-        calls.append("submitted_native_build")
-        assert kwargs["simulator"] is None
+        calls.append("owned_host_device_build")
+        assert kwargs["simulator"] == "none"
         return {"status": "compiled_not_run"}
 
-    monkeypatch.setattr(runner, "run_entrypoints", emit)
+    monkeypatch.setattr(runner, "run_entrypoints", lambda *a, **k: pytest.fail("candidate host emission ran"))
     monkeypatch.setattr(runner, "_model_runtime_bundle", bundle)
     monkeypatch.setattr(
         native,
         "independent_frozen_source_eligibility",
         lambda *a, **k: {"source_mlir_sha256": "a" * 64, "eligible_source_op_indices": [0]},
     )
-    monkeypatch.setattr(native, "execute_candidate_model", execute)
+    monkeypatch.setattr(owned, "execute_owned_host_model", execute)
     for key in ("MERLIN_MODEL_NATIVE_SIMULATOR", "MERLIN_MODEL_NATIVE_RTL_FACTS", "MERLIN_MODEL_NATIVE_BOARD_CONFIG"):
         monkeypatch.delenv(key, raising=False)
     config = SimpleNamespace(
@@ -1504,13 +1551,12 @@ def test_model_runner_grades_submitted_whole_program_without_legacy_baseline(tmp
     result = runner.run_capsule(
         capsule, tmp_path, runs_root=tmp_path, target="synthetic", config=config, oracle_adapters={}, pkg=object()
     )
-    assert calls == ["submitted_four_stage_entrypoints", "submitted_native_build"]
+    assert calls == ["owned_host_device_build"]
     assert result["status"] == "incomplete"
-    assert result["candidate_emission"]["lowered_mlir"]["sha256"]
     assert result["legacy_model_diagnostic"]["status"] == "not_run"
     retained = run_path / ".private_model_sources" / "capsule"
     assert (retained / "capsule.yaml").is_file()
-    source_pin = result["candidate_emission"]["source_interface"]
+    source_pin = result["owned_host_source"]["source_interface"]
     assert source_pin["path"] == str(retained / "capsule.interface.mlir")
     assert source_pin["sha256"] == _digest(retained / "capsule.interface.mlir")["sha256"]
     assert source_pin["sha256"] == _digest(source / "capsule.interface.mlir")["sha256"]
@@ -1522,12 +1568,14 @@ def test_model_runner_grades_submitted_whole_program_without_legacy_baseline(tmp
         )
     assert source_pin["sha256"] == _digest(retained / "capsule.interface.mlir")["sha256"]
     assert "candidate_source_eligibility_failure" not in result
-    assert result["model_execution_check"]["kind"] == "candidate_whole_program_execution"
-    assert "candidate_full_model_native_unverified" in result["model_execution_check"]["violations"]
+    assert result["model_execution_check"]["kind"] == (
+        "candidate_whole_program_execution" if verification_fails else "owned_host_model_execution")
+    assert "candidate_completed_dispatch_unverified" in result["model_execution_check"]["violations"]
     assert "dynamic_dispatch_ledger_missing_or_malformed" not in result["model_execution_check"]["violations"]
     if verification_fails:
         assert result["candidate_emission_failure"]["type"] == "ValueError"
         assert "candidate_native_execution" not in result
+        assert "owned_host_native_execution" not in result
 
 
 def test_non_accelerating_model_keeps_legacy_runner(tmp_path, monkeypatch):
@@ -1605,6 +1653,8 @@ def test_candidate_child_reloads_selected_package_without_racing_suite_build(tmp
     from merlin.targetgen import capsule_runner as runner
     from merlin.targetgen import native_model_execution as native
 
+    (tmp_path / "capsule.yaml").write_text("name: M\n")
+    (tmp_path / "capsule.interface.mlir").write_text("module {}")
     selected = object()
     calls = []
     monkeypatch.setattr(runner, "load_package", lambda *a, **k: calls.append("load") or selected)
@@ -1617,12 +1667,25 @@ def test_candidate_child_reloads_selected_package_without_racing_suite_build(tmp
         lambda *a, **k: SimpleNamespace(generated=tmp_path / "generated", run_path=tmp_path / "run"),
     )
 
-    def stop_after_selection(pkg, *a, **k):
-        assert pkg is selected
-        calls.append("entrypoints")
-        raise ValueError("synthetic candidate emission refusal")
+    from merlin.targetgen import owned_host_model_execution as owned
 
-    monkeypatch.setattr(runner, "run_entrypoints", stop_after_selection)
+    @contextmanager
+    def runtime_bundle(*a, **k):
+        yield tmp_path, {}, lambda: None
+
+    monkeypatch.setattr(runner, "_model_runtime_bundle", runtime_bundle)
+
+    def stop_owned_build(**kwargs):
+        assert kwargs["candidate_package"] == tmp_path
+        calls.append("owned_device_build")
+        raise ValueError("synthetic owned host build refusal")
+
+    monkeypatch.setattr(owned, "execute_owned_host_model", stop_owned_build)
+    monkeypatch.setattr(
+        runner,
+        "run_entrypoints",
+        lambda *a, **k: pytest.fail("candidate whole-program host emission is forbidden"),
+    )
     context = {
         "runs_root": str(tmp_path),
         "run_id": "M",
@@ -1633,12 +1696,143 @@ def test_candidate_child_reloads_selected_package_without_racing_suite_build(tmp
         "package_prebuilt": prebuilt,
     }
     result = runner._grade_candidate_model_capsule_inline(
-        {"name": "M", "kind": "model", "semantic": {"must_accelerate": True}},
+        {"name": "M", "kind": "model", "__dir__": str(tmp_path), "semantic": {"must_accelerate": True}},
         target="synthetic",
         timeout=1,
         package_dir=tmp_path,
         context=context,
     )
-    assert calls == ["load", "scan", *([] if prebuilt else ["build"]), "entrypoints"]
+    assert calls == ["load", "scan", *([] if prebuilt else ["build"]), "owned_device_build"]
     assert result["status"] == "incomplete"
     assert result["candidate_emission_failure"]["type"] == "ValueError"
+
+
+@pytest.mark.parametrize("size,symbol", [(0,"kernel"),(4,"different")])
+def test_kernel_inventory_refuses_absent_or_zero_function_extent(tmp_path, size, symbol):
+    path=tmp_path/"kernel.o"
+    path.write_bytes(_kernel_symbol_elf(size=size,symbol=symbol))
+    with pytest.raises(NativeModelExecutionError,match="function extent"):
+        _kernel_command_inventory(path,symbol="kernel",table={})
+
+
+def test_kernel_inventory_refuses_instruction_crossing_extent(tmp_path, monkeypatch):
+    import subprocess
+
+    from merlin.llvmlower import toolchain
+
+    path = tmp_path / "kernel.o"
+    path.write_bytes(_kernel_symbol_elf(size=2))
+    tool = tmp_path / "llvm-objdump"
+    tool.write_bytes(b"selected tool")
+    monkeypatch.setattr(toolchain, "objdump", lambda: tool)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda argv, **kwargs: subprocess.CompletedProcess(
+            argv, 0, "00000000 <kernel>:\n  0: 0800002b <unknown>\n", ""
+        ),
+    )
+    with pytest.raises(NativeModelExecutionError, match="crosses"):
+        _kernel_command_inventory(path, symbol="kernel", table={})
+
+
+def test_kernel_inventory_keeps_work_after_interior_relocation_label(tmp_path, monkeypatch):
+    import subprocess
+
+    from merlin.llvmlower import toolchain
+
+    path = tmp_path / "kernel.o"
+    path.write_bytes(_kernel_symbol_elf(size=8))
+    tool = tmp_path / "llvm-objdump"
+    tool.write_bytes(b"selected tool")
+    monkeypatch.setattr(toolchain, "objdump", lambda: tool)
+
+    def disassemble(argv, **kwargs):
+        # LLVM's symbol-only mode stops before the interior PC-relative label.
+        text = "Disassembly of section .text:\n00000000 <kernel>:\n  0: 00000013 nop\n"
+        if not any(arg.startswith("--disassemble-symbols=") for arg in argv):
+            text += "00000004 <.Lpcrel_hi0>:\n  4: 0800002b <unknown>\n"
+            text += "00000008 <neighbor>:\n  8: 1000002b <unknown>\n"
+        assert "--section=.text" in argv
+        return subprocess.CompletedProcess(argv, 0, text, "")
+
+    monkeypatch.setattr(subprocess, "run", disassemble)
+    table = {"custom_opcode": 0x2B, "legal_funct": [4], "names": {"4": "MAC"}}
+    words, functs = _kernel_command_inventory(path, symbol="kernel", table=table)
+    assert words == [0x0800002B] and functs == [4]
+
+
+@pytest.mark.parametrize("instructions", [
+    "  4: 0800002b <unknown>\n",  # missing beginning, with a real command later
+    "  0: 0800002b <unknown>\n",  # truncated ending
+    "  0: 0001 nop\n  4: 0800002b <unknown>\n",  # interior hole
+    "  0: 0800002b <unknown>\n  0: 0800002b <unknown>\n  4: 00000013 nop\n",  # overlap
+    "  8: 0800002b <unknown>\n",  # only a neighboring function has work
+    "  0: 001 nop\n  1: 0800002b <unknown>\n",  # malformed byte width
+])
+def test_kernel_inventory_alias_labels_still_require_complete_owned_extent(tmp_path, monkeypatch, instructions):
+    from merlin.llvmlower import toolchain
+
+    path = tmp_path / "kernel.o"
+    path.write_bytes(_kernel_symbol_elf(size=8))
+    tool = tmp_path / "llvm-objdump"
+    tool.write_bytes(b"selected tool")
+    monkeypatch.setattr(toolchain, "objdump", lambda: tool)
+    monkeypatch.setattr(subprocess, "run", lambda argv, **kwargs: subprocess.CompletedProcess(
+        argv, 0, "Disassembly of section .text:\n00000000 <local_body>:\n" + instructions, ""
+    ))
+    with pytest.raises(NativeModelExecutionError, match="instruction coverage"):
+        _kernel_command_inventory(path, symbol="kernel", table={"custom_opcode": 0x2B})
+
+
+def test_kernel_inventory_alias_label_keeps_owned_work_and_rejects_unknown_custom(tmp_path, monkeypatch):
+    from merlin.llvmlower import toolchain
+
+    path = tmp_path / "kernel.o"
+    path.write_bytes(_kernel_symbol_elf(size=8))
+    tool = tmp_path / "llvm-objdump"
+    tool.write_bytes(b"selected tool")
+    monkeypatch.setattr(toolchain, "objdump", lambda: tool)
+    text = ("Disassembly of section .text:\n00000000 <local_body>:\n"
+            "  0: 0001 nop\n  2: 0001 nop\n  4: 0800002b <unknown>\n"
+            "00000008 <neighbor>:\n  8: 1000002b <unknown>\n")
+    monkeypatch.setattr(subprocess, "run", lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, text, ""))
+    table = {"custom_opcode": 0x2B, "legal_funct": [4], "names": {"4": "MAC"}}
+    assert _kernel_command_inventory(path, symbol="kernel", table=table) == ([0x0800002B], [4])
+    table["legal_funct"] = []
+    with pytest.raises(NativeModelExecutionError, match="unrecognized custom command"):
+        _kernel_command_inventory(path, symbol="kernel", table=table)
+
+
+def test_kernel_inventory_retained_real_alias_object_uses_actual_symbol_extent(monkeypatch):
+    """Opt-in preserved producer object: exercise the real selected disassembler, never a simulator."""
+    import os
+
+    from merlin.common.facts_view import interface
+    from merlin.llvmlower import toolchain
+    from merlin.perf.compiled_static_features import linked_entry_extent
+
+    selected = os.environ.get("MERLIN_TEST_INVENTORY_OBJECT")
+    if not selected:
+        pytest.skip("select a retained real alias object and its original fact table")
+    path = Path(selected)
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == os.environ["MERLIN_TEST_INVENTORY_OBJECT_SHA256"]
+    symbol = os.environ["MERLIN_TEST_INVENTORY_SYMBOL"]
+    body = os.environ["MERLIN_TEST_INVENTORY_BODY"]
+    tool = Path(os.environ["MERLIN_TEST_INVENTORY_OBJDUMP"])
+    monkeypatch.setattr(toolchain, "objdump", lambda: tool)
+    facts = json.loads(Path(os.environ["MERLIN_TEST_INVENTORY_FACTS"]).read_text())
+    table = interface(facts["facts"], "funct_decode_table")
+    extent = linked_entry_extent(path.read_bytes(), symbol)
+    assert {k: v for k, v in extent.items() if k != "symbol"} == {
+        k: v for k, v in linked_entry_extent(path.read_bytes(), body).items() if k != "symbol"
+    }
+    text = subprocess.check_output([
+        str(tool), "-d", "--disassemble-zeroes", "--triple=riscv64", "-M", "no-aliases",
+        f"--section={extent['section']}", f"--start-address={extent['address']}",
+        f"--stop-address={extent['address'] + extent['size_bytes']}", str(path),
+    ], text=True)
+    assert f"<{body}>:" in text and f"<{symbol}>:" not in text
+    actual = _kernel_command_inventory(path, symbol=symbol, table=table)
+    assert actual[0] and actual[1]
+    assert actual == _kernel_command_inventory(path, symbol=body, table=table)

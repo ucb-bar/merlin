@@ -10,8 +10,12 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   Its standard memref and bufferization dialect registrations admit prepared
   fresh borrowed writer wrappers without an unregistered custom-syntax fallback.
 - `facts.py` — lifting the inventory to contract-level reuse facts, driving the core pipeline with real model shapes, residency-variant DSE measurement.
-- `linalg_math_patterns.py` — source-only, closed unary f32 sine/cosine scalar-region checks;
-  no host admission or numerical-equivalence claim. Its unary schema refuses scalar-literal power.
+- `linalg_math_patterns.py` — source-only, closed unary f32 sine/cosine/exponential/roundeven
+  scalar-region checks; each operation requires its own explicit declaration. No host admission,
+  selected math implementation or numerical-equivalence claim follows. Scalar-literal power refuses.
+- `linalg_mixed_patterns.py` preserves exact typed mixed source forms, including signed i32-to-f32
+  conversion with its original scalar SSA edge and projected tensor maps. A source pattern does not
+  supply a host declaration or certify conversion or execution numerics.
 - `linalg_composite_math.py` — separate source-only, closed literal clamp, reciprocal,
   literal-base power, and tanh-GELU scalar regions. It records exact f32 literal bits
   and unresolved math-intrinsic obligations; no host, libm-supplier, or numerical grant.
@@ -19,6 +23,8 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   pointwise schemas. The latter reuses the same closed scalar-region proof, retains each
   positive-static input shape and exact affine map (including rank-zero scalar inputs),
   and grants no host placement, index-width bound, or numerical equivalence by itself.
+  Projected i32 addition requires its explicit `integer_dtype: i32` source declaration;
+  the closed proof rejects overflow flags and preserves the original integer width.
 - `linalg_integer_reductions.py` — closed static i64 sum and masked prefix-sum source checks,
   with an explicit index-width premise; no host admission or linked-build verdict.
 - `linalg_f32_maximum_patterns.py` — closed static one-axis f32 `linalg.reduce`
@@ -67,3 +73,16 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
 ## Notes for future agents
 
 smolVLA reuse structure: capture unit = one denoise step; `select_action` runs N steps per tick, so every weight is `reused_across_invocations` — the repeated-RHS pattern with real shapes.
+
+`linalg_mixed_patterns.py` is opt-in typed routing source evidence. It proves closed
+bf16/f64/mixed scalar SSA sequences, default tensor layouts and bounded static input
+projections; it preserves finite literal bits and refuses init reads/fast-math. Historical
+f32 schemas retain their meanings. It grants no framework numerical equivalence.
+
+- `linalg_integer_seams.py` proves exact typed clamp/truncation and low-bit XOR source bodies; it grants no numerical qualification.
+
+- `linalg_quantization_seams.py` proves exact scalar reciprocal and projected FP32 roundeven/clamp/int8-cast source bodies. Native numerical and selected rounding obligations remain separate.
+
+- `connected_region.py` extracts an exact single-block source window with literal/init closure, nested captures and every live output. `verify_window` reconstructs from pinned original bytes before returning operation pairs. Re-run source/trace/index proofs on the projection; do not copy ordinal-bound host admissions. Runtime inputs remain explicit, and no numerical or target qualification follows.
+
+- `bounded_control_source_body.py` admits only exact scalar count/index/guard roles from a caller-reproved whole-source interval context. `connected_index_source_body.py` preserves the closed prepared-index recognizers while requiring a separately reconstructed projection and exact captured typed-root join. Neither supplies linked host qualification, compiled bounds, or numerical credit.

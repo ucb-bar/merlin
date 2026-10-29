@@ -36,3 +36,22 @@ def test_an_elementwise_generic_is_not_priced_as_a_contraction() -> None:
     elementwise = _CONV.replace('"reduction", "reduction", "reduction"', '"parallel", "parallel", "parallel"')
     (region,) = MC.regions_from_module(mq.parse(elementwise))
     assert region.m is None and region.k is None
+
+
+def test_the_public_extent_table_is_what_region_coverage_reads() -> None:
+    from merlin.compile.analysis.contraction_shapes import contraction_extents
+
+    module = mq.parse(_CONV)
+    (op,) = [o for o in mq.walk(module) if mq.op_name(o) == "linalg.generic"]
+    assert contraction_extents(module) == {id(op): (1 * 4 * 6, 3 * 3 * 3, 6, 7)}
+
+
+def test_windowed_extents_do_not_depend_on_the_shape_observer(monkeypatch) -> None:
+    """The private reader used to return ``{}`` BEFORE the windowed pass whenever the observer could
+    not be imported, so a convolution lost its extents with every matmul. The two readers are
+    independent: with the observer reporting nothing, the convolution is still measured."""
+    from merlin.compile.analysis import contraction_shapes as CS
+
+    monkeypatch.setattr(CS, "observe_contractions", lambda module: [])
+    (region,) = MC.regions_from_module(mq.parse(_CONV))
+    assert (region.m, region.k, region.n, region.rank) == (24, 27, 6, 7)

@@ -21,10 +21,10 @@ from pathlib import Path
 import decode_kernel_breakdown as dk  # reuse SHAPES, _lower_ours_to_obj, _decode_symbol, _analyze
 
 from merlin.common.paths import repo_root
+from merlin.compile.analysis.disassembly import tokenize
 from merlin.kernels import cca
 from merlin.kernels.ceiling_drivers import run_expert_gemm as expert
 from merlin.kernels.decode.memory import analyze_memory
-from merlin.kernels.decode.objdump import tokenize
 
 REPO = Path(repo_root())
 

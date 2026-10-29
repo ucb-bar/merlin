@@ -1,0 +1,26 @@
+schema: merlin.phase0_workload_roster.v1
+performance_applications:
+  mha_causal_prefill:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: attention_variants, kind: self, batch: 1, tokens: 16, heads: 4, kv_heads: 4, head_width: 16, causal: true}
+  mha_noncausal_batched_ragged:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: attention_variants, kind: self, batch: 2, tokens: 17, heads: 4, kv_heads: 4, head_width: 12, causal: false}
+  gqa_causal_cached_prefill:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: attention_variants, kind: self, batch: 1, tokens: 8, prefix: 24, heads: 8, kv_heads: 2, head_width: 16, causal: true}
+  mqa_cached_decode:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: attention_variants, kind: self, batch: 2, tokens: 1, prefix: 63, heads: 4, kv_heads: 1, head_width: 16, causal: true}
+  cross_mha_ragged:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: attention_variants, kind: cross, batch: 1, tokens: 7, memory_tokens: 19, heads: 4, kv_heads: 4, head_width: 16, causal: false}
+  cross_gqa_batched:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: attention_variants, kind: cross, batch: 2, tokens: 8, memory_tokens: 32, heads: 8, kv_heads: 2, head_width: 16, causal: false}
+  cross_mqa_long_memory:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: attention_variants, kind: cross, batch: 1, tokens: 4, memory_tokens: 128, heads: 8, kv_heads: 1, head_width: 32, causal: false}
+  gqa_noncausal_long_prefill:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: attention_variants, kind: self, batch: 1, tokens: 64, heads: 8, kv_heads: 2, head_width: 32, causal: false}

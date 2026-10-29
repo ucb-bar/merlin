@@ -6,7 +6,6 @@ kernel function under the entry symbol its contract declares, with the kernel AB
 tensors by name + output buffers and prints ``OUT/METRIC/DONE``), the link, and the oracle
 invocation. This path is uniform for Python and C++ packages — the only difference is who produced
 the MLIR.
-
 **This module names no target and imports none.** ``target`` is a required argument throughout, and
 everything target-specific is resolved through it: the harness ABI from the target's contract
 (:mod:`.harness_abi`), and the harness renderer, build recipe and oracle from its backend via
@@ -17,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 import time
@@ -26,94 +26,60 @@ from typing import Any
 
 from merlin.common import execution_deadline as _deadline_owner
 from merlin.common.execution_deadline import ExecutionDeadline, selected_deadline
+from merlin.targetgen.host_optimization_admission import active_selection, host_choices_build
+from merlin.verify.lean_emission_context import observe_object, requires_original_object
 
+from .artifact_retesting import active_artifact_retests, compare_selected_artifacts, retain_selected_artifacts
 from .build_recipe import named_object_paths
+from .counter_observations import counter_observations as _counter_observations
 from .harness_blobs import stage_harness_blobs
+from .memory_decode import observed_memory_decode as _observed_memory_decode
+from .ordinary_inputs import ordinary_integer_harness_inputs as _ordinary_integer_harness_inputs
+from .source_ownership import accepts_keyword as _accepts_keyword
+from .source_ownership import renderer_scratch_options
 
 
 def _observed_run(argv, *, workdir, stage, inputs=(), outputs=(), **kwargs):
+    from merlin.common import cpu_pool as cpu_owner
     from merlin.common import invocation_record
+    from merlin.common.cpu_pool import parse_roster, selected_pool
+    from merlin.runtime.build_runtime import run_in_build_view
 
-    return invocation_record.run(
-        argv,
-        directory=workdir,
-        stage=stage,
-        inputs=inputs,
-        outputs=outputs,
-        dependencies=(Path(__file__), Path(_deadline_owner.__file__)),
-        **kwargs,
-    )
-
-
-def _observed_memory_decode(reader, console, *, cb, elf, workdir, policy, dependencies=()):
-    """Retain the actual selected decoder and its declared private products.
-
-    A callback return or payload pin supplies attribution only. Original packet
-    membership, observer integrity and execution semantics remain independent.
-    """
-    from merlin.common import invocation_record
-
-    from .readback_policy import BUILD_RECEIPT, require_memory_value_roster
-
-    work = Path(workdir).resolve()
-    product = work / "readback_decode.json"
-    if product.exists() or product.is_symlink():
-        raise ValueError("memory decoder product already exists in its private execution owner")
-    with invocation_record.observe_call(
-        work,
-        stage="coherent_memory_decode",
-        function=reader.decode,
-        arguments={"readback_policy": policy.record()},
-        inputs=(Path(elf), work / "oracle_console.log", work / BUILD_RECEIPT),
-        outputs=(product,),
-        dependencies=(Path(__file__), *dependencies),
-    ) as observed:
-        outputs, evidence = reader.decode(console)
-        if type(outputs) is not dict or type(evidence) is not dict or evidence.get("status") != "complete":
-            raise ValueError("memory output reader returned no completed full-value admission")
-        require_memory_value_roster(cb, outputs)
-        declared_payload = evidence.get("payload")
-        if declared_payload is not None:
-            if type(declared_payload) is not dict or set(declared_payload) != {"path", "sha256"}:
-                raise ValueError("memory decoder declared an unsupported payload product")
-            payload = Path(declared_payload["path"])
-            if (
-                not payload.is_absolute()
-                or payload.resolve() != payload
-                or any(path.is_symlink() for path in (payload, *payload.parents))
-                or not payload.is_relative_to(work)
-                or not payload.is_file()
-            ):
-                raise ValueError("memory decoder payload escapes its private execution owner")
-            if hashlib.sha256(payload.read_bytes()).hexdigest() != declared_payload["sha256"]:
-                raise ValueError("memory decoder payload differs from its actual declared bytes")
-            observed.outputs = (*observed.outputs, payload)
-        encoded = (
-            json.dumps(
-                {
-                    "outputs": outputs,
-                    "memory_evidence": evidence,
-                    "scope": "actual decoder return and declared products only; observer/runtime/effects UNKNOWN",
-                },
-                sort_keys=True,
+    started = time.monotonic()
+    timeout = kwargs.get("timeout")
+    if cpu_owner.shared_compute_enabled():
+        pool = cpu_owner.shared_compute_pool(timeout_s=timeout)
+    else:
+        cpus = parse_roster(os.environ.get("MERLIN_BUILD_CPUS", ""))
+        slots = os.environ.get("MERLIN_BUILD_SLOT_ROOT", "")
+        if cpus and not slots:
+            raise ValueError("selected build CPU pool requires an explicit slot root")
+        pool = selected_pool(cpus, slot_root=Path(slots) if cpus else None, timeout_s=timeout)
+    try:
+        with pool:
+            if timeout is not None:
+                kwargs["timeout"] = max(0, timeout - (time.monotonic() - started))
+            selected = run_in_build_view(
+                argv,
+                directory=Path(workdir).resolve(),
+                stage=stage,
+                inputs=inputs,
+                outputs=outputs,
+                **kwargs,
             )
-            + "\n"
-        )
-        # The selected observer runs before publication. Exclusive creation also
-        # refuses a file or symlink it creates after the earlier metadata check.
-        with product.open("x", encoding="utf-8") as output:
-            output.write(encoded)
-        observed.returned(stdout=encoded)
-    invocation_record.verify(observed.path)
-    return (
-        outputs,
-        evidence,
-        {
-            "record": {"path": str(observed.path), "sha256": hashlib.sha256(observed.path.read_bytes()).hexdigest()},
-            "product": {"path": str(product), "sha256": hashlib.sha256(product.read_bytes()).hexdigest()},
-            "scope": "source-bound decoder invocation only; no observer, stage, hardware or timer authority",
-        },
-    )
+            if selected is not None:
+                return selected
+            return invocation_record.run(
+                argv,
+                directory=workdir,
+                stage=stage,
+                inputs=inputs,
+                outputs=outputs,
+                dependencies=(Path(__file__), Path(_deadline_owner.__file__), Path(cpu_owner.__file__)),
+                **kwargs,
+            )
+    except TimeoutError as exc:
+        raise subprocess.TimeoutExpired(argv, timeout) from exc
 
 
 def _module_target_abi(llvm_text: str) -> str | None:
@@ -158,32 +124,26 @@ def _abi_receipt(workdir: Path, obj: Path, abi: str) -> None:
     )
 
 
+@observe_object
 def llvm_mlir_to_object(
     lowered_mlir_text: str,
     workdir: Path,
     *,
     target: str | None = None,
     _build_service=None,
+    _host_optimization=None,
     build_timeout_s: int | None = None,
     execution_deadline: ExecutionDeadline | None = None,
 ) -> Path:
-    """Lower package-emitted llvm-dialect MLIR to an rv64 object (.o) for ``target``'s own ISA.
-
-    THE MARCH IS THE TARGET'S, NOT A DEFAULT. This object and the runner-owned harness are linked into
-    one ELF and executed on one core, so they have to be built for the same instruction set. The
-    default here is the vector-capable ``rv64gcv``, while a systolic target's harness recipe declares
-    ``rv64gc`` -- and for years that disagreement was invisible, because every kernel on such a target
-    was inline-asm accelerator instructions with nothing for the auto-vectorizer to take. The first
-    kernel that gives it something (a scalar float program placed on the host lane) was compiled with
-    ``vsetivli``/``vle32.v``/``vfadd.vv`` for a core with no vector unit, trapped on the first one, and
-    was reported as the submission's kernel faulting at runtime.
-
-    ``target=None`` keeps the previous default, for callers with no target in hand.
-    A pure build-only caller may additionally bound translation and every object
-    compiler subprocess with one declining diagnostic wall budget. This does
-    not turn parsing or static stack inspection into a numerical verdict.
+    """Build emitted IR with the original toolchain, ISA and shared harness ABI.
+    ``target=None`` preserves the legacy unbound recipe. Optional host choices
+    require original semantic/runtime admission and an actual compatible IR stage.
+    Finished LLVM cannot select tensor transformations. Original and selected
+    products retain distinct identities. Build-only deadlines and measured stack
+    preflight are structural gates, never numerical or execution verdicts.
     """
     from merlin.llvmlower import codegen
+    from merlin.targetgen.package_runtime import active_package_executor
 
     deadline = selected_deadline(seconds=build_timeout_s, parent=execution_deadline, build_service=_build_service)
 
@@ -193,8 +153,19 @@ def llvm_mlir_to_object(
         return deadline.remaining("public object-build budget expired")
 
     workdir.mkdir(parents=True, exist_ok=True)
+    (workdir / "kernel.host_optimization.json").unlink(missing_ok=True)
     source = workdir / "kernel.llvm.mlir"
     source.write_text(lowered_mlir_text, encoding="utf-8")
+    executor = active_package_executor()
+    from merlin.llvmlower.host_optimization_compile import HostCompilationOptimization
+
+    host = HostCompilationOptimization.select(
+        lowered_mlir_text, workdir, explicit=_host_optimization, finished_llvm_only=_build_service is not None
+    )
+    host_report, host_lowering_observation = None, None
+    if host is not None:
+        lowered_mlir_text = host.prepared.selected_mlir
+
     extra: tuple[str, ...] = ()
     recipe = None
     if _build_service is not None:
@@ -253,9 +224,7 @@ def llvm_mlir_to_object(
         from merlin.common import invocation_record
         from merlin.common.ir_audit import IrAudit
         from merlin.llvmlower.pipeline import lower_to_llvm_ir
-        from merlin.targetgen.package_runtime import active_package_executor
 
-        executor = active_package_executor()
         requested = getattr(executor, "record_stage_inspection", False) is True
         audit = IrAudit(workdir, enabled=requested, producer="merlin.targetgen.contract.compile", source=__file__)
 
@@ -265,13 +234,16 @@ def llvm_mlir_to_object(
                 workdir,
                 stage="llvm_translation",
                 function=lower_to_llvm_ir,
-                arguments={"workdir": str(workdir.resolve())},
-                inputs=(source,),
+                arguments=host.translation_arguments() if host is not None else {"workdir": str(workdir.resolve())},
+                inputs=(source, host.selected_source_path) if host is not None else (source,),
                 outputs=(workdir / "kernel.ll",),
                 dependencies=(Path(__file__),),
             ) as observed,
         ):
             options = {"audit": audit} if requested else {}
+            if host is not None:
+                host_options, host_lowering_observation = host.lowering_options()
+                options.update(host_options)
             ll = lower_to_llvm_ir(lowered_mlir_text, workdir=workdir, **options)
             (workdir / "kernel.ll").write_text(ll, encoding="utf-8")
             observed.returned()
@@ -281,11 +253,15 @@ def llvm_mlir_to_object(
             recipe = _backends.harness_build_recipe(target).with_effective_abi()
             extra = (recipe.march(), recipe.mabi())
     llvm_path, object_path = workdir / "kernel.ll", workdir / "kernel.o"
+    if host is not None:
+        llvm_path, host_report = host.optimize_translated(llvm_path, observation=host_lowering_observation)
     if recipe is None:
-        return Path(codegen.compile_ll(llvm_path, object_path, "riscv", extra_flags=extra))
+        compiled = Path(codegen.compile_ll(llvm_path, object_path, "riscv", extra_flags=extra))
+        return host.complete(compiled, llvm_path, report=host_report) if host is not None else compiled
 
     report_path = object_path.with_suffix(".su")
     receipt_path = workdir / "kernel.stack_frame.json"
+    object_path.with_suffix(".measured.su").unlink(missing_ok=True)
     for stale_output in (object_path, report_path, receipt_path, workdir / "kernel.abi.json"):
         stale_output.unlink(missing_ok=True)
     abi = recipe.mabi().partition("=")[2]
@@ -314,14 +290,9 @@ def llvm_mlir_to_object(
             report_path, llvm_path=llvm_path, entry_symbol=policy.entry_symbol, max_static_bytes=policy.max_static_bytes
         )
     except StackFramePreflightError as exc:
-        # REPAIR ON A PROVEN FAILURE, never pre-emptively. The host lane hoists one `alloca` per
-        # intermediate into the entry frame with no reuse, so the frame scales with the model:
-        # 816 bytes on ResNet-50 and 99,897,984 bytes on SmolVLA's flow_denoise against a
-        # 65,536-byte budget. Seating that storage in one `.bss` arena fits it (measured: 496).
-        #
-        # It runs ONLY after the emitted frame has been measured over budget, so a build that
-        # already fits is byte-identical to before -- which is what keeps the one bundle known to
-        # have run correctly on hardware a valid acceptance test for this path.
+        # Select generic stack repair only after an observed frame failure.
+        # Rebuild and remeasure its actual object; unavailable repairs retain
+        # the original refusal. Already fitting objects remain unchanged.
         repaired = _repair_oversized_frame(
             llvm_path,
             object_path,
@@ -362,7 +333,7 @@ def llvm_mlir_to_object(
             },
         )
         _abi_receipt(workdir, compiled, abi)
-        return compiled
+        return host.complete(compiled, arena_llvm, report=host_report) if host is not None else compiled
     write_receipt(
         receipt_path,
         status="passed",
@@ -374,7 +345,7 @@ def llvm_mlir_to_object(
         measurement=measurement,
     )
     _abi_receipt(workdir, compiled, abi)
-    return compiled
+    return host.complete(compiled, llvm_path, report=host_report) if host is not None else compiled
 
 
 def _repair_oversized_frame(
@@ -406,7 +377,7 @@ def _repair_oversized_frame(
     arena_object = object_path.with_suffix(".arena.o")
     arena_su = arena_object.with_suffix(".su")
     arena_llvm.write_text(rewritten, encoding="utf-8")
-    for stale in (arena_object, arena_su):
+    for stale in (arena_object, arena_su, arena_object.with_suffix(".measured.su")):
         stale.unlink(missing_ok=True)
     compile_kwargs = {"extra_flags": (*extra, "-fstack-usage")}
     if remaining is not None:
@@ -486,15 +457,6 @@ def _strict_warm_profile(profile, cb=None):
     return validated
 
 
-def _accepts_keyword(callable_object, name: str) -> bool:
-    """Whether a renderer explicitly accepts ``name`` or a generic keyword set."""
-    import inspect
-
-    parameters = inspect.signature(callable_object).parameters
-    return name in parameters or any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
-    )
-
 
 def link_elf(
     cb: dict[str, Any],
@@ -551,6 +513,11 @@ def link_elf(
     from .readback_policy import BUILD_RECEIPT, selected
 
     readback_policy = selected(readback_policy)
+    if _build_service is None:
+        from merlin.runtime.backends import base as _backends
+
+        if readback_policy is None:
+            readback_policy = selected(None, backend=_backends.get_backend(target))
     receipt_path = workdir / BUILD_RECEIPT
     if readback_policy is not None:
         # A failed rebuild may never leave a previous complete policy receipt.
@@ -571,8 +538,6 @@ def link_elf(
         recipe = _build_service.recipe.with_effective_abi()
         _render = _build_service.render
     else:
-        from merlin.runtime.backends import base as _backends
-
         recipe = _backends.harness_build_recipe(target).with_effective_abi()
         _render = _backends.harness_renderer(target)
     readback_inputs = None
@@ -604,6 +569,9 @@ def link_elf(
     blob_payloads: dict = {}
     blob_kwargs = {"blobs": blob_payloads} if _accepts_keyword(_render, "blobs") else {}
     policy_kwargs = {"readback_policy": readback_policy} if readback_policy is not None else {}
+    policy_kwargs.update(renderer_scratch_options(
+        cb, _render, alternate_caller=(_build_service is not None or _compact_caller is not None
+                                     or prepack_authorizations is not None)))
     # ``inputs`` INJECTS the caller's real operands into the device harness. A renderer written before
     # this parameter existed still works and still materializes from names -- but silently doing that
     # while the reference and simulator use injected data produces a guaranteed three-way mismatch that
@@ -629,6 +597,13 @@ def link_elf(
     # may use the historical recorded-operand fallback.
     if _compact_caller is None and prepack_authorizations is None and _build_service is None and inputs is None:
         inputs = _recorded_operands(cb)
+        if inputs is None and getattr(_backends.get_backend(target), "REQUIRES_EXPLICIT_LOGICAL_INPUTS", False):
+            budget_provider = getattr(_backends.get_backend(target), "logical_storage_budget_bytes", None)
+            inputs = _ordinary_integer_harness_inputs(
+                cb,
+                max_storage_bytes=budget_provider() if callable(budget_provider) else 16 << 20,
+                stream_inputs=bool(blob_kwargs),
+            )
     if _compile_only_linkage is not None:
         pass
     elif _compact_caller is not None:
@@ -659,10 +634,12 @@ def link_elf(
             kwargs["warm_profile"] = warm_profile
         harness = _render(cb, **kwargs, **blob_kwargs, **policy_kwargs)
     (workdir / "harness.c").write_text(harness, encoding="utf-8")
+    codec_inputs = ()
     if readback_policy is not None:
-        from .readback_policy import stage_codec_header
+        from .readback_policy import _codec_names, stage_codec_header
 
         stage_codec_header(workdir, policy=readback_policy)
+        codec_inputs = tuple(workdir / name for name in _codec_names(readback_policy))
     blob_sources = stage_harness_blobs(workdir, blob_payloads)
     # Linker load address DERIVED from the RTL memory map (platform DRAM base), reusing the curated
     # script's proven section layout but replacing its BAKED origin — so the base is a HW fact, not a
@@ -683,7 +660,10 @@ def link_elf(
     # so reordering could move code and change cycles. This build changes how each object is NAMED,
     # nothing about which objects are linked or in what order.
     objects: list[Path] = []
-    sources = [workdir / "harness.c", obj, *blob_sources, *recipe.support_sources]
+    # ... except a recipe's ``link_first`` support sources, which lead (see HarnessBuildRecipe).
+    linked = [workdir / "harness.c", obj, *blob_sources]
+    ordered = getattr(recipe, "ordered_link_sources", None)  # a duck-typed recipe keeps declared order
+    sources = ordered(linked) if callable(ordered) else [*linked, *recipe.support_sources]
     for source, unit in zip(sources, named_object_paths(sources, workdir), strict=True):
         source = Path(source)
         # Assembly counts: the driver assembles a .S through the same temp-named intermediate that
@@ -701,11 +681,16 @@ def link_elf(
         else:
             command = recipe.compile_command(source=source, output=unit)
             compile_cwd = None
+        fresh_inputs = (source,)
+        if source in blob_sources:
+            fresh_inputs = (source, source.with_suffix(".bin"))
+        elif source == workdir / "harness.c":
+            fresh_inputs = (source, *codec_inputs)
         step = _observed_run(
             command,
             workdir=workdir,
             stage="harness_object",
-            inputs=(source,),
+            inputs=fresh_inputs,
             outputs=(unit,),
             cwd=compile_cwd,
             capture_output=True,
@@ -812,8 +797,7 @@ def link_elf(
         )
         receipt_path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return elf
-
-
+@host_choices_build
 def compile_lowered_to_elf(
     cb: dict[str, Any],
     lowered_mlir_text: str,
@@ -831,7 +815,6 @@ def compile_lowered_to_elf(
     execution_deadline: ExecutionDeadline | None = None,
 ) -> Path:
     """Full package-lowered-MLIR -> rv64 ELF (object + runner harness + link).
-
     The result is a pure function of its inputs, so an unchanged capsule is not recompiled: see
     :mod:`merlin.targetgen.build_cache` for the key, and for why reusing a BUILD carries none of the
     risk of reusing a verdict. A restored build reproduces the whole generated directory, not only the
@@ -859,6 +842,11 @@ def compile_lowered_to_elf(
     from .readback_policy import selected
 
     readback_policy = selected(readback_policy)
+    if _build_service is None:
+        from merlin.runtime.backends import base as _backends
+
+        if readback_policy is None:
+            readback_policy = selected(None, backend=_backends.get_backend(target))
     if _build_service is not None:
         from .build_service import BuildOnlyService
 
@@ -888,8 +876,6 @@ def compile_lowered_to_elf(
         if deadline is not None:
             deadline.remaining()
         return elf
-    from merlin.runtime.backends import base as _backends
-
     from .. import build_cache as _bc
     from ..elf_lanes import PACKAGE_ELF_NAME
 
@@ -919,10 +905,21 @@ def compile_lowered_to_elf(
             kwargs["warm_profile"] = warm_profile
         return link_elf(cb, obj, work, **kwargs)
     _explicit_prepack_inputs(inputs, prepack_authorizations)
-    if prepack_authorizations is not None:
-        # Cached builds skip the renderer's exact payload/binding checks. Until the
-        # authorization policy is itself part of cache admission, never reuse or
-        # publish such a build. The absent-authorization path remains unchanged.
+    if readback_policy is not None and prepack_authorizations is None:
+        # This path is already cache-free. Avoid a separate full snapshot read
+        # solely to ask whether a traced product may use the legacy ELF cache.
+        # llvm_mlir_to_object still performs its actual fresh emission/object
+        # custody checks; linking still reopens the selected readback receipt.
+        obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
+        return link_elf(cb, obj, work, target=target, inputs=inputs,
+                        warm_profile=warm_profile, readback_policy=readback_policy)
+    from merlin.targetgen.contract.source_ownership import active_source_owned_mutables
+
+    if prepack_authorizations is not None or active_selection() is not None or (
+        requires_original_object(lowered_mlir_text)
+    ) or active_source_owned_mutables(cb):
+        # Live source ownership, host permissions and traced emissions cannot
+        # be reconstructed by a legacy cached ELF or its serialized metadata.
         obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
         kwargs = {"target": target, "inputs": inputs, "prepack_authorizations": prepack_authorizations}
         if warm_profile is not None:
@@ -930,19 +927,6 @@ def compile_lowered_to_elf(
         if readback_policy is not None:
             kwargs["readback_policy"] = readback_policy
         return link_elf(cb, obj, work, **kwargs)
-    if readback_policy is not None:
-        # This invocation-only harness choice is absent from the historical
-        # shared cache key. Never reuse or publish a legacy/digest-only ELF.
-        obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
-        return link_elf(
-            cb,
-            obj,
-            work,
-            target=target,
-            inputs=inputs,
-            warm_profile=warm_profile,
-            readback_policy=readback_policy,
-        )
     if warm_profile is not None:
         # The profile changes the runner-owned harness but is deliberately not
         # serialized into the command buffer.  Never let the legacy build key
@@ -1012,69 +996,18 @@ def simulator_provenance(backend, simulator: str) -> dict[str, Any] | None:
     return rec if len(rec) > 1 else None
 
 
-def _counter_observations(
-    console: str, *, target: str, simulator: str, cycles: int | None, oracle: Any
-) -> tuple[list[dict] | None, dict | None]:
-    """``(timing_observations, timing_capability)`` a bracketed run earned, or ``(None, None)``.
+def _selected_run_timeout(backend, simulator, requested, deadline):
+    """Keep the job's remaining budget within the selected process ceiling."""
+    import math
 
-    THE HOP THAT WAS MISSING. The bracket emitter, the console parser, the wire contract and every
-    consumer of a per-unit activity vector already existed; nothing turned the readings into the block
-    a tier record carries, so a target that counts overlap in HARDWARE still reported
-    ``missing: ['at least one activity source']`` and no composition operator, headroom or eta could
-    resolve from it.
-
-    ONLY AN RTL ORACLE MAY CARRY ONE. A functional model runs the program correctly without modelling
-    the engines, so its counter CSRs describe nothing: measured on one, a 52-cycle window returned
-    per-engine busy totals in the THOUSANDS. Those are not imprecise numbers, they are numbers about a
-    different machine, and a composition operator derived from them would be a fabrication carrying a
-    measurement's provenance. An oracle that states nothing fails closed for the same reason.
-
-    NOTHING IS SWALLOWED. The first version of this guard put an unimported name inside a broad
-    ``except``, so EVERY call returned "no capability": the negative cases passed for the wrong reason
-    and the positive case silently never fired. Each refusal below is a specific, reachable condition.
-    """
-    if not isinstance(oracle, Mapping) or oracle.get("derived_from_rtl") is not True:
-        return None, None  # a model's counters describe a different machine
-    from merlin.perf import hw_counters
-    from merlin.perf import observations as _observations
-
-    readings = hw_counters.parse_counter_output(console)
-    if not readings:
-        return None, None  # unbracketed: byte-identical to before
-    discovery = hw_counters.counters_for_target(target)
-    if discovery.get("status") != "derived":
-        return None, None  # no counter set derived from this target's own header
-    measured_schema = hw_counters.parse_counter_schema(console)
-    if measured_schema is not None and measured_schema != discovery.get("header_sha256"):
-        return None, None  # the ELF was bracketed against a DIFFERENT schema
-    # An ABSENT schema line is UNKNOWN, not a mismatch -- a real bracketed run need not emit one, and
-    # refusing on its absence would refuse every such run. What actually binds the readings to this
-    # header is the coverage check below: the reading set must contain every combination the header
-    # derives, which a run bracketed against a different counter set cannot satisfy.
-    header = Path(discovery["header"]).read_text(encoding="utf-8", errors="replace")
-    occupancy = hw_counters.derive_occupancy_counters(header)
-    required = set(occupancy.by_combination.values())
-    if not required or not required <= set(readings):
-        return None, None  # a partial combination set is a lower bound, not a total
-    # The KIND of each engine is the TARGET's declaration: a kind cannot be read off a counter name,
-    # and a consumer refuses a unit that lacks one. Absent when the backend declares none.
-    from merlin.runtime.backends import base as _backends
-
-    _kinds_reader = getattr(_backends.get_backend(target), "counter_engine_kinds", None)
-    kinds = _kinds_reader() if callable(_kinds_reader) else None
-    block = hw_counters.observations_from_counters(
-        readings,
-        occupancy,
-        total_cycles=cycles,
-        source=f"hardware combination counters ({discovery['header']})",
-        kind_of=kinds,
-    )
-    validated = _observations.validate_block(block)
-    if validated is None:
-        return None, None
-    # A refused block still travels as a capability record: "the producer emitted a block we could not
-    # believe" is a fact about the instrument, and dropping it hides the instrument rather than the bug.
-    return ([dict(o) for o in validated.observations] or None), validated.to_dict()
+    remaining = min(requested, deadline.remaining())
+    selected_limit = getattr(backend, "execution_timeout_limit", None)
+    if selected_limit is not None:
+        limit = selected_limit(simulator)
+        if type(limit) not in (int, float) or not math.isfinite(limit) or limit <= 0:
+            raise ValueError("selected execution deadline ceiling must be finite and positive")
+        remaining = min(remaining, limit)
+    return remaining
 
 
 def run_on_oracle(
@@ -1089,6 +1022,7 @@ def run_on_oracle(
     readback_policy=None,
     memory_readback=None,
     oracle_revalidate=None,
+    before_execution=None,
     _build_service=None,
     execution_revalidate=None,
     _execution_service=None,
@@ -1106,6 +1040,7 @@ def run_on_oracle(
     deadline = selected_deadline(seconds=None, parent=execution_deadline, build_service=_build_service)
     if deadline is not None and _execution_service is None:
         raise ValueError("shared oracle deadline requires explicit independent execution support")
+    run_deadline = deadline if deadline is not None else ExecutionDeadline.start(timeout)
 
     def check_budget():
         return None if deadline is None else deadline.remaining()
@@ -1123,7 +1058,7 @@ def run_on_oracle(
         backend = _execution_service
     from .readback_policy import FULL_VALUES_BIN, MEMORY_TRANSPORTS, selected
 
-    readback_policy = selected(readback_policy)
+    readback_policy = selected(readback_policy, backend=backend if _execution_service is None else None)
     execution_identity = None
     if execution_revalidate is not None:
         if not callable(execution_revalidate):
@@ -1235,9 +1170,41 @@ def run_on_oracle(
         memory_engine = deepcopy(oracle_revalidate())
         if type(memory_engine) is not dict or not memory_engine:
             raise ValueError("memory output requires a selected-engine citation")
+    # An explicitly supplied host observer may inspect the freshly built,
+    # admitted ELF and abort before dispatch. It supplies no execution result;
+    # cached verdict interpretation remains entirely with the trusted caller.
+    if before_execution is not None:
+        if not callable(before_execution):
+            raise ValueError("preexecution observation requires an explicit callable")
+        before_execution(Path(elf))
+        check_budget()
+        verify_execution()
+        if readback_policy is not None and readback_build != require_current_build_receipt(
+            cb=cb, target=target, workdir=work, elf_path=elf, policy=readback_policy,
+            **({"build_service": _build_service} if _build_service is not None else {}),
+        ):
+            raise ValueError("preexecution observation changed the completed readback build")
+    artifact_selection = (
+        compare_selected_artifacts(
+            simulator=simulator,
+            service=_execution_service,
+            elf=elf,
+            cb=cb,
+            inputs=inputs,
+            lowered_mlir=lowered_mlir_text,
+            build=readback_build,
+            backend=backend,
+            provenance=simulator_provenance(backend, simulator),
+            capture_bytes=binary,
+            memory_transport=memory,
+        )
+        if _execution_service is None and active_artifact_retests() is not None
+        else None
+    )
     try:
         run_kwargs = {"capture_bytes": True} if binary else {}
         from merlin.common import invocation_record
+        from merlin.targetgen.rtl_engine_policy import simulation_runtime_slot
 
         # Record the actual Python dispatch. The selected backend owns the
         # engine subprocess argv and its own lower-level invocation records.
@@ -1256,8 +1223,8 @@ def run_on_oracle(
             dependencies += tuple(Path(path) for path, _ in _execution_service.source_pins)
         if admission is not None:
             _elf_admission.revalidate(elf=elf, result=admission, target=target)
-        run_timeout = timeout if deadline is None else min(timeout, deadline.remaining())
-        with invocation_record.observe_call(
+        run_timeout = _selected_run_timeout(backend, simulator, timeout, run_deadline)
+        with simulation_runtime_slot(simulator, wait_timeout_s=run_timeout), invocation_record.observe_call(
             work,
             stage="execution",
             function=backend.run_elf,
@@ -1273,10 +1240,12 @@ def run_on_oracle(
         ) as observed:
             console = backend.run_elf(elf, simulator=simulator, timeout=run_timeout, **run_kwargs, **memory_kwargs)
             observed.returned(stdout=console)
-    except (TimeoutExpired, CalledProcessError) as exc:
-        # Standard process failures can carry partial output even with
-        # text=True. Preserve bytes verbatim; they are diagnostic evidence,
-        # never a completed frame or a numerical verdict. Re-raise unchanged.
+    except Exception as exc:
+        if not isinstance(exc, (TimeoutExpired, CalledProcessError)) and getattr(exc, "stdout", None) is None:
+            raise
+        # Process failures (and a backend error that carries its run's output) can hold partial
+        # output. Preserve bytes verbatim; they are diagnostic evidence, never a completed frame or a
+        # numerical verdict. Re-raise unchanged.
         for path, data in ((console_path, exc.stdout), (stderr_path, exc.stderr)):
             if isinstance(data, (bytes, str)):
                 path.write_bytes(data if isinstance(data, bytes) else data.encode("utf-8"))
@@ -1306,40 +1275,46 @@ def run_on_oracle(
     ):
         raise ValueError("memory readback build changed before output decoding")
     check_budget()
-    outputs, raw = backend.parse_output(console)
+    from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+
+    outputs, raw = (
+        backend.parse_output(console, readback_policy=readback_policy)
+        if memory and type(backend) is BoundRoCCBackend
+        else backend.parse_output(console)
+    )
     check_budget()
     memory_evidence = memory_observation = None
     if memory:
         from .readback_policy import require_memory_completion, require_memory_value_roster
 
         require_memory_completion(console, outputs)
-        if _execution_service is not None:
-            outputs, memory_evidence, memory_observation = _observed_memory_decode(
-                memory_readback,
-                console,
-                cb=cb,
-                elf=elf,
-                workdir=work,
-                policy=readback_policy,
-                dependencies=tuple(Path(path) for path, _ in _execution_service.source_pins),
-            )
-        else:
-            outputs, memory_evidence = memory_readback.decode(console)
-            if (
-                type(outputs) is not dict
-                or type(memory_evidence) is not dict
-                or memory_evidence.get("status") != "complete"
-            ):
-                raise ValueError("memory output reader returned no completed full-value admission")
-            require_memory_value_roster(cb, outputs)
+        outputs, memory_evidence, memory_observation = _observed_memory_decode(
+            memory_readback,
+            console,
+            cb=cb,
+            elf=elf,
+            workdir=work,
+            policy=readback_policy,
+            dependencies=(tuple(Path(path) for path, _ in _execution_service.source_pins)
+                          if _execution_service is not None else dependencies),
+            retain_in_invocation=_execution_service is None,
+            inputs=((Path(memory_kwargs["memory_readback"]["regions_path"]),)
+                    if _execution_service is None and memory_kwargs["memory_readback"].get("regions_path") else ()),
+        )
     check_budget()
+    output_digests = None
     if readback_policy is not None:
         from .readback_policy import (
+            DIGEST_TRANSPORTS,
             require_current_build_receipt,
+            require_digest_roster,
             require_full_value_roster,
         )
 
-        if not memory:
+        if readback_policy.transport in DIGEST_TRANSPORTS:
+            # Digests, not values: the caller compares them with the digest of the bytes it expects.
+            output_digests = require_digest_roster(cb, console, outputs)
+        elif not memory:
             require_full_value_roster(cb, console, outputs, policy=readback_policy)
         if readback_build != require_current_build_receipt(
             cb=cb,
@@ -1353,19 +1328,15 @@ def run_on_oracle(
     if memory and oracle_revalidate() != memory_engine:
         raise ValueError("memory oracle engine changed during output decoding")
     check_budget()
-    # DECODE A FLOAT RESULT THAT CAME BACK AS ITS CONTAINER WORD. `parse_output` yields whatever the
-    # console carried; a target whose harness has integer-only formatting prints a float destination
-    # buffer's stored PATTERN, so an f32 result arrives as its 32-bit word and a bf16 result as its
-    # 16-bit one. That is a lossless hand-back, not a broken one -- but only once the pattern is read
-    # back as the value, which needs the dtype the buffer was DECLARED in. Read here, from the command
-    # buffer itself (the same declaration the harness sized the buffer from), so the writer and the
-    # reader cannot disagree; keyed on that dtype and on nothing target-specific. A no-op for an
-    # integer-declared output and for a backend that already prints decimals, so every existing
-    # readback is byte-identical.
+    # Decode float storage words using the command buffer's declared dtype,
+    # which also sizes the harness. Integer outputs and already decoded float
+    # values retain their original representation.
     from merlin.runtime.commandbuffer import declared_output_dtypes
 
     outputs = _backends.decode_float_readback(outputs, declared_output_dtypes(cb))
     verify_execution()
+    if admission is not None:
+        _elf_admission.revalidate(elf=elf, result=admission, target=target)
     if (
         _execution_service is not None
         and _execution_service.consumption(elf=elf, console=console) != process_consumption
@@ -1382,14 +1353,22 @@ def run_on_oracle(
         _oracle["provenance"] = _prov
     if memory_engine is not None:
         _oracle["memory_engine"] = memory_engine
+    observed_cycles = raw.get("cycles")
+    if type(observed_cycles) is not int or observed_cycles <= 0:
+        observed_cycles = None
     result = {
         "outputs": outputs,
         "raw_metrics": raw,
-        "cycles": raw.get("cycles", 0),
+        # A completed oracle can have no cycle marker (for example a coherent
+        # memory-readback harness). Absence is unmeasured, never a zero-cycle run.
+        "cycles": observed_cycles,
         "oracle": _oracle,
         "elf": str(elf),
         "console": console,
         "timing": {"build_s": round(_t1 - _t0, 3), "sim_active_s": round(_t2 - _t1, 3), "oracle_wait_s": 0.0},
+        "execution_invocation": dict(
+            path=str(observed.path), sha256=hashlib.sha256(observed.path.read_bytes()).hexdigest()
+        ),
     }
     if readback_build is not None:
         result["readback_build"] = readback_build
@@ -1401,6 +1380,8 @@ def run_on_oracle(
         result["process_consumption"] = process_consumption
     if memory_evidence is not None:
         result["readback_memory"] = memory_evidence
+    if output_digests is not None:
+        result["output_digests"] = output_digests
     if memory_observation is not None:
         result["readback_observation"] = memory_observation
     # Counter markers are a target-independent wire protocol.  The event names/codes remain the
@@ -1436,7 +1417,7 @@ def run_on_oracle(
             "engine": _trust.to_dict(),
         }
     elif readings:
-        discovery = hw_counters.counters_for_target(target)
+        discovery = hw_counters.counter_source_for_target(target)
         measured_schema = hw_counters.parse_counter_schema(counter_console)
         report: dict[str, Any] = {
             "status": "measured",
@@ -1445,26 +1426,20 @@ def run_on_oracle(
             "measured_header_sha256": measured_schema,
         }
         if discovery.get("status") == "derived" and measured_schema == discovery.get("header_sha256"):
-            header = Path(discovery["header"]).read_text(encoding="utf-8", errors="replace")
-            occupancy = hw_counters.derive_occupancy_counters(header)
+            occupancy, _event_codes = hw_counters.occupancy_for_discovery(discovery)
             required = set(occupancy.by_combination.values())
             if required and required <= set(readings):
                 report["occupancy"] = occupancy.to_dict()
                 partition_reader = getattr(backend, "counter_partition_inputs", None)
                 partition = (
-                    partition_reader()
-                    if callable(partition_reader)
-                    else {
-                        "status": "unknown",
-                        "why": "the target backend exposes no CIRCT counter-partition artifact",
-                    }
+                    partition_reader() if callable(partition_reader) else hw_counters.declared_partition_inputs(target)
                 )
                 if partition.get("status") == "available":
                     report["overlap"] = hw_counters.eta_from_counters(
                         readings,
                         occupancy,
                         hw_text=partition["hw_text"],
-                        codes=hw_counters.event_codes(header),
+                        codes=_event_codes,
                         module=partition["module"],
                         counter_module=partition["counter_module"],
                         measurement_cycles=raw.get("cycles"),
@@ -1496,4 +1471,9 @@ def run_on_oracle(
         and _execution_service.consumption(elf=elf, console=console) != process_consumption
     ):
         raise ValueError("functional native consumption changed during output publication")
+    if artifact_selection is not None:
+        result["artifact_retesting"] = retain_selected_artifacts(
+            artifact_selection, invocation=observed.path, console=console
+        )
+        result["timing"]["artifact_retesting"] = result["artifact_retesting"]
     return result

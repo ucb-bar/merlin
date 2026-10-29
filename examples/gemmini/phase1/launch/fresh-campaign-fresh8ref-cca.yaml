@@ -1,0 +1,13 @@
+# Guided run: the same kernel files and guidance, plus the reference map and the reference-analysis tools
+# (CCA lifting, kernel mining). The fresh7 reference experiment tasks were derived against another
+# run's compiler: the selection keeps the analysis endpoint but serves none of its tasks
+# (no REFERENCE_EXPERIMENTS.json).
+extends: fresh-campaign-fresh8ref-paired.yaml
+id: gemmini-open-compiler-fresh8ref-reference-with-cca
+run:
+  run_id: gemmini-open-compiler-20261027-fresh8cca
+  unit: merlinphase1fresh8cca20261027
+  cpus: 28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47
+plan:
+  reference_guidance: "on"
+  reference_experiment_tasks: "off"

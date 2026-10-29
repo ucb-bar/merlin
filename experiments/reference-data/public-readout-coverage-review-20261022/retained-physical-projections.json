@@ -1,0 +1,60 @@
+[
+  {
+    "fields": {
+      "calibration_eligible": false,
+      "checked": 4096,
+      "id": "WS_BOUNDARIES_8_MATCHED_ARMS",
+      "instrumented": true,
+      "rows": [
+        {
+          "arm": 0,
+          "checked": 2048,
+          "drain": 130,
+          "mismatches": 0,
+          "readout": 1521,
+          "submit": 83
+        },
+        {
+          "arm": 1,
+          "checked": 2048,
+          "drain": 3,
+          "mismatches": 0,
+          "readout": 1603,
+          "submit": 683
+        }
+      ],
+      "status": "numerical_pass"
+    },
+    "original": {
+      "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-pipeline-diagnostics-v1/boundaries-v1.json",
+      "sha256": "954c70689bbbd8b0305fb792579a8eb895d0641eb0c44a4fe001c0d2719e1402"
+    }
+  },
+  {
+    "fields": {
+      "calibration_eligible": false,
+      "checked": 4096,
+      "id": "WS_READOUT_DIRTY_CLEAN_8",
+      "instrumented": true,
+      "rows": [
+        {
+          "checked": 2048,
+          "cycles": 1627,
+          "dirty": true,
+          "mismatches": 0
+        },
+        {
+          "checked": 2048,
+          "cycles": 872,
+          "dirty": false,
+          "mismatches": 0
+        }
+      ],
+      "status": "numerical_pass"
+    },
+    "original": {
+      "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-readout-coherence-diagnostic-v1/readout-v1.json",
+      "sha256": "4c35fe1f018940843ca7b2c2367ed2b5ad17ed03fc70ff6bded6af38cec18445"
+    }
+  }
+]

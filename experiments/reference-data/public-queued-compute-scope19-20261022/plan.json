@@ -1,0 +1,59 @@
+{
+  "argv": [
+    "workspace/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+    "--extlib=/work/merlin/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+    "--extlib=/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+    "--extension=gemmini",
+    "-p1",
+    "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+    "-m0x80000000:0x400000000",
+    "--instructions=1000000000",
+    "--timing-model=/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/model.json",
+    "--timing-report=/work/merlin/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/report.json",
+    "--timing-scope-binding=/work/merlin/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/scope.json",
+    "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+    "--timing-event-trace=/work/merlin/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/events.jsonl",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/program.elf"
+  ],
+  "bounds": {
+    "annotated_runs": 1,
+    "events": 32768,
+    "physical_runs": 0,
+    "seconds": 120,
+    "trace_bytes": 16777216
+  },
+  "elf": {
+    "path": "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/program.elf",
+    "sha256": "9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63"
+  },
+  "original_functional": {
+    "path": "workspace/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/functional.json",
+    "sha256": "7859476cf0d0597d3251ad8b67ca02b1c470584843ac8147620fdb71cfd953cb"
+  },
+  "original_plan": {
+    "path": "workspace/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/plan.json",
+    "sha256": "4f461d38a2ea41476c0f31d8e896c68b9bd23d4c8375d23243e34ae4b253be9d"
+  },
+  "purpose": "Development diagnostic: identify warm queued compute constraints. No fit or independent qualification.",
+  "resource_override": {
+    "authority": "root explicit operatorCPU0 authorization after preexecution EINVAL",
+    "campaign_cpu_use": false,
+    "cpu": 0,
+    "namespace": "workspace/tasks/el4-joint-campaign-20261021/.tmp/gemmini-joint-clean-20261022-v2/compute-slots",
+    "physical_runs": 0,
+    "previous_attempt": "../arrival-unused-replays-v1/results.json"
+  },
+  "runtime": {
+    "path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/runtime.json",
+    "sha256": "df2c2bf35cd33353e2f6c7e92c317ad44f1b85089bba3846dd46e6f442dfa6e9"
+  },
+  "schema": "operator.queued_compute_trace_plan.v1",
+  "scope": {
+    "path": "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/scope.json",
+    "sha256": "f8b1e8b13057284d430f2c21807c4f3f77869aac098ad80a5799a04ca56f6073"
+  },
+  "source": {
+    "path": "workspace/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/probe.c",
+    "sha256": "89fc335699847c1997291a3196f470f656af9e7a4ce36d0bb8ac0eea59a6275e"
+  }
+}

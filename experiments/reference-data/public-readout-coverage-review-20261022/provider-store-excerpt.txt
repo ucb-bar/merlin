@@ -1,0 +1,89 @@
+  Result store(std::uint64_t dram, std::uint64_t encoded) {
+    reads_.push_back(state(3));
+    if (!store_.valid) {
+      fail("unconfigured_store"); invalidate_all();
+      return submit("store", resources_.store, 0, 0);
+    }
+    const auto p = packet(encoded);
+    const bool acc = (p.address >> 31) & 1, full = (p.address >> 29) & 1;
+    const auto base = std::uint64_t(p.address & 0x3ffffffu);
+    const auto norm = (p.address >> 26) & 7;
+    if (full && acc && !h_.full_width_accumulator_readout) fail("full_width_readout_unavailable", true);
+    const bool normalizing = !store_.pool_stride && p.rows && p.cols;
+    const bool readout = normalizing && acc && !norm;
+    const bool pooled = store_.pool_stride && store_.porows && store_.pocols && p.cols;
+    if (acc && (readout || pooled) && !accumulator_activation_) fail("unconfigured_accumulator_activation");
+    if (normalizing) {
+      if (norm_stat_) {
+        reads_.push_back(state(7 + *norm_stat_)); writes_.push_back(state(7 + *norm_stat_));
+      } else if (norm || (readout && accumulator_activation_ &&
+                        (*accumulator_activation_ == 2 || *accumulator_activation_ == 4)))
+        fail("unconfigured_normalization");
+      if ((norm == 6 || norm == 7 || (readout && accumulator_activation_ && *accumulator_activation_ == 4)) &&
+          !(qb_qc_known_ && qln2_known_ && qln2_inv_known_)) fail("unconfigured_exponential_constants");
+      if (readout && accumulator_activation_ && *accumulator_activation_ == 3 && !qb_qc_known_)
+        fail("unconfigured_gelu_constants");
+      if (norm_stat_) {
+        auto &bank = normalization_[*norm_stat_];
+        if ((norm == 3 || norm == 4 || (readout && accumulator_activation_ && *accumulator_activation_ == 2)) &&
+            !bank.mean) fail("uninitialized_normalization_mean");
+        if (readout && accumulator_activation_ && *accumulator_activation_ == 2 && !bank.invstd)
+          fail("uninitialized_normalization_invstd");
+        if (readout && accumulator_activation_ && *accumulator_activation_ == 4 && !(bank.max && bank.invsum))
+          fail("uninitialized_softmax_statistics");
+        if (norm == 2) bank.mean = true;
+        if (norm == 4 && bank.mean) bank.invstd = true;
+        if ((norm == 6 || norm == 7) && qb_qc_known_ && qln2_known_ && qln2_inv_known_) bank.max = true;
+        if (norm == 7 && qb_qc_known_ && qln2_known_ && qln2_inv_known_) bank.invsum = true;
+      }
+    }
+    if (store_.pool_stride) {
+      if (p.cols > h_.dim) fail("pool_channel_extent", true);
+      for (std::uint32_t y = 0; y < store_.porows && !row_aborted_; ++y) {
+        for (std::uint32_t x = 0; x < store_.pocols && !row_aborted_; ++x)
+          for (std::uint32_t wy = 0; wy < store_.pool_size && !row_aborted_; ++wy)
+            for (std::uint32_t wx = 0; wx < store_.pool_size && !row_aborted_; ++wx) {
+              const auto iy = std::int64_t(y * store_.pool_stride + wy) - store_.upad;
+              const auto ix = std::int64_t(x * store_.pool_stride + wx) - store_.lpad;
+              if (iy >= 0 && ix >= 0 && iy < store_.orows && ix < store_.ocols)
+                row(acc, base + std::uint64_t(iy) * store_.ocols + ix, false,
+                    std::uint64_t(p.cols) * (acc ? h_.accumulator_bytes : h_.element_bytes));
+            }
+        const auto offset = y * std::uint64_t(store_.out_dim) * store_.stride;
+        if (offset > std::numeric_limits<std::uint64_t>::max() - dram) {
+          fail("dram_address_overflow", true); break;
+        }
+        transfer(dram + offset, store_.pocols,
+                 std::uint64_t(p.cols) * h_.element_bytes, store_.stride, true);
+      }
+      add(counters_.pooled_outputs, std::uint64_t(store_.porows) * store_.pocols * p.cols);
+    } else {
+      const auto blocks = (std::uint64_t(p.cols) + h_.dim - 1) / h_.dim;
+      for (std::uint64_t block = 0; block < blocks && !row_aborted_; ++block) {
+        const auto columns = std::min<std::uint64_t>(h_.dim, p.cols - block * h_.dim);
+        for (std::uint32_t i = 0; i < p.rows && !row_aborted_; ++i) {
+          const auto address = base + block * h_.dim + i;
+          if (norm) row(true, address, false, columns * h_.accumulator_bytes);
+          else row(acc, address, false, columns * (acc ? h_.accumulator_bytes : h_.element_bytes));
+        }
+      }
+      if (!norm) transfer(dram, p.rows, std::uint64_t(p.cols) * (acc && full ? h_.accumulator_bytes : h_.element_bytes),
+                          store_.stride, true);
+    }
+    // Non-RESET normalization consumes accumulator data but writes no DRAM.
+    // Its arithmetic is outside this primitive timing domain until priced.
+    std::string kind = norm && !store_.pool_stride ? "normalize" + std::to_string(norm) :
+                       store_.pool_stride ? "pool_store" : "store";
+    if (acc && accumulator_activation_ && *accumulator_activation_ &&
+        ((!norm && !store_.pool_stride) || (store_.pool_stride && *accumulator_activation_ == 1)))
+      kind += "_act" + std::to_string(*accumulator_activation_);
+    // Full-width data still traverses AccumulatorScale's selected elastic
+    // pipeline. StreamWriter req.valid requires writeData.valid. Preserve
+    // other readout forms until their separate normalization/pooling paths
+    // have a source-bound arrival contract.
+    const auto arrival = acc && full && !norm && !store_.pool_stride &&
+        p.cols == h_.dim && p.rows && p.rows <= h_.dim &&
+        store_.stride == std::uint64_t(h_.dim) * h_.accumulator_bytes ?
+        h_.accumulator_readout_arrival.value_or(0) : 0;
+    return submit(kind, resources_.store, event_reads_ + event_writes_, 0, arrival);
+  }

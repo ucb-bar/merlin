@@ -22,6 +22,7 @@ import argparse
 import hashlib
 import json
 import os
+from collections import Counter
 from pathlib import Path
 
 from merlin.perf import comparand as _comparand
@@ -35,10 +36,13 @@ from . import tier_integrity as _TIER_INTEGRITY
 from .capsule_common import NOT_MEASURED_STATUSES
 from .capsule_common import tier_field as _tier_field
 from .capsule_common import tier_status as _tier_status
+from .capsule_perf_ledger import _activity_source as _activity_source
+from .capsule_perf_ledger import emit_perf_ledger as _emit_perf_ledger
 from .corpora import source_experiment_env
 from .elf_lanes import native_host_execution
 from .oot_runner import INFRASTRUCTURE_PLANE as OOT_INFRASTRUCTURE_PLANE
 from .oot_runner import CertFailure, build_package, integrity_scan, load_package
+from .trace_check import requirements_complete as _trace_requirements_complete
 
 
 def _name_set_sha256(names) -> str:
@@ -102,28 +106,15 @@ def _materialized_cohort_admission(
 
 
 def _lane_scope(lane_report: dict, observed_lanes: set) -> set:
-    """``observed_lanes`` narrowed to the lanes ``lane_report`` is actually about.
-
-    The report's producer (:func:`capsule_runner.lane_report`) only ever judges the lanes a capsule
-    DECLARED, and exports that set as ``scope``. The dispatch ledger this end reads sees every lane that
-    ran. An older report with no ``scope`` is compared whole, which is what the two ends did before the
-    key existed -- correct exactly when a capsule declares every lane it dispatches on.
-    """
+    """Narrow declared lane scope; legacy reports retain their whole-set comparison."""
     scope = lane_report.get("scope")
     if not isinstance(scope, list):
         return observed_lanes
     return observed_lanes & {str(ln) for ln in scope}
 
 
-def candidate_native_model_check(result: dict, *, target: str, readback_policy=None) -> dict:
-    """Grade only the submitted whole-program artifact, never the legacy host graph.
-
-    This is a distinct diagnostic/qualification surface. It requires the
-    source-only frozen denominator, actual emitted task-scoped host audit,
-    candidate-built native ELF/full-output evidence, and a source-bound
-    mandatory dispatch join. It does not borrow the old host-dispatch ledger
-    or claim full transformation semantics from a numerical comparison.
-    """
+def candidate_native_model_check(result: dict, *, target: str, readback_policy=None, oracle_tier_ceiling=None) -> dict:
+    """Audit original source, host compute, actual ELF/output, obligations and tiers."""
     from .native_model_execution import (
         audit_candidate_completed_dispatch,
         audit_candidate_source_placement,
@@ -169,7 +160,11 @@ def candidate_native_model_check(result: dict, *, target: str, readback_policy=N
     )
     native_identity_ok = candidate_artifact_identity_ok and isinstance(native.get("console"), dict)
     required_engine = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip()
-    if required_engine and (not isinstance(native, dict) or native.get("simulator") != required_engine):
+    if (
+        oracle_tier_ceiling is None
+        and required_engine
+        and (not isinstance(native, dict) or native.get("simulator") != required_engine)
+    ):
         violations.append("candidate_required_rtl_engine_mismatch")
     dispatch = audit_candidate_completed_dispatch(
         result.get("candidate_emission"),
@@ -200,7 +195,16 @@ def candidate_native_model_check(result: dict, *, target: str, readback_policy=N
             for index in task.get("source_op_indices", [])
             if index in eligible
         }
-        if completed == eligible and eligible and dispatch.get("source_sha256") == placement.get("source_sha256"):
+        host_only = (
+            dispatch.get("public_zero_device_demand") is True
+            and (native.get("frozen_policy") or {}).get("public_zero_device_demand") is True
+            and not eligible
+        )
+        if (
+            completed == eligible
+            and (eligible or host_only)
+            and dispatch.get("source_sha256") == placement.get("source_sha256")
+        ):
             source_coverage = {
                 "status": "verified",
                 "source_sha256": placement["source_sha256"],
@@ -209,6 +213,7 @@ def candidate_native_model_check(result: dict, *, target: str, readback_policy=N
                 "completed_eligible_source_op_indices": sorted(completed),
                 "n_eligible": len(eligible),
                 "n_completed_eligible": len(completed),
+                **({"public_zero_device_demand": True} if host_only else {}),
                 "scope": "independent frozen-source eligibility joined to mandatory candidate ELF commands; "
                 "no claim for unsupported glue, transformed semantics or performance",
             }
@@ -222,6 +227,7 @@ def candidate_native_model_check(result: dict, *, target: str, readback_policy=N
         entry_symbol=entry,
         completed_dispatch=dispatch,
         **({"readback_policy": readback_policy} if readback_policy is not None else {}),
+        oracle_tier_ceiling=oracle_tier_ceiling,
     )
     static_tiers = tier_check.get("tiers") or {}
     l2_mismatch = (
@@ -277,37 +283,54 @@ def candidate_native_model_check(result: dict, *, target: str, readback_policy=N
 
 
 def model_execution_check(
-    result: dict, capsule: dict | None = None, *, target: str | None = None, readback_policy=None,
+    result: dict,
+    capsule: dict | None = None,
+    *,
+    target: str | None = None,
+    readback_policy=None,
 ) -> dict:
-    """Return the model capsule's honest structural/effect evidence.
+    """Audit original source, placement, candidate ELF, full outputs and tiers.
 
-    Operator capsules have one emitted kernel, so their decoded instruction trace is the appropriate
-    structural check. A model capsule is a composition of many accelerator kernels and host islands,
-    so its equivalent proof is an ordered dynamic dispatch ledger. Every accelerator entry must bind
-    the exact decoded trace, RTL fidelity and content-addressed compiler artifacts; aggregate counters,
-    independently synthesized tiles and the declared host/accelerator seam must all agree with it.
-    Missing/malformed evidence fails closed.
+    Explicit public programs use the submitted artifact path, including when
+    no accelerator work is mandatory. Legacy host-graph ledgers cannot certify
+    a different submitted program. Missing evidence remains incomplete.
     """
     violations: list[str] = []
     emitted_host_compute: dict | None = None
     candidate_source_placement: dict | None = None
     candidate_completed_dispatch: dict | None = None
     candidate_check = None
-    if bool(((capsule or {}).get("semantic") or {}).get("must_accelerate")):
+    # The immutable corpus may withhold must_accelerate while independently
+    # requiring on_mesh. An owned receipt is never a legacy-host diagnostic:
+    # reopen its original source, eligible groups, custody and every native tier.
+    from .owned_host_model_selection import owned_model_required
+
+    requires_owned = owned_model_required(capsule, target=target) if isinstance(capsule, dict) else False
+    if "owned_host_native_execution" in result or (
+        requires_owned
+        and not result.get("public_program_execution")
+        and not bool(((capsule or {}).get("semantic") or {}).get("must_accelerate"))
+    ):
+        from .owned_host_model_execution import audit_owned_host_model
+
+        return audit_owned_host_model(result, capsule, target=target, readback_policy=readback_policy)
+    from merlin.targetgen.public_program_timing import candidate_execution_requested, numerical_screen_requested
+
+    if candidate_execution_requested(result, capsule):
         # Keep candidate proof independent from this legacy host-dispatch
         # model check. The old ledger cannot certify a different program.
         effective_target = target or (result.get("operation") or {}).get("target")
         candidate_check = candidate_native_model_check(
-            result, target=effective_target if isinstance(effective_target, str) else "",
+            result,
+            target=effective_target if isinstance(effective_target, str) else "",
             **({"readback_policy": readback_policy} if readback_policy is not None else {}),
+            **({"oracle_tier_ceiling": "L2"} if numerical_screen_requested(result, capsule) else {}),
         )
         violations.extend(candidate_check["violations"])
         emitted_host_compute = candidate_check["emitted_host_compute"]
         candidate_source_placement = candidate_check["source_placement"]
         candidate_completed_dispatch = candidate_check["completed_dispatch"]
-        # This is a separate candidate-only verdict at every status, not just
-        # pass. A missing candidate receipt must not acquire unrelated legacy
-        # host-graph ledger violations or inherit that graph's successful tiers.
+        # A missing candidate receipt cannot inherit the legacy host graph's verdict.
         return {
             "status": candidate_check["status"],
             "kind": "candidate_whole_program_execution",
@@ -754,21 +777,86 @@ def model_execution_check(
 
 
 def enforce_model_execution_check(result: dict, capsule: dict | None, *, target: str, readback_policy=None) -> dict:
-    """Attach and enforce a whole-model execution proof on the capsule verdict itself.
+    """Enforce the original complete model proof on its durable verdict.
 
-    The score-level structural flag is not enough: QA and checkpoint readers intentionally re-open each
-    durable ``capsule_result.json``.  Before this enforcement a Verilator-backed model remained
-    ``status=pass, L3=pass`` under a GSIM pin; only the in-memory score carried a failing auxiliary check,
-    so those durable readers false-accepted it.  A wrong/missing required engine is ``incomplete`` (the
-    requested evidence did not run), while malformed evidence from the requested engine is a real fail.
+    A wrong/missing requested engine is incomplete; malformed actual execution
+    is a failure. Promote only after every source, numeric and tier gate passes.
     """
+    if result.get("status") == "gated":
+        # The scheduler never executed this model; retain its original deferral.
+        return result
+    if result.get("status") == "budget_exhausted" and not any(
+        isinstance(result.get(key), dict)
+        for key in ("owned_host_native_execution", "candidate_native_execution")
+    ):
+        # The parent terminated the budgeted child before it returned a receipt.
+        # Auditing that absent receipt would overwrite the actual timeout with
+        # a generic missing-evidence error. This grants no tier or numeric pass.
+        result["model_execution_check"] = {
+            "status": "incomplete",
+            "kind": "model_execution_budget",
+            "violations": ["candidate_required_tiers_unverified"],
+            "detail": (result.get("failure") or {}).get("detail", "whole-model execution budget exhausted"),
+        }
+        result["numeric"] = {}
+        result["tiers"] = {}
+        return result
     check = model_execution_check(
-        result, capsule, target=target,
+        result,
+        capsule,
+        target=target,
         **({"readback_policy": readback_policy} if readback_policy is not None else {}),
     )
+    from .native_model_policy import attach_numerical_screen
+
+    attach_numerical_screen(result, capsule, check)
     result["model_execution_check"] = check
     if check.get("candidate_native_model_check") is not None:
         result["candidate_native_model_check"] = check["candidate_native_model_check"]
+    if check.get("kind") == "owned_host_model_execution":
+        # Publish only reopened tiers, including a partial functional screen.
+        # A missing native tier never erases proven L2, and raw receipt claims
+        # never survive an audit refusal as promotion authority.
+        tier_check = check.get("candidate_required_tiers") or {}
+        audited = tier_check.get("tiers") or {}
+        required = tier_check.get("required_tiers") or list(result.get("tiers") or {})
+        result["status"] = check["status"]
+        result["numeric"] = check.get("numeric") or {}
+        result["candidate_source_coverage"] = check.get("candidate_source_coverage") or {}
+        if check.get("owned_host_model_check"):
+            result["owned_host_model_check"] = check["owned_host_model_check"]
+        result["tiers"] = {
+            tier: {
+                "tier": tier,
+                "status": (audited.get(tier) or {}).get("status", "unverified"),
+                "mandatory": True,
+                "evidence": "owned_host_model_same_elf"
+                if tier in {"L2", "L3"}
+                else "owned_host_model_structural_legality",
+                "derived_from_rtl": tier == "L3"
+                and (audited.get(tier) or {}).get("status") == "pass"
+                and ((audited.get(tier) or {}).get("selection") or {}).get("fidelity") == "elaborated_rtl",
+                "cycle_accurate": False,
+                "candidate_evidence": audited.get(tier) or {},
+                **{key: (audited.get(tier) or {})[key] for key in ("engine", "fidelity")
+                   if isinstance((audited.get(tier) or {}).get(key), str) and (audited.get(tier) or {})[key]},
+            }
+            for tier in required
+        }
+        if check["status"] == "pass":
+            result.pop("failure", None)
+        elif isinstance(check.get("failure"), dict):
+            # The audit named the run's root cause (a stop before any receipt); report that, not its effect.
+            result["failure"] = dict(check["failure"])
+        else:
+            result["failure"] = {
+                "plane": "candidate_model_execution",
+                "category": "FUNCTIONAL_MISMATCH" if check["status"] == "fail" else "NOT_RUN_IS_NOT_PASS",
+                "detail": check.get("detail")
+                or ", ".join(check.get("violations") or [])
+                or "mandatory native tier has not completed",
+            }
+        return result
     if check.get("status") == "pass":
         if check.get("kind") == "candidate_whole_program_execution":
             # Promote only after all frozen mandatory candidate tiers, source
@@ -1033,21 +1121,31 @@ def default_grade_workers(n_capsules: int | None = None) -> int:
     experiments run on it left 30 cores idle through every grade — measured mid-run at a load average
     of 14.9 against 48 cores, with 16 workers. Memory never justified it: 16 workers of the heaviest
     kind reach ~3.5 GB. Applies to every arm's grade (the shared suite grader).
+
+    With a shared compute pool selected (``MERLIN_COMPUTE_CPUS``), the pool's slots arbitrate every
+    CPU step, so an unset count is the pool size, still bounded by memory.
     """
+    from merlin.common.cpu_pool import compute_capacity
+
     env = os.environ.get("MERLIN_GRADE_WORKERS")
     if env and env.isdigit() and int(env) > 0:
         w = int(env)
     else:
-        try:
-            cpus = len(os.sched_getaffinity(0))
-        except AttributeError:  # not every platform exposes affinity; the count is the bound
-            cpus = os.cpu_count() or 4
-        w = max(1, min(cpus - 2, int(cpus * GRADE_HOST_SHARE)))
-        busy = _cores_in_use()
-        if busy is not None:
-            # The floor applies to THIS bound only: yielding cores to other people is courtesy, and a
-            # courtesy must not be able to halt the experiment.
-            w = min(w, max(GRADE_MIN_WORKERS, int(cpus - busy)))
+        if pool := compute_capacity():
+            # A selected shared pool is the only CPU limiter: every worker step leases a
+            # slot, so the pool size replaces the affinity, host-share and load bounds.
+            w = pool
+        else:
+            try:
+                cpus = len(os.sched_getaffinity(0))
+            except AttributeError:  # not every platform exposes affinity; the count is the bound
+                cpus = os.cpu_count() or 4
+            w = max(1, min(cpus - 2, int(cpus * GRADE_HOST_SHARE)))
+            busy = _cores_in_use()
+            if busy is not None:
+                # The floor applies to THIS bound only: yielding cores to other people is courtesy,
+                # and a courtesy must not be able to halt the experiment.
+                w = min(w, max(GRADE_MIN_WORKERS, int(cpus - busy)))
         available = _available_memory_bytes()
         if available is not None:
             raw = os.environ.get("MERLIN_GRADE_WORKER_BYTES", "")
@@ -1070,24 +1168,50 @@ def _bounded_grade_workers(requested: int, oracle_adapters: dict | None) -> int:
         for adapter in (oracle_adapters or {}).values()
         if (engine := getattr(adapter, "_merlin_simulator_engine", None))
     }
+    # Original process graders lease compilation separately from native execution.
+    # Their shared CPU pool bounds preparation; the native GSIM slot lock still
+    # enforces its smaller emulator cap at dispatch.
+    from merlin_experiments.phase1.feedback.operator_child import enabled
+
+    from merlin.common.cpu_pool import grading_cpus, shared_compute_enabled
+
+    if "gsim" in engines and enabled() and shared_compute_enabled():
+        requested = min(requested, len(grading_cpus()))
+        engines.remove("gsim")
     return min(requested, *(capsule_worker_cap(engine) for engine in engines)) if engines else requested
+
+
+def _qualified_model_check(row: dict) -> dict | None:
+    check = row.get("model_execution_check")
+    if isinstance(check, dict) and check.get("kind") == "owned_host_model_execution":
+        return check
+    check = row.get("candidate_native_model_check")
+    return check if isinstance(check, dict) else None
 
 
 def _score_numeric_status(row: dict) -> str | None:
     """Never attribute a legacy host-graph comparison to a submitted model ELF."""
-    check = row.get("candidate_native_model_check")
+    check = _qualified_model_check(row)
     if isinstance(check, dict):
         if check.get("status") == "pass":
             return "pass"
         if "candidate_verified_numeric_mismatch" in (check.get("violations") or []):
             return "fail"
+        if check.get("kind") == "owned_host_model_execution":
+            tier_check = check.get("candidate_required_tiers") or {}
+            tiers = tier_check.get("tiers") or {}
+            # This is the numeric screen, never final model certification.
+            if tier_check.get("pending_tiers") == ["L3"] and all(
+                (tiers.get(tier) or {}).get("status") == "pass" for tier in ("L0", "L1", "L2")
+            ):
+                return (tiers["L2"].get("numeric") or {}).get("status")
         return None
     return (row.get("numeric") or {}).get("status")
 
 
 def _candidate_score_view(row: dict) -> dict:
     """Use only candidate-native evidence in a model's score, leaving its durable row intact."""
-    check = row.get("candidate_native_model_check")
+    check = _qualified_model_check(row)
     if row.get("kind") != "model" or not isinstance(check, dict):
         return row
     view = dict(row)
@@ -1129,11 +1253,17 @@ def _candidate_score_view(row: dict) -> dict:
             or audit.get("status") not in {"pass", "fail", "unverified"}
         ):
             continue
-        projected = {"status": audit["status"], "mandatory": True, "evidence": "candidate_whole_program_same_elf"}
-        for field in ("fidelity", "derived_from_rtl", "cycle_accurate"):
+        projected = {
+            "status": audit["status"],
+            "mandatory": True,
+            "evidence": "owned_host_model_same_elf"
+            if check.get("kind") == "owned_host_model_execution"
+            else "candidate_whole_program_same_elf",
+        }
+        for field in ("engine", "fidelity", "derived_from_rtl", "cycle_accurate"):
             value = audit.get(field)
-            if (field == "fidelity" and isinstance(value, str) and value) or (
-                field != "fidelity" and isinstance(value, bool)
+            if (field in {"engine", "fidelity"} and isinstance(value, str) and value) or (
+                field in {"derived_from_rtl", "cycle_accurate"} and isinstance(value, bool)
             ):
                 projected[field] = value
         view["tiers"][tier] = projected
@@ -1168,6 +1298,14 @@ def grade(
     target_experiment=None,
     additional_forbidden: tuple[str, ...] = (),
     model_snapshot_root: str | Path | None = None,
+    on_capsule_complete=None,
+    on_cohort_ready=None,
+    model_gate_continuations=(),
+    model_gate_prerequisites=None,
+    functional_hidden_tier: str | None = None,
+    functional_public_tier: str | None = None,
+    defer_pending=None,
+    defer_running=True,
 ) -> dict:
     """Run the capsule suite over a submitted package; return a score dict (also schema-checkable).
 
@@ -1181,6 +1319,23 @@ def grade(
     ``oracle_unavailable`` plane — so the report is honest and never claims a numeric pass. Graded runs
     (``no_oracle=False``) keep the ``not_run_is_not_pass`` behavior byte-for-byte."""
     labels = labels or {"public", "dev"}
+    if functional_public_tier is not None and (
+        functional_public_tier != "L2"
+        or functional_hidden_tier is not None
+        or not labels <= {"public", "dev"}
+        or no_oracle
+        or set(oracle_adapters or {}) != {"L2"}
+        or getattr((oracle_adapters or {}).get("L2"), "_merlin_simulator_engine", None) != "spike"
+    ):
+        raise ValueError("functional public grading requires public/dev-only exact Spike L2 evaluation")
+    if functional_hidden_tier is not None and (
+        functional_hidden_tier != "L2"
+        or labels != {"hidden"}
+        or not capability_admission
+        or no_oracle
+        or set(oracle_adapters or {}) != {"L2"}
+    ):
+        raise ValueError("functional hidden grading requires hidden-only admitted L2 oracle evaluation")
     # Source the target's own tooling paths before resolving any adapter, exactly as the harness does
     # for an arm. Without this a grade run outside the harness can lose a target's certifying-tier sim
     # and report the whole suite `incomplete` -- fail-closed, but describing the environment rather than
@@ -1246,20 +1401,40 @@ def grade(
         "timing_rollup": {},
     }
 
+    # Preparation leases end before build/callback/child owners select their own CPU.
+    from merlin.common.cpu_pool import shared_compute_pool
+
     # K0/K1: load + integrity scan + build (fail-closed, recorded honestly)
+    package_precheck_stage = "load_package"
     try:
-        pkg = load_package(pkg_dir, contract=contract)
-        score["integrity_exempt"] = pkg.integrity_exempt
-        integrity_scan(pkg, **({"additional_forbidden": additional_forbidden} if additional_forbidden else {}))
-        score["integrity_status"] = "clean" if not pkg.integrity_exempt else "exempt"
+        with shared_compute_pool(timeout_s=timeout):
+            pkg = load_package(pkg_dir, contract=contract)
+            score["integrity_exempt"] = pkg.integrity_exempt
+            package_precheck_stage = "integrity_scan"
+            integrity_scan(pkg, **({"additional_forbidden": additional_forbidden} if additional_forbidden else {}))
+            score["integrity_status"] = "clean" if not pkg.integrity_exempt else "exempt"
+        package_precheck_stage = None  # Arbitrary build execution is NOT a shared host-check refusal.
         build_package(pkg)
+        # A manifest can land before its source entrypoint during authoring.
+        # Check once, after a declared build has had the chance to produce it,
+        # rather than issuing a doomed original-process request per capsule.
+        if not pkg.tool.is_file():
+            score["package_readiness"] = {"status": "not_ready", "reason": "declared_tool_missing"}
+            raise CertFailure("build", "elaboration_error", f"declared tool is not a file: {pkg.tool}")
     except CertFailure as cf:
         score["integrity_status"] = f"FAIL[{cf.plane}]: {cf.detail[:200]}"
         score["functional_pass"] = 0
         score["failure"] = {"plane": cf.plane, "category": str(cf.category), "detail": cf.detail}
+        if package_precheck_stage is not None:
+            score["package_precheck_refusal"] = {
+                "schema": "merlin.package_precheck_refusal.v1", "scope": "selected_suite",
+                "stage": package_precheck_stage, "candidate_execution_started": False,
+                "suppression": "native_pre_fanout_package_gate", "reuse_authority": False,
+            }
         return score
 
-    source_caps = CR.discover_capsules(capsules_root, labels=labels, contract=contract)
+    with shared_compute_pool(timeout_s=timeout):
+        source_caps = CR.discover_capsules(capsules_root, labels=labels, contract=contract)
     caps = source_caps
     admission_policy = "all_discovered"
     capability_excluded: list[dict] = []
@@ -1313,7 +1488,28 @@ def grade(
             "admitted_name_set_sha256": _name_set_sha256(c.get("name") for c in caps),
         }
     workers = max_workers if max_workers and max_workers > 0 else default_grade_workers(len(caps))
+    if functional_hidden_tier is not None or functional_public_tier is not None:
+        from .contract.materialize import _cap_required, _cap_tiers
+        from .expected_refusal import expects_refusal
+
+        selected = []
+        for capsule in caps:
+            if expects_refusal(capsule):
+                selected.append(capsule)  # A declared refusal has no invented execution obligation.
+                continue
+            required = capsule.get("required_oracle_tiers")
+            if (
+                type(required) is not list
+                or "L2" not in required
+                or any(tier not in _cap_tiers("L5") for tier in required)
+            ):
+                raise ValueError("functional capsule has no declared L2 oracle obligation")
+            kept, _ = _cap_required(required, set(_cap_tiers("L2")))
+            selected.append({**capsule, "required_oracle_tiers": kept, "oracle_tier_ceiling": "L2"})
+        caps = selected
     workers = _bounded_grade_workers(workers, oracle_adapters)
+    if on_cohort_ready is not None:
+        on_cohort_ready(len(caps))  # Actual selected roster, never completed/measured rows.
     import time as _time
 
     def _enforce_and_persist_models(results: list[dict]) -> None:
@@ -1322,13 +1518,15 @@ def grade(
         # explicit host-private root for later independent pin inspection.
         _caps_by_name = {str(cap.get("name")): cap for cap in caps}
         for result in results:
-            if result.get("kind") != "model":
+            if result.get("kind") != "model" or result.get("status") == "gated":
                 continue
             # Reopen under the same trusted adapter selection as the model
             # child. Candidate result records cannot choose their own codec.
             readback_policy = CR._adapter_readback_policy(oracle_adapters or {})
             enforce_model_execution_check(
-                result, _caps_by_name.get(str(result.get("capsule"))), target=target,
+                result,
+                _caps_by_name.get(str(result.get("capsule"))),
+                target=target,
                 **({"readback_policy": readback_policy} if readback_policy is not None else {}),
             )
             # The runner persisted the model result before this suite-level cross-record proof existed.
@@ -1348,6 +1546,22 @@ def grade(
         _enforce_and_persist_models(results)
         _model_audit_ran = True
 
+    def _completed(result: dict) -> None:
+        # Completion is serialized by the scheduler, after the durable result was
+        # written and while the frozen model source scope is still owned here.
+        _enforce_and_persist_models([result])
+        if on_capsule_complete is not None:
+            on_capsule_complete(result)
+
+    # A per-capsule budget below what this run already measured a capsule needs can only ever leave
+    # that capsule cert_not_measured. Raise it from the measurement, bounded and recorded.
+    from .capsule_budget import measured_capsule_budget, timed_out
+    from .capsule_scheduling import selected_history
+
+    _budget = measured_capsule_budget(caps, selected_history(), timeout=timeout)
+    if _budget["raised"]:
+        print(f"  per-capsule budget: {_budget['basis']}", flush=True)
+    timeout = _budget["budget_s"]
     results = CR.run_suite(
         caps,
         pkg_dir,
@@ -1360,6 +1574,10 @@ def grade(
         no_oracle=no_oracle,
         model_snapshot_root=model_snapshot_root,
         post_suite=_post_suite,
+        model_gate_continuations=model_gate_continuations,
+        model_gate_prerequisites=model_gate_prerequisites,
+        **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
+        **({"on_capsule_complete": _completed} if on_capsule_complete is not None else {}),
     )
     _suite_wall = _time.perf_counter() - _suite_t0
     if not _model_audit_ran:
@@ -1390,7 +1608,8 @@ def grade(
     from merlin.targetgen import offload_census as _offload_census
 
     score["host_compute_vetoed"] = sorted(
-        str(row.get("program")) for row in _offload_census.apply_host_compute_veto(results, rr)
+        str(row.get("program"))
+        for row in _offload_census.apply_host_compute_veto(results, rr, capsules=caps, target=target)
     )
 
     # A NUMERICALLY PERFECT PASS THAT ASKED THE UNIT FOR ONLY THE CONTRACTION. The veto above catches
@@ -1424,6 +1643,23 @@ def grade(
     deferred = [r for r in results if r.get("status") == "gated"]
     screened = [r for r in results if r.get("status") == "screened_only"]
     graded = [r for r in results if r.get("status") not in NOT_MEASURED_STATUSES]
+    from . import expected_refusal as _ER
+
+    _declared_refusals = {str(cap.get("name")): cap for cap in caps if _ER.expects_refusal(cap)}
+    _validated_refusals = sum(
+        sum(row.get("capsule") == name for row in results) == 1
+        and any(_ER.validated_result(cap, row) for row in results if row.get("capsule") == name)
+        for name, cap in _declared_refusals.items()
+    )
+    if _declared_refusals:
+        score["expected_refusal_scope"] = {
+            "binding": "original_capsule_declaration_and_canonical_result_v1",
+            "n_admitted_capsules": len(caps),
+            "n_declared_refusals": len(_declared_refusals),
+            "n_validated_refusals": _validated_refusals,
+            "n_executable_capsules": len(caps) - len(_declared_refusals),
+        }
+    _execution_rows = [row for row in graded if str(row.get("capsule")) not in _declared_refusals]
     n_pass = sum(1 for r in graded if r["status"] == "pass")
     score["n_capsules"] = len(graded)
     score["n_passed"] = n_pass
@@ -1495,6 +1731,18 @@ def grade(
             "screen may eliminate; it may never certify -- so they are in neither n_passed nor "
             "n_capsules, and nothing here is a verdict on them. Each reason is quoted above."
         )
+    # WHICH BUDGET STOPPED IT, said with the number. The tier reason quotes only the clipped tail of
+    # the killed command, which named neither the budget nor the option that sets it.
+    score["per_capsule_budget"] = _budget
+    _stopped = timed_out(results, _budget)
+    if _stopped:
+        score["timed_out"] = _stopped
+        for _name, _row in sorted(_stopped.items()):
+            print(
+                f"  [timeout] {_name} {_row['tier']}: stopped by the {_row['budget_s']} s per-capsule wall "
+                f"budget (requested {_row['requested_s']} s); unmeasured, not failed -- {_row['remedy']}",
+                flush=True,
+            )
     # SCREENED BUT NOT CERTIFIED, listed by name. A headline of "14/14" over a suite where nine more
     # capsules were screened and never certified is only honest if the nine are visible next to it.
     score["n_screened_only"] = len(screened)
@@ -1624,25 +1872,43 @@ def grade(
     score["n_not_gradeable_no_oracle"] = n_not_gradeable
     score["n_structural_pass"] = n_pass + n_not_gradeable
     score["structural_pass"] = bool(not _empty and not _infra and (n_pass + n_not_gradeable) == len(graded))
-    score["numeric_all_exact"] = None if _empty else all(_score_numeric_status(r) == "pass" for r in graded)
-    _trace_rows = [r for r in graded if r.get("kind") != "model"]
-    _model_rows = [r for r in graded if r.get("kind") == "model"]
+    score["numeric_all_exact"] = None if _empty else all(_score_numeric_status(r) == "pass" for r in _execution_rows)
+    from . import owned_host_leaf_execution as _OH
+
+    _caps_by_name = {str(cap.get("name")): cap for cap in caps}
+    _host_rows = [r for r in _execution_rows if _OH.selected_host_leaf(_caps_by_name.get(r.get("capsule"), {}))]
+    _host_names = {r.get("capsule") for r in _host_rows}
+    _trace_rows = [r for r in _execution_rows if r.get("kind") != "model" and r.get("capsule") not in _host_names]
+    _model_rows = [r for r in _execution_rows if r.get("kind") == "model"]
     score["trace_all_pass"] = (
-        None if not _trace_rows else all(r.get("trace_check", {}).get("status") == "pass" for r in _trace_rows)
+        None if not _trace_rows else all(_trace_requirements_complete(r.get("trace_check")) for r in _trace_rows)
     )
+    _trace_requirements = Counter(
+        (r.get("trace_check") or {}).get("trace_requirement_status")
+        or ({"pass": "pass", "fail": "failed"}.get((r.get("trace_check") or {}).get("status"), "unavailable_record"))
+        for r in _trace_rows
+    )
+    score["trace_requirement_summary"] = dict(sorted(_trace_requirements.items()))
     score["model_execution_all_pass"] = (
         None
         if not _model_rows
         else all(r.get("model_execution_check", {}).get("status") == "pass" for r in _model_rows)
     )
+    score["provided_host_execution_all_pass"] = (
+        None
+        if not _host_rows
+        else all(_OH.qualified_host_result(_caps_by_name[r["capsule"]], r, target=target) for r in _host_rows)
+    )
     score["structural_evidence_scope"] = {
         "n_instruction_trace_capsules": len(_trace_rows),
         "n_model_execution_capsules": len(_model_rows),
+        "n_provided_host_capsules": len(_host_rows),
     }
     score["structural_evidence_all_pass"] = bool(
         not _empty
         and (not _trace_rows or score["trace_all_pass"] is True)
         and (not _model_rows or score["model_execution_all_pass"] is True)
+        and (not _host_rows or score["provided_host_execution_all_pass"] is True)
     )
     if _empty:
         score["note"] = (
@@ -1695,18 +1961,42 @@ def grade(
         if _tier_status(rec) != "pass":
             return False
         flag = _tier_field(rec, "derived_from_rtl")
-        if flag is None and isinstance(row.get("candidate_native_model_check"), dict):
+        if flag is None and _qualified_model_check(row) is not None:
             return False  # no tier-name fallback for a submitted whole-program candidate
         return bool(name in _rtl_names) if flag is None else bool(flag)
 
     def _tier_is_rtl(row, name, rec) -> bool:
         """Same three-state rule as :func:`_is_rtl_pass`, without the pass requirement."""
         flag = _tier_field(rec, "derived_from_rtl")
-        if flag is None and isinstance(row.get("candidate_native_model_check"), dict):
+        if flag is None and _qualified_model_check(row) is not None:
             return False
         return bool(name in _rtl_names) if flag is None else bool(flag)
 
     _passed = [r for r in graded if r.get("status") == "pass"]
+    if functional_hidden_tier is not None or functional_public_tier is not None:
+        evidence_key = "functional_hidden_evidence" if functional_hidden_tier else "functional_public_evidence"
+        score[evidence_key] = {
+            "tier": "L2",
+            "engine": "spike",
+            "fidelity": "functional_model",
+            "claim": "functional_corroboration",
+            "n_admitted_capsules": len(caps),
+            "n_validated_refusals": _validated_refusals,
+            "n_spike_passed": sum(
+                row.get("status") == "pass"
+                and _tier_status((row.get("tiers") or {}).get("L2")) == "pass"
+                and _tier_field((row.get("tiers") or {}).get("L2"), "engine") == "spike"
+                and _tier_field((row.get("tiers") or {}).get("L2"), "fidelity") == "functional_model"
+                and _tier_field((row.get("tiers") or {}).get("L2"), "derived_from_rtl") is False
+                for row in results
+            ),
+            "n_higher_tier_measured": sum(
+                _tier_status(value) in {"pass", "fail"}
+                for row in results
+                for tier, value in (row.get("tiers") or {}).items()
+                if tier in {"L3", "L4", "L5"}
+            ),
+        }
     _rtl_backed = [r for r in _passed if any(_is_rtl_pass(r, n, t) for n, t in (r.get("tiers") or {}).items())]
     # A pass that cleared a tier the ORACLE ITSELF called a model (fidelity != elaborated_rtl) and no RTL
     # tier beside it. Named separately because "not RTL-backed" reads as "did not run on hardware-grade
@@ -1842,6 +2132,16 @@ def grade(
             "trace": r.get("trace_check", {}).get("status"),
             "tiers": {t: _tier_status((r.get("tiers") or {}).get(t)) for t in tiers if t in (r.get("tiers") or {})},
         }
+        if isinstance(r.get("background_deferred"), str):
+            entry["background_deferred"] = r["background_deferred"]
+        _original_refusal = _declared_refusals.get(str(r.get("capsule")))
+        if _original_refusal is not None and _ER.validated_result(_original_refusal, r):
+            entry.update(
+                validated_refusal=True,
+                qualification="expected_refusal",
+                native_executed=False,
+                expected_refusal=r["expected_refusal"],
+            )
         # WHY EACH TIER DID NOT PASS. The projection above renders a tier record as its bare status
         # STRING, and that projection is where the diagnosis died: the ladder writes a good sentence
         # onto every non-passing tier ("the console carries no completion witness", "injected operand
@@ -2011,335 +2311,16 @@ def grade(
 # =================================================================================================
 
 
-def _activity_source(workload: str, block, *, total_cycles: int, provenance: str):
-    """An :class:`~merlin.perf.decompose.ActivitySource` from one validated timing block, or the
-    reason there is none. Returns ``(source, refusal)`` with exactly one of them set.
-
-    The KINDS come from the producer. They are not inferred from a unit's spelling and they are not
-    defaulted: a unit whose kind the producer did not state is a hole in the input, and reading a
-    role out of a name is how a local register load once became "DMA".
-    """
-    from merlin.perf.decompose import ResourceKind, activity_from_busy
-    from merlin.perf.observations import IDLE_QUANTITY
-
-    busy = block.busy_by_unit()
-    if not busy:
-        return None, f"{workload}: the block carries no per-unit busy count"
-    declared = block.kinds()
-    missing = sorted(set(busy) - set(declared))
-    if missing:
-        return None, (
-            f"{workload}: the producer stated no kind for unit(s) {missing}. A role read "
-            f"out of a unit's NAME is not a derivation, so the source is refused"
-        )
-    kinds: dict = {}
-    for unit, kind in declared.items():
-        try:
-            kinds[unit] = ResourceKind(kind)
-        except ValueError:
-            return None, (
-                f"{workload}: unit {unit!r} declares kind {kind!r}, which is not a "
-                f"resource kind this layer knows; refusing to map it onto one"
-            )
-    idle = block.quantity(IDLE_QUANTITY)
-    if idle is not None:
-        # Cycles charged to NO engine are an intercept, not a rate, and they are first-class here:
-        # on the measured corpus this is the single largest bucket, and an occupancy-only schema
-        # cannot see it at all.
-        busy = dict(busy)
-        busy[IDLE_QUANTITY] = int(idle)
-        kinds[IDLE_QUANTITY] = ResourceKind.FIXED
-    try:
-        src = activity_from_busy(
-            workload,
-            int(total_cycles),
-            busy,
-            kinds,
-            # NOT a partition, asserted by the producer and re-asserted here.
-            # If this ever becomes True the overlap reading is refused rather
-            # than silently reported as zero.
-            partitioned=bool(block.partitioned),
-            completion_observable=None,
-            provenance=provenance,
-        )
-    except ValueError as exc:
-        return None, f"{workload}: {exc}"
-    return src, None
-
-
 def emit_perf_ledger(results: list, *, target: str, runs_root: str | Path, version: int = 1) -> dict:
-    """Write this grade's ``perf-ledger`` product and return a pointer + summary for the score.
-
-    Products: ``ledger.json`` (per-tier rows plus the corpus-level composition question),
-    ``observations.jsonl`` (one recovered observation per line) and ``refusals.json`` (everything
-    that could have contributed and did not, with the reason). Per-cycle occupancy CSVs are NOT
-    products -- they are ~34 B/cycle of replay-regenerable detail and live under
-    ``cache_dir("occupancy")``, which is purgeable.
-
-    Never fatal: a grade that ran must still report its numbers, with the ledger's gap visible.
-    """
-    from merlin.common.artifacts import cache_dir, new_product
-    from merlin.kernels.measurement import authority_for
-    from merlin.perf import harvest as HV
-    from merlin.perf import observations as OBS
-    from merlin.perf.decompose import Unavailable, decompose_corpus, is_unknown
-    from merlin.perf.headroom import composition_operator
-
-    auth = authority_for(target)
-    rr = Path(runs_root) / "runs" / CR.suite_for(target)
-    rows: list[dict] = []
-    obs_rows: list[dict] = []
-    refusals: list[dict] = []
-    sources: list = []
-    overlaps: dict[str, int] = {}
-    no_capability: list[str] = []
-
-    for r in results:
-        capsule = str(r.get("capsule") or "")
-        path = rr / capsule / "capsule_result.json"
-        tiers = r.get("tiers") or {}
-        saw_block = False
-        for tier, rec in sorted(tiers.items()):
-            if not isinstance(rec, dict):
-                continue
-            # Recomposed from its two halves: the observation list and the instrument's own
-            # capability record, which the tier keeps beside it rather than inside it.
-            block = OBS.block_from_tier_record(rec)
-            row = {
-                "capsule": capsule,
-                "tier": tier,
-                "status": rec.get("status"),
-                "cycles": rec.get("cycles"),
-                "fidelity": rec.get("fidelity"),
-                "evidence": rec.get("evidence"),
-                # WHICH ENGINE produced these seconds and cycles, which BUILD of it, and where its
-                # console went. A perf ledger without the engine is a set of numbers from an unknown
-                # instrument: GSIM and Verilator run the same design at the same fidelity and cost
-                # ~20-30x apart, so a fit over rows that mix them silently averages two instruments.
-                # Until now the only trace of the engine was inside the `evidence` FILENAME, which
-                # every consumer here would have had to string-parse to recover.
-                "engine": rec.get("engine"),
-                "engine_selection": rec.get("engine_selection"),
-                "sim_provenance": rec.get("sim_provenance"),
-                "console_log": rec.get("console_log"),
-                "console_bytes": rec.get("console_bytes"),
-                # STATED, not inferred from the file's path. See TierResult.submission.
-                "submission": rec.get("submission"),
-                # A run taken before the stamp existed is MARKED, never retro-labelled: the
-                # concurrency it ran at is not recoverable and pretending otherwise is worse.
-                "concurrency": OBS.concurrency_of(rec),
-                "timing": rec.get("timing"),
-                "timing_capability": rec.get("timing_capability"),
-                "has_timing_block": block is not None,
-            }
-            rows.append(row)
-            if block is None:
-                continue
-            saw_block = True
-            for why in block.refusals:
-                refusals.append({"what": f"{capsule}@{tier}", "reason": why, "where": str(path)})
-            if block.alias_collisions is None:
-                refusals.append(
-                    {
-                        "what": f"{capsule}@{tier} alias accounting",
-                        "reason": (
-                            "the producer carried no alias-collision count, so whether this run's "
-                            "addresses stayed inside one window page is UNKNOWN, not zero"
-                        ),
-                        "where": str(path),
-                    }
-                )
-            elif block.alias_collisions > 0:
-                refusals.append(
-                    {
-                        "what": f"{capsule}@{tier}",
-                        "reason": (
-                            f"{block.alias_collisions} access(es) collided inside the wrapping "
-                            "memory window: two addresses a window apart became one byte, so "
-                            "these numbers are not about the program that was submitted"
-                        ),
-                        "where": str(path),
-                    }
-                )
-            total = block.quantity(OBS.SAMPLED_QUANTITY)
-            if total is None:
-                total = rec.get("cycles")
-            overlap = block.overlap_cycles()
-            key = f"{capsule}@{tier}"
-            if total is None:
-                refusals.append(
-                    {"what": key, "reason": "no cycle total to place the buckets against", "where": str(path)}
-                )
-                continue
-            src, why = _activity_source(
-                key, block, total_cycles=int(total), provenance=str(rec.get("evidence") or tier)
-            )
-            if src is None:
-                refusals.append({"what": key, "reason": why, "where": str(path)})
-                continue
-            sources.append(src)
-            if overlap is None:
-                refusals.append(
-                    {
-                        "what": key,
-                        "reason": (
-                            "the block licenses no overlap reading (it asserts a partitioned "
-                            "bucket set, or carries no joint-occupancy entry), so this workload "
-                            "cannot contribute to the composition operator"
-                        ),
-                        "where": str(path),
-                    }
-                )
-            else:
-                overlaps[key] = int(overlap)
-        if not saw_block and tiers:
-            no_capability.append(capsule)
-        if path.is_file():
-            # Reuse the harvest path rather than a second reader: same citability gate, same
-            # contended-provenance rules. The submission is passed EXPLICITLY so the path heuristic
-            # in ``_submission_of`` is only a fallback, never the key.
-            _sub = next(
-                (
-                    str((t.get("submission") or {}).get("package"))
-                    for t in tiers.values()
-                    if isinstance(t, dict) and (t.get("submission") or {}).get("package")
-                ),
-                None,
-            )
-            o, rf = HV.harvest_capsule_result(path, authority=auth, submission=_sub)
-            obs_rows.extend(x.to_dict() for x in o)
-            refusals.extend(x.to_dict() for x in rf)
-
-    # WHERE THE CYCLES WENT, per workload and for the corpus. `decompose` was reachable the moment an
-    # activity source existed and nothing called it, so a run reported a total and never said which
-    # resource bound it. The FIXED bucket is the one to watch: cycles charged to no engine at all --
-    # layout conversion, dispatch, scalar epilogues, the allocate/copy/pack/evict traffic a tight
-    # hand-written program does not pay. A compute-vs-movement split alone cannot see it, and it is
-    # where this compiler loses to a directly-compiled baseline.
-    #
-    # THE LIMITER CANNOT REPORT IT. `binding` names the busiest ENGINE, and the fixed bucket is not an
-    # engine -- so a workload spending 70% of its cycles on no engine at all still reports "bound by
-    # the load unit". A reader who optimises the limiter alone would tune DMA and never touch the
-    # larger cost, which is why `fixed_share` is carried BESIDE the binding rather than left to be
-    # inferred from it.
-    corpus = decompose_corpus(sources)
-    modal = corpus.modal_binding_kind()
-    decomposition = {
-        "workloads": {
-            name: {
-                "binding": d.binding,
-                "binding_kind": getattr(d.binding_kind, "value", str(d.binding_kind)),
-                "binding_share": round(float(d.binding_share), 4),
-                "fixed_share": round(float(d.fixed_share), 4),
-                "margin_to_second": (None if is_unknown(d.margin_to_second) else round(float(d.margin_to_second), 4)),
-                "total_cycles": d.total_cycles,
-            }
-            for name, d in sorted(corpus.workloads.items())
-        },
-        # A workload whose decomposition REFUSED is named, not dropped: a corpus regime read off the
-        # survivors is a claim about a different corpus.
-        "unavailable": {
-            name: {"what": u.what, "missing": list(u.missing)} for name, u in sorted(corpus.unavailable.items())
-        },
-        "modal_binding_kind": (None if is_unknown(modal) else getattr(modal, "value", str(modal))),
-        "binding_kind_counts": {getattr(k, "value", str(k)): n for k, n in corpus.binding_kind_counts.most_common()},
-    }
-
-    comp = composition_operator(sources, observed_overlap_cycles=overlaps or None)
-    if isinstance(comp, Unavailable):
-        # NAMED, not a bare "unknown": a reader has to be able to go and buy the missing evidence.
-        composition = {"resolved": False, "what": comp.what, "missing": list(comp.missing), "detail": comp.detail}
-    else:
-        op, eta = comp
-        composition = {
-            "resolved": True,
-            "operator": op.value,
-            "eta": round(float(eta), 4),
-            "note": (
-                "derived from a JOINT occupancy observation independent of the "
-                "activity buckets -- never from a partitioned bucket set, which "
-                "reports zero overlap by construction"
-            ),
-        }
-
-    occ = cache_dir("occupancy") / target
-    pd = new_product(
-        "perf-ledger",
-        version=version,
+    """Publish using the current grader callbacks, preserving legacy overrides."""
+    return _emit_perf_ledger(
+        results,
         target=target,
-        sources=[str(rr)],
-        notes="what ONE graded run measured: per-tier cycle counts with the submission "
-        "and the concurrency they were taken at, plus whatever per-unit "
-        "decomposition the oracle could see. Every value is trace_derived and "
-        "contended; none of it may become a calibrated constant. Distinct from "
-        "perf-records (a designed suite) and perf-harvest (retro-mined).",
+        runs_root=runs_root,
+        version=version,
+        activity_source=_activity_source,
+        suite_for=CR.suite_for,
     )
-    (pd.path / "observations.jsonl").write_text(
-        "".join(json.dumps(o, sort_keys=True) + "\n" for o in obs_rows), encoding="utf-8"
-    )
-    (pd.path / "refusals.json").write_text(
-        json.dumps(
-            {
-                "n": len(refusals),
-                "refusals": refusals,
-                "capsules_with_no_timing_capability": sorted(no_capability),
-                "note": (
-                    "a capsule listed here ran on an oracle that reports no per-unit "
-                    "timing. That is UNMEASURED, not zero -- the tier emitted no block at "
-                    "all, which is the correct output for an instrument without the "
-                    "capability."
-                ),
-            },
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    (pd.path / "ledger.json").write_text(
-        json.dumps(
-            {
-                "target": target,
-                "authority": {"citable_tier": auth.citable_tier, "declared": auth.declared, "gaps": list(auth.gaps())},
-                "n_rows": len(rows),
-                "n_observations": len(obs_rows),
-                "n_refusals": len(refusals),
-                "rows": rows,
-                "composition_operator": composition,
-                # WHICH RESOURCE BOUND EACH WORKLOAD, and the share charged to no engine at all.
-                "decomposition": decomposition,
-                "per_cycle_occupancy": {
-                    "dir": str(occ),
-                    "purgeable": True,
-                    "note": (
-                        "per-cycle occupancy CSVs are ~34 B/cycle and are regenerable by replaying the "
-                        "same program, so they are a cache, never a product. Written only when "
-                        "MERLIN_PERF_PER_CYCLE=1 was set for the run."
-                    ),
-                    "present": sorted(x.name for x in occ.glob("*.csv")) if occ.is_dir() else [],
-                },
-            },
-            indent=2,
-            default=str,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    pd.write_manifest()
-    return {
-        "product": str(pd.path),
-        "n_rows": len(rows),
-        "n_observations": len(obs_rows),
-        "n_refusals": len(refusals),
-        "capsules_with_no_timing_capability": len(no_capability),
-        "composition_operator": composition,
-        # The SUMMARY carries the corpus regime and the overhead share, not the per-workload
-        # table -- a reader of the score should see which resource this corpus is bound by, and
-        # how much of it went to no engine at all, without opening the product.
-        "modal_binding_kind": decomposition["modal_binding_kind"],
-        "binding_kind_counts": decomposition["binding_kind_counts"],
-        "n_workloads_decomposed": len(decomposition["workloads"]),
-        "n_workloads_undecomposable": len(decomposition["unavailable"]),
-    }
 
 
 def _headline(score: dict) -> str:

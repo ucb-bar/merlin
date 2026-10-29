@@ -30,6 +30,7 @@ _CONVERTERS = (
 )
 _PARSE = Boundary("native-parse", "torch_mlir.ir.Module.parse")
 _BUFFERIZE = "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}"
+_OWNERSHIP_BUFFERIZE = _BUFFERIZE[:-1] + " allow-return-allocs-from-loops}"
 
 
 @dataclass(frozen=True)
@@ -45,11 +46,11 @@ class NativePlan:
     def __post_init__(self) -> None:
         if self.prefix != _TENSOR_PHASES:
             raise ValueError("native tensor phases differ from the authored ordinary roster")
-        if type(self.suffix) is not tuple or not self.suffix or self.suffix[0] != _BUFFERIZE:
+        if type(self.suffix) is not tuple or not self.suffix or self.suffix[0] not in (_BUFFERIZE, _OWNERSHIP_BUFFERIZE):
             raise ValueError("native suffix must start at the explicit bufferization barrier")
         if any(type(p) is not str or not p for p in self.suffix):
             raise ValueError("native suffix requires immutable nonempty pass entries")
-        if self.suffix.count(_BUFFERIZE) != 1:
+        if sum(self.suffix.count(barrier) for barrier in (_BUFFERIZE, _OWNERSHIP_BUFFERIZE)) != 1:
             raise ValueError("native plan requires exactly one bufferization barrier")
         if type(self.index_bits) is not int or self.index_bits not in (32, 64):
             raise ValueError("initial native verification supports explicit 32/64-bit index domains")
@@ -139,6 +140,11 @@ def ordinary(
     suffix = []
     for entry in actual[len(expected) :]:
         suffix.extend(pipeline._dealloc_passes(sink=False) if entry == "__DEALLOC__" else [entry])
+    # Match the dev runner's ownership-aware bufferization option. This is
+    # strictly after the independently authored, proved tensor-prefix barrier;
+    # the native suffix remains trusted and the full command remains bound.
+    if any("ownership-based-buffer-deallocation" in entry for entry in suffix):
+        suffix[suffix.index(_BUFFERIZE)] = _OWNERSHIP_BUFFERIZE
     # Bind the actual conversion entries structurally before rendering them.
     if tuple(pipeline._INDEX_CONVERSION_PASSES) != _CONVERTERS:
         raise ValueError("production index converter roster differs from the authored native domain binding")

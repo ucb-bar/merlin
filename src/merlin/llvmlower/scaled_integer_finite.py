@@ -101,6 +101,9 @@ def prove_broadcast_scaled_integer_finite(value, *, effects: IntervalEffectContr
     from xdsl.dialects.linalg import ops as linalg
     from xdsl.ir import BlockArgument, OpResult
     from xdsl.ir.affine import AffineDimExpr
+    from merlin.common.mlir_query import op_name
+
+    from .bounded_rne_maps import _roundeven_intrinsic
 
     effects.validate()
     if not isinstance(value, OpResult) or value.type != f32:
@@ -109,7 +112,7 @@ def prove_broadcast_scaled_integer_finite(value, *, effects: IntervalEffectContr
     parent = block.parent_region().parent_op() if block is not None else None
     if not isinstance(parent, linalg.GenericOp) or not _supported(parent):
         raise ValueError("nonempty static pure parallel tensor map required")
-    if any(op.name.startswith(("func.", "llvm.")) for op in block.ops):
+    if any(op_name(op).startswith(("func.", "llvm.")) and not _roundeven_intrinsic(op) for op in block.ops):
         raise ValueError("unknown call or effects in preparation consumer")
     if value.owner.name != "arith.mulf":
         raise ValueError("original final scale multiply required")

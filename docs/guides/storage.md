@@ -3,8 +3,8 @@ title: Disk under out/ — why it grows and what is safe to reclaim
 kind: guide
 status: current
 owner: infra
-last_verified: 2026-10-07
-related: [reproducibility, getting_started, gemmini_experiment]
+last_verified: 2026-10-26
+related: [reproducibility, getting_started, phase0_phase1_setup]
 code_refs: [src/merlin/common/content_store.py,
             src/merlin/common/oot_repo.py,
             src/merlin/common/artifacts.py,
@@ -14,6 +14,12 @@ code_refs: [src/merlin/common/content_store.py,
             src/merlin/common/storage_cli.py,
             src/merlin/common/storage_lifecycle.py,
             src/merlin/common/storage_ops.py,
+            src/merlin/common/cited_evidence.py,
+            src/merlin/common/immutability.py,
+            packages/merlin-experiments/src/merlin_experiments/corpus/evidence_custody.py,
+            packages/merlin-experiments/src/merlin_experiments/phase1/feedback/scratch_retention.py,
+            packages/merlin-experiments/src/merlin_experiments/phase2/external_resources.py,
+            packages/merlin-experiments/src/merlin_experiments/phase2/_kernel_resources.py,
             merlin/contract/storage.yaml,
             .claude/hooks/guard_artifact_writes.py,
             packages/merlin-experiments/src/merlin/targetgen/sandbox/bwrap.py,
@@ -23,6 +29,55 @@ code_refs: [src/merlin/common/content_store.py,
 ---
 
 # Disk under `out/` — why it grows and what is safe to reclaim
+
+## Externally enforced evaluation budgets
+
+The optional evaluation boundary consumes an already provisioned Linux cgroup v2
+and a dedicated capped backing filesystem. It creates neither. Its live owner
+is passed separately from serializable assigned resource data. The verifier
+reopens current cgroup membership, finite local `cpu.max`/`memory.max`, disabled
+swap, the selected effective CPU set, nonwritable controls and all selected
+writable roots. The stage must already have no effective/permitted/ambient
+capabilities and `NoNewPrivs=1`; ordinary local children inherit that boundary.
+All author, evaluator, cache, journal, output and temporary roots must be included
+in the same explicit original-owner inventory. Runtime/scientific qualification
+does not issue resource authority.
+
+The whole stage must also already run in an enclosing filesystem namespace with
+a readonly root. Every writable backing mount must use that same capped
+filesystem, including `/tmp` and `/dev/shm`; device-directory metadata is readonly.
+Only the genuine kernel procfs and devpts interfaces are exempt. The verifier
+reopens the actual complete mount inventory and namespace identity, so a mount
+plan or container inspection record cannot supply this proof. The ordinary local
+Phase1 simulator/backend inherits this enclosing namespace and the same cgroup;
+changing its implementation or selecting a separate simulator is unnecessary.
+Inherited writable regular-file handles must also use capped backing; readonly
+mounts cannot revoke a previously opened host log or output file. Writable raw
+block-device handles refuse. Unbound external supervisors and container services
+remain refused.
+The visible device namespace must also contain only ordinary minimal kernel
+devices and standard proc/terminal links, with no raw storage or FUSE device grant.
+Their numbers follow the [Linux device ABI](https://docs.kernel.org/admin-guide/devices.html).
+
+Supported backing is a whole writable ext4, XFS or tmpfs filesystem whose actual
+`statvfs` data capacity does not exceed the selected disk budget. Bind subtrees,
+linked roots, nested mounts, large volumes with project-quota metadata and
+unbound native/container services refuse hard mode. This bounds allocated data,
+including unlinked open files; it does not bound sparse logical file sizes.
+Existing namespace launches can replace their fresh `/tmp` and `/dev/shm` with
+empty private directories on this backing while preserving original tool and
+source grants. Root and device-directory metadata are remounted readonly.
+Kernel OOM behavior still applies, and individual evaluations can fail when the
+shared backing becomes full. Failed durable result/cleanup finalization remains
+UNKNOWN with ownership retained, rather than publishing completion.
+
+The ordinary pool without this selected live owner provides admission accounting,
+process limits and sampled output cancellation. It does not claim aggregate
+kernel CPU/RAM/disk enforcement. Tests on a shared host exercise read-only
+refusals and harmless cleanup failures; they do not establish a successful
+externally provisioned hard boundary.
+
+## Storage accounting
 
 Generated output is large by design: a whole-model run holds MLIR at every stage, an ELF, a trace and
 a grade. It became large by *accident* twice, and both times the diagnosis took longer than the fix,
@@ -165,11 +220,10 @@ directory, so relocating a workspace is an edit to data. Losing the contract deg
 The content store gets the saving at the moment a tree is frozen, which does nothing for the trees
 written before it existed — and those are most of the root. `merlin-storage dedup` finds files that
 hold bytes another file already holds and re-points each name at one store object. Nothing is
-removed: every name still resolves, verified by digest before the swap. Measured 2026-09-15 over
-`out/artifacts` and `out/runs`, files ≥1 MiB: **65.9 GiB across 1,196 content groups**, the largest
-being a per-run agent home's plugin cache replicated 445 times, whole-model `const_blob.o` weight
-blobs duplicated across validation directories, and shipped `.zip` bundles byte-identical to the
-unpacked trees beside them.
+removed: every name still resolves, verified by digest before the swap. Typical
+candidates include repeated immutable tool caches, weight objects and archives
+whose unpacked files already exist. Use a fresh report to price the actual roots;
+historical storage totals do not describe a new checkout.
 
 Two things to know before running it with `--apply`:
 
@@ -267,6 +321,43 @@ only the current workspace last, including after frozen-input overlays. Sibling 
 run results stay hidden. Tests assert that order and include a real bwrap negative control, skipped
 when the host cannot create namespaces. The lexical `bwrap.is_exposed` model selects the longest
 mount destination and is not proof of arbitrary later ancestor remount behavior.
+
+### Records that cite a path protect it
+
+A lease or pin only protects what a writer remembered to register. Twice a disk cleanup deleted
+sealed Phase 0 evidence that no pin covered but that a record pinned by path and digest: on
+2026-10-17 the captures a derivation cited, on 2026-10-24 37 members of a reviewed derivation
+(`materialized/*/pytorch-opset.json`, two frontend traces, 30 `evidence/` members). Each loss
+surfaced only when a later preparation re-read the exact bytes.
+
+`merlin.common.cited_evidence` reads those records instead. The roster in `storage.yaml`
+(`cited_evidence`) names the record files (`seal.json`, receipts, attestations, `run_record.json`,
+`resolved-plan.json`, `derivation.json`, `synthesis.yaml`, `meta.json`, evidence manifests, ...). Every
+absolute path in a record is cited, and so is every relative `path`/`*_path` that sits beside a digest
+and every member of a receipt's `artifacts` map. A `private/seal.json` anchors its whole release, and
+a record's `protects` list anchors the trees it names. Removing a cited path, or a directory holding
+one, is refused. Removing something inside a cited directory is refused only when the citation pins
+that tree (it carries a digest) or anchors it. A citation never blocks removing the citing record
+itself together with what it cites (a run unit dropped whole), except a seal.
+
+`prune`, `retain` and `move` all consult the registry when they plan and again under the removal
+lock. Grade scratch retention (`phase1.feedback.scratch_retention`) does too, against the run directory
+and the extra roots. When retention cannot read the registry it removes nothing. The registry walks
+`out/`, the scan roots, the contract's `extra_roots` and `MERLIN_CITED_ROOTS` (`os.pathsep`-separated).
+Set that variable to cover evidence kept outside `out/`, such as task `.tmp/` trees and paper ledgers.
+Before deleting anything by hand, ask:
+
+```bash
+MERLIN_CITED_ROOTS=/work/merlin/tasks merlin-storage cited <path>...   # exit 1 = something cites it
+```
+
+Sealed evidence is also locked where the host allows it. `merlin-experiment corpus seal` and
+`merlin-experiment corpus evidence seal` clear write bits and ask for `chattr +i`
+(`MERLIN_SEAL_IMMUTABLE=attempt|sudo|off`), and the seal records how many members the host actually
+made immutable. `corpus evidence verify` names every missing or tampered member of a derivation.
+`corpus evidence repair --source ... --by ... --reason ...` restores missing members only from
+digest-equal sources and writes a `merlin.evidence_repair.v1` receipt beside the derivation. It never
+overwrites, deletes or unlocks.
 
 The second rule has a consequence worth reading as a finding: 472 of `perf-bench`'s 505 unit
 directories are named outside the convention (`development_phase2_global_encoding_20260908`,

@@ -1,0 +1,40 @@
+{
+  "status": "prepared_not_physically_executed",
+  "plan": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/plan.json",
+    "sha256": "59d0f776601de3d33786ea0d8d21de97cd60650dc33ddafc84c3cde6fe1fd389"
+  },
+  "launcher": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/.tmp/run_refill_observer_stdout_once.py",
+    "sha256": "ca9b83327e30161808d57be8e38f783eea1901ce26e6719570a917b37edc1dbc"
+  },
+  "backend": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/diagnostic-backend.json",
+    "sha256": "ebed8cf45c76bfb36401ab9330c65302c217ee34c2a931f9a999fac8964bc5ce"
+  },
+  "state": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/physical-state-prepared.json",
+    "sha256": "0a1bb5d23912c127cce938592d351821caec4f596bbfa62e7371047ba1b1e0e3"
+  },
+  "diff": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/transport.diff",
+    "sha256": "4200ed34fc00c444bd133b5f92b0f64a8a7f1b25a360df4190b28c829d33aa19"
+  },
+  "native_host_fixture": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/native-transport-host-check.json",
+    "sha256": "c76fa5b4c418355a96b6ca4ca948464d8e83422b59d46fbc238e0fba1f2265f3"
+  },
+  "strict_receipt": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/build_receipt.json",
+    "sha256": "7fbd124daf99c94332fb38fbc5624f412fc8fb262ab3f3667a7e49e7e524fc0a"
+  },
+  "engine": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/emulator",
+    "sha256": "bbde8b0bda803b953fe2a70d9da33fe85f3d214f1fbdfb703c2126b697e7ebf1"
+  },
+  "phase_proof": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/phase-proof.json",
+    "sha256": "19772ed37f60d17f4a0c6a482e611bb03706031526f83bdc54926159988d8285"
+  },
+  "prior_attempt_preserved": true
+}

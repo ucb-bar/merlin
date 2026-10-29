@@ -23,6 +23,31 @@ BASE = """builtin.module {
 }"""
 
 
+def test_scalar_quantization_keeps_exact_coordinate_and_parameter_expression():
+    from merlin.llvmlower.layout_conformance import layout_expression
+
+    source = '''module {
+ func.func @f(%x:tensor<2x3xf32>,%s:tensor<f32>,%z:tensor<i64>)->tensor<2x3xi8>{
+  %e=tensor.empty():tensor<3x2xf32>
+  %t=linalg.transpose ins(%x:tensor<2x3xf32>) outs(%e:tensor<3x2xf32>) permutation=[1,0]
+  %q="quant_ext.quantize_per_tensor"(%t,%s,%z)
+    <{quant_min=-128:i64,quant_max=127:i64,output_dtype="int8"}>:
+    (tensor<3x2xf32>,tensor<f32>,tensor<i64>)->tensor<3x2xi8>
+  %o=tensor.empty():tensor<2x3xi8>
+  %r=linalg.transpose ins(%q:tensor<3x2xi8>) outs(%o:tensor<2x3xi8>) permutation=[1,0]
+  return %r:tensor<2x3xi8>
+ }}'''
+    control, candidate = parse(source), parse(source)
+    report = rewrite_module(candidate, pointwise_only=True)
+    assert report.scalar_regions == 1 and report.canceled == 1
+    assert layout_expression(control) == layout_expression(candidate)
+    quantize = next(op for op in candidate.walk() if getattr(getattr(op, "op_name", None), "data", "")
+                    == "quant_ext.quantize_per_tensor")
+    from xdsl.dialects.builtin import IntegerAttr, i64
+    quantize.properties["quant_max"] = IntegerAttr(126, i64)
+    assert layout_expression(control) != layout_expression(candidate)
+
+
 def result_op(module):
     return next(op for op in module.walk() if op.name == "func.return").operands[0].owner
 
@@ -69,3 +94,24 @@ def test_index_observing_region_keeps_explicit_boundary_transpose():
     assert result_op(m).name == "linalg.transpose"
     assert report.scalar_regions == 0
     assert report.boundary_transposes == 2
+
+
+def test_coordinate_and_work_checks_share_producers_without_stale_metadata():
+    from merlin.llvmlower.layout_conformance import layout_expression
+
+    source = BASE.replace("  %e2 = tensor.empty()", """  %o2 = tensor.empty() : tensor<1x4x2x3xf32>
+  %b = linalg.generic {indexing_maps = [affine_map<(d0,d1,d2,d3)->(d0,d1,d2,d3)>, affine_map<(d0,d1,d2,d3)->(d0,d1,d2,d3)>], iterator_types = ["parallel","parallel","parallel","parallel"]} ins(%a:tensor<1x4x2x3xf32>) outs(%o2:tensor<1x4x2x3xf32>) {
+  ^bb0(%v:f32,%init:f32):
+    %r = arith.negf %v : f32
+    linalg.yield %r : f32
+  } -> tensor<1x4x2x3xf32>
+  %e2 = tensor.empty()""").replace("ins(%a:tensor<1x4x2x3xf32>) outs(%e2", "ins(%b:tensor<1x4x2x3xf32>) outs(%e2")
+    original, candidate = parse(source), parse(source)
+    before, work = layout_expression(original, include_work=True)
+    assert sum(work.values()) == 3 * 24
+    rewrite_module(candidate)
+    assert (before, work) == layout_expression(candidate, include_work=True)
+    negate = next(op for op in candidate.walk() if op.name == "arith.negf")
+    from xdsl.dialects.builtin import StringAttr
+    negate.attributes["semantic_marker"] = StringAttr("changed")
+    assert before != layout_expression(candidate)

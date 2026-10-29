@@ -10,6 +10,14 @@ importing Merlin or `merlin_experiments`. Host brokers live in `phase1/brokers`;
 independent L0–L3 evaluators and private answers do not belong here. Keep request
 protocols, redaction, staged filenames and historical evidence unchanged.
 
+The self-check client forwards Codex's own `CODEX_THREAD_ID` as the request's optional
+`caller_thread_id`: operator accounting only, never read or trusted by the broker.
 Test byte-identical staging and real client/broker IPC after moves. Source closure
 and access-registry checks must continue to distinguish public clients from the
 host-only phase packages. Do not add broad import or filesystem grants.
+
+`result_details` is staged as `qa_result_details.py`, the shared public feedback
+index/detail reader. Bound paths to `qa/cases/`, verify raw content digests, and
+retain legacy inline rows. Only trusted locked publication uses its immutable
+read-only views; ordinary consumers receive independent mutable copies. These
+public diagnostics never replace producer custody or issue certificates.

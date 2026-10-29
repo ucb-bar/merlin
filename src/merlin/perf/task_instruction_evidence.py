@@ -47,16 +47,17 @@ def task_instruction_binding(
 
 def target_instruction_facts(target):
     """Reuse the host decoder's ISA and target-derived descriptive role map."""
-    from merlin.kernels.decode.rocc import funct_table_for
-    from merlin.kernels.endpoints import endpoints_for
+    from merlin.compile.analysis.compute_endpoints import endpoints_for
+    from merlin.compile.analysis.rocc_commands import funct_table_for, policy_instruction_declarations
     from merlin.targetgen.rocc import decode
 
-    names = funct_table_for(target).get("names") or {}
+    names, provenance = policy_instruction_declarations(funct_table_for(target))
     endpoints = endpoints_for(target)
     return {
         "target": target,
         "isa": decode.isa_constants(target),
         "instruction_names": names,
+        "instruction_provenance": provenance,
         "roles_by_selector": {
             str(selector): sorted({role for endpoint in endpoints for role in endpoint.roles_of(name)})
             for selector, name in names.items()
@@ -127,6 +128,11 @@ def declared_instruction_set(target_facts):
                 # A role the target's endpoints never claimed is UNKNOWN, not "no roles": the two
                 # look identical in an empty list and only one of them is a fact.
                 "roles": sorted(declared_roles) if isinstance(declared_roles, list) else None,
+                **(
+                    {"provenance": facts["instruction_provenance"][str(selector)]}
+                    if str(selector) in (facts.get("instruction_provenance") or {})
+                    else {}
+                ),
             }
         )
     return {

@@ -28,6 +28,7 @@ the emitted record could not tell a skipped tier from one that ran and was overw
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 from phase1_feedback import feedback_source
@@ -535,7 +536,19 @@ def _ladder(monkeypatch, tmp_path):
     whether the ladder pays for a tier it already holds a certificate for.
     """
     from merlin.runtime import reference, simulator
+    from merlin.targetgen import target_experiment
     from merlin.targetgen.contract import schemas
+
+    # The synthetic adapters use fixed-address buffers. Declare that transport
+    # explicitly rather than discovering an installed accelerator contract.
+    real_manifest = target_experiment.load_capability_manifest
+    monkeypatch.setattr(
+        target_experiment,
+        "load_capability_manifest",
+        lambda target: SimpleNamespace(contract={"name": "cachetest"})
+        if target == "cachetest"
+        else real_manifest(target),
+    )
 
     cb = {
         "abi_version": "0.1",
@@ -558,7 +571,7 @@ def _ladder(monkeypatch, tmp_path):
     monkeypatch.setattr(CR, "_match_by_policy", lambda *a, **k: True)
     monkeypatch.setattr(
         CR.CG,
-        "compare",
+        "compare_declared_outputs",
         lambda *a, **k: {
             "status": "pass",
             "policy": "p",
@@ -744,3 +757,142 @@ def test_a_stale_executable_from_an_earlier_grade_cannot_be_keyed_on(tmp_path, _
     assert calls["L2"] == 2, "the first tier must be paid for even into a reused run directory"
     assert calls["L3"] == 2, "the new program must be certified, not carried on the old one's identity"
     assert res["tier_reuse"]["carried"] == []
+
+
+# ---------------------------------------------------------------------------------------------
+# 7. seeded grades also carry the screen (merlin.targetgen.seeded_grade)
+# ---------------------------------------------------------------------------------------------
+def _building_adapters(program: bytes, calls: dict):
+    """A screen adapter that builds, then offers the build to the pre-dispatch observer as compile.py does.
+
+    ``build`` counts compilations and ``L2`` counts executions, so a carried screen is visible as a build
+    without an execution.
+    """
+
+    def screen(cb, llvm_text, workdir, timeout):
+        calls["build"] = calls.get("build", 0) + 1
+        workdir.mkdir(parents=True, exist_ok=True)
+        elf = workdir / "package_kernel.elf"
+        elf.write_bytes(program)
+        observer = CR._PREPARED_EXECUTION_OBSERVER.get()
+        if observer is not None:
+            observer(elf)
+        calls["L2"] = calls.get("L2", 0) + 1
+        return {"outputs": {}, "cycles": 7, "oracle": "screen", "console": "DONE\n"}
+
+    adapters = _adapters(program, calls)
+    adapters["L2"] = screen
+    return adapters
+
+
+def _seeded_grade(tmp_path, run_id, program, calls):
+    return CR.run_capsule(
+        _capsule(),
+        "unused-package",
+        runs_root=tmp_path / run_id,
+        run_id=run_id,
+        config=_two_tier_config(),
+        oracle_adapters=_building_adapters(program, calls),
+    )
+
+
+def _seeded(monkeypatch):
+    monkeypatch.setenv("MERLIN_SEEDED_GRADE", "seed-run")
+    monkeypatch.setenv("MERLIN_TIER_CERT_PORTABLE", "1")
+    TC._INSTRUMENT_MEMO.clear()
+
+
+def test_without_a_seed_the_screen_is_always_executed(tmp_path, _ladder, monkeypatch):
+    """From-scratch grading is unchanged: the screen executes on every grade."""
+    monkeypatch.delenv("MERLIN_SEEDED_GRADE", raising=False)
+    calls: dict = {}
+    _seeded_grade(tmp_path, "g1", b"\x7fELF-program-one", calls)
+    second = _seeded_grade(tmp_path, "g2", b"\x7fELF-program-one", calls)
+    assert calls == {"build": 2, "L2": 2, "L3": 1}
+    assert second["tier_reuse"]["carried"] == ["L3"]
+    assert "carried_from" not in second["tier_reuse"]
+
+
+def test_a_seeded_grade_carries_the_screen_after_building_and_labels_the_pass(tmp_path, _ladder, monkeypatch):
+    _seeded(monkeypatch)
+    calls: dict = {}
+    first = _seeded_grade(tmp_path, "g1", b"\x7fELF-program-one", calls)
+    assert first["status"] == "pass", first.get("failure")
+    assert calls == {"build": 1, "L2": 1, "L3": 1}, "nothing is proven yet: every tier executes"
+    assert "carried_from" not in first["tier_reuse"]
+
+    second = _seeded_grade(tmp_path, "g2", b"\x7fELF-program-one", calls)
+    assert second["status"] == "pass", second.get("failure")
+    assert calls == {"build": 2, "L2": 1, "L3": 1}, "the build runs (it names the bytes); nothing executes"
+    assert second["tier_reuse"]["carried"] == ["L2", "L3"]
+    assert second["tiers"]["L2"]["measured_now"] is False
+    assert second["tiers"]["L2"]["cycles"] == 7
+    assert second["tier_reuse"]["carried_from"].startswith("carried from ")
+
+    third = _seeded_grade(tmp_path, "g3", b"\x7fELF-program-TWO", calls)
+    assert calls == {"build": 3, "L2": 2, "L3": 2}, "a changed executable runs every tier"
+    assert third["tier_reuse"]["carried"] == []
+    assert "carried_from" not in third["tier_reuse"]
+
+
+def test_a_seeded_screen_is_not_carried_across_a_changed_judge(tmp_path, _ladder, monkeypatch):
+    _seeded(monkeypatch)
+    calls: dict = {}
+    _seeded_grade(tmp_path, "g1", b"\x7fELF-program-one", calls)
+    _ladder.write_text("judge  # the screen code moved\n")
+    TC._INSTRUMENT_MEMO.clear()
+    again = _seeded_grade(tmp_path, "g2", b"\x7fELF-program-one", calls)
+    assert calls == {"build": 2, "L2": 2, "L3": 2}
+    assert again["tier_reuse"]["carried"] == []
+
+
+def test_a_seeded_screen_stays_executed_while_a_live_model_gate_needs_its_custody(tmp_path, _ladder, monkeypatch):
+    from merlin_experiments.phase1.feedback import rolling_model_gate
+
+    _seeded(monkeypatch)
+    calls: dict = {}
+    _seeded_grade(tmp_path, "g1", b"\x7fELF-program-one", calls)
+    name = _capsule()["name"]
+    monkeypatch.setattr(rolling_model_gate, "needs_original_execution", lambda capsule, tier: capsule == name)
+    held = _seeded_grade(tmp_path, "g2", b"\x7fELF-program-one", calls)
+    assert calls == {"build": 2, "L2": 2, "L3": 1}, "the screen executes; only the cert tier carries"
+    assert held["tier_reuse"]["carried"] == ["L3"]
+
+
+def test_a_seeded_grade_executes_only_the_changed_cases(tmp_path, _ladder, monkeypatch, capsys):
+    """Eight cases proven by a seed grade; the seeded grade changes two executables.
+
+    Every case is built (that is how its bytes are known), only the two changed cases execute a tier,
+    and the six unchanged ones pass labelled ``carried from <run>``.
+    """
+    from merlin.targetgen import seeded_grade
+
+    monkeypatch.setenv("MERLIN_TIER_CERT_PORTABLE", "1")
+    TC._INSTRUMENT_MEMO.clear()
+    cases = [f"case_{i}" for i in range(8)]
+
+    def grade(run_id, program_of, calls):
+        results = []
+        for name in cases:
+            capsule = dict(_capsule(), name=name)
+            results.append(CR.run_capsule(capsule, "unused-package", runs_root=tmp_path / run_id / name,
+                                          run_id=run_id, config=_two_tier_config(),
+                                          oracle_adapters=_building_adapters(program_of(name), calls)))
+        return results
+
+    seed_calls: dict = {}
+    seed = grade("seedrun", lambda name: b"\x7fELF-" + name.encode(), seed_calls)
+    assert all(r["status"] == "pass" for r in seed)
+    _seeded(monkeypatch)
+    changed = {"case_1", "case_6"}
+    calls: dict = {}
+    results = grade("seeded", lambda name: b"\x7fELF-" + name.encode() + (b"-v2" if name in changed else b""), calls)
+    oracle = ("L2", "L3")
+    counts = seeded_grade.summary(results, oracle)
+    print("seeded grade over 8 cases, 2 changed:", {**counts, "builds": calls.get("build"),
+          "screen_executions": calls.get("L2"), "cert_executions": calls.get("L3")})
+    assert all(r["status"] == "pass" for r in results)
+    assert calls == {"build": 8, "L2": 2, "L3": 2}
+    assert counts["carried"] == {"L2": 6, "L3": 6} and counts["executed"]["L2"] == 2 == counts["executed"]["L3"]
+    assert counts["fully_carried_cases"] == 6
+    assert {r["capsule"] for r in results if "carried_from" not in r["tier_reuse"]} == changed

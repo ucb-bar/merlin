@@ -1,0 +1,9 @@
+# Relaunch of fresh8-cca on the lean harness (persistent compiler sandboxes, no lease cache or
+# /proc/locks reads, race check and L3 at the end, Spike cycle model for performance, lean replies).
+# Same treatment as fresh8-cca: empty backend, kernels-only references, reference map, CCA tools.
+extends: fresh-campaign-fresh8ref-cca.yaml
+id: gemmini-open-compiler-fresh9-cca
+run:
+  run_id: gemmini-open-compiler-20261027-fresh9cca
+  unit: merlinphase1fresh9cca20261027
+  preparation_cpus: 4,5,6,7

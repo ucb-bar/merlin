@@ -1,0 +1,123 @@
+{
+  "schema": "operator.public_observation_sanity.v1",
+  "trace": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/events.jsonl",
+    "sha256": "7f478d5917996b46478a4a739a057af00eefa2e6c83f12b0caef47f29e0720e9",
+    "bytes": 5864238
+  },
+  "status": "capture_complete_numeric_cycle_equivalence_pass",
+  "events_by_kind": {
+    "icache_get": 112,
+    "icache_d": 448,
+    "directory_result": 5939,
+    "bank_read": 9909,
+    "l2_d": 10245,
+    "scope_marker": 36
+  },
+  "reference_period_ps": 1000,
+  "all_sample_times_modulo_reference_period_ps": 500,
+  "all_reference_cycles_equal_floor_time_over_period": true,
+  "sequences_contiguous": true,
+  "time_nondecreasing": true,
+  "scope_markers": 36,
+  "matched_measured_spans": [
+    {
+      "scope_index": 0,
+      "begin_seq": 5877,
+      "end_seq": 5926,
+      "wb_span_cycles": 177,
+      "guest_csr_cycles": 177
+    },
+    {
+      "scope_index": 1,
+      "begin_seq": 6549,
+      "end_seq": 6553,
+      "wb_span_cycles": 126,
+      "guest_csr_cycles": 126
+    },
+    {
+      "scope_index": 2,
+      "begin_seq": 6915,
+      "end_seq": 6964,
+      "wb_span_cycles": 177,
+      "guest_csr_cycles": 177
+    },
+    {
+      "scope_index": 3,
+      "begin_seq": 7575,
+      "end_seq": 7579,
+      "wb_span_cycles": 126,
+      "guest_csr_cycles": 126
+    },
+    {
+      "scope_index": 4,
+      "begin_seq": 7950,
+      "end_seq": 7996,
+      "wb_span_cycles": 177,
+      "guest_csr_cycles": 177
+    },
+    {
+      "scope_index": 5,
+      "begin_seq": 8610,
+      "end_seq": 8614,
+      "wb_span_cycles": 126,
+      "guest_csr_cycles": 126
+    },
+    {
+      "scope_index": 6,
+      "begin_seq": 8976,
+      "end_seq": 9022,
+      "wb_span_cycles": 177,
+      "guest_csr_cycles": 177
+    },
+    {
+      "scope_index": 7,
+      "begin_seq": 9636,
+      "end_seq": 9640,
+      "wb_span_cycles": 126,
+      "guest_csr_cycles": 126
+    },
+    {
+      "scope_index": 8,
+      "begin_seq": 9997,
+      "end_seq": 10043,
+      "wb_span_cycles": 177,
+      "guest_csr_cycles": 177
+    },
+    {
+      "scope_index": 9,
+      "begin_seq": 10657,
+      "end_seq": 10661,
+      "wb_span_cycles": 126,
+      "guest_csr_cycles": 126
+    },
+    {
+      "scope_index": 10,
+      "begin_seq": 11009,
+      "end_seq": 11055,
+      "wb_span_cycles": 177,
+      "guest_csr_cycles": 177
+    },
+    {
+      "scope_index": 11,
+      "begin_seq": 11669,
+      "end_seq": 11673,
+      "wb_span_cycles": 126,
+      "guest_csr_cycles": 126
+    }
+  ],
+  "l2_records": {
+    "valid_response_samples": 10245,
+    "accepted_response_samples": 10245,
+    "directory_result_samples": 5939,
+    "accepted_bank_read_samples": 9909,
+    "attribution": "unjoined: captured directory/bank records omit request source/sink; ICache local source0 has no captured crossbar source-remapping bridge to SourceD global source. No coincident-time or set/way-only transaction attribution."
+  },
+  "limits": [
+    "Normal capture and exact cycles do not qualify the timing model.",
+    "Directory hit bits are observations of lookups, not attributable ICache hits without proven protocol identity.",
+    "Sampling is post-step rising/pre-next-commit as source-pinned in phase-proof.json."
+  ],
+  "model_prices_changed": false,
+  "additional_physical_runs": 0
+}

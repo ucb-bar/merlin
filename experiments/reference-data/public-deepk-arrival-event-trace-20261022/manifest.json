@@ -1,0 +1,45 @@
+{
+  "members": [
+    {
+      "bytes": 98997,
+      "path": "analysis.json",
+      "sha256": "2ce13371e30d171d14e90b5547e93f807957649ff3e93fb2de205f8846482085"
+    },
+    {
+      "bytes": 3558,
+      "path": "diagnostic-adapter.diff",
+      "sha256": "fde57fa65083cae15a1f9eb48e3ce57489c88008633efb3fe36aa7d23566bdcc"
+    },
+    {
+      "bytes": 1009113,
+      "path": "events.jsonl.gz",
+      "sha256": "0a9b12ed78d01a80cb05269bbc38e441dfe5564e7bbf59df8532f0507a7e1b7f"
+    },
+    {
+      "bytes": 1744,
+      "path": "index.json",
+      "sha256": "87c2fd36f1b8a4a0279a26cb786ec87eadebb0090f2eb1bc7542246c3ffb3b82"
+    },
+    {
+      "bytes": 8445,
+      "path": "observation.json",
+      "sha256": "9f36fb5174211f3f06df98604ee009da64bc18a7c9f81ababf8ef9ee7a333d45"
+    },
+    {
+      "bytes": 9094,
+      "path": "report.json",
+      "sha256": "88e52a5752976384c42dfb022a7f6bbbc1cbe20eabe31300a59af6db835552a5"
+    },
+    {
+      "bytes": 6582,
+      "path": "selected-staged-excerpts.txt",
+      "sha256": "e1d9f96856cacb1c7410ac9466312c5fd9a29406e5745cea8ca0066f529971cc"
+    },
+    {
+      "bytes": 973,
+      "path": "trace-receipt.json",
+      "sha256": "438d367070f760f7c36421f52a98b468e21e8f5a3fffed2d3f72a7af6ecfd986"
+    }
+  ],
+  "schema": "operator.retained_reference_manifest.v1"
+}

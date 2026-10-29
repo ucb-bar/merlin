@@ -1,0 +1,112 @@
+{
+  "all_other_compiler_algorithm_bytes_unchanged": true,
+  "author_implementation_change_scope": "only the two reviewed public schema_path helper repairs",
+  "author_jobs_launched": 0,
+  "authored_compilers_or_results_included": false,
+  "branch": "cc/el4-grader-throughput-20261024",
+  "changed_files": [
+    "examples/gemmini/phase1/launch/fresh_campaign.py",
+    "examples/gemmini/phase1/launch/test_profile_reference_absence.py",
+    "examples/gemmini/phase1/studies/kernel_abstractions/FRESH10_TOOLING.md",
+    "examples/gemmini/phase1/studies/kernel_abstractions/fresh10_tooling_study.py",
+    "examples/gemmini/phase1/studies/kernel_abstractions/test_fresh10_tooling_study.py",
+    "merlin/tests/infra/test_selfcheck_tuning_overrides.py",
+    "packages/merlin-experiments/pyproject.toml",
+    "packages/merlin-experiments/src/merlin/targetgen/sandbox/toolchain.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/author_profiles.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/brokers/selfcheck.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/compiler_library.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/feedback/family_rollup.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/feedback/idle_performance.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/feedback/idle_tuning.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/feedback/performance_brief.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/feedback/performance_headline.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/feedback/performance_headroom.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/feedback/reference_baselines.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/feedback/seed_timing.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/fresh10_disclosure.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/fresh10_profile_data.json",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/fresh10_profiles.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/fresh10_semantics_probe.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/fresh10_sources.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/full_compiler_workspace.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/operation_optimizations.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/providers/authoring_prompt.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/providers/codex_agent.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/providers/codex_context.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/public_contract_preflight.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/public_contract_staging.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/runtime_environment.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/session.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/skill_staging.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/task_staging.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/tooling_readiness.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/tools/selfcheck.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/workspace_transport.py",
+    "packages/merlin-experiments/tests/test_codex_public_contract_preflight.py",
+    "packages/merlin-experiments/tests/test_fresh10_native_task_staging.py",
+    "packages/merlin-experiments/tests/test_fresh10_operation_advice.py",
+    "packages/merlin-experiments/tests/test_fresh10_provider_context.py",
+    "packages/merlin-experiments/tests/test_fresh10_readiness_environment.py",
+    "packages/merlin-experiments/tests/test_fresh10_tooling_profiles.py",
+    "packages/merlin-experiments/tests/test_idle_performance.py",
+    "packages/merlin-experiments/tests/test_idle_tuning.py",
+    "packages/merlin-experiments/tests/test_knob_suite_routing.py",
+    "packages/merlin-experiments/tests/test_phase1_public_contract_staging.py",
+    "packages/merlin-experiments/tests/test_profile_sdk_import_roots.py",
+    "packages/merlin-experiments/tests/test_restricted_profile_feedback.py",
+    "src/merlin/targetgen/oot_starterkit/cmdbuf.py",
+    "src/merlin/targetgen/oot_starterkit/verify.py"
+  ],
+  "created_at": "2026-10-28T18:13:02.562542+00:00",
+  "frozen_parent": "f9d7fb5c3d6fa2e5168e982953dd0b1d9b480076",
+  "frozen_source_revision": "3f3fab435f387f99a8986f78dbb6e6c180577cf4",
+  "local_preservation_tag": "fresh10-tooling-20261028-source-3f3fab435f38",
+  "patches": [
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/knobs/knob-routing-f9.patch",
+      "sha256": "ab375a06f39315dc46a4d3a0ab15d1db5d3686168728dcbefa5673651fd3d264"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/profiles/fresh10-profiles.patch",
+      "sha256": "f58098a08b587afc1c27ef11fe5c10dabf14ad11b8edcab63c031a7c36a719e3"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/coordinator/fresh10-native-study-f9.patch",
+      "sha256": "4d6b75ca99d85e34501848cea84121a8d21eed0cbc3d91c52917501493695961"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/root-glue/reviewed-root-glue-v2.patch",
+      "sha256": "cbbff5a128ceac08ea931b521da0bef54df02d6afda0c7d2d25253557dde26b7"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/profiles/reference-path-fix.patch",
+      "sha256": "0795c98dd871510e210caa13d071b161d8a64f8af506ec57e9b1ccda2b7a71ef"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/profiles/new-native-fix.patch",
+      "sha256": "4e02535ac80156e836980a0694a0324f42ba999b3168caf84131f1ca7cd33931"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/profiles/readiness-and-operation-fix.patch",
+      "sha256": "9618a77b83a8551f1a019d2a253ea19eeb6ee2d3acfda56cc144f068987d5636"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/profiles/native-task-core-fix.patch",
+      "sha256": "4c24ac7ebfce8c182dbb4f364f397c0e3bb796a97a1ecaa6872bac9f80811090"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/profiles/native-common-contract-fix.patch",
+      "sha256": "0fa759ffde994f323084b9745e0c7c2342e00cf636171e7d482f99ceb33eb9b1"
+    }
+  ],
+  "schema": "operator.fresh10_tooling_source_snapshot.v1",
+  "shared_HEAD_observed_after": "388ee5ff2ed57b06b5f229e1abadfba78d7fbac4",
+  "shared_HEAD_observed_before": "388ee5ff2ed57b06b5f229e1abadfba78d7fbac4",
+  "shared_index_and_merge_state_untouched": true,
+  "signature": "deferred; exact tree, patch hashes and immutable local preservation tag retained",
+  "snapshot_created_without_moving_shared_HEAD": true,
+  "supersedes_unlaunched_source": "d2eb83f38cbf99faebbf6b6d89d934410f1d5ee4",
+  "supersession_reason": "Restore two exact common joint-pass-guidance contract sections once; actual all3 complete operator-rendered prompts audited before freeze; unchanged author source/SDK/judge/policy and retained failed startup diagnostics.",
+  "tree": "5fe08b68326581e330ba025bc6abb044411f8ca0"
+}

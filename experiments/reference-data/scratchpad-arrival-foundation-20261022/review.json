@@ -1,0 +1,146 @@
+{
+  "schema": "merlin.scratchpad_arrival_review.v1",
+  "status": "INACTIVE foundation; existing timing predictions/selection unchanged",
+  "prototype_commit": "c22eb16",
+  "trace_predecessor": "../public-matmul-event-trace-20261022/index.json",
+  "selected_firrtl": {
+    "filename": "firechip.chip.FireSim.FireSimGemminiRocketConfig.fir",
+    "sha256": "b7d9826b1c9f16fd00bc757b4334a7f330a842c6a494e0c28608dc351b305bf0",
+    "config": "FireSimGemminiRocketConfig"
+  },
+  "firrtl_slices": [
+    {
+      "claim": "single_port_write_conflict",
+      "first_line": 159382,
+      "last_line": 159383,
+      "member": "single_port_write_conflict.fir.txt",
+      "sha256": "f0e06ce0c6c0294b9577cfd138267194f34595abc5f082222b20eb25887416aa"
+    },
+    {
+      "claim": "write_acceptance",
+      "first_line": 159425,
+      "last_line": 159432,
+      "member": "write_acceptance.fir.txt",
+      "sha256": "5c7e9aaf56cb2cefd1a5ce4b56e7fcc0cd1c8f32a55f6f52284da82d0d2db5e7"
+    },
+    {
+      "claim": "identity_scale_completion",
+      "first_line": 157318,
+      "last_line": 157323,
+      "member": "identity_scale_completion.fir.txt",
+      "sha256": "25acee980ed1483c3902ace138a1ed0ad78855b1d14748fc04eea86f240aae67"
+    }
+  ],
+  "source_navigation": [
+    {
+      "member": "Scratchpad.scala",
+      "sha256": "e4d3a12c700fe9edaf5c2ce2f283ec5233a98bd103fb04054160e8097cb89a4f"
+    },
+    {
+      "member": "DMA.scala",
+      "sha256": "db6d9d61f8794f6d60508c5844a2b287ffab0cd795a662b84b970dd9615e5dc1"
+    },
+    {
+      "member": "LoadController.scala",
+      "sha256": "780ee0a292d8653fa8a822aee28e2fb2cffbc25301431b4332182008d34fcf6a"
+    },
+    {
+      "member": "VectorScalarMultiplier.scala",
+      "sha256": "c0972580f295dc7aed7941f4a2792070ab2923c2737f7c73de892d5b506059ce"
+    },
+    {
+      "member": "BeatMerger.scala",
+      "sha256": "f51a0cc30fbd384acd48ee4146abd34eb4fb81965bb9f7b094f47abdb0413e2a"
+    },
+    {
+      "member": "XactTracker.scala",
+      "sha256": "0e2152821780b0b6d91e33ecd06edcdd62eb7f30806aca880a3b2fc923b67803"
+    },
+    {
+      "member": "Configs.scala",
+      "sha256": "178c21ac741c89c08158efa71fb34da35d27b75bd50bde5116a5e19178f8391b"
+    }
+  ],
+  "source_scope": "Current retained generator files aid navigation; exact selected elaborated FIRRTL slices separately corroborate port gating and identity-scale bypass. Do not claim generator file bytes equal historical elaboration inputs.",
+  "findings": [
+    {
+      "id": "SP-LIFETIME-01",
+      "premise": "Selected single-ported ScratchpadBank stalls reads on actual write.fire, not on outstanding DMA request.",
+      "old_model": "staged.hpp557\u2013559 holds every touched local bank for max(command latency,occupancy).",
+      "implication": "Full external memory latency as bank occupation is an explicitly conservative approximation, not source-derived port service.",
+      "decision": "accepted structural gap; no price change"
+    },
+    {
+      "id": "SP-ARRIVAL-02",
+      "premise": "DMA.scala83\u201394 releases transaction ID on last incoming beat accepted by BeatMerger; bank write occurs later after scaler/repeater.",
+      "implication": "Transaction-credit release and destination publication must remain separate. Do not release credits only at bank completion or publish rows at request issue.",
+      "decision": "required for upstream arrival producer"
+    },
+    {
+      "id": "SP-IDENTITY-03",
+      "premise": "Selected VectorScalarMultiplier marks all completed masks on arithmetic identity scale; no arithmetic-unit work is required for that case.",
+      "implication": "Start with aligned16-byte row loads with identity scale; retain input/FIFO/output handshakes and backpressure, avoid fitting nonexistent multiplier arithmetic.",
+      "decision": "narrow first supported regime candidate"
+    },
+    {
+      "id": "SP-FUTURE-04",
+      "premise": "Current online Engine lane frontiers cannot represent idle holes before already submitted future reservations.",
+      "implication": "Changing occupancy alone does not produce correct overlap; defer future response writes or use an arrival/calendar planner.",
+      "decision": "new pure arrival-port foundation implements this part only"
+    }
+  ],
+  "prototype": {
+    "api": "merlin_timing::plan_arrival_ports",
+    "inputs": [
+      "known post-pipeline row arrivals",
+      "explicit FIFO source mapping and strict priorities",
+      "explicit dependency IDs",
+      "port busy intervals from all other users"
+    ],
+    "preserves": [
+      "future idle gap availability",
+      "FIFO head backpressure",
+      "one acceptance per source and port each cycle",
+      "true declared dependencies",
+      "higher-priority eligible source precedence"
+    ],
+    "bounds": {
+      "rows": 4096,
+      "dependency_edges": 16384,
+      "sources": 256,
+      "ports": 128,
+      "busy_intervals": 4096
+    },
+    "refuses": [
+      "unknown arrival",
+      "unbound dependency",
+      "FIFO/dependency deadlock",
+      "ambiguous priority",
+      "overflow or bounds"
+    ],
+    "not_implemented": [
+      "TileLink packet/translation/cache response producer",
+      "BeatMerger/scaler/transaction-credit stages",
+      "automatic exact local alias dependency extraction",
+      "integration with online Engine scoreboards",
+      "zero-writer/ACC shared-completion special arbitration"
+    ],
+    "tests": "Standalone C++17 -O2 -Wall -Wextra -Werror fixture passed: future gap, priority, blocked FIFO head, dependency, occupied intervals, unknown/deadlock/tie/overflow refusals."
+  },
+  "smallest_activation_path": [
+    "Bind exact aligned int8 full16-byte rows, nonzero DRAM, identity scale, no repeat/shrink/accumulation/ACC. Preserve other regimes unchanged or UNKNOWN.",
+    "Use existing per-row Transfer descriptors and explicitly schedule row requests/16transaction credits. Retain current cache/memory prices; derive packet selection and pipeline stages from selected RTL. Never divide aggregate request latency by row count.",
+    "Produce each returned-row valid time and separate transaction-credit release (BeatMerger incoming last beat), scaler FIFO readiness, bank-write acceptance and command completion.",
+    "Collect deferred port users and exact row RAW/WAR/WAW edges before acceptance planning; preserve actual Execute>DMA priority and single-port reads. Keep unknown arbitration/backpressure explicit.",
+    "Replay existing public development traces first with no physical reruns. Then use untouched independent public heldout groups and ordering comparisons for qualification; do not fit to the observed807\u2192564 difference."
+  ],
+  "retained_evidence_limits": {
+    "native_three": "Whole-call measurements and complete outputs constrain total errors, not per-row arrival or credit parameters.",
+    "old_clean_dirty": "Readout diagnostics identify downstream store/coherence effects; they cannot identify input-DMA arrivals.",
+    "ws_pair": "Distinguishes scheduling/fence interactions but is already development evidence.",
+    "qualification": "No independent per-row measurement or heldout accuracy claim follows from this prototype; p95<=30% and material-ordering>=90% remain separate requirements."
+  },
+  "physical_runs": 0,
+  "fitting": false,
+  "active_changes": false
+}

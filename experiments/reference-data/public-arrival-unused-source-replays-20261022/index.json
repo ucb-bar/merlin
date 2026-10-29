@@ -1,0 +1,296 @@
+{
+  "author_grants": false,
+  "comparisons": [
+    {
+      "all_output_checks": true,
+      "capsule": "SY_movement_i8_aligned",
+      "estimated_cycles": 320,
+      "feature_scope": {
+        "complete": true,
+        "counted_cpu_instructions": 33,
+        "primary_cpu_features": [
+          "cpu.atomic",
+          "cpu.bitmanip",
+          "cpu.branch",
+          "cpu.csr",
+          "cpu.custom",
+          "cpu.divide",
+          "cpu.fence",
+          "cpu.fp_add",
+          "cpu.fp_classify",
+          "cpu.fp_compare",
+          "cpu.fp_convert",
+          "cpu.fp_divide",
+          "cpu.fp_fma",
+          "cpu.fp_load",
+          "cpu.fp_minmax",
+          "cpu.fp_move_from_int",
+          "cpu.fp_move_to_int",
+          "cpu.fp_multiply",
+          "cpu.fp_sign",
+          "cpu.fp_sqrt",
+          "cpu.fp_store",
+          "cpu.fp_subtract",
+          "cpu.fp_to_int",
+          "cpu.int_to_fp",
+          "cpu.integer",
+          "cpu.load",
+          "cpu.multiply",
+          "cpu.store",
+          "cpu.system",
+          "cpu.unknown"
+        ],
+        "qualification": "not_established",
+        "schema": "merlin.spike_feature_observation.v1",
+        "scope_instructions": 33,
+        "scope_kind": "counter_pc_pair",
+        "unresolved": [],
+        "window_index": 0
+      },
+      "fit_eligible": false,
+      "full_output_bytes": 1024,
+      "observation": {
+        "path": "SY_movement_i8_aligned/observation.json",
+        "sha256": "b22ebd7201b9bbd4a6256c8eb687db511edcdfb18f3f8fa07260acc5c82b3ec7"
+      },
+      "original_receipt": {
+        "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/.tmp/arrival-unused-replays-v2/observed-SY_movement_i8_aligned/receipt.json",
+        "sha256": "b22ebd7201b9bbd4a6256c8eb687db511edcdfb18f3f8fa07260acc5c82b3ec7"
+      },
+      "physical_cycles": 306,
+      "qualification": false,
+      "report": {
+        "path": "SY_movement_i8_aligned/report.json",
+        "sha256": "f33cc735de30bb6f17f86338201ddacd6d10be26d6342d704a3356670d9f843e"
+      },
+      "resource_additive": false,
+      "resource_scope": "whole_trace",
+      "scoped_features": {
+        "device.requested_read_bytes": 256,
+        "device.requested_write_bytes": 1024,
+        "modeled.fetch_refill.applied": 0,
+        "target.class.compute": 0,
+        "target.class.compute_os": 0,
+        "target.class.compute_os_relu": 0,
+        "target.class.compute_ws": 0,
+        "target.class.compute_ws_relu": 0,
+        "target.class.config": 2,
+        "target.class.counter": 0,
+        "target.class.fence": 3,
+        "target.class.flush": 0,
+        "target.class.load": 1,
+        "target.class.normalize1": 0,
+        "target.class.normalize2": 0,
+        "target.class.normalize3": 0,
+        "target.class.normalize4": 0,
+        "target.class.normalize5": 0,
+        "target.class.normalize6": 0,
+        "target.class.normalize7": 0,
+        "target.class.pool_store": 0,
+        "target.class.pool_store_act1": 0,
+        "target.class.preload": 0,
+        "target.class.store": 1,
+        "target.class.store_act1": 0,
+        "target.class.store_act2": 0,
+        "target.class.store_act3": 0,
+        "target.class.store_act4": 0,
+        "target.class.unknown": 0,
+        "target.commands": 4,
+        "target.custom_counter_result_unknown": 0,
+        "target.fences": 3,
+        "target.foreign_custom_opcode": 0,
+        "target.illegal_events": 0,
+        "target.local_read_bytes": 1024,
+        "target.local_write_bytes": 1024,
+        "target.nominal_padded_macs": 0,
+        "target.pooled_outputs": 0,
+        "target.requested_read_bytes": 256,
+        "target.requested_write_bytes": 1024,
+        "target.semantic_unknown_events": 0,
+        "target.useful_shape_macs": 0,
+        "target.zero_fill_elements": 0
+      },
+      "signed_relative_error": 0.045751633986928164,
+      "tensor_geometry": {
+        "X": {
+          "dtype": "i8",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        "Y0": {
+          "dtype": "i32",
+          "shape": [
+            16,
+            16
+          ]
+        }
+      }
+    },
+    {
+      "all_output_checks": true,
+      "capsule": "SY_kdepth_fits_double",
+      "estimated_cycles": 39404,
+      "feature_scope": {
+        "complete": true,
+        "counted_cpu_instructions": 2107,
+        "primary_cpu_features": [
+          "cpu.atomic",
+          "cpu.bitmanip",
+          "cpu.branch",
+          "cpu.csr",
+          "cpu.custom",
+          "cpu.divide",
+          "cpu.fence",
+          "cpu.fp_add",
+          "cpu.fp_classify",
+          "cpu.fp_compare",
+          "cpu.fp_convert",
+          "cpu.fp_divide",
+          "cpu.fp_fma",
+          "cpu.fp_load",
+          "cpu.fp_minmax",
+          "cpu.fp_move_from_int",
+          "cpu.fp_move_to_int",
+          "cpu.fp_multiply",
+          "cpu.fp_sign",
+          "cpu.fp_sqrt",
+          "cpu.fp_store",
+          "cpu.fp_subtract",
+          "cpu.fp_to_int",
+          "cpu.int_to_fp",
+          "cpu.integer",
+          "cpu.load",
+          "cpu.multiply",
+          "cpu.store",
+          "cpu.system",
+          "cpu.unknown"
+        ],
+        "qualification": "not_established",
+        "schema": "merlin.spike_feature_observation.v1",
+        "scope_instructions": 2107,
+        "scope_kind": "counter_pc_pair",
+        "unresolved": [],
+        "window_index": 0
+      },
+      "fit_eligible": false,
+      "full_output_bytes": 1024,
+      "observation": {
+        "path": "SY_kdepth_fits_double/observation.json",
+        "sha256": "0f8d30fb8891182159726a33de73be7c2942fa69e731b4dab6ff6cdb338691b6"
+      },
+      "original_receipt": {
+        "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/.tmp/arrival-unused-replays-v2/observed-SY_kdepth_fits_double/receipt.json",
+        "sha256": "0f8d30fb8891182159726a33de73be7c2942fa69e731b4dab6ff6cdb338691b6"
+      },
+      "physical_cycles": 27910,
+      "qualification": false,
+      "report": {
+        "path": "SY_kdepth_fits_double/report.json",
+        "sha256": "2d992cc34823b97f17b7a42b02221641c557cff0c2d75dd831fe32d1d8ac405d"
+      },
+      "resource_additive": false,
+      "resource_scope": "whole_trace",
+      "scoped_features": {
+        "device.requested_read_bytes": 131072,
+        "device.requested_write_bytes": 1024,
+        "modeled.fetch_refill.applied": 0,
+        "target.class.compute": 0,
+        "target.class.compute_os": 0,
+        "target.class.compute_os_relu": 0,
+        "target.class.compute_ws": 256,
+        "target.class.compute_ws_relu": 0,
+        "target.class.config": 5,
+        "target.class.counter": 0,
+        "target.class.fence": 3,
+        "target.class.flush": 0,
+        "target.class.load": 513,
+        "target.class.normalize1": 0,
+        "target.class.normalize2": 0,
+        "target.class.normalize3": 0,
+        "target.class.normalize4": 0,
+        "target.class.normalize5": 0,
+        "target.class.normalize6": 0,
+        "target.class.normalize7": 0,
+        "target.class.pool_store": 0,
+        "target.class.pool_store_act1": 0,
+        "target.class.preload": 256,
+        "target.class.store": 1,
+        "target.class.store_act1": 0,
+        "target.class.store_act2": 0,
+        "target.class.store_act3": 0,
+        "target.class.store_act4": 0,
+        "target.class.unknown": 0,
+        "target.commands": 1031,
+        "target.custom_counter_result_unknown": 0,
+        "target.fences": 3,
+        "target.foreign_custom_opcode": 0,
+        "target.illegal_events": 0,
+        "target.local_read_bytes": 394240,
+        "target.local_write_bytes": 394240,
+        "target.nominal_padded_macs": 1048576,
+        "target.pooled_outputs": 0,
+        "target.requested_read_bytes": 131072,
+        "target.requested_write_bytes": 1024,
+        "target.semantic_unknown_events": 0,
+        "target.useful_shape_macs": 1048576,
+        "target.zero_fill_elements": 256
+      },
+      "signed_relative_error": 0.4118237190970979,
+      "tensor_geometry": {
+        "A0": {
+          "dtype": "i8",
+          "shape": [
+            16,
+            4096
+          ]
+        },
+        "W": {
+          "dtype": "i8",
+          "shape": [
+            4096,
+            16
+          ]
+        },
+        "Y0": {
+          "dtype": "i32",
+          "shape": [
+            16,
+            16
+          ]
+        }
+      }
+    }
+  ],
+  "conclusions": [
+    "Aligned integer movement error+4.58%; actual command output uses widened local accumulator data, so this alone does not qualify identity-scale scratchpad row admission.",
+    "Deep reduction16x4096x16 error+41.18% exceeds30% desired accuracy. Scoped commands:256WS,256PRELOAD,513LOAD;131072device input bytes. Preserve this failure; do not turn it into a coefficient target.",
+    "Both scopes have zero conditional fetch-refill applications. These results do not validate the fetch adapter.",
+    "Whole-trace resource busy totals are nonadditive and are not a decomposition of the scoped residual.",
+    "The pair was selected after candidate freeze and before observing its numerical predictions. Shared compiler provenance means source-family independence is not established; no ranking or global accuracy qualification.",
+    "No fit ingestion. Existing continued-denial remains necessary. Next useful diagnostic is bounded modeled-event critical-path attribution on this exact retained deep-K ELF, followed by a separate RTL-grounded question if physical evidence is needed. No further run authorized here."
+  ],
+  "elfs_packaged": false,
+  "initial_preexecution_refusal": {
+    "path": "initial-resource-refusal.json",
+    "sha256": "8a6290e0cc0e9b0639fbe39de24561734b4c1558b3ff19d0741dadeed6ab5f57"
+  },
+  "observer_runs": 2,
+  "ordinary_functional_runs": 2,
+  "outputs_packaged": false,
+  "physical_runs_added": 0,
+  "plan": {
+    "path": "plan.json",
+    "sha256": "9e149dabcc3d64466bcdfc9de5532ac131e0d9f2c2efdc0d946a4ec242180432"
+  },
+  "prices_changed": false,
+  "resource_override": {
+    "path": "resource-override.json",
+    "sha256": "1c4589895bcc12445d65dd81b53087ec69c38d1381a2165526b737243b5425a9"
+  },
+  "schema": "operator.unused_public_same_elf_arrival_comparison.v1",
+  "selected_model_sha256": "01971a26e8b367fe22361a294785be31969ec3473735025608d22399b0ac96b6",
+  "selected_runtime_sha256": "318f9a631735b6e31481de4d406a32d3af3df6a667af6a658479a4a49560ddb9",
+  "status": "completed_unqualified_diagnostics"
+}

@@ -240,7 +240,8 @@ def test_pipeline_opt_in_passes_exact_actual_command_and_retains_proof_paths(tmp
         for name in ("verification.json", "chain.json", "status.json"):
             (session.root / name).write_text('{"verdict":"verified"}')
         open(command[3], "w").write("define void @forward() { ret void }")
-        return subprocess.CompletedProcess(command, 0, "OK fusion_guard 0 pinned\n", "")
+        diagnostics = f"OK fusion_guard 0 pinned\n{pipeline.DEALLOC_CHECK_TOKEN} 0 allocations 0 sunk 0 violations\n"
+        return subprocess.CompletedProcess(command, 0, diagnostics, "")
 
     monkeypatch.setattr(session, "run_command", consume)
     selected = {}

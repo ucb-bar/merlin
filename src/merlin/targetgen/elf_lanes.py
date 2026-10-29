@@ -39,6 +39,7 @@ one would decode another device's ISA and report a clean, wrong result.
 from __future__ import annotations
 
 import json
+import mmap
 import struct
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,6 +49,10 @@ PACKAGE_ELF_NAME = "package_kernel.elf"
 
 #: An oracle declares the exact executed non-ELF word stream with this suffix.
 PROGRAM_ARTIFACT_SUFFIX = ".program"
+
+#: Per-engine copies of the exact program each simulator tier executed, under its build directory.
+#: Run evidence rather than build output: the build cache neither stores nor restores this subtree.
+EXECUTED_PROGRAMS_DIR = "executed"
 
 #: Routing-plan vocabulary shared by emitters, static inspection and host grading.
 ACCELERATOR_LANE = "on_mesh"
@@ -156,13 +161,8 @@ def _endian(blob: bytes) -> str:
     raise ElfUnreadable(f"unknown ELF data encoding {blob[5]}")
 
 
-def executable_sections(blob: bytes) -> list[tuple[str, int, int, int]]:
-    """``(name, file offset, size, virtual address)`` for every PROGBITS section marked executable.
-
-    Parsed from the section-header table structurally (``struct.unpack``), so it holds for any linker
-    script and any section naming. Raises :class:`ElfUnreadable` when the header table is absent or
-    malformed -- the caller reports UNMEASURED rather than an empty, clean-looking scan.
-    """
+def _section_headers(blob, *, metadata_budget=64 << 20):
+    """Read bounded ELF metadata without copying section payloads."""
     if len(blob) < 64 or blob[:4] != _ELF_MAGIC:
         raise ElfUnreadable("not an ELF file (bad magic)")
     end = _endian(blob)
@@ -179,6 +179,8 @@ def executable_sections(blob: bytes) -> list[tuple[str, int, int, int]]:
         raise ElfUnreadable(f"unknown ELF class {cls}")
     if not shoff or not shnum or shstrndx >= shnum:
         raise ElfUnreadable("ELF carries no usable section-header table (stripped?)")
+    if shentsize < struct.calcsize(fmt) or shnum * shentsize > metadata_budget:
+        raise ElfUnreadable("ELF section-header size exceeds its metadata budget or is too short")
     rows = []
     for i in range(shnum):
         base = shoff + i * shentsize
@@ -186,21 +188,115 @@ def executable_sections(blob: bytes) -> list[tuple[str, int, int, int]]:
             raise ElfUnreadable("section-header table runs past end of file")
         rows.append(struct.unpack_from(fmt, blob, base))
     strtab = rows[shstrndx]
+    if (
+        strtab[type_i] != 3
+        or strtab[off_i] + strtab[size_i] > len(blob)
+        or strtab[size_i] > metadata_budget - shnum * shentsize
+    ):
+        raise ElfUnreadable("ELF section names exceed their file or metadata budget")
     strs = blob[strtab[off_i] : strtab[off_i] + strtab[size_i]]
 
-    def _name(idx: int) -> str:
-        stop = strs.find(b"\0", idx)
-        return strs[idx : stop if stop >= 0 else len(strs)].decode("utf-8", "replace")
+    def _name(idx: int) -> bytes:
+        if not 0 <= idx < len(strs):
+            raise ElfUnreadable("ELF section name is outside its string table")
+        # Bound both scanning and retained names, including repeated offsets.
+        stop = strs.find(b"\0", idx, min(len(strs), idx + 1025))
+        if stop < 0:
+            raise ElfUnreadable("ELF section name is unterminated or exceeds 1024 bytes")
+        return strs[idx:stop]
+
+    return [(_name(r[name_i]), r[type_i], r[flags_i], r[off_i], r[size_i], r[addr_i]) for r in rows]
+
+
+def executable_sections(blob: bytes) -> list[tuple[str, int, int, int]]:
+    """``(name, file offset, size, address)`` for complete executable PROGBITS sections.
+
+    An absent or malformed section table is unreadable, never a clean scan.
+    """
 
     out: list[tuple[str, int, int, int]] = []
-    for r in rows:
-        if r[type_i] != _SHT_PROGBITS or not (r[flags_i] & _SHF_EXECINSTR):
+    for name, kind, flags, off, size, address in _section_headers(blob):
+        if kind != _SHT_PROGBITS or not (flags & _SHF_EXECINSTR):
             continue
-        off, size = r[off_i], r[size_i]
         if off + size > len(blob):
             raise ElfUnreadable("executable section runs past end of file")
-        out.append((_name(r[name_i]), off, size, r[addr_i]))
+        out.append((name.decode("utf-8", "replace"), off, size, address))
     return out
+
+
+def read_program_section(path: Path, section: str, *, max_bytes: int) -> tuple[bytes, dict]:
+    """Read one declared loaded program section from an actual final ELF.
+
+    Map the file read-only and copy only this bounded section. Section names
+    come from the caller; no target/ISA, loader entry or execution is inferred.
+    Writable sections are observations at check time, not runtime immutability.
+    """
+    if (
+        type(section) is not str
+        or not section
+        or "\0" in section
+        or len(section.encode()) > 1024
+        or type(max_bytes) is not int
+        or max_bytes <= 0
+    ):
+        raise ValueError("program section needs an exact name and positive reader byte budget")
+    path = Path(path)
+    if not path.is_absolute() or any(p.is_symlink() for p in (path, *path.parents)) or not path.is_file():
+        raise ValueError("program ELF must be an ordinary absolute file")
+    with path.open("rb") as stream:
+        if path.stat().st_size < 64:
+            raise ElfUnreadable("program ELF header is truncated")
+        with mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as blob:
+            headers = _section_headers(blob)
+            endian = _endian(blob)
+            if blob[6] != 1 or struct.unpack_from(endian + "I", blob, 20)[0] != 1:
+                raise ElfUnreadable("program ELF version is unsupported")
+            if struct.unpack_from(endian + "H", blob, 16)[0] not in (2, 3):
+                raise ElfUnreadable("program checks require a final executable or shared ELF")
+            chosen = [row for row in headers if row[0] == section.encode()]
+            if len(chosen) != 1:
+                raise ElfUnreadable("program section is absent or ambiguous: " + section)
+            _, kind, flags, offset, size, address = chosen[0]
+            address_limit = 1 << (64 if blob[4] == _ELFCLASS64 else 32)
+            # ELF gABI flags: ALLOC, COMPRESSED; these are file-format fields.
+            if kind != _SHT_PROGBITS or not flags & 2 or flags & 0x800:
+                raise ElfUnreadable("program section must be allocated, uncompressed PROGBITS")
+            if not size or size > max_bytes or offset + size > len(blob) or address + size > address_limit:
+                raise ElfUnreadable("program section exceeds its file or reader byte budget")
+            if blob[4] == _ELFCLASS64:
+                phoff = struct.unpack_from(endian + "Q", blob, 32)[0]
+                entsize, count = struct.unpack_from(endian + "HH", blob, 54)
+                fmt, oi, ai, fi, mi = endian + "IIQQQQQQ", 2, 3, 5, 6
+            else:
+                phoff = struct.unpack_from(endian + "I", blob, 28)[0]
+                entsize, count = struct.unpack_from(endian + "HH", blob, 42)
+                fmt, oi, ai, fi, mi = endian + "IIIIIIII", 1, 2, 4, 5
+            if (
+                not count
+                or not phoff
+                or entsize < struct.calcsize(fmt)
+                or entsize * count > 64 << 20
+                or phoff + entsize * count > len(blob)
+            ):
+                raise ElfUnreadable("program ELF has no bounded load-segment table")
+            loaded = False
+            for index in range(count):
+                row = struct.unpack_from(fmt, blob, phoff + index * entsize)
+                if row[0] != 1:  # PT_LOAD, ELF gABI.
+                    continue
+                if row[fi] > row[mi] or row[oi] + row[fi] > len(blob) or row[ai] + row[mi] > address_limit:
+                    raise ElfUnreadable("program ELF load segment exceeds its file or memory extent")
+                if row[oi] <= offset and offset + size <= row[oi] + row[fi] and address == row[ai] + offset - row[oi]:
+                    loaded = True
+            if not loaded:
+                raise ElfUnreadable("program section has no matching file-backed load segment")
+            return bytes(blob[offset : offset + size]), {
+                "section": section,
+                "file_offset": offset,
+                "virtual_address": address,
+                "bytes": size,
+                "writable": bool(flags & 1),
+            }
 
 
 def _insn_length(word: int) -> int:

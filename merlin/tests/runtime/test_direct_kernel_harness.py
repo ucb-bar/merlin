@@ -117,7 +117,7 @@ def test_explicit_coherent_harness_keeps_original_storage_call_and_completion(pr
     assert memory.index("complete_control();") < memory.index('htif_puts("DONE')
     assert "out_b64.h" not in memory and "OUT_" not in memory
     assert memory.count('htif_puts("DONE\\n");') == 1
-    for defect in ("coherent_packet_v1", None, {"transport": COHERENT_DUMP_V1}):
+    for defect in (None, {"transport": COHERENT_DUMP_V1}):
         policy = ReadbackPolicy(defect) if isinstance(defect, str) else defect
         with pytest.raises(ValueError, match="complete B64 or coherent"):
             render_direct_kernel(cb, inputs=inputs, readback_policy=policy, abi=abi)

@@ -5,6 +5,8 @@
  * one freestanding implementation linked into both the host .so and the bare-metal
  * spike/Zephyr image. Signature + descriptor layout match upstream MLIR exactly.
  */
+#include <float.h>
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
@@ -14,12 +16,46 @@
 float rsqrtf(float x) { return 1.0f / sqrtf(x); }
 double rsqrt(double x) { return 1.0 / sqrt(x); }
 
-/* math.roundeven lowers to roundevenf/roundeven (round-half-to-even / banker's
- * rounding) — a C23 libm symbol the Zephyr SDK's picolibc/newlib doesn't export.
- * rintf with the default rounding mode (round-to-nearest-even) IS round-half-to-even,
- * so it's the exact implementation. (bitvla and other models emit math.roundeven.) */
-float roundevenf(float x) { return rintf(x); }
-double roundeven(double x) { return rint(x); }
+/* The MLIR roundeven contract is independent of the caller's rounding mode.
+ * Some native intrinsic lowerings also call these symbols. rint is unsuitable:
+ * it follows the ambient mode. Work on the software ABI's IEEE binary words;
+ * finite values need no FP arithmetic. NaNs use x+x to retain the platform's
+ * normal quieting/canonicalization. This is a value contract, not an FP-flag or
+ * errno guarantee. These checks establish C-format prerequisites, not RTL support. */
+_Static_assert(CHAR_BIT == 8 && sizeof(float) == 4 && sizeof(double) == 8 &&
+               FLT_RADIX == 2 && FLT_MANT_DIG == 24 && FLT_MAX_EXP == 128 &&
+               DBL_MANT_DIG == 53 && DBL_MAX_EXP == 1024,
+               "roundeven runtime requires IEEE binary32/binary64 C representations");
+
+#define MERLIN_ROUNDEVEN(NAME, FT, UT, FRACTION, BIAS)                         \
+FT NAME(FT x) {                                                              \
+  UT bits;                                                                  \
+  __builtin_memcpy(&bits, &x, sizeof(bits));                                  \
+  const UT sign = bits & ((UT)1 << (sizeof(UT) * CHAR_BIT - 1));               \
+  const UT magnitude = bits ^ sign;                                         \
+  const unsigned exponent = (unsigned)(magnitude >> (FRACTION));              \
+  if (exponent >= (BIAS) + (FRACTION))                                       \
+    return exponent == 2 * (BIAS) + 1 ? x + x : x;                           \
+  if (exponent < (BIAS) - 1) {                                              \
+    bits = sign;                                                            \
+  } else if (exponent == (BIAS) - 1) {                                      \
+    const UT fraction_mask = ((UT)1 << (FRACTION)) - 1;                       \
+    bits = sign | ((magnitude & fraction_mask) ? (UT)(BIAS) << (FRACTION) : 0); \
+  } else {                                                                  \
+    const unsigned shift = (BIAS) + (FRACTION) - exponent;                    \
+    const UT mask = ((UT)1 << shift) - 1;                                    \
+    const UT half = (UT)1 << (shift - 1);                                    \
+    bits = sign | ((magnitude + half - 1 + ((magnitude >> shift) & 1)) & ~mask); \
+  }                                                                         \
+  FT result;                                                                \
+  __builtin_memcpy(&result, &bits, sizeof(result));                           \
+  return result;                                                            \
+}
+#ifndef MERLIN_EXTERNAL_ROUNDEVEN_F32
+MERLIN_ROUNDEVEN(roundevenf, float, uint32_t, FLT_MANT_DIG - 1, FLT_MAX_EXP - 1)
+#endif
+MERLIN_ROUNDEVEN(roundeven, double, uint64_t, DBL_MANT_DIG - 1, DBL_MAX_EXP - 1)
+#undef MERLIN_ROUNDEVEN
 
 /* bf16 soft-conversion compiler-rt builtins. The Zephyr SDK's libgcc (riscv64,
  * gcc 12.2) does not export them, but models with bf16 activations / casts outside

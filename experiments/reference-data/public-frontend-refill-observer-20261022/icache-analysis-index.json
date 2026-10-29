@@ -1,0 +1,156 @@
+{
+  "schema": "operator.public_icache_attribution_summary.v1",
+  "trace_sha256": "7f478d5917996b46478a4a739a057af00eefa2e6c83f12b0caef47f29e0720e9",
+  "complete_requests": 112,
+  "right_censored_requests": 0,
+  "parser_errors": [],
+  "contiguous_events": 26689,
+  "clock_period_ps": 1000,
+  "sampling_offset_ps": 500,
+  "qualification": false,
+  "fit": false,
+  "scopes": [
+    {
+      "index": 0,
+      "writeback_span_cycles": 177,
+      "overlapping_requests": 3,
+      "first_response_cycles": [
+        6,
+        6,
+        6
+      ],
+      "final_response_cycles": [
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "index": 1,
+      "writeback_span_cycles": 126,
+      "overlapping_requests": 0,
+      "first_response_cycles": [],
+      "final_response_cycles": []
+    },
+    {
+      "index": 2,
+      "writeback_span_cycles": 177,
+      "overlapping_requests": 3,
+      "first_response_cycles": [
+        6,
+        6,
+        6
+      ],
+      "final_response_cycles": [
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "index": 3,
+      "writeback_span_cycles": 126,
+      "overlapping_requests": 0,
+      "first_response_cycles": [],
+      "final_response_cycles": []
+    },
+    {
+      "index": 4,
+      "writeback_span_cycles": 177,
+      "overlapping_requests": 3,
+      "first_response_cycles": [
+        6,
+        6,
+        6
+      ],
+      "final_response_cycles": [
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "index": 5,
+      "writeback_span_cycles": 126,
+      "overlapping_requests": 0,
+      "first_response_cycles": [],
+      "final_response_cycles": []
+    },
+    {
+      "index": 6,
+      "writeback_span_cycles": 177,
+      "overlapping_requests": 3,
+      "first_response_cycles": [
+        6,
+        6,
+        6
+      ],
+      "final_response_cycles": [
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "index": 7,
+      "writeback_span_cycles": 126,
+      "overlapping_requests": 0,
+      "first_response_cycles": [],
+      "final_response_cycles": []
+    },
+    {
+      "index": 8,
+      "writeback_span_cycles": 177,
+      "overlapping_requests": 3,
+      "first_response_cycles": [
+        6,
+        6,
+        6
+      ],
+      "final_response_cycles": [
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "index": 9,
+      "writeback_span_cycles": 126,
+      "overlapping_requests": 0,
+      "first_response_cycles": [],
+      "final_response_cycles": []
+    },
+    {
+      "index": 10,
+      "writeback_span_cycles": 177,
+      "overlapping_requests": 3,
+      "first_response_cycles": [
+        6,
+        6,
+        6
+      ],
+      "final_response_cycles": [
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "index": 11,
+      "writeback_span_cycles": 126,
+      "overlapping_requests": 0,
+      "first_response_cycles": [],
+      "final_response_cycles": []
+    }
+  ],
+  "analysis_files": [
+    {
+      "path": "analyze_icache.py",
+      "sha256": "725a9ea8b30a28dc61c476b9a1ec4d9049a9b9fe97643cee1986f2fef2c9c670"
+    },
+    {
+      "path": "icache-attribution.json",
+      "sha256": "5f2039756c9e8efa0ea61379e7d9fa9e561005026465167788cd35545d23620e"
+    }
+  ]
+}

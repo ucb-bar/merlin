@@ -78,7 +78,8 @@ def shape_adapted_features(pkg: "RvvPackage", model_dir: str | Path, *, harts: i
     ``harts`` is the hart count the image will be built for. It matters because the multicore stage
     splits each matmul over N BEFORE this schedule runs, so what the block must cover is the per-hart
     tile, not the model's N — see :func:`_harts_split_shapes`."""
-    from ..kernels.shapes import contraction_shapes
+    from merlin.compile.analysis.contraction_shapes import contraction_shapes
+
     from .registry import _resolve_features
 
     shapes = contraction_shapes(Path(model_dir) / "model.mlir")
@@ -139,7 +140,8 @@ def blocking_risks(pkg: "RvvPackage", model_dir: str | Path) -> list[str]:
     Empty when the package has an adaptable feature, when nothing is masked, or when the schedule is
     unreadable.
     """
-    from ..kernels.shapes import contraction_shapes
+    from merlin.compile.analysis.contraction_shapes import contraction_shapes
+
     from ..llvmlower.frozen_blocks import is_frozen_block
     from .from_strategy import _rvv_blocking_lowers
 

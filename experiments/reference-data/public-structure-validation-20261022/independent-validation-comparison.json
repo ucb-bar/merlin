@@ -1,0 +1,235 @@
+{
+  "schema": "operator.independent_public_structure_comparison.v1",
+  "status": "prespecified_conditions_fail",
+  "rows": [
+    {
+      "arm": 0,
+      "name": "single1",
+      "physical_cycles": [
+        347,
+        313,
+        310
+      ],
+      "estimated_cycles": [
+        323,
+        289,
+        289
+      ],
+      "physical_median": 313,
+      "estimated_median": 289,
+      "relative_error": 0.07667731629392971,
+      "absolute_scope_gate": true,
+      "physical_spread": 0.1182108626198083,
+      "stable_scope_gate": false,
+      "per_occurrence_relative_errors": [
+        0.069164265129683,
+        0.07667731629392971,
+        0.06774193548387097
+      ]
+    },
+    {
+      "arm": 1,
+      "name": "queued3",
+      "physical_cycles": [
+        665,
+        668,
+        662
+      ],
+      "estimated_cycles": [
+        673,
+        673,
+        673
+      ],
+      "physical_median": 665,
+      "estimated_median": 673,
+      "relative_error": 0.012030075187969926,
+      "absolute_scope_gate": true,
+      "physical_spread": 0.009022556390977444,
+      "stable_scope_gate": true,
+      "per_occurrence_relative_errors": [
+        0.012030075187969926,
+        0.0074850299401197605,
+        0.01661631419939577
+      ]
+    },
+    {
+      "arm": 2,
+      "name": "fenced3",
+      "physical_cycles": [
+        820,
+        813,
+        829
+      ],
+      "estimated_cycles": [
+        817,
+        817,
+        817
+      ],
+      "physical_median": 820,
+      "estimated_median": 817,
+      "relative_error": 0.003658536585365854,
+      "absolute_scope_gate": true,
+      "physical_spread": 0.01951219512195122,
+      "stable_scope_gate": true,
+      "per_occurrence_relative_errors": [
+        0.003658536585365854,
+        0.004920049200492005,
+        0.014475271411338963
+      ]
+    },
+    {
+      "arm": 3,
+      "name": "integer_delayed_queued3",
+      "physical_cycles": [
+        1111,
+        1052,
+        1051
+      ],
+      "estimated_cycles": [
+        1125,
+        1057,
+        1057
+      ],
+      "physical_median": 1052,
+      "estimated_median": 1057,
+      "relative_error": 0.004752851711026616,
+      "absolute_scope_gate": true,
+      "physical_spread": 0.057034220532319393,
+      "stable_scope_gate": false,
+      "per_occurrence_relative_errors": [
+        0.012601260126012601,
+        0.004752851711026616,
+        0.005708848715509039
+      ]
+    },
+    {
+      "arm": 4,
+      "name": "clean_readout3",
+      "physical_cycles": [
+        252,
+        250,
+        252
+      ],
+      "estimated_cycles": [
+        275,
+        275,
+        275
+      ],
+      "physical_median": 252,
+      "estimated_median": 275,
+      "relative_error": 0.09126984126984126,
+      "absolute_scope_gate": true,
+      "physical_spread": 0.007936507936507936,
+      "stable_scope_gate": true,
+      "per_occurrence_relative_errors": [
+        0.09126984126984126,
+        0.1,
+        0.09126984126984126
+      ]
+    },
+    {
+      "arm": 5,
+      "name": "dirty_readout3",
+      "physical_cycles": [
+        536,
+        533,
+        536
+      ],
+      "estimated_cycles": [
+        545,
+        545,
+        545
+      ],
+      "physical_median": 536,
+      "estimated_median": 545,
+      "relative_error": 0.016791044776119403,
+      "absolute_scope_gate": true,
+      "physical_spread": 0.005597014925373134,
+      "stable_scope_gate": true,
+      "per_occurrence_relative_errors": [
+        0.016791044776119403,
+        0.0225140712945591,
+        0.016791044776119403
+      ]
+    },
+    {
+      "arm": 6,
+      "name": "integer_only3",
+      "physical_cycles": [
+        413,
+        413,
+        413
+      ],
+      "estimated_cycles": [
+        414,
+        414,
+        414
+      ],
+      "physical_median": 413,
+      "estimated_median": 414,
+      "relative_error": 0.002421307506053269,
+      "absolute_scope_gate": true,
+      "physical_spread": 0.0,
+      "stable_scope_gate": true,
+      "per_occurrence_relative_errors": [
+        0.002421307506053269,
+        0.002421307506053269,
+        0.002421307506053269
+      ]
+    }
+  ],
+  "queue_pair": {
+    "physical_ratio": 0.8109756097560976,
+    "predicted_ratio": 0.8237454100367197,
+    "relative_ratio_error": 0.015746219894902547,
+    "ratio_gate": true,
+    "sign_gate": true
+  },
+  "differentials": [
+    {
+      "name": "dirty_minus_clean",
+      "physical_delta": 284,
+      "predicted_delta": 270,
+      "absolute_residual": 14,
+      "limit": 71.0,
+      "gate": true
+    },
+    {
+      "name": "delayed_minus_base",
+      "physical_delta": 387,
+      "predicted_delta": 384,
+      "absolute_residual": 3,
+      "limit": 96.75,
+      "gate": true
+    }
+  ],
+  "median_device_relative_error": 0.014410559982044664,
+  "gates": {
+    "all_numeric_checks": true,
+    "all_scope_errors": true,
+    "median_device_relative_error": true,
+    "all_physical_repetition_spreads": false,
+    "queue_pair_ratio": true,
+    "queue_pair_sign": true,
+    "both_differentials": true
+  },
+  "qualification": "review required; no automatic promotion, no scalar fitting, no wholeSoC accuracy claim",
+  "existing_parameter_fit_denial": "unchanged",
+  "holdout_policy": "If any new model is adapted to these labels, this entire source family becomes development; no heldout claim survives.",
+  "plan": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/plan.json",
+    "sha256": "49e4da97daaabdcad168e25fc96c42af1dd7e2e5934e3d928bc439052f7247d3"
+  },
+  "physical": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/physical-result.json",
+    "sha256": "c3d1ee7933bed3902f6c4a5c88957c39fca3afa5ba896d1a9aae22fe55b9b0de"
+  },
+  "estimates": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/estimates.json",
+    "sha256": "0dcb3ceab93833893ac0e893cb0593a99c5006d73d385c654504f68c6be37f41"
+  },
+  "elf": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/program.elf",
+    "sha256": "3cf3f5607790e126a5b921de0ca54e4e8c160ee96e42f55cd8f6503956edd1b7"
+  }
+}

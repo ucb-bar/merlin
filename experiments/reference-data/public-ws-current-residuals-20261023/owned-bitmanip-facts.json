@@ -1,0 +1,330 @@
+{
+  "schema": "merlin.rocket_bitmanip_alu_facts.v1",
+  "role": "RTL-derived ALU service; not measured whole-call qualification",
+  "source_pins": [
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip/src/main/scala/rocket/IDecode.scala",
+      "sha256": "8b3aa8c3a1a1b3bec5773e1552c79900f00968ea001a5615d7406f5fbaed9d8c"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip/src/main/scala/rocket/ALU.scala",
+      "sha256": "7a888d89e89be396b7baa15ea275489d46977378345656fc46c45ea3374b9370"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip/src/main/scala/rocket/RocketCore.scala",
+      "sha256": "2f88a01afa8da2a4dd9706e19a1707aeac4f1edbfc0d3659e8252de76b5ce243"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig.fir",
+      "sha256": "6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/build_receipt.json",
+      "sha256": "7df91fd3d7e6b1fa927b264f0b612f898a2056aa5a83a10660f18bc75c84d0d8"
+    }
+  ],
+  "decoded_operations": {
+    "SH1ADD": {
+      "alu_fn": "FN_ADD",
+      "operand1": "A1_RS1SHL",
+      "operand2": "A2_RS2",
+      "width": "DW_XPR",
+      "decode_class": "ZbaDecode"
+    },
+    "SH2ADD": {
+      "alu_fn": "FN_ADD",
+      "operand1": "A1_RS1SHL",
+      "operand2": "A2_RS2",
+      "width": "DW_XPR",
+      "decode_class": "ZbaDecode"
+    },
+    "SH3ADD": {
+      "alu_fn": "FN_ADD",
+      "operand1": "A1_RS1SHL",
+      "operand2": "A2_RS2",
+      "width": "DW_XPR",
+      "decode_class": "ZbaDecode"
+    },
+    "SH1ADD_UW": {
+      "alu_fn": "FN_ADD",
+      "operand1": "A1_RS1SHL",
+      "operand2": "A2_RS2",
+      "width": "DW_64",
+      "decode_class": "Zba64Decode"
+    },
+    "SH2ADD_UW": {
+      "alu_fn": "FN_ADD",
+      "operand1": "A1_RS1SHL",
+      "operand2": "A2_RS2",
+      "width": "DW_64",
+      "decode_class": "Zba64Decode"
+    },
+    "SH3ADD_UW": {
+      "alu_fn": "FN_ADD",
+      "operand1": "A1_RS1SHL",
+      "operand2": "A2_RS2",
+      "width": "DW_64",
+      "decode_class": "Zba64Decode"
+    },
+    "ADD_UW": {
+      "alu_fn": "FN_ADD",
+      "operand1": "A1_RS1SHL",
+      "operand2": "A2_RS2",
+      "width": "DW_64",
+      "decode_class": "Zba64Decode"
+    },
+    "SLLI_UW": {
+      "alu_fn": "FN_SL",
+      "operand1": "A1_RS1SHL",
+      "operand2": "A2_IMM",
+      "width": "DW_64",
+      "decode_class": "Zba64Decode"
+    },
+    "ANDN": {
+      "alu_fn": "FN_ANDN",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "ORN": {
+      "alu_fn": "FN_ORN",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "XNOR": {
+      "alu_fn": "FN_XNOR",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "CLZ": {
+      "alu_fn": "FN_UNARY",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMM",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "CPOP": {
+      "alu_fn": "FN_UNARY",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMM",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "CTZ": {
+      "alu_fn": "FN_UNARY",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMM",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "MAX": {
+      "alu_fn": "FN_MAX",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "MAXU": {
+      "alu_fn": "FN_MAXU",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "MIN": {
+      "alu_fn": "FN_MIN",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "MINU": {
+      "alu_fn": "FN_MINU",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "ORC_B": {
+      "alu_fn": "FN_UNARY",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMM",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "ROL": {
+      "alu_fn": "FN_ROL",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "ROR": {
+      "alu_fn": "FN_ROR",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "RORI": {
+      "alu_fn": "FN_ROR",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMM",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "SEXT_B": {
+      "alu_fn": "FN_UNARY",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMM",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "SEXT_H": {
+      "alu_fn": "FN_UNARY",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMM",
+      "width": "DW_XPR",
+      "decode_class": "ZbbDecode"
+    },
+    "REV8": {
+      "alu_fn": "FN_UNARY",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMM",
+      "width": "DW_XPR",
+      "decode_class": "Zbb64Decode"
+    },
+    "CTZW": {
+      "alu_fn": "FN_UNARY",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMM",
+      "width": "DW_32",
+      "decode_class": "Zbb64Decode"
+    },
+    "CLZW": {
+      "alu_fn": "FN_UNARY",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMM",
+      "width": "DW_32",
+      "decode_class": "Zbb64Decode"
+    },
+    "CPOPW": {
+      "alu_fn": "FN_UNARY",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMM",
+      "width": "DW_32",
+      "decode_class": "Zbb64Decode"
+    },
+    "ROLW": {
+      "alu_fn": "FN_ROL",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2",
+      "width": "DW_32",
+      "decode_class": "Zbb64Decode"
+    },
+    "RORW": {
+      "alu_fn": "FN_ROR",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2",
+      "width": "DW_32",
+      "decode_class": "Zbb64Decode"
+    },
+    "RORIW": {
+      "alu_fn": "FN_ROR",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMM",
+      "width": "DW_32",
+      "decode_class": "Zbb64Decode"
+    },
+    "ZEXT_H": {
+      "alu_fn": "FN_UNARY",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMM",
+      "width": "DW_XPR",
+      "decode_class": "Zbb64Decode"
+    },
+    "BCLR": {
+      "alu_fn": "FN_ANDN",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2OH",
+      "width": "DW_XPR",
+      "decode_class": "ZbsDecode"
+    },
+    "BCLRI": {
+      "alu_fn": "FN_ANDN",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMMOH",
+      "width": "DW_XPR",
+      "decode_class": "ZbsDecode"
+    },
+    "BEXT": {
+      "alu_fn": "FN_BEXT",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2",
+      "width": "DW_XPR",
+      "decode_class": "ZbsDecode"
+    },
+    "BEXTI": {
+      "alu_fn": "FN_BEXT",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMM",
+      "width": "DW_XPR",
+      "decode_class": "ZbsDecode"
+    },
+    "BINV": {
+      "alu_fn": "FN_XOR",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2OH",
+      "width": "DW_XPR",
+      "decode_class": "ZbsDecode"
+    },
+    "BINVI": {
+      "alu_fn": "FN_XOR",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMMOH",
+      "width": "DW_XPR",
+      "decode_class": "ZbsDecode"
+    },
+    "BSET": {
+      "alu_fn": "FN_OR",
+      "operand1": "A1_RS1",
+      "operand2": "A2_RS2OH",
+      "width": "DW_XPR",
+      "decode_class": "ZbsDecode"
+    },
+    "BSETI": {
+      "alu_fn": "FN_OR",
+      "operand1": "A1_RS1",
+      "operand2": "A2_IMMOH",
+      "width": "DW_XPR",
+      "decode_class": "ZbsDecode"
+    }
+  },
+  "generated_alu": {
+    "module": "RocketALU",
+    "first_line": 354082,
+    "last_line": 354997,
+    "internal_registers": 0,
+    "child_modules": 0
+  },
+  "facts": {
+    "result_dependency_cycles": 1,
+    "resource_occupancy_cycles": 1
+  },
+  "derivation": [
+    "All 40 selected Zba/Zbb/Zbs decode rows assert integer destination, no memory/mul/div/FP/control effects, and select the ordinary ALU.",
+    "Generated RocketALU is combinational; result is captured once in mem_reg_wdata and supplied by execute-to-next-execute bypass.",
+    "One shared scalar ALU accepts one instruction per cycle; cpu.bitmanip and cpu.integer already map to the same capacity-one resource.",
+    "Service latency/occupancy excludes retirement overhead; branch, memory, issue and dependency costs remain separately modeled."
+  ],
+  "limitations": [
+    "No independent complete-call gSIM timing qualification for PB01.",
+    "Adopted FIRRTL receipt pins generated bytes but does not establish original elaboration provenance.",
+    "Selected gSIM Rocket implementation; deployed FireSim equivalence is not established."
+  ]
+}

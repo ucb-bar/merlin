@@ -1,0 +1,276 @@
+{
+  "allowed": [
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/VERSION"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/command_buffer_abi.yaml"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/interface_dialect_contract.yaml"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/interface_grammar.md"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/integrity_policy.md"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/mlir_oot_backend_contract.yaml"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/target_dialect_contract.yaml"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/schemas/"
+    },
+    {
+      "mode": "ro",
+      "note": "capsule corpus",
+      "path": "out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/corpus/isa/"
+    },
+    {
+      "mode": "ro",
+      "path": "out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/corpus/calibration/"
+    },
+    {
+      "mode": "ro",
+      "path": "out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/corpus/layers/"
+    },
+    {
+      "mode": "ro",
+      "path": "out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/corpus/model/"
+    },
+    {
+      "mode": "ro",
+      "path": "out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/corpus/model_slices/"
+    },
+    {
+      "mode": "ro",
+      "path": "out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/corpus/projections/"
+    },
+    {
+      "mode": "ro",
+      "note": "selected capability contract (ALL arms)",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/experiment/contracts/target_contract.yaml"
+    },
+    {
+      "mode": "ro",
+      "note": "LLVM/MLIR 23 toolchain",
+      "path": "/work/merlin/toolchains/llvm-a47bddcc/install/"
+    },
+    {
+      "as": "agent_selfcheck.py",
+      "mode": "ro",
+      "note": "redacted self-check",
+      "path": "out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/experiment/scripts/agent_selfcheck.py"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen host lane (pinned infrastructure, read-only)",
+      "path": "out/artifacts/targets/host/gemmini_rocket_scalar_int8_v0/"
+    },
+    {
+      "as": "reference-kernels",
+      "mode": "ro",
+      "note": "explicit pinned examples; compiler starts empty",
+      "path": "out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/experiment/reference-kernels/"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED (CIRCT arm): RTL-extracted facts",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/experiment/rtl_facts/"
+    },
+    {
+      "mode": "ro",
+      "note": "explicit public input",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/corpus/_public_scalability/public_sources"
+    },
+    {
+      "mode": "ro",
+      "note": "explicit public input",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/experiment/public-program-sources"
+    },
+    {
+      "mode": "ro",
+      "note": "admitted software semantics",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/examples/gemmini/target/software-spec.yaml"
+    },
+    {
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability",
+      "path": "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"
+    },
+    {
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability",
+      "path": "/usr/lib/x86_64-linux-gnu/libc.so.6"
+    },
+    {
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability",
+      "path": "/usr/lib/x86_64-linux-gnu/libdl.so.2"
+    },
+    {
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability",
+      "path": "/usr/lib/x86_64-linux-gnu/libm.so.6"
+    },
+    {
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability",
+      "path": "/usr/lib/x86_64-linux-gnu/libpthread.so.0"
+    },
+    {
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability",
+      "path": "/usr/lib/x86_64-linux-gnu/librt.so.1"
+    }
+  ],
+  "author_profile": {
+    "entry_modules": [],
+    "historical_levels_unchanged": true,
+    "level": 1,
+    "live_cca": false,
+    "name": "xs-el-v1/el1",
+    "optimization_guidance": false,
+    "prior_reference_tasks": false,
+    "schema": "merlin.author_profile.v1",
+    "source_scope": "none",
+    "tools": []
+  },
+  "author_profile_sources": null,
+  "denied": [
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/verify/",
+      "reason": "compiler-verification seam (verify arm only)"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/xdsl_dialects/opt.py",
+      "reason": "compiler-verification seam (verify arm only)"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/runtime/reference.py",
+      "reason": "oracle-callable route"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/runtime/simulator.py",
+      "reason": "oracle-callable route"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/targetgen/generate/runtime_adapter.py",
+      "reason": "oracle-callable route"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/xdsl_dialects/lowering/",
+      "reason": "oracle-callable route"
+    },
+    {
+      "path": "out/artifacts/targets/gemmini/merlin_native_v0/",
+      "reason": "prior backend / exemplar (answer surface)"
+    },
+    {
+      "path": "out/artifacts/targets/gemmini/hand_smoke_oot/",
+      "reason": "prior backend / exemplar (answer surface)"
+    },
+    {
+      "path": "out/artifacts/targets/gemmini/agent_spec_v0_mlir_oot/",
+      "reason": "prior backend / exemplar (answer surface)"
+    },
+    {
+      "path": "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot/",
+      "reason": "prior backend / exemplar (answer surface)"
+    },
+    {
+      "path": "out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/corpus/hidden/",
+      "reason": "hidden capsules + goldens"
+    },
+    {
+      "path": "out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/experiment/input_bundles/grader_private_v0/",
+      "reason": "grader-private"
+    },
+    {
+      "path": "out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release/payload/experiment/runs/",
+      "reason": "prior submissions"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/llvmlower/",
+      "reason": "frozen host lane: the experiment measures the target lane, not a second CPU backend"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/targetgen/isa_codegen_cli.py",
+      "reason": "optional ISA dialect generation requires EL5 or EL6"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/verify/lean_export.py",
+      "reason": "interactive Lean proof development requires EL6"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/verify/lean_checker.py",
+      "reason": "interactive Lean proof development requires EL6"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/verify/lean_cli.py",
+      "reason": "interactive Lean proof development requires EL6"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/verify/lean/Merlin/Foundation.lean",
+      "reason": "interactive Lean proof development requires EL6"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/kernels/endpoints.py",
+      "reason": "author-inaccessible module; reached only through its broker"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/kernels/roles.py",
+      "reason": "author-inaccessible module; reached only through its broker"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/kernels/cca.py",
+      "reason": "author-inaccessible module; reached only through its broker"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/kernels/cca_compare.py",
+      "reason": "author-inaccessible module; reached only through its broker"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/kernels/cca_contract.py",
+      "reason": "author-inaccessible module; reached only through its broker"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/kernels/action_catalog.py",
+      "reason": "author-inaccessible module; reached only through its broker"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/kernels/microkernel.py",
+      "reason": "author-inaccessible module; reached only through its broker"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/targetgen/rtl/mlc_bridge.py",
+      "reason": "access-policy oracle module; never an author input"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/author-library/base-sdk/merlin/targetgen/rtl/gen_rocc_replay.py",
+      "reason": "access-policy grader module; never an author input"
+    }
+  ],
+  "host_only_input_count": 316,
+  "note": "Host-only inputs are judge custody, not author grants. Native sandbox proofs remain required.",
+  "tools": []
+}

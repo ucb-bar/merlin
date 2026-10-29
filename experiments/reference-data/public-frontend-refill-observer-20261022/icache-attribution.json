@@ -1,0 +1,2578 @@
+{
+  "schema": "operator.frontend_refill_attribution.v1",
+  "status": "observed_handshakes",
+  "errors": [],
+  "requests": [
+    {
+      "line_address": 65536,
+      "request_cycle": 104,
+      "request_seq": 1,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        109,
+        111,
+        113,
+        115
+      ],
+      "source": 0,
+      "first_response_cycles": 5,
+      "complete_response_cycles": 11,
+      "response_span_cycles": 6,
+      "response_intervals": [
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "line_address": 65600,
+      "request_cycle": 158680,
+      "request_seq": 3627,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        158685,
+        158687,
+        158689,
+        158691
+      ],
+      "source": 0,
+      "first_response_cycles": 5,
+      "complete_response_cycles": 11,
+      "response_span_cycles": 6,
+      "response_intervals": [
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "line_address": 65664,
+      "request_cycle": 158726,
+      "request_seq": 3632,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        158731,
+        158733,
+        158735,
+        158737
+      ],
+      "source": 0,
+      "first_response_cycles": 5,
+      "complete_response_cycles": 11,
+      "response_span_cycles": 6,
+      "response_intervals": [
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "line_address": 2147483648,
+      "request_cycle": 158774,
+      "request_seq": 3639,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        158780,
+        158781,
+        158782,
+        158783
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147483712,
+      "request_cycle": 158838,
+      "request_seq": 3672,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        158844,
+        158845,
+        158846,
+        158847
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147483776,
+      "request_cycle": 158874,
+      "request_seq": 3686,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        158880,
+        158881,
+        158882,
+        158883
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147483840,
+      "request_cycle": 168488,
+      "request_seq": 3985,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        168494,
+        168495,
+        168496,
+        168497
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147483904,
+      "request_cycle": 172283,
+      "request_seq": 4092,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        172289,
+        172290,
+        172291,
+        172292
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147483968,
+      "request_cycle": 228745,
+      "request_seq": 5486,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        228751,
+        228752,
+        228753,
+        228754
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484032,
+      "request_cycle": 228882,
+      "request_seq": 5575,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        228888,
+        228889,
+        228890,
+        228891
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484096,
+      "request_cycle": 230286,
+      "request_seq": 5790,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        230292,
+        230293,
+        230294,
+        230295
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484096,
+      "request_cycle": 230303,
+      "request_seq": 5804,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        230309,
+        230310,
+        230311,
+        230312
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485312,
+      "request_cycle": 230322,
+      "request_seq": 5821,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        230328,
+        230329,
+        230330,
+        230331
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485376,
+      "request_cycle": 230341,
+      "request_seq": 5835,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        230347,
+        230348,
+        230349,
+        230350
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485440,
+      "request_cycle": 230364,
+      "request_seq": 5849,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        230370,
+        230371,
+        230372,
+        230373
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485504,
+      "request_cycle": 230395,
+      "request_seq": 5863,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        230401,
+        230402,
+        230403,
+        230404
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485568,
+      "request_cycle": 230504,
+      "request_seq": 5881,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        230510,
+        230511,
+        230512,
+        230513
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485632,
+      "request_cycle": 230537,
+      "request_seq": 5895,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        230543,
+        230544,
+        230545,
+        230546
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485696,
+      "request_cycle": 230570,
+      "request_seq": 5909,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        230576,
+        230577,
+        230578,
+        230579
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485760,
+      "request_cycle": 230796,
+      "request_seq": 5962,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        230802,
+        230803,
+        230804,
+        230805
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484160,
+      "request_cycle": 233350,
+      "request_seq": 6186,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        233356,
+        233357,
+        233358,
+        233359
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484224,
+      "request_cycle": 234869,
+      "request_seq": 6233,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        234875,
+        234876,
+        234877,
+        234878
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484288,
+      "request_cycle": 235372,
+      "request_seq": 6302,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        235378,
+        235379,
+        235380,
+        235381
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484352,
+      "request_cycle": 239130,
+      "request_seq": 6532,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        239136,
+        239137,
+        239138,
+        239139
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484416,
+      "request_cycle": 239632,
+      "request_seq": 6601,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        239638,
+        239639,
+        239640,
+        239641
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484032,
+      "request_cycle": 242098,
+      "request_seq": 6804,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        242104,
+        242105,
+        242106,
+        242107
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484096,
+      "request_cycle": 243243,
+      "request_seq": 6842,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        243249,
+        243250,
+        243251,
+        243252
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485312,
+      "request_cycle": 243262,
+      "request_seq": 6859,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        243268,
+        243269,
+        243270,
+        243271
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485376,
+      "request_cycle": 243283,
+      "request_seq": 6873,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        243289,
+        243290,
+        243291,
+        243292
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485440,
+      "request_cycle": 243306,
+      "request_seq": 6887,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        243312,
+        243313,
+        243314,
+        243315
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485504,
+      "request_cycle": 243337,
+      "request_seq": 6901,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        243343,
+        243344,
+        243345,
+        243346
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485568,
+      "request_cycle": 243446,
+      "request_seq": 6919,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        243452,
+        243453,
+        243454,
+        243455
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485632,
+      "request_cycle": 243479,
+      "request_seq": 6933,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        243485,
+        243486,
+        243487,
+        243488
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485696,
+      "request_cycle": 243512,
+      "request_seq": 6947,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        243518,
+        243519,
+        243520,
+        243521
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485760,
+      "request_cycle": 243738,
+      "request_seq": 7000,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        243744,
+        243745,
+        243746,
+        243747
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484160,
+      "request_cycle": 246270,
+      "request_seq": 7215,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        246276,
+        246277,
+        246278,
+        246279
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484224,
+      "request_cycle": 247760,
+      "request_seq": 7262,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        247766,
+        247767,
+        247768,
+        247769
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484288,
+      "request_cycle": 248249,
+      "request_seq": 7328,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        248255,
+        248256,
+        248257,
+        248258
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484352,
+      "request_cycle": 251970,
+      "request_seq": 7558,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        251976,
+        251977,
+        251978,
+        251979
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484416,
+      "request_cycle": 252471,
+      "request_seq": 7636,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        252477,
+        252478,
+        252479,
+        252480
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484032,
+      "request_cycle": 254908,
+      "request_seq": 7839,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        254914,
+        254915,
+        254916,
+        254917
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484096,
+      "request_cycle": 256045,
+      "request_seq": 7877,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        256051,
+        256052,
+        256053,
+        256054
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485312,
+      "request_cycle": 256064,
+      "request_seq": 7891,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        256070,
+        256071,
+        256072,
+        256073
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485376,
+      "request_cycle": 256083,
+      "request_seq": 7908,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        256089,
+        256090,
+        256091,
+        256092
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485440,
+      "request_cycle": 256106,
+      "request_seq": 7922,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        256112,
+        256113,
+        256114,
+        256115
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485504,
+      "request_cycle": 256137,
+      "request_seq": 7936,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        256143,
+        256144,
+        256145,
+        256146
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485568,
+      "request_cycle": 256246,
+      "request_seq": 7954,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        256252,
+        256253,
+        256254,
+        256255
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485632,
+      "request_cycle": 256279,
+      "request_seq": 7968,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        256285,
+        256286,
+        256287,
+        256288
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485696,
+      "request_cycle": 256312,
+      "request_seq": 7982,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        256318,
+        256319,
+        256320,
+        256321
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485760,
+      "request_cycle": 256538,
+      "request_seq": 8035,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        256544,
+        256545,
+        256546,
+        256547
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484160,
+      "request_cycle": 259070,
+      "request_seq": 8249,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        259076,
+        259077,
+        259078,
+        259079
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484224,
+      "request_cycle": 260559,
+      "request_seq": 8294,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        260565,
+        260566,
+        260567,
+        260568
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484288,
+      "request_cycle": 261047,
+      "request_seq": 8363,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        261053,
+        261054,
+        261055,
+        261056
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484352,
+      "request_cycle": 264764,
+      "request_seq": 8593,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        264770,
+        264771,
+        264772,
+        264773
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484416,
+      "request_cycle": 265251,
+      "request_seq": 8662,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        265257,
+        265258,
+        265259,
+        265260
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484480,
+      "request_cycle": 267691,
+      "request_seq": 8865,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        267697,
+        267698,
+        267699,
+        267700
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484032,
+      "request_cycle": 267713,
+      "request_seq": 8879,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        267719,
+        267720,
+        267721,
+        267722
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484096,
+      "request_cycle": 268859,
+      "request_seq": 8917,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        268865,
+        268866,
+        268867,
+        268868
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485312,
+      "request_cycle": 268878,
+      "request_seq": 8934,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        268884,
+        268885,
+        268886,
+        268887
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485376,
+      "request_cycle": 268903,
+      "request_seq": 8948,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        268909,
+        268910,
+        268911,
+        268912
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485824,
+      "request_cycle": 268934,
+      "request_seq": 8962,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        268940,
+        268941,
+        268942,
+        268943
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485888,
+      "request_cycle": 269032,
+      "request_seq": 8980,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        269038,
+        269039,
+        269040,
+        269041
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485952,
+      "request_cycle": 269065,
+      "request_seq": 8994,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        269071,
+        269072,
+        269073,
+        269074
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147486016,
+      "request_cycle": 269098,
+      "request_seq": 9008,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        269104,
+        269105,
+        269106,
+        269107
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147486080,
+      "request_cycle": 269131,
+      "request_seq": 9023,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        269137,
+        269138,
+        269139,
+        269140
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484160,
+      "request_cycle": 271873,
+      "request_seq": 9276,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        271879,
+        271880,
+        271881,
+        271882
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484224,
+      "request_cycle": 273365,
+      "request_seq": 9323,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        273371,
+        273372,
+        273373,
+        273374
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484288,
+      "request_cycle": 273855,
+      "request_seq": 9389,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        273861,
+        273862,
+        273863,
+        273864
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484352,
+      "request_cycle": 277575,
+      "request_seq": 9619,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        277581,
+        277582,
+        277583,
+        277584
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484416,
+      "request_cycle": 278074,
+      "request_seq": 9697,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        278080,
+        278081,
+        278082,
+        278083
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484032,
+      "request_cycle": 280513,
+      "request_seq": 9900,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        280519,
+        280520,
+        280521,
+        280522
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484096,
+      "request_cycle": 281649,
+      "request_seq": 9938,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        281655,
+        281656,
+        281657,
+        281658
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485312,
+      "request_cycle": 281668,
+      "request_seq": 9952,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        281674,
+        281675,
+        281676,
+        281677
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485376,
+      "request_cycle": 281690,
+      "request_seq": 9969,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        281696,
+        281697,
+        281698,
+        281699
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485824,
+      "request_cycle": 281721,
+      "request_seq": 9983,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        281727,
+        281728,
+        281729,
+        281730
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485888,
+      "request_cycle": 281819,
+      "request_seq": 10001,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        281825,
+        281826,
+        281827,
+        281828
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485952,
+      "request_cycle": 281852,
+      "request_seq": 10015,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        281858,
+        281859,
+        281860,
+        281861
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147486016,
+      "request_cycle": 281885,
+      "request_seq": 10029,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        281891,
+        281892,
+        281893,
+        281894
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147486080,
+      "request_cycle": 281918,
+      "request_seq": 10044,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        281924,
+        281925,
+        281926,
+        281927
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484160,
+      "request_cycle": 284654,
+      "request_seq": 10294,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        284660,
+        284661,
+        284662,
+        284663
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484224,
+      "request_cycle": 286143,
+      "request_seq": 10341,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        286149,
+        286150,
+        286151,
+        286152
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484288,
+      "request_cycle": 286630,
+      "request_seq": 10410,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        286636,
+        286637,
+        286638,
+        286639
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484352,
+      "request_cycle": 290346,
+      "request_seq": 10640,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        290352,
+        290353,
+        290354,
+        290355
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484416,
+      "request_cycle": 290832,
+      "request_seq": 10709,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        290838,
+        290839,
+        290840,
+        290841
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484032,
+      "request_cycle": 293268,
+      "request_seq": 10912,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        293274,
+        293275,
+        293276,
+        293277
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484096,
+      "request_cycle": 294404,
+      "request_seq": 10950,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        294410,
+        294411,
+        294412,
+        294413
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485312,
+      "request_cycle": 294423,
+      "request_seq": 10964,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        294429,
+        294430,
+        294431,
+        294432
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485376,
+      "request_cycle": 294445,
+      "request_seq": 10978,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        294451,
+        294452,
+        294453,
+        294454
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485824,
+      "request_cycle": 294476,
+      "request_seq": 10992,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        294482,
+        294483,
+        294484,
+        294485
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485888,
+      "request_cycle": 294574,
+      "request_seq": 11010,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        294580,
+        294581,
+        294582,
+        294583
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485952,
+      "request_cycle": 294607,
+      "request_seq": 11024,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        294613,
+        294614,
+        294615,
+        294616
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147486016,
+      "request_cycle": 294640,
+      "request_seq": 11041,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        294646,
+        294647,
+        294648,
+        294649
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147486080,
+      "request_cycle": 294673,
+      "request_seq": 11056,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        294679,
+        294680,
+        294681,
+        294682
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484160,
+      "request_cycle": 297409,
+      "request_seq": 11306,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        297415,
+        297416,
+        297417,
+        297418
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484224,
+      "request_cycle": 298898,
+      "request_seq": 11353,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        298904,
+        298905,
+        298906,
+        298907
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484288,
+      "request_cycle": 299385,
+      "request_seq": 11422,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        299391,
+        299392,
+        299393,
+        299394
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484352,
+      "request_cycle": 303101,
+      "request_seq": 11652,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        303107,
+        303108,
+        303109,
+        303110
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484416,
+      "request_cycle": 303587,
+      "request_seq": 11718,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        303593,
+        303594,
+        303595,
+        303596
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484480,
+      "request_cycle": 306026,
+      "request_seq": 11921,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        306032,
+        306033,
+        306034,
+        306035
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484544,
+      "request_cycle": 306066,
+      "request_seq": 11935,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        306072,
+        306073,
+        306074,
+        306075
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484608,
+      "request_cycle": 306105,
+      "request_seq": 11952,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        306111,
+        306112,
+        306113,
+        306114
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484672,
+      "request_cycle": 310779,
+      "request_seq": 12217,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        310785,
+        310786,
+        310787,
+        310788
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484736,
+      "request_cycle": 311046,
+      "request_seq": 12255,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        311052,
+        311053,
+        311054,
+        311055
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484800,
+      "request_cycle": 313341,
+      "request_seq": 12389,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        313347,
+        313348,
+        313349,
+        313350
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484864,
+      "request_cycle": 317369,
+      "request_seq": 12613,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        317375,
+        317376,
+        317377,
+        317378
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484928,
+      "request_cycle": 317468,
+      "request_seq": 12630,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        317474,
+        317475,
+        317476,
+        317477
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147484992,
+      "request_cycle": 326955,
+      "request_seq": 13154,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        326961,
+        326962,
+        326963,
+        326964
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485056,
+      "request_cycle": 327020,
+      "request_seq": 13177,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        327026,
+        327027,
+        327028,
+        327029
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485120,
+      "request_cycle": 564359,
+      "request_seq": 26016,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        564365,
+        564366,
+        564367,
+        564368
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485184,
+      "request_cycle": 570712,
+      "request_seq": 26362,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        570718,
+        570719,
+        570720,
+        570721
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147485248,
+      "request_cycle": 570786,
+      "request_seq": 26388,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        570792,
+        570793,
+        570794,
+        570795
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "line_address": 2147483648,
+      "request_cycle": 575472,
+      "request_seq": 26664,
+      "beat_bytes": 16,
+      "beat_count": 4,
+      "beats": [
+        575478,
+        575479,
+        575480,
+        575481
+      ],
+      "source": 0,
+      "first_response_cycles": 6,
+      "complete_response_cycles": 9,
+      "response_span_cycles": 3,
+      "response_intervals": [
+        1,
+        1,
+        1
+      ]
+    }
+  ],
+  "scopes": [
+    {
+      "index": 0,
+      "begin_cycle": 230410,
+      "end_cycle": 230587,
+      "overlapping_request_indices": [
+        16,
+        17,
+        18
+      ]
+    },
+    {
+      "index": 1,
+      "begin_cycle": 239271,
+      "end_cycle": 239397,
+      "overlapping_request_indices": []
+    },
+    {
+      "index": 2,
+      "begin_cycle": 243352,
+      "end_cycle": 243529,
+      "overlapping_request_indices": [
+        31,
+        32,
+        33
+      ]
+    },
+    {
+      "index": 3,
+      "begin_cycle": 252097,
+      "end_cycle": 252223,
+      "overlapping_request_indices": []
+    },
+    {
+      "index": 4,
+      "begin_cycle": 256152,
+      "end_cycle": 256329,
+      "overlapping_request_indices": [
+        46,
+        47,
+        48
+      ]
+    },
+    {
+      "index": 5,
+      "begin_cycle": 264890,
+      "end_cycle": 265016,
+      "overlapping_request_indices": []
+    },
+    {
+      "index": 6,
+      "begin_cycle": 268949,
+      "end_cycle": 269126,
+      "overlapping_request_indices": [
+        61,
+        62,
+        63
+      ]
+    },
+    {
+      "index": 7,
+      "begin_cycle": 277700,
+      "end_cycle": 277826,
+      "overlapping_request_indices": []
+    },
+    {
+      "index": 8,
+      "begin_cycle": 281736,
+      "end_cycle": 281913,
+      "overlapping_request_indices": [
+        75,
+        76,
+        77
+      ]
+    },
+    {
+      "index": 9,
+      "begin_cycle": 290471,
+      "end_cycle": 290597,
+      "overlapping_request_indices": []
+    },
+    {
+      "index": 10,
+      "begin_cycle": 294491,
+      "end_cycle": 294668,
+      "overlapping_request_indices": [
+        89,
+        90,
+        91
+      ]
+    },
+    {
+      "index": 11,
+      "begin_cycle": 303226,
+      "end_cycle": 303352,
+      "overlapping_request_indices": []
+    }
+  ],
+  "right_censored_requests": [],
+  "qualification": false,
+  "fitting": false,
+  "limitations": [
+    "Reference-cycle durations require pinned clock and sampling semantics.",
+    "No directory, bank or upstream source transaction is inferred.",
+    "Refill latencies are not additive kernel stall cycles.",
+    "Writeback marker spans are not architectural counter readings."
+  ]
+}

@@ -1,0 +1,26 @@
+[UART] UART0 is here (stdin/stdout).
+CAPACITY arm=0 rep=0 jobs=1 fenced=0 cycles=320 checked=256 errors=0 guards=32
+CAPACITY arm=0 rep=1 jobs=1 fenced=0 cycles=320 checked=256 errors=0 guards=32
+CAPACITY arm=0 rep=2 jobs=1 fenced=0 cycles=324 checked=256 errors=0 guards=32
+CAPACITY arm=1 rep=0 jobs=1 fenced=1 cycles=329 checked=256 errors=0 guards=32
+CAPACITY arm=1 rep=1 jobs=1 fenced=1 cycles=325 checked=256 errors=0 guards=32
+CAPACITY arm=1 rep=2 jobs=1 fenced=1 cycles=325 checked=256 errors=0 guards=32
+CAPACITY arm=2 rep=0 jobs=3 fenced=0 cycles=682 checked=768 errors=0 guards=32
+CAPACITY arm=2 rep=1 jobs=3 fenced=0 cycles=672 checked=768 errors=0 guards=32
+CAPACITY arm=2 rep=2 jobs=3 fenced=0 cycles=672 checked=768 errors=0 guards=32
+CAPACITY arm=3 rep=0 jobs=3 fenced=1 cycles=840 checked=768 errors=0 guards=32
+CAPACITY arm=3 rep=1 jobs=3 fenced=1 cycles=814 checked=768 errors=0 guards=32
+CAPACITY arm=3 rep=2 jobs=3 fenced=1 cycles=824 checked=768 errors=0 guards=32
+CAPACITY arm=4 rep=0 jobs=7 fenced=0 cycles=1383 checked=1792 errors=0 guards=32
+CAPACITY arm=4 rep=1 jobs=7 fenced=0 cycles=1357 checked=1792 errors=0 guards=32
+CAPACITY arm=4 rep=2 jobs=7 fenced=0 cycles=1377 checked=1792 errors=0 guards=32
+CAPACITY arm=5 rep=0 jobs=7 fenced=1 cycles=1824 checked=1792 errors=0 guards=32
+CAPACITY arm=5 rep=1 jobs=7 fenced=1 cycles=1838 checked=1792 errors=0 guards=32
+CAPACITY arm=5 rep=2 jobs=7 fenced=1 cycles=1838 checked=1792 errors=0 guards=32
+CAPACITY arm=6 rep=0 jobs=11 fenced=0 cycles=2071 checked=2816 errors=0 guards=32
+CAPACITY arm=6 rep=1 jobs=11 fenced=0 cycles=2081 checked=2816 errors=0 guards=32
+CAPACITY arm=6 rep=2 jobs=11 fenced=0 cycles=2071 checked=2816 errors=0 guards=32
+CAPACITY arm=7 rep=0 jobs=11 fenced=1 cycles=2831 checked=2816 errors=0 guards=32
+CAPACITY arm=7 rep=1 jobs=11 fenced=1 cycles=2842 checked=2816 errors=0 guards=32
+CAPACITY arm=7 rep=2 jobs=11 fenced=1 cycles=2815 checked=2816 errors=0 guards=32
+CAPACITY_TOTAL errors=0 warmup_runs=16

@@ -45,6 +45,10 @@ XNNPACK RVV / OpenBLAS RVV / Autocomp (Gemmini) / Exo (compiled C + schedule .py
 
 ## Design principles
 
+For executable reconstruction through the transformation library, fusion-aware region matching,
+the scheduling dialect, and automatic gap repair, see
+[Reference-guided kernel reconstruction](kernel_reconstruction.md).
+
 - **Deterministic, cheap, scalable.** Per-kernel extraction is regex / filename / C-signature /
   Exo-lowered-C — **zero LLM calls** over thousands of kernels. Reproducible and diff-friendly.
 - **Decisions, not constants.** Record "packed RHS reused", "accumulator lives across the

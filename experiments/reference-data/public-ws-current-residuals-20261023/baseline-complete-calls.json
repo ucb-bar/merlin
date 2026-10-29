@@ -1,0 +1,60 @@
+{
+  "rows": [
+    {
+      "name": "unfenced",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/unfenced.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-pipeline-probe-v4/unfenced/scope-v11.json",
+        "--timing-input-sha256=777b46abb0d568e476d74b04eef32b5c2224e0a0acf26e1829a58d20d5bc8952",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-pipeline-probe-v4/unfenced/program.elf"
+      ],
+      "physical_label": {
+        "path": "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-pipeline-diagnostics-v1/unfenced-no-norm-v4.json",
+        "sha256": "d2a549937a112e1897f4cf0ac7c4167c67c10d588e81279a07e68d7b4230a774"
+      },
+      "physical_cycles": 1740,
+      "modeled_cycles": 1717,
+      "relative_error": -0.013218390804597746,
+      "report_sha256": "0bfc3ef01dc659cdb3407449413402d4616375ed3529515b6e131483709ebd7a"
+    },
+    {
+      "name": "fenced",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/fenced.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-pipeline-probe-v5/fenced/scope-v11.json",
+        "--timing-input-sha256=7ef1547d70f47fdd54e5a319d8f8859557c75ed135f81586482ef51a5409c6e0",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-pipeline-probe-v5/fenced/program.elf"
+      ],
+      "physical_label": {
+        "path": "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-pipeline-diagnostics-v1/fenced-no-norm-v5.json",
+        "sha256": "68658fee338afb31613d13c56290457e721213634549d4674fb30b67c154c9f7"
+      },
+      "physical_cycles": 2245,
+      "modeled_cycles": 2153,
+      "relative_error": -0.04097995545657018,
+      "report_sha256": "a6b4819da9d43a939c88adaf5a5223eecab13c27566af7d8234b221b3a620afe"
+    }
+  ],
+  "private_labels_used": false,
+  "gsim_runs_added": 0,
+  "calibration_eligible": false,
+  "qualification_issued": false
+}

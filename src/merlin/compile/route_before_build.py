@@ -14,6 +14,9 @@ def plan_before_build(
     model: str = "",
     capture: str | Path | None = None,
     granularity: str = "contraction",
+    linked_elf_admission=None,
+    require_all_accelerator_groups: bool = False,
+    source_kind: str = "captured_provenance_v1",
 ) -> dict:
     """Everything the EMISSION needs decided BEFORE it runs: where each op goes, and what the device
     is asked to build.
@@ -29,6 +32,27 @@ def plan_before_build(
     modelling gaps are recorded as named ``why`` entries. A structurally incomplete contraction
     inventory is different: it raises rather than constructing a misleading placement or coverage claim.
     """
+    if type(require_all_accelerator_groups) is not bool:
+        raise TypeError("complete source group selection requires an original Boolean")
+    if type(source_kind) is not str or source_kind not in {"captured_provenance_v1", "typed_static_integer_v1"}:
+        raise ValueError("unknown explicit whole-model source intake")
+    if require_all_accelerator_groups:
+        if source_kind != "captured_provenance_v1":
+            raise ValueError("typed integer demand intake cannot replace complete group source admission")
+        if granularity != "group" or not device_package:
+            raise ValueError("complete source placement requires a group backend package")
+        from .complete_group_routing import routing
+
+        selected = routing(
+            target, linalg_mlir, device_package, capture=capture, model=model, linked_elf_admission=linked_elf_admission
+        )
+        return {
+            "target": target,
+            "authority": "original complete typed source groups",
+            "device_routing": selected,
+            "offload": {"required_scope": "all source-admitted groups"},
+        }
+
     from merlin.llvmlower import group_offload as GO
     from merlin.targetgen import capsule_source as CSRC
     from merlin.targetgen import routing as _routing
@@ -39,7 +63,13 @@ def plan_before_build(
     # The placement and its coverage denominator must describe every parsed
     # contraction.  The tag-only reader can silently lose generic-printed
     # regions, yielding a zero-mesh plan beside successful device dispatch.
-    demands = CSRC.model_op_demands_checked(linalg_mlir, datapath)
+    demands = (
+        CSRC.model_op_demands_checked(linalg_mlir, datapath)
+        if source_kind == "captured_provenance_v1"
+        else CSRC.model_op_demands_checked(linalg_mlir, datapath, source_kind=source_kind)
+    )
+    if source_kind != "captured_provenance_v1":
+        record["source_kind"] = source_kind
     shadow = _routing.route_plan(demands, target)
     record["plan"], record["authority"] = shadow, "routing.route_plan"
     placement = None
@@ -123,6 +153,7 @@ def plan_before_build(
                     granularity=granularity,
                     capture=capture,
                     model=model,
+                    linked_elf_admission=linked_elf_admission,
                 )
             except Exception as exc:  # noqa: BLE001 -- named, never silently absent
                 record["device_routing_why"] = f"{type(exc).__name__}: {exc}"

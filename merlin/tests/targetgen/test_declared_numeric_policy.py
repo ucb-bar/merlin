@@ -22,9 +22,6 @@ pytestmark = pytest.mark.target("atlas", "gemmini", "mx_gemmini", "radiance", "s
         (
             "mx_gemmini",
             {
-                "operand_dtype": "mxfp8",
-                "accum_dtype": "bf16",
-                "scaling": "block_e8m0",
                 "compare": "tolerance_float",
                 "atol": 0.03125,
                 "rtol": 0.03125,

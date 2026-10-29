@@ -1,0 +1,232 @@
+{
+  "schema": "merlin.public_response_holdouts.v1",
+  "rows": [
+    {
+      "case": "baseline",
+      "enabled": false,
+      "estimated": 2301,
+      "physical": 2551,
+      "relative_error": -0.0980007840062721,
+      "elf": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-pw8n8jil/workspace/program.elf",
+        "sha256": "4232af0dde5c8569bc49648259b717c59e48eb32a277fb12968cd78439a03b5e"
+      },
+      "scope": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-pw8n8jil/workspace/scope.json",
+        "sha256": "4be15d313f4e83766721878b2c542640a6af6418f520cdf5ea8841d2838fae86"
+      },
+      "physical_invocations": [
+        {
+          "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/invocations/19953a0bcccf4de897c7b1032f8b7491/invocation.json",
+          "sha256": "61f7845b694e63143d84d5d548a6ec0f893b29f15a40d1caceb9b43a6c908574"
+        }
+      ],
+      "qualification": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/capsule_result.json",
+        "sha256": "64ff7e7822a946da01159ad589a0dbaefdbff8609fab2cdf3447590dd57d34a5"
+      },
+      "prior": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/report.json",
+        "sha256": "c5b8b25dedcf38ad67bd4111921e1a49e2dfff70e7b92abdfd187a59e39b8b0f"
+      },
+      "report": {
+        "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/baseline-off.report.json",
+        "sha256": "93ace56e4c5c6262221abe93e08e1b7d4c4e0e8160245f89b099373acb222756"
+      },
+      "argv": [
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/off-model.json",
+        "--timing-report=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/baseline-off.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-pw8n8jil/workspace/scope.json",
+        "--timing-input-sha256=4232af0dde5c8569bc49648259b717c59e48eb32a277fb12968cd78439a03b5e",
+        "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-pw8n8jil/workspace/program.elf"
+      ],
+      "stdout_unchanged": true,
+      "features": {
+        "modeled.cache.l1d.coherence_protocol_cycles": 640,
+        "modeled.coherence_probes": 64,
+        "modeled.coherence_writeback_bytes": 4096
+      }
+    },
+    {
+      "case": "baseline",
+      "enabled": true,
+      "estimated": 2313,
+      "physical": 2551,
+      "relative_error": -0.093296746373971,
+      "elf": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-pw8n8jil/workspace/program.elf",
+        "sha256": "4232af0dde5c8569bc49648259b717c59e48eb32a277fb12968cd78439a03b5e"
+      },
+      "scope": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-pw8n8jil/workspace/scope.json",
+        "sha256": "4be15d313f4e83766721878b2c542640a6af6418f520cdf5ea8841d2838fae86"
+      },
+      "physical_invocations": [
+        {
+          "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/invocations/19953a0bcccf4de897c7b1032f8b7491/invocation.json",
+          "sha256": "61f7845b694e63143d84d5d548a6ec0f893b29f15a40d1caceb9b43a6c908574"
+        }
+      ],
+      "qualification": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/capsule_result.json",
+        "sha256": "64ff7e7822a946da01159ad589a0dbaefdbff8609fab2cdf3447590dd57d34a5"
+      },
+      "prior": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/report.json",
+        "sha256": "c5b8b25dedcf38ad67bd4111921e1a49e2dfff70e7b92abdfd187a59e39b8b0f"
+      },
+      "report": {
+        "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/baseline-on.report.json",
+        "sha256": "069ee771abe132d8de11a7722e28558bde0d9470dc097c23e9e1954a0d09ce74"
+      },
+      "argv": [
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/model.json",
+        "--timing-report=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/baseline-on.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-pw8n8jil/workspace/scope.json",
+        "--timing-input-sha256=4232af0dde5c8569bc49648259b717c59e48eb32a277fb12968cd78439a03b5e",
+        "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-pw8n8jil/workspace/program.elf"
+      ],
+      "stdout_unchanged": true,
+      "features": {
+        "modeled.cache.l1d.coherence_protocol_cycles": 640,
+        "modeled.cache.l1d.response_completion_cycles": 832,
+        "modeled.cache.l1d.response_first_cycles": 320,
+        "modeled.cache.l1d.response_last_cycles": 512,
+        "modeled.cache.l1d.response_wormhole": 64,
+        "modeled.coherence_probes": 64,
+        "modeled.coherence_writeback_bytes": 4096
+      }
+    },
+    {
+      "case": "config",
+      "enabled": false,
+      "estimated": 2286,
+      "physical": 2537,
+      "relative_error": -0.09893575088687423,
+      "elf": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-hrecwk1g/workspace/program.elf",
+        "sha256": "0978372514ac0c80342ddb9000eaa61aff0d743eaad1a7d7ad4e49d6c8bd471e"
+      },
+      "scope": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-hrecwk1g/workspace/scope.json",
+        "sha256": "3826a5d4b694bdbfcfc276b40422d953792b18ddb6edf444014046e244e526de"
+      },
+      "physical_invocations": [
+        {
+          "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/invocations/b8ac4ea97c784e649cd2858ca6671e68/invocation.json",
+          "sha256": "e7aa61b639c769753bb54601aacf8d2c4266f6b01c7ae476c70b9329253eef70"
+        }
+      ],
+      "qualification": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/capsule_result.json",
+        "sha256": "6e35b299baba13f061c04783053cf3899748eef0eb2ba3d01f6e28fd44e63493"
+      },
+      "prior": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/report.json",
+        "sha256": "67f4098019362677bbb7941e33a7bdb4710a343821560fc5264b809d1dc2aa99"
+      },
+      "report": {
+        "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/config-off.report.json",
+        "sha256": "bd096c405f59c3916d5dd28b53983eeb07928b7841ccc94730a7be10da10e13b"
+      },
+      "argv": [
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/off-model.json",
+        "--timing-report=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/config-off.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-hrecwk1g/workspace/scope.json",
+        "--timing-input-sha256=0978372514ac0c80342ddb9000eaa61aff0d743eaad1a7d7ad4e49d6c8bd471e",
+        "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-hrecwk1g/workspace/program.elf"
+      ],
+      "stdout_unchanged": true,
+      "features": {
+        "modeled.cache.l1d.coherence_protocol_cycles": 640,
+        "modeled.coherence_probes": 64,
+        "modeled.coherence_writeback_bytes": 4096
+      }
+    },
+    {
+      "case": "config",
+      "enabled": true,
+      "estimated": 2298,
+      "physical": 2537,
+      "relative_error": -0.09420575482853766,
+      "elf": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-hrecwk1g/workspace/program.elf",
+        "sha256": "0978372514ac0c80342ddb9000eaa61aff0d743eaad1a7d7ad4e49d6c8bd471e"
+      },
+      "scope": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-hrecwk1g/workspace/scope.json",
+        "sha256": "3826a5d4b694bdbfcfc276b40422d953792b18ddb6edf444014046e244e526de"
+      },
+      "physical_invocations": [
+        {
+          "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/invocations/b8ac4ea97c784e649cd2858ca6671e68/invocation.json",
+          "sha256": "e7aa61b639c769753bb54601aacf8d2c4266f6b01c7ae476c70b9329253eef70"
+        }
+      ],
+      "qualification": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/capsule_result.json",
+        "sha256": "6e35b299baba13f061c04783053cf3899748eef0eb2ba3d01f6e28fd44e63493"
+      },
+      "prior": {
+        "path": "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/report.json",
+        "sha256": "67f4098019362677bbb7941e33a7bdb4710a343821560fc5264b809d1dc2aa99"
+      },
+      "report": {
+        "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/config-on.report.json",
+        "sha256": "932f57dd22eeea7492fff1fd6d6068a6edb286cf418e2f31634754ccb702f039"
+      },
+      "argv": [
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/model.json",
+        "--timing-report=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/config-on.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-hrecwk1g/workspace/scope.json",
+        "--timing-input-sha256=0978372514ac0c80342ddb9000eaa61aff0d743eaad1a7d7ad4e49d6c8bd471e",
+        "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-hrecwk1g/workspace/program.elf"
+      ],
+      "stdout_unchanged": true,
+      "features": {
+        "modeled.cache.l1d.coherence_protocol_cycles": 640,
+        "modeled.cache.l1d.response_completion_cycles": 832,
+        "modeled.cache.l1d.response_first_cycles": 320,
+        "modeled.cache.l1d.response_last_cycles": 512,
+        "modeled.cache.l1d.response_wormhole": 64,
+        "modeled.coherence_probes": 64,
+        "modeled.coherence_writeback_bytes": 4096
+      }
+    }
+  ],
+  "parameter_adjusted_after_holdout": false,
+  "new_gsim_runs": 0,
+  "qualified": false
+}

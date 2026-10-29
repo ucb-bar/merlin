@@ -1,0 +1,11 @@
+## Selected fresh10 compiler capabilities
+
+Start with an empty target backend and construct one general compiler under the common fresh10 contract. The supplied integration, frontend, representation, ABI, runtime and inspection sources are an explicitly reviewed subset of that environment. AUTHOR_PROFILE.json, FULL_COMPILER_SOURCE_SELECTION.json and the selected additional-library contract state the exact source/API inventories. Import only those selected sources; no prior authored target backend, result or provider state is supplied.
+
+The source selection also records original unavailable dependencies and optional call paths. A source file's presence does not qualify every callable or grant a missing private dependency. Use explicit selected public facts for the admitted fact readers/generators; automatic extraction and descriptor fallbacks remain unavailable when their source owners are withheld.
+
+Scheduling IR/dialect declarations, generic Kernel representation and emission, and static/configuration/placement/synchronization checking APIs are supplied. Their reports can be partial, unchecked or undecidable. Target instruction declarations, facts and renderers remain caller-supplied; generic emission is not a completed target backend. The reviewed general transformation/scheduling implementation library is supplied. SELECTED_LIBRARY_GUIDANCE.md and the staged optimization catalogue describe its actual APIs. CCA helpers, reference-analysis services and automatic system kernel learning are disabled. You may implement general compiler capabilities yourself using the admitted languages, source semantics and hardware facts. Ordinary numerical, ISA, ordering, complete-call and privacy checks remain independent of compiler-side checking.
+
+Reference-kernel sources, ELF/disassembly/listing material, reference maps and CCA-derived artifacts are withheld. General compiler transformations and scheduling implementations remain supplied.
+
+The source-only command-buffer helpers can select the common public schemas/command_buffer.schema.json with schema_path= in CommandBufferBuilder or verify.validate. Copy identical public data into the compiler package when candidate execution needs it; workspace aliases are not candidate execution paths.

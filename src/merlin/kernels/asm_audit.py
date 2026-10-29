@@ -200,7 +200,7 @@ def _classify(decoded, endpoint, target: str, engine: str, notes=()) -> AsmAudit
 
 def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
     """Audit a compiled object through whichever decoder the target's endpoint needs."""
-    from merlin.kernels import endpoints as _ep
+    from merlin.compile.analysis import compute_endpoints as _ep
     from merlin.kernels.decode import rvv as _rvv
 
     if endpoint is None:
@@ -253,7 +253,7 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
             )
         return a
     if kind == "rtl_facts":
-        from merlin.kernels.decode import rocc as _rocc
+        from merlin.compile.analysis import rocc_commands as _rocc
 
         decoded = _rocc.decode_stream(raws, _rocc.funct_table_for(target), endpoint.roles_of)
     elif kind == "isa_encoding":
@@ -265,7 +265,7 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
             # The width of a word in the OBJECT, not the ISA's internal instruction width. Decoding at
             # the internal width declines every architectural word and reports the kernel unaccounted.
             enc["inst_width"] = int(width)
-        from merlin.kernels.decode import insn_header as _ih
+        from merlin.compile.analysis import intrinsics_header as _ih
 
         custom, _problems = _ih.table_for(target, endpoint)
         # Cede funct7-bearing words when another endpoint of this target claims that space by funct7.
@@ -284,7 +284,7 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
         # decoder unchanged: the ONLY difference from an RTL-derived table is where the codes were
         # read, and the decoder never cared.
         from merlin.common import provenance as _prov
-        from merlin.kernels.decode import rocc as _rocc
+        from merlin.compile.analysis import rocc_commands as _rocc
         from merlin.targetgen.rtl.circt_introspect import _functs_from_headers
 
         enc = block.get("encoding") or {}
@@ -422,7 +422,7 @@ def audit_every_endpoint(source, target: str, *, text: bool = False, stream: str
 
     So the default for a target is EVERY endpoint. A caller that wants one asks for one.
     """
-    from merlin.kernels import endpoints as _ep
+    from merlin.compile.analysis import compute_endpoints as _ep
 
     eps = [e for e in _ep.endpoints_for(target) if e.roles]
     # A caller that knows the source's name passes it. For a text source there is nothing to derive a
@@ -523,7 +523,7 @@ def audit_text(lines, target: str, endpoint=None) -> AsmAudit:
     hand-written expert kernel be compared against generated code without either side getting credit
     for the language it happens to be in.
     """
-    from merlin.kernels import endpoints as _ep
+    from merlin.compile.analysis import compute_endpoints as _ep
     from merlin.kernels.decode import isa_text as _text
 
     if endpoint is None:
@@ -585,7 +585,7 @@ def _facets_reachable(roles: set, engine: str) -> dict:
     some instruction role feeds it. Reporting per facet is what turns "the CCA sort of works here" into
     a list of things to fix.
     """
-    from merlin.kernels import roles as _roles
+    from merlin.compile.analysis import instruction_roles as _roles
 
     have = {r for r in roles if _roles.is_role(r)}
     out: dict[str, dict] = {}
@@ -642,7 +642,7 @@ def target_report(target: str, streams=()) -> dict:
     reachable in principle and never exercised is a different problem from one that is unreachable, and
     a single number cannot distinguish them.
     """
-    from merlin.kernels import endpoints as _ep
+    from merlin.compile.analysis import compute_endpoints as _ep
 
     eps = _ep.endpoints_for(target)
     per_endpoint = []

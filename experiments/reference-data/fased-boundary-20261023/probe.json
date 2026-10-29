@@ -1,0 +1,192 @@
+{
+  "schema": "merlin.fased_boundary_probe.v1",
+  "cycles": 320,
+  "completed": [
+    {
+      "operation": [
+        "read",
+        4096,
+        8,
+        1
+      ],
+      "start_cycle": 16,
+      "completed_cycle": 62
+    },
+    {
+      "operation": [
+        "write",
+        4096,
+        8,
+        2
+      ],
+      "start_cycle": 63,
+      "completed_cycle": 76
+    },
+    {
+      "operation": [
+        "read",
+        4096,
+        8,
+        3
+      ],
+      "start_cycle": 77,
+      "completed_cycle": 90
+    },
+    {
+      "operation": [
+        "read",
+        8192,
+        1,
+        4
+      ],
+      "start_cycle": 91,
+      "completed_cycle": 127
+    },
+    {
+      "operation": [
+        "write",
+        8192,
+        1,
+        5
+      ],
+      "start_cycle": 128,
+      "completed_cycle": 147
+    },
+    {
+      "operation": [
+        "read",
+        8192,
+        1,
+        6
+      ],
+      "start_cycle": 148,
+      "completed_cycle": 151
+    },
+    {
+      "operation": [
+        "read",
+        262144,
+        8,
+        7
+      ],
+      "start_cycle": 152,
+      "completed_cycle": 211
+    },
+    {
+      "operation": [
+        "read",
+        524288,
+        8,
+        8
+      ],
+      "start_cycle": 212,
+      "completed_cycle": 277
+    },
+    {
+      "operation": [
+        "read",
+        4096,
+        8,
+        9
+      ],
+      "start_cycle": 278,
+      "completed_cycle": 293
+    },
+    {
+      "operation": [
+        "write",
+        4160,
+        8,
+        10
+      ],
+      "start_cycle": 294,
+      "completed_cycle": 304
+    },
+    {
+      "operation": [
+        "read",
+        4160,
+        8,
+        11
+      ],
+      "start_cycle": 305,
+      "completed_cycle": 319
+    }
+  ],
+  "build_receipt_sha256": "a897d74c66cc9b30b655f5cbf0af464c60f87a2a51b379bbc0829bb6e29f8aff",
+  "requested_settings": {
+    "+mm_openPagePolicy_0": 1,
+    "+mm_backendLatency_0": 2,
+    "+mm_schedulerWindowSize_0": 8,
+    "+mm_transactionQueueDepth_0": 8,
+    "+mm_dramTimings_tAL_0": 0,
+    "+mm_dramTimings_tCAS_0": 14,
+    "+mm_dramTimings_tCMD_0": 1,
+    "+mm_dramTimings_tCWD_0": 10,
+    "+mm_dramTimings_tCCD_0": 4,
+    "+mm_dramTimings_tFAW_0": 25,
+    "+mm_dramTimings_tRAS_0": 33,
+    "+mm_dramTimings_tREFI_0": 7800,
+    "+mm_dramTimings_tRC_0": 47,
+    "+mm_dramTimings_tRCD_0": 14,
+    "+mm_dramTimings_tRFC_0": 160,
+    "+mm_dramTimings_tRRD_0": 8,
+    "+mm_dramTimings_tRP_0": 14,
+    "+mm_dramTimings_tRTP_0": 8,
+    "+mm_dramTimings_tRTRS_0": 2,
+    "+mm_dramTimings_tWR_0": 15,
+    "+mm_dramTimings_tWTR_0": 8,
+    "+mm_rowAddr_offset_0": 18,
+    "+mm_rowAddr_mask_0": 65535,
+    "+mm_rankAddr_offset_0": 16,
+    "+mm_rankAddr_mask_0": 3,
+    "+mm_bankAddr_offset_0": 13,
+    "+mm_bankAddr_mask_0": 7,
+    "+mm_llc_wayBits_0": 3,
+    "+mm_llc_setBits_0": 12,
+    "+mm_llc_blockBits_0": 7,
+    "+mm_llc_activeMSHRs_0": 8
+  },
+  "effective_settings": {
+    "io_mmReg_openPagePolicy": 1,
+    "io_mmReg_backendLatency": 2,
+    "io_mmReg_schedulerWindowSize": 0,
+    "io_mmReg_transactionQueueDepth": 0,
+    "io_mmReg_dramTimings_tAL": 0,
+    "io_mmReg_dramTimings_tCAS": 14,
+    "io_mmReg_dramTimings_tCMD": 1,
+    "io_mmReg_dramTimings_tCWD": 10,
+    "io_mmReg_dramTimings_tCCD": 4,
+    "io_mmReg_dramTimings_tFAW": 25,
+    "io_mmReg_dramTimings_tRAS": 33,
+    "io_mmReg_dramTimings_tREFI": 7800,
+    "io_mmReg_dramTimings_tRC": 47,
+    "io_mmReg_dramTimings_tRCD": 14,
+    "io_mmReg_dramTimings_tRFC": 160,
+    "io_mmReg_dramTimings_tRRD": 8,
+    "io_mmReg_dramTimings_tRP": 14,
+    "io_mmReg_dramTimings_tRTP": 8,
+    "io_mmReg_dramTimings_tRTRS": 2,
+    "io_mmReg_dramTimings_tWR": 15,
+    "io_mmReg_dramTimings_tWTR": 8,
+    "io_mmReg_rowAddr_offset": 18,
+    "io_mmReg_rowAddr_mask": 65535,
+    "io_mmReg_rankAddr_offset": 16,
+    "io_mmReg_rankAddr_mask": 3,
+    "io_mmReg_bankAddr_offset": 13,
+    "io_mmReg_bankAddr_mask": 7,
+    "io_mmReg_llc_wayBits": 3,
+    "io_mmReg_llc_setBits": 12,
+    "io_mmReg_llc_blockBits": 7,
+    "io_mmReg_llc_activeMSHRs": 8
+  },
+  "deployment_equivalence": "NOT_ESTABLISHED",
+  "production_adapter": false,
+  "limitations": [
+    "one outstanding transaction",
+    "aligned INCR full-beat requests with full byte strobes",
+    "no whole-SoC integration"
+  ],
+  "reference_binary_sha256": "949312608ac62100e0bfec35ce731ea60ae4fa585c0c91b3e85122712ae2180b",
+  "candidate_binary_sha256": "62bf6da5166f309cb48ad8aab9c870d0d973cc7f31fb9a4250a43c4d0f2ec986"
+}

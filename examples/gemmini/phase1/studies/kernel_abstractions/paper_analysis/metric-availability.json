@@ -1,0 +1,33 @@
+{
+  "schema": "merlin.paper_metric_availability.v1",
+  "available": [
+    "Owned completed-response usage, lead/helpers, cached/fresh/output tokens",
+    "Native clocks and source snapshots",
+    "Background and selfcheck case/tier/status/failure observations",
+    "Queue/response latency where native timestamps retained",
+    "Sanitized command outcomes and file-edit events for EL123 and six small studies",
+    "Partial final-source complete timing-model estimates with matching evaluator bindings",
+    "Small frozen train/probe model cells and raw physical samples, including failures",
+    "Actual CCA operation statuses and retained report evidence",
+    "Full-model pending/unavailable/superseded status and shared infrastructure error class"
+  ],
+  "derived_from_available": [
+    "Ever-observed L2 progress at publication time",
+    "Distinct observed request/source/case attempts, failures and structured signatures",
+    "Observed execution repair episodes; open episodes censored",
+    "Time/token milestones and per-cohort descriptive summaries"
+  ],
+  "partial_or_unavailable": [
+    "Complete final L3 qualification across main campaigns",
+    "Qualified FireSim speedups for retained small raw panels",
+    "Universal schedule-checker acceptance rate in arms lacking its API",
+    "Complete storage-bug root-cause taxonomy",
+    "Proof of every optimization reuse and its origin",
+    "Universal pass/heuristic/oracle schedule lineage",
+    "True debugging intent or failed implementations inferred from shell exits",
+    "Provider usage still in flight or absent from retained logs",
+    "Cold/unseen-by-seed status of all proposed probes"
+  ],
+  "missing_value_rule": "Unknown, pending, not applicable and unobserved are not converted into failure or zero.",
+  "metrics_names_and_definitions": "all_results.csv record_type plus metric/value/unit; see README and original pinned metric contracts."
+}

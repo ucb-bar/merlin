@@ -1,0 +1,1860 @@
+{
+ "cases": {
+  "G_matmul_m12k48n48_raw": {
+   "command_buffer": {
+    "abi_version": "0.1",
+    "commands": [
+     {
+      "attributes": {
+       "layout": "packed_rhs"
+      },
+      "opcode": "RES_PACK",
+      "operands": {
+       "dst": "W_res",
+       "src": "W"
+      }
+     },
+     {
+      "opcode": "MATMUL_RESIDENT",
+      "operands": {
+       "dst": "acc0",
+       "lhs": "A0",
+       "rhs": "W_res"
+      }
+     },
+     {
+      "attributes": {
+       "epilogue": [],
+       "output_dtype": "i32"
+      },
+      "opcode": "COMMIT",
+      "operands": {
+       "dst": "Y0",
+       "src": "acc0"
+      }
+     },
+     {
+      "opcode": "EVICT",
+      "operands": {
+       "handle": "W_res"
+      }
+     }
+    ],
+    "kernel_abi": {
+     "args": [
+      {
+       "access": "read",
+       "tensor": "W"
+      },
+      {
+       "access": "read",
+       "tensor": "A0"
+      },
+      {
+       "access": "write",
+       "tensor": "Y0"
+      }
+     ],
+     "kind": "whole_program",
+     "outputs": [
+      "Y0"
+     ]
+    },
+    "target": "gemmini",
+    "tensors": {
+     "A0": {
+      "dtype": "i8",
+      "role": "input",
+      "shape": [
+       12,
+       48
+      ]
+     },
+     "W": {
+      "dtype": "i8",
+      "role": "weight",
+      "shape": [
+       48,
+       48
+      ]
+     },
+     "Y0": {
+      "dtype": "i32",
+      "role": "output",
+      "shape": [
+       12,
+       48
+      ]
+     }
+    }
+   },
+   "declaration": {
+    "inputs": [
+     {
+      "dtype": "i8",
+      "name": "W",
+      "role": "weight",
+      "shape": [
+       48,
+       48
+      ]
+     },
+     {
+      "dtype": "i8",
+      "name": "A0",
+      "role": "input",
+      "shape": [
+       12,
+       48
+      ]
+     }
+    ],
+    "kind": "layer",
+    "name": "G_matmul_m12k48n48_raw",
+    "operation": {
+     "attributes": {
+      "epilogue": [],
+      "lhs": "A0",
+      "out": "Y0",
+      "output_dtype": "i32",
+      "weight": "W"
+     },
+     "op": "matmul"
+    },
+    "semantic": {
+     "eligible": "auto",
+     "generalization_axis": "composition",
+     "must_accelerate": true,
+     "semantic_family": "contraction"
+    },
+    "source_role": "model_derived"
+   },
+   "device_requested_read_bytes": 2880,
+   "instruction_trace": {
+    "abi": {
+     "custom_opcode": "0x7b",
+     "funct3": "0x3"
+    },
+    "instructions": [
+     {
+      "class": "FENCE",
+      "decoded": {},
+      "funct": null,
+      "index": 0
+     },
+     {
+      "class": "FLUSH_CMD",
+      "decoded": {},
+      "funct": 7,
+      "index": 1,
+      "rs1": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 0
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 0
+      }
+     },
+     {
+      "class": "CONFIG_CMD",
+      "decoded": {},
+      "funct": 0,
+      "index": 2,
+      "rs1": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4575657221409472521
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 48
+      }
+     },
+     {
+      "class": "LOAD2_CMD",
+      "decoded": {},
+      "funct": 1,
+      "index": 3,
+      "rs1": {
+       "arg_index": 0,
+       "kind": "argbase",
+       "offset": 0,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4503668346855424
+      }
+     },
+     {
+      "class": "LOAD2_CMD",
+      "decoded": {},
+      "funct": 1,
+      "index": 4,
+      "rs1": {
+       "arg_index": 0,
+       "kind": "argbase",
+       "offset": 16,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4503668346855440
+      }
+     },
+     {
+      "class": "LOAD2_CMD",
+      "decoded": {},
+      "funct": 1,
+      "index": 5,
+      "rs1": {
+       "arg_index": 0,
+       "kind": "argbase",
+       "offset": 32,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4503668346855456
+      }
+     },
+     {
+      "class": "LOAD2_CMD",
+      "decoded": {},
+      "funct": 1,
+      "index": 6,
+      "rs1": {
+       "arg_index": 0,
+       "kind": "argbase",
+       "offset": 768,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4503668346855472
+      }
+     },
+     {
+      "class": "LOAD2_CMD",
+      "decoded": {},
+      "funct": 1,
+      "index": 7,
+      "rs1": {
+       "arg_index": 0,
+       "kind": "argbase",
+       "offset": 784,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4503668346855488
+      }
+     },
+     {
+      "class": "LOAD2_CMD",
+      "decoded": {},
+      "funct": 1,
+      "index": 8,
+      "rs1": {
+       "arg_index": 0,
+       "kind": "argbase",
+       "offset": 800,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4503668346855504
+      }
+     },
+     {
+      "class": "LOAD2_CMD",
+      "decoded": {},
+      "funct": 1,
+      "index": 9,
+      "rs1": {
+       "arg_index": 0,
+       "kind": "argbase",
+       "offset": 1536,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4503668346855520
+      }
+     },
+     {
+      "class": "LOAD2_CMD",
+      "decoded": {},
+      "funct": 1,
+      "index": 10,
+      "rs1": {
+       "arg_index": 0,
+       "kind": "argbase",
+       "offset": 1552,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4503668346855536
+      }
+     },
+     {
+      "class": "LOAD2_CMD",
+      "decoded": {},
+      "funct": 1,
+      "index": 11,
+      "rs1": {
+       "arg_index": 0,
+       "kind": "argbase",
+       "offset": 1568,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4503668346855552
+      }
+     },
+     {
+      "class": "FENCE",
+      "decoded": {},
+      "funct": null,
+      "index": 12
+     },
+     {
+      "class": "CONFIG_CMD",
+      "decoded": {},
+      "funct": 0,
+      "index": 13,
+      "rs1": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4575657221408489476
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 281474976710656
+      }
+     },
+     {
+      "class": "CONFIG_CMD",
+      "decoded": {},
+      "funct": 0,
+      "index": 14,
+      "rs1": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4575657221409472513
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 48
+      }
+     },
+     {
+      "class": "CONFIG_CMD",
+      "decoded": {},
+      "funct": 0,
+      "index": 15,
+      "rs1": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4575657221409472521
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 48
+      }
+     },
+     {
+      "class": "CONFIG_CMD",
+      "decoded": {},
+      "funct": 0,
+      "index": 16,
+      "rs1": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 2
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4575657221408424128
+      }
+     },
+     {
+      "class": "LOAD_CMD",
+      "decoded": {},
+      "funct": 2,
+      "index": 17,
+      "rs1": {
+       "arg_index": 1,
+       "kind": "argbase",
+       "offset": 0,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 3377768440004608
+      }
+     },
+     {
+      "class": "LOAD_CMD",
+      "decoded": {},
+      "funct": 2,
+      "index": 18,
+      "rs1": {
+       "arg_index": 1,
+       "kind": "argbase",
+       "offset": 16,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 3377768440004624
+      }
+     },
+     {
+      "class": "LOAD_CMD",
+      "decoded": {},
+      "funct": 2,
+      "index": 19,
+      "rs1": {
+       "arg_index": 1,
+       "kind": "argbase",
+       "offset": 32,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 3377768440004640
+      }
+     },
+     {
+      "class": "FENCE",
+      "decoded": {},
+      "funct": null,
+      "index": 20
+     },
+     {
+      "class": "FENCE",
+      "decoded": {},
+      "funct": null,
+      "index": 21
+     },
+     {
+      "class": "FENCE",
+      "decoded": {},
+      "funct": null,
+      "index": 22
+     },
+     {
+      "class": "PRELOAD_CMD",
+      "decoded": {},
+      "funct": 6,
+      "index": 23,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 4503668346847232,
+        "value": 4503668346847232,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 70866960384,
+        "value": 70866960384,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "COMPUTE_AND_FLIP_CMD",
+      "decoded": {},
+      "funct": 4,
+      "index": 24,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 68719476736,
+        "value": 68719476736,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 18438862774361653247,
+        "value": 73014444031,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "PRELOAD_CMD",
+      "decoded": {},
+      "funct": 6,
+      "index": 25,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 4503668346847232,
+        "value": 4503668346847232,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 71940702208,
+        "value": 71940702208,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "COMPUTE_AND_FLIP_CMD",
+      "decoded": {},
+      "funct": 4,
+      "index": 26,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 68719476736,
+        "value": 68719476736,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 18438862774361653247,
+        "value": 73014444031,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "STORE_CMD",
+      "decoded": {},
+      "funct": 3,
+      "index": 27,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 71403831296,
+        "value": 71403831296,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "PRELOAD_CMD",
+      "decoded": {},
+      "funct": 6,
+      "index": 28,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 4503668346847232,
+        "value": 4503668346847232,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 70866960384,
+        "value": 70866960384,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "COMPUTE_AND_FLIP_CMD",
+      "decoded": {},
+      "funct": 4,
+      "index": 29,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 68719476736,
+        "value": 68719476736,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 18438862774361653247,
+        "value": 73014444031,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "PRELOAD_CMD",
+      "decoded": {},
+      "funct": 6,
+      "index": 30,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 4503668346847232,
+        "value": 4503668346847232,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 71940702208,
+        "value": 71940702208,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "COMPUTE_AND_FLIP_CMD",
+      "decoded": {},
+      "funct": 4,
+      "index": 31,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 68719476736,
+        "value": 68719476736,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 18438862774361653247,
+        "value": 73014444031,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "STORE_CMD",
+      "decoded": {},
+      "funct": 3,
+      "index": 32,
+      "rs1": {
+       "arg_index": 2,
+       "kind": "argbase",
+       "offset": 128,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 71403831296,
+        "value": 71403831296,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "FENCE",
+      "decoded": {},
+      "funct": null,
+      "index": 33
+     }
+    ],
+    "source": "lowered.llvm.mlir"
+   }
+  },
+  "ZA_gemm_512x512x512_native_i8": {
+   "command_buffer": {
+    "abi_version": "0.1",
+    "commands": [
+     {
+      "attributes": {
+       "layout": "packed_rhs"
+      },
+      "opcode": "RES_PACK",
+      "operands": {
+       "dst": "W_res",
+       "src": "W"
+      }
+     },
+     {
+      "opcode": "MATMUL_RESIDENT",
+      "operands": {
+       "dst": "acc0",
+       "lhs": "A0",
+       "rhs": "W_res"
+      }
+     },
+     {
+      "attributes": {
+       "epilogue": [],
+       "output_dtype": "i8"
+      },
+      "opcode": "COMMIT",
+      "operands": {
+       "dst": "Y0",
+       "src": "acc0"
+      }
+     },
+     {
+      "opcode": "EVICT",
+      "operands": {
+       "handle": "W_res"
+      }
+     }
+    ],
+    "kernel_abi": {
+     "args": [
+      {
+       "access": "read",
+       "tensor": "W"
+      },
+      {
+       "access": "read",
+       "tensor": "A0"
+      },
+      {
+       "access": "write",
+       "tensor": "Y0"
+      }
+     ],
+     "kind": "whole_program",
+     "outputs": [
+      "Y0"
+     ]
+    },
+    "target": "gemmini",
+    "tensors": {
+     "A0": {
+      "dtype": "i8",
+      "role": "input",
+      "shape": [
+       512,
+       512
+      ]
+     },
+     "W": {
+      "dtype": "i8",
+      "role": "weight",
+      "shape": [
+       512,
+       512
+      ]
+     },
+     "Y0": {
+      "dtype": "i8",
+      "role": "output",
+      "shape": [
+       512,
+       512
+      ]
+     }
+    }
+   },
+   "declaration": {
+    "inputs": [
+     {
+      "dtype": "i8",
+      "name": "W",
+      "role": "weight",
+      "shape": [
+       512,
+       512
+      ]
+     },
+     {
+      "dtype": "i8",
+      "name": "A0",
+      "role": "input",
+      "shape": [
+       512,
+       512
+      ]
+     }
+    ],
+    "kind": "layer",
+    "name": "ZA_gemm_512x512x512_native_i8",
+    "operation": {
+     "attributes": {
+      "epilogue": [],
+      "lhs": "A0",
+      "out": "Y0",
+      "output_dtype": "i8",
+      "weight": "W"
+     },
+     "op": "matmul"
+    },
+    "semantic": {
+     "eligible": "auto",
+     "generalization_axis": "shape",
+     "must_accelerate": true,
+     "semantic_family": "contraction"
+    },
+    "source_role": "handauthored_compiler_test"
+   },
+   "device_requested_read_bytes": 4456448,
+   "instruction_trace": {
+    "abi": {
+     "custom_opcode": "0x7b",
+     "funct3": "0x3"
+    },
+    "instructions": [
+     {
+      "class": "FENCE",
+      "decoded": {},
+      "funct": null,
+      "index": 0
+     },
+     {
+      "class": "FLUSH_CMD",
+      "decoded": {},
+      "funct": 7,
+      "index": 1,
+      "rs1": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 0
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 0
+      }
+     },
+     {
+      "class": "CONFIG_CMD",
+      "decoded": {},
+      "funct": 0,
+      "index": 2,
+      "rs1": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4575657221408489476
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 281474976710656
+      }
+     },
+     {
+      "class": "CONFIG_CMD",
+      "decoded": {},
+      "funct": 0,
+      "index": 3,
+      "rs1": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4575657221409472513
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 512
+      }
+     },
+     {
+      "class": "CONFIG_CMD",
+      "decoded": {},
+      "funct": 0,
+      "index": 4,
+      "rs1": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4575657221409472521
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 512
+      }
+     },
+     {
+      "class": "CONFIG_CMD",
+      "decoded": {},
+      "funct": 0,
+      "index": 5,
+      "rs1": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 2
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4575657221408424448
+      }
+     },
+     {
+      "class": "FENCE",
+      "decoded": {},
+      "funct": null,
+      "index": 6
+     },
+     {
+      "class": "LOAD_CMD",
+      "decoded": {},
+      "funct": 2,
+      "index": 7,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 4503668346847232,
+        "value": 4503668346847232,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "LOAD2_CMD",
+      "decoded": {},
+      "funct": 1,
+      "index": 8,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 4503668346847232,
+        "value": 4503668346847232,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "PRELOAD_CMD",
+      "decoded": {},
+      "funct": 6,
+      "index": 9,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 4503668346847232,
+        "value": 4503668346847232,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 4503670494330880,
+        "value": 4503670494330880,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "COMPUTE_AND_FLIP_CMD",
+      "decoded": {},
+      "funct": 4,
+      "index": 10,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 4503668346847232,
+        "value": 4503668346847232,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4503672641814527
+      }
+     },
+     {
+      "class": "PRELOAD_CMD",
+      "decoded": {},
+      "funct": 6,
+      "index": 11,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 4503668346847232,
+        "value": 4503668346847232,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 4503671568072704,
+        "value": 4503671568072704,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "COMPUTE_AND_FLIP_CMD",
+      "decoded": {},
+      "funct": 4,
+      "index": 12,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 4503668346847232,
+        "value": 4503668346847232,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "const",
+       "offset": null,
+       "raw": 4503672641814527
+      }
+     },
+     {
+      "class": "STORE_CMD",
+      "decoded": {},
+      "funct": 3,
+      "index": 13,
+      "rs1": {
+       "arg_index": null,
+       "kind": "unknown",
+       "offset": null,
+       "raw": null
+      },
+      "rs2": {
+       "arg_index": null,
+       "kind": "unknown",
+       "known_bits": {
+        "mask": 4503670494330880,
+        "value": 4503670494330880,
+        "width": 64
+       },
+       "offset": null,
+       "raw": null
+      }
+     },
+     {
+      "class": "FENCE",
+      "decoded": {},
+      "funct": null,
+      "index": 14
+     }
+    ],
+    "source": "lowered.llvm.mlir"
+   }
+  }
+ },
+ "facts": {
+  "facts": {
+   "arrays": [
+    {
+     "cols": 16,
+     "container": "Mesh",
+     "corroborated": true,
+     "element": "Tile",
+     "element_variants": [
+      [
+       "Tile",
+       256
+      ]
+     ],
+     "instances": 256,
+     "mac_idiom": {
+      "adds": 7,
+      "muls": 1,
+      "regs": 3
+     },
+     "name": "mesh",
+     "rows": 16
+    }
+   ],
+   "compute_datapaths": [
+    {
+     "declared_carrier": {
+      "declarations": [
+       {
+        "direction": "input",
+        "firrtl_type": "SInt<8>[1]",
+        "port": "in_a",
+        "signed": true
+       }
+      ],
+      "element_bits": 8,
+      "qualification": "FIRRTL carrier type only; arithmetic semantics and tensor quantization are not inferred",
+      "signedness": "signed",
+      "status": "observed"
+     },
+     "dtype": null,
+     "dtype_unknown": "the elaboration states a 8-bit width and no format NAME for it: no module in Tile's instance closure (3 modules) is identified with a registered 8-bit format carrying a 8-bit port. 8 bits is any of ['e8m0', 'fp8_e4m3', 'fp8_e5m2', 'gguf_q8_0', 'int8', 'mxfp8', 'mxint8'], and picking one would be a convention, not a measurement",
+     "elem_bits": 8,
+     "module": "Tile",
+     "name": "input",
+     "ports": [
+      "in_a"
+     ]
+    },
+    {
+     "declared_carrier": {
+      "declarations": [
+       {
+        "direction": "input",
+        "firrtl_type": "SInt<20>[1]",
+        "port": "in_b",
+        "signed": true
+       },
+       {
+        "direction": "input",
+        "firrtl_type": "SInt<20>[1]",
+        "port": "in_d",
+        "signed": true
+       },
+       {
+        "direction": "output",
+        "firrtl_type": "SInt<20>[1]",
+        "port": "out_c",
+        "signed": true
+       },
+       {
+        "direction": "output",
+        "firrtl_type": "SInt<20>[1]",
+        "port": "out_b",
+        "signed": true
+       }
+      ],
+      "element_bits": 20,
+      "qualification": "FIRRTL carrier type only; arithmetic semantics and tensor quantization are not inferred",
+      "signedness": "signed",
+      "status": "observed"
+     },
+     "dtype": null,
+     "dtype_unknown": "the elaboration states a 20-bit width and no format NAME for it: no module in Tile's instance closure (3 modules) is identified with a registered 20-bit format carrying a 20-bit port. 20 bits is any of [], and picking one would be a convention, not a measurement",
+     "elem_bits": 20,
+     "module": "Tile",
+     "name": "accumulator",
+     "ports": [
+      "in_b",
+      "in_d",
+      "out_b",
+      "out_c"
+     ]
+    }
+   ],
+   "datapaths": [
+    {
+     "dtype": "i8",
+     "name": "input"
+    },
+    {
+     "dtype": "i32",
+     "name": "accumulator"
+    }
+   ],
+   "interfaces": [
+    {
+     "complete_isa": false,
+     "custom_opcode": 123,
+     "decoder_only_functs": [
+      126
+     ],
+     "fanout": 30,
+     "funct3": 3,
+     "header_only_functs": [
+      25
+     ],
+     "legal_funct": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      126
+     ],
+     "method": "decoder_icmp_fanout(mlc)",
+     "module": "ReservationStation",
+     "name": "funct_decode_table",
+     "names": {
+      "0": "CONFIG_CMD",
+      "1": "LOAD2_CMD",
+      "10": "LOOP_WS_CONFIG_ADDRS_AB",
+      "11": "LOOP_WS_CONFIG_ADDRS_DC",
+      "12": "LOOP_WS_CONFIG_STRIDES_AB",
+      "126": "COUNTER_OP",
+      "13": "LOOP_WS_CONFIG_STRIDES_DC",
+      "14": "LOAD3_CMD",
+      "15": "LOOP_CONV_WS",
+      "16": "LOOP_CONV_WS_CONFIG_1",
+      "17": "LOOP_CONV_WS_CONFIG_2",
+      "18": "LOOP_CONV_WS_CONFIG_3",
+      "19": "LOOP_CONV_WS_CONFIG_4",
+      "2": "LOAD_CMD",
+      "20": "LOOP_CONV_WS_CONFIG_5",
+      "21": "LOOP_CONV_WS_CONFIG_6",
+      "22": "CLKGATE_EN",
+      "23": "STORE_SPAD_CMD",
+      "24": "LOOP_WS_CONFIG_SPAD_AB",
+      "3": "STORE_CMD",
+      "4": "COMPUTE_AND_FLIP_CMD",
+      "5": "COMPUTE_AND_STAY_CMD",
+      "6": "PRELOAD_CMD",
+      "7": "FLUSH_CMD",
+      "8": "LOOP_WS",
+      "9": "LOOP_WS_CONFIG_BOUNDS"
+     },
+     "names_recovered_from_outside_block": {
+      "126": "COUNTER_OP"
+     },
+     "scope": "observed_decode_field",
+     "source_declared_names": {
+      "0": "CONFIG_CMD",
+      "1": "LOAD2_CMD",
+      "10": "LOOP_WS_CONFIG_ADDRS_AB",
+      "11": "LOOP_WS_CONFIG_ADDRS_DC",
+      "12": "LOOP_WS_CONFIG_STRIDES_AB",
+      "13": "LOOP_WS_CONFIG_STRIDES_DC",
+      "14": "LOAD3_CMD",
+      "15": "LOOP_CONV_WS",
+      "16": "LOOP_CONV_WS_CONFIG_1",
+      "17": "LOOP_CONV_WS_CONFIG_2",
+      "18": "LOOP_CONV_WS_CONFIG_3",
+      "19": "LOOP_CONV_WS_CONFIG_4",
+      "2": "LOAD_CMD",
+      "20": "LOOP_CONV_WS_CONFIG_5",
+      "21": "LOOP_CONV_WS_CONFIG_6",
+      "22": "CLKGATE_EN",
+      "23": "STORE_SPAD_CMD",
+      "24": "LOOP_WS_CONFIG_SPAD_AB",
+      "25": "LOOP_WS_CONFIG_SPAD_C",
+      "3": "STORE_CMD",
+      "4": "COMPUTE_AND_FLIP_CMD",
+      "5": "COMPUTE_AND_STAY_CMD",
+      "6": "PRELOAD_CMD",
+      "7": "FLUSH_CMD",
+      "8": "LOOP_WS",
+      "9": "LOOP_WS_CONFIG_BOUNDS"
+     },
+     "source_declared_names_provenance": {
+      "kind": "scala_funct_block",
+      "scope": "selected_source_declaration",
+      "source_sha256": "812cba090cf85b2b66f6e820dbce8e67454376832fdd459af63cc571e788297b",
+      "start_comment": "// funct values",
+      "stop_declaration": "CONFIG_EX"
+     },
+     "width": 7
+    },
+    {
+     "bundles": {
+      "ComputeRs": {
+       "fields": {
+        "local_addr": {
+         "offset": 0,
+         "slot_width": 32,
+         "width": null,
+         "width_param": "local_addr_t.getWidth"
+        },
+        "num_cols": {
+         "offset": 32,
+         "slot_width": 16,
+         "width": null,
+         "width_param": "compute_cols_bits"
+        },
+        "num_rows": {
+         "offset": 48,
+         "slot_width": 16,
+         "width": null,
+         "width_param": "compute_rows_bits"
+        }
+       },
+       "parameters": [
+        "compute_cols_bits",
+        "compute_rows_bits",
+        "local_addr_t"
+       ],
+       "width": 64
+      },
+      "ConfigExRs1": {
+       "fields": {
+        "a_stride": {
+         "offset": 16,
+         "width": 16
+        },
+        "a_transpose": {
+         "offset": 8,
+         "width": 1
+        },
+        "acc_scale": {
+         "offset": 32,
+         "slot_width": 32,
+         "width": null,
+         "width_param": "acc_scale_bits"
+        },
+        "activation": {
+         "offset": 3,
+         "width": 2
+        },
+        "b_transpose": {
+         "offset": 9,
+         "width": 1
+        },
+        "cmd_type": {
+         "offset": 0,
+         "width": 2
+        },
+        "dataflow": {
+         "offset": 2,
+         "width": 1
+        },
+        "set_only_strides": {
+         "offset": 7,
+         "width": 1
+        }
+       },
+       "parameters": [
+        "acc_scale_bits"
+       ],
+       "width": 64
+      },
+      "ConfigExRs2": {
+       "fields": {
+        "c_stride": {
+         "offset": 48,
+         "width": 16
+        },
+        "in_shift": {
+         "offset": 0,
+         "width": 32
+        },
+        "relu6_shift": {
+         "offset": 32,
+         "width": 16
+        }
+       },
+       "width": 64
+      },
+      "ConfigMvinRs1": {
+       "fields": {
+        "pixel_repeats": {
+         "offset": 8,
+         "slot_width": 8,
+         "width": null,
+         "width_param": "pixel_repeat_bits"
+        },
+        "scale": {
+         "offset": 32,
+         "slot_width": 32,
+         "width": null,
+         "width_param": "scale_bits"
+        },
+        "shrink": {
+         "offset": 2,
+         "width": 1
+        },
+        "state_id": {
+         "offset": 3,
+         "width": 2
+        },
+        "stride": {
+         "offset": 16,
+         "slot_width": 16,
+         "width": null,
+         "width_param": "stride_bits"
+        }
+       },
+       "parameters": [
+        "pixel_repeat_bits",
+        "scale_bits",
+        "stride_bits"
+       ],
+       "width": 64
+      },
+      "ConfigMvoutRs1": {
+       "fields": {
+        "activation": {
+         "offset": 2,
+         "width": 2
+        },
+        "cmd_type": {
+         "offset": 0,
+         "width": 2
+        },
+        "lpad": {
+         "offset": 10,
+         "width": 2
+        },
+        "ocols": {
+         "offset": 56,
+         "width": 8
+        },
+        "orows": {
+         "offset": 48,
+         "width": 8
+        },
+        "pocols": {
+         "offset": 40,
+         "width": 8
+        },
+        "pool_out_dim": {
+         "offset": 24,
+         "width": 8
+        },
+        "pool_size": {
+         "offset": 6,
+         "width": 2
+        },
+        "pool_stride": {
+         "offset": 4,
+         "width": 2
+        },
+        "porows": {
+         "offset": 32,
+         "width": 8
+        },
+        "upad": {
+         "offset": 8,
+         "width": 2
+        }
+       },
+       "width": 64
+      },
+      "ConfigMvoutRs2": {
+       "fields": {
+        "acc_scale": {
+         "offset": 32,
+         "slot_width": 32,
+         "width": null,
+         "width_param": "acc_scale_bits"
+        },
+        "stride": {
+         "offset": 0,
+         "slot_width": 32,
+         "width": null,
+         "width_param": "stride_bits"
+        }
+       },
+       "parameters": [
+        "acc_scale_bits",
+        "stride_bits"
+       ],
+       "width": 64
+      },
+      "ConfigNormRs1": {
+       "fields": {
+        "act_msb": {
+         "offset": 16,
+         "width": 1
+        },
+        "cmd_type": {
+         "offset": 0,
+         "width": 2
+        },
+        "norm_stats_id": {
+         "offset": 8,
+         "width": 8
+        },
+        "q_const": {
+         "default_width": 32,
+         "offset": 32,
+         "width": null,
+         "width_param": "acc_t_bits"
+        },
+        "q_const_type": {
+         "offset": 18,
+         "width": 1
+        },
+        "set_stats_id_only": {
+         "offset": 17,
+         "width": 1
+        }
+       },
+       "parameters": [
+        "acc_t_bits"
+       ],
+       "width": null
+      },
+      "ConfigNormRs2": {
+       "fields": {
+        "qb": {
+         "offset": 0,
+         "slot_width": 32,
+         "width": null,
+         "width_param": "acc_t_bits"
+        },
+        "qc": {
+         "offset": 32,
+         "slot_width": 32,
+         "width": null,
+         "width_param": "acc_t_bits"
+        }
+       },
+       "parameters": [
+        "acc_t_bits"
+       ],
+       "width": 64
+      },
+      "MvinRs2": {
+       "fields": {
+        "local_addr": {
+         "offset": 0,
+         "slot_width": 32,
+         "width": null,
+         "width_param": "local_addr_t.getWidth"
+        },
+        "num_cols": {
+         "offset": 32,
+         "slot_width": 16,
+         "width": null,
+         "width_param": "mvin_cols_bits"
+        },
+        "num_rows": {
+         "offset": 48,
+         "slot_width": 16,
+         "width": null,
+         "width_param": "mvin_rows_bits"
+        }
+       },
+       "parameters": [
+        "local_addr_t",
+        "mvin_cols_bits",
+        "mvin_rows_bits"
+       ],
+       "width": 64
+      },
+      "MvoutRs2": {
+       "fields": {
+        "local_addr": {
+         "offset": 0,
+         "slot_width": 32,
+         "width": null,
+         "width_param": "local_addr_t.getWidth"
+        },
+        "num_cols": {
+         "offset": 32,
+         "slot_width": 16,
+         "width": null,
+         "width_param": "mvout_cols_bits"
+        },
+        "num_rows": {
+         "offset": 48,
+         "slot_width": 16,
+         "width": null,
+         "width_param": "mvout_rows_bits"
+        }
+       },
+       "parameters": [
+        "local_addr_t",
+        "mvout_cols_bits",
+        "mvout_rows_bits"
+       ],
+       "width": 64
+      },
+      "MvoutSpadRs1": {
+       "fields": {
+        "local_addr": {
+         "offset": 0,
+         "slot_width": 32,
+         "width": null,
+         "width_param": "local_addr_t.getWidth"
+        },
+        "stride": {
+         "offset": 32,
+         "slot_width": 32,
+         "width": null,
+         "width_param": "stride_bits"
+        }
+       },
+       "parameters": [
+        "local_addr_t",
+        "stride_bits"
+       ],
+       "width": 64
+      },
+      "PreloadRs": {
+       "fields": {
+        "local_addr": {
+         "offset": 0,
+         "slot_width": 32,
+         "width": null,
+         "width_param": "local_addr_t.getWidth"
+        },
+        "num_cols": {
+         "offset": 32,
+         "slot_width": 16,
+         "width": null,
+         "width_param": "preload_cols_bits"
+        },
+        "num_rows": {
+         "offset": 48,
+         "slot_width": 16,
+         "width": null,
+         "width_param": "preload_rows_bits"
+        }
+       },
+       "parameters": [
+        "local_addr_t",
+        "preload_cols_bits",
+        "preload_rows_bits"
+       ],
+       "width": 64
+      }
+     },
+     "method": "chisel_bundle_reverse_declaration_order",
+     "name": "register_bundle_layouts",
+     "unresolved": {}
+    }
+   ],
+   "memories": [
+    {
+     "banks": 4,
+     "bytes": 262144,
+     "census_name": "scratchpad.mem",
+     "depth": 4096,
+     "elem_bits": 8,
+     "modules": [
+      "ScratchpadBank",
+      "ScratchpadBank_1",
+      "ScratchpadBank_2",
+      "ScratchpadBank_3"
+     ],
+     "name": "scratchpad",
+     "role_basis": "census geometry equals the declared role-probe store at its source site",
+     "row_bits_rtl": 128,
+     "row_elems": 16,
+     "view_kind": "address_space"
+    },
+    {
+     "accounting_note": "logical address-space view; do not sum with physical census stores",
+     "addr_width": 9,
+     "banks": 2,
+     "bytes": 65536,
+     "bytes_per_bank": 32768,
+     "depth": 512,
+     "elem_bits": 32,
+     "lane_bits": 32,
+     "lanes": 16,
+     "name": "accumulator",
+     "physical_aliases_status": "unknown",
+     "row_bytes": 64,
+     "view_kind": "address_space"
+    }
+   ],
+   "memory_address_spaces": [
+    {
+     "banks": 4,
+     "bytes": 262144,
+     "census_name": "scratchpad.mem",
+     "depth": 4096,
+     "elem_bits": 8,
+     "modules": [
+      "ScratchpadBank",
+      "ScratchpadBank_1",
+      "ScratchpadBank_2",
+      "ScratchpadBank_3"
+     ],
+     "name": "scratchpad",
+     "role_basis": "census geometry equals the declared role-probe store at its source site",
+     "row_bits_rtl": 128,
+     "row_elems": 16,
+     "view_kind": "address_space"
+    },
+    {
+     "accounting_note": "logical address-space view; do not sum with physical census stores",
+     "addr_width": 9,
+     "banks": 2,
+     "bytes": 65536,
+     "bytes_per_bank": 32768,
+     "depth": 512,
+     "elem_bits": 32,
+     "lane_bits": 32,
+     "lanes": 16,
+     "name": "accumulator",
+     "physical_aliases_status": "unknown",
+     "row_bytes": 64,
+     "view_kind": "address_space"
+    }
+   ],
+   "storage_datapaths": [
+    {
+     "dtype": "i8",
+     "name": "input"
+    },
+    {
+     "dtype": "i32",
+     "name": "accumulator"
+    }
+   ],
+   "target": "gemmini"
+  },
+  "generator": {
+   "method": "mlc RTL discovery (target-agnostic: mesh, datapaths(2 from cell geometry), timing(29/109 modules), timing_structure(derived), funct, register_layouts(12), elaborated_features(derived)) + chipyard FIRRTL grep/HW-port fallback",
+   "name": "merlin.targetgen.rtl.circt_introspect",
+   "version": "rtl-introspect-v12-inherent-attribute-graph"
+  },
+  "schema_version": "2.0"
+ },
+ "provenance": "fresh4 workspace (gemmini-open-compiler-20261026-fresh4): selfcheck_out and a grade run dir; facts trimmed to geometry, memories and RoCC decode tables"
+}

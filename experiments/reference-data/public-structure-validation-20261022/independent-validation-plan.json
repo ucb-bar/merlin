@@ -1,0 +1,158 @@
+{
+  "schema": "operator.independent_public_structure_validation.v1",
+  "created_at": "2026-10-22T10:19:57.778241+00:00",
+  "status": "prespecified_before_new_functional_or_timing_observation",
+  "physical_runs_authorized": false,
+  "frozen_model": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+    "sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869"
+  },
+  "frozen_runtime": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/runtime.json",
+    "sha256": "0684df369407bffad8ee67b1a36d53d7867595a620f105d6c6466c0f26d57801"
+  },
+  "active_selection": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/selection.json",
+    "sha256": "807f75767198d4f6b4d01fd0badf0f18f81a882878215a5ad39b6af2de31e990"
+  },
+  "continued_denial": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/continued-denial.json",
+    "sha256": "424c7ec4e6cc10572cd71dc6ceb31fa290264349632f3b61cad884c7211a492f"
+  },
+  "source": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/probe.c",
+    "sha256": "5c7f188fce274155f932fef943956fc8e851c28dca96a87a5e0a8aa5f367e9de"
+  },
+  "scope": "one-hart integer full16x16 nontransposed nonaccumulating WS, resident full weights, distinct noncrossing A/weight banks, raw i32 readout; translation hits conditional",
+  "independence": {
+    "new_source_family": "independent-structure-validation-v1",
+    "all_arms_same_holdout_group": true,
+    "old_six_labels": "development only; excluded from held validation",
+    "prices_or_structure_may_be_updated_using_results": false,
+    "failure_rule": "If diagnostics drive changes, this family becomes development; new independent source group required. No claiming workload-family or whole-SoC generalization."
+  },
+  "arms": [
+    {
+      "id": 0,
+      "name": "single1",
+      "shape": [
+        16,
+        16,
+        16
+      ],
+      "jobs": 1,
+      "output_values": 256,
+      "checks": "all active outputs exact, inactive outputs unchanged,32 adjacent guard words unchanged, integer checksum exact",
+      "repetitions": 3
+    },
+    {
+      "id": 1,
+      "name": "queued3",
+      "shape": [
+        16,
+        16,
+        16
+      ],
+      "jobs": 3,
+      "output_values": 768,
+      "checks": "all active outputs exact, inactive outputs unchanged,32 adjacent guard words unchanged, integer checksum exact",
+      "repetitions": 3
+    },
+    {
+      "id": 2,
+      "name": "fenced3",
+      "shape": [
+        16,
+        16,
+        16
+      ],
+      "jobs": 3,
+      "output_values": 768,
+      "checks": "all active outputs exact, inactive outputs unchanged,32 adjacent guard words unchanged, integer checksum exact",
+      "repetitions": 3
+    },
+    {
+      "id": 3,
+      "name": "integer_delayed_queued3",
+      "shape": [
+        16,
+        16,
+        16
+      ],
+      "jobs": 3,
+      "output_values": 768,
+      "checks": "all active outputs exact, inactive outputs unchanged,32 adjacent guard words unchanged, integer checksum exact",
+      "repetitions": 3
+    },
+    {
+      "id": 4,
+      "name": "clean_readout3",
+      "shape": [
+        16,
+        16,
+        16
+      ],
+      "jobs": 3,
+      "output_values": 768,
+      "checks": "all active outputs exact, inactive outputs unchanged,32 adjacent guard words unchanged, integer checksum exact",
+      "repetitions": 3
+    },
+    {
+      "id": 5,
+      "name": "dirty_readout3",
+      "shape": [
+        16,
+        16,
+        16
+      ],
+      "jobs": 3,
+      "output_values": 768,
+      "checks": "all active outputs exact, inactive outputs unchanged,32 adjacent guard words unchanged, integer checksum exact",
+      "repetitions": 3
+    },
+    {
+      "id": 6,
+      "name": "integer_only3",
+      "shape": [
+        16,
+        16,
+        16
+      ],
+      "jobs": 3,
+      "output_values": 0,
+      "checks": "all active outputs exact, inactive outputs unchanged,32 adjacent guard words unchanged, integer checksum exact",
+      "repetitions": 3
+    }
+  ],
+  "measurement": {
+    "same_ELF": true,
+    "windows": "independent_begin CSR through independent_end CSR, occurrence=7*repetition+arm; original selected scope binding convention",
+    "instructions": "public architectural custom ISA + FENCE, no synthetic Spike funct127",
+    "input_preparation": "outside timing, prepares all3Atiles/B and drains; readout control pre-fills same output then reads clean, dirty arm writes sentinel to same lines",
+    "printing_and_reference_computation": "after window; all printing after all21windows",
+    "timings_nonadditive": "total/scope timings only; no invented decomposition by subtraction of overlapped stages",
+    "host_control": "exact128 dependent integer adds per job, total384, checksum391; no FP inference",
+    "repeat_rule": "all21 windows and entireprogram numeric pass; spread>5% anyarm => unstable scope and no qualification until explained",
+    "functional_first": "ordinary selected Spike, then sameELF selected observer for all21 exactwindows; no gSIM before root review"
+  },
+  "acceptance": {
+    "status": "proposed narrow qualification criteria; does not replace existing supervisor gates",
+    "numeric": "zero errors across every output/guard/checksum, ordinary and annotated outputs equal after removing only cycle text",
+    "runtime": "exact ELF/input/model/provider/config/scope pins; timing_complete true, unresolved empty; conditional translation assumptions explicit",
+    "absolute_scope_error": "for each arm median, abs(estimate-RTL)<=max(32cycles,20%RTL); across six device arms median relative error<=15%",
+    "pair_ordering": "queued3/fenced3 predicted ratio relative error<=15%; require correct sign only when observed separation exceeds max(32cycles,5% slower arm)",
+    "differential": "dirty-clean and delayed-base deltas: absolute prediction residual<=max(32cycles,25%abs observed delta); CPU-only median follows absolute scope rule",
+    "short_control": "32cycle absolute floor is prespecified for tiny windows, not a fitted residual",
+    "scope_promotion": "success permits review of narrow structural gate only; existing4independent groups/two passing variants/identifiability/train/held rules remain for scalar parameter fitting",
+    "failure": "retain deny unchanged; report feature mismatch/unknown, never fit readout residual into WS/preload prices"
+  },
+  "unqualified": [
+    "queue saturation/capacity pressure beyond3jobs",
+    "tails M8N12K16 (optional separate out-of-scope challenge)",
+    "transpose/accumulate/different weights protocols",
+    "device translation misses/retries",
+    "large/cache-capacity/DRAM regimes",
+    "FP,divide,normalization,full models,FireSim transfer"
+  ],
+  "next_physical": "At most1 combined gSIM execution after root approval; bounded job1200s and original ledger. If runtime cannot faithfully select all windows, stop and review rather than silently splitting scope or adding jobs."
+}

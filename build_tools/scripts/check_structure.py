@@ -118,6 +118,11 @@ REQUIRED_SCHEMAS = [
     "quant_format",
     # Per-form exactness contract every whole-model gate enforces (merlin.perf.exactness).
     "exactness_contract",
+    # Full-model check report (merlin.model_check): build, census, kernel exactness, model metrics.
+    "model_check_report",
+    # Custody of sealed Phase 0 evidence (merlin_experiments.corpus.evidence_custody).
+    "evidence_seal",
+    "evidence_repair",
 ]
 
 REQUIRED_DOCS = [

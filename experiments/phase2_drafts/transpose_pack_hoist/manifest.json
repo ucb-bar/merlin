@@ -1,0 +1,26 @@
+{
+  "schema": "phase2.disabled_source_draft.v1",
+  "status": "DISABLED_UNTESTED_DRAFT_PRESERVED",
+  "tests": "NOT_RUN",
+  "target_execution": "NOT_RUN",
+  "source_effect_qualification": "NOT_ISSUED",
+  "performance": "UNKNOWN",
+  "restore_policy": "Recover exact source bytes only after explicit review; no automatic restoration or activation.",
+  "repository": "merlin",
+  "files": [
+    {
+      "original_intended_path": "src/merlin/llvmlower/dense_layout_loop.py",
+      "payload": "payload/dense_layout_loop.py.txt",
+      "bytes": 1518,
+      "sha256": "2c34a10d52e98c409dfcc9a87ee7df80de3622fe30cd9e784cac57d870447759"
+    }
+  ],
+  "baseline_compiler_sha256": "29213759089b71de26f8a5ab26ca6ef1b8071dc0bb690041eb7de5d0efb53f24",
+  "known_test_issue": "The zero-seed allocation address moves when packing is hoisted. Comparing raw MVIN3 source pointers in the draft test is therefore not a valid semantic assertion; exact zero provenance and output extent must be compared before any test/admission claim.",
+  "intended_composition_order": [
+    "pack/layout preparation",
+    "bounded panel scheduling",
+    "configuration/effect cleanup"
+  ],
+  "wider_transfers": "Not implemented: selected raw load supports multi-block columns, but the original packet owner limits load cols to DIM. A distinct explicitly selected ownership protocol is required."
+}

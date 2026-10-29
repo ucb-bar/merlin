@@ -1,0 +1,167 @@
+# Portable timing tools
+
+`merlin-timing` provides a C++17 streaming timing engine and Python tooling with
+no runtime dependencies on the compiler. ISA decoding and target policies are
+supplied by separate observers. Every timing price is an explicit input.
+
+## C++ engine
+
+Include `merlin_timing/engine.hpp`. `Engine` consumes ephemeral `Event` views;
+it retains fixed scoreboard entries, resource lanes and bounded waiting queues,
+not an instruction trace. `ResourceSpec` declares capacity and waiting-request
+capacity. `Demand.occupancy` reserves resource units; `Event.latency` controls
+result readiness independently. The stream's issue frontier advances through
+dependencies and queue backpressure, without automatically advancing to result
+completion. Declare an issue resource to model issue throughput.
+
+Tokens represent mutable storage. Reads wait for their latest writer; writes
+wait for prior writers and readers. Set `hold_reads_until_ready` for asynchronous
+reads whose input storage remains live through completion. Ordinary operands
+are consumed at issue. `retained_reads` holds a separate operand set until
+completion, allowing captured CPU registers and live memory to share an event. `reset` refuses live or unknown tokens. `barrier` drains
+all modeled work without assuming a fence-instruction price. `publish` attaches
+an already scheduled asynchronous result to a completed token without advancing
+the issue frontier; it refuses live tokens and backdated results.
+
+Unknown prices or dependencies produce incomplete accounting and propagate to
+subsequent affected work. Reports contain a modeled makespan and descriptive
+reservations/busy-unit counts; these are neither qualified hardware cycles nor
+correctness evidence. Callers must supply complete resource/alias relationships.
+The reservation model assumes greedy capacity admission and does not discover
+hardware arbitration, speculative execution, coherence or memory consistency.
+
+`SetAssociativeCache` classifies bounded LRU hits, misses and dirty evictions.
+It assigns no hit, miss, writeback or coherence cost. The caller owns those
+policies and must not assume absent observations are free. `probe` observes
+residency/dirty state without filling, counting accesses or changing LRU;
+`invalidate` reports whether a dirty line was removed. `clear` removes residency
+without erasing the access census. Access results and hit probes expose the
+bounded physical slot index (`set * ways + way`), allowing callers to attach
+pending-fill dependencies without retaining every accessed address. These
+mechanisms assign no coherence price.
+
+## Build and export
+
+```sh
+cmake -S . -B /path/to/build -DBUILD_TESTING=ON
+cmake --build /path/to/build
+ctest --test-dir /path/to/build --output-on-failure
+```
+
+`merlin_timing.export.export_cpp_core(destination)` exports only the canonical
+header, native test, CMake file, README and license into a fresh directory, with
+per-file SHA-256 identities. The same source payload is included in the wheel,
+so export works without a compiler checkout. `verify_cpp_core` detects changed,
+missing or additional files. Build outside the exported source directory.
+
+## Target provider bundles
+
+`merlin_timing.provider_bundle.export_bundle(payloads, destination,
+entrypoint="observer.cpp")` packages a caller-selected map of filenames to source
+bytes. The manifest declares the translation unit and complete source roster;
+the builder contains no accelerator name, instruction semantics or hardware
+parameters. Exports are limited to one MiB and 64 files.
+
+The export includes the canonical `build_provider.py`, which runs independently
+of this package using Python's standard library:
+
+```sh
+python3 /path/to/provider-source/build_provider.py --verify-only
+python3 /path/to/provider-source/build_provider.py \
+  --spike-root /path/to/annotated-spike \
+  --output-library /path/to/libtiming_provider.so
+```
+
+Compilation uses one C++17 compiler process, pins the source bundle and generic
+runtime headers before and after building, and publishes a new library inode.
+Provider source manifests now use version 2 to declare every additional generic
+runtime header through `runtime_headers=(...)`. The two original ABI headers
+remain mandatory. The builder reopens and hashes the entire declared roster
+before and after compilation, including optional shared-library mechanisms.
+Version 1 manifests retain their original two-header interpretation. Source
+custody does not establish functional or timing qualification.
+Target simulator sources and facts belong in the simulator repository's examples,
+independently of the generated OOT compiler. The shared builder supplies no
+kernel, schedule, timing prices or calibration evidence. Candidate grants expose
+reviewed runtime endpoints through the broker; simulator sources remain operator
+build inputs.
+# Asynchronous reservation APIs
+
+The additive `Engine::submit_detached` API schedules a controller effect without
+advancing CPU admission to its future completion. `advance_issue` separately
+applies explicit frontend backpressure. Original `submit` and `barrier` behavior
+is unchanged. Adapters must establish actual dependency and completion effects;
+these APIs supply no physical timing qualification.
+
+`ReservationWindow` tracks bounded entries by generation and keeps each owned
+until its explicit release stage. Allocation can wait for a known release;
+unresolved releases cannot become zero cost or free entries. A selected adapter
+may exclude an exact outstanding ticket from its drain predicate only when its
+original hardware/software completion contract allows that exception. Waiting
+resource queues and completion-owned reservations are different abstractions.
+
+The portable source export now emits version 2, including the reservation header
+and its executable checks. Version 1 exports retain their exact original roster
+and remain verifiable without being rewritten. The simulator's source package
+must retain the manifest of its exact canonical export; copied vendor bytes are
+a versioned source snapshot, never another maintained implementation.
+
+### Timing qualification profiles
+
+New `spike-timing validate` reports use `strict_per_case_v1`: every declared
+held-out case must have a usable prediction and absolute relative cycle error
+at most 4%. The existing source-group, ranking, family and calibration-interval
+gates also remain required. Missing cases stay in the denominator, and one
+bad case cannot disappear behind a good median or percentile. Prediction and
+measurement still need the same executable, inputs, memory regime and timing
+scope; this arithmetic policy cannot establish simulator equivalence.
+
+`--qualification-profile legacy_v1` reproduces the historical 80% coverage and
+median/p95 gates for old report replay. Comparison receipts retain their selected
+profile; historical reports without a profile replay as legacy. A legacy report
+is not evidence of the strict 4% claim.
+
+### Memory reference and adapter checks
+
+`spike-timing memory-reference-prepare --selection selection.json --source-root
+SOURCE_ROOT --output prepared.json` reopens a `merlin.memory_reference_selection.v1`
+selection. It binds the configuration, AXI widths/limits/address range, original
+build receipt, timing/DRAM/LLC sources and explicit `+mm_` runtime settings by
+SHA256. It never guesses missing settings or infers deployed equivalence from a
+configuration name. Pass every deployed runtime override in the selected settings
+file, not merely the elaborator's printed defaults.
+
+`spike-timing memory-boundary-compare --reference reference.jsonl --candidate
+candidate.jsonl --output comparison.json` compares every recorded target cycle,
+including ready/valid backpressure. Headers bind model, initial state, timing
+scope, stimulus, engine and typed ports. Validity-qualified response payloads
+are compared only when meaningful; valid/ready signals are always compared.
+Truncated traces, changed inputs, missing cycles and different identities refuse.
+A matching trace grants no complete-model, hardware or 4% timing qualification.
+
+The standalone FASED wrapper and boundary-driver generator live in
+`build_tools/gsim/reference/`. They reuse existing FireSim timing RTL; the Python
+reference tools supply no substitute timing model or fitted memory prices.
+
+### Experimental posted source actors
+
+`PostedTimeline` dispatches bounded source callbacks through an explicitly closed
+external-arrival frontier. Posting does not execute a future callback or publish
+a future row. Completion tokens remain unresolved until actual dispatch;
+retroactive arrivals, repeated identities, unknown dependencies and budget
+exhaustion fail explicitly. Callback order is deterministic; hardware arbitration
+must be supplied by the source owner rather than inferred from that order.
+
+`PostedEngineStage` owns its Event data and queries readiness without mutating
+Engine accounting. It commits only at actual stage acceptance, retries occupied
+ports later, and publishes its completion token at that stage's known result
+boundary. Pending storage ownership and registered handoffs remain source-adapter
+obligations. Unknown latency or a changed admission refuses. No default timing
+model selects these actors and no physical accuracy is implied.
+
+Compact summaries expose callback posted/dispatched/pending counts by role,
+token-blocked callbacks, dependency-release delay, unresolved completion tokens
+and peak pending depth. Counts describe model callbacks (including retries), not
+physical transactions or capsule progress; delays are not an attribution of
+unique hardware stalls. CPU/DMA cache and response-controller integration is a
+separate source-law task; scalar memory completion cannot invent first beats.

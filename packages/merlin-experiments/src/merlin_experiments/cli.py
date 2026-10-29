@@ -54,6 +54,53 @@ def _measured_status(run_dir: Path, *, stall_hours: float | None = None) -> dict
     return document
 
 
+def _member_paths(values: list[str], flag: str) -> dict[str, Path]:
+    selected: dict[str, Path] = {}
+    for value in values:
+        member, separator, location = value.partition("=")
+        if not separator or not member or not location or member in selected:
+            raise SpecError(f"invalid/duplicate {flag} {value!r}; use GUEST_MEMBER=PATH")
+        selected[member] = Path(location).expanduser().absolute()
+    return selected
+
+
+def _full_capture_inputs(args: argparse.Namespace) -> dict:
+    """Map the v2 (checkpoint) selection flags onto ``capture_selection.select`` keywords.
+
+    Absent flags pass nothing, so a checkpoint-free v1 selection is unchanged. Each loader
+    environment name is declared exactly once, present (``NAME=VALUE``) or absent (``NAME``).
+    """
+    selected: dict = {}
+    if args.checkpoint is not None:
+        ((member, path),) = _member_paths([args.checkpoint], "--checkpoint").items()
+        selected.update(checkpoint=path, checkpoint_guest_member=member)
+    if args.extra_input:
+        selected["extra_inputs"] = _member_paths(args.extra_input, "--extra-input")
+    environment: dict[str, str | None] = {}
+    for value in args.loader_env:
+        name, separator, setting = value.partition("=")
+        if not separator or not name or name in environment:
+            raise SpecError(f"invalid/duplicate --loader-env {value!r}; use NAME=VALUE")
+        environment[name] = setting
+    for name in args.loader_env_unset:
+        if not name or "=" in name or name in environment:
+            raise SpecError(f"invalid/duplicate --loader-env-unset {name!r}; use NAME")
+        environment[name] = None
+    if environment:
+        selected["loader_env"] = environment
+    if args.execution_timeout_seconds is not None:
+        selected["execution_timeout_seconds"] = args.execution_timeout_seconds
+    options = {}
+    if args.stage_fp32:
+        # A worker option: absent keeps the historical plan bytes.
+        options["stage_fp32"] = True
+    if args.cpu_threads is not None:
+        options["cpu_threads"] = args.cpu_threads
+    if options:
+        selected["worker_options"] = options
+    return selected
+
+
 def _capture_sources() -> tuple[Path, Path]:
     """Keep a sealed capture's worker and schemas in the same Merlin installation.
 
@@ -68,6 +115,45 @@ def _capture_sources() -> tuple[Path, Path]:
     bundled = package / "_data/schemas"
     schemas = bundled if "MERLIN_SCHEMAS_DIR" not in os.environ and bundled.is_dir() else schemas_dir()
     return package / "targetgen/_m2m_capture_worker.py", schemas
+
+
+def _dashboard_arguments(dashboard: argparse.ArgumentParser) -> None:
+    """The richer dashboard views' options (Phase 0, explorer, comparison, operator records, live)."""
+    dashboard.add_argument("--phase0", type=Path, help="a Phase 0 derivation, generation run or corpus directory")
+    dashboard.add_argument("--explorer", action="store_true", help="with --target: every run, lineage and links")
+    dashboard.add_argument(
+        "--compare", type=Path, nargs=2, metavar=("RUN_A", "RUN_B"), help="two runs of the same phase side by side"
+    )
+    dashboard.add_argument("--monitor", type=Path, help="a monitor's notes (## <utc> headings, STATUS: lines)")
+    dashboard.add_argument("--load", type=Path, help="host load samples (TSV: utc, load1, cpu_busy_pct, ...)")
+    dashboard.add_argument("--corpus", type=Path, action="append", default=[], help="capsule corpus root(s)")
+    dashboard.add_argument("--measurement-root", type=Path, help="paired Phase 2: where cells are measured")
+    dashboard.add_argument("--stage-root", type=Path, help="paired Phase 2: where trials are authored")
+    dashboard.add_argument(
+        "--operator-private", action="store_true", help="name hidden capsules, held-out members, reference ratios"
+    )
+    dashboard.add_argument("--live", action="store_true", help="rewrite the page every --interval s and serve it")
+    dashboard.add_argument("--interval", type=float, default=60.0, help="--live refresh period in seconds")
+    dashboard.add_argument("--port", type=int, default=8765, help="--live port on 127.0.0.1")
+    dashboard.add_argument("--cpus", help="--live CPU set, e.g. 24-31 (default: unpinned)")
+
+
+def _dashboard_options(args: argparse.Namespace) -> dict:
+    return {
+        "run_dir": args.run_dir,
+        "target": args.target,
+        "store": args.store,
+        "stall_hours": args.stall_hours,
+        "phase0": args.phase0,
+        "explorer": args.explorer or None,
+        "compare": tuple(args.compare) if args.compare else None,
+        "monitor": args.monitor,
+        "load": args.load,
+        "corpus": tuple(args.corpus) or None,
+        "measurement_root": args.measurement_root,
+        "stage_root": args.stage_root,
+        "operator_private": args.operator_private or None,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -87,15 +173,37 @@ def main(argv: list[str] | None = None) -> int:
         from merlin.perf import census_cli
 
         return census_cli.main(raw[1:])
+    if raw[:1] == ["instruction-admission"]:
+        from .phase1.feedback import instruction_admission_preparation
+
+        return instruction_admission_preparation.main(raw[1:])
+    if raw[:1] == ["private-preflight"]:
+        # The private full-model gate's compiler-independent input checks, before a launch.
+        from .phase1.feedback import private_source_preflight
+
+        return private_source_preflight.main(raw[1:])
     if raw[:1] == ["study"]:
         # A comparison study's register beside its run matrices, and the baseline its arms are scored on.
         from merlin.benchharness import study_status
 
         return study_status.main(raw[1:])
+    if raw[:1] == ["model-observe"]:
+        from .model_observation import main as observe_model
+
+        return observe_model(raw[1:])
+    if raw[:1] == ["chain-observe"]:
+        from .chain_observation import main as observe_chain
+
+        return observe_chain(raw[1:])
     parser = argparse.ArgumentParser(prog="merlin experiment", description=__doc__)
     parser.add_argument("--catalog", type=Path, help="catalog YAML; paths inside it are relative to that file")
     commands = parser.add_subparsers(dest="verb", required=True)
     commands.add_parser("list", help="list the versioned experiment catalog")
+    commands.add_parser("model-observe", help="observe every built-model output against an explicit reference")
+    commands.add_parser("chain-observe", help="observe every recurrent output against an explicit reference collection")
+    commands.add_parser(
+        "instruction-admission", help="check or explicitly prepare original linked-instruction admission"
+    )
     commands.add_parser("levels", help="show Phase 1 experiment levels and their stable bundle-arm ids")
     stored = commands.add_parser("runs", help="discover stored phase orchestrations (read-only)")
     stored.add_argument("--root", type=Path, help="run root; defaults to the configured out/runs")
@@ -122,6 +230,7 @@ def main(argv: list[str] | None = None) -> int:
         child.add_argument(
             "--phase0-synth-profile", type=Path, help="new synthesized Phase 0 profile (select with requirement)"
         )
+        child.add_argument("--phase0-generation-scope", choices=("full", "phase1-functional"))
         child.add_argument(
             "--phase0-hidden-profile",
             type=Path,
@@ -133,6 +242,11 @@ def main(argv: list[str] | None = None) -> int:
             help="explicit reviewed private independent component coverage plan",
         )
         child.add_argument("--phase0-rtl-facts", type=Path, help="select exact extracted facts for a new Phase 0 run")
+        child.add_argument(
+            "--phase0-rtl-source-relocations",
+            type=Path,
+            help="explicit byte-identical recorded RTL source custody mapping; grants no new extraction or audit",
+        )
         child.add_argument(
             "--phase0-capability-contract",
             type=Path,
@@ -147,7 +261,24 @@ def main(argv: list[str] | None = None) -> int:
             "--phase0-m2m-root", type=Path, help="explicit Model2MLIR source root for diagnostic capture"
         )
         child.add_argument(
+            "--phase0-capture-timeout-seconds",
+            type=int,
+            help="sandbox timeout (120..14400 s) frozen into the plan for every sealed generation-time "
+            "capture; default keeps the historical fixed 120 s",
+        )
+        child.add_argument(
             "--phase0-m2m-python", type=Path, help="explicit Model2MLIR venv Python for diagnostic capture"
+        )
+        child.add_argument(
+            "--phase0-capture-runtime-reuse",
+            type=Path,
+            help="exact read-only runtime selection JSON; independently checked against the selected capture runtime",
+        )
+        child.add_argument(
+            "--phase0-bwrap",
+            type=Path,
+            help="absolute bubblewrap binary frozen into the plan for every sealed generation-time capture; "
+            "default resolves the system bwrap",
         )
         if verb == "inspect":
             from . import group_inspect
@@ -209,11 +340,46 @@ def main(argv: list[str] | None = None) -> int:
         "--out", type=Path, help="HTML file; defaults to out/artifacts/experiments/<target>/dashboard/<run>.html"
     )
     dashboard.add_argument("--open", action="store_true", help="also open the written page in a browser")
+    _dashboard_arguments(dashboard)
     watch = commands.add_parser("watch", help="live terminal view of a run's records; refreshes until Ctrl-C")
-    watch.add_argument("run_dir", type=Path)
-    watch.add_argument("--interval", type=float, default=30.0, help="seconds between refreshes")
+    watch.add_argument("run_dir", type=Path, nargs="?")
+    watch.add_argument("--task", type=Path, help="unified animated console following a managed campaign task")
+    watch.add_argument(
+        "--operator-private", action="store_true", help="include recorded capsule, agent and performance details"
+    )
+    watch.add_argument("--window", type=int, default=120, help="--task core timeline window in seconds")
+    watch.add_argument("--width", type=int, help="--task display columns")
+    watch.add_argument("--height", type=int, help="--task display rows")
+    watch.add_argument("--interval", type=float, help="refresh seconds (run summary: 30; task console: 1)")
     watch.add_argument("--once", action="store_true", help="print once and exit")
     watch.add_argument("--no-color", action="store_true", help="plain text even on a terminal")
+    watch.add_argument(
+        "--legacy", action="store_true", help="--task: keep the single-screen view instead of the command console"
+    )
+    console = commands.add_parser(
+        "console",
+        help="experiment command console: every experiment on this machine, live or stored, in one view",
+        description="Track, inspect and debug any experiment on this machine from its records (read-only).",
+        epilog="Inside the console press ? for keys: b browse runs, L running experiment, Enter inspect, "
+        "z zoom, q quit. Guide: docs/guides/experiment_console.md",
+    )
+    console.add_argument("--task", type=Path, action="append", help="limit discovery to this task folder (repeatable)")
+    console.add_argument("--run-dir", type=Path, action="append", help="also show this run or record directory")
+    console.add_argument("--experiment", help="open this experiment first (run id or run directory)")
+    console.add_argument("--tasks-root", type=Path, help="directory holding the task folders (default: derived)")
+    console.add_argument(
+        "--operator-private", action="store_true", help="show capsule names, paths and golden references"
+    )
+    console.add_argument("--interval", type=float, help="fast refresh seconds for a running experiment (default 1)")
+    console.add_argument("--once", action="store_true", help="print the selected experiment as text and exit")
+    console.add_argument("--list", action="store_true", help="print the discovered experiments and exit")
+    console.add_argument("--json", action="store_true", help="with --once: print the snapshot as JSON")
+    console.add_argument(
+        "--build", action="store_true", help="compile the Bubble Tea frontend (needs Go) before starting"
+    )
+    console.add_argument("--plain", action="store_true", help="never start the frontend; refresh plain text instead")
+    console.add_argument("--width", type=int, help="text width for --once/--plain (default: terminal)")
+    console.add_argument("--no-color", action="store_true", help="plain text even on a terminal")
     for view in (dashboard, watch):
         view.add_argument(
             "--store", type=Path, help="phase-2 measurement store when the run records none (store_roots.screen)"
@@ -249,6 +415,29 @@ def main(argv: list[str] | None = None) -> int:
         help="independently selected policy bytes for each externally quantized capture",
     )
     derive.add_argument(
+        "--performance-capture",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH",
+        help=(
+            "independent declared performance_applications capture; "
+            "explicit connected policies also derive public sources"
+        ),
+    )
+    derive.add_argument(
+        "--performance-capture-selection",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH@SHA256",
+        help="pre-execution selection for each performance-scale capture (all or none)",
+    )
+    derive.add_argument(
+        "--heldout-layer-shapes",
+        type=Path,
+        help="OPERATOR-PRIVATE merlin.heldout_layer_shapes.v1 file (owner-only, outside the repository): "
+        "refuse any derived form member whose contraction equals a held-out network layer",
+    )
+    derive.add_argument(
         "--native-qualification",
         action="append",
         default=[],
@@ -270,9 +459,136 @@ def main(argv: list[str] | None = None) -> int:
     select_capture.add_argument("--run-dir", type=Path, required=True)
     select_capture.add_argument("--output", type=Path, required=True, help="fresh owner-only selection directory")
     select_capture.add_argument("--bwrap", type=Path)
+    select_capture.add_argument(
+        "--checkpoint",
+        metavar="GUEST_MEMBER=PATH",
+        help="explicit checkpoint file or tree (v2 full-model selection); the loader reads it at GUEST_MEMBER "
+        "under its read-only input root",
+    )
+    select_capture.add_argument(
+        "--extra-input",
+        action="append",
+        default=[],
+        metavar="GUEST_MEMBER=PATH",
+        help="additional selected input file or tree (v2 only; repeatable)",
+    )
+    select_capture.add_argument(
+        "--loader-env",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="declared loader environment value (v2 only; repeatable); every literal loader read must be declared",
+    )
+    select_capture.add_argument(
+        "--loader-env-unset",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="loader environment read selected as deliberately absent (v2 only; repeatable)",
+    )
+    select_capture.add_argument(
+        "--cpu-threads",
+        type=int,
+        help="intra-op CPU threads for the capture worker; the reference bytes depend on the count, so it "
+        "is selected into the plan, the command and the replay (default: one thread, recorded nowhere so "
+        "old selections keep their bytes)",
+    )
+    select_capture.add_argument(
+        "--stage-fp32",
+        action="store_true",
+        help="stage the exported program to FP32 before capture (and before an int8 recipe quantizes it), "
+        "with the worker's exact-source precision audit; needed for models that compute in bf16/fp16",
+    )
+    select_capture.add_argument(
+        "--execution-timeout-seconds",
+        type=int,
+        help="bounded sandbox execution time, used by issue and by the attestation replay: a checkpoint "
+        "selection requires 120..43200; a checkpoint-free selection may select 120..14400 (default: the "
+        "historical fixed 120 s, recorded nowhere so old selections keep their bytes)",
+    )
     issue_capture = capture_ops.add_parser("issue", help="capture only from an exact preselected identity")
     issue_capture.add_argument("--selection", type=Path, required=True)
     issue_capture.add_argument("--expected-sha256", required=True)
+    issue_capture.add_argument(
+        "--attestation-output",
+        type=Path,
+        help="after issuing, replay the capture and write its sealed execution attestation here "
+        "(v3 for a v2 checkpoint selection) as a fresh owner-only file",
+    )
+    issue_capture.add_argument(
+        "--concurrent-replay",
+        action="store_true",
+        help="with --attestation-output: run the attestation replay beside issuance instead of after it, "
+        "the issue on the lower half of this process's CPUs and the replay on the upper half; the "
+        "replay is the same fresh sandboxed execution with the same byte comparison",
+    )
+    attest_capture = capture_ops.add_parser(
+        "attest", help="replay an issued preselected capture and write its sealed execution attestation"
+    )
+    attest_capture.add_argument("--selection", type=Path, required=True)
+    attest_capture.add_argument("--expected-sha256", required=True)
+    attest_capture.add_argument("--output", type=Path, required=True, help="fresh attestation JSON path")
+    demand = operations.add_parser(
+        "performance-demand",
+        help="derive performance cases and per-class holdouts from captured programs' layer inventories",
+    )
+    demand.add_argument(
+        "--program",
+        action="append",
+        required=True,
+        metavar="MODEL/PROGRAM=TRACE@SHA256",
+        help="pinned frontend trace of one captured program (value-free projection only)",
+    )
+    demand.add_argument("--policy", type=Path, required=True, help="merlin.phase0.performance_demand_policy.v1")
+    demand.add_argument("--rtl-facts", type=Path, required=True, help="exact extraction artifact (tile edge)")
+    demand.add_argument("--template", type=Path, required=True, help="reviewed raw int8-to-int32 contract")
+    demand.add_argument("--existing-suite", type=Path, help="staged scalability cases already public")
+    demand.add_argument("--output", type=Path, required=True, help="fresh directory; holdouts are owner-only")
+    epoch = operations.add_parser(
+        "performance-epoch",
+        help="apply case redundancy to a release with a demand plan; write the next suite selections",
+    )
+    epoch.add_argument("--previous", type=Path, required=True, help="previous prepared release root")
+    epoch.add_argument("--plan", type=Path, required=True, help="performance-demand plan.json")
+    epoch.add_argument("--sources", type=Path, required=True, help="performance-demand sources/ directory")
+    epoch.add_argument("--evidence", type=Path, required=True, help="exported Phase 0 evidence root")
+    epoch.add_argument("--chain-plan", type=Path, help="chain-demand plan.json (with --chain-sources)")
+    epoch.add_argument("--chain-sources", type=Path, help="chain-demand sources/ directory")
+    epoch.add_argument("--target", required=True)
+    epoch.add_argument("--output", type=Path, required=True, help="fresh directory")
+    chains = operations.add_parser(
+        "chain-demand",
+        help="derive connected chain cases (fusion, shared inputs) from captured programs' graph structure",
+    )
+    chains.add_argument(
+        "--program",
+        action="append",
+        required=True,
+        metavar="MODEL/PROGRAM=TRACE@SHA256",
+        help="pinned frontend trace of one captured program (value-free structure only)",
+    )
+    chains.add_argument("--policy", type=Path, required=True, help="merlin.phase0.chain_demand_policy.v1")
+    chains.add_argument("--rtl-facts", type=Path, required=True, help="exact extraction artifact (tile edge)")
+    chains.add_argument("--descriptor", type=Path, required=True, help="target descriptor (claim models, binding)")
+    chains.add_argument("--recipe", type=Path, required=True, help="Phase 0 recipe (datapath)")
+    chains.add_argument("--performance-template", type=Path, required=True, help="shared performance template")
+    chains.add_argument("--software-spec", type=Path, required=True, help="selected software spec")
+    chains.add_argument("--output", type=Path, required=True, help="fresh directory")
+    heldout = operations.add_parser(
+        "heldout-layers",
+        help="OPERATOR: write the private held-out layer-shape file from per-program inventories",
+    )
+    heldout.add_argument("--inventory", type=Path, action="append", required=True)
+    heldout.add_argument("--output", type=Path, required=True, help="fresh owner-only file outside the repository")
+    staging = operations.add_parser(
+        "stage-workloads",
+        help="write a fresh workload root (loader and optional profile) per declared roster label",
+    )
+    staging.add_argument("--roster", type=Path, required=True, help="merlin.phase0_workload_roster.v1 file")
+    staging.add_argument("--output", type=Path, required=True, help="fresh capture-input directory")
+    staging.add_argument(
+        "--descriptor", type=Path, help="require the roster to stage exactly the descriptor's declared labels"
+    )
     variants = operations.add_parser(
         "variants", help="derive bounded independent workload roots from selected RTL facts"
     )
@@ -295,6 +611,23 @@ def main(argv: list[str] | None = None) -> int:
     coverage.add_argument("run_dir", type=Path)
     coverage.add_argument("--spec", type=Path, required=True, help="explicit conformance requirement YAML")
     prepare = operations.add_parser("prepare")
+    prepare.add_argument(
+        "--with-level",
+        action="append",
+        choices=("EL5", "EL6"),
+        default=[],
+        help="also prepare an optional ISA-generation or interactive Lean level; never changes existing runs",
+    )
+    prepare.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")
+    prepare.add_argument(
+        "--common-substrate",
+        choices=tuple(f"merlin.common_compiler_substrate.v{version}" for version in range(1, 7)),
+        help="prospective common API release; omitted preserves V3",
+    )
+    prepare.add_argument("--python-source-root", type=Path, help="explicit frozen compiler SDK source root")
+    prepare.add_argument("--public-scalability", type=Path, help="required separate Spike-only public suite selector")
+    prepare.add_argument("--public-supplement", type=Path, help="pinned operator-requested public test selection JSON")
+    prepare.add_argument("--host-index-bits", type=int, help="reviewed index width of the selected host ABI")
     prepare.add_argument("run_dir", type=Path)
     prepare.add_argument(
         "--bundle-arm",
@@ -307,10 +640,18 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="fresh release root; defaults to out/artifacts/protocols/<target>/phase0-<TS>-<sha7>",
     )
-    prepare.add_argument(
+    corpus_mode = prepare.add_mutually_exclusive_group()
+    prepare.set_defaults(generated_only=True)
+    corpus_mode.add_argument(
         "--generated-only",
         action="store_true",
-        help="use only the selected Phase-0 output for public capsules; never read the historical corpus",
+        help="use only selected Phase-0 public capsules (default); never read the historical corpus",
+    )
+    corpus_mode.add_argument(
+        "--historical-overlay",
+        dest="generated_only",
+        action="store_false",
+        help="explicitly retain a historical public corpus; held-out validation sources are refused",
     )
     prepare.add_argument(
         "--phase1-policy-descriptor",
@@ -333,6 +674,9 @@ def main(argv: list[str] | None = None) -> int:
     seal.add_argument("--expected-digest", required=True)
     seal.add_argument("--reviewed-by", required=True)
     seal.add_argument("--review-note", required=True)
+    from .corpus import evidence_custody
+
+    evidence_custody.add_parser(operations)
     args = parser.parse_args(raw)
     if args.verb == "inspect" and args.group is not None:
         # One group of a candidate (a measured job or a package), not an experiment definition.
@@ -341,6 +685,82 @@ def main(argv: list[str] | None = None) -> int:
         return group_inspect.run_from_args(args)
     try:
         if args.verb == "corpus":
+            if args.operation == "evidence":
+                result, code = evidence_custody.run(args)
+                print(json.dumps(result, indent=2, sort_keys=True))
+                return code
+            if args.operation == "heldout-layers":
+                from merlin.common.paths import repo_root
+
+                from .phase0 import heldout_layers as HL
+
+                if args.output.absolute().is_relative_to(repo_root()):
+                    raise SpecError("the held-out layer file is operator-private; write it outside the repository")
+                document = HL.from_inventories(args.inventory)
+                path = HL.write_private(document, args.output)
+                print(json.dumps({"path": str(path), **HL.load(path).summary()}, indent=2))
+                return 0
+            if args.operation == "performance-demand":
+                from .phase0.performance_corpus import derive_demand
+
+                try:
+                    result = derive_demand(
+                        args.program,
+                        policy=args.policy,
+                        facts=args.rtl_facts,
+                        template=args.template,
+                        output=args.output,
+                        existing_suite=args.existing_suite,
+                    )
+                except ValueError as exc:
+                    raise SpecError(str(exc)) from exc
+                print(json.dumps(result, indent=2))
+                return 0
+            if args.operation == "chain-demand":
+                from .phase0.chain_corpus import derive_chains
+
+                try:
+                    result = derive_chains(
+                        args.program,
+                        policy=args.policy,
+                        facts=args.rtl_facts,
+                        descriptor=args.descriptor,
+                        recipe=args.recipe,
+                        performance_template=args.performance_template,
+                        software_spec=args.software_spec,
+                        output=args.output,
+                    )
+                except ValueError as exc:
+                    raise SpecError(str(exc)) from exc
+                print(json.dumps(result, indent=2))
+                return 0
+            if args.operation == "performance-epoch":
+                from .phase0.performance_corpus import assemble_epoch
+
+                try:
+                    result = assemble_epoch(
+                        args.previous,
+                        plan=args.plan,
+                        sources=args.sources,
+                        output=args.output,
+                        evidence_root=args.evidence,
+                        target=args.target,
+                        chain_plan=args.chain_plan,
+                        chain_sources=args.chain_sources,
+                    )
+                except ValueError as exc:
+                    raise SpecError(str(exc)) from exc
+                print(json.dumps(result, indent=2))
+                return 0
+            if args.operation == "stage-workloads":
+                from .phase0.workload_roster import stage
+
+                try:
+                    result = stage(args.roster, args.output, descriptor=args.descriptor)
+                except ValueError as exc:
+                    raise SpecError(str(exc)) from exc
+                print(json.dumps(result, indent=2))
+                return 0
             if args.operation == "variants":
                 from .phase0.workload_variants import materialize
 
@@ -372,10 +792,42 @@ def main(argv: list[str] | None = None) -> int:
                             dtype=args.dtype,
                             recipe=args.recipe,
                             bwrap_binary=args.bwrap,
+                            **_full_capture_inputs(args),
+                        )
+                    elif args.capture_operation == "attest":
+                        result = capture_selection.attest(
+                            args.selection, expected_sha256=args.expected_sha256, output=args.output
                         )
                     else:
-                        receipt = capture_selection.issue(args.selection, expected_sha256=args.expected_sha256)
-                        result = {"sealed_receipt": str(receipt), "phase0_admission": "not_granted"}
+                        if args.attestation_output is not None and (
+                            args.attestation_output.exists() or not args.attestation_output.parent.is_dir()
+                        ):
+                            raise ValueError("capture attestation output must be fresh, under an existing parent")
+                        if args.concurrent_replay and args.attestation_output is None:
+                            raise ValueError("--concurrent-replay needs --attestation-output")
+                        if args.concurrent_replay:
+                            from .capture_execution import sealed_m2m
+
+                            result = {
+                                "phase0_admission": "not_granted",
+                                **capture_selection.issue_and_attest(
+                                    args.selection,
+                                    expected_sha256=args.expected_sha256,
+                                    output=args.attestation_output,
+                                    cpus=sealed_m2m.replay_cpu_sets(os.sched_getaffinity(0)),
+                                ),
+                            }
+                        else:
+                            receipt = capture_selection.issue(args.selection, expected_sha256=args.expected_sha256)
+                            result = {"sealed_receipt": str(receipt), "phase0_admission": "not_granted"}
+                            if args.attestation_output is not None:
+                                result.update(
+                                    capture_selection.attest(
+                                        args.selection,
+                                        expected_sha256=args.expected_sha256,
+                                        output=args.attestation_output,
+                                    )
+                                )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc
                 print(json.dumps(result, indent=2))
@@ -397,6 +849,9 @@ def main(argv: list[str] | None = None) -> int:
                         native_qualifications=capture_selections(args.native_qualification),
                         capture_preselections=capture_selection_specs(args.application_capture_selection),
                         quantization_policies=quantization_policy_specs(args.application_quant_policy),
+                        performance_captures=capture_selections(args.performance_capture),
+                        performance_preselections=capture_selection_specs(args.performance_capture_selection),
+                        heldout_layers=args.heldout_layer_shapes,
                     )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc
@@ -426,6 +881,13 @@ def main(argv: list[str] | None = None) -> int:
                     generated_only=args.generated_only,
                     phase1_policy_descriptor=args.phase1_policy_descriptor,
                     bundle_arms=tuple(args.bundle_arm),
+                    optional_levels=tuple(args.with_level),
+                    lean_toolchain_manifest=args.lean_toolchain_manifest,
+                    **({"common_substrate": args.common_substrate} if args.common_substrate is not None else {}),
+                    **({"python_source_root": args.python_source_root} if args.python_source_root is not None else {}),
+                    host_index_bits=args.host_index_bits,
+                    **({"public_scalability": args.public_scalability} if args.public_scalability is not None else {}),
+                    **({"public_supplement": args.public_supplement} if args.public_supplement is not None else {}),
                 )
             elif args.operation == "inspect":
                 result = corpus_release.inspect_release(args.release)
@@ -497,30 +959,52 @@ def main(argv: list[str] | None = None) -> int:
                 return 0 if current else 1
             result = {"index": str(target_index.write_index(args.target))}
         elif args.verb == "dashboard":
-            from .tracking import write_dashboard
+            from .tracking import serve_dashboard, write_dashboard
 
-            result = write_dashboard(
-                run_dir=args.run_dir,
-                target=args.target,
-                out=args.out,
-                store=args.store,
-                stall_hours=args.stall_hours,
-            )
+            options = _dashboard_options(args)
+            if args.live:
+                from .tracking import destination_for
+
+                out = args.out or destination_for(**options)
+                return serve_dashboard(out=out, interval=args.interval, port=args.port, cpus=args.cpus, **options)
+            result = write_dashboard(out=args.out, **options)
             if args.open:
                 import webbrowser
 
                 webbrowser.open(Path(result["dashboard"]).resolve().as_uri())
         elif args.verb == "watch":
+            if (args.task is None) == (args.run_dir is None):
+                raise SpecError("watch requires one run directory or --task TASK_DIR")
+            if args.task is not None:
+                from .tracking.terminal import main as terminal_main
+
+                options = ["--task", str(args.task), "--window", str(args.window)]
+                for flag, value in (("--interval", args.interval), ("--width", args.width), ("--height", args.height)):
+                    if value is not None:
+                        options += [flag, str(value)]
+                for flag, enabled in (
+                    ("--operator-private", args.operator_private),
+                    ("--once", args.once),
+                    ("--no-color", args.no_color),
+                    ("--legacy", args.legacy),
+                ):
+                    if enabled:
+                        options.append(flag)
+                return terminal_main(options)
             from .tracking import watch as watch_run
 
             return watch_run(
                 args.run_dir,
-                interval=args.interval,
+                interval=30.0 if args.interval is None else args.interval,
                 once=args.once,
                 store=args.store,
                 stall_hours=args.stall_hours,
                 colour=False if args.no_color else None,
             )
+        elif args.verb == "console":
+            from .tracking.console.cli import run as run_console
+
+            return run_console(args)
         elif args.verb == "resume":
             code = runner.resume(args.run_dir, checkpoint=args.checkpoint)
             print(json.dumps(runner.status(args.run_dir), indent=2))
@@ -541,11 +1025,16 @@ def main(argv: list[str] | None = None) -> int:
                 phase0_capability_contract=args.phase0_capability_contract,
                 phase0_synth_profile=args.phase0_synth_profile,
                 phase0_rtl_facts=args.phase0_rtl_facts,
+                phase0_rtl_source_relocations=args.phase0_rtl_source_relocations,
                 phase0_evidence_mode=args.phase0_evidence_mode,
                 phase0_hidden_profile=args.phase0_hidden_profile,
+                phase0_generation_scope=args.phase0_generation_scope,
                 phase0_component_coverage=args.phase0_component_coverage,
                 phase0_m2m_root=args.phase0_m2m_root,
                 phase0_m2m_python=args.phase0_m2m_python,
+                phase0_capture_timeout_seconds=args.phase0_capture_timeout_seconds,
+                phase0_capture_runtime_reuse=args.phase0_capture_runtime_reuse,
+                phase0_bwrap=args.phase0_bwrap,
             )
             if args.verb == "inspect":
                 result = plan

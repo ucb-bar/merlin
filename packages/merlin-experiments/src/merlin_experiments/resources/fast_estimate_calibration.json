@@ -1,0 +1,53 @@
+{
+ "calibrations": [
+  {
+   "cycles_per_command": 14.6721,
+   "cycles_per_fence": 53.8174,
+   "facts_sha256": "b8ff28edc096392cec356f9fececdf17ba70cd3e4b02e6c5931aedc43bb117af",
+   "held_out": [
+    {
+     "held_out_campaign": "fresh9cca",
+     "median_abs_log_error": 0.183,
+     "pairs": 694,
+     "ratio_p10": 0.65,
+     "ratio_p50": 0.942,
+     "ratio_p90": 1.347,
+     "within_1_5x": 0.811
+    },
+    {
+     "held_out_campaign": "fresh9seed",
+     "median_abs_log_error": 0.23,
+     "pairs": 655,
+     "ratio_p10": 0.645,
+     "ratio_p50": 1.009,
+     "ratio_p90": 1.785,
+     "within_1_5x": 0.722
+    },
+    {
+     "held_out_campaign": "fresh8",
+     "median_abs_log_error": 0.334,
+     "pairs": 224,
+     "ratio_p10": 0.626,
+     "ratio_p50": 1.018,
+     "ratio_p90": 1.929,
+     "within_1_5x": 0.643
+    }
+   ],
+   "median_abs_log_error": 0.2033,
+   "model_sha256s": [
+    "132c41bd1da3636fa298becd0c4387f711b35c9e314ae2dbf7d1125fec971044",
+    "b3ce9aaf7e8e2227e781f5d0bb3bd597f73ab12cd8c67aff64a5cd7f54347b11"
+   ],
+   "pairs": 1573,
+   "ratio_quantiles": {
+    "p10": 0.654,
+    "p25": 0.83,
+    "p50": 1.003,
+    "p75": 1.239,
+    "p90": 1.635
+   },
+   "source": "complete Spike timing-model estimates (complete_event_accounting) of the open-compiler fresh7-fresh9 campaigns, deduplicated by executable and cycles; observed command census"
+  }
+ ],
+ "schema": "merlin.phase1.fast_estimate_calibration.v1"
+}

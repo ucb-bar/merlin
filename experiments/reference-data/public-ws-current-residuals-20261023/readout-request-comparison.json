@@ -1,0 +1,274 @@
+{
+  "schema": "merlin.public_request_stage_comparison.v1",
+  "rows": [
+    {
+      "case": "arm0",
+      "mode": "off",
+      "cycles": 1495,
+      "physical": 1627,
+      "relative_error": -0.08113091579594345,
+      "report": {
+        "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/arm0-off.report.json",
+        "sha256": "9fa68535770fd53f2f17bf38d785817cfb366aaadc461542db2e1141e1b0845f"
+      },
+      "elf_sha256": "352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2",
+      "scope_binding_sha256": "3d8ecf479f108f650b758ab7d224a625b32ff0b04485d3ba3ba632421115ca2a",
+      "stdout_sha256": "03f9c0ee4984b054e1887a72cb5e74d61553400f8133511deb83709d99550fbf",
+      "argv": [
+        "taskset",
+        "-c",
+        "29",
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/off-model.json",
+        "--timing-report=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/arm0-off.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/0.scope.json",
+        "--timing-input-sha256=352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/program.elf"
+      ]
+    },
+    {
+      "case": "arm0",
+      "mode": "on",
+      "cycles": 1591,
+      "physical": 1627,
+      "relative_error": -0.022126613398893658,
+      "report": {
+        "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/arm0-on.report.json",
+        "sha256": "67186447638db64d48ebcad89ba85c457bcb38529c76166f46bd3c1354f4dbb9"
+      },
+      "elf_sha256": "352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2",
+      "scope_binding_sha256": "3d8ecf479f108f650b758ab7d224a625b32ff0b04485d3ba3ba632421115ca2a",
+      "stdout_sha256": "03f9c0ee4984b054e1887a72cb5e74d61553400f8133511deb83709d99550fbf",
+      "argv": [
+        "taskset",
+        "-c",
+        "29",
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/on-model.json",
+        "--timing-report=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/arm0-on.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/0.scope.json",
+        "--timing-input-sha256=352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/program.elf"
+      ]
+    },
+    {
+      "case": "arm1",
+      "mode": "off",
+      "cycles": 751,
+      "physical": 872,
+      "relative_error": -0.13876146788990829,
+      "report": {
+        "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/arm1-off.report.json",
+        "sha256": "1908f4cd6396ac2529b616d0ee0d44201d95d99418dc6778e448a6944a9a97aa"
+      },
+      "elf_sha256": "352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2",
+      "scope_binding_sha256": "ec3323c7b25bcd184ba44aeba3c00b5b9ad60bf46916dadce68cd1e4ef613290",
+      "stdout_sha256": "03f9c0ee4984b054e1887a72cb5e74d61553400f8133511deb83709d99550fbf",
+      "argv": [
+        "taskset",
+        "-c",
+        "29",
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/off-model.json",
+        "--timing-report=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/arm1-off.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/1.scope.json",
+        "--timing-input-sha256=352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/program.elf"
+      ]
+    },
+    {
+      "case": "arm1",
+      "mode": "on",
+      "cycles": 847,
+      "physical": 872,
+      "relative_error": -0.028669724770642224,
+      "report": {
+        "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/arm1-on.report.json",
+        "sha256": "63c9bb753b9c6e3e9e9e72ce696319f725fb1bd8b80f173dfb30e79b7881cdd2"
+      },
+      "elf_sha256": "352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2",
+      "scope_binding_sha256": "ec3323c7b25bcd184ba44aeba3c00b5b9ad60bf46916dadce68cd1e4ef613290",
+      "stdout_sha256": "03f9c0ee4984b054e1887a72cb5e74d61553400f8133511deb83709d99550fbf",
+      "argv": [
+        "taskset",
+        "-c",
+        "29",
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/on-model.json",
+        "--timing-report=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/arm1-on.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/1.scope.json",
+        "--timing-input-sha256=352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/program.elf"
+      ]
+    },
+    {
+      "case": "baseline",
+      "mode": "off",
+      "cycles": 2313,
+      "physical": 2551,
+      "relative_error": -0.093296746373971,
+      "report": {
+        "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/baseline-off.report.json",
+        "sha256": "16b9cbabef00c5dfb281e50ed69f0b43ffda6155abaa680d1bf7d4a3d41f67a6"
+      },
+      "elf_sha256": "4232af0dde5c8569bc49648259b717c59e48eb32a277fb12968cd78439a03b5e",
+      "scope_binding_sha256": "4be15d313f4e83766721878b2c542640a6af6418f520cdf5ea8841d2838fae86",
+      "stdout_sha256": "b23084627f455ba474e379174bd5939805d89a007b1e8dade345a9a3309eda8a",
+      "argv": [
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/off-model.json",
+        "--timing-report=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/baseline-off.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-pw8n8jil/workspace/scope.json",
+        "--timing-input-sha256=4232af0dde5c8569bc49648259b717c59e48eb32a277fb12968cd78439a03b5e",
+        "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-pw8n8jil/workspace/program.elf"
+      ]
+    },
+    {
+      "case": "baseline",
+      "mode": "on",
+      "cycles": 2313,
+      "physical": 2551,
+      "relative_error": -0.093296746373971,
+      "report": {
+        "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/baseline-on.report.json",
+        "sha256": "b0f582eeffe9126e348eb1bea091ba24d7737ac43e8896e6463142e085de2ec4"
+      },
+      "elf_sha256": "4232af0dde5c8569bc49648259b717c59e48eb32a277fb12968cd78439a03b5e",
+      "scope_binding_sha256": "4be15d313f4e83766721878b2c542640a6af6418f520cdf5ea8841d2838fae86",
+      "stdout_sha256": "b23084627f455ba474e379174bd5939805d89a007b1e8dade345a9a3309eda8a",
+      "argv": [
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/on-model.json",
+        "--timing-report=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/baseline-on.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-pw8n8jil/workspace/scope.json",
+        "--timing-input-sha256=4232af0dde5c8569bc49648259b717c59e48eb32a277fb12968cd78439a03b5e",
+        "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_1h_8x9n4/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-pw8n8jil/workspace/program.elf"
+      ]
+    },
+    {
+      "case": "config",
+      "mode": "off",
+      "cycles": 2298,
+      "physical": 2537,
+      "relative_error": -0.09420575482853766,
+      "report": {
+        "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/config-off.report.json",
+        "sha256": "8842e314e7337e1579d49c1bfa43ab55d78ec493c52f1fad58157114eda08014"
+      },
+      "elf_sha256": "0978372514ac0c80342ddb9000eaa61aff0d743eaad1a7d7ad4e49d6c8bd471e",
+      "scope_binding_sha256": "3826a5d4b694bdbfcfc276b40422d953792b18ddb6edf444014046e244e526de",
+      "stdout_sha256": "ebd2b6048a4ca0d7dd633e942d1883e20c10f422a86af57e681af870675c021a",
+      "argv": [
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/off-model.json",
+        "--timing-report=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/config-off.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-hrecwk1g/workspace/scope.json",
+        "--timing-input-sha256=0978372514ac0c80342ddb9000eaa61aff0d743eaad1a7d7ad4e49d6c8bd471e",
+        "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-hrecwk1g/workspace/program.elf"
+      ]
+    },
+    {
+      "case": "config",
+      "mode": "on",
+      "cycles": 2298,
+      "physical": 2537,
+      "relative_error": -0.09420575482853766,
+      "report": {
+        "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/config-on.report.json",
+        "sha256": "8ad624aa525984bb422644f715478ece142e933843e1b0897c86f9c41de34335"
+      },
+      "elf_sha256": "0978372514ac0c80342ddb9000eaa61aff0d743eaad1a7d7ad4e49d6c8bd471e",
+      "scope_binding_sha256": "3826a5d4b694bdbfcfc276b40422d953792b18ddb6edf444014046e244e526de",
+      "stdout_sha256": "ebd2b6048a4ca0d7dd633e942d1883e20c10f422a86af57e681af870675c021a",
+      "argv": [
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/on-model.json",
+        "--timing-report=<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/config-on.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-hrecwk1g/workspace/scope.json",
+        "--timing-input-sha256=0978372514ac0c80342ddb9000eaa61aff0d743eaad1a7d7ad4e49d6c8bd471e",
+        "<WORKSPACE>/tasks/el4-connected-execution-20261023/merlin/out/runs/gemmini/phase1/gemmini-offline-connected-20261024-v10/_qa_work/selfchecks/selfcheck_lgwbz6eh/runs/gemmini-capsule-bench/G_matmul_m32k32n32_raw/generated/joint_timing/archive-count-hrecwk1g/workspace/program.elf"
+      ]
+    }
+  ],
+  "prior_comparison": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/comparison.json",
+    "sha256": "ec769af9c100cd33e974c6e68dfea08f104251cc7b27330bcce3f3364bca2481"
+  },
+  "prior_holdouts": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/holdouts.json",
+    "sha256": "c1b8398e836e92ecc4461dd761b41908a3bd0d0742d973999e70fedd6c59688f"
+  },
+  "provider": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/libtiming_provider.so",
+    "sha256": "ee4d095264dd95dd3c7b8355aaf9f0cce7a811187251a74c90ba784f0f621bcd"
+  },
+  "models": {
+    "off": {
+      "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/off-model.json",
+      "sha256": "87102252576e7b796c6ff7e40eebb23afb23cca139cd9e1edad88e1ad501644b"
+    },
+    "on": {
+      "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-request-v2/on-model.json",
+      "sha256": "dc7b980610160c63792581b80231bf16be4d9989abbc7710769b85b74a4726f6"
+    }
+  },
+  "new_physical_runs": 0,
+  "parameters_adjusted_after_holdouts": false,
+  "calibration_qualified": false
+}

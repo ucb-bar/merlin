@@ -129,15 +129,38 @@ class CertificateRecord:
     unresolved: Mapping[str, str]
     document: Mapping[str, Any]
 
+    @property
+    def certification(self) -> str:
+        """The recorded admission policy: every measured workload captured on both engines."""
+        return "per_workload"
+
+    def admits(self, workload: Mapping[str, Any]) -> bool:
+        """Whether gSIM timing is qualified for ``workload``: here, its exact identity was captured."""
+        return workload_sha256(canonical_workload(workload)) in self.members
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "path": str(self.path),
             "sha256": self.sha256,
             "target": self.target,
+            "certification": self.certification,
             "certified_workloads": len(self.members),
             "unresolved_workloads": len(self.unresolved),
             "fidelity": FIDELITY,
         }
+
+
+def certification_of(certificate: Any) -> str:
+    """The recorded admission policy of a certificate-like record (``per_workload`` unless it says)."""
+    return str(getattr(certificate, "certification", "per_workload"))
+
+
+def admits(certificate: Any, workload: Mapping[str, Any]) -> bool:
+    """Whether ``certificate`` qualifies gSIM timing for ``workload`` under its own policy."""
+    test = getattr(certificate, "admits", None)
+    if callable(test):
+        return bool(test(workload))
+    return workload_sha256(canonical_workload(workload)) in certificate.members
 
 
 def _validate_pin(
@@ -328,6 +351,11 @@ def load_certificate(
         raise GsimGateError(f"GSIM certificate digest mismatch: expected={expected_sha256}, actual={digest}")
     if not isinstance(doc, Mapping):
         raise GsimGateError("GSIM certificate root must be a mapping")
+    from merlin_experiments.phase2 import engine_qualification as EQ
+
+    if doc.get("schema_version") == EQ.SCHEMA_VERSION:
+        # The engine-level policy: admission by coverage of one qualified build, not exact capture.
+        return EQ.load_qualification(certificate_path, raw_bytes, doc, artifact_paths=artifact_paths)
     if doc.get("schema_version") != SCHEMA_VERSION:
         raise GsimGateError(
             f"unsupported GSIM certificate schema {doc.get('schema_version')!r}; expected {SCHEMA_VERSION}"
@@ -595,7 +623,7 @@ def plan_evaluation(
         raise GsimGateError(f"unknown evaluation phase {phase!r}")
     canonical = canonical_workload(workload)
     identity = workload_sha256(canonical)
-    eligible = identity in certificate.members
+    eligible = admits(certificate, canonical)
     if eligible and not gsim_available:
         reason = (
             "workload is inside the certified GSIM envelope, but the pinned GSIM engine is "

@@ -84,6 +84,52 @@ def prepare_runtime_environment(
     if environment.get(RETIRED_READONLY_ENV, "").strip() == "1":
         return result(7, RETIRED_READONLY_MESSAGE)
 
+    from . import author_profiles
+
+    try:
+        profile = author_profiles.validate_options(options)
+    except ValueError as error:
+        return result(7, str(error))
+    if profile is None:
+        remove(author_profiles.ENV)
+    else:
+        set_value(author_profiles.ENV, profile.name)
+        if profile.fresh10:
+            for key in tuple(environment):
+                if key.startswith("MERLIN_REFERENCE") and not (
+                    key == "MERLIN_REFERENCE_MAP" and profile.raw_kernel_references and not profile.coverage
+                ):
+                    remove(key)
+        elif not profile.modern:
+            for key in tuple(environment):
+                if key.startswith("MERLIN_REFERENCE"):
+                    remove(key)
+
+    # Only the operator's typed invocation selects this evaluator treatment.
+    # Ambient or author-provided environment values cannot opt a run into it.
+    mode = options.compiler_execution
+    if mode not in {"profile_strict_v1", "snapshot_external_v1"}:
+        return result(7, "unknown compiler execution treatment")
+    if mode == "snapshot_external_v1" and options.sandbox != "bwrap":
+        return result(7, "snapshot_external_v1 requires the isolated bwrap compiler workspace")
+    set_value("MERLIN_COMPILER_EXECUTION_MODE", mode)
+    from .feedback import sandbox_pool
+
+    if getattr(options, "sandbox_reuse", sandbox_pool.PER_CALL) not in sandbox_pool.CHOICES:
+        return result(7, "unknown sandbox reuse selection")
+    set_value(sandbox_pool.ENV, getattr(options, "sandbox_reuse", sandbox_pool.PER_CALL))
+    if options.compiler_access == "full_compiler":
+        if mode != "snapshot_external_v1" or not all((options.full_compiler_root, options.full_compiler_manifest,
+                                                     options.full_compiler_manifest_sha256)):
+            return result(7, "full compiler access requires an explicit isolated source selection")
+        set_value("MERLIN_FULL_COMPILER_SELECTION", json.dumps({
+            "root": options.full_compiler_root,
+            "manifest_path": options.full_compiler_manifest,
+            "manifest_sha256": options.full_compiler_manifest_sha256,
+        }, sort_keys=True))
+    else:
+        remove("MERLIN_FULL_COMPILER_SELECTION")
+
     budget = options.qa_timeout if options.model_budget_s is None else options.model_budget_s
     if budget:
         set_value("MERLIN_MODEL_BUDGET_S", str(budget))

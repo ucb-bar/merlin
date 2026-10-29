@@ -1,0 +1,268 @@
+{
+  "author_s": 39600,
+  "cpus": [
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22
+  ],
+  "drain_s": 3600,
+  "duration_s": 43200,
+  "effort": "high",
+  "framework": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c",
+  "group": "external-fresh10-baseline",
+  "historical_evidence": {
+    "author_s": 39600,
+    "authored_bundle": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/gemmini-open-compiler-20261028-fresh10seed/authored_input_bundle_manifest.yaml",
+      "sha256": "1b00d79677a792ea78b65ad22e1f94a81955f4f90b96dca4640177f236327e5e"
+    },
+    "cpus": [
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22
+    ],
+    "drain_s": 3600,
+    "duration_s": 43200,
+    "effort": "high",
+    "environment_metadata_repo_sha": "388ee5ff2ed57b06b5f229e1abadfba78d7fbac4",
+    "environment_preparation_started_at": "2026-10-28T09:29:50.751696+00:00",
+    "environment_receipt": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/gemmini-open-compiler-20261028-fresh10seed/environment.yaml",
+      "sha256": "5d40240d48979f0aeb2ee87be52a248fc14a7ad450764a2d669720e0170775e7"
+    },
+    "execution_model": "gpt-6.1-sol",
+    "final_model_s": 7200,
+    "framework": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c",
+    "framework_marker": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/.merlin-source-revision.json",
+      "sha256": "bb3bb6257840b7dc39a3c9d211875fa7d58af151dccbf469d5df5d88e30aba56"
+    },
+    "framework_source_revision": "afcf34be293cc12d0b51fabdf6fe57e1f8960255",
+    "joint_clock_receipt": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/gemmini-open-compiler-20261028-fresh10seed/joint_campaign.json",
+      "sha256": "691498bcd1a2c6864fdd0f41e7b1b2b8b7ced281e52644f489d3ccce7ad2c58c"
+    },
+    "joint_started_at_epoch": 1793179866.999961,
+    "joint_started_at_utc": "2026-10-28T09:31:06.999961+00:00",
+    "name": "fresh10seed",
+    "native_plan": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/artifacts/open-fresh/fresh10seed/proposed-launch.json",
+      "sha256": "5178d07846d3878acb7d1eadd296aa9463d38c075ce3400a5182c65ee89e9e0f"
+    },
+    "native_source_release": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/source-release",
+    "profile": null,
+    "run_id": "gemmini-open-compiler-20261028-fresh10seed",
+    "runtime_directory": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/gemmini-open-compiler-20261028-fresh10seed",
+    "served_task": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/gemmini-open-compiler-20261028-fresh10seed/TASK.md",
+      "sha256": "195b9bc02f439cd8db208279bf365a79f9dd0664935e45829ecfd83ad90dde85"
+    },
+    "source_authority_note": "Use nativeplan source_revision and immutable export marker. environment.repo_sha is original sharedworktree metadata, not executedexportrevision.",
+    "source_bundle": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/gemmini-open-compiler-20261028-fresh10seed/input_bundle_manifest.yaml",
+      "sha256": "856a8fffb0bab4ff3ce51398fc60b2deccc14aff165ed6937b9045534b6bbaf4"
+    },
+    "yaml_specification_closure": [
+      {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10/fresh-campaign-fresh10-seeded.yaml",
+        "sha256": "8ddec7dcd532c45aadc6bd74ee977fcd17bdfa503a9df3dedc7301c15dc85d7f"
+      },
+      {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10/fresh-campaign-fresh10-resources.yaml",
+        "sha256": "1642c197b676853813b6b9e9246aca56313826bcd78cd1109d0f966e117c3d17"
+      },
+      {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10/fresh-campaign-fresh10-sdk-v24.yaml",
+        "sha256": "a2766faf7f7ae4c4927f3071c4abc9411a53928487030fea7f31ea9e54c75a22"
+      },
+      {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10/fresh-campaign-fresh10-common.yaml",
+        "sha256": "e482ad0afad2548e06426dfba83220b449113e82484db666633d191ef76c2e98"
+      },
+      {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs_capsules/fresh-campaign-xs_capsules-overrides.yaml",
+        "sha256": "ff10bb83db381a48445f5fbdcd4627da2ba0b13436b18f0a41979ab625c99e56"
+      },
+      {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-fresh8ref-paired.yaml",
+        "sha256": "4f8007e8da51ba42919bc715c7b0d40ed78eb1a4215573c0da69e53c005b4cf1"
+      },
+      {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-fresh7ref-paired.yaml",
+        "sha256": "446df2d2766fea472c6a47f8819732fd5cae2be3d146d4e7704b7c7bea6b24ff"
+      },
+      {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-fresh7-paired.yaml",
+        "sha256": "d5612d8a75445f60edbb1f7e32aab92c882020dcbf7a28325badf94740f40519"
+      },
+      {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-fresh7-reference.yaml",
+        "sha256": "15e381df469cbd231f429e087251da709d3fb3ee2b24b547c944d777645b128f"
+      },
+      {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-fresh7.yaml",
+        "sha256": "aba751c46a07b3a5092b091b5367c49b1a35baf4f525001e8315f6e758a98d69"
+      },
+      {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-next.yaml",
+        "sha256": "0a1e6e5c42025403e9f51c88340de2757571cb07cccfc68bc2b422f363664bc3"
+      },
+      {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-fresh2.yaml",
+        "sha256": "ca80a9cb697e8f8f8d1c6874d4c6e8f1436513c6d0243081577b7a41b58b85af"
+      }
+    ]
+  },
+  "model": "gpt-6.1-sol",
+  "name": "fresh10seed",
+  "native_plan": {
+    "archived": "fresh10seed/native-plan.json",
+    "original": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/artifacts/open-fresh/fresh10seed/proposed-launch.json",
+      "sha256": "5178d07846d3878acb7d1eadd296aa9463d38c075ce3400a5182c65ee89e9e0f"
+    },
+    "sha256": "5178d07846d3878acb7d1eadd296aa9463d38c075ce3400a5182c65ee89e9e0f"
+  },
+  "policy": {
+    "archived": "fresh10seed/policy.json",
+    "original": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/artifacts/open-fresh/fresh10seed/policy.json",
+      "sha256": "e19afdd1245dccb8752c6143114748c3d0a9bbbfc036f4e561a1c26d7ffc2119"
+    },
+    "sha256": "e19afdd1245dccb8752c6143114748c3d0a9bbbfc036f4e561a1c26d7ffc2119"
+  },
+  "receives": "fresh10seed/receives.json",
+  "run_directory": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/gemmini-open-compiler-20261028-fresh10seed",
+  "run_id": "gemmini-open-compiler-20261028-fresh10seed",
+  "served_task": {
+    "archived": "fresh10seed/served-TASK.md",
+    "original": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/gemmini-open-compiler-20261028-fresh10seed/TASK.md",
+      "sha256": "195b9bc02f439cd8db208279bf365a79f9dd0664935e45829ecfd83ad90dde85"
+    },
+    "sha256": "195b9bc02f439cd8db208279bf365a79f9dd0664935e45829ecfd83ad90dde85"
+  },
+  "source_revision": "afcf34be293cc12d0b51fabdf6fe57e1f8960255",
+  "specs": [
+    {
+      "archived": "fresh10seed/specs/fresh-campaign-fresh10-seeded.yaml",
+      "original": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10/fresh-campaign-fresh10-seeded.yaml",
+        "sha256": "8ddec7dcd532c45aadc6bd74ee977fcd17bdfa503a9df3dedc7301c15dc85d7f"
+      },
+      "sha256": "8ddec7dcd532c45aadc6bd74ee977fcd17bdfa503a9df3dedc7301c15dc85d7f"
+    },
+    {
+      "archived": "fresh10seed/specs/fresh-campaign-fresh10-resources.yaml",
+      "original": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10/fresh-campaign-fresh10-resources.yaml",
+        "sha256": "1642c197b676853813b6b9e9246aca56313826bcd78cd1109d0f966e117c3d17"
+      },
+      "sha256": "1642c197b676853813b6b9e9246aca56313826bcd78cd1109d0f966e117c3d17"
+    },
+    {
+      "archived": "fresh10seed/specs/fresh-campaign-fresh10-sdk-v24.yaml",
+      "original": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10/fresh-campaign-fresh10-sdk-v24.yaml",
+        "sha256": "a2766faf7f7ae4c4927f3071c4abc9411a53928487030fea7f31ea9e54c75a22"
+      },
+      "sha256": "a2766faf7f7ae4c4927f3071c4abc9411a53928487030fea7f31ea9e54c75a22"
+    },
+    {
+      "archived": "fresh10seed/specs/fresh-campaign-fresh10-common.yaml",
+      "original": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10/fresh-campaign-fresh10-common.yaml",
+        "sha256": "e482ad0afad2548e06426dfba83220b449113e82484db666633d191ef76c2e98"
+      },
+      "sha256": "e482ad0afad2548e06426dfba83220b449113e82484db666633d191ef76c2e98"
+    },
+    {
+      "archived": "fresh10seed/specs/fresh-campaign-xs_capsules-overrides.yaml",
+      "original": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs_capsules/fresh-campaign-xs_capsules-overrides.yaml",
+        "sha256": "ff10bb83db381a48445f5fbdcd4627da2ba0b13436b18f0a41979ab625c99e56"
+      },
+      "sha256": "ff10bb83db381a48445f5fbdcd4627da2ba0b13436b18f0a41979ab625c99e56"
+    },
+    {
+      "archived": "fresh10seed/specs/fresh-campaign-fresh8ref-paired.yaml",
+      "original": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-fresh8ref-paired.yaml",
+        "sha256": "4f8007e8da51ba42919bc715c7b0d40ed78eb1a4215573c0da69e53c005b4cf1"
+      },
+      "sha256": "4f8007e8da51ba42919bc715c7b0d40ed78eb1a4215573c0da69e53c005b4cf1"
+    },
+    {
+      "archived": "fresh10seed/specs/fresh-campaign-fresh7ref-paired.yaml",
+      "original": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-fresh7ref-paired.yaml",
+        "sha256": "446df2d2766fea472c6a47f8819732fd5cae2be3d146d4e7704b7c7bea6b24ff"
+      },
+      "sha256": "446df2d2766fea472c6a47f8819732fd5cae2be3d146d4e7704b7c7bea6b24ff"
+    },
+    {
+      "archived": "fresh10seed/specs/fresh-campaign-fresh7-paired.yaml",
+      "original": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-fresh7-paired.yaml",
+        "sha256": "d5612d8a75445f60edbb1f7e32aab92c882020dcbf7a28325badf94740f40519"
+      },
+      "sha256": "d5612d8a75445f60edbb1f7e32aab92c882020dcbf7a28325badf94740f40519"
+    },
+    {
+      "archived": "fresh10seed/specs/fresh-campaign-fresh7-reference.yaml",
+      "original": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-fresh7-reference.yaml",
+        "sha256": "15e381df469cbd231f429e087251da709d3fb3ee2b24b547c944d777645b128f"
+      },
+      "sha256": "15e381df469cbd231f429e087251da709d3fb3ee2b24b547c944d777645b128f"
+    },
+    {
+      "archived": "fresh10seed/specs/fresh-campaign-fresh7.yaml",
+      "original": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-fresh7.yaml",
+        "sha256": "aba751c46a07b3a5092b091b5367c49b1a35baf4f525001e8315f6e758a98d69"
+      },
+      "sha256": "aba751c46a07b3a5092b091b5367c49b1a35baf4f525001e8315f6e758a98d69"
+    },
+    {
+      "archived": "fresh10seed/specs/fresh-campaign-next.yaml",
+      "original": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-next.yaml",
+        "sha256": "0a1e6e5c42025403e9f51c88340de2757571cb07cccfc68bc2b422f363664bc3"
+      },
+      "sha256": "0a1e6e5c42025403e9f51c88340de2757571cb07cccfc68bc2b422f363664bc3"
+    },
+    {
+      "archived": "fresh10seed/specs/fresh-campaign-fresh2.yaml",
+      "original": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-fresh2.yaml",
+        "sha256": "ca80a9cb697e8f8f8d1c6874d4c6e8f1436513c6d0243081577b7a41b58b85af"
+      },
+      "sha256": "ca80a9cb697e8f8f8d1c6874d4c6e8f1436513c6d0243081577b7a41b58b85af"
+    }
+  ]
+}

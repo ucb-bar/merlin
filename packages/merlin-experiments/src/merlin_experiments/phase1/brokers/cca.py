@@ -113,4 +113,7 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    from merlin_experiments.phase1.telemetry.resilient_output import install
+
+    install()  # A full log volume drops log lines, never the broker.
     raise SystemExit(main())

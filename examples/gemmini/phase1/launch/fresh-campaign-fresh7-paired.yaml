@@ -1,0 +1,24 @@
+# Common inputs and budgets for the explicitly authorized raw-reference study.
+# Select one arm below; prepare these shared inputs once, before either run.
+extends: fresh-campaign-fresh7-reference.yaml
+id: gemmini-open-compiler-fresh7-matched-raw-references
+variables:
+  INPUTS: ${FRAMEWORK}/out/artifacts/fresh-inputs-paired-raw
+  PRIVATE_ROOT: ${TASK}/private/${RUN_ID}
+  OPERATOR_TMP: ${TASK}/.tmp/${RUN_ID}/operator
+  MATCHED_RAW_REFERENCES: ${REPO}/out/artifacts/preparation/fresh7-matched-raw-references
+  REFERENCE_ANALYSIS_DEPS: ${REPO}/out/artifacts/preparation/fresh7-reference-analysis-deps/python
+run:
+  run_id: null
+  unit: null
+  workers: 10
+  sim_max_jobs: 10
+  treatment: matched_raw_reference_comparison
+inputs:
+  public_references: ${MATCHED_RAW_REFERENCES}
+plan:
+  guidance: ${TASK}/.tmp/fresh/fresh7-guidance.md
+  reference_guidance: "off"
+  environment:
+    TMPDIR: ${OPERATOR_TMP}
+    PYTHONPATH: ${FRAMEWORK}/src:${FRAMEWORK}/packages/merlin-experiments/src:${FRAMEWORK}/packages/merlin-timing/src:${FRAMEWORK}/packages/merlin-mining/src:${REFERENCE_ANALYSIS_DEPS}

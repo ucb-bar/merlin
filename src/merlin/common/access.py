@@ -8,7 +8,10 @@ sandbox itself is unavailable; it must never silently run with only this shared 
 
 from __future__ import annotations
 
+import contextlib
+import os
 import sys
+import threading
 from dataclasses import dataclass
 from importlib.machinery import all_suffixes
 from pathlib import Path, PurePosixPath
@@ -82,6 +85,35 @@ def module_matches(module: str, prefix: str) -> bool:
     return module == prefix or module.startswith(prefix + ".")
 
 
+#: Whole packages withheld from every compiler author, independent of arm and mode. One identity for
+#: the full-compiler copy boundary, the author SDK staging and the pre-launch acceptance suite.
+AUTHOR_WITHHELD_PREFIXES = (
+    "merlin.baselines",
+    "merlin.kernels",
+    "merlin.mining",
+    "merlin.model_check",
+    "merlin.validation",
+    "merlin.runtime.reference",
+    "merlin.runtime.simulator",
+    "merlin_experiments",
+    # Operator-only consumers of the withheld packages above. Each needs a mined schedule package, the
+    # mined host-action catalogue or an expert-corpus CCA lift (the bare-metal model build also needs
+    # declared oracle runtime backends). No public module imports one at module level; the operator
+    # host-model build reaches the bare-metal builder lazily. In the public tree each could only fail or
+    # report nothing. The generic analyses the withheld packages held live in merlin.compile.analysis
+    # and stay public.
+    "merlin.compile.baremetal_model",
+    "merlin.compile.scalar_host_qualification",
+    "merlin.llvmlower.host_policy",
+    "merlin.sched.expressiveness",
+)
+
+
+def author_withheld(module: str) -> bool:
+    """Whether a module lies inside a package withheld from every compiler author."""
+    return any(module_matches(module, prefix) for prefix in AUTHOR_WITHHELD_PREFIXES)
+
+
 def is_harness_module(module: str) -> bool:
     return any(module_matches(module, source.namespace) for source in PYTHON_SOURCE_ROOTS)
 
@@ -141,6 +173,7 @@ module_access = _module
 
 MODULE_ACCESS = (
     _module("merlin.perf.analysis_worker", "grader"),
+    _module("merlin.perf.command_recorder", "grader"),
     # The whole-model build reads a model capsule's golden and recomputes its oracle; the rest of the
     # family grades or measures what a candidate built. Host code, withheld from a candidate compiler.
     _module(
@@ -187,26 +220,36 @@ MODULE_ACCESS = (
     _module("merlin_experiments.phase1.corpus_inputs", "grader"),
     _module("merlin_experiments.phase1.source_inputs", "grader"),
     _module("merlin_experiments.phase1.component_qualification_domain", "grader"),
+    _module("merlin_experiments.phase1.component_original_members", "grader"),
+    _module("merlin_experiments.phase1.component_qualification_members", "grader"),
     _module("merlin_experiments.phase1.providers", "grader", directory=True),
     _module("merlin_experiments.phase1.brokers", "grader", directory=True),
     _module("merlin_experiments.phase1.feedback", "grader", directory=True),
     _module("merlin_experiments.phase1.telemetry", "grader", directory=True),
     _module("merlin_experiments.phase1.session", "grader"),
     _module("merlin_experiments.phase1.authoring", "grader"),
+    _module("merlin_experiments.phase1.authoring_conformance", "grader"),
     _module("merlin_experiments.phase1.spend", "grader"),
     _module("merlin_experiments.phase1.audit", "grader"),
     _module("merlin_experiments.phase1.runtime_environment", "grader"),
     _module("merlin_experiments.phase1.controller", "grader"),
+    _module("merlin_experiments.phase1.preflight", "grader"),
+    _module("merlin_experiments.phase1.canary", "grader"),
+    _module("merlin_experiments.phase1.providers.codex_runtime", "grader"),
     _module("merlin_experiments.phase1.__main__", "grader"),
     _module("merlin_experiments.phase1.task_staging", "grader"),
     _module("merlin_experiments.phase1.workspace_transport", "grader"),
     _module("merlin_experiments.phase1.recovery", "grader"),
     _module("merlin_experiments.phase1.conformance", "grader"),
+    _module("merlin_experiments.phase1.conformance_sources", "grader"),
+    _module("merlin_experiments.phase1.conformance_selfcheck", "grader"),
     _module("merlin_experiments.corpus.release", "grader"),
     _module("merlin_experiments.corpus.preparation", "grader"),
     _module("merlin.runtime.reference", "oracle"),
     _module("merlin.runtime.simulator", "oracle"),
     _module("merlin.runtime.backends", "oracle", directory=True),
+    _module("merlin.targetgen._dynamic_integer_reference", "oracle"),
+    _module("merlin.targetgen.materialized_reference", "oracle"),
     _module(
         "merlin.targetgen.program_oracle",
         "oracle",
@@ -221,8 +264,47 @@ MODULE_ACCESS = (
     _module("merlin.targetgen.rocc.decode", "grader"),
     _module("merlin.targetgen.trace_check", "grader"),
     _module("merlin.targetgen.capsule_grade", "grader"),
-    _module("merlin.targetgen.native_model_execution", "grader"),
-    _module("merlin.targetgen.native_component_execution", "grader"),
+    _module("merlin.targetgen.capsule_perf_ledger", "grader"),
+    _module("merlin.targetgen.capsule_tier_result", "grader"),
+    _module("merlin.targetgen.capsule_lane_evidence", "grader"),
+    _module("merlin.targetgen.executed_program", "grader"),
+    _module("merlin.targetgen.oracle_readback", "grader"),
+    _module("merlin.targetgen.native_model_values", "grader"),
+    _module("merlin.targetgen.native_model_input_storage", "grader"),
+    _module("merlin.targetgen.native_model_output_binding", "grader"),
+    _module(
+        "merlin.targetgen.native_model_execution",
+        "grader",
+        aliases=(
+            "merlin.targetgen.native_model_policy",
+            "merlin.targetgen.native_pointer_source_execution",
+            "merlin.targetgen.native_pointer_source_binding",
+            "merlin.targetgen.native_instruction_audit",
+            "merlin.targetgen.native_numerical_audit",
+            "merlin.targetgen.native_pointer_source_audit",
+            "merlin.targetgen.frozen_source_eligibility",
+        ),
+    ),
+    _module(
+        "merlin.targetgen.checked_source_model_diagnostic",
+        "grader",
+        aliases=("merlin.targetgen.checked_source_model_diagnostic_execution",),
+    ),
+    _module(
+        "merlin_experiments.phase1.feedback.compiler_pass_delegation",
+        "grader",
+        aliases=("merlin_experiments.phase1.feedback.compiler_pass_parent_proof",),
+    ),
+    _module("merlin.targetgen.capsule_candidate_context", "grader"),
+    _module(
+        "merlin.targetgen.owned_host_model_execution",
+        "grader",
+        aliases=("merlin.targetgen.owned_host_dispatch_checks",),
+    ),
+    _module("merlin.targetgen.owned_host_leaf_execution", "grader"),
+    _module(
+        "merlin.targetgen.native_component_execution", "grader", aliases=("merlin.targetgen.native_component_inputs",)
+    ),
     _module("merlin.targetgen.native_dispatch_accounting", "grader"),
     _module(
         "merlin.targetgen.capsule_golden",
@@ -233,7 +315,12 @@ MODULE_ACCESS = (
     _module(
         "merlin.targetgen.original_operator_reference",
         "grader",
-        aliases=("merlin.targetgen.original_reference_values", "merlin.targetgen.original_pointwise_reference"),
+        aliases=(
+            "merlin.targetgen.original_reference_values",
+            "merlin.targetgen.original_pointwise_reference",
+            "merlin.targetgen.original_pointwise_stress",
+            "merlin.targetgen.original_transpose_reference",
+        ),
     ),
     _module(
         "merlin_experiments.phase0.original_reference_roster",
@@ -243,6 +330,9 @@ MODULE_ACCESS = (
             "merlin_experiments.phase0.original_reference_products",
             "merlin_experiments.phase0.original_reference_observer",
             "merlin_experiments.phase0.original_pointwise_reference_observer",
+            "merlin_experiments.phase0.original_transpose_reference_observer",
+            "merlin_experiments.phase0.original_pointwise_semantic_probes",
+            "merlin_experiments.phase0.original_pointwise_stress_observer",
             "merlin_experiments.phase0.original_schema_batch",
             "merlin_experiments.phase0.original_reference_standard_ir",
             "merlin_experiments.phase0.original_standard_ir_plan",
@@ -261,9 +351,14 @@ MODULE_ACCESS = (
     _module(
         "merlin.targetgen.capsule_runner",
         "grader",
-        aliases=("merlin.targetgen.oracle_policy", "merlin.targetgen._capsule_bundle_worker"),
+        aliases=(
+            "merlin.targetgen.oracle_policy",
+            "merlin.targetgen._capsule_bundle_worker",
+            "merlin.targetgen.capsule_diagnostics",
+        ),
     ),
     _module("merlin.targetgen.capsule_dram", "grader"),
+    _module("merlin.targetgen.capsule_source_identity", "grader"),
     _module(
         "merlin.targetgen.oot_runner",
         "grader",
@@ -272,6 +367,12 @@ MODULE_ACCESS = (
     _module("merlin.targetgen.coverage_report", "grader"),
     _module("merlin.targetgen.eval", "grader", directory=True),
 )
+
+
+def author_inaccessible(module: str, *, items: tuple[ModuleAccess, ...] = MODULE_ACCESS) -> bool:
+    """Whether an author may not read or import ``module``: a withheld package, or a module the access
+    policy declares a grader/oracle surface (every reviewed spelling, including relocations)."""
+    return author_withheld(module) or any(module_matches(module, m) for item in items for m in item.modules)
 
 
 def declared_modules(origin: str, *, items: tuple[ModuleAccess, ...] = MODULE_ACCESS) -> tuple[str, ...]:
@@ -388,6 +489,90 @@ def module_locations(root: Path, item: ModuleAccess) -> tuple[Path, ...]:
                 for path in _implementation_paths(package.joinpath(*tail), directory=item.directory):
                     paths[path] = None
     return tuple(paths)
+
+
+class ModuleLocationPlan:
+    """Reuse path projection, never filesystem membership, for one owned lifetime.
+
+    Every batch rediscovers active runtime roots at both boundaries. Candidate
+    module/package/extension/pycache existence is read again for every lookup.
+    Only immutable candidate path spellings survive between batches.
+    """
+
+    def __init__(self):
+        self._pid = os.getpid()
+        self._lock = threading.Lock()
+        self._key = None
+        self._paths = {}
+        self._closed = False
+
+    def _check(self):
+        if os.getpid() != self._pid or self._closed:
+            raise RuntimeError("module declaration plan lost its original process lifetime")
+
+    def close(self):
+        # Do not touch a lock inherited from another process.
+        if os.getpid() == self._pid:
+            with self._lock:
+                self._paths.clear()
+                self._key = None
+                self._closed = True
+
+    def _candidates(self, key, item):
+        self._check()
+        root, sources, runtime, search = key
+        with self._lock:
+            if self._key != key:
+                self._paths = {}
+                self._key = key
+            if item not in self._paths:
+                roots = [(source.namespace, root / source.path) for source in sources] + list(runtime)
+                bases = []
+                for module in item.modules:
+                    if "." not in module:
+                        for directory in search:
+                            base = directory / module
+                            bases.append((base, True))
+                    else:
+                        for namespace, package in roots:
+                            if module_matches(module, namespace):
+                                bases.append(
+                                    (package.joinpath(*module[len(namespace) :].lstrip(".").split(".")), False)
+                                )
+                self._paths[item] = tuple(dict.fromkeys(bases))
+            return self._paths[item]
+
+    @contextlib.contextmanager
+    def batch(self, root):
+        self._check()
+        key = (root, PYTHON_SOURCE_ROOTS, runtime_package_roots(root), _runtime_search_paths(root))
+
+        def locations(item):
+            self._check()
+            paths = {}
+            for base, resolve in self._candidates(key, item):
+                for candidate in (base, base.resolve()) if resolve else (base,):
+                    for path in _implementation_paths(candidate, directory=item.directory):
+                        paths[path] = None
+            return tuple(paths)
+
+        yield locations
+        self._check()
+        after = (root, PYTHON_SOURCE_ROOTS, runtime_package_roots(root), _runtime_search_paths(root))
+        if key != after:
+            raise RuntimeError("active Python roots changed during answer-mask discovery")
+
+
+@contextlib.contextmanager
+def module_location_batch(root, plan=None):
+    """Default calls stay independent; an explicit plan batches declaration work."""
+    if plan is None:
+        yield lambda item: module_locations(root, item)
+    elif type(plan) is ModuleLocationPlan:
+        with plan.batch(root) as locations:
+            yield locations
+    else:
+        raise TypeError("module locations require an exact owned declaration plan")
 
 
 def unresolved_modules(root: Path, *, items: tuple[ModuleAccess, ...] = MODULE_ACCESS) -> tuple[ModuleAccess, ...]:

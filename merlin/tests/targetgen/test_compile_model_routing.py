@@ -170,7 +170,13 @@ def test_required_gsim_reaches_dynamic_and_synthetic_mesh_paths(monkeypatch):
     CC._matmul_via_oot_cert("gemmini", "module {}", [[1]], [[1]], simulator=None, package="/pkg", timeout=1)
     CC._mesh_verify(_two_matmul_plan(), target="gemmini", package="/pkg", timeout=1)
 
-    assert seen == ["gsim", "gsim", "gsim"]  # one dynamic call, then two synthesized tiles
+    # One dynamic call, then each synthesized tile: the contract's functional screen first (it gates
+    # the cert rung), then the cert on the policy-selected engine. No call revives Verilator.
+    from merlin.targetgen.oracle_policy import selected_screen_tiers
+
+    screen = selected_screen_tiers("gemmini")[-1][1]
+    assert seen == ["gsim", screen, "gsim", screen, "gsim"]
+    assert "verilator" not in seen
 
 
 @pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
@@ -192,7 +198,13 @@ def test_policy_selected_gsim_reaches_dynamic_and_synthetic_mesh_paths(monkeypat
     CC._matmul_via_oot_cert("gemmini", "module {}", [[1]], [[1]], simulator=None, package="/pkg", timeout=1)
     CC._mesh_verify(_two_matmul_plan(), target="gemmini", package="/pkg", timeout=1)
 
-    assert seen == ["gsim", "gsim", "gsim"]
+    # One dynamic call, then each synthesized tile: the contract's functional screen first (it gates
+    # the cert rung), then the cert on the policy-selected engine. No call revives Verilator.
+    from merlin.targetgen.oracle_policy import selected_screen_tiers
+
+    screen = selected_screen_tiers("gemmini")[-1][1]
+    assert seen == ["gsim", screen, "gsim", screen, "gsim"]
+    assert "verilator" not in seen
 
 
 @pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
@@ -238,7 +250,8 @@ def test_mesh_verify_synthesizes_and_passes(monkeypatch):
     res = CC._mesh_verify(_two_matmul_plan(), target="gemmini", package="/pkg", timeout=60)
     assert res["status"] == "verified"
     assert res["n_tiles"] == 2 and res["n_passed"] == 2 and res["n_unavailable"] == 0
-    assert len(seen) == 2  # only the 2 mesh matmuls executed
+    assert len(seen) == 4  # the 2 mesh matmuls, each screened then certified (no scalar op executed)
+    assert res["n_screened"] == res["n_screen_passed"] == 2
     t0 = res["per_tile"][0]
     assert t0["status"] == "pass" and t0["operand_dtype"] == "i8" and t0["output_dtype"] == "i32"
     assert t0["M"] == t0["K"] == t0["N"] >= 1 and t0["cycles"] == 47

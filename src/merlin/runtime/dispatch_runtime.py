@@ -29,8 +29,10 @@ from typing import Any
 
 import numpy as np
 
+from .dispatch_arguments import _ModelInput as _ModelInput, plan_forward_args
 from .dispatch_numeric import boundary_scale as boundary_scale
 from .dispatch_numeric import float_boundary_operands as float_boundary_operands
+from .dispatch_placement import DispatchPlacements, DispatchRuntimeError
 from .dispatch_transform_audit import qualify_model_transform_audit, record_model_transform_audit
 
 _NP = {
@@ -43,10 +45,6 @@ _NP = {
     "i8": np.int8,
     "i1": np.int8,
 }
-
-
-class DispatchRuntimeError(RuntimeError):
-    pass
 
 
 # bf16 has no native numpy dtype; we store it as the raw 16-bit pattern (uint16) so the
@@ -90,83 +88,81 @@ def _np_dtype(elem: str):
 # --- forward-argument binding (inputs + weights), mirroring llvmlower.c_runtime ----------
 
 
-def resolve_forward_args(model_dir: str | Path) -> list[np.ndarray]:
-    """Numpy array for every ``func @forward`` argument, in signature order."""
-    from ..llvmlower.model_runner import parse_forward_signature
-    from ..llvmlower.weights_pack import load_safetensors_header
+def resolve_forward_args(model_dir: str | Path, *, cache: ForwardArgsCache | None = None) -> list[np.ndarray]:
+    """Numpy array for every ``func @forward`` argument, in signature order.
 
+    With ``cache``, the stage's weights, buffers and lifted constants are read once per cache and the
+    same (read-only) arrays are returned on every call; only the model inputs are read from
+    ``inputs.npz`` each time.
+    """
     model_dir = Path(model_dir)
-    sig = parse_forward_signature(model_dir / "model.mlir")
-    man = json.loads((model_dir / "weights.safetensors.manifest.json").read_text())
-    hdr, payload_off = load_safetensors_header(model_dir / "weights.safetensors")
-    blob = (model_dir / "weights.safetensors").read_bytes()[payload_off:]
     inputs = np.load(model_dir / "inputs.npz")
-    extra_path = model_dir / "extra.npz"
-    extra = np.load(extra_path) if extra_path.is_file() else None
-    extra_files = list(getattr(extra, "files", []))
-    lifted_names = sorted(k for k in extra_files if not k.startswith("buf::"))
-    # Per-model input map (manifest arg-name -> inputs.npz index), emitted by the consistent
-    # capture; falls back to the legacy fixed map + positional order when absent.
-    order_path = model_dir / "input_order.json"
-    if order_path.is_file():
-        input_order = {k: int(v) for k, v in json.loads(order_path.read_text()).items()}
-    else:
-        input_order = {"img": 0, "img_mask": 1, "lang_tokens": 2, "lang_masks": 3, "state": 4, "noise": 5, "ids": 0}
-
-    def buffer_array(name: str) -> np.ndarray:
-        for k in extra_files:
-            if k.startswith("buf::") and "b_" + k[len("buf::") :].replace(".", "_") == name:
-                return np.ascontiguousarray(extra[k])
-        raise DispatchRuntimeError(f"buffer {name!r} not in {extra_path}")
-
+    files = tuple(inputs.files)
+    plan = cache.plan(model_dir, files) if cache is not None else _forward_plan(model_dir, files)
     args: list[np.ndarray] = []
-    n_in = 0
-    li = 0
-    for i, (shape, dt) in enumerate(sig):
-        meta = man[str(i)]
-        if meta["kind"] == "param":
-            # Quantized-subclass weights are stubbed in the blob (the fused fp32 weight ARG is
-            # dead -- the matmul consumes int8 int_data/scale via the qinner channel). Synthesize
-            # a zero buffer of the arg's true shape/dtype for the dead descriptor.
-            if meta.get("stub"):
-                args.append(np.zeros(shape, dtype=_np_dtype(dt)))
-                continue
-            begin, end = hdr[meta["weight"]]["data_offsets"]
-            store_dt = hdr[meta["weight"]].get("dtype")  # safetensors storage dtype
-            if store_dt == "F8_E4M3":
-                # fp8 weight-only: stored 1-byte e4m3, decoded to the f32 arg the graph expects
-                arr = f8e4m3fn_to_f32(np.frombuffer(blob[begin:end], np.uint8)).reshape(shape)
+    for entry in plan:
+        if isinstance(entry, _ModelInput):
+            arr = np.ascontiguousarray(inputs[entry.key])
+            if entry.element == "bf16":
+                args.append(f32_to_bf16(arr).reshape(entry.shape))
             else:
-                arr = np.frombuffer(blob[begin:end], dtype=_np_dtype(dt)).reshape(shape)
-            args.append(np.ascontiguousarray(arr))
-            continue
-        name = meta.get("name", "") or ""
-        if meta["kind"] == "buffer":
-            # A registered buffer reaches us one of two ways, and only one of them was handled.
-            # When the capture EXTERNALIZED it, the manifest names it under "weight" and the
-            # bytes are in the safetensors blob like any parameter (BatchNorm running stats, for
-            # instance). When it stayed a graph argument, the manifest carries the FX arg "name"
-            # and the value is in extra.npz. Prefer the blob when it has the tensor; otherwise
-            # fall back to extra.npz -- so neither capture shape is a missing-buffer error.
-            wname = meta.get("weight")
-            if wname and wname in hdr:
-                begin, end = hdr[wname]["data_offsets"]
-                arr = np.ascontiguousarray(np.frombuffer(blob[begin:end], dtype=_np_dtype(dt)).reshape(shape))
-            else:
-                arr = buffer_array(name)
-        elif "lifted_tensor" in name:  # lifted get_attr constant (name varies by model)
-            arr = np.ascontiguousarray(extra[lifted_names[li]])
-            li += 1
-        elif name in input_order and f"in{input_order[name]}" in inputs.files:
-            arr = np.ascontiguousarray(inputs[f"in{input_order[name]}"])
+                args.append(arr.astype(_np_dtype(entry.element)).reshape(entry.shape))
         else:
-            arr = np.ascontiguousarray(inputs[f"in{n_in}"])
-            n_in += 1
-        if dt == "bf16":
-            args.append(f32_to_bf16(arr).reshape(shape))
-        else:
-            args.append(arr.astype(_np_dtype(dt)).reshape(shape))
+            args.append(entry)
     return args
+
+
+def _forward_plan(model_dir: Path, input_files: tuple[str, ...]) -> list[np.ndarray | _ModelInput]:
+    """Preserve the dispatch binding entrypoint and its selected numeric converters."""
+    return plan_forward_args(
+        model_dir,
+        input_files,
+        _np_dtype=_np_dtype,
+        f32_to_bf16=f32_to_bf16,
+        f8e4m3fn_to_f32=f8e4m3fn_to_f32,
+    )
+
+
+class ForwardArgsCache:
+    """The constant ``@forward`` arguments of each stage (weights, buffers, lifted constants), read once.
+
+    A stage is keyed by the resolved path, size and modification time of every file its constants and
+    its input binding are read from, and by the members of its ``inputs.npz``; a shadow directory whose
+    files link to a stage's shares that stage's entry. Every cached array is read-only, so the same
+    objects can be handed to every call: :meth:`is_constant` names them.
+    """
+
+    FILES = ("model.mlir", "weights.safetensors", "weights.safetensors.manifest.json", "extra.npz", "input_order.json")
+
+    def __init__(self) -> None:
+        self._plans: dict[tuple[Any, ...], list[np.ndarray | _ModelInput]] = {}
+        self._constants: dict[int, np.ndarray] = {}
+
+    def __len__(self) -> int:
+        return len(self._plans)
+
+    def plan(self, model_dir: Path, input_files: tuple[str, ...]) -> list[np.ndarray | _ModelInput]:
+        key = (*(self._identity(Path(model_dir) / name) for name in self.FILES), input_files)
+        if key not in self._plans:
+            plan = _forward_plan(Path(model_dir), input_files)
+            for entry in plan:
+                if isinstance(entry, np.ndarray):
+                    entry.flags.writeable = False
+                    self._constants[id(entry)] = entry
+            self._plans[key] = plan
+        return self._plans[key]
+
+    def is_constant(self, value: Any) -> bool:
+        """``value`` is one of the cached constant arguments (the very object)."""
+        return id(value) in self._constants
+
+    @staticmethod
+    def _identity(path: Path) -> tuple[str, int, int] | None:
+        if not path.exists():
+            return None
+        resolved = path.resolve()
+        stat = resolved.stat()
+        return str(resolved), stat.st_size, stat.st_mtime_ns
 
 
 # --- view-op evaluation ------------------------------------------------------------------
@@ -624,6 +620,7 @@ def execute(
     module = outline_result.module
     driver = next(op for op in module.walk() if op.name == "func.func" and op.sym_name.data == entry)
     block = driver.body.blocks[0]
+    placements = DispatchPlacements(outline_result, driver, host_only=kernel_backend != "mesh")
 
     env: dict[int, Any] = {}
     for arg, arr in zip(block.args, arg_arrays):
@@ -696,7 +693,7 @@ def execute(
         for sym, kfn in kfns.items():
             # An explicitly host-placed group must not be promoted merely because its body happens
             # to match the standalone matmul classifier.
-            if sym in grouped and grouped[sym].placement == "host":
+            if sym in placements.host_symbols:
                 continue
             # a bare linalg.matmul, or the linalg.generic a quantization rewrite leaves behind
             route = _classify_mesh_matmul(kfn, _accept) or _classify_mesh_contraction(kfn, _accept)
@@ -774,12 +771,7 @@ def execute(
         mesh_counts["mesh_capacity_fit_delegated"] = execute.mesh_capacity_fit_delegated
 
     def _record_dispatch(symbol: str, lane: str, **evidence) -> None:
-        """Append one unbounded, ordered entry for one *completed* dynamic kernel call.
-
-        Aggregate counters and a routing plan cannot prove ordering or host/accelerator seams.  This
-        ledger is owned by the runtime, populated only after the selected lane completes, and returned
-        with this invocation's counters (never a module-global shared across concurrent grades).
-        """
+        """Record completed dynamic calls; the ledger grants no command/effect authority."""
         ledger = mesh_counts.setdefault("dispatch_ledger", [])
         ledger.append({"ordinal": len(ledger), "symbol": symbol, "lane": lane, "status": "pass", **evidence})
 
@@ -842,7 +834,7 @@ def execute(
             if op.name != "func.call":
                 continue
             sym, _ = _kernel_io(op)
-            if sym in seen or sym not in kfuncs or sym in xnn_routes:
+            if sym in seen or sym not in kfuncs or sym in xnn_routes or placements.is_device(op):
                 continue  # xnn-routed kernels are computed by XNNPACK, never compiled
             seen.add(sym)
             ktext = _ktext(sym)
@@ -872,6 +864,7 @@ def execute(
     from ..llvmlower.abi import ScalarArg
 
     def run_call(op):
+        placements.verify_call(op)
         symbol, outs = _kernel_io(op)
         host_lane = "native_cpu"
         host_evidence: dict = {}
@@ -887,6 +880,7 @@ def execute(
             _record_dispatch(
                 symbol,
                 "xnnpack_host",
+                selected_placement=placements.verify_call(op),
                 placement="host",
                 executor="xnnpack_host",
                 runtime_architecture=native_architecture,
@@ -989,6 +983,7 @@ def execute(
                     _record_dispatch(
                         symbol,
                         "on_mesh",
+                        selected_placement=placements.verify_call(op),
                         lhs_shape=list(a.shape),
                         rhs_shape=list(b.shape),
                         oracle_evidence=_obs.get("oracle_evidence"),
@@ -1000,6 +995,7 @@ def execute(
                     if tap is not None:
                         tap(op, [env[id(op.results[0])]])
                     return
+            placements.require_host(op)
             # A layer the mesh could not run falls back to the host kernel and is NOT counted as
             # mesh-executed — honest accounting, never a faked mesh result. RECORD WHY. The count alone
             # says a model failed its must_accelerate gate without saying what to fix, which is the same
@@ -1081,6 +1077,7 @@ def execute(
                 _fb = getattr(execute, "mesh_fallbacks", None)
                 if _fb is not None and len(_fb) < 64:  # bounded: a diagnostic, not a full trace
                     _fb.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape), "reason": _why})
+        placements.require_host(op)
         model = kernel_model(symbol)
         scalar_slots = [index for index, r in enumerate(op.results) if not isinstance(r.type, TensorType)]
         expected_scalar = str(op.results[scalar_slots[0]].type) if len(scalar_slots) == 1 else None
@@ -1124,6 +1121,7 @@ def execute(
         _record_dispatch(
             symbol,
             host_lane,
+            selected_placement=placements.verify_call(op),
             placement="host",
             executor="native_cpu",
             runtime_architecture=native_architecture,
@@ -1280,6 +1278,12 @@ def _normalize_model_module(
     _propagate_quant_inner(module)
     if int8_compute:
         from ..llvmlower.quant_passes import apply_quant, compute_passes
+        from ..llvmlower.quant_scope import captured_quantized_contraction
+
+        # Match the compiled captured-scope path: a BF16 dequantized operand
+        # needs an F32 accumulator before the INT8 contraction selector runs.
+        if quant_select is captured_quantized_contraction:
+            lower_bf16_matmul_f32acc(module)
 
         extra = {"prequant_gather": True} if prequant_gather else {}
         apply_quant(module, list(compute_passes(quant_passes)), select=quant_select, **extra)
@@ -1468,7 +1472,8 @@ def run_model(
         names = ["Y0"] if golden_arrays else []
     if golden_arrays:
         checks = []
-        for name, out, gold in zip(names, widened, golden_arrays, strict=True):
+        # A capture with only golden.npy references result 0; the further results have no golden here.
+        for name, out, gold in zip(names, widened[: len(golden_arrays)], golden_arrays, strict=True):
             if len(out) != len(gold):
                 raise DispatchRuntimeError(f"model result {name!r} has {len(out)} values, golden has {len(gold)}")
             gmax = float(np.abs(gold).max())

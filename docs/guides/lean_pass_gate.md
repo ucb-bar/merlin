@@ -270,3 +270,8 @@ records the historical 779-test suite, corrected 75-test comparison suite and
 native baseline failure, separately from focused merge validation.
 [Quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md)
 records the inherited numerical scope and review work without advancing proofs.
+
+The development integration preserves shared native tensor-prefix verification
+alongside the pass gates. Its bufferization/native suffix remains trusted.
+Combining that native-proof transport with LLVM-dialect retention or scalar
+callbacks is explicitly unsupported and refuses before native execution.

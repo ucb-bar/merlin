@@ -90,7 +90,46 @@ def fill(name: str, shape: tuple[int, ...], lo: int = DEFAULT_LO, hi: int = DEFA
     if span <= 0:
         raise ValueError(f"empty stimulus range: lo={lo} hi={hi}")
     s = det_seed(name)
+    if rows * cols >= _ARRAY_FILL_MIN:
+        filled = _array_fill(rows, cols, s, lo, span)
+        if filled is not None:
+            return filled
     return [lo + (mix(r, c, s) % span) for r in range(rows) for c in range(cols)]
+
+
+#: Fills smaller than this stay on the scalar :func:`mix` loop.
+_ARRAY_FILL_MIN = 1 << 14
+_ARRAY_FILL_CHUNK = 1 << 22
+
+
+def _array_fill(rows: int, cols: int, s: int, lo: int, span: int) -> list[int] | None:
+    """:func:`fill`'s exact values computed over uint64 arrays, or ``None`` without numpy.
+
+    Generating a large operand one :func:`mix` call at a time cost seconds per tensor in every grade.
+    Each step of :func:`mix` keeps only the low 32 bits, and the low 32 bits of a product or XOR do
+    not depend on bits above 2**64, so uint64 wraparound leaves every value unchanged. Rows are
+    processed in bounded chunks so a large operand never needs several full-size temporaries.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    if s + 1 >= 1 << 32 or rows + 1 >= 1 << 32 or cols + 1 >= 1 << 32:
+        return None
+    u = np.uint64
+    column = (np.arange(1, cols + 1, dtype=u) * u(0x85EBCA77)) ^ u(((s + 1) * 0xC2B2AE3D) & _U32)
+    chunks = []
+    step = max(1, _ARRAY_FILL_CHUNK // cols)
+    for start in range(0, rows, step):
+        row = np.arange(start + 1, min(rows, start + step) + 1, dtype=u)[:, None] * u(0x9E3779B1)
+        x = (row ^ column) & u(_U32)
+        x ^= x >> u(15)
+        x = (x * u(0x2545F491)) & u(_U32)
+        x ^= x >> u(13)
+        x = (x * u(0x27D4EB2F)) & u(_U32)
+        x ^= x >> u(16)
+        chunks.append((x % u(span)).astype(np.int64).ravel() + lo)
+    return np.concatenate(chunks).tolist()
 
 
 def fill_signed(name: str, shape: tuple[int, ...]) -> list[int]:

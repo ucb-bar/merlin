@@ -1,0 +1,166 @@
+{
+  "author_s": 14400,
+  "cpus": [
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    56,
+    57,
+    58,
+    59,
+    60
+  ],
+  "drain_s": 900,
+  "duration_s": 15300,
+  "effort": "high",
+  "framework": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae",
+  "group": "completed-level-study",
+  "historical_evidence": {
+    "author_s": 14400,
+    "authored_bundle": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/xs-el123-20261028-r2-el1/authored_input_bundle_manifest.yaml",
+      "sha256": "08743aee8a3c6ddff2d5216cb6b12a854f55ba8b71770da693b3b61e1a76270f"
+    },
+    "cpus": [
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      56,
+      57,
+      58,
+      59,
+      60
+    ],
+    "drain_s": 900,
+    "duration_s": 15300,
+    "effort": "high",
+    "environment_metadata_repo_sha": "388ee5ff2ed57b06b5f229e1abadfba78d7fbac4",
+    "environment_preparation_started_at": "2026-10-28T10:29:49.378186+00:00",
+    "environment_receipt": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/xs-el123-20261028-r2-el1/environment.yaml",
+      "sha256": "d9e9ef60ee0c51b5254456bdeaddccc3940edc8345f5cf2397cd42dd2d4e99a2"
+    },
+    "execution_model": "gpt-6.1-sol",
+    "final_4h_snapshot": {
+      "arm": "el1",
+      "checkpoint_seconds": [
+        0,
+        1800,
+        3600,
+        7200,
+        14400
+      ],
+      "compiler_sha256": "c2d32cf7cff1bdb74e571cf00d8bd06a4a66e75e2659178f684fb570613e9608",
+      "is_source_package": true,
+      "manifest_sha256": "bc7a683ad6c3bc1733529517a06916655b85e713d30970910a8c75cd36307407",
+      "rtl_qualified": false,
+      "run": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/xs-el123-20261028-r2-el1",
+      "snapshot_index": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/xs-el123-20261028-r2-el1/study_snapshots/index.json",
+      "snapshot_index_sha256": "cef67e8cd777e60d358009cf1ffaa9c031d3a303595eb5bb3cdce8cd7db54731",
+      "source": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/xs-el123-20261028-r2-el1/study_snapshots/14400"
+    },
+    "final_model_s": 900,
+    "framework": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae",
+    "framework_marker": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/.merlin-source-revision.json",
+      "sha256": "f80df39b97e2780a907b4006911877534cd6f672dd507353e3845e1ebfdd1ebb"
+    },
+    "framework_source_revision": "adff3ab95caeb3adc738627843ee6671f51d8dc8",
+    "joint_clock_receipt": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/xs-el123-20261028-r2-el1/joint_campaign.json",
+      "sha256": "20f4ee7507f9cbe8296b794a3de3ba3ab9a38d130498b3e8da6110d1a93f28b4"
+    },
+    "joint_started_at_epoch": 1793183457.729196,
+    "joint_started_at_utc": "2026-10-28T10:30:57.729196+00:00",
+    "name": "el1",
+    "native_plan": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-20261028-r2/arms/el1/artifacts/proposed-launch.json",
+      "sha256": "b4ddd6e5af02f080c98ebee10f910c12ade713951e5a90af84ef0a898861ff74"
+    },
+    "native_source_release": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/adff3ab95cae/out/artifacts/xs-study/xs-el123-20261028-r2-el1/inputs/source-release",
+    "profile": "xs-el-v1/el1",
+    "run_id": "xs-el123-20261028-r2-el1",
+    "runtime_directory": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/xs-el123-20261028-r2-el1",
+    "served_task": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/xs-el123-20261028-r2-el1/TASK.md",
+      "sha256": "ed72aed1bfad8f5e49ea6cd6647ef3912be18827fd9839542b534cdb963506fe"
+    },
+    "source_authority_note": "Use nativeplan source_revision and immutable export marker. environment.repo_sha is original sharedworktree metadata, not executedexportrevision.",
+    "source_binding": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-20261028-r2/source-binding.json",
+      "sha256": "d51bff26dedcaa1c1f9f95231253833e8dd37bcd404fc3bf255c69df6673e56a"
+    },
+    "source_bundle": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/xs-el123-20261028-r2-el1/input_bundle_manifest.yaml",
+      "sha256": "c5eeee80047a6bb15388e1c077fd9e0d717f9e5065cf652fbb565a6e03ff24b5"
+    },
+    "source_freeze_receipt": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-20261028-r2/final-frozen-source.json",
+      "sha256": "f62e0fc946706e2f96b7757454ce909a3b7d462596f385ea8c3a958948d94917"
+    },
+    "study_manifest": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-20261028-r2/study.json",
+      "sha256": "899229a9ad8f7c29e7d796ee63184dd2a16c3d51b2f10ab93b28d1591a57af67"
+    },
+    "yaml_specification_closure": [
+      {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-20261028-r2/el1.yaml",
+        "sha256": "4de8408589f6de57dfc0b9128730b0e35b1c82a67b50f985b77d0989244d55f2"
+      }
+    ]
+  },
+  "model": "gpt-6.1-sol",
+  "name": "el1",
+  "native_plan": {
+    "archived": "el1/native-plan.json",
+    "original": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-20261028-r2/arms/el1/artifacts/proposed-launch.json",
+      "sha256": "b4ddd6e5af02f080c98ebee10f910c12ade713951e5a90af84ef0a898861ff74"
+    },
+    "sha256": "b4ddd6e5af02f080c98ebee10f910c12ade713951e5a90af84ef0a898861ff74"
+  },
+  "policy": {
+    "archived": "el1/policy.json",
+    "original": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-20261028-r2/arms/el1/artifacts/policy.json",
+      "sha256": "4360e29720f773355fd5ebdfe69c2f7eaa33b0e183ad2599545715344a647480"
+    },
+    "sha256": "4360e29720f773355fd5ebdfe69c2f7eaa33b0e183ad2599545715344a647480"
+  },
+  "receives": "el1/receives.json",
+  "run_directory": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/xs-el123-20261028-r2-el1",
+  "run_id": "xs-el123-20261028-r2-el1",
+  "served_task": {
+    "archived": "el1/served-TASK.md",
+    "original": {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/xs-el123-20261028-r2-el1/TASK.md",
+      "sha256": "ed72aed1bfad8f5e49ea6cd6647ef3912be18827fd9839542b534cdb963506fe"
+    },
+    "sha256": "ed72aed1bfad8f5e49ea6cd6647ef3912be18827fd9839542b534cdb963506fe"
+  },
+  "source_revision": "adff3ab95caeb3adc738627843ee6671f51d8dc8",
+  "specs": [
+    {
+      "archived": "el1/specs/el1.yaml",
+      "original": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-20261028-r2/el1.yaml",
+        "sha256": "4de8408589f6de57dfc0b9128730b0e35b1c82a67b50f985b77d0989244d55f2"
+      },
+      "sha256": "4de8408589f6de57dfc0b9128730b0e35b1c82a67b50f985b77d0989244d55f2"
+    }
+  ]
+}

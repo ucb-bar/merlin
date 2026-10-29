@@ -1,0 +1,16 @@
+{
+  "reason": "first replay candidate retained previous observer source identity; timing refused rather than falling back",
+  "old_model": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model.json",
+    "sha256": "09663f060f6c00f44ae88ca1eddaac428901440c115813cfec3dd74576583cba"
+  },
+  "new_model": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+    "sha256": "888abf5c5ad4d46bee90129b05ae47a113ec710db9dd389113caa71fd3a16770"
+  },
+  "only_changed_field": "domain.feature_engine_sha256",
+  "old_value": "bb07aaf1c2ae46e4810530e610981a936f4bab670882506c5d194b6596fce40b",
+  "new_value": "79eb1f1b511a1b9f2267532de252965712e65c91e95b91b6df46dab81fdc52b3",
+  "no_price_changes": true,
+  "no_physical_runs": true
+}

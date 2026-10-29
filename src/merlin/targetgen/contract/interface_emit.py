@@ -54,6 +54,7 @@ _OP_TO_OPCODE = {v: k for k, v in _OPCODE_TO_OP.items()}
 # upper-cased. Extend this table (and the command_buffer opcode enum) as codegen gains op classes;
 # the parse/emit machinery is generic over it, so a new class is one table row plus its kernel nest.
 _NAMED_OP_OPERAND_KEYS = {
+    "maxpool2d": ["src"],
     "rmsnorm": ["src", "gamma"],
     "attention_qk": ["q", "k"],
     # P @ V, the second matmul of flash attention and the sibling of attention_qk (which contracts
@@ -138,12 +139,20 @@ def _fmt_attrs(attrs: dict[str, Any]) -> str:
             parts.append(f"{k} = {v!r} : f32")
         elif isinstance(v, str):
             parts.append(f'{k} = "{v}"')
+        elif isinstance(v, dict):
+            parts.append(f"{k} = {_fmt_attrs(v)}")
         elif isinstance(v, list):
             # Element-wise, NOT blanket-quoted. Quoting every element turned an integer geometry
             # (``pool_size = [2, 2]``) into ``["2", "2"]``, which the parser reads back as STRINGS --
             # so a round-tripped pooling command lost its window to a typing mismatch reported far from
             # the spelling that caused it. String stages (``epilogue = ["relu"]``) are unchanged.
-            inner = ", ".join(f'"{x}"' if isinstance(x, str) else str(x) for x in v)
+            inner = ", ".join(
+                f"{float(x)!r} : f32" if k in {"acc_scale_by_column", "source_scales"}
+                else f'"{x}"' if isinstance(x, str)
+                else "[" + ", ".join(str(y) for y in x) + "]" if isinstance(x, list)
+                else str(x)
+                for x in v
+            )
             parts.append(f"{k} = [{inner}]")
         else:  # pragma: no cover - defensive
             raise TypeError(f"unsupported attribute type for {k!r}: {type(v)}")
@@ -164,9 +173,16 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
     )
     lines.append(header)
 
+    produced = {command["operands"]["dst"] for command in commands
+                if command.get("opcode") in _NAMED_OPCODE_TO_OP}
+
     for name, spec in tensors.items():
+        if name in produced:
+            continue
         role = spec.get("role", "input")
         tensor_attrs = {"name": name, "role": role}
+        if "storage_encoding" in spec:
+            tensor_attrs["storage_encoding"] = _checked_storage_encoding(spec)
         if role == "scale":
             # Preserve the semantic pairing. A name suffix is not an ABI and cannot safely identify
             # which element tensor a scale stream belongs to.
@@ -194,7 +210,8 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
         elif op in ("MATMUL_RESIDENT", "MATMUL"):
             lhs, rhs, dst = ops["lhs"], ops["rhs"], ops["dst"]
             lines.append(
-                f"  %{dst} = merlin_iface.matmul %{lhs}, %{rhs} : "
+                f"  %{dst} = merlin_iface.matmul %{lhs}, %{rhs}"
+                + (" " + _fmt_attrs(attrs) if attrs else "") + " : "
                 f"({val_type[lhs]}, {val_type[rhs]}) -> !merlin_iface.acc<{acc_t}>"
             )
             val_type[dst] = f"!merlin_iface.acc<{acc_t}>"
@@ -213,6 +230,18 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
         elif op == "EVICT":
             h = ops["handle"]
             lines.append(f"  merlin_iface.evict %{h} : (!merlin_iface.resident) -> ()")
+        elif op in _NAMED_OPCODE_TO_OP:
+            mnemonic = _NAMED_OPCODE_TO_OP[op]
+            names = [ops[key] for key in _NAMED_OP_OPERAND_KEYS[mnemonic]]
+            dst = ops["dst"]
+            result_type = _tensor_type(tensors[dst])
+            arguments = ", ".join(f"%{name}" for name in names)
+            types = ", ".join(val_type[name] for name in names)
+            lines.append(
+                f"  %{dst} = merlin_iface.{mnemonic} {arguments} {_fmt_attrs({'name': dst, **attrs})} "
+                f": ({types}) -> {result_type}"
+            )
+            val_type[dst] = result_type
         else:  # pragma: no cover - defensive
             raise ValueError(f"unsupported opcode {op!r} for interface grammar v{GRAMMAR_VERSION}")
 
@@ -221,35 +250,10 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
 
 
 def _commit_out_shape(cb: dict[str, Any], acc_name: str, attrs: dict[str, Any] | None = None) -> tuple[int, int]:
-    """(m, n) for a commit: m from the matmul lhs rows, n from the resident weight cols.
+    """Original logical COMMIT result geometry, shared with the public ABI resolver."""
+    from merlin.compile.logical_abi import commit_output_shape
 
-    A POOLING epilogue reduces m: the accumulator's rows unflatten to a ``pool_in_dims`` plane and the
-    window walks it, so the committed tensor has fewer rows than the matmul produced. Printing the
-    matmul's row count for a pooled commit would emit a module whose declared result type disagrees
-    with what any engine executing it computes -- a type error the grammar cannot catch because the
-    grammar is what would be lying."""
-    tensors = cb.get("tensors", {})
-    res_src: dict[str, str] = {}
-    for cmd in cb.get("commands", []):
-        if cmd["opcode"] == "RES_PACK":
-            res_src[cmd["operands"]["dst"]] = cmd["operands"]["src"]
-    for cmd in cb.get("commands", []):
-        if cmd["opcode"] in ("MATMUL_RESIDENT", "MATMUL") and cmd["operands"]["dst"] == acc_name:
-            lhs = cmd["operands"]["lhs"]
-            rhs = cmd["operands"]["rhs"]
-            w = res_src.get(rhs, rhs)
-            m = int(tensors[lhs]["shape"][0])
-            n = int(tensors[w]["shape"][1])
-            if "maxpool" in ((attrs or {}).get("epilogue") or []):
-                from merlin.runtime.commandbuffer import pool_params
-                from merlin.runtime.tensor import pool_out_dims
-
-                p = pool_params(attrs or {}, op=f"COMMIT of {acc_name!r}")
-                H, W = p["pool_in_dims"]
-                Ho, Wo = pool_out_dims(H, W, p["pool_size"], p["pool_stride"], p["pool_padding"])
-                m = (m // (H * W)) * Ho * Wo
-            return m, n
-    raise ValueError(f"no matmul produces accumulator {acc_name!r}")
+    return commit_output_shape(cb, acc_name, attrs)
 
 
 # --------------------------------------------------------------------------- parse
@@ -375,26 +379,47 @@ def _last_type(tail: str) -> str:
     return (after if arrow else tail).strip()
 
 
+def _attribute_items(s: str) -> list[str]:
+    """Split complete nested array/dictionary attributes without losing axes."""
+    depth, quoted, escaped = 0, False, False
+    parts, current = [], ""
+    for ch in s:
+        if ch == '"' and not escaped:
+            quoted = not quoted
+        if not quoted:
+            if ch in "[{":
+                depth += 1
+            elif ch in "]}":
+                depth -= 1
+            if depth < 0:
+                raise InterfaceGrammarError("unbalanced interface attribute")
+        if ch == "," and depth == 0 and not quoted:
+            parts.append(current)
+            current = ""
+        else:
+            current += ch
+        escaped = ch == "\\" and not escaped
+    if depth or quoted:
+        raise InterfaceGrammarError("incomplete interface attribute")
+    if current.strip():
+        parts.append(current)
+    return parts
+
+
+def _checked_storage_encoding(spec):
+    from merlin.perf.storage_encoding import GroupedAxesStorage
+
+    encoding = GroupedAxesStorage.from_dict(spec["storage_encoding"])
+    encoding.validate()
+    if list(encoding.physical_shape) != spec["shape"] or encoding.dtype != spec["dtype"]:
+        raise InterfaceGrammarError("tensor storage encoding differs from its complete physical type")
+    return encoding.to_dict()
+
+
 def _parse_attr_block(s: str) -> dict[str, Any]:
     """Parse a ``{k = v, ...}`` attribute body into a dict (strings, ints, floats, lists)."""
     out: dict[str, Any] = {}
-    # split on commas that are not inside brackets
-    depth = 0
-    cur = ""
-    parts: list[str] = []
-    for ch in s:
-        if ch in "[":
-            depth += 1
-        elif ch in "]":
-            depth -= 1
-        if ch == "," and depth == 0:
-            parts.append(cur)
-            cur = ""
-        else:
-            cur += ch
-    if cur.strip():
-        parts.append(cur)
-    for part in parts:
+    for part in _attribute_items(s):
         if "=" not in part:
             continue
         k, v = part.split("=", 1)
@@ -406,11 +431,13 @@ def _parse_attr_block(s: str) -> dict[str, Any]:
 
 def _parse_value(v: str) -> Any:
     v = v.strip()
+    if v.startswith("{") and v.endswith("}"):
+        return _parse_attr_block(v[1:-1])
     if v.startswith("[") and v.endswith("]"):
         body = v[1:-1].strip()
         if not body:
             return []
-        return [_parse_value(x) for x in body.split(",")]
+        return [_parse_value(x) for x in _attribute_items(body)]
     if v.startswith('"') and v.endswith('"'):
         return v[1:-1]
     # typed scalar: "<num> : <type>"
@@ -644,6 +671,9 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
             name = attrs.get("name", result)
             shape, dtype = _shape_dtype(_last_type(op["tail"]))
             tensor_spec = {"shape": shape, "dtype": dtype, "role": attrs.get("role", "input")}
+            if "storage_encoding" in attrs:
+                tensor_spec["storage_encoding"] = attrs["storage_encoding"]
+                tensor_spec["storage_encoding"] = _checked_storage_encoding(tensor_spec)
             if tensor_spec["role"] == "scale":
                 for key in ("scale_of", "block"):
                     if key in attrs:
@@ -658,9 +688,10 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
                 }
             )
         elif mnem == "matmul":
-            cb["commands"].append(
-                {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": srcs[0], "rhs": srcs[1], "dst": result}}
-            )
+            command = {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": srcs[0], "rhs": srcs[1], "dst": result}}
+            if attrs:
+                command["attributes"] = attrs
+            cb["commands"].append(command)
         elif mnem in _NAMED_OP_OPERAND_KEYS:
             keys = _NAMED_OP_OPERAND_KEYS[mnem]
             if len(srcs) != len(keys):

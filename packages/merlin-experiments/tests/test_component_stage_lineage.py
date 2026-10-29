@@ -7,6 +7,7 @@ compile/static, numerical, runtime, isolation or final acceptance authority.
 
 import contextlib
 import shutil
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +15,7 @@ import pytest
 from merlin_experiments.phase2 import component_final_qualification as FQ
 from merlin_experiments.phase2 import component_launch as CL
 from merlin_experiments.phase2 import component_stage as CS
+from merlin_experiments.phase2 import search_configuration as SEARCH
 from merlin_experiments.phase2.contracts import StageGateError
 
 
@@ -115,7 +117,11 @@ def diagnostic_stage(tmp_path, monkeypatch):
     monkeypatch.setattr(CS, "audit_codex_transcript", lambda *args: {"clean": True})
 
     def author(actual_launch, authored_inputs, **kwargs):
-        assert actual_launch is launch and authored_inputs.qualification is qualification
+        assert actual_launch.inputs is launch.inputs and authored_inputs.qualification is qualification
+        assert (actual_launch.selected_model, actual_launch.selected_effort) == (
+            launch.selected_model,
+            launch.selected_effort,
+        )
         assert authored_inputs.policy.receipt_path == stage / "control-authoring/receipts.jsonl"
         for name in (
             "component_corpus",
@@ -252,3 +258,83 @@ def test_stage_cannot_promote_missing_or_unresolved_descendant_static_roles(diag
     ).read_text() == "# synthetic observed descendant edit\n"
     if failure == "unresolved":
         assert (fixture.inputs.stage_root / "final_compile_role_evaluation/diagnostic.json").is_file()
+
+
+def test_search_pool_closes_when_prompt_setup_refuses_before_authoring(diagnostic_stage, monkeypatch):
+    fixture = diagnostic_stage
+    closed = []
+    selection = SimpleNamespace(
+        author_agents=3,
+        settings=SimpleNamespace(final_reserve_seconds=5, soft_seconds=20, hard_seconds=30),
+        install=lambda *args, **kwargs: SimpleNamespace(close=lambda: closed.append("closed")),
+    )
+    monkeypatch.setattr(SEARCH, "read_search_configuration", lambda path: selection)
+
+    def refuse_prompt(*args):
+        raise StageGateError("injected prompt setup refusal")
+
+    monkeypatch.setattr(CS.SP, "render_component_prompt", refuse_prompt)
+    with pytest.raises(StageGateError, match="setup refusal"):
+        CL.run_component_stage(
+            replace(fixture.launch, selected_subagent_count=3),
+            model="fixture",
+            effort="low",
+            wall_budget_seconds=20,
+            max_tool_calls=2,
+            tool_timeout_seconds=10,
+            suite="synthetic-transport",
+            search_configuration=Path("synthetic-selection"),
+        )
+    assert closed == ["closed"] and "author" not in fixture.observed
+
+
+@pytest.mark.parametrize("failure", [None, "unfinished", "unselected", "edited_after_selection"])
+def test_search_final_gate_keeps_selection_and_observed_descendant_together(diagnostic_stage, monkeypatch, failure):
+    """Routing controls only; the synthetic coordinator issues no selection proof."""
+    fixture = diagnostic_stage
+    state, closed = {}, []
+
+    def install(policy, **kwargs):
+        policy.search_coordinator = SimpleNamespace(status=lambda: dict(state))
+        return SimpleNamespace(close=lambda: closed.append(True))
+
+    selection = SimpleNamespace(
+        author_agents=3,
+        sha256="7" * 64,
+        verify=lambda: None,
+        install=install,
+        settings=SimpleNamespace(final_reserve_seconds=5, soft_seconds=20, hard_seconds=30),
+    )
+    monkeypatch.setattr(SEARCH, "read_search_configuration", lambda path: selection)
+    original_author = CS.run_component_origin_round
+
+    def author(*args, **kwargs):
+        result = original_author(*args, **kwargs)
+        source = CS.hash_tree(fixture.inputs.candidate)["sha256"]
+        state.update(
+            finalized=failure != "unfinished",
+            incumbent={"source_sha256": source},
+            selected=None if failure == "unselected" else {"source_sha256": source},
+        )
+        if failure == "edited_after_selection":
+            (fixture.inputs.candidate / "compiler.py").write_text("# later unmeasured edit\n")
+        return result
+
+    monkeypatch.setattr(CS, "run_component_origin_round", author)
+    document = CL.C.mapping_file(
+        CL.run_component_stage(
+            replace(fixture.launch, selected_subagent_count=3),
+            model="fixture",
+            effort="low",
+            wall_budget_seconds=20,
+            max_tool_calls=2,
+            tool_timeout_seconds=10,
+            suite="synthetic-transport",
+            search_configuration=Path("synthetic-selection"),
+        )
+    )
+    assert closed and document["search_configuration_sha256"] == selection.sha256
+    assert document["admission"]["consumable"] is (failure is None)
+    assert ("qualify" in fixture.observed) is (failure is None)
+    if failure is not None:
+        assert "measured search incumbent" in document["admission"]["refusal"]

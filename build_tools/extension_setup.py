@@ -10,7 +10,11 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 build environments.
+    import tomli as tomllib
 from pathlib import Path
 
 from setuptools import setup
@@ -83,6 +87,25 @@ class BuildPy(_build_py):
         if staged.exists():
             shutil.rmtree(staged)
         super().run()
+        portable = _METADATA.get("tool", {}).get("merlin", {}).get("portable-sources")
+        if portable is not None:
+            destination = Path(portable["destination"])
+            if destination.is_absolute() or ".." in destination.parts or not destination.parts:
+                raise ValueError("portable source destination must be package-relative")
+            for name in portable["files"]:
+                source = _PROJECT / name
+                if (
+                    not isinstance(name, str)
+                    or Path(name).is_absolute()
+                    or ".." in Path(name).parts
+                    or not source.is_file()
+                    or source.is_symlink()
+                    or not source.resolve().is_relative_to(_PROJECT)
+                ):
+                    raise ValueError("portable source must be a regular project member")
+                output = Path(self.build_lib) / destination / name
+                output.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, output)
 
 
 class Wheel(_bdist_wheel):
@@ -138,7 +161,8 @@ class SourceDistribution(_sdist):
         dist_dir.mkdir(parents=True, exist_ok=True)
         # The default sdist command stages <name-version>/ in the source directory. Keep even
         # transient staging out of source, while preserving --keep-temp for build debugging.
-        with tempfile.TemporaryDirectory(prefix="sdist-", dir=_OUTPUT, delete=not self.keep_temp) as stage:
+        stage = tempfile.mkdtemp(prefix="sdist-", dir=_OUTPUT)
+        try:
             name = self.distribution.get_fullname()
             self.make_release_tree(str(Path(stage) / name), self.filelist.files)
             self.archive_files = [
@@ -152,6 +176,9 @@ class SourceDistribution(_sdist):
                 )
                 for fmt in self.formats
             ]
+        finally:
+            if not self.keep_temp:
+                shutil.rmtree(stage)
 
 
 setup(

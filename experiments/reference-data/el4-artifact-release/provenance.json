@@ -1,0 +1,52 @@
+{
+  "schema": "merlin.artifact_release_provenance.v1",
+  "development_source": "c54726eaddcfadb4bf598df62f6bc4263fc03df4",
+  "integrated_checkpoint": "4374c11a9deea6af805ca5d8761b3270d890a7f5",
+  "condensed_root": "f83f7d12da516757b3a2c6c72b8ea19588aebba4",
+  "integrated_fixes": [
+    {
+      "source_commit": "0a9f12b28fb64a0585546c15c92837131ff3a047",
+      "subject": "fix(tracking): inventory native selfchecks and validated tier joins"
+    },
+    {
+      "source_commit": "6ced1a1d87f2050d974225990bd088937d244fdc",
+      "subject": "fix(qualification): join exact whole-program tier observations"
+    },
+    {
+      "source_commit": "76b6ce70610061a0fd4cdbd1f86f0fab28fc3a7f",
+      "subject": "fix(feedback): scope promotion diagnostics to observed callbacks"
+    },
+    {
+      "source_commit": "627580553a495c662607519a864507be8243d664",
+      "subject": "fix(targetgen): report audited owned-host instruction classes"
+    },
+    {
+      "source_commit": "f78cbc490b7efc44e35196417a07bc888774ad6b",
+      "subject": "fix(targetgen): join scalar assertion support to frozen host inventory"
+    },
+    {
+      "source_commit": "65ef21badb1c432457c0f79e9f1e2f4828e77623",
+      "subject": "fix(feedback): expose bounded timing observation failure stages"
+    },
+    {
+      "source_commit": "fc96051a504d075d5fffcb31f3832dc137350f2f",
+      "subject": "fix(phase1): reopen exact retained model slice products"
+    },
+    {
+      "source_commit": "8b89681ef3c49af995c2ae3c85a7c78cbeb96b21",
+      "subject": "fix(phase1): admit evidence-only calibration review successors"
+    }
+  ],
+  "companion_sources": {
+    "gemmini_mlir_consolidated": "8784539cd6c293cf31d0e150a86085a1ba5cd0ae",
+    "spike_timing_consolidated": "649632ef9129c9d88282a09f041e30812f096840",
+    "spike_fire_aligned_runtime": "dea21091bc2164989eaacd0c7acf62c79d004ee8"
+  },
+  "scope": "Source revision mapping only; no runtime, correctness, timing, or clean-machine reproduction qualification.",
+  "dependency_limits": [
+    "Companion revision identifiers do not provide distributable source/build closures.",
+    "Fresh campaigns require separately reviewed corpus, numerical references, toolchain and simulator inputs.",
+    "FireSim requires selected hardware/configuration identity and deployment resources."
+  ],
+  "publication_source_checkpoint": "368ab45996efcef4d2625d77720348ce017663b3"
+}

@@ -1,0 +1,35 @@
+schema: merlin.phase0_workload_roster.v1
+performance_applications:
+  conv_pool_small:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: connected_blocks, kind: conv_pool, channels: 3, out_channels: 16, height: 9, width: 11, conv_kernel: 3, conv_stride: 1, conv_padding: 1, pool_kernel: 3, pool_stride: 2, pool_padding: 1}
+  conv_pool_representative:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: connected_blocks, kind: conv_pool, channels: 3, out_channels: 64, height: 224, width: 224, conv_kernel: 7, conv_stride: 2, conv_padding: 3, pool_kernel: 3, pool_stride: 2, pool_padding: 1}
+  residual_block_small:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: connected_blocks, kind: residual, channels: 8, width: 4, out_channels: 16, side: 8, stride: 2, blocks: 1}
+  residual_block_medium:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: connected_blocks, kind: residual, channels: 32, width: 16, out_channels: 64, side: 28, stride: 2, blocks: 2}
+  residual_block_representative:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: connected_blocks, kind: residual, channels: 64, width: 64, out_channels: 256, side: 56, stride: 2, blocks: 3}
+  attention_cache_small:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: connected_blocks, kind: attention, tokens: 2, hidden: 16, heads: 2, kv_heads: 1, prefix: 3, ffn: 32}
+  attention_cache_medium:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: connected_blocks, kind: attention, tokens: 8, hidden: 128, heads: 4, kv_heads: 2, prefix: 24, ffn: 256}
+  attention_cache_representative:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: connected_blocks, kind: attention, tokens: 32, hidden: 512, heads: 8, kv_heads: 2, prefix: 128, ffn: 1536}
+  repeated_inference_small:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: connected_blocks, kind: repeated, steps: 2, rows: 3, hidden: 8, ffn: 12, output: 8}
+  repeated_inference_medium:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: connected_blocks, kind: repeated, steps: 3, rows: 16, hidden: 128, ffn: 256, output: 128}
+  repeated_inference_representative:
+    loader: loader.py
+    profile: {schema: merlin.iteration_workload_profile.v1, workload_id: connected_blocks, kind: repeated, steps: 4, rows: 32, hidden: 512, ffn: 1024, output: 512}

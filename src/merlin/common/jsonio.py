@@ -41,6 +41,63 @@ def canonical_sha256(
     )
 
 
+def _object_key(key: Any) -> str:
+    """The member name ``json.dumps`` writes for ``key``."""
+    if isinstance(key, str):
+        return key
+    if key is True or key is False or key is None:
+        return json.dumps(key)
+    if isinstance(key, (int, float)):
+        return json.dumps(key)
+    raise TypeError(f"keys must be str, int, float, bool or None, not {type(key).__name__}")
+
+
+def _holds_no_object(items: list | tuple) -> bool:
+    if any(isinstance(item, dict) for item in items):
+        return False
+    first = items[0] if items else None
+    return not isinstance(first, (list, tuple)) or _holds_no_object(first)
+
+
+def readable_json(value: Any, *, indent: int = 2) -> str:
+    """``json.dumps(value, indent=indent)`` with every array of plain values on one line.
+
+    ``indent`` puts each array element on its own line, so an embedded tensor is mostly indentation:
+    a 65-million-element weight matrix in a capsule result took 1 GB indented and 229 MB without it,
+    and that result was rewritten for every grade. Objects keep their indented layout for a human
+    reader; arrays that hold no object are written compactly. ``json.loads`` of the result equals
+    ``json.loads(json.dumps(value))``, so a reader or a digest of the parsed value sees no change.
+    """
+    pieces: list[str] = []
+
+    def write(item: Any, level: int) -> None:
+        if isinstance(item, dict):
+            if not item:
+                pieces.append("{}")
+                return
+            inner = "\n" + " " * (indent * (level + 1))
+            pieces.append("{")
+            for index, (key, member) in enumerate(item.items()):
+                pieces.append(("," if index else "") + inner + json.dumps(_object_key(key)) + ": ")
+                write(member, level + 1)
+            pieces.append("\n" + " " * (indent * level) + "}")
+        elif isinstance(item, (list, tuple)):
+            if _holds_no_object(item):
+                pieces.append(json.dumps(item, separators=(",", ":")))
+                return
+            inner = "\n" + " " * (indent * (level + 1))
+            pieces.append("[")
+            for index, member in enumerate(item):
+                pieces.append(("," if index else "") + inner)
+                write(member, level + 1)
+            pieces.append("\n" + " " * (indent * level) + "]")
+        else:
+            pieces.append(json.dumps(item))
+
+    write(value, 0)
+    return "".join(pieces)
+
+
 def strict_json_equal(observed: object, expected: object) -> bool:
     """Compare closed JSON values without Python's bool/int or tuple/list aliases.
 

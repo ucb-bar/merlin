@@ -24,6 +24,17 @@ def test_original_comparison_and_optional_branches() -> None:
             {"arm": "merlin_assisted", "treatment": "rtlchecks", "bundle": "merlin_assisted_pass_catalog_public_v0"},
             "EL4-P",
         ),
+        (
+            {"arm": "merlin_assisted", "treatment": "rtlchecks", "bundle": "merlin_assisted_rtlchecks_isa_public_v0"},
+            "EL5",
+        ),
+        (
+            {
+                "arm": "merlin_assisted", "treatment": "rtlchecks",
+                "bundle": "merlin_assisted_rtlchecks_isa_lean_public_v0",
+            },
+            "EL6",
+        ),
     )
     assert len({entry["id"] for entry in LEVELS}) == len(LEVELS)
     for config, expected in selections:
@@ -32,6 +43,7 @@ def test_original_comparison_and_optional_branches() -> None:
 
 def test_contradictory_selection_has_no_level() -> None:
     assert level_for_phase1({"arm": "raw_baseline", "treatment": "rtlchecks"}) is None
+    assert level_for_phase1({"level": "EL5", "arm": "merlin_assisted", "treatment": "baseline"}) is None
     assert (
         level_for_phase1(
             {"arm": "merlin_assisted", "treatment": "baseline", "bundle": "merlin_assisted_rtlchecks_public_v0"}

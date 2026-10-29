@@ -1,0 +1,434 @@
+{
+  "schema": "operator.no_expert_generated_inputs_audit.v1",
+  "observed_at": "2026-10-28T21:30:46.369261+00:00",
+  "source_revision": "02d14a7d523f1ff72eaf4fb6ba6c56d2bbd47b33",
+  "source_marker": {
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/.merlin-source-revision.json",
+    "sha256": "1016ffef05b5a0917ef4ea1ada318c93738d89493f19188ba0633ac37b55d6c9"
+  },
+  "study": {
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/study.json",
+    "sha256": "6340dea3ec2fe3112d96dfbdd821c4185202bcda1fb9e35adf87dc2b6ce6344e"
+  },
+  "scope": "Read-only staged input/grant/source/document/provenance audit only. Not native permission, compiler, provider or simulator qualification.",
+  "arms": {
+    "el1": {
+      "bundle": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el1/inputs/source-release/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/input_bundle_manifest.yaml",
+        "sha256": "029cae687063f53c0f6780ee272316dfe9610438d440d71cfee81ded46fbfcf7"
+      },
+      "preparation": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el1/inputs/source-release/private/preparation.json",
+        "sha256": "40ebb640eff5b0a33054fcaa2277485fc07e4cc2be7b3857c71122b93142152b"
+      },
+      "profile": {
+        "schema": "merlin.author_profile.v1",
+        "name": "xs-el-no-expert-v1/el1",
+        "level": 1,
+        "source_scope": "none",
+        "entry_modules": [],
+        "tools": [],
+        "optimization_guidance": false,
+        "live_cca": false,
+        "prior_reference_tasks": false,
+        "historical_levels_unchanged": true,
+        "raw_kernel_references": false,
+        "expert_kernel_policy": "withheld"
+      },
+      "allowed_count": 28,
+      "reference_bank_absent": true,
+      "staged_payload_inventory": {
+        "files": 1048,
+        "symlinks": 0,
+        "expert_or_elf_name_matches": []
+      },
+      "staged_payload_no_expert_binary_or_alias_names": true,
+      "reference_preparation_provenance_absent": true,
+      "reference_grants_absent": true,
+      "common_grants_equal_r2_after_reference_removal": true,
+      "no_expert_profile_bound": true,
+      "tools_equal_r2": true,
+      "source_selection_file": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el1/inputs/full-compiler-selection.json",
+        "sha256": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+      },
+      "source_members": 0,
+      "source_member_hashes_equal_r2": true,
+      "documents": {
+        "STARTER_PROMPT.md": {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el1/inputs/source-release/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/STARTER_PROMPT.md",
+          "sha256": "9d89f99b544fcebb7f730a57cecb5177122683bf4067790192987dbda14f4c6c",
+          "bytes": 1354,
+          "stale_advertisements_absent": true
+        },
+        "ALLOWED_MERLIN_TOOLS.md": {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el1/inputs/source-release/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/ALLOWED_MERLIN_TOOLS.md",
+          "sha256": "9d89f99b544fcebb7f730a57cecb5177122683bf4067790192987dbda14f4c6c",
+          "bytes": 1354,
+          "stale_advertisements_absent": true
+        },
+        "TASK_ADDENDUM.md": {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el1/inputs/source-release/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/TASK_ADDENDUM.md",
+          "sha256": "9d89f99b544fcebb7f730a57cecb5177122683bf4067790192987dbda14f4c6c",
+          "bytes": 1354,
+          "stale_advertisements_absent": true
+        }
+      },
+      "common_profile_documents_equal": true,
+      "clean_profile_disclosure": true,
+      "core_cohort": {
+        "n_capsules": 109,
+        "sha256": "072dc6fe0cab885860de25d4c7fee7463d7fca406c893e9ac45015bfdea5ab01",
+        "same_roster_program_and_capsule_hashes_as_r2": true
+      },
+      "public_program_selection": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el1/inputs/source-release/private/public_programs/selection.json",
+        "sha256": "25b6995a641662bcf1a434cca4f9344f11c67ce1d5da472a589ce5cbc10d616c"
+      },
+      "dataset_selection_provenance": {
+        "public_scalability": {
+          "sha256": "6983f51be889c6d560e0e1d5f7b3673e48dc2fe6822bbce885817a266bbc01c8"
+        },
+        "public_programs": {
+          "schema": "merlin.corpus.public_program_suite.v1",
+          "target": "gemmini",
+          "policy": {
+            "engine": "spike",
+            "tiers": [
+              "L0",
+              "L1",
+              "L2"
+            ],
+            "purpose": "public_program_development"
+          },
+          "corpus": {
+            "sha256": "57b8270528893e858c21577d787b9df677c107baaef5f73aba4cfe59fc622e2d"
+          },
+          "members": [
+            {
+              "member": "_perf/PG_source_attention_cache_representative",
+              "capsule_sha256": "8ba8ca0ed44950c68cb87142dd3aa527f4f20547b0e423a7938933e1d120b847"
+            },
+            {
+              "member": "_perf/PG_source_repeated_inference_representative",
+              "capsule_sha256": "ee21c6a3f49ba2077042e17d2dee430ff1e22006c24932058c6c298f20184e0a"
+            },
+            {
+              "member": "_perf/PG_source_residual_block_medium",
+              "capsule_sha256": "31d02b0427ffc512c40c2f45799ed981811e6c79f03baee17e66f6e8b9772983"
+            }
+          ],
+          "operator_exclusion": {
+            "sha256": "5b8eed9d7cd959c05e7f80598458bad57d1198c85a50617e52bbd4ae76e17866"
+          }
+        },
+        "public_supplement": {
+          "origin": "operator_requested",
+          "provenance": {
+            "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs_capsules/selection/supplement/provenance.json",
+            "sha256": "8c7d8fe6edb4d21f1124110b784113612b2b86e09692faf52a96ab4ca038e525"
+          },
+          "schema": "merlin.corpus.public_supplement.v1",
+          "target": "gemmini"
+        },
+        "public_supplement_selection_sha256": "e717c48f0933cb95e095fdc568fd91fda8433dc3a227140d4d571f0301e185dc"
+      },
+      "dataset_selection_provenance_equal_r2": true,
+      "full_existing_spike_runtime_environment_preserved": true,
+      "timing_pin_equal_r2": true,
+      "checks_passed": true
+    },
+    "el2": {
+      "bundle": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el2/inputs/source-release/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/input_bundle_manifest.yaml",
+        "sha256": "e1dae5448da7bd588b98be625f3604a0536170f9c3cfcf3734a4151ae0f365bc"
+      },
+      "preparation": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el2/inputs/source-release/private/preparation.json",
+        "sha256": "18b1bbcf19b1dca38be39865a3ee05c975618ca06032dff8bb2b0cf602ddd0a8"
+      },
+      "profile": {
+        "schema": "merlin.author_profile.v1",
+        "name": "xs-el-no-expert-v1/el2",
+        "level": 2,
+        "source_scope": "component_closure",
+        "entry_modules": [
+          "merlin.targetgen.generate.mlir_scaffold",
+          "merlin.targetgen.generate.llvm_plan",
+          "merlin.targetgen.generate.target_repo"
+        ],
+        "tools": [
+          "cpp_oot_generators"
+        ],
+        "optimization_guidance": false,
+        "live_cca": false,
+        "prior_reference_tasks": false,
+        "historical_levels_unchanged": true,
+        "raw_kernel_references": false,
+        "expert_kernel_policy": "withheld"
+      },
+      "allowed_count": 28,
+      "reference_bank_absent": true,
+      "staged_payload_inventory": {
+        "files": 1048,
+        "symlinks": 0,
+        "expert_or_elf_name_matches": []
+      },
+      "staged_payload_no_expert_binary_or_alias_names": true,
+      "reference_preparation_provenance_absent": true,
+      "reference_grants_absent": true,
+      "common_grants_equal_r2_after_reference_removal": true,
+      "no_expert_profile_bound": true,
+      "tools_equal_r2": true,
+      "source_selection_file": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el2/inputs/full-compiler-selection.json",
+        "sha256": "2a465008c89ff1fecb9d3374854ab8cfb13086ed19ad4cb2734dc3c9e3b23416"
+      },
+      "source_manifest": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el2/inputs/full-compiler/manifest.json",
+        "sha256": "c53e145db07a8f39bbde0efc1ca5ab56c9d3c1ecabf0c6dd3300e29f36048c24"
+      },
+      "source_members": 12,
+      "source_member_hashes_equal_r2": true,
+      "source_member_bytes_match_manifest": true,
+      "documents": {
+        "STARTER_PROMPT.md": {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el2/inputs/source-release/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/STARTER_PROMPT.md",
+          "sha256": "5a5fcea3c57efdf3fcede1a5f9006a8228caeebada8d2899ae6aa50dc9702c86",
+          "bytes": 1499,
+          "stale_advertisements_absent": true
+        },
+        "ALLOWED_MERLIN_TOOLS.md": {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el2/inputs/source-release/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/ALLOWED_MERLIN_TOOLS.md",
+          "sha256": "5a5fcea3c57efdf3fcede1a5f9006a8228caeebada8d2899ae6aa50dc9702c86",
+          "bytes": 1499,
+          "stale_advertisements_absent": true
+        },
+        "TASK_ADDENDUM.md": {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el2/inputs/source-release/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/TASK_ADDENDUM.md",
+          "sha256": "5a5fcea3c57efdf3fcede1a5f9006a8228caeebada8d2899ae6aa50dc9702c86",
+          "bytes": 1499,
+          "stale_advertisements_absent": true
+        }
+      },
+      "common_profile_documents_equal": true,
+      "clean_profile_disclosure": true,
+      "core_cohort": {
+        "n_capsules": 109,
+        "sha256": "072dc6fe0cab885860de25d4c7fee7463d7fca406c893e9ac45015bfdea5ab01",
+        "same_roster_program_and_capsule_hashes_as_r2": true
+      },
+      "public_program_selection": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el2/inputs/source-release/private/public_programs/selection.json",
+        "sha256": "9a915c6d990252f918ae22ecddb9a1dfb0171f33aa05b542a499e58049027364"
+      },
+      "dataset_selection_provenance": {
+        "public_scalability": {
+          "sha256": "6983f51be889c6d560e0e1d5f7b3673e48dc2fe6822bbce885817a266bbc01c8"
+        },
+        "public_programs": {
+          "schema": "merlin.corpus.public_program_suite.v1",
+          "target": "gemmini",
+          "policy": {
+            "engine": "spike",
+            "tiers": [
+              "L0",
+              "L1",
+              "L2"
+            ],
+            "purpose": "public_program_development"
+          },
+          "corpus": {
+            "sha256": "57b8270528893e858c21577d787b9df677c107baaef5f73aba4cfe59fc622e2d"
+          },
+          "members": [
+            {
+              "member": "_perf/PG_source_attention_cache_representative",
+              "capsule_sha256": "8ba8ca0ed44950c68cb87142dd3aa527f4f20547b0e423a7938933e1d120b847"
+            },
+            {
+              "member": "_perf/PG_source_repeated_inference_representative",
+              "capsule_sha256": "ee21c6a3f49ba2077042e17d2dee430ff1e22006c24932058c6c298f20184e0a"
+            },
+            {
+              "member": "_perf/PG_source_residual_block_medium",
+              "capsule_sha256": "31d02b0427ffc512c40c2f45799ed981811e6c79f03baee17e66f6e8b9772983"
+            }
+          ],
+          "operator_exclusion": {
+            "sha256": "5b8eed9d7cd959c05e7f80598458bad57d1198c85a50617e52bbd4ae76e17866"
+          }
+        },
+        "public_supplement": {
+          "origin": "operator_requested",
+          "provenance": {
+            "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs_capsules/selection/supplement/provenance.json",
+            "sha256": "8c7d8fe6edb4d21f1124110b784113612b2b86e09692faf52a96ab4ca038e525"
+          },
+          "schema": "merlin.corpus.public_supplement.v1",
+          "target": "gemmini"
+        },
+        "public_supplement_selection_sha256": "e717c48f0933cb95e095fdc568fd91fda8433dc3a227140d4d571f0301e185dc"
+      },
+      "dataset_selection_provenance_equal_r2": true,
+      "full_existing_spike_runtime_environment_preserved": true,
+      "timing_pin_equal_r2": true,
+      "checks_passed": true
+    },
+    "el3": {
+      "bundle": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/input_bundle_manifest.yaml",
+        "sha256": "b0ba625496e53b11b18c1ee35f17402dd80d8dc58fabac12823a477a06164aa4"
+      },
+      "preparation": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/private/preparation.json",
+        "sha256": "0f5b804ef2ad31be6b37681198b350452877e2f86573d0e4e4a1304abc145176"
+      },
+      "profile": {
+        "schema": "merlin.author_profile.v1",
+        "name": "xs-el-no-expert-v1/el3",
+        "level": 3,
+        "source_scope": "component_closure",
+        "entry_modules": [
+          "merlin.targetgen.generate.mlir_scaffold",
+          "merlin.targetgen.generate.llvm_plan",
+          "merlin.targetgen.generate.target_repo",
+          "merlin.targetgen.generate.xdsl",
+          "merlin.targetgen.oot_starterkit.iface",
+          "merlin.targetgen.oot_starterkit.dialect",
+          "merlin.targetgen.oot_starterkit.llvm_context",
+          "merlin.targetgen.oot_starterkit.cmdbuf",
+          "merlin.targetgen.oot_starterkit.verify"
+        ],
+        "tools": [
+          "cpp_oot_generators"
+        ],
+        "optimization_guidance": false,
+        "live_cca": false,
+        "prior_reference_tasks": false,
+        "historical_levels_unchanged": true,
+        "raw_kernel_references": false,
+        "expert_kernel_policy": "withheld"
+      },
+      "allowed_count": 28,
+      "reference_bank_absent": true,
+      "staged_payload_inventory": {
+        "files": 1048,
+        "symlinks": 0,
+        "expert_or_elf_name_matches": []
+      },
+      "staged_payload_no_expert_binary_or_alias_names": true,
+      "reference_preparation_provenance_absent": true,
+      "reference_grants_absent": true,
+      "common_grants_equal_r2_after_reference_removal": true,
+      "no_expert_profile_bound": true,
+      "tools_equal_r2": true,
+      "source_selection_file": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/full-compiler-selection.json",
+        "sha256": "69cea06fac3724f866d0d026d8c4eb17bdb3a5f20528d0b1fcee398cd66644c3"
+      },
+      "source_manifest": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/full-compiler/manifest.json",
+        "sha256": "87756ae886e7a35b728748503ce2e6906625fb4803634d486c1a4c5ac3075e21"
+      },
+      "source_members": 34,
+      "source_member_hashes_equal_r2": true,
+      "source_member_bytes_match_manifest": true,
+      "documents": {
+        "STARTER_PROMPT.md": {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/STARTER_PROMPT.md",
+          "sha256": "2f2e35068f1d4de11eb2053e92858a9a10dad2a70f67b3172bd54d360838b9ed",
+          "bytes": 1968,
+          "stale_advertisements_absent": true
+        },
+        "ALLOWED_MERLIN_TOOLS.md": {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/ALLOWED_MERLIN_TOOLS.md",
+          "sha256": "2f2e35068f1d4de11eb2053e92858a9a10dad2a70f67b3172bd54d360838b9ed",
+          "bytes": 1968,
+          "stale_advertisements_absent": true
+        },
+        "TASK_ADDENDUM.md": {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/TASK_ADDENDUM.md",
+          "sha256": "2f2e35068f1d4de11eb2053e92858a9a10dad2a70f67b3172bd54d360838b9ed",
+          "bytes": 1968,
+          "stale_advertisements_absent": true
+        }
+      },
+      "common_profile_documents_equal": true,
+      "clean_profile_disclosure": true,
+      "core_cohort": {
+        "n_capsules": 109,
+        "sha256": "072dc6fe0cab885860de25d4c7fee7463d7fca406c893e9ac45015bfdea5ab01",
+        "same_roster_program_and_capsule_hashes_as_r2": true
+      },
+      "public_program_selection": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/private/public_programs/selection.json",
+        "sha256": "772236e10d6f1015e0b13ce9fb1921839e221d89bce638a717b60da145d7b831"
+      },
+      "dataset_selection_provenance": {
+        "public_scalability": {
+          "sha256": "6983f51be889c6d560e0e1d5f7b3673e48dc2fe6822bbce885817a266bbc01c8"
+        },
+        "public_programs": {
+          "schema": "merlin.corpus.public_program_suite.v1",
+          "target": "gemmini",
+          "policy": {
+            "engine": "spike",
+            "tiers": [
+              "L0",
+              "L1",
+              "L2"
+            ],
+            "purpose": "public_program_development"
+          },
+          "corpus": {
+            "sha256": "57b8270528893e858c21577d787b9df677c107baaef5f73aba4cfe59fc622e2d"
+          },
+          "members": [
+            {
+              "member": "_perf/PG_source_attention_cache_representative",
+              "capsule_sha256": "8ba8ca0ed44950c68cb87142dd3aa527f4f20547b0e423a7938933e1d120b847"
+            },
+            {
+              "member": "_perf/PG_source_repeated_inference_representative",
+              "capsule_sha256": "ee21c6a3f49ba2077042e17d2dee430ff1e22006c24932058c6c298f20184e0a"
+            },
+            {
+              "member": "_perf/PG_source_residual_block_medium",
+              "capsule_sha256": "31d02b0427ffc512c40c2f45799ed981811e6c79f03baee17e66f6e8b9772983"
+            }
+          ],
+          "operator_exclusion": {
+            "sha256": "5b8eed9d7cd959c05e7f80598458bad57d1198c85a50617e52bbd4ae76e17866"
+          }
+        },
+        "public_supplement": {
+          "origin": "operator_requested",
+          "provenance": {
+            "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs_capsules/selection/supplement/provenance.json",
+            "sha256": "8c7d8fe6edb4d21f1124110b784113612b2b86e09692faf52a96ab4ca038e525"
+          },
+          "schema": "merlin.corpus.public_supplement.v1",
+          "target": "gemmini"
+        },
+        "public_supplement_selection_sha256": "e717c48f0933cb95e095fdc568fd91fda8433dc3a227140d4d571f0301e185dc"
+      },
+      "dataset_selection_provenance_equal_r2": true,
+      "full_existing_spike_runtime_environment_preserved": true,
+      "timing_pin_equal_r2": true,
+      "checks_passed": true
+    }
+  },
+  "pending": [],
+  "blockers": [],
+  "author_jobs_launched": 0,
+  "compiler_jobs_launched": 0,
+  "simulator_jobs_launched": 0,
+  "method_notes": [
+    "Generated public-program selection JSON hashes differ from r2 only because corpus/exclusion absolute staging paths differ. Comparison retains all non-path fields, all members, corpus digest and exclusion digest.",
+    "Raw r2 reference materials are deliberately removed; all remaining grants are normalized by frozen-framework path/run ID and compared exactly.",
+    "No sandbox, author, compiler or simulator process launched by this audit. Actual native permission and assembled-runtime-prompt checks remain pending."
+  ],
+  "all_generated_inputs_checked": true,
+  "all_checks_passed": true
+}

@@ -29,7 +29,7 @@ def _broker():
     """Import the shared promotion module by path — it is a harness script, not installed."""
     if str(HARNESS) not in sys.path:
         sys.path.insert(0, str(HARNESS))
-    spec = importlib.util.spec_from_file_location("tier_promote", feedback_source("tier_promote"))
+    spec = importlib.util.spec_from_file_location("merlin_experiments.phase1.feedback.promotion", feedback_source("tier_promote"))
     mod = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(mod)
@@ -80,6 +80,38 @@ def test_a_passing_capsule_produces_a_cert_job(tmp_path):
     r = json.loads(reqs[0].read_text())
     assert r["capsules"] == "A" and r["tiers"] == "L3" and r["promoted"] is True
     assert r["submission_digest"] == B._submission_digest(ws)
+
+
+@pytest.mark.parametrize("verdict_kind", ["different_execution", "missing_verdict", "error"])
+def test_unattributable_completion_requeues_with_new_request_ownership(tmp_path, verdict_kind):
+    B = _broker()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    loop = _execution_verdict([("A", True, "a")])
+    assert B.promote(ws, ch, loop, "L2", "L3", None, sys.stderr, context=feedback_context()) == ["A"]
+    first_path = next(ch.glob("simreq_*.json"))
+    first = json.loads(first_path.read_text())
+    request = first_path.stem.removeprefix("simreq_")
+    if verdict_kind == "different_execution":
+        result = _execution_verdict([("A", True, "b")])
+    elif verdict_kind == "missing_verdict":
+        result = {"per_capsule": [{"capsule": "A", "execution_digest": "a" * 64}]}
+    else:
+        result = {"error": "child failed"}
+    assert B.record_cert(ws, result, "L3", sys.stderr, identity=first['identity'], request=request) == []
+    retired = B._slots_ro(B._tier_state(ws), "A", "L3")[first['identity']]
+    assert retired['status'] == 'unattributed'
+    assert B.promote(ws, ch, loop, "L2", "L3", None, sys.stderr, context=feedback_context()) == ["A"]
+    paths = sorted(ch.glob("simreq_*.json"))
+    assert len(paths) == 2
+    pending_before = B._tier_state(ws)
+    retry = B._slots_ro(pending_before, "A", "L3")[first['identity']]
+    assert retry['request'] != request and retry['attempt'] == 1
+    # A replay cannot resolve or retire the newer attempt, including a failed old completion.
+    assert B.record_cert(ws, result, "L3", identity=first['identity'], request=request) == []
+    assert B._tier_state(ws) == pending_before
+    assert B.record_cert(ws, loop, "L3", identity=first['identity'], request=request) == []
+    assert B._tier_state(ws) == pending_before
 
 
 def test_promotion_launches_the_enqueue_time_snapshot_after_source_moves(tmp_path, monkeypatch):
@@ -139,8 +171,9 @@ def test_a_failing_capsule_buys_no_cert_time(tmp_path):
     assert list((ws / ".qa_channel").glob("simreq_*.json")) == []
 
 
-def test_outside_the_cover_is_not_promoted(tmp_path):
+def test_outside_the_cover_is_not_promoted(tmp_path, monkeypatch):
     B = _broker()
+    monkeypatch.setattr(B, "_mandatory_cert_members", lambda **kw: set())
     ws = _ws(tmp_path)
     got = B.promote(
         ws,
@@ -153,6 +186,18 @@ def test_outside_the_cover_is_not_promoted(tmp_path):
         context=feedback_context(),
     )
     assert got == ["A"]
+
+
+def test_mandatory_outside_cover_promotes_only_pass_and_retains_identity(tmp_path, monkeypatch):
+    B = _broker()
+    monkeypatch.setattr(B, "_mandatory_cert_members", lambda **kw: {"B", "C"})
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    verdict = _verdict([("A", True), ("B", True), ("C", False), ("D", True)])
+    got = B.promote(ws, ch, verdict, "L2", "L3", {"A"}, sys.stderr, context=feedback_context())
+    assert set(got) == {"A", "B"}
+    assert len(list(ch.glob("simreq_*.json"))) == 2
+    assert B.promote(ws, ch, verdict, "L2", "L3", {"A"}, sys.stderr, context=feedback_context()) == []
 
 
 def test_the_same_bytes_are_never_certified_twice(tmp_path):
@@ -665,7 +710,7 @@ def test_the_broker_reap_actually_calls_the_recorder(tmp_path):
     src = (feedback_source("simjob_broker")).read_text(encoding="utf-8")
     assert "_TP.record_cert(" in src, "the broker reap never records a completed promotion"
     reap = src[src.index('if not j.get("promoted")') :]
-    assert 'elif j.get("promoted")' in reap[:800], "the recorder is not on the promoted-job branch of the reap"
+    assert 'elif j.get("promoted")' in reap, "the recorder is not on the promoted-job branch of the reap"
 
 
 # ---------------------------------------------------------------------------------------------

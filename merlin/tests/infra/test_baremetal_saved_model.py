@@ -19,6 +19,8 @@ from merlin.llvmlower.device_build import DeviceRouting
 
 
 def _fixture(tmp_path: Path, monkeypatch, *, elements: int = 2):
+    # This neutral native-engine fixture selects its own facts below.
+    monkeypatch.delenv("MERLIN_RTL_FACTS", raising=False)
     out = tmp_path / "out"
     out.mkdir()
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(out))
@@ -148,6 +150,93 @@ def test_math_archive_symbol_request_is_opt_in_and_forwarded_unchanged(tmp_path,
     assert "math_archive_symbols" not in observed[0]
     assert observed[1] == {**observed[0], "math_archive_symbols": ["sinf"]}
     assert default["inputs"] == selected["inputs"]
+
+
+def test_verified_weight_source_is_forwarded_only_when_selected(tmp_path, monkeypatch):
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    source = tmp_path / "weights.bin"
+    source.write_bytes(b"existing derived weights")
+    observed = []
+
+    def build(bundle, work, **kwargs):
+        observed.append(dict(kwargs))
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    default = BM.compile_saved_model(**inputs, output=out / "default-weights", run="none")
+    selected = BM.compile_saved_model(**inputs, output=out / "shared-weights", run="none", weights_source=source)
+    assert "weights_source" not in observed[0] and "weights_source" not in default["inputs"]
+    assert observed[1] == {**observed[0], "weights_source": source}
+    assert selected["inputs"]["weights_source"] == str(source.resolve())
+
+
+@pytest.mark.parametrize("change", [None, "missing", "mutated"])
+def test_operation_profile_is_opt_in_and_binds_the_actual_table(tmp_path, monkeypatch, change):
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    observed = []
+    table = [{"id": 0, "mlir_op": "arith.constant"}]
+
+    def build(bundle, work, **kwargs):
+        observed.append(dict(kwargs))
+        result = _fake_build(bundle, work, **kwargs)
+        if kwargs.get("op_profile") and change != "missing":
+            (work / "op_profile_table.json").write_text(json.dumps(table))
+        return result
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    default = BM.compile_saved_model(**inputs, output=out / "plain", run="none")
+    assert "op_profile" not in observed[0] and "op_profile_table" not in default["output"]
+    if change == "missing":
+        with pytest.raises(BM.BaremetalModelError, match="operation table"):
+            BM.compile_saved_model(**inputs, output=out / "profile", run="none", op_profile=True)
+        return
+    selected = BM.compile_saved_model(**inputs, output=out / "profile", run="none", op_profile=True)
+    assert observed[1] == {**observed[0], "op_profile": True}
+    from merlin.model_check.full_build import _profile_table_matches
+
+    record = {"build_dir": str(out / "profile/build"), "op_profile_table": selected["output"]["op_profile_table"]}
+    assert _profile_table_matches(record)
+    if change == "mutated":
+        (out / "profile/build/op_profile_table.json").write_text("[]")
+        assert not _profile_table_matches(record)
+
+
+@pytest.mark.parametrize("mutation", [None, "table", "trace"])
+def test_executed_profile_is_read_from_console_and_table_mutation_refuses(tmp_path, monkeypatch, mutation):
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    table_path = out / "executed/build/op_profile_table.json"
+
+    def build(bundle, work, **kwargs):
+        result = _fake_build(bundle, work, **kwargs)
+        table_path.write_text('[{"id":0,"mlir_op":"func.call","callee":"@opaque"}]')
+        return result
+
+    def run(*args, **kwargs):
+        if mutation == "table":
+            table_path.write_text('[{"id":0,"mlir_op":"arith.constant"}]')
+        trace = "PROF 0 17 1\nMETRIC prof_total_ticks 17\nMETRIC prof_marks 2\n"
+        if mutation == "trace":
+            trace = trace.replace("PROF 0 17 1\n", "")
+        return {"console": _console().replace("DONE\n", trace + "DONE\n")}
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    monkeypatch.setattr(BM.spike_model, "run", run)
+    monkeypatch.setattr(BM, "_spike_extension_backend", lambda target: None)
+    kwargs = dict(inputs, output=out / "executed", run="spike", reference_file="golden.npy", op_profile=True)
+    if mutation:
+        from merlin.runtime.operation_profile import OperationProfileError
+
+        with pytest.raises((BM.BaremetalModelError, OperationProfileError), match="table changed|missing operation"):
+            BM.compile_saved_model(**kwargs)
+        assert json.loads((out / "executed/baremetal_model.json").read_text())["status"] == "failed"
+    else:
+        receipt = BM.compile_saved_model(**kwargs)
+        assert receipt["status"] == "verified_complete_output"
+        record = receipt["output"]["operation_profile"]
+        report = json.loads(Path(record["path"]).read_text())
+        assert hashlib.sha256(Path(record["path"]).read_bytes()).hexdigest() == record["sha256"]
+        assert report["category_counter_ticks"] == {"unclassified:func.call": 17}
+        assert report["operations"][0]["execution_owner"] == "unknown"
 
 
 def test_compile_only_and_native_engine_reuse_one_saved_elf(tmp_path, monkeypatch):
@@ -288,3 +377,225 @@ def test_native_failure_keeps_partial_stream_bytes_without_numerical_claim(
     assert "console" not in receipt["output"]
     assert "elements" not in receipt["output"]
     assert "metrics" not in receipt["output"]
+
+
+def test_captured_quantization_scope_is_explicit_and_bound(tmp_path, monkeypatch):
+    from merlin.llvmlower.quant_scope import FEATURE
+
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    calls = []
+
+    def build(bundle, work, **kwargs):
+        calls.append(kwargs)
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    default = BM.compile_saved_model(**inputs, output=out / "default-scope", run="none")
+    selected = BM.compile_saved_model(
+        **inputs, output=out / "captured-scope", run="none", respect_captured_quantization_scope=True
+    )
+    assert "features" not in calls[0]
+    assert calls[1]["features"] == frozenset({FEATURE})
+    assert "respect_captured_quantization_scope" not in default["inputs"]
+    assert selected["inputs"]["respect_captured_quantization_scope"] is True
+
+
+def test_host_fusion_selection_preserves_the_captured_quantization_scope(tmp_path, monkeypatch):
+    from merlin.llvmlower.impr_features import FUSE_AFTER_GENERALIZE_NAME
+    from merlin.llvmlower.quant_scope import FEATURE
+
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    calls = []
+
+    def build(bundle, work, **kwargs):
+        calls.append(kwargs)
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    control = BM.compile_saved_model(**inputs, output=out / "control", run="none",
+                                    respect_captured_quantization_scope=True)
+    selected = BM.compile_saved_model(**inputs, output=out / "fusion", run="none",
+                                     respect_captured_quantization_scope=True, host_elementwise_fusion=True)
+    assert calls[0]["features"] == frozenset({FEATURE})
+    assert calls[1] == {**calls[0], "features": frozenset({FEATURE, FUSE_AFTER_GENERALIZE_NAME})}
+    assert "host_elementwise_fusion" not in control["inputs"]
+    assert selected["inputs"]["host_elementwise_fusion"] is True
+
+
+@pytest.mark.parametrize("selection", [1, "1", None])
+def test_host_fusion_requires_a_boolean_before_output_creation(tmp_path, monkeypatch, selection):
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    with pytest.raises(BM.BaremetalModelError, match="explicit Boolean"):
+        BM.compile_saved_model(**inputs, output=out / "invalid", run="none", host_elementwise_fusion=selection)
+    assert not (out / "invalid").exists()
+
+
+def test_host_fusion_cannot_change_a_vector_host_schedule(tmp_path, monkeypatch):
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(BM.registry, "load_rvv_package", lambda _: SimpleNamespace(backend="rvv"))
+    with pytest.raises(BM.BaremetalModelError, match="scalar host lane"):
+        BM.compile_saved_model(**inputs, output=out / "vector", run="none", host_elementwise_fusion=True)
+
+
+@pytest.mark.parametrize("api,choice,expected", [
+    (False, "", False), (False, "-host-bounded-rne", False), (False, "host-bounded-rne", True),
+    (True, "", True), (True, "-host-bounded-rne", False), (True, "host-bounded-rne", True),
+])
+def test_host_bounded_rne_is_explicit_and_runs_the_existing_verified_callback(
+    tmp_path, monkeypatch, api, choice, expected,
+):
+    from merlin.llvmlower.optional_passes import Selection, applied
+    from merlin.tests.ir.test_late_quant_rne_intrinsic import source
+
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    calls = []
+
+    def build(bundle, work, **kwargs):
+        result = _fake_build(bundle, work, **kwargs)
+        calls.append(kwargs)
+        if callback := kwargs.get("host_llvm_transform"):
+            original = work / "input.ll"
+            original.write_text(source())
+            selected = callback(original, work / "host_llvm")
+            assert "fcvt.w.s" in selected.read_text()
+            result["host_llvm_transform"] = json.loads((work / "host_llvm/receipt.json").read_text())
+        return result
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    with applied(Selection.parse("-host-bounded-rne")):
+        control = BM.compile_saved_model(**inputs, output=out / "control", run="none")
+    with applied(Selection.parse(choice)):
+        selected = BM.compile_saved_model(**inputs, output=out / "bounded", run="none", host_bounded_rne=api)
+    assert "host_llvm_transform" not in calls[0]
+    assert "host_bounded_rne" not in control["inputs"]
+    if expected:
+        assert callable(calls[1]["host_llvm_transform"])
+        assert selected["inputs"]["host_bounded_rne"] == {"host_isa": "rv64gc", "combine_clamp": True}
+        assert len(selected["output"]["host_llvm_transform"]["routes"]) == 1
+    else:
+        assert "host_llvm_transform" not in calls[1]
+        assert "host_bounded_rne" not in selected["inputs"]
+
+
+@pytest.mark.parametrize("selection", [1, "1", None])
+def test_host_bounded_rne_requires_a_boolean_before_output_creation(tmp_path, monkeypatch, selection):
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    with pytest.raises(BM.BaremetalModelError, match="explicit Boolean"):
+        BM.compile_saved_model(**inputs, output=out / "invalid", run="none", host_bounded_rne=selection)
+    assert not (out / "invalid").exists()
+
+
+@pytest.mark.parametrize("backend, march", [("rvv", "rv64gcv"), ("scalar", "rv64imac")])
+def test_host_bounded_rne_requires_a_compatible_scalar_cpu_package(tmp_path, monkeypatch, backend, march):
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        BM.registry, "load_rvv_package", lambda _: SimpleNamespace(backend=backend, cflags=["-march="+march])
+    )
+    monkeypatch.setattr(BM, "require_host_isa_dts", lambda *args, **kwargs: [march])
+    with pytest.raises(ValueError, match="scalar host lane|incompatible"):
+        BM.compile_saved_model(**inputs, output=out / "invalid", run="none", host_bounded_rne=True)
+
+
+def test_host_bounded_rne_cannot_claim_a_transform_without_the_build_record(tmp_path, monkeypatch):
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(BM.spike_model, "build", _fake_build)
+    with pytest.raises(BM.BaremetalModelError, match="no pre-object transform record"):
+        BM.compile_saved_model(**inputs, output=out / "missing", run="none", host_bounded_rne=True)
+
+
+def test_host_math_policy_is_validated_recorded_and_forwarded_only_when_selected(tmp_path, monkeypatch):
+    from merlin.runtime import host_math
+
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    observed = []
+    original_recipe = host_math.host_math_recipe
+
+    def recipe(policy):
+        if policy == "portable_exp_trig":
+            return host_math.HostMathRecipe(source="explicit portable runtime")
+        return original_recipe(policy)
+
+    def build(bundle, work, **kwargs):
+        observed.append(dict(kwargs))
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(host_math, "host_math_recipe", recipe)
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    default = BM.compile_saved_model(**inputs, output=out / "default_math", run="none")
+    selected = BM.compile_saved_model(
+        **inputs, output=out / "selected_math", run="none", host_math_policy="portable_exp_trig",
+    )
+    assert default["status"] == selected["status"] == "compiled"
+    assert "host_math_policy" not in observed[0]
+    assert observed[1] == {**observed[0], "host_math_policy": "portable_exp_trig"}
+    assert default["inputs"]["host_math_policy"] == "native"
+    assert selected["inputs"]["host_math_policy"] == "portable_exp_trig"
+
+
+@pytest.mark.parametrize("policy", [None, True, "unselected", "portable_trig "])
+def test_unknown_host_math_policy_refuses_before_any_input_or_output_io(tmp_path, monkeypatch, policy):
+    def forbidden(*args, **kwargs):
+        pytest.fail("input/output IO preceded host math policy validation")
+
+    monkeypatch.setattr(Path, "resolve", forbidden)
+    monkeypatch.setattr(Path, "is_symlink", forbidden)
+    monkeypatch.setattr(BM.spike_model, "build", forbidden)
+    output = tmp_path / "absent-output"
+    with pytest.raises(BM.BaremetalModelError, match="host_math_policy"):
+        BM.compile_saved_model(
+            capture=tmp_path / "absent-capture", package=tmp_path / "absent-package",
+            board_catalog=tmp_path / "absent-boards", board="board", dts=tmp_path / "absent-dts",
+            output=output, target="sample", run="none", arena_mb=1, host_math_policy=policy,
+        )
+    assert not output.exists()
+
+
+def test_exact_preparation_sharing_reaches_normal_lowering_only_when_selected(tmp_path, monkeypatch):
+    from merlin.llvmlower.quant_scope import FEATURE as quant_scope
+    from merlin.llvmlower.tensor_provenance_cse import FEATURE as preparation_cse
+
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    observed = []
+
+    def build(bundle, work, **kwargs):
+        observed.append(dict(kwargs))
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    default = BM.compile_saved_model(**inputs, output=out / "default_cse", run="none",
+                                    respect_captured_quantization_scope=True)
+    selected = BM.compile_saved_model(**inputs, output=out / "selected_cse", run="none",
+                                     respect_captured_quantization_scope=True,
+                                     share_exact_tensor_preparations=True)
+    assert default["status"] == selected["status"] == "compiled"
+    assert observed[0]["features"] == frozenset({quant_scope})
+    assert observed[1] == {**observed[0], "features": frozenset({quant_scope, preparation_cse})}
+    assert "share_exact_tensor_preparations" not in default["inputs"]
+    assert selected["inputs"]["share_exact_tensor_preparations"] is True
+
+
+@pytest.mark.parametrize("choice", [0, 1, None, "true"])
+def test_non_boolean_preparation_sharing_refuses_before_capture_io(tmp_path, choice):
+    with pytest.raises(BM.BaremetalModelError, match="tensor preparation sharing"):
+        BM.compile_saved_model(capture=tmp_path / "missing", package=tmp_path / "missing",
+                               board_catalog=tmp_path / "missing", board="sample", dts=tmp_path / "missing",
+                               output=tmp_path / "out", target="sample", run="none", arena_mb=1,
+                               share_exact_tensor_preparations=choice)
+    assert not (tmp_path / "out").exists()
+
+
+def test_dense_input_views_reach_ordinary_build_only_when_selected(tmp_path, monkeypatch):
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    observed = []
+
+    def build(bundle, work, **kwargs):
+        observed.append(dict(kwargs))
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    default = BM.compile_saved_model(**inputs, output=out / "default_views", run="none")
+    selected = BM.compile_saved_model(**inputs, output=out / "selected_views", run="none", dense_input_views=True)
+    assert default["status"] == selected["status"] == "compiled"
+    assert "dense_input_views" not in observed[0] and "dense_input_views" not in default["inputs"]
+    assert observed[1] == {**observed[0], "dense_input_views": True}
+    assert selected["inputs"]["dense_input_views"] is True

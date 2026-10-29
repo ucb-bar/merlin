@@ -25,7 +25,10 @@ binding. Nothing here knows which accelerator it is looking at.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import tempfile
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -121,6 +124,7 @@ def probe_shape(
     timeout: int = 300,
     additional_forbidden: tuple[str, ...] = (),
     on_lowered: Callable[[str, Path], None] | None = None,
+    _prepared_package=None,
 ) -> tuple[str, str | None, int]:
     """Run ONLY the emit half of the contract for one shape; classify what came back.
 
@@ -149,7 +153,7 @@ def probe_shape(
         )
         try:
             _pkg, cb, _art = run_entrypoints(
-                None,
+                _prepared_package,
                 package,
                 capsule,
                 paths,
@@ -187,6 +191,60 @@ def probe_shape(
         return "lowered", None, len([ln for ln in (_art or "").splitlines() if ln.strip()])
 
 
+def sweep_plan(
+    target: str,
+    *,
+    corners: dict[str, tuple[int, int, int]] | None = None,
+    tail_corners: dict[str, tuple[int, int, int]] | None = None,
+) -> dict:
+    """The exact probes a sweep asks for: target-derived tile and dtypes, then each corner's extents.
+
+    Everything the sweep reads from the target is resolved here, so the plan (with the interface text
+    each probe stages, see :func:`plan_identity`) names the target-fact inputs of a sweep exactly.
+    """
+    b = _binding(target)
+    tile = tile_edge(target)
+    corners = corners or CORNERS
+    tail_corners = TAIL_CORNERS if tail_corners is None else tail_corners
+    probes = [(name, (tile * fm, tile * fk, tile * fn)) for name, (fm, fk, fn) in corners.items()]
+    probes += [
+        (name, (max(1, tile + dm), max(1, tile + dk), max(1, tile + dn))) for name, (dm, dk, dn) in tail_corners.items()
+    ]
+    return {
+        "target": target,
+        "tile": tile,
+        "operand_dtype": b.operand_dtype,
+        "accum_dtype": b.accum_dtype,
+        "operand_mlir": b.mlir_dtype(b.operand_dtype),
+        "accum_mlir": b.mlir_dtype(b.accum_dtype),
+        "probes": probes,
+        "tail_corners": list(tail_corners),
+    }
+
+
+def plan_identity(plan: dict) -> str:
+    """SHA-256 over a plan and the exact interface module every probe in it stages."""
+    rows = {
+        "target": plan["target"],
+        "tile": plan["tile"],
+        "dtypes": [plan["operand_dtype"], plan["accum_dtype"], plan["operand_mlir"], plan["accum_mlir"]],
+        "tail_corners": list(plan["tail_corners"]),
+        "probes": [
+            [
+                name,
+                list(shape),
+                hashlib.sha256(
+                    contraction_interface(
+                        *shape, target=plan["target"], operand_mlir=plan["operand_mlir"], accum_mlir=plan["accum_mlir"]
+                    ).encode("utf-8")
+                ).hexdigest(),
+            ]
+            for name, shape in plan["probes"]
+        ],
+    }
+    return hashlib.sha256(json.dumps(rows, sort_keys=True).encode("utf-8")).hexdigest()
+
+
 def sweep(
     package: str | Path,
     *,
@@ -196,53 +254,166 @@ def sweep(
     tail_corners: dict[str, tuple[int, int, int]] | None = None,
     timeout: int = 300,
     additional_forbidden: tuple[str, ...] = (),
+    workers: int = 1,
+    plan: dict | None = None,
+    runner: Callable[[dict], tuple[list, dict]] | None = None,
 ) -> dict:
     """Probe every corner and summarise, PER AXIS.
 
     Per axis because a lowering that loops over K and N but not M covers two of three, and only naming
     the axis turns the result into an instruction ("add a loop over M") rather than a grade ("does not
     generalize").
+
+    ``workers > 1`` runs independent corners concurrently, each on its own thread holding one shared
+    compute slot for the whole probe (every entrypoint it launches runs inside that lease). Each corner
+    is the same independent emit invocation either way; results are assembled in plan order, so the
+    summary is identical to the serial sweep's. ``workers <= 1`` keeps the original serial loop.
+
+    ``runner(plan) -> (outcomes, corner_wall_s)`` lets a trusted caller probe the plan elsewhere (for
+    example in separate processes running :func:`probe_corners`). A malformed or missing outcome is
+    recorded as an ``error`` for that corner, which is never coverage.
     """
-    b = _binding(target)
-    tile = tile_edge(target)
-    operand_mlir, accum_mlir = b.mlir_dtype(b.operand_dtype), b.mlir_dtype(b.accum_dtype)
-    corners = corners or CORNERS
-    tail_corners = TAIL_CORNERS if tail_corners is None else tail_corners
+    if type(workers) is not int or workers < 1:
+        raise ValueError("lowering-coverage sweep workers must be a positive integer")
+    plan = plan or sweep_plan(target, corners=corners, tail_corners=tail_corners)
+    probes = plan["probes"]
     results: list[CoverageResult] = []
     work: dict[str, int] = {}
-    for name, (fm, fk, fn) in corners.items():
-        m, k, n = tile * fm, tile * fk, tile * fn
-        outcome, detail, w = probe_shape(
+    started = time.monotonic()
+    if runner is None:
+        outcomes, corner_wall = probe_corners(
             package,
+            probes,
             target=target,
-            m=m,
-            k=k,
-            n=n,
-            operand_mlir=operand_mlir,
-            accum_mlir=accum_mlir,
+            operand_mlir=plan["operand_mlir"],
+            accum_mlir=plan["accum_mlir"],
             contract=contract,
             timeout=timeout,
             additional_forbidden=additional_forbidden,
+            workers=workers,
         )
+    else:
+        outcomes, corner_wall = runner(plan)
+        outcomes = [_checked_outcome(row) for row in outcomes] if isinstance(outcomes, list) else []
+        if len(outcomes) != len(probes):
+            outcomes = [("error", "probe runner returned no complete per-corner result", 0)] * len(probes)
+    for (name, shape), (outcome, detail, w) in zip(probes, outcomes, strict=True):
         work[name] = w
-        results.append(CoverageResult(name, (m, k, n), outcome, detail, w))
-    for name, (dm, dk, dn) in tail_corners.items():
-        m, k, n = max(1, tile + dm), max(1, tile + dk), max(1, tile + dn)
-        outcome, detail, w = probe_shape(
-            package,
-            target=target,
-            m=m,
-            k=k,
-            n=n,
-            operand_mlir=operand_mlir,
-            accum_mlir=accum_mlir,
-            contract=contract,
-            timeout=timeout,
-            additional_forbidden=additional_forbidden,
-        )
-        work[name] = w
-        results.append(CoverageResult(name, (m, k, n), outcome, detail, w))
+        results.append(CoverageResult(name, tuple(shape), outcome, detail, w))
+    return _summary(
+        package,
+        target,
+        plan,
+        results,
+        work,
+        {
+            "workers": workers,
+            "wall_s": round(time.monotonic() - started, 3),
+            "corner_wall_s": {name: (corner_wall or {}).get(name) for name, _ in probes},
+        },
+    )
 
+
+_OUTCOMES = ("lowered", "declined", "empty", "error")
+
+
+def _checked_outcome(row) -> tuple[str, str | None, int]:
+    if (
+        isinstance(row, (list, tuple))
+        and len(row) == 3
+        and row[0] in _OUTCOMES
+        and (row[1] is None or isinstance(row[1], str))
+        and type(row[2]) is int
+        and row[2] >= 0
+    ):
+        return row[0], row[1], row[2]
+    return "error", "probe runner returned a malformed outcome", 0
+
+
+def probe_corners(
+    package: str | Path,
+    probes: list,
+    *,
+    target: str,
+    operand_mlir: str,
+    accum_mlir: str,
+    contract: str | Path | None = None,
+    timeout: int = 300,
+    additional_forbidden: tuple[str, ...] = (),
+    workers: int = 1,
+) -> tuple[list[tuple[str, str | None, int]], dict[str, float]]:
+    """Emit-probe ``probes`` (``[(corner, (m, k, n)), ...]``) of one package, in order.
+
+    Returns the per-corner ``(outcome, detail, work)`` in probe order and each corner's wall seconds.
+    """
+    corner_wall: dict[str, float] = {}
+    # The eight corners use the same immutable submission. Build and scan it once;
+    # the per-corner path otherwise repeats a full package walk and build eight times.
+    # If preparation fails, let the existing per-corner path report the original
+    # integrity/build failure with its usual classification.
+    prepared = None
+    try:
+        from .package_runtime import build_package, integrity_scan, load_package
+
+        prepared = load_package(package, contract=contract)
+        integrity_scan(
+            prepared,
+            **({"additional_forbidden": additional_forbidden} if additional_forbidden else {}),
+        )
+        build_package(prepared)
+    except Exception:  # noqa: BLE001 -- preserve the original per-corner failure reporting
+        prepared = None
+    reuse = {"_prepared_package": prepared} if prepared is not None else {}
+
+    def probe(name: str, shape: tuple[int, int, int]) -> tuple[str, str | None, int]:
+        m, k, n = shape
+        begun = time.monotonic()
+        try:
+            return probe_shape(
+                package,
+                target=target,
+                m=m,
+                k=k,
+                n=n,
+                operand_mlir=operand_mlir,
+                accum_mlir=accum_mlir,
+                contract=contract,
+                timeout=timeout,
+                additional_forbidden=additional_forbidden,
+                **reuse,
+            )
+        finally:
+            corner_wall[name] = round(time.monotonic() - begun, 3)
+
+    if workers <= 1 or len(probes) <= 1:
+        outcomes = [probe(name, tuple(shape)) for name, shape in probes]
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        from contextvars import copy_context
+
+        from merlin.common.cpu_pool import shared_compute_pool
+
+        def leased(name: str, shape: tuple[int, int, int]) -> tuple[str, str | None, int]:
+            # One shared compute slot per in-flight corner. Steps inside the probe that lease reuse it
+            # on this thread (and a compiler-call child borrows it), so no corner holds a slot while
+            # waiting for a second one. A refused lease is a harness fault, never a coverage verdict.
+            try:
+                with shared_compute_pool():
+                    return probe(name, shape)
+            except Exception as e:  # noqa: BLE001 -- recorded as an error outcome, which is never covered
+                return "error", f"{type(e).__name__}: {str(e)[:200]}", 0
+
+        with ThreadPoolExecutor(max_workers=min(workers, len(probes)), thread_name_prefix="lowcov") as pool:
+            # Each corner runs in a copy of the caller's context, so it keeps the caller's package
+            # executor and evidence scopes exactly as the serial loop would.
+            futures = [pool.submit(copy_context().run, leased, name, tuple(shape)) for name, shape in probes]
+            outcomes = [future.result() for future in futures]
+    return outcomes, corner_wall
+
+
+def _summary(package, target: str, plan: dict, results: list[CoverageResult], work: dict, timing: dict) -> dict:
+    tile = plan["tile"]
+    tail_corners = plan["tail_corners"]
     # A shorter artifact may be a silent refusal, but it can also be a correct runtime loop replacing
     # an unrolled special case. Record the size observation without changing the emitter's outcome.
     # Explicit decline, empty commands and emit errors remain the structural coverage failures;
@@ -260,8 +431,8 @@ def sweep(
         "target": target,
         "package": str(package),
         "tile_edge": tile,
-        "operand_dtype": b.operand_dtype,
-        "accum_dtype": b.accum_dtype,
+        "operand_dtype": plan["operand_dtype"],
+        "accum_dtype": plan["accum_dtype"],
         "corners": [r.to_dict() for r in results],
         "baseline_tile_lowered": baseline_ok,
         "n_declined": sum(1 for r in results if r.outcome == "declined"),
@@ -274,6 +445,8 @@ def sweep(
             "The sweep checks emit outcomes only, not executed work or numerical correctness. "
             "A smaller artifact may implement a runtime loop; size shrink is advisory."
         ),
+        # Operator timing only; it never enters a coverage outcome.
+        "timing": timing,
     }
     if baseline_ok:
         out["multi_tile_axes_uncovered"] = sorted(

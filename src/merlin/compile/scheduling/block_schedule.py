@@ -40,7 +40,7 @@ difference.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 #: Roles this pass schedules: the operand STREAMED through the array each compute, and the one made
@@ -48,6 +48,10 @@ from typing import Any
 LHS = "lhs"
 WEIGHT = "weight"
 ROLES = (LHS, WEIGHT)
+
+# Conservative compiler verification policy, independent of hardware capacity.
+# Adapters preflight dynamic operation counts before materializing a projection.
+DEFAULT_PROJECTION_OPERATION_LIMIT = 4096
 
 #: ``load_grouping`` values -- how the loads inside one emission group are ordered.
 #: ``NEST``: exactly as the loop nest produces them (a weight load at its own position, each streamed
@@ -200,6 +204,24 @@ class ConvContraction:
 
 
 @dataclass(frozen=True)
+class InitializeAccumulator:
+    """Synchronous overwrite from a contiguous signed accumulator-width bias.
+
+    The single source row is broadcast over destination rows. This is an
+    explicit DRAM read plus accumulator write, not an implicit unary readout.
+    Target encoders must preserve the source words without scaling/narrowing.
+    """
+
+    block: tuple[Any, Any]
+    dram_col: Any
+    rows: Any
+    cols: Any
+    row: Any
+    source_row_stride: Any = 0
+    source_col_stride: Any = 1
+
+
+@dataclass(frozen=True)
 class Load:
     """Move one block of ``role`` from its DRAM position (in ELEMENTS) to on-chip row ``row``.
 
@@ -309,9 +331,21 @@ class Store:
     rows: int
     cols: int
     accumulator_row: int
+    # An independently qualified output transformation, distinct from the
+    # accumulator's element format. None preserves the original full store.
+    readout: str | None = None
 
 
-Op = Load | Preload | Compute | Store
+@dataclass(frozen=True)
+class ColumnBias:
+    """Explicit signed accumulator-width modular seed, broadcast across rows."""
+
+    name: str
+    columns: int
+    bits: int = 32
+
+
+Op = Load | Preload | Compute | Store | InitializeAccumulator
 
 
 @dataclass(frozen=True)
@@ -324,6 +358,7 @@ class BlockSchedule:
     knobs: Knobs
     regions: dict[str, tuple[int, int]]  # role -> (first row, row count)
     notes: tuple[str, ...] = ()
+    column_bias: ColumnBias | None = None
 
     def count(self, kind: type) -> int:
         return sum(1 for op in self.ops if isinstance(op, kind))
@@ -380,26 +415,71 @@ def _regions(
 
 
 def check_residency(schedule: BlockSchedule) -> None:
-    """Refuse a schedule whose loads overwrite a block a later compute still reads, or that addresses a
-    row the target does not have.
+    """Check synchronous operand residency, accumulator ownership and output coverage.
 
     This is the class of fault an in-order executor cannot see: it recomputes the same arithmetic on
     whatever bytes are resident, so a schedule that overwrote a block too early produces numbers, not a
     crash. Every read here names the block identity it expects, so an overwrite is caught structurally.
+    Reduction prefixes and physical accumulator rows must agree before a store.
+    Unknown effects or shared backings without an alias model are refused.
     """
     geometry = schedule.geometry
+    for value in (geometry.block, geometry.operand_rows, geometry.accumulator_rows):
+        if type(value) is not int or value <= 0:
+            raise BlockScheduleError("schedule geometry requires positive integer extents")
+    if geometry.separate_accumulator_space is not True:
+        raise BlockScheduleError("shared operand/accumulator backing needs an explicit alias model")
+    if not isinstance(schedule.contraction, (Contraction, ConvContraction)):
+        raise BlockScheduleError("unsupported contraction has no schedule effect contract")
+    if schedule.contraction.out in (schedule.contraction.lhs, schedule.contraction.weight):
+        raise BlockScheduleError("output alias with an operand needs an explicit lifetime model")
+    bias = schedule.column_bias
+    n = schedule.contraction.co if isinstance(schedule.contraction, ConvContraction) else schedule.contraction.n
+    if bias is not None and (type(bias) is not ColumnBias or type(bias.name) is not str or not bias.name
+        or bias.name in (schedule.contraction.lhs, schedule.contraction.weight, schedule.contraction.out)
+        or type(bias.columns) is not int or bias.columns != n or type(bias.bits) is not int or bias.bits not in (8,16,32,64)):
+        raise BlockScheduleError("column bias requires a distinct complete signed accumulator-width source")
+    for op in schedule.ops:
+        if not isinstance(op, (Load, Preload, Compute, Store, InitializeAccumulator)):
+            raise BlockScheduleError("unknown operation has no schedule effect contract")
+        if any(type(value) is not int or not 0 < value <= geometry.block for value in (op.rows, op.cols)):
+            raise BlockScheduleError("schedule operation requires positive primitive-bounded extents")
+        if isinstance(op, Load):
+            addresses = (op.row,)
+            if op.role not in ROLES:
+                raise BlockScheduleError("unknown load role has no schedule effect contract")
+            if op.gather is not None and (op.role != LHS or len(op.gather) != op.rows):
+                raise BlockScheduleError("gather must describe exactly the declared input rows")
+        elif isinstance(op, InitializeAccumulator):
+            if bias is None:
+                raise BlockScheduleError("accumulator initialization has no declared source bias")
+            addresses = (op.row, op.dram_col)
+            if op.row + op.rows > geometry.accumulator_rows:
+                raise BlockScheduleError("bias initialization exceeds accumulator rows")
+        elif isinstance(op, Preload):
+            addresses = (op.accumulator_row,) + (() if op.weight_row is None else (op.weight_row,))
+            if op.weight_rows is not None and (
+                type(op.weight_rows) is not int or not 0 < op.weight_rows <= geometry.block
+            ):
+                raise BlockScheduleError("resident weight depth must be a positive primitive-bounded extent")
+        elif isinstance(op, Compute):
+            addresses = (op.input_row,)
+        else:
+            addresses = (op.accumulator_row, op.dram_row, op.dram_col)
+        if any(type(value) is not int or value < 0 for value in addresses):
+            raise BlockScheduleError("schedule addresses require nonnegative integer rows")
     resident: dict[int, tuple] = {}
 
-    def _expect(row: int, rows: int, identity: tuple, what: str) -> None:
+    def _expect(row: int, rows: int, cols: int, identity: tuple, what: str) -> None:
         for offset in range(rows):
             have = resident.get(row + offset)
-            if have != identity:
+            if have is None or have[:3] != identity or have[3] != offset or have[4] < cols:
                 if have is None:
                     holds = "nothing loaded"
                 elif have[:2] != identity[:2]:
                     holds = str(have[:2])
                 else:
-                    holds = "that block with a DIFFERENT gather"
+                    holds = "that block with a DIFFERENT gather, row offset or width"
                 gathered = " with its gather" if identity[2] is not None else ""
                 raise BlockScheduleError(
                     f"{what} reads on-chip row {row + offset} expecting block {identity[:2]}{gathered}, "
@@ -415,7 +495,7 @@ def check_residency(schedule: BlockSchedule) -> None:
                     f"{geometry.operand_rows}-row store"
                 )
             for offset in range(op.rows):
-                resident[op.row + offset] = (op.role, op.block, op.gather)
+                resident[op.row + offset] = (op.role, op.block, op.gather, offset, op.cols)
         elif isinstance(op, Preload):
             if op.accumulator_row < 0 or op.accumulator_row + op.rows > geometry.accumulator_rows:
                 raise BlockScheduleError(
@@ -423,15 +503,170 @@ def check_residency(schedule: BlockSchedule) -> None:
                     f"{op.accumulator_row + op.rows}) of {geometry.accumulator_rows}"
                 )
             if op.weight_row is not None:
-                _expect(op.weight_row, op.weight_rows or op.rows, (WEIGHT, op.weight_block, None), "a preload")
+                _expect(op.weight_row, op.weight_rows or op.rows, op.cols, (WEIGHT, op.weight_block, None), "a preload")
         elif isinstance(op, Compute):
-            _expect(op.input_row, op.rows, (LHS, op.input_block, op.input_gather), "a compute")
+            _expect(op.input_row, op.rows, op.cols, (LHS, op.input_block, op.input_gather), "a compute")
         elif isinstance(op, Store):
-            if op.accumulator_row + op.rows > geometry.accumulator_rows:
+            if op.accumulator_row < 0 or op.accumulator_row + op.rows > geometry.accumulator_rows:
                 raise BlockScheduleError(
                     f"a store reads accumulator rows [{op.accumulator_row}, "
                     f"{op.accumulator_row + op.rows}) of {geometry.accumulator_rows}"
                 )
+    _check_reduction_lifetimes(schedule)
+
+
+def _check_reduction_lifetimes(schedule: BlockSchedule) -> None:
+    """Verify ordered, synchronous reductions and physical accumulator ownership.
+
+    This is the execution model of BlockSchedule, not a hardware completion
+    model. An asynchronous adapter must establish its dependencies separately.
+    State is proportional to represented rows and output tiles, not elements.
+    """
+    c, d = schedule.contraction, schedule.geometry.block
+    if isinstance(c, ConvContraction):
+        m, n = c.pixels, c.co
+        channel_blocks = _ceil_div(c.ci, d)
+        reduction_blocks = c.kh * c.kw * channel_blocks
+
+        def depth(k):
+            return min(d, c.ci - (k % channel_blocks) * d)
+    else:
+        m, n = c.m, c.n
+        reduction_blocks = _ceil_div(c.k, d)
+
+        def depth(k):
+            return min(d, c.k - k * d)
+
+    mt, nt = _ceil_div(m, d), _ceil_div(n, d)
+    if min(m, n, reduction_blocks) <= 0:
+        raise BlockScheduleError("empty contraction has no complete reduction schedule")
+    progress: dict[tuple[int, int], int] = {}
+    accumulator: dict[int, tuple] = {}
+    stored: set[tuple[int, int]] = set()
+    initialized: set[tuple[int, int]] = set()
+    pending = None
+    weight = None
+    for op in schedule.ops:
+        if isinstance(op, InitializeAccumulator):
+            if pending is not None or schedule.column_bias is None:
+                raise BlockScheduleError("bias initialization interrupts a preload or lacks source semantics")
+            if type(op.block) is not tuple or len(op.block) != 2 or any(type(x) is not int for x in op.block):
+                raise BlockScheduleError("bias initialization requires exact output tile identity")
+            mi, nj = output = op.block
+            if (not (0 <= mi < mt and 0 <= nj < nt) or output in initialized or output in progress or output in stored
+                or op.dram_col != nj*d or type(op.source_row_stride) is not int or type(op.source_col_stride) is not int
+                or op.source_row_stride != 0 or op.source_col_stride != 1
+                or (op.rows,op.cols) != (min(d,m-mi*d),min(d,n-nj*d))):
+                raise BlockScheduleError("bias initialization differs from source columns/extent/order")
+            for offset in range(op.rows):
+                previous = accumulator.get(op.row + offset)
+                if previous is not None and previous[0] not in stored:
+                    raise BlockScheduleError("bias initialization overwrites a live accumulator")
+                accumulator[op.row + offset] = (output, offset, 0, op.cols)
+            initialized.add(output)
+        elif isinstance(op, Preload):
+            if pending is not None:
+                raise BlockScheduleError("a preload replaces an unconsumed preload")
+            if type(op.accumulate) is not bool:
+                raise BlockScheduleError("accumulation policy must be explicit Boolean")
+            if op.weight_row is not None:
+                weight = (op.weight_block, op.weight_rows if op.weight_rows is not None else op.rows, op.cols)
+            elif op.weight_block is not None:
+                raise BlockScheduleError("retained weights cannot declare a different weight block")
+            pending = op
+        elif isinstance(op, Compute):
+            if pending is None or weight is None:
+                raise BlockScheduleError("a compute needs a preload and resident weight block")
+            mi, k = op.input_block
+            block, weight_rows, cols = weight
+            if block is None or len(block) != 2:
+                raise BlockScheduleError("resident weight identity is missing")
+            wk, nj = block
+            if not (0 <= mi < mt and 0 <= nj < nt and 0 <= k < reduction_blocks) or wk != k:
+                raise BlockScheduleError("compute operand identities disagree on the reduction")
+            rows = min(d, m - mi * d)
+            if (op.rows, op.cols, pending.rows, pending.cols, weight_rows, cols) != (
+                rows,
+                depth(k),
+                rows,
+                min(d, n - nj * d),
+                depth(k),
+                min(d, n - nj * d),
+            ):
+                raise BlockScheduleError("compute/preload extents differ from the contraction edges")
+            if type(op.fresh_weights) is not bool or op.fresh_weights != (pending.weight_row is not None):
+                raise BlockScheduleError("compute fresh-weight policy differs from its preload")
+            output = (mi, nj)
+            if output in stored or progress.get(output, 0) != k:
+                raise BlockScheduleError("output reduction is repeated or not in source order")
+            if pending.accumulate != (k != 0 or schedule.column_bias is not None):
+                raise BlockScheduleError("accumulator initialization/accumulation boundary differs")
+            for offset in range(rows):
+                row = pending.accumulator_row + offset
+                previous = accumulator.get(row)
+                if k or schedule.column_bias is not None:
+                    if previous != (output, offset, k, cols):
+                        raise BlockScheduleError("accumulating compute reads a stale or uninitialized accumulator")
+                elif previous is not None and previous[0] not in stored:
+                    raise BlockScheduleError("compute overwrites an accumulator whose output is still live")
+                accumulator[row] = (output, offset, k + 1, cols)
+            progress[output] = k + 1
+            pending = None
+        elif isinstance(op, Store):
+            if pending is not None:
+                raise BlockScheduleError("store interrupts an unconsumed preload")
+            if op.dram_row < 0 or op.dram_col < 0 or op.dram_row % d or op.dram_col % d:
+                raise BlockScheduleError("store output coordinates must identify an aligned output tile")
+            output = (op.dram_row // d, op.dram_col // d)
+            mi, nj = output
+            if output in stored:
+                raise BlockScheduleError("output store is duplicated")
+            if not (0 <= mi < mt and 0 <= nj < nt) or (op.rows, op.cols) != (min(d, m - mi * d), min(d, n - nj * d)):
+                raise BlockScheduleError("store output extent differs from the contraction edges")
+            if progress.get(output) != reduction_blocks:
+                raise BlockScheduleError("store reads an output before its reduction is complete")
+            for offset in range(op.rows):
+                if accumulator.get(op.accumulator_row + offset) != (output, offset, reduction_blocks, op.cols):
+                    raise BlockScheduleError("store reads the wrong or incomplete accumulator")
+            stored.add(output)
+    if pending is not None:
+        raise BlockScheduleError("schedule leaves an unconsumed preload")
+    if len(stored) != mt * nt:
+        raise BlockScheduleError("schedule does not store every output tile exactly once")
+    if schedule.column_bias is not None and initialized != stored:
+        raise BlockScheduleError("bias initialization must cover every output exactly once")
+
+
+def with_column_bias(schedule: BlockSchedule, source_name: str, *, bits: int = 32, max_operations: int = 65536) -> BlockSchedule:
+    """Add an explicit modular column seed before each first reduction preload.
+
+    The already checked zero-seed schedule retains all operand movement, source
+    reduction order and stores. Actual effect checks prove seed ownership and
+    lifetime after insertion. No hardware load/completion semantics are inferred.
+    """
+    check_residency(schedule)
+    if schedule.column_bias is not None:
+        raise BlockScheduleError("schedule already has an explicit accumulator seed")
+    n = schedule.contraction.co if isinstance(schedule.contraction,ConvContraction) else schedule.contraction.n
+    result=[]; pending=None; weight=None
+    for op in schedule.ops:
+        if isinstance(op,Preload):
+            if op.weight_row is not None:weight=op.weight_block
+            pending=(len(result),op,weight)
+            result.append(replace(op,accumulate=True))
+        else:
+            if isinstance(op,Compute) and op.input_block[1]==0:
+                index,preload,weight=pending
+                output=(op.input_block[0],weight[1])
+                result.insert(index,InitializeAccumulator(output,output[1]*schedule.geometry.block,
+                    preload.rows,preload.cols,preload.accumulator_row))
+            result.append(op)
+            if isinstance(op,Compute):pending=None
+    if type(max_operations) is not int or max_operations<=0 or len(result)>max_operations:
+        raise BlockScheduleError(f"bias schedule exceeds explicit finite operation budget: {len(result)} > {max_operations}")
+    changed=replace(schedule,ops=tuple(result),column_bias=ColumnBias(source_name,n,bits))
+    check_residency(changed)
+    return changed
 
 
 def schedule_contraction(contraction: Contraction, geometry: Geometry, knobs: Knobs | None = None) -> BlockSchedule:
@@ -579,25 +814,47 @@ def _schedule_nest(
     k_blocks, j_blocks, i_blocks = blocks
     regions, notes = _regions(rows_needed, geometry, knobs)
     lhs_base, weight_base = regions[LHS][0], regions[WEIGHT][0]
+    ops = _schedule_ops(
+        knobs,
+        d,
+        {K: range(k_blocks), N: range(j_blocks), M: range(i_blocks)},
+        lambda mi, kk: lhs_load(mi, kk, lhs_base),
+        lambda kk, nj: weight_load(kk, nj, weight_base),
+        k_depth,
+        m_rows,
+        n_cols,
+        0,
+        0,
+        j_blocks,
+        k_blocks,
+    )
+    schedule = BlockSchedule(tuple(ops), contraction, geometry, knobs, regions, tuple(notes))
+    check_residency(schedule)
+    return schedule
+
+
+def _schedule_ops(
+    knobs, d, indices, lhs_load, weight_load, k_depth, m_rows, n_cols, m_start, n_start, n_span, k_blocks
+):
+    """Build one panel, continuing global K and storing only at the final reduction."""
 
     # One emission group per iteration of the two OUTER loops. Each compute carries the loads that
     # become due for it: a block is due the first time a compute needs it -- per group without
     # load_on_index_change, per nest with it. Nothing here names a particular loop as the one whose index
     # change triggers a load; under the default order this is exactly "a streamed block is loaded when its
     # (mi, kk) index first appears", i.e. at nj == 0.
-    extent = {K: k_blocks, N: j_blocks, M: i_blocks}
     outer, middle, inner = knobs.loop_order
     groups: list[tuple[int, list[tuple[list[Load], list[Op]]]]] = []
     loaded_in_nest: set[tuple] = set()
     resident_weight: tuple[int, int] | None = None
-    for a in range(extent[outer]):
-        for b in range(extent[middle]):
+    for a in indices[outer]:
+        for b in indices[middle]:
             loaded_in_group: set[tuple] = set()
             computes: list[tuple[list[Load], list[Op]]] = []
-            for c in range(extent[inner]):
+            for c in indices[inner]:
                 index = {outer: a, middle: b, inner: c}
                 kk, nj, mi = index[K], index[N], index[M]
-                weight, streamed = weight_load(kk, nj, weight_base), lhs_load(mi, kk, lhs_base)
+                weight, streamed = weight_load(kk, nj), lhs_load(mi, kk)
                 due: list[Load] = []
                 for load in (weight, streamed):
                     identity = (load.role, load.block)
@@ -606,7 +863,7 @@ def _schedule_nest(
                         seen.add(identity)
                         due.append(load)
                 rows, cols = m_rows(mi), n_cols(nj)
-                acc_row = (mi * j_blocks + nj) * d
+                acc_row = ((mi - m_start) * n_span + nj - n_start) * d
                 fresh = resident_weight != (kk, nj)
                 resident_weight = (kk, nj)
                 ops_here: list[Op] = [
@@ -626,13 +883,371 @@ def _schedule_nest(
                 computes.append((due, ops_here))
             groups.append((a, computes))
 
-    ops = _emit(groups, knobs)
-    schedule = BlockSchedule(tuple(ops), contraction, geometry, knobs, regions, tuple(notes))
+    return _emit(groups, knobs)
+
+
+@dataclass(frozen=True)
+class ConvolutionPanel:
+    """Operation range after which operand rows may be reused.
+
+    Accumulators stay live across K panels until the final K panel stores them.
+    This logical boundary supplies no target fence or asynchronous completion.
+    """
+
+    m_start: int
+    n_start: int
+    k_start: int
+    m_blocks: int
+    n_blocks: int
+    k_blocks: int
+    first_operation: int
+    end_operation: int
+
+
+@dataclass(frozen=True)
+class TiledConvolutionSchedule:
+    schedule: BlockSchedule
+    panels: tuple[ConvolutionPanel, ...]
+    m_blocks: int
+    n_blocks: int
+    k_blocks: int
+    candidates_considered: int
+    requested_operand_elements: int
+
+
+def schedule_tiled_convolution(
+    conv: ConvContraction,
+    geometry: Geometry,
+    knobs: Knobs | None = None,
+    *,
+    candidate_budget: int = 4096,
+    max_operations: int = 1_000_000,
+) -> TiledConvolutionSchedule:
+    """Keep output panels live while streaming bounded, reusable reduction panels.
+
+    This target-independent family preserves NHWC gathers, tails and original
+    tap/channel reduction order. Operand rows are reused between K panels; live
+    output rows are reused only after stores. Candidates minimize requested
+    operand ELEMENTS (including padding zeros), not bytes, traffic or cycles.
+    For each M/N candidate, the largest fitting K panel minimizes panel count.
+    Bias, output conversion and physical completion stay with the caller. A
+    target must establish exact continuation and completion before consumption.
+    This finite schedule is bounded before expansion; it emits no hardware loop.
+    """
+    knobs = knobs or Knobs()
+    knobs.validate()
+    cv, d = conv, geometry.block
+    sizes = (
+        candidate_budget,
+        max_operations,
+        d,
+        geometry.operand_rows,
+        geometry.accumulator_rows,
+        cv.batch,
+        cv.in_h,
+        cv.in_w,
+        cv.ci,
+        cv.kh,
+        cv.kw,
+        cv.co,
+    )
+    if any(type(x) is not int or x <= 0 for x in sizes):
+        raise BlockScheduleError("tiled convolution requires positive integer geometry and budgets")
+    if (
+        len(cv.stride) != 2
+        or len(cv.dilation) != 2
+        or len(cv.padding) != 4
+        or any(type(x) is not int or x <= 0 for x in (*cv.stride, *cv.dilation))
+        or any(type(x) is not int or x < 0 for x in cv.padding)
+    ):
+        raise BlockScheduleError("tiled convolution needs positive stride/dilation and nonnegative padding")
+    if cv.out_h <= 0 or cv.out_w <= 0:
+        raise BlockScheduleError("tiled convolution has no output pixels")
+    if geometry.separate_accumulator_space is not True:
+        raise BlockScheduleError("tiled convolution requires separate operand and accumulator stores")
+    if knobs.placement == BANK_ALIGNED and (
+        type(geometry.operand_bank_rows) is not int or geometry.operand_bank_rows <= 0
+    ):
+        raise BlockScheduleError("bank_aligned placement requires positive known operand_bank_rows")
+    kt = cv.kh * cv.kw * _ceil_div(cv.ci, d)
+    mt, nt = _ceil_div(cv.pixels, d), _ceil_div(cv.co, d)
+    # Reject oversized proposals before materializing taps, gathers or operations.
+    if 2 * mt * nt * kt + mt * nt > max_operations:
+        raise BlockScheduleError("tiled convolution exceeds its finite operation budget")
+    max_m = min(mt, geometry.accumulator_rows // d, geometry.operand_rows // d - 1)
+    max_n = min(nt, geometry.accumulator_rows // d, geometry.operand_rows // d - 1)
+    if max_m <= 0 or max_n <= 0:
+        raise BlockScheduleError("one primitive block per operand and output does not fit")
+    if max_m * max_n > candidate_budget:
+        raise BlockScheduleError("tiled convolution search exceeds its explicit candidate budget")
+    best, considered = None, 0
+    source_k = cv.kh * cv.kw * cv.ci
+    for bm in range(1, max_m + 1):
+        for bn in range(1, max_n + 1):
+            considered += 1
+            bk = min(kt, geometry.operand_rows // ((bm + bn) * d))
+            if bm * bn * d > geometry.accumulator_rows or bk == 0:
+                continue
+            regions, notes = _regions({LHS: bm * bk * d, WEIGHT: bn * bk * d}, geometry, knobs)
+            lhs_repeats = _ceil_div(nt, bn) if knobs.load_on_index_change or knobs.loop_order[-1] == N else nt
+            rhs_repeats = _ceil_div(mt, bm) if knobs.load_on_index_change or knobs.loop_order[-1] == M else mt
+            loads = mt * kt * lhs_repeats + nt * kt * rhs_repeats
+            commands = 2 * mt * nt * kt + mt * nt + loads
+            if commands > max_operations:
+                continue
+            requested = cv.pixels * source_k * lhs_repeats + source_k * cv.co * rhs_repeats
+            key = (requested, loads, _ceil_div(kt, bk), bm + bn, bm, bn)
+            if best is None or key < best[0]:
+                best = key, bm, bn, bk, regions, notes
+    if best is None:
+        raise BlockScheduleError("no output panel satisfies storage and finite operation budgets")
+    key, bm, bn, bk, regions, notes = best
+    taps = [(ky, kx, ci, min(d, cv.ci - ci)) for ky in range(cv.kh) for kx in range(cv.kw) for ci in range(0, cv.ci, d)]
+    operations, panels = [], []
+    for m0 in range(0, mt, bm):
+        for n0 in range(0, nt, bn):
+            for k0 in range(0, kt, bk):
+                mr, nr, kr = min(bm, mt - m0), min(bn, nt - n0), min(bk, kt - k0)
+
+                def lhs(mi, kk, m_base=m0, k_base=k0):
+                    ky, kx, ci, depth = taps[kk]
+                    gather = []
+                    for pixel in range(mi * d, min(cv.pixels, (mi + 1) * d)):
+                        image, spatial = divmod(pixel, cv.out_h * cv.out_w)
+                        y, x = divmod(spatial, cv.out_w)
+                        iy = y * cv.stride[0] - cv.padding[0] + ky * cv.dilation[0]
+                        ix = x * cv.stride[1] - cv.padding[1] + kx * cv.dilation[1]
+                        gather.append(
+                            ((image * cv.in_h + iy) * cv.in_w + ix, ci)
+                            if 0 <= iy < cv.in_h and 0 <= ix < cv.in_w
+                            else None
+                        )
+                    return Load(
+                        LHS,
+                        (mi, kk),
+                        -1,
+                        -1,
+                        len(gather),
+                        depth,
+                        regions[LHS][0] + ((kk - k_base) * bm + mi - m_base) * d,
+                        kk,
+                        tuple(gather),
+                    )
+
+                def rhs(kk, nj, n_base=n0, k_base=k0):
+                    ky, kx, ci, depth = taps[kk]
+                    return Load(
+                        WEIGHT,
+                        (kk, nj),
+                        (ky * cv.kw + kx) * cv.ci + ci,
+                        nj * d,
+                        depth,
+                        min(d, cv.co - nj * d),
+                        regions[WEIGHT][0] + ((kk - k_base) * bn + nj - n_base) * d,
+                        kk,
+                    )
+
+                start = len(operations)
+                operations.extend(
+                    _schedule_ops(
+                        knobs,
+                        d,
+                        {K: range(k0, k0 + kr), M: range(m0, m0 + mr), N: range(n0, n0 + nr)},
+                        lhs,
+                        rhs,
+                        lambda kk: taps[kk][3],
+                        lambda mi: min(d, cv.pixels - mi * d),
+                        lambda nj: min(d, cv.co - nj * d),
+                        m0,
+                        n0,
+                        bn,
+                        kt,
+                    )
+                )
+                panels.append(ConvolutionPanel(m0, n0, k0, mr, nr, kr, start, len(operations)))
+    if len(operations) > max_operations:
+        raise BlockScheduleError("actual emitted schedule exceeds its finite operation budget")
+    schedule = BlockSchedule(tuple(operations), cv, geometry, knobs, regions, tuple(notes))
     check_residency(schedule)
-    return schedule
+    return TiledConvolutionSchedule(schedule, tuple(panels), bm, bn, bk, considered, key[0])
 
 
-def execute(schedule: BlockSchedule, lhs: Any, weight: Any) -> Any:
+@dataclass(frozen=True)
+class SpatialMaxReadout:
+    """Source spatial max after an explicitly bound signed scalar readout.
+
+    Padding is in the post-readout integer domain. This declaration supplies no
+    physical pooling implementation or completion semantics.
+    """
+    input_hw: tuple[int, int]
+    window: tuple[int, int]
+    stride: tuple[int, int]
+    padding: tuple[int, int, int, int] = (0, 0, 0, 0)  # top,left,bottom,right
+    pad_value: int | None = None
+    accumulator_bits: int = 32
+    output_bits: int = 8
+
+    def __post_init__(self):
+        for values, length, minimum in ((self.input_hw,2,1),(self.window,2,1),
+                                        (self.stride,2,1),(self.padding,4,0)):
+            if (type(values) is not tuple or len(values)!=length
+                or any(type(v) is not int or not minimum<=v<2**31 for v in values)):
+                raise BlockScheduleError("spatial readout requires explicit bounded integer geometry")
+        if any(type(v) is not int or v not in (8,16,32,64) for v in (self.accumulator_bits,self.output_bits)):
+            raise BlockScheduleError("spatial readout requires explicit signed integer widths")
+        if self.pad_value is not None and (type(self.pad_value) is not int
+            or not -(1<<(self.output_bits-1))<=self.pad_value<(1<<(self.output_bits-1))):
+            raise BlockScheduleError("padding must be in the post-readout signed domain")
+        if any(self.padding) and self.pad_value is None:
+            raise BlockScheduleError("padded spatial readout requires an explicit numerical padding value")
+        if min(self.output_hw)<=0:
+            raise BlockScheduleError("spatial readout has no output positions")
+
+    @property
+    def output_hw(self):
+        h,w=self.input_hw;kh,kw=self.window;sh,sw=self.stride;pt,pl,pb,pr=self.padding
+        return ((h+pt+pb-kh)//sh+1,(w+pl+pr-kw)//sw+1)
+
+
+@dataclass(frozen=True)
+class SpatialStore:
+    batch: int
+    first_column: int
+    columns: int
+    accumulator_base: int
+    output_row: int
+    # Each output pixel names its complete ordered input-window rows. None is
+    # the explicit source padding value; all columns share this spatial map.
+    window_rows: tuple[tuple[int | None, ...], ...]
+    readout: str
+
+
+@dataclass(frozen=True)
+class SpatialReadoutSchedule:
+    retained: BlockSchedule
+    prefix: tuple[Op, ...]
+    stores: tuple[SpatialStore, ...]
+    source: SpatialMaxReadout
+    readout: str
+    first_row: int
+    max_window_reads: int
+
+
+def retain_accumulator_outputs(schedule: BlockSchedule, *, first_row: int = 0) -> BlockSchedule:
+    """Preserve every output until the final drain, in column-block-major rows.
+
+    This finite relayout consumes the checked original schedule, preserves every
+    movement/product and rechecks actual accumulator ownership after moving the
+    stores. It refuses when the complete retained output does not fit.
+    """
+    check_residency(schedule)
+    if type(first_row) is not int or first_row<0:
+        raise BlockScheduleError("retained accumulator base must be nonnegative")
+    c=schedule.contraction;d=schedule.geometry.block
+    m=c.batch*c.out_h*c.out_w if isinstance(c,ConvContraction) else c.m
+    n=c.co if isinstance(c,ConvContraction) else c.n
+    padded_m=((m+d-1)//d)*d;nt=(n+d-1)//d
+    if first_row+padded_m*nt>schedule.geometry.accumulator_rows:
+        raise BlockScheduleError("complete spatial source exceeds retained accumulator capacity")
+    def row(tile):return first_row+tile[1]*padded_m+tile[0]*d
+    prefix=[];stores=[];pending=None;weight=None
+    for op in schedule.ops:
+        if isinstance(op,InitializeAccumulator):prefix.append(replace(op,row=row(op.block)))
+        elif isinstance(op,Preload):
+            if op.weight_row is not None:weight=op.weight_block
+            pending=(len(prefix),op,weight);prefix.append(op)
+        elif isinstance(op,Compute):
+            index,preload,current_weight=pending
+            prefix[index]=replace(preload,accumulator_row=row((op.input_block[0],current_weight[1])))
+            prefix.append(op);pending=None
+        elif isinstance(op,Store):stores.append(replace(op,accumulator_row=row((op.dram_row//d,op.dram_col//d))))
+        else:prefix.append(op)
+    changed=replace(schedule,ops=tuple(prefix+stores))
+    check_residency(changed)
+    return changed
+
+
+def _spatial_stores(schedule, source, readout, first_row, max_window_reads):
+    if type(source) is not SpatialMaxReadout or type(readout) is not str or not readout:
+        raise BlockScheduleError("spatial readout requires its exact typed source and scalar identity")
+    if type(max_window_reads) is not int or max_window_reads<=0:
+        raise BlockScheduleError("spatial readout needs an explicit finite window budget")
+    c=schedule.contraction;d=schedule.geometry.block
+    m=c.batch*c.out_h*c.out_w if isinstance(c,ConvContraction) else c.m
+    n=c.co if isinstance(c,ConvContraction) else c.n
+    h,w=source.input_hw;oh,ow=source.output_hw;kh,kw=source.window;sh,sw=source.stride;pt,pl,_,_=source.padding
+    if m%(h*w):raise BlockScheduleError("spatial planes must cover all contraction rows exactly")
+    batches=m//(h*w);padded_m=((m+d-1)//d)*d;nt=(n+d-1)//d
+    reads=batches*oh*ow*kh*kw*nt
+    if reads>max_window_reads:
+        raise BlockScheduleError(f"spatial readout exceeds explicit finite window budget: {reads} > {max_window_reads}")
+    result=[]
+    for b in range(batches):
+        for j in range(nt):
+            base=first_row+j*padded_m+b*h*w
+            windows=tuple(tuple(base+(y*sh+ky-pt)*w+(x*sw+kx-pl)
+                if 0<=y*sh+ky-pt<h and 0<=x*sw+kx-pl<w else None
+                for ky in range(kh) for kx in range(kw))for y in range(oh)for x in range(ow))
+            result.append(SpatialStore(b,j*d,min(d,n-j*d),base,b*oh*ow,windows,readout))
+    return tuple(result)
+
+
+def plan_spatial_max_readout(schedule: BlockSchedule, source: SpatialMaxReadout, readout: str,
+                             *, first_row: int = 0, max_window_reads: int = 65536) -> SpatialReadoutSchedule:
+    retained=retain_accumulator_outputs(schedule,first_row=first_row)
+    prefix=tuple(op for op in retained.ops if not isinstance(op,Store))
+    stores=_spatial_stores(retained,source,readout,first_row,max_window_reads)
+    result=SpatialReadoutSchedule(retained,prefix,stores,source,readout,first_row,max_window_reads)
+    check_spatial_max_readout(result,source=source,readout=readout)
+    return result
+
+
+def check_spatial_max_readout(result: SpatialReadoutSchedule, *, source: SpatialMaxReadout, readout: str) -> None:
+    """Check all retained source products, final lifetimes and spatial reads/writes.
+
+    These are compiler-side conditional checks. Scalar numerical equivalence,
+    target readout semantics and actual emitted effects remain separate checks.
+    """
+    if type(result) is not SpatialReadoutSchedule or result.source!=source or result.readout!=readout:
+        raise BlockScheduleError("spatial readout source or scalar contract changed")
+    check_residency(result.retained)
+    expected=retain_accumulator_outputs(result.retained,first_row=result.first_row)
+    if result.retained!=expected or result.prefix!=tuple(op for op in expected.ops if not isinstance(op,Store)):
+        raise BlockScheduleError("spatial readout must consume the complete retained contraction before draining")
+    if any(op.readout is not None for op in expected.ops if isinstance(op,Store)):
+        raise BlockScheduleError("spatial source must retain raw accumulators; scalar readout belongs to its drain")
+    if result.stores!=_spatial_stores(expected,source,readout,result.first_row,result.max_window_reads):
+        raise BlockScheduleError("spatial readout coverage, layout, padding or scalar identity changed")
+    if expected.column_bias is not None and expected.column_bias.bits!=source.accumulator_bits:
+        raise BlockScheduleError("spatial accumulator width differs from its modular bias seed")
+
+
+def execute_spatial_max_readout(result: SpatialReadoutSchedule, lhs: Any, weight: Any,
+                                scalar_readout: Any, *, bias: Any = None) -> Any:
+    """Neutral numerical execution; it is not a target readout implementation."""
+    import numpy as np
+    check_spatial_max_readout(result,source=result.source,readout=result.readout)
+    source=result.source;raw=execute(result.retained,lhs,weight,bias=bias).astype(f"int{source.accumulator_bits}")
+    h,w=source.input_hw;oh,ow=source.output_hw;m,n=raw.shape;d=result.retained.geometry.block;padded_m=((m+d-1)//d)*d
+    output=np.zeros((m//(h*w)*oh*ow,n),dtype=f"int{source.output_bits}")
+    low,high=-(1<<(source.output_bits-1)),(1<<(source.output_bits-1))-1
+    for store in result.stores:
+        for pixel,window in enumerate(store.window_rows):
+            for column in range(store.columns):
+                values=[]
+                for address in window:
+                    if address is None:value=source.pad_value
+                    else:
+                        row=address-result.first_row-(store.first_column//d)*padded_m
+                        value=scalar_readout(int(raw[row,store.first_column+column]))
+                    if type(value) is not int or not low<=value<=high:
+                        raise BlockScheduleError("scalar readout result differs from declared signed output domain")
+                    values.append(value)
+                output[store.output_row+pixel,store.first_column+column]=max(values)
+    return output
+
+
+def execute(schedule: BlockSchedule, lhs: Any, weight: Any, *, bias: Any = None) -> Any:
     """Run ``schedule`` on host arrays exactly as an in-order device would, and return the output.
 
     The schedule's own oracle: every row a load writes, every block a preload makes resident, every
@@ -657,10 +1272,19 @@ def execute(schedule: BlockSchedule, lhs: Any, weight: Any) -> Any:
         raise BlockScheduleError(
             f"operands {lhs.shape} x {weight.shape} are not the scheduled {want_lhs} x {want_weight}"
         )
+    if schedule.column_bias is None:
+        if bias is not None:raise BlockScheduleError("undeclared bias operand")
+    else:
+        check_residency(schedule)
+        bias = np.asarray(bias)
+        if bias.shape != (out_shape[1],) or bias.dtype != np.dtype(f'int{schedule.column_bias.bits}'):
+            raise BlockScheduleError("bias values differ from exact source columns/accumulator width")
+        if not all(np.issubdtype(x.dtype,np.signedinteger) for x in (lhs,weight)):
+            raise BlockScheduleError("modular bias execution requires signed integer operands")
     dram = {LHS: lhs, WEIGHT: weight}
     rows_on_chip: dict[int, Any] = {}
     accumulator: dict[int, Any] = {}
-    out = np.zeros(out_shape, dtype=np.result_type(lhs, weight, np.int64))
+    out = np.zeros(out_shape, dtype=np.result_type(lhs, weight, np.int64) if schedule.column_bias is None else bias.dtype)
     resident = None
     target_row, accumulate = None, False
 
@@ -675,7 +1299,9 @@ def execute(schedule: BlockSchedule, lhs: Any, weight: Any) -> Any:
         return accumulator[row]
 
     for op in schedule.ops:
-        if isinstance(op, Load):
+        if isinstance(op, InitializeAccumulator):
+            accumulator[op.row] = np.broadcast_to(bias[op.dram_col:op.dram_col+op.cols],(op.rows,op.cols)).copy()
+        elif isinstance(op, Load):
             source = dram[op.role]
             if op.gather is not None:
                 for offset, entry in enumerate(op.gather):
@@ -704,6 +1330,8 @@ def execute(schedule: BlockSchedule, lhs: Any, weight: Any) -> Any:
             else:
                 accumulator[target_row] = product
         elif isinstance(op, Store):
+            if op.readout is not None:
+                raise BlockScheduleError("block execution has no qualified implementation of the selected readout")
             out[op.dram_row : op.dram_row + op.rows, op.dram_col : op.dram_col + op.cols] = _accumulated(
                 op.accumulator_row, "a store"
             )[: op.rows, : op.cols]

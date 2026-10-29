@@ -101,3 +101,31 @@ def test_refused_feature_drops_previous_success_receipt(tmp_path, lowering_tools
     with pytest.raises(KeyError, match="unknown"):
         pipeline.lower_to_llvm_ir(SOURCE, workdir=tmp_path, features={"not-a-registered-compiler-feature"})
     assert not (tmp_path / "lowering_recipe.json").exists()
+
+
+@pytest.mark.parametrize("mutation", [None, "before", "after", "report"])
+def test_ordinary_ciface_annotation_retains_upstream_and_checks_exact_change(tmp_path, mutation):
+    from merlin.llvmlower.ciface_inline import inline_wide_ciface_implementations
+    from merlin.llvmlower.lowering_recipe import LoweringRecipe, bind_ciface_annotation
+
+    arguments = ", ".join(f"i64 %a{i}" for i in range(257))
+    before = f"define void @wide({arguments}) {{\n ret void\n}}\n"
+    before += "define void @_mlir_ciface_wide(ptr %p) {\n ret void\n}\n"
+    recipe = LoweringRecipe(tmp_path, features=(), sources={})
+    recipe.returned(before)
+    after, report = inline_wide_ciface_implementations(before)
+    assert after != before
+    actual_before = before + "\n" if mutation == "before" else before
+    actual_after = after + "\n" if mutation == "after" else after
+    if mutation == "report":
+        report["count"] = 0
+    if mutation is not None:
+        with pytest.raises(ValueError, match="ABI annotation differs"):
+            bind_ciface_annotation(recipe.path, actual_before, actual_after, report)
+        assert "ciface_boundary_inline" not in _read(tmp_path)
+        return
+    bind_ciface_annotation(recipe.path, before, after, report)
+    result = _read(tmp_path)
+    assert result["upstream_returned_llvm_ir"]["sha256"] == hashlib.sha256(before.encode()).hexdigest()
+    assert result["returned_llvm_ir"]["sha256"] == hashlib.sha256(after.encode()).hexdigest()
+    assert result["ciface_boundary_inline"]["report"]["count"] == 1

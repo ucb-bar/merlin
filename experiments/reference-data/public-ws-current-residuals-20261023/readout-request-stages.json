@@ -1,0 +1,237 @@
+{
+  "schema": "merlin.public_readout_request_stages.v1",
+  "physical_trace": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-passive-v2/trace.csv",
+    "sha256": "4fe43bdc72b9fb74b0b2a0f62326aec7a5d2e81444ebaa5a3a7655533aff85a3"
+  },
+  "physical_receipt": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-passive-v2/run.json",
+    "sha256": "6c6184dad9dc4b6f7a8092df5753adedd9d032b93f25e60f0f5916c20e7f9bfc"
+  },
+  "physical_build": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-passive-v2/build-receipt.json",
+    "sha256": "9d076df980766b44816621df7ac51790b14309847814b62cd230f22f875388db"
+  },
+  "source_pins": [
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/Controller.scala",
+      "sha256": "2ce940248a43b46e726e98e72e3258c03bd354535a560393aeb1a7cf7d85b72e"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/DMA.scala",
+      "sha256": "db6d9d61f8794f6d60508c5844a2b287ffab0cd795a662b84b970dd9615e5dc1"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/LoopConv.scala",
+      "sha256": "8609d9f27ff037ffdeaba53f70e8c0a9b3a994c3871e9eacbee20e58d3dc6c6d"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/LoopMatmul.scala",
+      "sha256": "7e4e5937e036a3ff968f4dd71f270e9ad732f4e727218008017de1de4be9a7a4"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/ReservationStation.scala",
+      "sha256": "d2d71c91d4ff1e26691bbcd7cd809aad16652680fd50177410f99de9bfb255e4"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/Scratchpad.scala",
+      "sha256": "e4d3a12c700fe9edaf5c2ce2f283ec5233a98bd103fb04054160e8097cb89a4f"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/StoreController.scala",
+      "sha256": "a0b556d109196c3c9d9ac5ed4dffc1bcad334c0f1f87780d948b84bde7402c6d"
+    }
+  ],
+  "rows": [
+    {
+      "arm": 0,
+      "groups": [
+        {
+          "command": 5,
+          "first_a": 26,
+          "first_b": 32,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        },
+        {
+          "command": 208,
+          "first_a": 229,
+          "first_b": 235,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        },
+        {
+          "command": 411,
+          "first_a": 432,
+          "first_b": 438,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        },
+        {
+          "command": 614,
+          "first_a": 635,
+          "first_b": 641,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        },
+        {
+          "command": 817,
+          "first_a": 838,
+          "first_b": 844,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        },
+        {
+          "command": 1020,
+          "first_a": 1041,
+          "first_b": 1047,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        },
+        {
+          "command": 1220,
+          "first_a": 1241,
+          "first_b": 1247,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        },
+        {
+          "command": 1423,
+          "first_a": 1444,
+          "first_b": 1450,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        }
+      ],
+      "max_live_writer_ids": 12,
+      "a_beat_spacing_within_groups": {
+        "1": 499,
+        "2": 4,
+        "3": 1
+      },
+      "probe_spacing_within_groups": {
+        "10": 120
+      }
+    },
+    {
+      "arm": 1,
+      "groups": [
+        {
+          "command": 5,
+          "first_a": 26,
+          "first_b": 32,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        },
+        {
+          "command": 113,
+          "first_a": 134,
+          "first_b": 140,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        },
+        {
+          "command": 220,
+          "first_a": 241,
+          "first_b": 247,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        },
+        {
+          "command": 330,
+          "first_a": 351,
+          "first_b": 357,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        },
+        {
+          "command": 438,
+          "first_a": 459,
+          "first_b": 465,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        },
+        {
+          "command": 546,
+          "first_a": 567,
+          "first_b": 573,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        },
+        {
+          "command": 653,
+          "first_a": 674,
+          "first_b": 680,
+          "request_to_first_probe": 6,
+          "command_to_first_a": 21
+        },
+        {
+          "command": 760,
+          "first_a": 781,
+          "first_b": 788,
+          "request_to_first_probe": 7,
+          "command_to_first_a": 21
+        }
+      ],
+      "max_live_writer_ids": 5,
+      "a_beat_spacing_within_groups": {
+        "1": 500,
+        "2": 4
+      },
+      "probe_spacing_within_groups": {
+        "4": 117,
+        "5": 3
+      }
+    }
+  ],
+  "registered_stages": {
+    "existing_one_stage": "RoCC command router registered queue",
+    "additional_six": [
+      {
+        "source": "Controller.scala",
+        "line": 237,
+        "stage": "raw_cmd_q"
+      },
+      {
+        "source": "LoopConv.scala",
+        "line": 1215,
+        "stage": "ordinary primitive passthrough input queue"
+      },
+      {
+        "source": "LoopMatmul.scala",
+        "line": 936,
+        "stage": "ordinary primitive passthrough input queue"
+      },
+      {
+        "source": "Controller.scala",
+        "line": 269,
+        "stage": "unrolled_cmd queue"
+      },
+      {
+        "source": "ReservationStation.scala",
+        "line": 402,
+        "stage": "registered allocation valid before issue"
+      },
+      {
+        "source": "StoreController.scala",
+        "line": 85,
+        "stage": "controller command queue"
+      }
+    ],
+    "meaning": "Pipeline delay under explicit empty/unblocked frontend assumption, not resource occupancy or a general queued frontend model"
+  },
+  "measured_common_pipeline": {
+    "parameter": "readout_probe_request_cycles",
+    "value": 6,
+    "source": "first accepted writer A to first private B:15 commands have6cycles, final clean command7cycles. Candidate retains common observed minimum; remaining arbitration jitter unmodeled.",
+    "heldout_adjustment": false
+  },
+  "mechanism": "Accepted A cadence and finite transaction IDs remain separate from queued private-probe service. Completing a partial row does not allocate a second ID. Response and occupancy retain distinct timelines.",
+  "limitations": [
+    "Full-width aligned64-byte ACC row path only; other output geometries keep prior approximation.",
+    "Request pipeline assumes selected translation hits and A-ready with credit. Frontend latency assumes no frontend backpressure.",
+    "Probe resource start is a coarse service boundary; arbitrary cache/interconnect arbitration is not represented.",
+    "32-cubed heldouts remain outside corrected readout path and about9.4percent low.",
+    "No independent4percent promotion, no new physical runs, no live selection change."
+  ]
+}

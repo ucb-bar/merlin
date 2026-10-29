@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from math import prod
 
 from xdsl.dialects.builtin import NoneAttr, TensorType
+from xdsl.dialects.linalg.ops import TransposeOp, YieldOp
 from xdsl.dialects.tensor import CollapseShapeOp, ExpandShapeOp, ExtractSliceOp
 from xdsl.ir import SSAValue
 
@@ -49,9 +50,21 @@ class SegmentedRows:
             raise ValueError("view element type is required")
         if self.row_stride < self.cols:
             raise ValueError("view rows overlap")
-        if self.segment_stride < (self.segment_rows - 1) * self.row_stride + self.cols:
+        segments = (self.rows + self.segment_rows - 1) // self.segment_rows
+        separated = self.segment_stride >= (self.segment_rows - 1) * self.row_stride + self.cols
+        # A transpose can interleave disjoint segments. Within each physical
+        # row, their intervals are separated by segment_stride; successive
+        # physical rows are separated by row_stride. Bounding spans overlap,
+        # but the actual element intervals do not. This is a sufficient closed
+        # proof, not an arbitrary-stride alias solver.
+        interleaved = (self.segment_stride >= self.cols
+                       and self.row_stride >= (segments - 1) * self.segment_stride + self.cols)
+        if not separated and not interleaved:
             raise ValueError("view row segments overlap")
-        if self.offset(self.rows - 1, self.cols - 1) >= self.source_elements:
+        endpoints = [self.offset(self.rows - 1, self.cols - 1)]
+        if self.rows > self.segment_rows and self.rows % self.segment_rows:
+            endpoints.append(self.offset(self.rows // self.segment_rows * self.segment_rows - 1, self.cols - 1))
+        if max(endpoints) >= self.source_elements:
             raise ValueError("view endpoint exceeds the source allocation")
 
     def offset(self, row: int, col: int = 0) -> int:
@@ -65,7 +78,10 @@ class SegmentedRows:
         )
 
     def split_rows(self, start: int, count: int):
-        """Yield (logical row, row count, source element offset) segments."""
+        """Yield logical-order runs with the explicit physical row stride.
+
+        Source offsets need not increase between runs of an interleaved view.
+        """
         if type(start) is not int or type(count) is not int or count <= 0:
             raise ValueError("row panel requires integer start and positive count")
         if start < 0 or start + count > self.rows:
@@ -111,6 +127,30 @@ def _groups(op):
     return tuple(tuple(a.value.data for a in group) for group in op.reassociation)
 
 
+def _transpose_source(value):
+    """Read one exact tensor permutation, never an arbitrary scalar region."""
+    op = value.owner
+    if not isinstance(op, TransposeOp):
+        return value, tuple(range(len(_shape(value)))), None
+    if (op.attributes or set(op.properties) != {"permutation"}
+            or len(op.operands) != 2 or len(op.results) != 1 or len(op.body.blocks) != 1):
+        raise ValueError("view transpose requires an unmodified pure permutation")
+    before, after = _shape(op.inputs[0]), _shape(value)
+    permutation = tuple(op.permutation.get_values())
+    body = tuple(op.body.block.ops)
+    if (sorted(permutation) != list(range(len(before)))
+            or after != tuple(before[i] for i in permutation)
+            or op.operands[1].type != value.type or len(op.body.block.args) != 2
+            or len(body) != 1 or not isinstance(body[0], YieldOp)
+            or body[0].properties or body[0].attributes
+            or tuple(body[0].operands) != (op.body.block.args[0],)
+            or op.body.block.args[1].uses
+            or op.inputs[0].type.get_element_type() != value.type.get_element_type()):
+        raise ValueError("view transpose changes source values or coordinates")
+    op.verify()
+    return op.inputs[0], permutation, op
+
+
 def _linear_source(value, chain):
     """Peel only whole-linearization reshapes, preserving all element order."""
     while isinstance(value.owner, (CollapseShapeOp, ExpandShapeOp)):
@@ -134,9 +174,11 @@ def _linear_source(value, chain):
 def prove_segmented_matrix(value: SSAValue) -> MatrixViewProof:
     """Prove matrix rows from a batch-one spatial slice with contiguous columns.
 
-    Nested rank-preserving static slices compose exactly. Other view forms,
-    dynamic operands, rank reduction and element conversions refuse. Prefix
-    dimensions must be singleton; spatial axes need not be square or aligned.
+    Nested static slices and an optional exact transpose before linearization
+    compose exactly. Dynamic operands, rank reduction and element conversions
+    refuse. Selected prefix dimensions must be singleton. A transpose supplies
+    only an address map, not permission to remove a materialization or retain
+    the source allocation.
     """
     logical = _shape(value)
     if len(logical) != 2 or not isinstance(value.owner, ExpandShapeOp):
@@ -162,7 +204,9 @@ def prove_segmented_matrix(value: SSAValue) -> MatrixViewProof:
         raise ValueError("matrix shape disagrees with spatial linearization")
     chain.extend((expanded, collapse))
     offsets, strides = [0] * rank, [1] * rank
-    source = sliced
+    source, permutation, transposed = _transpose_source(sliced)
+    if transposed is not None:
+        chain.append(transposed)
     count = 0
     while isinstance(source.owner, ExtractSliceOp):
         op = source.owner
@@ -189,18 +233,19 @@ def prove_segmented_matrix(value: SSAValue) -> MatrixViewProof:
     elem = value.type.get_element_type()
     if any(op.operands[0].type.get_element_type() != elem for op in chain):
         raise ValueError("view chain changes element type")
-    if any(dim != 1 for dim in base_shape[:-3]) or strides[-1] != 1:
+    dense = [prod(base_shape[axis + 1 :]) for axis in range(rank)]
+    physical = [strides[axis] * dense[axis] for axis in permutation]
+    if physical[-1] != 1:
         raise ValueError("view requires singleton prefix and contiguous column axis")
     width = getattr(elem, "bitwidth", None)
     if width is None or width <= 0 or width % 8:
         raise ValueError("view element byte width is unknown")
-    dense = [prod(base_shape[axis + 1 :]) for axis in range(rank)]
     address = SegmentedRows(
         rows=logical[0],
         cols=logical[1],
         segment_rows=selected[-2],
-        row_stride=strides[-2] * dense[-2],
-        segment_stride=strides[-3] * dense[-3],
+        row_stride=physical[-2],
+        segment_stride=physical[-3],
         source_elements=prod(base_shape),
         element_bytes=width // 8,
         dtype=str(elem),

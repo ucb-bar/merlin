@@ -98,6 +98,41 @@ def transport(f):
     return admitted, FI.load_frozen_functional_inputs(admitted, public_manifest_path=f.projection)
 
 
+@pytest.mark.parametrize("changed_input", [False, True], ids=["accepted", "refused"])
+def test_private_snapshot_metadata_priority_restores_caller(frozen_source, monkeypatch, changed_input):
+    from merlin.common.cpu_pool import (
+        AUTHOR,
+        GRADE,
+        PRIORITY_ENV,
+        cpu_priority,
+        current_thread_owns_cpu_lease,
+        lease_priority,
+    )
+
+    f = frozen_source
+    if changed_input:
+        f.manifest.write_text(f.manifest.read_text() + "\n# changed archived bundle\n")
+    original = FI.PC.verify_private_input_snapshot
+    observations = []
+    monkeypatch.setenv(PRIORITY_ENV, str(GRADE))
+
+    def verify(*args, **kwargs):
+        observations.append((lease_priority(), os.environ[PRIORITY_ENV], current_thread_owns_cpu_lease()))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(FI.PC, "verify_private_input_snapshot", verify)
+    with cpu_priority(GRADE, export=False):
+        if changed_input:
+            with pytest.raises(FI.PC.CampaignGateError, match="archived bundle bytes disagree"):
+                FI._functional_input_snapshot(f.baseline)
+        else:
+            assert FI._functional_input_snapshot(f.baseline).digest == f.baseline.digest
+        assert lease_priority() == GRADE
+        assert not current_thread_owns_cpu_lease()
+        assert os.environ[PRIORITY_ENV] == str(GRADE)
+    assert observations == [(AUTHOR, str(GRADE), False)]
+
+
 def test_real_v4_admission_projection_relocation_and_private_masks(frozen_source, monkeypatch):
     f = frozen_source
     before = FI.CONTRACTS.exact_tree_record(f.root)

@@ -1,0 +1,120 @@
+{
+  "schema": "merlin.public_probe_response_build.v1",
+  "base": {
+    "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/build.json",
+    "sha256": "482ceb0ac00887f9d2e20978413e7b6e026101c75409bbf6c6d398efc82fde87"
+  },
+  "base_archive": {
+    "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/.tmp/scoped-observer/libriscv.a",
+    "sha256": "2b681b656f676d203cb4f62c53ce3c9ff4521dae2e1b363ac727fee0afc690b0"
+  },
+  "source_identity": "4bb1ede1bcd37f8a8d87f4a32b6bff068f81224b16731cb069e096940a3b9314",
+  "changed_sources": {
+    "riscv/annotated_timing_memory.cc": "ae481d4cf6853dd9492119543612f2997fddaa02dd59138027d8c839eb6951a2",
+    "timing/memory.hpp": "4741f3072b7e6a42366cf7a01105d82abab73d062abbecfcc09c304a9f372594"
+  },
+  "binary": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+    "sha256": "d147ddf66f7977c4217cb2bf78344d893c1a2b5402923a49e242a988699a6515"
+  },
+  "commands": [
+    {
+      "argv": [
+        "g++",
+        "-std=c++20",
+        "-O2",
+        "-g0",
+        "-fPIC",
+        "-I<WORKSPACE>/tasks/phase1-harness-v2/.tmp/boost-deps/usr/include",
+        "-iquote",
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike",
+        "-I<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing",
+        "-I<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/timing",
+        "-I<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/timing/core/include",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/riscv",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/fesvr",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/disasm",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/customext",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/fdt",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/softfloat",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/spike_main",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/spike_dasm",
+        "-c",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/riscv/annotated_timing.cc",
+        "-o",
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/annotated_timing.o"
+      ],
+      "wall_s": 3.0976242590113543
+    },
+    {
+      "argv": [
+        "g++",
+        "-std=c++20",
+        "-O2",
+        "-g0",
+        "-fPIC",
+        "-I<WORKSPACE>/tasks/phase1-harness-v2/.tmp/boost-deps/usr/include",
+        "-iquote",
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike",
+        "-I<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing",
+        "-I<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/timing",
+        "-I<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/timing/core/include",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/riscv",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/fesvr",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/disasm",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/customext",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/fdt",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/softfloat",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/spike_main",
+        "-iquote",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/spike_dasm",
+        "-c",
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/riscv/annotated_timing_memory.cc",
+        "-o",
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/annotated_timing_memory.o"
+      ],
+      "wall_s": 2.0189080700511113
+    },
+    {
+      "argv": [
+        "g++",
+        "-L<WORKSPACE>/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu",
+        "-Wl,-rpath,<WORKSPACE>/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu",
+        "-Wl,--export-dynamic",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/extension.o",
+        "-o",
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/spike",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/spike.o",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libspike_main.a",
+        "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-response-v1/libriscv.a",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libdisasm.a",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libsoftfloat.a",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libfesvr.a",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libfdt.a",
+        "-lcrypto",
+        "-lpthread",
+        "-lboost_regex",
+        "-lboost_system"
+      ]
+    }
+  ]
+}

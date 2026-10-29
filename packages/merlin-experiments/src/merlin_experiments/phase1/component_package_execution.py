@@ -14,12 +14,19 @@ import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 from merlin.common import invocation_record
 from merlin.targetgen import package_runtime as P
+from merlin_experiments.execution.container_policy import prepare_strict_policy
 from merlin_experiments.execution.container_transport import PreparedContainerTransport, mounts_from_strict_policy
+from merlin_experiments.phase1.feedback.compiler_profile_runtime import (
+    finish_snapshot_invocation,
+    snapshot_scoped_entrypoint,
+)
 from merlin_experiments.phase2 import contracts as C
 from merlin_experiments.phase2.component_experiment import ComponentView, RuntimeGrant, strict_tool_policy
+from merlin_experiments.phase2.external_resources import active_resource_boundary, bounded_tool_scratch
 
 
 def selected_compiler_transport(runtime_authority, *, view, runtime):
@@ -58,8 +65,60 @@ class ComponentPackageExecutor:
     evidence_root: Path
     record_stage_inspection: bool = True
     container_transport: PreparedContainerTransport | None = None
+    original_execution: object = None
+
+    def original_profile_execution(self):
+        """Reopen the retained original owner, never infer one from metadata."""
+        if self.original_execution is None:
+            return None
+        from merlin_experiments.phase1.feedback import compiler_profile_runtime as original
+
+        selected = self.original_execution
+        if type(selected) is not original._Executor or P.active_package_executor() is not self:
+            raise C.StageGateError("component profile composition requires its exact live original execution owner")
+        original._Executor._verify(selected, SimpleNamespace(directory=self.candidate, integrity_exempt=False))
+        original.CommonTransformService._verify(selected.owner)
+        return selected
+
+    def _verify_original(self, pkg):
+        selected = self.original_profile_execution()
+        if selected is not None:
+            from merlin_experiments.phase1.feedback import compiler_profile_runtime as original
+
+            original._Executor._verify(selected, pkg)
+
+    def _original_public_policy(self, policy, *, workspace):
+        """Keep qualified component mounts and add only original public leaves."""
+        selected = self.original_profile_execution()
+        from merlin.targetgen.compiler_library import active_compiler_library
+        from merlin_experiments.phase2 import compiler_libraries as libraries
+        from merlin_experiments.phase2.campaign import PackageSandboxPolicy, _verify_frozen_policy
+
+        library = active_compiler_library()
+        if selected is None and library is None:
+            return policy
+        prepared = PackageSandboxPolicy(
+            tuple(policy), (), (), Path(workspace), self.candidate,
+            None if selected is None else selected.target, env_prefix=""
+        )
+        roots = []
+        if selected is not None:
+            from merlin_experiments.phase1.feedback import compiler_profile_runtime as original
+            prepared = original.public_package_policy(prepared, target=selected.target, owner=selected.owner)
+            roots.extend(original._public_python_roots(selected.owner))
+        prepared = libraries.apply(prepared)
+        _verify_frozen_policy(prepared)
+        if library is not None:
+            roots.insert(0, libraries.guest_root(library))
+        # Strict compilers can use a direct interpreter without a shell. Carry
+        # the same exact candidate overlay as PYTHONPATH environment data.
+        result = list(prepared.argv)
+        previous = _policy_environment(result).get("PYTHONPATH", "")
+        value = ":".join((*map(str, roots), *([previous] if previous else [])))
+        return _set_environment(result, (("PYTHONPATH", value),))
 
     def build_package(self, pkg, *, timeout=1800):
+        self._verify_original(pkg)
         if pkg.directory.resolve() != self.candidate:
             raise C.StageGateError("component package build escaped its immutable compiler owner")
         build = pkg.manifest.get("build") or {}
@@ -68,6 +127,7 @@ class ComponentPackageExecutor:
                 "component qualification requires an independently boxed build service for declared build steps"
             )
 
+    @snapshot_scoped_entrypoint
     def run_entrypoint(
         self,
         pkg,
@@ -80,6 +140,7 @@ class ComponentPackageExecutor:
         artifact_profile=None,
         invocation_directory=None,
     ):
+        self._verify_original(pkg)
         if pkg.directory.resolve() != self.candidate or write_bytecode or artifact_profile is not None:
             raise C.StageGateError("component package invocation differs from its exact immutable owner/protocol")
         if (
@@ -95,102 +156,186 @@ class ComponentPackageExecutor:
             raise C.StageGateError("component qualification runtime must pin its sandbox executable")
         selected[0].verify()
         with tempfile.TemporaryDirectory(prefix="compiler-output-", dir=self.evidence_root.parent) as staging:
-            host_output = Path(staging) / "command_buffer.json"
-            argv = P._resolve_argv(
-                pkg,
-                name,
-                Path("/evaluation-input/interface.mlir"),
-                Path("/evaluation-output/command_buffer.json") if output_json is not None else None,
-            )
-            if P._needs_interpreter(pkg, argv):
-                interpreters = [row for row in self.runtime if row.source.resolve() == Path(sys.executable).resolve()]
-                if len(interpreters) != 1:
-                    raise C.StageGateError("component runtime does not pin the actual selected Python interpreter")
-                argv = [interpreters[0].destination, *argv]
-            # Absolute interpreter/tool commands declared by a package must
-            # resolve to reviewed destination files, never host-only aliases.
-            for row in self.runtime:
-                if Path(argv[0]).is_absolute() and Path(argv[0]).resolve() == row.source.resolve():
-                    argv[0] = row.destination
-                    break
-            policy = list(
-                strict_tool_policy(
-                    self.view,
-                    self.candidate,
-                    runtime=self.runtime,
-                    candidate_destination=str(self.candidate),
-                    bwrap_binary=selected[0].source,
-                    candidate_writable=False,
+            selected_profile = self.original_profile_execution()
+            if selected_profile is None:
+                call_scope = contextlib.nullcontext(None)
+            else:
+                from merlin_experiments.phase1.brokers.compiler_call_channel import compiler_call_transport
+
+                call_scope = compiler_call_transport(
+                    selected_profile.owner,
+                    workspace=Path(staging),
+                    package=self.candidate,
+                    input_path=Path(input_mlir),
+                    command_name=name,
+                    timeout_s=timeout,
                 )
-            )
-            policy += [
-                "--ro-bind",
-                str(input_mlir),
-                "/evaluation-input/interface.mlir",
-                "--bind",
-                staging,
-                "/evaluation-output",
-            ]
-            dependencies = (
-                *tuple(path for path in self.candidate.rglob("*") if path.is_file()),
-                *tuple(row.source for row in self.runtime),
-                Path(__file__),
-            )
-            if self.container_transport is not None:
-                if type(self.container_transport) is not PreparedContainerTransport:
-                    raise C.StageGateError(
-                        "component package requires an explicitly prepared original container transport"
+            with call_scope as channel:
+                host_output = Path(staging) / "command_buffer.json"
+                argv = P._resolve_argv(
+                    pkg,
+                    name,
+                    Path("/evaluation-input/interface.mlir"),
+                    (
+                        host_output
+                        if self.original_execution is not None
+                        else Path("/evaluation-output/command_buffer.json")
                     )
-                self.container_transport.verify()
-                mounts = mounts_from_strict_policy(tuple(policy))
-                owned_evidence = Path(invocation_directory) / ("container-command-" + uuid.uuid4().hex)
-                with invocation_record.observe_call(
-                    invocation_directory,
-                    stage=name,
-                    function=self.container_transport.execute,
-                    arguments={
-                        "command": argv,
-                        "cwd": str(self.candidate),
-                        "timeout_s": timeout,
-                        "client_sha256": self.container_transport.client_sha256,
-                        "guardian_sha256": self.container_transport.guardian_sha256,
-                        "image_config_sha256": self.container_transport.configuration_sha256,
-                    },
-                    inputs=(input_mlir,),
-                    outputs=(output_json,) if output_json is not None else (),
-                    dependencies=dependencies,
-                ) as record:
-                    actual = self.container_transport.execute(
-                        mounts=mounts,
-                        command=tuple(argv),
-                        cwd=str(self.candidate),
-                        evidence_root=owned_evidence,
-                        timeout_s=timeout,
+                    if output_json is not None
+                    else None,
+                )
+                if P._needs_interpreter(pkg, argv):
+                    interpreters = [
+                        row for row in self.runtime if row.source.resolve() == Path(sys.executable).resolve()
+                    ]
+                    if len(interpreters) != 1:
+                        raise C.StageGateError("component runtime does not pin the actual selected Python interpreter")
+                    argv = [interpreters[0].destination, *argv]
+                # Absolute interpreter/tool commands declared by a package must
+                # resolve to reviewed destination files, never host-only aliases.
+                for row in self.runtime:
+                    if Path(argv[0]).is_absolute() and Path(argv[0]).resolve() == row.source.resolve():
+                        argv[0] = row.destination
+                        break
+                policy = list(
+                    strict_tool_policy(
+                        self.view,
+                        self.candidate,
+                        runtime=self.runtime,
+                        candidate_destination=str(self.candidate),
+                        bwrap_binary=selected[0].source,
+                        candidate_writable=False,
                     )
-                    result = subprocess.CompletedProcess(
-                        actual.args, actual.returncode, actual.stdout.decode("utf-8"), actual.stderr.decode("utf-8")
-                    )
+                )
+                policy += [
+                    "--ro-bind",
+                    str(input_mlir),
+                    "/evaluation-input/interface.mlir",
+                    "--bind",
+                    staging,
+                    staging if self.original_execution is not None else "/evaluation-output",
+                ]
+                policy = self._original_public_policy(policy, workspace=staging)
+                if channel is not None:
+                    policy = _set_environment(policy, channel.environment())
+                    timeout = channel.remaining_timeout()
+                dependencies = (
+                    *tuple(path for path in self.candidate.rglob("*") if path.is_file()),
+                    *tuple(row.source for row in self.runtime),
+                    Path(__file__),
+                )
+                if self.container_transport is not None:
+                    if active_resource_boundary() is not None:
+                        raise C.StageGateError(
+                            "hard resource budget cannot admit an unbound external container executor"
+                        )
+                    if type(self.container_transport) is not PreparedContainerTransport:
+                        raise C.StageGateError(
+                            "component package requires an explicitly prepared original container transport"
+                        )
+                    self.container_transport.verify()
+                    owned_evidence = Path(invocation_directory) / ("container-command-" + uuid.uuid4().hex)
+                    container_options = {}
+                    if self.original_execution is not None:
+                        mask_workspace = Path(invocation_directory) / ("container-masks-" + uuid.uuid4().hex)
+                        mask_workspace.mkdir()
+                        plan = prepare_strict_policy(
+                            tuple(policy),
+                            original_environment=tuple(_policy_environment(policy).items()),
+                            mask_workspace=mask_workspace,
+                        )
+                        mounts = plan.mounts
+                        container_options = {"environment": plan.environment, "namespace_masks": plan.namespace_masks}
+                    else:
+                        mounts = mounts_from_strict_policy(tuple(policy))
+                    with invocation_record.observe_call(
+                        invocation_directory,
+                        stage=name,
+                        function=self.container_transport.execute,
+                        arguments={
+                            "command": argv,
+                            "cwd": str(self.candidate),
+                            "timeout_s": timeout,
+                            "client_sha256": self.container_transport.client_sha256,
+                            "guardian_sha256": self.container_transport.guardian_sha256,
+                            "image_config_sha256": self.container_transport.configuration_sha256,
+                            **container_options,
+                        },
+                        inputs=(input_mlir,),
+                        outputs=(output_json,) if output_json is not None else (),
+                        dependencies=dependencies,
+                    ) as record:
+                        actual = self.container_transport.execute(
+                            mounts=mounts,
+                            command=tuple(argv),
+                            cwd=str(self.candidate),
+                            evidence_root=owned_evidence,
+                            timeout_s=timeout,
+                            **container_options,
+                        )
+                        result = subprocess.CompletedProcess(
+                            actual.args, actual.returncode, actual.stdout.decode("utf-8"), actual.stderr.decode("utf-8")
+                        )
+                        if host_output.is_symlink():
+                            raise C.StageGateError("component compiler output staging contains a linked product")
+                        finish_snapshot_invocation()
+                        if output_json is not None and host_output.is_file():
+                            shutil.copyfile(host_output, output_json)
+                        record.returned(stdout=result.stdout, stderr=result.stderr)
+                        self._verify_original(pkg)
+                        return result
+                from merlin.common import bwrap_args
+
+                with (
+                    bounded_tool_scratch([*policy, "--", *argv], owner=Path(invocation_directory)) as command,
+                    bwrap_args.argument_transport(command, policy_end=len(command)-len(argv)-1) as transport,
+                    invocation_record.observe(
+                        invocation_directory,
+                        stage=name,
+                        argv=command,
+                        inputs=(input_mlir,),
+                        outputs=(output_json,) if output_json is not None else (),
+                        dependencies=(*dependencies, Path(bwrap_args.__file__)),
+                    ) as record,
+                ):
+                    record.document["argument_transport"] = transport.record()
+                    actual = subprocess.run(list(transport.command), pass_fds=transport.pass_fds,
+                                            capture_output=True, text=True, timeout=timeout)
+                    result = subprocess.CompletedProcess(command, actual.returncode, actual.stdout, actual.stderr)
                     if host_output.is_symlink():
                         raise C.StageGateError("component compiler output staging contains a linked product")
+                    finish_snapshot_invocation()
                     if output_json is not None and host_output.is_file():
                         shutil.copyfile(host_output, output_json)
-                    record.returned(stdout=result.stdout, stderr=result.stderr)
+                    record.complete(result)
+                    self._verify_original(pkg)
                     return result
-            with invocation_record.observe(
-                invocation_directory,
-                stage=name,
-                argv=[*policy, "--", *argv],
-                inputs=(input_mlir,),
-                outputs=(output_json,) if output_json is not None else (),
-                dependencies=dependencies,
-            ) as record:
-                result = subprocess.run([*policy, "--", *argv], capture_output=True, text=True, timeout=timeout)
-                if host_output.is_symlink():
-                    raise C.StageGateError("component compiler output staging contains a linked product")
-                if output_json is not None and host_output.is_file():
-                    shutil.copyfile(host_output, output_json)
-                record.complete(result)
-                return result
+
+
+def _policy_environment(policy):
+    values = {}
+    for index, value in enumerate(policy):
+        if value == "--setenv":
+            key, selected = policy[index + 1 : index + 3]
+            if key in values:
+                raise C.StageGateError("component command has duplicate selected environment fields")
+            values[key] = selected
+    return values
+
+
+def _set_environment(policy, values):
+    result = list(policy)
+    for key, value in values:
+        positions = [
+            index + 2 for index, token in enumerate(result[:-2]) if token == "--setenv" and result[index + 1] == key
+        ]
+        if len(positions) > 1:
+            raise C.StageGateError("component command has duplicate selected environment fields")
+        if positions:
+            result[positions[0]] = value
+        else:
+            result += ["--setenv", key, value]
+    return result
 
 
 @contextlib.contextmanager
@@ -204,8 +349,28 @@ def qualified_package_execution(
 ):
     if type(view) is not ComponentView:
         raise C.StageGateError("component qualification needs the independently frozen public library view")
+    from merlin_experiments.phase1.feedback import compiler_profile_runtime as original
+
+    active = P.active_package_executor()
+    original_execution = original.active_original_execution()
+    if active is not None and original_execution is None:
+        if type(active) is not ComponentPackageExecutor or (
+            active.candidate != candidate.resolve()
+            or active.view != view
+            or active.runtime != runtime
+            or active.container_transport is not container_transport
+        ):
+            raise C.StageGateError("component qualification cannot replace a foreign package execution owner")
+        original_execution = active.original_profile_execution()
     executor = ComponentPackageExecutor(
-        candidate.resolve(), view, runtime, evidence_root.resolve(), container_transport=container_transport
+        candidate.resolve(),
+        view,
+        runtime,
+        evidence_root.resolve(),
+        container_transport=container_transport,
+        original_execution=original_execution,
     )
     with P.scoped_package_executor(executor):
+        executor.original_profile_execution()
         yield
+        executor.original_profile_execution()

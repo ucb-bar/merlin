@@ -1,0 +1,62 @@
+{
+  "assumptions": [
+    "translation hits",
+    "FIFO modeled responses",
+    "A ready when transaction credit available"
+  ],
+  "coverage": "Aligned identity-scale singleported scratchpad rows only; existing conservative hazards retained",
+  "field_basis": {
+    "identity_scale_input_stages": "VectorScalarMultiplier inputRegValid registered stage",
+    "identity_scale_output_stages": "PixelRepeater selected first-layer path output register",
+    "identity_scale_queue_entries": "VectorScalarMultiplier3-entry identity result queue",
+    "reader_beat_bytes": "StreamReader D beat and BeatMerger16byte path",
+    "reader_beat_merger_stages": "BeatMerger registered output",
+    "reader_tlb_queue_entries": "StreamReader TLBrequest Queue depth1 pipe",
+    "reader_transaction_entries": "StreamReader XactTracker16 allocation entries",
+    "reader_translation_queue_entries": "StreamReader translation_req Queue depth1 pipe",
+    "scratchpad_singleported": "ScratchpadBank read/write mux and write arbitration"
+  },
+  "hardware": {
+    "identity_scale_input_stages": 1,
+    "identity_scale_output_stages": 1,
+    "identity_scale_queue_entries": 3,
+    "reader_beat_bytes": 16,
+    "reader_beat_merger_stages": 1,
+    "reader_tlb_queue_entries": 1,
+    "reader_transaction_entries": 16,
+    "reader_translation_queue_entries": 1,
+    "scratchpad_singleported": 1
+  },
+  "hardware_domain": "Selected gSIM elaboration only; module identity does not imply top-level FireSim clock or interconnect equivalence",
+  "mechanism": "row_requests",
+  "module_relation": {
+    "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/fir-module-relation.json",
+    "sha256": "03a7521342e18bbe01c49f8cd526b1f7a26000d85d76a06dddc653f92ab6b12c"
+  },
+  "schema": "merlin.public_arrival_mechanism_facts.v1",
+  "selected_elaboration": {
+    "path": "/work/merlin/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig.fir",
+    "sha256": "6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149"
+  },
+  "selectors": {
+    "target.assumptions.reader_a_ready_with_transaction_credit": 1,
+    "target.assumptions.scratchpad_load_fifo_responses": 1,
+    "target.assumptions.scratchpad_load_translation_hits": 1,
+    "target.scheduling.scratchpad_request_admission": 1,
+    "target.scheduling.scratchpad_row_loads": 1
+  },
+  "source_pins": [
+    {
+      "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/experiments/reference-data/public-scratchpad-request-admission-20261022/index.json",
+      "sha256": "b83b496f209f7827f01821b5d0c2b4cc5c0163363134a766a922f75adbd516c2"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/experiments/reference-data/public-scratchpad-row-arrivals-20261022/index.json",
+      "sha256": "2a077cd5b6ade07ec4be5bf7c56ea3ff798b400be29c1312ce58643e13a3eb68"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/fir-module-relation.json",
+      "sha256": "03a7521342e18bbe01c49f8cd526b1f7a26000d85d76a06dddc653f92ab6b12c"
+    }
+  ]
+}

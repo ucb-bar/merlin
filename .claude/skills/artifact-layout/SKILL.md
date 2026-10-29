@@ -91,6 +91,18 @@ The legacy `output/` root is **retired**. Model recaptures now live at `out/arti
 generated content to `output/`** — the guard hook blocks it. Recaptures are PURGEABLE (regenerate
 via the m2m exporter).
 
+## Before deleting anything: ask what cites it
+
+PURGEABLE says a tree *can* be regenerated, not that nothing still cites it. Sealed Phase 0
+evidence was deleted twice by cleanups that judged by name or age. Each time, a record that
+outlived the cleanup pinned the deleted path by digest. Reclaim with `merlin-storage prune` /
+`retain`, which refuse cited paths. Before any manual or scripted `rm`, run
+`MERLIN_CITED_ROOTS=<trees holding records> merlin-storage cited <path>...`. Exit 1 means a seal,
+release, run record or derivation still cites the path, so leave it. Never unlock a `chattr +i`
+tree to delete it; that flag is a seal. A damaged sealed derivation is repaired, never re-copied by
+hand: use `merlin-experiment corpus evidence repair`, which restores digest-equal bytes and writes
+a receipt. See `docs/guides/storage.md`.
+
 ## Escape hatch
 
 For a genuine one-off outside the roots: `export MERLIN_ALLOW_ARTIFACT_WRITE=1`, or add a path

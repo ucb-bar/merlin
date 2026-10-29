@@ -1,0 +1,38 @@
+{
+  "schema": "merlin.public_ws_calibration_domain_proposal.v1",
+  "executable_calibration_profile": false,
+  "status": "blocked_pending_structural_review_and_independent_public_evidence",
+  "target": "selected scalar Rocket + DIM16 WS INT8 accelerator; fixed pinned gSIM memory/config",
+  "scope": [
+    "full-tile nonaccumulating resident WS compute",
+    "64-byte-aligned transfers; full-width accumulator readout with explicit CPU cache ownership",
+    "known translation/cache initial state and complete-call counter window",
+    "source-bound CPU submission and completion ordering"
+  ],
+  "exclusions": [
+    "arbitrary mixed load/compute/store overlap",
+    "unknown cache or DRAM initial state",
+    "deployed FireSim equivalence",
+    "full-model generalization",
+    "nonlinear normalization and unmodeled partial/tail schedules"
+  ],
+  "evidence_requirements": {
+    "independent_workload_groups": 4,
+    "variants_per_group": 2,
+    "train_groups": 2,
+    "held_out_groups": 2,
+    "complete_outputs_checked": true,
+    "exact_elf_inputs_window_configuration_and_state": true,
+    "development_probe_disjoint": true
+  },
+  "fit_requirements": {
+    "structural_admission_review_required": true,
+    "sensitivity_condition_limit": 1000,
+    "max_relative_error_every_held_out_case": 0.04,
+    "held_out_full_coverage": true,
+    "mean_and_p95_not_worse": true,
+    "materially_separated_pair_ranking_min": 0.9
+  },
+  "parameter_selection": "Do not release the current two-price fit just because complete totals nearly match. Compute/preload latency cannot explain the arm-dependent readout residual. Admit only source-supported identifiable costs after structural cache-service review.",
+  "activation": "New provider, model identity, continued denial/review and full selection must be paired and reviewed; never replace a runtime underneath an active run."
+}

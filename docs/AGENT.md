@@ -17,6 +17,8 @@ See the `docs-layout` skill for the full convention.
 
 - Only **durable** reference/guides/design. Each carries YAML front-matter
   (`title, kind, status, owner, last_verified, related, code_refs`).
+- Use task or capability names for documentation; do not use `aws` in filenames,
+  titles or headings. Name a hosting dependency in the instructions when required.
 
 ## What does NOT belong here
 

@@ -1,0 +1,537 @@
+{
+  "schema": "merlin.public_queue_capacity_validation_preparation.v1",
+  "status": "functional_and_scoped_model_complete_physical_pending",
+  "source_copy": "probe.c",
+  "plan_projection": "prespecified-plan.json",
+  "projection_note": "Source is byte-preserved. Plan copy changes only machine-specific prefixes into retained archive locators; original_plan SHA binds unmodified prespecification. External paths are archive keys, not bundled files or execution mounts.",
+  "original_plan": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/plan.json",
+    "sha256": "4f461d38a2ea41476c0f31d8e896c68b9bd23d4c8375d23243e34ae4b253be9d"
+  },
+  "source": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/probe.c",
+    "sha256": "89fc335699847c1997291a3196f470f656af9e7a4ce36d0bb8ac0eea59a6275e"
+  },
+  "elf": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf",
+    "sha256": "9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63"
+  },
+  "build": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/build.json",
+    "sha256": "eed835cb2f9e5f6630b9a0f383376a43c56f38373005b3dbf7af6acc1b22e042"
+  },
+  "functional": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/functional.json",
+    "sha256": "7859476cf0d0597d3251ad8b67ca02b1c470584843ac8147620fdb71cfd953cb"
+  },
+  "completion": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/completion.json",
+    "sha256": "34777194dbb3d0451f5c8555298cf05dec333dce21b25ad0bbdb73e78a399c5b"
+  },
+  "frozen_model": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+    "sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869"
+  },
+  "frozen_runtime": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/runtime.json",
+    "sha256": "0684df369407bffad8ee67b1a36d53d7867595a620f105d6c6466c0f26d57801"
+  },
+  "selected_engine_sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651",
+  "public_structural_review": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/review.json",
+    "sha256": "ef99934b6823344f7637707769b421d8bdb2b695d5b9dd8fe1f1714cbdd3caa9"
+  },
+  "public_source_audits": {
+    "pairing": {
+      "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/docs/perf_records/public_ws_pipeline_20261022/ws-resident-pairing.json",
+      "sha256": "97bb3bc47013f51d3ef8f45cc0118a6d8d5ca725647e3494f8ce57d5524ae3c1"
+    },
+    "queue": {
+      "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/docs/perf_records/public_ws_pipeline_20261022/ws-queue-release.json",
+      "sha256": "5037d04665d48db24cf395fd9f49916cd12897b86569ffc427c062bef2077dd4"
+    },
+    "stream": {
+      "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/docs/perf_records/public_ws_pipeline_20261022/streamed-readout.json",
+      "sha256": "8bcf9298062f53bcf47047e9ddcfd98cfc9a5b254f3c63faeb1059219c1c71b6"
+    }
+  },
+  "rows": [
+    {
+      "arm": 0,
+      "rep": 0,
+      "jobs": 1,
+      "fenced": 0,
+      "checked": 256,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 354,
+      "scope_instructions": 56,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/00.json",
+        "sha256": "43ad434c35101163bae7f08a8ce361ece73c2f3c341b4015d3da8691d1d0d937"
+      }
+    },
+    {
+      "arm": 0,
+      "rep": 1,
+      "jobs": 1,
+      "fenced": 0,
+      "checked": 256,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 303,
+      "scope_instructions": 56,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/01.json",
+        "sha256": "80f30656b9a2b008767c9de618441514b769b4e7034d6d2b33054f781eb81a03"
+      }
+    },
+    {
+      "arm": 0,
+      "rep": 2,
+      "jobs": 1,
+      "fenced": 0,
+      "checked": 256,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 303,
+      "scope_instructions": 56,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/02.json",
+        "sha256": "ea3b169221823ff826da058f0ecc939954cd5b05c974b24972a04a8797ec1195"
+      }
+    },
+    {
+      "arm": 1,
+      "rep": 0,
+      "jobs": 1,
+      "fenced": 1,
+      "checked": 256,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 310,
+      "scope_instructions": 58,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/03.json",
+        "sha256": "12d544a6e296e571e453ddc886c1fae0c81a21d73de6e7bd5490fbb9d8812ffd"
+      }
+    },
+    {
+      "arm": 1,
+      "rep": 1,
+      "jobs": 1,
+      "fenced": 1,
+      "checked": 256,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 310,
+      "scope_instructions": 58,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/04.json",
+        "sha256": "3e8bf7682ad903de422fc07ec8988ca79e130fb29518392b04bb6f2c54018d4b"
+      }
+    },
+    {
+      "arm": 1,
+      "rep": 2,
+      "jobs": 1,
+      "fenced": 1,
+      "checked": 256,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 310,
+      "scope_instructions": 58,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/05.json",
+        "sha256": "150943a593743c8bf1d017f2baee363a7801dc89d717b290a3d774e2c9ba7ec1"
+      }
+    },
+    {
+      "arm": 2,
+      "rep": 0,
+      "jobs": 3,
+      "fenced": 0,
+      "checked": 768,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 687,
+      "scope_instructions": 102,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/06.json",
+        "sha256": "73030336449dd1c00fe395ad36e4bb9d51536281eecac61452060864d25ca473"
+      }
+    },
+    {
+      "arm": 2,
+      "rep": 1,
+      "jobs": 3,
+      "fenced": 0,
+      "checked": 768,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 687,
+      "scope_instructions": 102,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/07.json",
+        "sha256": "d3bf65422bd4fcfdfd2f36731a7601facef0095b7e30a4f2e07aef675096089d"
+      }
+    },
+    {
+      "arm": 2,
+      "rep": 2,
+      "jobs": 3,
+      "fenced": 0,
+      "checked": 768,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 687,
+      "scope_instructions": 102,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/08.json",
+        "sha256": "8a18074add38f47adcae60b1e7e1cb8db616a5ec4b18c30cf8ff3f00a4cc1435"
+      }
+    },
+    {
+      "arm": 3,
+      "rep": 0,
+      "jobs": 3,
+      "fenced": 1,
+      "checked": 768,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 838,
+      "scope_instructions": 108,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/09.json",
+        "sha256": "e57f5948d560030d307c196f8b27d8a12cf6dfb58a3350f6ab45c70381931413"
+      }
+    },
+    {
+      "arm": 3,
+      "rep": 1,
+      "jobs": 3,
+      "fenced": 1,
+      "checked": 768,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 838,
+      "scope_instructions": 108,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/10.json",
+        "sha256": "7ee08c2897f982fe2a3df1be6eb8d3d4bade90a7a6d1be9a4b56a05109603978"
+      }
+    },
+    {
+      "arm": 3,
+      "rep": 2,
+      "jobs": 3,
+      "fenced": 1,
+      "checked": 768,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 838,
+      "scope_instructions": 108,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/11.json",
+        "sha256": "4600e89649f1a41760e938e5432c0af572239010e62d4a118ca365e3736b84b7"
+      }
+    },
+    {
+      "arm": 4,
+      "rep": 0,
+      "jobs": 7,
+      "fenced": 0,
+      "checked": 1792,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 1455,
+      "scope_instructions": 194,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/12.json",
+        "sha256": "5675dc771cc0431c452cf795968d2d9cbf5fb5af629ac306db440b847947c1d0"
+      }
+    },
+    {
+      "arm": 4,
+      "rep": 1,
+      "jobs": 7,
+      "fenced": 0,
+      "checked": 1792,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 1455,
+      "scope_instructions": 194,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/13.json",
+        "sha256": "8d43ac6651fa8eabeb8cb795a6cadf85655be039ff31cdd58e6b04c2780b4075"
+      }
+    },
+    {
+      "arm": 4,
+      "rep": 2,
+      "jobs": 7,
+      "fenced": 0,
+      "checked": 1792,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 1455,
+      "scope_instructions": 194,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/14.json",
+        "sha256": "8139f89952ce38cd4238a921c0923d532d2cf8030e4be49a62f3ecf13355085c"
+      }
+    },
+    {
+      "arm": 5,
+      "rep": 0,
+      "jobs": 7,
+      "fenced": 1,
+      "checked": 1792,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 1894,
+      "scope_instructions": 208,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/15.json",
+        "sha256": "43146e21da012dfc56dceb3b7c965998b419a3bff403b23739b333e48bd21062"
+      }
+    },
+    {
+      "arm": 5,
+      "rep": 1,
+      "jobs": 7,
+      "fenced": 1,
+      "checked": 1792,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 1894,
+      "scope_instructions": 208,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/16.json",
+        "sha256": "54e2f172b3d277dc85fc5bcfb88828b8297a4cd824ace2e7d7ce47d8bc51439d"
+      }
+    },
+    {
+      "arm": 5,
+      "rep": 2,
+      "jobs": 7,
+      "fenced": 1,
+      "checked": 1792,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 1894,
+      "scope_instructions": 208,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/17.json",
+        "sha256": "43b468fa3fa82a9a1baebb25f324a96f4fdf0187f87fae367f74f2bf0095020d"
+      }
+    },
+    {
+      "arm": 6,
+      "rep": 0,
+      "jobs": 11,
+      "fenced": 0,
+      "checked": 2816,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 2223,
+      "scope_instructions": 286,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/18.json",
+        "sha256": "43f3b152251bc8fdb0160ddaefd431da83207174f051df5158f09b085e4cb58f"
+      }
+    },
+    {
+      "arm": 6,
+      "rep": 1,
+      "jobs": 11,
+      "fenced": 0,
+      "checked": 2816,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 2223,
+      "scope_instructions": 286,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/19.json",
+        "sha256": "14a10c3d2084b0554c85c40685214837c2ff6b4f77c5b483d3991b9ddcc5b75e"
+      }
+    },
+    {
+      "arm": 6,
+      "rep": 2,
+      "jobs": 11,
+      "fenced": 0,
+      "checked": 2816,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 2223,
+      "scope_instructions": 286,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/20.json",
+        "sha256": "dd8e2c9f1f52a35d31417115b663c7850b80c532c963391685e88057465776f2"
+      }
+    },
+    {
+      "arm": 7,
+      "rep": 0,
+      "jobs": 11,
+      "fenced": 1,
+      "checked": 2816,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 2950,
+      "scope_instructions": 308,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/21.json",
+        "sha256": "a55347f24a9cdc797dfe9074d83531bd536f23ff6d21b388640c549c9032dcba"
+      }
+    },
+    {
+      "arm": 7,
+      "rep": 1,
+      "jobs": 11,
+      "fenced": 1,
+      "checked": 2816,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 2950,
+      "scope_instructions": 308,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/22.json",
+        "sha256": "44eb48b9c2ef99b3e01b981c59a10119dc031bbb21335a89c95da42fc4b1a50c"
+      }
+    },
+    {
+      "arm": 7,
+      "rep": 2,
+      "jobs": 11,
+      "fenced": 1,
+      "checked": 2816,
+      "errors": 0,
+      "guards": 32,
+      "estimated_cycles": 2950,
+      "scope_instructions": 308,
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/23.json",
+        "sha256": "5c091d0bed5ec67d64f4dd2d35372fbd85c30eb4c38875db606fc019d68d0e9d"
+      }
+    }
+  ],
+  "scope_pins": [
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/00.json",
+      "sha256": "064c2de23d35abb6e9e8ea1ee4938897f023dcdfe10f6e0c9be16547161f36cc"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/01.json",
+      "sha256": "254b7fc17e910b5886afe6d29261012e43c3367cdd720e5be40574a8aa6f2111"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/02.json",
+      "sha256": "4528c5496175937d23b66d2b730d4af267b1bff504a4491773010b615f21cf88"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/03.json",
+      "sha256": "bded7e7dcf171f6ecfb3f8d9792cbdb89d4bcd41d003a39f3ca57271729f3eb2"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/04.json",
+      "sha256": "3a300e377936cf1b7503011fb31d1048de0b94bec23e2d149e81e1b0484c2600"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/05.json",
+      "sha256": "d520246b29bf71f36462f08d6fe06131c321dcf81f19b251c119c56b033e581c"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/06.json",
+      "sha256": "108f5b99acfef1e8bf77341c694ccb1b2495655816139ed292a7da501a81cc4a"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/07.json",
+      "sha256": "1d88f7711c741068d9e827f8083b046d0ddcbc9adef3c7a9366623de8b0dad0e"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/08.json",
+      "sha256": "c85fe8b96bd611d31202ac601ea1a6b0679215e019df9093d308abc5e17c667a"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/09.json",
+      "sha256": "7b736dec95113d1b756b89211960fe7b6387323c548b623041c5e8741981e954"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/10.json",
+      "sha256": "e4fc0ff6e174cedab5f236ce59fb1ebab16cf051e406acf5b7a24977b45f27d9"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/11.json",
+      "sha256": "8241d526ddb0675bd7d8828c33f51199147a6a0ce6864c985e133b1ec0bda2ba"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/12.json",
+      "sha256": "9c5e4e9f407b63ca48b50b587330cb607be22d2f78a8467929693e61ff3257cf"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/13.json",
+      "sha256": "43d385e92829c9fa2c9e9c27e988dd574ea7348a2700538ffc7ac5d6cf57fedb"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/14.json",
+      "sha256": "a36ff45504c058064bbc09809ab7b859f6a06f7ef618edd92ab32a906706fb2b"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/15.json",
+      "sha256": "1aeea1612d48049cd6dc70b654a638834088737669d71ca73808ba168d8a16cc"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/16.json",
+      "sha256": "4e687f20a0f6cda612a67f7c93d676b15188bbe5b59825567673eebb6dde3768"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/17.json",
+      "sha256": "5d63f2792fc4b19bf82308db01f651cb352cf0dd9cb0f99e3f3455f976f5d261"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/18.json",
+      "sha256": "cc40d0d1c428441c333d36180a0cb540c9abdc231be09d027fca7d32e3e7479d"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/19.json",
+      "sha256": "f8b1e8b13057284d430f2c21807c4f3f77869aac098ad80a5799a04ca56f6073"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/20.json",
+      "sha256": "5ab51839152b7218c88673da2fd8fcafd6f9114c0154da8b39f0e98c51f945f7"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/21.json",
+      "sha256": "da68dc33132c74f644a3c4e04e255cda8e9666c06fae3fb79a97b33f66c0e562"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/22.json",
+      "sha256": "a0aff0f50dcc520abe44ac8d4f5f180a723c45b550f959890a797f5bdf49f3a2"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/23.json",
+      "sha256": "23daec538dd33c3e323cfd484a508d02264aa4fae2700431a08525eaf9f9baad"
+    }
+  ],
+  "all_annotated_full_program_checks_passed": true,
+  "all24_scoped_timing_complete": true,
+  "all24_scoped_unresolved_empty": true,
+  "measured_matrix_values": 33792,
+  "warmup_matrix_values": 22528,
+  "guards_measured_and_warmup": 1280,
+  "physical_runs": 0,
+  "qualification": "unknown; original denial unchanged",
+  "model_changed": false,
+  "private_reference_use": false,
+  "automatic_author_grant": false,
+  "next_step": "Parent review before at most one combined bounded physical observation under current goal clock and preserved cumulative diagnostic ledger. No running/live state or raw trace bundled.",
+  "interpretation": [
+    "Seven and eleven jobs issue14/22 execute commands against selected controller10/reservation16; simultaneous occupancy/saturation remains unobserved.",
+    "Frozen predictions scale linearly after first use: queued192cycles/job, serialized264cycles/job over tested increments; physical agreement is not yet known.",
+    "First depth1 queued occurrence354vs303prewarmed; other modeled occurrences stable. This is not a claim of physical cache state.",
+    "Prior seven-arm family stability failures remain unchanged; this new protocol has separate first-use and controlled-prewarm criteria fixed before new estimates or labels.",
+    "One related source family, not four independent workload families."
+  ]
+}

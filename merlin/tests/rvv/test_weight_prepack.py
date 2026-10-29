@@ -184,7 +184,16 @@ def test_transposed_runtime_input_does_not_block_independent_weight_hoist(tmp_pa
     dst, effect = wp.prepacked_bundle(src, cache_root=tmp_path / "cache")
     text = (dst / "model.mlir").read_text()
     assert text.count("linalg.transpose") == 1
-    assert "ins(%2:tensor<2x3xi8>)" in text
+    from xdsl.dialects import func
+    from xdsl.dialects.linalg.ops import TransposeOp
+
+    from merlin.common import mlir_query as mq
+
+    module = mq.parse(text)
+    module.verify()
+    entry = next(op for op in module.body.block.ops if isinstance(op, func.FuncOp))
+    remaining = [op for op in module.walk() if isinstance(op, TransposeOp)]
+    assert len(remaining) == 1 and remaining[0].inputs[0] is entry.args[2]
     assert effect["weights_pre_transposed"] == 1
     assert effect["non_weight_transposes_not_hoisted"] == 1
 
@@ -248,6 +257,9 @@ def test_build_entry_points_share_prepacked_ir_and_runtime_bundle(tmp_path, monk
         executable = tmp_path / name
         executable.write_text("#!/bin/sh\nexit 0\n")
         executable.chmod(0o755)
+    # This seam test substitutes the compiler, so it must also supply the
+    # compiler-owned layout observation required before runtime ABI generation.
+    (tmp_path / "clang").write_text("#!/bin/sh\nprintf '%s\\n' 'target datalayout = \"e-p:64:64\"'\n")
     sysroot = tmp_path / "sysroot"
     (sysroot / "include").mkdir(parents=True)
     (sysroot / "include/math.h").write_text("/* fixture C library header */\n")
@@ -268,7 +280,17 @@ def test_build_entry_points_share_prepacked_ir_and_runtime_bundle(tmp_path, monk
         seen["lower"] = Path(path).parent
         llvm = tmp_path / "model.ll"
         llvm.write_text("; fixture lowering output\n")
-        return SimpleNamespace(ll_path=llvm)
+        return SimpleNamespace(
+            ll_path=llvm,
+            workdir=Path(work),
+            stats={
+                "index_lowering": {
+                    "index_bits": kwargs.get("index_bits"),
+                    "data_layout": kwargs.get("data_layout"),
+                    "effective_pipeline": "fixture bound index lowering",
+                }
+            },
+        )
 
     def run_tool(argv, **kwargs):
         command = [str(item) for item in argv]
@@ -309,10 +331,10 @@ def test_build_entry_points_share_prepacked_ir_and_runtime_bundle(tmp_path, monk
     if backend == "baremetal":
         assert seen["sysroot_query"] == [str(tmp_path / "riscv64-unknown-elf-gcc"), "-print-sysroot"]
         recipe = json.loads((work / "compilation_recipe.json").read_text())
-        assert recipe["commands"][0]["argv"] == seen["compile"]
-        assert recipe["commands"][0]["status"] == "returned"
-        assert recipe["commands"][0]["output"]["path"] == str((work / "model.o").resolve())
-        assert (work / "model.o").read_bytes() == b"fixture compiled model object"
+        # Driver generation now precedes model-object compilation. This seam
+        # deliberately stops at that ABI boundary, before invoking a compiler.
+        assert recipe["commands"] == []
+        assert "compile" not in seen
     if enabled:
         assert seen["vlen"] == 512
         assert seen["prepare"] == seen["abi"] != src
@@ -393,7 +415,7 @@ def test_refuses_an_aliased_byte_range(tmp_path):
     assert "shares bytes" in _refusal(src, tmp_path)
 
 
-def test_refuses_a_non_2d_weight(tmp_path):
+def test_rank_three_weight_is_prepacked_bit_exactly(tmp_path):
     mlir = (
         MLIR.replace("%0: tensor<2x3xi8>", "%0: tensor<1x2x3xi8>")
         .replace("ins(%0:tensor<2x3xi8>)", "ins(%0:tensor<1x2x3xi8>)")
@@ -417,7 +439,15 @@ def test_refuses_a_non_2d_weight(tmp_path):
             "w1": {"dtype": "I8", "shape": [2, 3], "data_offsets": [18, 24]},
         },
     )
-    assert "only 2-D" in _refusal(src, tmp_path)
+    from merlin.capture.safetensors import load_header
+
+    dst, effect = wp.prepacked_bundle(src, cache_root=tmp_path / "cache")
+    header, offset = load_header(dst / "weights.safetensors")
+    begin, end = header["w0"]["data_offsets"]
+    raw = (dst / "weights.safetensors").read_bytes()[offset + begin : offset + end]
+    assert raw == bytes([0, 3, 1, 4, 2, 5])
+    assert header["w0"]["shape"] == [1, 3, 2]
+    assert effect["weights_pre_transposed"] == 1
 
 
 def test_a_bundle_with_nothing_to_hoist_is_refused_not_silently_built(tmp_path):

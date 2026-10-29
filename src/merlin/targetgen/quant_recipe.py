@@ -58,6 +58,11 @@ OPERAND_SUM = "operand_sum"
 #: constant one with the reciprocal of the count in the readout's scale, so its input is quantized
 #: wherever contractions are and the readout multiplies.
 WINDOW_MEAN = "window_mean"
+#: A contraction of two RUN-TIME activations (attention's ``Q @ K^T`` and ``P @ V``, softmax
+#: probabilities included). Never derived by default: no readout fact distinguishes it from a
+#: weight contraction, so it is a numerical CHOICE a recipe opts into (:func:`with_activation_contractions`),
+#: and a recipe that does not list it keeps every such contraction in floating point.
+ACTIVATION_CONTRACTION = "activation_contraction"
 
 
 @dataclass(frozen=True)
@@ -328,6 +333,627 @@ def _operand_sum(recipe: QuantRecipe, facet: Any, *, activation_granularity: str
     )
 
 
+def with_native_output_quantization(
+    recipe: Mapping[str, Any], *, operators: Sequence[str] = ("linear",), reader_policy: str = "non_add_compute"
+) -> dict[str, Any]:
+    """Select new contraction output grids before pure internal compute readers.
+
+    The result is a different numerical recipe: float consumers receive the
+    dequantized native output grid. Graph outputs and mutable/unknown readers
+    retain their existing cut. Selection uses source operation/dataflow only.
+    """
+    from merlin.targetgen import _integer_epilogue as epilogue
+
+    _static_int8(recipe, "native output quantization")
+    if CONTRACTION not in (recipe.get("families") or ()) or recipe.get("accumulator_dtype") != "int32":
+        raise ValueError("native output quantization requires integer contractions")
+    if not isinstance(recipe.get("epilogue"), Mapping):
+        raise ValueError("native output quantization requires a declared integer epilogue")
+    body = json.loads(json.dumps(dict(recipe)))
+    body["epilogue"]["output_quantization"] = {
+        "schema": epilogue.OUTPUT_POLICY, "operators": list(operators), "reader_policy": reader_policy,
+    }
+    epilogue.check(body["epilogue"])
+    body.setdefault("why", {})["epilogue.output_quantization"] = (
+        "explicit new output grids before selected pure internal readers; native round/clamp is part of the reference"
+    )
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
+def with_integer_extension(recipe: Mapping[str, Any], *, key: str, policy: Mapping[str, Any]) -> dict[str, Any]:
+    """Select one closed generic graph extension, with its own quantized reference.
+
+    Existing target readout geometry is a legality input, never an instruction
+    implementation or an execution claim. No extension is selected by default.
+    """
+    from merlin.targetgen import _integer_epilogue as epilogue
+
+    activation = _static_int8(recipe, key)
+    weight = recipe.get("weight") or {}
+    if (activation.get("dtype") != "int8" or weight.get("dtype") != "int8"
+            or weight.get("mode") != "static" or not weight.get("symmetric")
+            or recipe.get("accumulator_dtype") != "int32" or CONTRACTION not in recipe.get("families", ())):
+        raise ValueError("integer extensions require static symmetric I8 contractions with I32 accumulation")
+    block = epilogue.check(recipe.get("epilogue"))
+    if not block["exits"]["requant"]:
+        raise ValueError("integer extensions require an open native requantizing exit")
+    if key == "accumulator_residual":
+        from merlin.targetgen import _integer_residual as residual
+
+        if "operand_sum_grid" in recipe:
+            raise ValueError("accumulator residual and shared operand sums cannot own the same graph")
+        residual.check(policy)
+    elif key == "integer_mean":
+        from merlin.targetgen import _integer_pool as pool
+
+        pool.check(policy)
+    elif key == "projection_input_reuse":
+        from merlin.targetgen import _projection_input_reuse as projection
+
+        projection.validate(policy, block["scale"]["columns_per_scale"])
+    else:
+        raise ValueError(f"unknown integer recipe extension {key!r}")
+    body = json.loads(json.dumps(dict(recipe)))
+    body[key] = dict(policy)
+    if key == "integer_mean":
+        body["families"] = list(dict.fromkeys([*body["families"], WINDOW_MEAN]))
+        (body.get("unquantized") or {}).pop(WINDOW_MEAN, None)
+    body.setdefault("why", {})[key] = (
+        "explicit generic integer graph transform; its rewritten arithmetic defines a new reference; "
+        "physical placement, reuse and performance require independent execution evidence"
+    )
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
+def with_shared_grid_operand_sums(
+    recipe: Mapping[str, Any], *, output_boundary: str = "quantized_readers", residual_selection: str | None = None
+) -> dict[str, Any]:
+    """Opt into one observed i8 grid per closed residual's inputs and output.
+
+    The capture spells unit-grid add/ReLU/clamp, restoring real units only
+    after the integer result. This is a new quantized recipe, not an accuracy
+    or execution certificate. Existing independent placement and exact
+    quantized-reference comparisons remain mandatory. Explicit ``dequantize``
+    also permits a float consumer (including normalization) after the narrowed
+    i8 result. Its float operations are unchanged, but its inputs and hence the
+    quantized reference change. Prove the selected target's two unit-load/add/
+    clamp path and qualify actual outputs before claiming device execution.
+    ``residual_selection="distinct_contraction_frontiers"`` additionally requires
+    disjoint first-contraction/input frontiers and at least one contraction;
+    same-projection coordinate transforms are excluded without naming models.
+    This selects a new recipe domain, not a guarantee of float-model accuracy.
+    """
+    from merlin.targetgen import _integer_operand_sum as sums
+
+    body = json.loads(json.dumps(dict(recipe)))
+    if CONTRACTION not in (body.get("families") or ()):
+        raise ValueError("shared-grid sums need a recipe that quantizes contractions")
+    if "accumulator_residual" in body:
+        raise ValueError("accumulator residual and shared operand sums cannot own the same graph")
+    body["families"] = list(dict.fromkeys([*(body.get("families") or ()), OPERAND_SUM]))
+    if output_boundary not in {"quantized_readers", "dequantize"}:
+        raise ValueError("shared-grid output boundary must be quantized_readers or dequantize")
+    policy_schema = sums.FLOAT_BOUNDARY_SCHEMA if output_boundary == "dequantize" else sums.SCHEMA
+    body[sums.KEY] = ({"schema": policy_schema, "output_boundary": "dequantize"}
+                      if output_boundary == "dequantize" else {"schema": policy_schema})
+    if residual_selection is not None:
+        if output_boundary != "dequantize" or residual_selection != sums.DISTINCT_FRONTIERS:
+            raise ValueError("residual selection requires dequantize and distinct_contraction_frontiers")
+        body[sums.KEY]["selection"] = residual_selection
+    sums.validate(body)
+    body.setdefault("unquantized", {}).pop(OPERAND_SUM, None)
+    body.setdefault("why", {})[OPERAND_SUM] = (
+        "opted in: each closed residual's inputs and output share one observed activation grid; "
+        "unit i8 load/readout multipliers preserve exact integer add, optional ReLU and saturation"
+    )
+    if output_boundary == "dequantize":
+        body["why"][OPERAND_SUM] += (
+            "; explicit V2 boundary dequantizes the narrowed result for float readers; "
+            "normalization stays floating-point and target execution needs independent qualification"
+        )
+    if residual_selection is not None:
+        body["why"][OPERAND_SUM] += "; select disjoint first-contraction/input frontiers, excluding same-origin coordinate sums"
+    if "methodology" in body:
+        extensions = body["methodology"].setdefault("extensions", [])
+        if policy_schema not in extensions:
+            extensions.append(policy_schema)
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
+def with_activation_contractions(
+    recipe: Mapping[str, Any], *, minimum_reduction: int | None = None,
+) -> dict[str, Any]:
+    """``recipe`` (a derived ``quant_recipe_v1`` document) that ALSO quantizes activation contractions.
+
+    The switch is the family :data:`ACTIVATION_CONTRACTION` in ``families``; everything else is the
+    recipe's own. Both operands of such a contraction take the recipe's activation spec, so for
+    attention ``Q``, ``K``, the softmax probabilities ``P`` and ``V`` each get one static, symmetric
+    scale per tensor (per call site, shared by every head), calibrated by the activation observer
+    like any other activation edge. The product of two per-tensor scales is again one scale, which
+    is what a readout that holds one scale per tensor applies; a finer scale on either operand is a
+    run-time vector the readout cannot hold. Only a static per-tensor integer recipe is extended:
+    any other form is refused with the reason, never approximated. The content digest changes with
+    the family, so a capture made under the variant is never served for one made without it.
+    ``minimum_reduction`` explicitly replaces the historical >16 profitability screen; it
+    does not change integer formats, software admission, or numerical quality bounds.
+    """
+    if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED:
+        raise ValueError("only a derived quant_recipe_v1 can be extended")
+    activation = recipe.get("activation") or {}
+    families = list(recipe.get("families") or ())
+    refusal = (
+        "the recipe quantizes no contraction"
+        if CONTRACTION not in families
+        else f"activations are {activation.get('mode')!r}, not static"
+        if activation.get("mode") != "static"
+        else f"activation scales are per {activation.get('granularity')!r}, not one per tensor"
+        if activation.get("granularity") != "tensor"
+        else "the activation format is not a symmetric integer"
+        if not (activation.get("symmetric") and str(activation.get("dtype", "")).startswith("int"))
+        else None
+    )
+    if refusal is not None:
+        raise ValueError(f"activation contractions cannot extend this recipe: {refusal}")
+    body = json.loads(json.dumps(dict(recipe)))
+    if ACTIVATION_CONTRACTION not in families:
+        body["families"] = [*families, ACTIVATION_CONTRACTION]
+    (body.get("unquantized") or {}).pop(ACTIVATION_CONTRACTION, None)
+    body.setdefault("why", {})[ACTIVATION_CONTRACTION] = (
+        "opted in: a contraction of two run-time activations (attention scores and context) is "
+        "int8 x int8 into the accumulator with both operands on the activation spec, one static "
+        "scale per tensor each; the readout's one scale is their product"
+    )
+    if minimum_reduction is not None:
+        body["activation_contraction_policy"] = {
+            "schema": "activation_contraction_admission_v1", "minimum_reduction": minimum_reduction,
+        }
+    from ._activation_contractions import activation_reduction_minimum
+
+    activation_reduction_minimum(body)
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
+#: The recipe block that quantizes contractions with RUN-TIME scales (``recipe["dynamic"]``).
+DYNAMIC = "dynamic"
+DYNAMIC_SCHEMA = "dynamic_contractions_v1"
+#: Every scale sits on a NON-reduction axis: one per row of the streamed operand, one per column of the
+#: other (a stored weight: one per output channel, fixed at capture). Each int8 product is then summed
+#: exactly in the i32 accumulator and the scales apply afterwards as an outer product, on the host.
+NON_REDUCTION = "non_reduction"
+#: The static mode: one CALIBRATED scale per head of each operand (the readout's own form per device
+#: call), a calibrated smooth shift, and fixed-scale planes of a softmax's ``exp(s - rowmax)``.
+STATIC_HEADS = "static_heads"
+#: Plane selectors: an operand produced by a row softmax, a stored weight, and (static per-head scales only)
+#: every other operand, as k int8 digits of one static grid.
+SOFTMAX_OUTPUT = "softmax_output"
+WEIGHT = "weight"
+OPERAND = "operand"
+#: The operand a softmax output multiplies (attention's ``V``), as k successively finer static int8 grids.
+#: ``P V`` is a convex combination of ``V``'s rows: when most of ``P`` sits on a row much smaller than the
+#: head's largest (an attention sink), the result is small against ``V``'s grid step and needs more digits.
+SOFTMAX_PARTNER = "softmax_partner"
+#: All ordinary activation operands, on successively finer bounded residual grids.
+RESIDUAL_OPERAND = "residual_operand"
+#: The smooth shift: when a contraction reaches a softmax over its column axis only through scalar
+#: factors and masks, the other operand's mean over that axis is subtracted first. That shifts each
+#: score row by a constant, which the softmax ignores.
+SOFTMAX_AXIS = "softmax_axis"
+_MAX_PLANES = 4
+
+
+def with_dynamic_contractions(
+    recipe: Mapping[str, Any],
+    *,
+    families: Sequence[str] = (ACTIVATION_CONTRACTION,),
+    planes: Mapping[str, int] | None = None,
+    smooth: bool = False,
+    static_families: Sequence[str] | None = None,
+    scales: str = NON_REDUCTION,
+    context_output: str | None = None,
+) -> dict[str, Any]:
+    """``recipe`` with a ``dynamic`` block: these families' contractions take run-time scales.
+
+    Three general mechanisms, each named by the block and none by a model:
+
+    * dynamic scales on non-reduction axes (:data:`NON_REDUCTION`): the host takes each row's absmax
+      at run time, quantizes, the device runs a plain int8 matmul, and the host rescales the i32
+      result by the outer product of the row and column scales. The readout holds one scale per
+      tensor, so these scales are host work by construction;
+    * planes: an operand selected by ``planes`` (:data:`SOFTMAX_OUTPUT`, :data:`WEIGHT`) is split into
+      k int8 planes, each the quantized residual of the ones before, with its own row scales: k
+      device matmuls against the same other operand, summed on the host;
+    * the smooth shift (:data:`SOFTMAX_AXIS`), applied only where it preserves the function.
+
+    ``families`` must be contraction families of this recipe (``activation_contraction`` is added
+    when asked for); ``static_families`` (default: the recipe's own) are the families still
+    quantized with the recipe's static spec. Families listed in both take the dynamic form.
+
+    ``scales=STATIC_HEADS`` keeps the same mechanisms with scales fixed at capture: one calibrated
+    minmax scale per head of each operand, the smooth shift a calibrated per-(head, row) mean (folded
+    into the producing Linear's bias where only layout steps lie between), and a softmax-produced
+    operand replaced by ``exp(s - rowmax)`` in planes with fixed scales ``1 / (q * (q + 1)**j)``, the
+    rows divided by their sum after the contraction (``_static_attention``). ``planes[OPERAND] = k``
+    puts every other operand on a static per-head grid of k int8 digits (two digits: 15 bits), each
+    pair of digit planes one device call with one scale; ``planes[SOFTMAX_PARTNER] = k`` selects bounded
+    round-and-clamp residual planes for the operand a softmax output multiplies, each successive grid
+    ``quant_max + 1`` times finer. ``planes[RESIDUAL_OPERAND] = k`` uses those bounded residuals for
+    every ordinary operand, including both score operands; it replaces the historical ``OPERAND``
+    selector, whose radix arithmetic stays unchanged. Activation contractions of a static recipe only.
+
+    ``context_output="int8_value_grid"`` explicitly selects single-plane normalized
+    probabilities on a 1/127 grid and requantizes each P×V product onto its value
+    operand's grid before joining heads. Q×K still leaves as INT32. This changes
+    the numerical recipe; it is not equivalent to the exp-plane formulation.
+    """
+    if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED:
+        raise ValueError("only a derived quant_recipe_v1 can be extended")
+    activation = recipe.get("activation") or {}
+    if not (activation.get("symmetric") and str(activation.get("dtype", "")).startswith("int")):
+        raise ValueError("dynamic contractions need a symmetric integer activation format")
+    wanted = list(dict.fromkeys(families))
+    if not wanted or any(f not in (CONTRACTION, ACTIVATION_CONTRACTION) for f in wanted):
+        raise ValueError(f"dynamic scales apply to contraction families only, not {wanted}")
+    selected = dict(planes or {})
+    if any(
+        k not in (SOFTMAX_OUTPUT, WEIGHT, OPERAND, SOFTMAX_PARTNER, RESIDUAL_OPERAND)
+        or type(v) is not int
+        or not 1 <= v <= _MAX_PLANES
+        for k, v in selected.items()
+    ):
+        raise ValueError(
+            f"planes take {SOFTMAX_OUTPUT!r}/{WEIGHT!r}/{OPERAND!r}/{SOFTMAX_PARTNER!r}/{RESIDUAL_OPERAND!r} "
+            f"-> 1..{_MAX_PLANES}, not {selected}"
+        )
+    if OPERAND in selected and RESIDUAL_OPERAND in selected:
+        raise ValueError("operand and residual_operand selectors are mutually exclusive")
+    for digits in (OPERAND, SOFTMAX_PARTNER, RESIDUAL_OPERAND):
+        if digits in selected and (scales != STATIC_HEADS or selected[digits] > 3):
+            raise ValueError(f"{digits!r} digit planes (at most 3) belong to static per-head scales")
+    if scales not in (NON_REDUCTION, STATIC_HEADS):
+        raise ValueError(f"scales are {NON_REDUCTION!r} or {STATIC_HEADS!r}, not {scales!r}")
+    if scales == STATIC_HEADS and (
+        wanted != [ACTIVATION_CONTRACTION] or WEIGHT in selected or activation.get("mode") != "static"
+    ):
+        raise ValueError("static per-head scales cover activation contractions of a static recipe only")
+    if context_output is not None and (
+        context_output != "int8_value_grid" or scales != STATIC_HEADS
+        or activation.get("dtype") != "int8"
+        or (activation.get("quant_min"), activation.get("quant_max")) != (-128, 127)
+        or any(value != 1 for value in selected.values())
+    ):
+        raise ValueError("int8_value_grid context readout requires static scales and single-plane operands")
+    kept = list(recipe.get("families") or ()) if static_families is None else list(static_families)
+    unknown = [f for f in kept if f not in (recipe.get("families") or ())]
+    if unknown:
+        raise ValueError(f"static families {unknown} are not the recipe's own")
+    body = json.loads(json.dumps(dict(recipe)))
+    body["families"] = list(dict.fromkeys([*kept, *wanted]))
+    for family in wanted:
+        (body.get("unquantized") or {}).pop(family, None)
+    body[DYNAMIC] = {
+        "schema": DYNAMIC_SCHEMA,
+        "families": wanted,
+        "scales": scales,
+        "planes": dict(sorted(selected.items())),
+        "smooth": SOFTMAX_AXIS if smooth else None,
+    }
+    body.setdefault("why", {}).pop("dynamic.context_output", None)
+    if context_output is not None:
+        body[DYNAMIC]["context_output"] = context_output
+        body.setdefault("why", {})["dynamic.context_output"] = (
+            "explicit numerical variant: quantize normalized probabilities on the 1/127 grid, "
+            "perform an integer contraction and requantize each matrix result onto its value operand grid; "
+            "no post-contraction row-sum division and no change to score readouts"
+        )
+    body.setdefault("why", {})[DYNAMIC] = (
+        "opted in: run-time scales on non-reduction axes (rows of the streamed operand, columns of the "
+        "other, a stored weight's output channels), applied by the host to the exact i32 accumulator "
+        "as an outer product; the readout's one scale cannot hold them"
+        if scales == NON_REDUCTION
+        else "opted in: one calibrated scale per head of each operand, so every per-head device call reads "
+        "one scale; softmax probabilities as fixed-scale planes of exp(s - rowmax), rows divided by their sum "
+        "on the host"
+    )
+    if context_output is not None:
+        body["why"][DYNAMIC] = body["why"]["dynamic.context_output"]
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
+def with_gptq_weights(recipe: Mapping[str, Any], **parameters: Any) -> dict[str, Any]:
+    """``recipe`` (a derived ``quant_recipe_v1`` document) whose weight codes are chosen by GPTQ.
+
+    The switch is ``weight.rounding = "gptq"`` with ``weight.gptq`` holding every parameter of
+    :data:`merlin.targetgen._gptq.PARAMETERS`. ``parameters`` override
+    :data:`~merlin.targetgen._gptq.DEFAULT_PARAMETERS`. The grid stays the recipe's own: the same
+    dtype, range, symmetry and scale granularity, with the same observed scales. GPTQ only picks
+    which integer each weight takes on that grid, using the calibration inputs of its layer (see
+    ``_gptq.py``). Without the key a recipe rounds to nearest and its digest is what it always was.
+    With it the digest changes, so a capture made under GPTQ codes is never served for one made
+    under nearest codes.
+
+    Refused with the reason, never approximated: a recipe that quantizes no contraction, dynamic
+    activations (``quantize_`` rounds the weights itself), a weight format that is not a symmetric
+    integer, and a weight scale granularity that the static path cannot express.
+    """
+    from merlin.targetgen import _gptq
+
+    if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED:
+        raise ValueError("only a derived quant_recipe_v1 can be extended")
+    weight = recipe.get("weight") or {}
+    activation = recipe.get("activation") or {}
+    refusal = (
+        "the recipe quantizes no contraction"
+        if CONTRACTION not in (recipe.get("families") or ())
+        else f"activations are {activation.get('mode')!r}; GPTQ codes are set on the static path"
+        if activation.get("mode") != "static"
+        else "the weight format is not a symmetric integer with a declared range"
+        if not (
+            weight.get("symmetric")
+            and str(weight.get("dtype", "")).startswith("int")
+            and isinstance(weight.get("quant_min"), int)
+            and isinstance(weight.get("quant_max"), int)
+        )
+        else f"weight scales per {weight.get('granularity')!r} have no static spec to round onto"
+        if weight.get("granularity") not in ("tensor", "channel")
+        else None
+    )
+    if refusal is not None:
+        raise ValueError(f"GPTQ weights cannot extend this recipe: {refusal}")
+    chosen = _gptq.check_parameters({**_gptq.DEFAULT_PARAMETERS, **parameters})
+    body = json.loads(json.dumps(dict(recipe)))
+    body["weight"]["rounding"] = _gptq.GPTQ
+    body["weight"]["gptq"] = chosen
+    body.setdefault("why", {})["weight.rounding"] = (
+        f"opted in: GPTQ picks each weight's code on the recipe's own grid, propagating rounding "
+        f"error through the inverse Hessian of the layer's first {chosen['calibration_samples']} "
+        f"calibration inputs (act order {chosen['act_order']}, damp {chosen['damp']}, block {chosen['block']})"
+    )
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
+#: The recipe block that gives selected Linears' and Conv2ds' activations a wider STATIC grid as int8 digit planes.
+STATIC_PLANES = "static_planes"
+STATIC_PLANES_SCHEMA = "static_planes_v1"
+#: Observers a static recipe may name: TorchAO's two, or a percentile of |x| (``p99.999``).
+_OBSERVERS = ("minmax", "histogram")
+
+
+def _observer_valid(name: Any) -> bool:
+    from merlin.targetgen._recipe_observers import percentile_of
+
+    return name in _OBSERVERS or percentile_of(name) is not None
+
+
+def _static_int8(recipe: Mapping[str, Any], what: str) -> Mapping[str, Any]:
+    if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED:
+        raise ValueError("only a derived quant_recipe_v1 can be extended")
+    activation = recipe.get("activation") or {}
+    if activation.get("mode") != "static" or activation.get("granularity") != "tensor":
+        raise ValueError(f"{what} needs static per-tensor activations")
+    if not (activation.get("symmetric") and str(activation.get("dtype", "")).startswith("int")):
+        raise ValueError(f"{what} needs a symmetric integer activation format")
+    return activation
+
+
+def static_planes_block(
+    *, planes: int = 2, observer: str = "minmax", owners: Sequence[str] | None = None
+) -> dict[str, Any]:
+    """The validated, canonical framework policy for static activation digit planes."""
+    if type(planes) is not int or not 2 <= planes <= 3:
+        raise ValueError(f"static planes take 2 or 3 digits, not {planes!r}")
+    if not _observer_valid(observer):
+        raise ValueError(f"observer {observer!r} is not minmax, histogram or p<percent>")
+    if owners is not None and (not owners or any(not isinstance(o, str) or not o for o in owners)):
+        raise ValueError("owners are non-empty module-path prefixes")
+    return {
+        "schema": STATIC_PLANES_SCHEMA,
+        "families": [CONTRACTION],
+        "planes": planes,
+        "observer": observer,
+        "owners": None if owners is None else sorted(set(owners)),
+    }
+
+
+def with_static_planes(
+    recipe: Mapping[str, Any],
+    *,
+    planes: int = 2,
+    observer: str = "minmax",
+    owners: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """``recipe`` whose Linear and Conv2d activations (in ``owners``' modules, default all) take ``planes`` digits.
+
+    The activation keeps ONE static scale per tensor, on a grid ``planes`` digits wide: with the
+    recipe's activation range ``[low, high]`` and ``base = high + 1``, the top digit spans
+    ``[low, high]`` and each lower digit ``[0, base - 1]`` (two int8 digits: 15 bits). The device
+    multiplies every digit plane by the same int8 weight; the host combines the accumulators
+    (``base * acc_top + acc_low``) inside the per-column rescale it already applies, so a Linear
+    costs ``planes`` device contractions and no extra host pass. ``observer`` calibrates the wide
+    grid (``minmax``, ``histogram`` or ``p<percent>``); ``owners`` are module-path prefixes, so a
+    model's recipe can widen one part of it. The digest changes with the block.
+    """
+    activation = _static_int8(recipe, "static planes")
+    if CONTRACTION not in (recipe.get("families") or ()):
+        raise ValueError("static planes need a recipe that quantizes contractions")
+    block = static_planes_block(planes=planes, observer=observer, owners=owners)
+    low, high = activation.get("quant_min"), activation.get("quant_max")
+    if not (isinstance(low, int) and isinstance(high, int) and low < 0 < high):
+        raise ValueError("static planes need the recipe's signed activation range")
+    body = json.loads(json.dumps(dict(recipe)))
+    body[STATIC_PLANES] = block
+    body.setdefault("why", {})[STATIC_PLANES] = (
+        "opted in: a Linear's activation on a static per-tensor grid of int8 digits, each digit plane "
+        "multiplied by the same int8 weight on the unit; the host sums base-weighted accumulators in the "
+        "per-column rescale it already applies"
+    )
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
+#: The per-site bar of a ``dynamic`` block (``recipe["dynamic"]["site_agreement"]``): every rewritten
+#: contraction's int8 result, held to the float contraction of its own operands on the recipe's
+#: agreement samples, must reach ``cosine_min`` and stay within ``rel_rmse_max`` (a ratio of RMS values).
+SITE_AGREEMENT = "site_agreement"
+SITE_AGREEMENT_SCHEMA = "dynamic_site_agreement_v1"
+
+
+def site_agreement_of(recipe: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The validated per-site bar of ``recipe``'s dynamic block, or None when it declares none."""
+    import math
+
+    block = recipe.get(DYNAMIC) if isinstance(recipe, Mapping) else None
+    bar = block.get(SITE_AGREEMENT) if isinstance(block, Mapping) else None
+    if bar is None:
+        return None
+    if (
+        not isinstance(bar, Mapping)
+        or set(bar) != {"schema", "cosine_min", "rel_rmse_max"}
+        or bar.get("schema") != SITE_AGREEMENT_SCHEMA
+        or any(type(bar.get(key)) is not float or not math.isfinite(bar[key]) for key in ("cosine_min", "rel_rmse_max"))
+        or not 0.0 < bar["cosine_min"] <= 1.0
+        or not bar["rel_rmse_max"] > 0.0
+    ):
+        raise ValueError(f"the dynamic block's {SITE_AGREEMENT} is not an exact {SITE_AGREEMENT_SCHEMA} bar")
+    return dict(bar)
+
+
+def with_site_agreement(recipe: Mapping[str, Any], *, cosine_min: float, rel_rmse_max: float, basis: str) -> dict:
+    """``recipe`` whose dynamic contraction sites are each held to a declared agreement bar.
+
+    The bar is the recipe's own: a capture records each site's measured agreement with the float
+    contraction of its operands, and the sealed issuer refuses a site below it. ``basis`` says where the
+    numbers came from (e.g. a measured per-site distribution and its margin); it is recorded, not judged.
+    """
+    if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED or not isinstance(recipe.get(DYNAMIC), dict):
+        raise ValueError("a site agreement bar extends a derived recipe that has a dynamic block")
+    if not isinstance(basis, str) or not basis.strip():
+        raise ValueError("a site agreement bar records its basis")
+    body = json.loads(json.dumps(dict(recipe)))
+    body[DYNAMIC][SITE_AGREEMENT] = {
+        "schema": SITE_AGREEMENT_SCHEMA,
+        "cosine_min": float(cosine_min),
+        "rel_rmse_max": float(rel_rmse_max),
+    }
+    site_agreement_of(body)
+    body.setdefault("why", {})[f"{DYNAMIC}.{SITE_AGREEMENT}"] = basis.strip()
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
+def with_activation_observer(recipe: Mapping[str, Any], observer: str) -> dict[str, Any]:
+    """``recipe`` whose static activation scales are calibrated by ``observer`` (``p99.999``: a percentile)."""
+    _static_int8(recipe, "an activation observer")
+    if not _observer_valid(observer):
+        raise ValueError(f"observer {observer!r} is not minmax, histogram or p<percent>")
+    body = json.loads(json.dumps(dict(recipe)))
+    body["activation"]["observer"] = observer
+    body.setdefault("why", {})["activation.observer"] = f"selected: activation ranges by {observer}"
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
+def _main(argv: Sequence[str] | None = None) -> int:
+    """``python -m merlin.targetgen.quant_recipe {activation-contractions|dynamic-contractions|static-planes|
+    shared-grid-sums|native-outputs|site-agreement|activation-observer|gptq-weights} IN OUT``."""
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(prog="python -m merlin.targetgen.quant_recipe")
+    sub = parser.add_subparsers(dest="command", required=True)
+    variant = sub.add_parser("activation-contractions", help=with_activation_contractions.__doc__.splitlines()[0])
+    variant.add_argument("recipe", type=Path)
+    variant.add_argument("out", type=Path)
+    variant.add_argument(
+        "--minimum-reduction", type=int, default=None,
+        help="explicit inclusive activation reduction minimum; default retains the profitability screen",
+    )
+    residual = sub.add_parser("shared-grid-sums", help=with_shared_grid_operand_sums.__doc__.splitlines()[0])
+    residual.add_argument("recipe", type=Path)
+    residual.add_argument("out", type=Path)
+    residual.add_argument(
+        "--output-boundary", default="quantized_readers", choices=("quantized_readers", "dequantize"),
+        help="dequantize explicitly permits floating-point consumers after the new INT8 residual output",
+    )
+    residual.add_argument("--residual-selection", default=None, choices=("distinct_contraction_frontiers",))
+    outputs = sub.add_parser("native-outputs", help=with_native_output_quantization.__doc__.splitlines()[0])
+    outputs.add_argument("recipe", type=Path)
+    outputs.add_argument("out", type=Path)
+    outputs.add_argument("--operators", nargs="+", default=["linear"], choices=("linear", "conv2d"))
+    outputs.add_argument("--reader-policy", default="non_add_compute", choices=("compute", "non_add_compute"))
+    dynamic = sub.add_parser("dynamic-contractions", help=with_dynamic_contractions.__doc__.splitlines()[0])
+    dynamic.add_argument("recipe", type=Path)
+    dynamic.add_argument("out", type=Path)
+    dynamic.add_argument("--families", default=ACTIVATION_CONTRACTION, help="comma-separated contraction families")
+    dynamic.add_argument("--planes", default="", help=f"selector=k pairs, e.g. {SOFTMAX_OUTPUT}=2")
+    dynamic.add_argument("--smooth", action="store_true", help="subtract the mean over a softmax's axis")
+    dynamic.add_argument("--static-families", default=None, help="families kept static (default: the recipe's)")
+    dynamic.add_argument("--scales", default=NON_REDUCTION, choices=(NON_REDUCTION, STATIC_HEADS))
+    dynamic.add_argument("--context-output", choices=("int8_value_grid",))
+    wide = sub.add_parser("static-planes", help=with_static_planes.__doc__.splitlines()[0])
+    wide.add_argument("recipe", type=Path)
+    wide.add_argument("out", type=Path)
+    wide.add_argument("--planes", type=int, default=2)
+    wide.add_argument("--observer", default="minmax")
+    wide.add_argument("--owners", default=None, help="comma-separated module-path prefixes (default: all)")
+    observe = sub.add_parser("activation-observer", help=with_activation_observer.__doc__.splitlines()[0])
+    observe.add_argument("recipe", type=Path)
+    observe.add_argument("out", type=Path)
+    observe.add_argument("observer")
+    bar = sub.add_parser("site-agreement", help=with_site_agreement.__doc__.splitlines()[0])
+    bar.add_argument("recipe", type=Path)
+    bar.add_argument("out", type=Path)
+    bar.add_argument("--cosine-min", type=float, required=True, dest="cosine_min")
+    bar.add_argument("--rel-rmse-max", type=float, required=True, dest="rel_rmse_max")
+    bar.add_argument("--basis", required=True, help="where the bar came from (recorded in the recipe's why)")
+    gptq = sub.add_parser("gptq-weights", help=with_gptq_weights.__doc__.splitlines()[0])
+    gptq.add_argument("recipe", type=Path)
+    gptq.add_argument("out", type=Path)
+    gptq.add_argument("--calibration-samples", type=int, dest="calibration_samples")
+    gptq.add_argument("--act-order", action=argparse.BooleanOptionalAction, dest="act_order")
+    gptq.add_argument("--damp", type=float)
+    gptq.add_argument("--block", type=int)
+    args = parser.parse_args(argv)
+    source = json.loads(args.recipe.read_text(encoding="utf-8"))
+    if args.command == "shared-grid-sums":
+        body = with_shared_grid_operand_sums(source, output_boundary=args.output_boundary, residual_selection=args.residual_selection)
+    elif args.command == "native-outputs":
+        body = with_native_output_quantization(source, operators=args.operators, reader_policy=args.reader_policy)
+    elif args.command == "activation-contractions":
+        body = with_activation_contractions(source, minimum_reduction=args.minimum_reduction)
+    elif args.command == "static-planes":
+        owners = None if args.owners is None else [o for o in args.owners.split(",") if o]
+        body = with_static_planes(source, planes=args.planes, observer=args.observer, owners=owners)
+    elif args.command == "gptq-weights":
+        chosen = {name: getattr(args, name) for name in ("calibration_samples", "act_order", "damp", "block")}
+        body = with_gptq_weights(source, **{name: value for name, value in chosen.items() if value is not None})
+    elif args.command == "site-agreement":
+        body = with_site_agreement(source, cosine_min=args.cosine_min, rel_rmse_max=args.rel_rmse_max, basis=args.basis)
+    elif args.command == "activation-observer":
+        body = with_activation_observer(source, args.observer)
+    else:
+        planes = {k: int(v) for k, _, v in (p.partition("=") for p in args.planes.split(",") if p)}
+        static = None if args.static_families is None else [f for f in args.static_families.split(",") if f]
+        body = with_dynamic_contractions(
+            source,
+            families=[f for f in args.families.split(",") if f],
+            planes=planes,
+            smooth=args.smooth,
+            static_families=static,
+            scales=args.scales,
+            context_output=args.context_output,
+        )
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"{args.out}: recipe_sha256 {body['recipe_sha256']}")
+    return 0
+
+
 def for_target(
     target: str, *, facts: Mapping[str, Any] | None = None, prefer_activation_mode: str | None = None
 ) -> list[QuantRecipe]:
@@ -492,3 +1118,7 @@ def candidates_for_target(
 def select(recipes: Sequence[QuantRecipe]) -> QuantRecipe | None:
     """The recipe a whole-model capture uses: the first derived one, else the first with its reasons."""
     return next((r for r in recipes if r.status == DERIVED), recipes[0] if recipes else None)
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

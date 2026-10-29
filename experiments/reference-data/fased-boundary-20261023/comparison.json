@@ -1,0 +1,16 @@
+{
+  "schema": "merlin.memory_boundary_comparison.v1",
+  "memory_reference_sha256": "ecd18662a431a64e5990f5ea4b9a2818510dfd3ee40f0934829158cb52c58df0",
+  "initial_state_sha256": "e4f7e16b75aea439dff5bd96243aeca276686b47104a21ab94387f8ee5a45557",
+  "scope_sha256": "0d3c6501620c7cdbf0299f47323d82135f0db4cf7baf055d7dd11541d3a8b60d",
+  "stimulus_sha256": "36b830dcafff5a694199bdc4684779ccb7fb626f6157ebe5e22e7272a462543d",
+  "reference_engine_sha256": "949312608ac62100e0bfec35ce731ea60ae4fa585c0c91b3e85122712ae2180b",
+  "candidate_engine_sha256": "62bf6da5166f309cb48ad8aab9c870d0d973cc7f31fb9a4250a43c4d0f2ec986",
+  "reference_trace_sha256": "81522253d81646b92949e120e67761ea5368e4da8dcbbb4ee252cc405ff598d5",
+  "candidate_trace_sha256": "566b320b1f0931c61252fcbefc61ddf5c82bbe9dd4f72266a74d79deb411c345",
+  "target_cycles": 312,
+  "signal_mismatches": 0,
+  "mismatch_samples": [],
+  "equivalent_for_trace": true,
+  "whole_system_qualified": false
+}

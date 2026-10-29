@@ -1,0 +1,55 @@
+# fresh10 arm A (user decision 2026-10-28): a 12 h SEEDED continuation of fresh9cca with all current
+# tooling: fresh9cca's last graded compiler as the seed, its verdicts, rules, A/B records and handoff
+# carried, seed_prep's baseline map / structure diff as SEED_EVIDENCE, xs_capsules, fresh9-cca treatment.
+extends: fresh-campaign-fresh10-resources.yaml
+id: gemmini-open-compiler-fresh10-seeded
+variables:
+  F10: ${TASK}/.tmp/fresh10
+  SEED_RUN: gemmini-open-compiler-20261027-fresh9cca
+run:
+  run_id: gemmini-open-compiler-20261028-fresh10seed
+  unit: merlinphase1fresh10seed20261028
+  cpus: 8,9,10,11,12,13,14,15,16,17,18,19,20,21,22
+  preparation_cpus: 0,1,2,3,4,5,6,7,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95
+seed:
+  # fresh9cca's latest completed grade (2026-10-28T02:54:45Z, 299/306 L2) graded tree
+  # _qa_work/fcand_1793154439540356718/submission, hash_tree 7e059512f935a7055b588d8f217f6b13d2a55a5f56144bbf7865a592f8542b43
+  # (copy: ${F10}/seed/fresh9cca-graded). This pin is that tree with compiler_library/ reduced to the 8
+  # members the fresh9cca author edited (seed/overlay-derivation.json), so the session stages this
+  # export's full compiler under them instead of fresh9's 1030 unchanged baseline copies.
+  from:
+    # overlay2 (2026-10-28 08:05): also keeps the 9 seed members this export's full compiler does not stage
+    # (targetgen/generate/*, oot_starterkit/{iface,transforms,verify}.py); without them the seed failed to import.
+    path: ${F10}/seed/fresh9cca-overlay2
+    sha256: 1e6b5259bd34a96b915131a0a7e5afebd583e987c472e6dae5c9d0b942c4a6a2
+  source: ${ARTIFACTS}/seed-compiler
+  review_id: ${RUN_ID}
+  run:
+    run_id: ${SEED_RUN}
+    run_dir: ${REPO}/out/runs/gemmini/phase1/${SEED_RUN}
+    workspace: ${REPO}/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/${SEED_RUN}/workspace
+    framework: ${REPO}/out/build/run-frameworks/ec819808d213
+  # carry: all on (default with run).
+  # seed_prep products for this export (driver: prepare.sh), staged as SEED_EVIDENCE/<name>.
+  evidence:
+  - ${F10}/seed-prep/SEED_BASELINE.json
+  - ${F10}/seed-prep/SEED_BASELINE.md
+  - ${F10}/seed-prep/SEED_STRUCTURE.md
+  # The seed graded unchanged on this export before launch (prepare.sh step 6b: seed_rehearsal zero-edit grade).
+  - ${F10}/seed-prep/SEED_START_GRADE.json
+  - ${F10}/seed-prep/SEED_START_GRADE.md
+  # Judge files changed between fresh9cca's export (ec819808d213) and this one, reviewed for verdict carry
+  # (JUDGE-REVIEW.md). Exact bytes only: prepare.sh stops if the export's judge diff differs from this list.
+  judge_review:
+    packages/merlin-experiments/src/merlin/targetgen/capsule_runner.py:
+      old_sha256: 8217ad742a3879dc9729345380017d0030f4993c9232593a8d8de87530885d55
+      new_sha256: a86533ae5580d6099ff31fe82fb1f87ee363d50e1f105435c640f888dc0325cd
+      reason: "seeded screen-tier carry by exact executable identity and instrument, model-worker result bound to its completed process, import hoisting and carried_from reporting; the completion-order race check is deferred on Spike-only ladders, strictly looser than the old judge, so old passes stay sound. Reviewed by coordinator 2026-10-28."
+    src/merlin/runtime/backends/spike_model.py:
+      old_sha256: 62d6ed8cd64e142dab76ef34fab40d87985f5f0338b32f9704fca33c32e86cf5
+      new_sha256: 7e004b8f70688c00f592f9c4748f226f78aaff109b04632aa080f925b58d07c7
+      reason: "build path only, behind opt-in switches (contraction_row_slice receipt; borrowed-arena lifetime feeding intermediate storage; on the launch commit 2a0dcff25439 also descriptor-result dense input views (bounded-RNE custody held out)); how a built executable is run and compared is unchanged and carry is keyed on executable bytes. Reviewed by coordinator 2026-10-28."
+    src/merlin/runtime/backends/zephyr_model.py:
+      old_sha256: 0fb0327ac99f08089291232252605d1fa0d1598c72c5cfc46aeae27aa0357de5
+      new_sha256: e7a1e634a677822319c3d55f20204338a0c6e09e16081024f07b45032429fc48
+      reason: "model preparation only, behind opt-in switches (contraction_row_slice pass; composed host layout after sibling projection); how a built executable is run and compared is unchanged and carry is keyed on executable bytes. Reviewed by coordinator 2026-10-28."

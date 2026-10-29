@@ -20,6 +20,7 @@ from ..spec import SpecError, read_yaml
 from .preparation import (
     admission,
     assemble,
+    compiler_source_selection,
     copy_input,
     generation_lineage,
     ordinary_tree,
@@ -245,7 +246,35 @@ def _content(root: Path, prepared: dict) -> dict:
             or selected.get("phase1_gates") != promoted.get("phase1_gates")
         ):
             raise SpecError("promoted Phase 1 gates differ from retained policy descriptor")
+    selected_host = (prepared.get("scaffolding") or {}).get("host_capability_selection")
+    if selected_host is not None:
+        from .preparation import verify_host_capability
+
+        descriptor = root / "payload/experiment/target_experiment.yaml"
+        verify_host_capability(read_yaml(descriptor), selected_host, descriptor=descriptor)
+    _verify_public_programs(root, prepared)
     return {"preparation_sha256": _digest(prepared), "payload_sha256": observed}
+
+
+
+def _verify_public_programs(root: Path, prepared: dict) -> None:
+    """Reopen private program custody and its answer-free payload before review."""
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    from . import public_program_suite as programs
+
+    te = load_target_experiment(root / "payload/experiment/target_experiment.yaml")
+    binding = (te.workload_spec or {}).get(programs.KEY)
+    expected = (prepared.get("assembly") or {}).get("public_programs")
+    if binding is None and expected is None:
+        return
+    if binding != expected:
+        raise SpecError("public program descriptor differs from its prepared source selection")
+    selected = programs.selected(te)
+    if selected is None:
+        raise SpecError("prepared public program selection is absent")
+    programs.public_view(selected[0], root / "payload/experiment/public-program-sources",
+                         target=te.target, verify=True)
 
 
 def _stage_instruction_model(plan: dict, private: Path) -> dict | None:
@@ -353,6 +382,52 @@ def _freeze_payload(root: Path) -> None:
     payload.chmod(0o500)
 
 
+def _member_digests(payload: Path) -> dict[str, str]:
+    """Every payload file's digest, so a later verification can name what changed or vanished."""
+    out = {}
+    for member in sorted(payload.rglob("*")):
+        if member.is_file() and not member.is_symlink():
+            out[member.relative_to(payload).as_posix()] = hashlib.sha256(member.read_bytes()).hexdigest()
+    return out
+
+
+def _payload_drift(root: Path, sealed: dict) -> str | None:
+    """Which sealed payload members are missing, tampered or new; host-private names are withheld."""
+    recorded = sealed.get("members")
+    if not isinstance(recorded, dict):
+        return None
+    payload = root / "payload"
+    observed = _member_digests(payload)
+    try:
+        from merlin.targetgen.target_experiment import load_target_experiment
+
+        private = [
+            Path(p) for p in load_target_experiment(payload / "experiment/target_experiment.yaml").hidden_roots()
+        ]
+    except Exception:  # noqa: BLE001 -- with no readable descriptor every name is withheld
+        private = None
+
+    def shown(member: str) -> str:
+        path = payload / member
+        if private is None or any(path.is_relative_to(r) for r in private):
+            return "a host-private member"
+        return member
+
+    rows = {
+        "missing": sorted(m for m in recorded if m not in observed),
+        "tampered": sorted(m for m in recorded if m in observed and observed[m] != recorded[m]),
+        "unsealed": sorted(m for m in observed if m not in recorded),
+    }
+    if not any(rows.values()):
+        return None
+    parts = []
+    for kind, members in rows.items():
+        if members:
+            names = sorted({shown(m) for m in members})
+            parts.append(f"{kind} {len(members)}: " + ", ".join(names[:20]) + (" ..." if len(names) > 20 else ""))
+    return "; ".join(parts)
+
+
 def inspect_release(path: Path) -> dict:
     """Return only safe counts/commitments, never member identities or review text."""
     root = _private_root(path)
@@ -398,9 +473,33 @@ def prepare(
     *,
     private_baseline: Path | None = None,
     retirements: Path | None = None,
-    generated_only: bool = False,
+    generated_only: bool = True,
+    capsule_scope: str = "all",
     phase1_policy_descriptor: Path | None = None,
     bundle_arms: tuple[str, ...] = (),
+    loader_profile_sources: tuple[Path, ...] | None = None,
+    optional_levels: tuple[str, ...] = (),
+    selected_levels: tuple[str, ...] | None = None,
+    selected_variants: tuple[str, ...] | None = None,
+    lean_toolchain_manifest: Path | None = None,
+    common_substrate: str | None = None,
+    python_source_root: Path | None = None,
+    host_index_bits: int | None = None,
+    native_timeout_s: int | None = None,
+    model_spike_timeout_s: int | None = None,
+    gsim_readback_transport: str | None = None,
+    operand_protocol_selection: tuple[Path, str] | None = None,
+    operand_protocol_revision: tuple[Path, str] | None = None,
+    kernel_timing_selection: tuple[Path, str] | None = None,
+    logical_storage_budget_bytes: int | None = None,
+    public_supplement: Path | None = None,
+    public_scalability: Path | None = None,
+    public_program_suite: Path | None = None,
+    host_capability_selection: tuple[Path, str] | None = None,
+    public_reference_manifest: Path | None = None,
+    author_profile=None,
+    author_profile_sources=None,
+    author_profile_common_inputs=None,
 ) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
     from merlin.common.paths import out_dir
@@ -409,9 +508,20 @@ def prepare(
     from merlin.targetgen.target_experiment import load_target_experiment
 
     from ..runner import fingerprint
+    from .accelerator_scope import validate_scope
 
     if len(set(bundle_arms)) != len(bundle_arms) or any(arm not in _ALL_ARMS for arm in bundle_arms):
         raise SpecError(f"bundle_arms must name distinct registered arms: {sorted(_ALL_ARMS)}")
+    validate_scope(capsule_scope, generated_only=generated_only)
+
+    if (
+        not isinstance(optional_levels, tuple)
+        or len(set(optional_levels)) != len(optional_levels)
+        or any(level not in {"EL5", "EL6"} for level in optional_levels)
+    ):
+        raise SpecError("optional corpus levels must be a unique tuple containing only EL5 and EL6")
+
+    compiler_source_selection(common_substrate, python_source_root)
     source = run_dir.expanduser().resolve(strict=True)
     if output is None:
         selected, _, _ = source_run(source)
@@ -426,6 +536,9 @@ def prepare(
     plan, attempt, generated = source_run(source)
     lineage = generation_lineage(plan, generated)
     te = load_target_experiment(plan["phases"]["0"]["inputs"]["descriptor"])
+    from .generated_source import bind_generated_corpus
+
+    te = bind_generated_corpus(te, generated, generated_only=generated_only)
     from merlin.common.artifacts import declared_home
 
     try:
@@ -443,7 +556,17 @@ def prepare(
         if not retirements.is_file() or retirements.is_symlink():
             raise SpecError("retirements must be an ordinary existing file")
         retirements = retirements.resolve(strict=True)
-    for existing in (source, te.capsule_corpus.parent, *([private_baseline] if private_baseline else [])):
+    immutable = (
+        source,
+        te.capsule_corpus.parent,
+        *([private_baseline] if private_baseline else []),
+        *([Path(python_source_root)] if python_source_root is not None else []),
+        *([public_supplement.expanduser().resolve().parent] if public_supplement is not None else []),
+        *([public_scalability.expanduser().resolve().parent] if public_scalability is not None else []),
+        *([public_program_suite.expanduser().resolve().parent] if public_program_suite is not None else []),
+        *([public_reference_manifest.expanduser().resolve().parent] if public_reference_manifest is not None else []),
+    )
+    for existing in immutable:
         if root == existing or root.is_relative_to(existing) or existing.is_relative_to(root):
             raise SpecError("corpus release output overlaps an immutable source")
     with lease(root, owner="corpus-release-preparation"):
@@ -465,8 +588,44 @@ def prepare(
                 private_baseline=private_baseline,
                 retirements=retirements,
                 generated_only=generated_only,
+                **({"capsule_scope": capsule_scope} if capsule_scope != "all" else {}),
+                **({"loader_profile_sources": loader_profile_sources} if loader_profile_sources is not None else {}),
             )
+            supplement = None
+            if public_supplement is not None:
+                from .public_supplement import stage
+
+                private_sources = [*te.hidden_roots(), generated / "hidden", payload / "corpus/hidden"]
+                if private_baseline is not None:
+                    private_sources.append(private_baseline)
+                supplement = stage(
+                    public_supplement,
+                    payload / "corpus",
+                    te=te,
+                    private_roots=[path for path in private_sources if path.exists()],
+                )
+                assembly["public_supplement"] = supplement
             selected_facts = _selected_rtl_facts(plan, generated)
+            scalability = None
+            if public_scalability is not None:
+                from .public_scalability import stage as stage_scalability
+
+                private_sources = [*te.hidden_roots(), generated / "hidden", payload / "corpus/hidden"]
+                if private_baseline is not None:
+                    private_sources.append(private_baseline)
+                scalability = stage_scalability(
+                    public_scalability,
+                    payload / "corpus/_public_scalability",
+                    te=te,
+                    private_roots=[p for p in private_sources if p.exists()],
+                )
+                assembly["public_scalability"] = scalability
+            programs = None
+            if public_program_suite is not None:
+                from .public_program_suite import stage as stage_programs
+
+                programs = stage_programs(public_program_suite, root / "private/public_programs", target=te.target)
+                assembly["public_programs"] = programs
             selected_contract = _selected_capability_contract(plan, generated)
             scaffolding = scaffold(
                 te,
@@ -477,13 +636,47 @@ def prepare(
                 selected_contract=selected_contract,
                 phase1_gates=phase1_gates,
                 bundle_arms=bundle_arms,
+                optional_levels=optional_levels,
+                **({"selected_levels": selected_levels} if selected_levels is not None else {}),
+                **({"selected_variants": selected_variants} if selected_variants is not None else {}),
+                lean_toolchain_manifest=lean_toolchain_manifest,
+                **({"common_substrate": common_substrate} if common_substrate is not None else {}),
+                **({"python_source_root": python_source_root} if python_source_root is not None else {}),
+                host_index_bits=host_index_bits,
+                native_timeout_s=native_timeout_s,
+                model_spike_timeout_s=model_spike_timeout_s,
+                gsim_readback_transport=gsim_readback_transport,
+                operand_protocol_selection=operand_protocol_selection,
+                operand_protocol_revision=operand_protocol_revision,
+                kernel_timing_selection=kernel_timing_selection,
+                logical_storage_budget_bytes=logical_storage_budget_bytes,
+                **({"operator_public_members": tuple(supplement["members"])} if supplement is not None else {}),
+                **({"public_scalability": scalability} if scalability is not None else {}),
+                **({"public_program_suite": programs} if programs is not None else {}),
+                **({"host_capability_selection": host_capability_selection}
+                   if host_capability_selection is not None else {}),
+                **({"public_reference_manifest": public_reference_manifest}
+                   if public_reference_manifest is not None else {}),
+                **(dict(author_profile=author_profile, author_profile_sources=author_profile_sources,
+                        author_profile_common_inputs=author_profile_common_inputs) if author_profile else {}),
             )
+            if public_reference_manifest is not None:
+                from .performance_baselines import verify_corpus
+
+                # Staged reference-compiler cycles must name public cases of THIS corpus, same interface.
+                baselines = verify_corpus(payload / "experiment" / "reference-kernels", payload / "corpus")
+                if baselines is not None:
+                    scaffolding["performance_baselines"] = baselines
             descriptor = payload / "experiment" / "target_experiment.yaml"
             checked = admission(descriptor, coverage_output=root / "private" / "workload-coverage.json")
             instruction_semantics = _stage_instruction_model(plan, root / "private")
             checked_plan, _, checked_generated = source_run(source)
             if generation_lineage(checked_plan, checked_generated) != lineage:
                 raise SpecError("Phase-0 generation lineage changed during corpus preparation")
+            if supplement is not None:
+                from .public_supplement import verify as verify_supplement
+
+                verify_supplement(supplement, payload / "corpus")
             private_json(
                 root / "private" / "preparation.json",
                 {
@@ -542,6 +735,11 @@ def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str
         plan, _, generated = source_run(Path(prepared["source_run"]))
         if generation_lineage(plan, generated) != prepared.get("generation_lineage"):
             raise SpecError("Phase-0 generation lineage differs from the operator-reviewed preparation")
+        supplement = (prepared.get("assembly") or {}).get("public_supplement")
+        if supplement is not None:
+            from .public_supplement import verify as verify_supplement
+
+            verify_supplement(supplement, root / "payload/corpus")
         phase = plan["phases"]["0"]
         if phase.get("phase0_evidence"):
             from ..phase0.evidence import load_exported_evidence
@@ -573,6 +771,11 @@ def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str
             raise SpecError("reviewed inputs or native admission changed during sealing")
         _freeze_payload(root)
         token = pin(root, reason="explicitly reviewed corpus release")
+        # Read-only is what verification requires; the immutable attribute is what stops a cleanup
+        # that restores write bits first. Whether the host granted it is recorded, never assumed.
+        from merlin.common.immutability import seal_tree
+
+        immutability = seal_tree([root / "payload"])
         private_json(
             root / "private" / "seal.json",
             {
@@ -581,10 +784,14 @@ def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str
                 "identity": _content(root, prepared),
                 "review": {"reviewed_by": reviewed_by, "note": review_note, "at": datetime.now(UTC).isoformat()},
                 "retention_pin": token,
+                "members": _member_digests(root / "payload"),
+                "immutability": immutability,
             },
         )
+        records = seal_tree([root / "private" / "seal.json", root / "private" / "preparation.json"])
     result = inspect_release(root)
     result["seal"] = str(root / "private" / "seal.json")
+    result["immutability"] = {"payload": immutability, "records": records}
     return result
 
 
@@ -600,9 +807,16 @@ def verify(seal_path: Path, descriptor: Path) -> dict:
     if descriptor.resolve() != expected_descriptor:
         raise SpecError("functional descriptor is not the one bound by the corpus seal")
     prepared = _read(root / "private" / "preparation.json")
-    workload = _verify_workload_coverage(root, prepared)
     sealed = _read(path)
-    identity = _content(root, prepared)
+    try:
+        identity = _content(root, prepared)
+    except SpecError:
+        # Name what changed, from the per-member digests the seal recorded (older seals have none).
+        drift = _payload_drift(root, sealed)
+        if drift is None:
+            raise
+        raise SpecError(f"sealed corpus payload is tampered or incomplete: {drift}") from None
+    workload = _verify_workload_coverage(root, prepared)
     if any(member.stat().st_mode & 0o222 for member in [root / "payload", *(root / "payload").rglob("*")]):
         raise SpecError("sealed corpus payload became writable")
     if sealed.get("identity") != identity or sealed.get("review_digest") != _digest(identity):

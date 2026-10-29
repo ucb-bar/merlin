@@ -13,7 +13,8 @@ implementation to existing callers, including the dequantizer body checker.
   quantization gates and regression tests. This is the published reference.
 * `feat/lean-prune-gate` and `feat/lean-quant-contract` currently point to
   `a21388cd3`, the earlier combined compiler integration worktree state.
-* `feat/pass-verif-dce-cse` now retains the complete original histories of
+* `feat/pass-verification-dce-cse` (converged with
+  `feat/megaphase-feedback-integration`) now retains the complete original histories of
   `feat/pass-verification` through `c3ad8e10f` and the independent review branch
   `feat/pass-verification-verf` through `4b1d71a20`. It inherits the source Q/DQ
   proofs, numerical compiler corrections and existing quantization gate hooks.

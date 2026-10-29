@@ -1,0 +1,178 @@
+{
+  "original_sha256": "cfa6d35839cc09b80547beb9b6ba1f4ad204cf3fbaa51cf8544651bc289020a9",
+  "projection": "historical path roles only",
+  "record": {
+    "calibration_eligible": false,
+    "elapsed_s": 0.7152551469625905,
+    "estimated_cycles": 11061,
+    "functional_console_equal": true,
+    "implementation": {
+      "path": "${TASK}/merlin/packages/merlin-experiments/src/merlin_experiments/phase2/retained_memory_observation.py",
+      "sha256": "291605ca15fe1f429b3f41725057d31fa79bf697c578abfde8ac20153516f586"
+    },
+    "model": {
+      "path": "${TASK}/merlin/out/build/scratchpad-row-load-v1/model.json",
+      "sha256": "c43ea57b713260d88abba494fb3bb5821281b9f39fbb882c390c93b42eff250c"
+    },
+    "namespace_launcher": {
+      "path": "${RETAINED_RUNTIME}/.tmp/bubblewrap-build/bwrap",
+      "sha256": "3a8bb6b2c36fe79d6c62a6d33484e4953ba4d798c224f67e08a397adb1bbb113"
+    },
+    "observer": {
+      "path": "${TASK}/merlin/out/build/modeled-event-observer-v1/spike",
+      "sha256": "81e813abe7408865473e17e9f74e34fe21455583aa41e688e8d75db72e7543e5"
+    },
+    "original": {
+      "boundary": {
+        "common": {
+          "capsule": "SY_conv_k3x3_s1x1_d1x1_pad1x1",
+          "compiler_sha256": "d319a88633bf526304d1da2a6265e38489f687a8da3fef13b31e83b34b0b6b7c",
+          "effective_command_buffer_sha256": "bc878ef09167743fa54dc45b91505f770067fd2794c6761e57f606ee1d779b7b",
+          "kernel_object_sha256": "b06ca4ad594e3570f7ce24bac64c5fee6cf7d4202a1905470394fc4bcc0fbc89",
+          "lowered_ir_sha256": "38fc1962f80d9b065ee599f238dd06f806efd2b7dd74a70d737bf02eaa7d8e0e",
+          "raw_command_buffer_sha256": "d695f1d9a1bb96da0a4b4d0c668cf9750ab8243a742b87ba73f3110f31a45bf3",
+          "required_tiers": [
+            "L0",
+            "L1",
+            "L2",
+            "L3"
+          ],
+          "source_ir_sha256": "b7c0934423981da5415ee28931e9dc0381007d555812d735d03475512356cead",
+          "submission_digest": "b2f7cefdcbb3a635",
+          "target": "gemmini",
+          "toolchain_shas": {
+            "gemmini_isa_headers": "6b477a8b43ed6d1e267a25a3afa70700bb887edc",
+            "gemmini_rocket_chipyard": "3e9bfb4bf58a7dfe6e1082496a9578a5dcd83831",
+            "gemmini_rocket_rtl": "63f0b68a68f185a016a2993f2fb32e1661ea9e6c",
+            "gemmini_rtl": "63f0b68a68f185a016a2993f2fb32e1661ea9e6c",
+            "merlin": "84c4759cdd008c796e00cc6adbae2b6ec3b3ff3e"
+          }
+        },
+        "elf_sha256": "ec0607f6b7a00ac6ed470029246c16f2555176fc728305f8ae261f83701fad94",
+        "engine": "gsim",
+        "execution_digest": "77465b34551e151e7339ed7ab033ab69015975746906f0601df836d88e01edea",
+        "harness_sha256": "4b1627525f1f860a5eaafb69d1af422fe22f86f52a08555afc6ea211d7673159",
+        "result_sha256": "aa976033eed8195532c0376876b1633817a50c9b3246693e75ede533d55798ae",
+        "schema": "merlin.original_tier_boundary.v1",
+        "tier": "L3"
+      },
+      "caller": {
+        "path": "${CAMPAIGN}/merlin/out/runs/gemmini/phase1/gemmini-joint-clean-20261022-v10/_qa_work/selfchecks/selfcheck_482ygsac/runs/gemmini-capsule-bench/SY_conv_k3x3_s1x1_d1x1_pad1x1/generated/executed/gsim/ec0607f6b7a00ac6ed470029246c16f2555176fc728305f8ae261f83701fad94/harness.c",
+        "sha256": "4b1627525f1f860a5eaafb69d1af422fe22f86f52a08555afc6ea211d7673159"
+      },
+      "coherent_dump": {
+        "path": "${CAMPAIGN}/merlin/out/runs/gemmini/phase1/gemmini-joint-clean-20261022-v10/_qa_work/selfchecks/selfcheck_482ygsac/runs/gemmini-capsule-bench/SY_conv_k3x3_s1x1_d1x1_pad1x1/generated/neutral_readback_q3ivn0pn/output.dump",
+        "sha256": "fe50cd9a1b164357e39f13f8a2abda58f58f816256187a2296e96f432087d18d"
+      },
+      "command_buffer": {
+        "path": "${CAMPAIGN}/merlin/out/runs/gemmini/phase1/gemmini-joint-clean-20261022-v10/_qa_work/selfchecks/selfcheck_482ygsac/runs/gemmini-capsule-bench/SY_conv_k3x3_s1x1_d1x1_pad1x1/generated/executed/gsim/ec0607f6b7a00ac6ed470029246c16f2555176fc728305f8ae261f83701fad94/command_buffer.json",
+        "sha256": "bc878ef09167743fa54dc45b91505f770067fd2794c6761e57f606ee1d779b7b"
+      },
+      "custody": {
+        "effective_command_buffer": "completed-call canonical buffer; raw compiler declarations remain separate",
+        "effective_command_buffer_sha256": "bc878ef09167743fa54dc45b91505f770067fd2794c6761e57f606ee1d779b7b",
+        "elf_sha256": "ec0607f6b7a00ac6ed470029246c16f2555176fc728305f8ae261f83701fad94",
+        "execution_invocation_sha256": "f268f76c7b3da86aef976fc9d06718828d7c68ba32cec5b2bc7b000089ae3395",
+        "kind": "original_retained_functional_layer_products",
+        "qualification": "byte custody only; no numerical, source-equivalence, target or timing verdict",
+        "raw_compiler_command_buffer_sha256": "d695f1d9a1bb96da0a4b4d0c668cf9750ab8243a742b87ba73f3110f31a45bf3",
+        "source_sha256": "b7c0934423981da5415ee28931e9dc0381007d555812d735d03475512356cead"
+      },
+      "elf": {
+        "path": "${CAMPAIGN}/merlin/out/runs/gemmini/phase1/gemmini-joint-clean-20261022-v10/_qa_work/selfchecks/selfcheck_482ygsac/runs/gemmini-capsule-bench/SY_conv_k3x3_s1x1_d1x1_pad1x1/generated/executed/gsim/ec0607f6b7a00ac6ed470029246c16f2555176fc728305f8ae261f83701fad94/package_kernel.elf",
+        "sha256": "ec0607f6b7a00ac6ed470029246c16f2555176fc728305f8ae261f83701fad94"
+      },
+      "guards": {
+        "claim": "all declared output bytes; no invented guard coverage",
+        "status": "not_declared"
+      },
+      "output": {
+        "base": 2147488576,
+        "bytes": 1024,
+        "dtype": "i32",
+        "elements": 256,
+        "shape": [
+          16,
+          16
+        ],
+        "symbol": "tensor_2",
+        "tensor": "Y0"
+      },
+      "output_sha256": "664e9c3e549eb925eb29761bbd6191c98f28108076a1222ef2f58c5c8aafaafe",
+      "physical_cycles": 10847,
+      "physical_engine": {
+        "binary": "${RETAINED_RUNTIME}/.tmp/gsim-fire-aligned-provisional-v3/native/emulator",
+        "engine": "gsim",
+        "resolution": "selected prebuilt execution inputs are byte-bound; runtime and timing unqualified",
+        "sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651"
+      },
+      "result": {
+        "path": "${CAMPAIGN}/merlin/out/runs/gemmini/phase1/gemmini-joint-clean-20261022-v10/_qa_work/selfchecks/selfcheck_482ygsac/runs/gemmini-capsule-bench/SY_conv_k3x3_s1x1_d1x1_pad1x1/capsule_result.json",
+        "sha256": "aa976033eed8195532c0376876b1633817a50c9b3246693e75ede533d55798ae"
+      }
+    },
+    "physical_cycles": 10847,
+    "physical_runs": 0,
+    "qualification": "provisional diagnostic only",
+    "relative_error": 0.019728957315386708,
+    "report": {
+      "path": "${TASK}/.tmp/scratchpad-row-load-v1/observed-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/report.json",
+      "sha256": "e605b531ced51b0eb8176fef54f52cd0b6fd3f8e3a7d5dca9188b42c8b61107a"
+    },
+    "runs": [
+      {
+        "bytes": 1024,
+        "complete_output_match": true,
+        "invocation": {
+          "path": "${TASK}/.tmp/scratchpad-row-load-v1/observed-SY_conv_k3x3_s1x1_d1x1_pad1x1/run-0/invocations/16ad3e79a9284d04a49502015dd8b90c/invocation.json",
+          "sha256": "4a1fdc4f4f20e4d39f90b309e2b07aa005300f8beca8588927f7a664409e16a3"
+        },
+        "signature": {
+          "path": "${TASK}/.tmp/scratchpad-row-load-v1/observed-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/output-0.signature",
+          "sha256": "b5f23a439052545fcc54273770b7fc96092954e52a5c799942d926169e31e85a"
+        }
+      },
+      {
+        "bytes": 1024,
+        "complete_output_match": true,
+        "invocation": {
+          "path": "${TASK}/.tmp/scratchpad-row-load-v1/observed-SY_conv_k3x3_s1x1_d1x1_pad1x1/run-1/invocations/f33ab1c47fd94098ba16f27dca3e005f/invocation.json",
+          "sha256": "b8e003fedec63f4147eb23069f4581d83d50376b4394c103fa8bf8e5013cbf17"
+        },
+        "signature": {
+          "path": "${TASK}/.tmp/scratchpad-row-load-v1/observed-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/output-1.signature",
+          "sha256": "b5f23a439052545fcc54273770b7fc96092954e52a5c799942d926169e31e85a"
+        }
+      }
+    ],
+    "runtime_helpers": [
+      {
+        "path": "${HOST_BIN}/dtc",
+        "sha256": "7dc0f6b40a991e029b54dea4f5cdae15adccfa246fc156eef96ec27b525f5ea2"
+      },
+      {
+        "path": "${HOST_LIB}/libyaml-0.so.2.0.6",
+        "sha256": "b8a73ba01e86b12ca125d8bfa2c3efd9aae6d90f618b1bfa37b213e99c2e91d1"
+      }
+    ],
+    "runtime_sha256": "67f637d0886c696e7651fd8c38eccdda0d9dc95545d17c0db4d58808f3262b33",
+    "schema": "operator.retained_same_elf_observation.v1",
+    "scope_binding": {
+      "begin_pc": 2147484014,
+      "elf_sha256": "ec0607f6b7a00ac6ed470029246c16f2555176fc728305f8ae261f83701fad94",
+      "end_pc": 2147484058,
+      "evidence_sha256": "8edbaab523f8ae636e76b72ccb3ca0fe836e4715c134ddb4195955aef57c73b9",
+      "input_sha256": "ec0607f6b7a00ac6ed470029246c16f2555176fc728305f8ae261f83701fad94",
+      "occurrence": 0,
+      "schema": "merlin.spike_scope_binding.v1",
+      "scope_sha256": "82dae761bda30488a6760c9ae51764069a6ed9e60544661e90f883477d273525"
+    },
+    "symbol_supplement": {
+      "path": "${TASK}/.tmp/scratchpad-row-load-v1/observed-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/output-symbols.elf",
+      "sha256": "714be0037063ff91c01422da6a6a9f79e28faa01f67d1882fa404a3f37b432ea"
+    },
+    "timing_complete": true,
+    "transport": "existing_htif_symbol_elf_signature",
+    "unresolved": []
+  }
+}

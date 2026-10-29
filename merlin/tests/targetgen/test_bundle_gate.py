@@ -502,6 +502,11 @@ class TestTheGateIsDerivedFromTheCapturesOwnContract:
                 "output_index": 0,
                 "reference": "eager_fp32",
                 "reference_sha256": "",
+                "observation": {
+                    "schema": "m2m.session_quality_observation.v1",
+                    "status": "observed",
+                    "origin": "provided_quality_reference",
+                },
             },
         }
         base.update(over)

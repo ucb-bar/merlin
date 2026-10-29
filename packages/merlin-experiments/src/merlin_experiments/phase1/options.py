@@ -15,6 +15,19 @@ from dataclasses import dataclass
 from merlin.targetgen import tool_registry as _TR
 from merlin.targetgen.contract.readback_policy import READBACK_TRANSPORTS
 
+MAX_SIM_PER_CAPSULE_TIMEOUT_S = 86400
+
+
+def sim_per_capsule_timeout(value):
+    """Explicit broker resource budget; zero retains the historical derivation."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("sim per-capsule timeout must be an integer") from exc
+    if not 0 <= parsed <= MAX_SIM_PER_CAPSULE_TIMEOUT_S:
+        raise argparse.ArgumentTypeError("sim per-capsule timeout must be 0..86400 seconds")
+    return parsed
+
 
 @dataclass(frozen=True)
 class RunOptions:
@@ -25,6 +38,7 @@ class RunOptions:
     model: str
     effort: str
     driver: str
+    codex_max_subagents: int | None
     subagent_model: str
     background_model: str
     provider: str
@@ -57,9 +71,45 @@ class RunOptions:
     with_tool: list[str]
     without_tool: list[str]
     account_config_dir: str
+    sim_per_capsule_timeout: int = 0
     private_full_model_spec: str = ""
     readback_policy: str = ""
     public_object_build_budget_s: int = 0
+    preflight_only: bool = False
+    corpus_seal: str = ""
+    instruction_selection: str = ""
+    codex_canary: bool = False
+    codex_binary: str = ""
+    codex_auth_source: str = ""
+    codex_home_root: str = ""
+    hidden_capsule_mode: str = ""
+    native_result_format_selection: str = ""
+    author_max_subagents: int | None = None
+    author_helper_effort: str | None = None
+    author_compact_limit: str | None = None
+    author_task_skills: str | None = None
+    author_skills: str | None = None
+    live_conformance_feedback: bool = False
+    validation_scope: str = "full"
+    fresh_backend: bool = False
+    joint_campaign: str = ""
+    joint_epoch: str = ""
+    author_token_target: int | None = None
+    author_token_reserve: int | None = None
+    author_token_admission: bool = False
+    author_token_turn_allowance: int | None = None
+    author_token_unbounded: bool = False
+    offline_actions: str = ""
+    compiler_execution: str = "profile_strict_v1"
+    sandbox_reuse: str = "persistent"
+    compiler_access: str = "selected_library"
+    full_compiler_root: str = ""
+    full_compiler_manifest: str = ""
+    full_compiler_manifest_sha256: str = ""
+    reference_experiments: str = ""
+    reference_experiments_sha256: str = ""
+    reference_experiments_tasks: str = "on"
+    author_profile: str = ""
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -77,14 +127,116 @@ def build_parser(
 ) -> argparse.ArgumentParser:
     environment = os.environ if environ is None else environ
     ap = argparse.ArgumentParser()
+    ap.add_argument("--offline-actions", default="", metavar="PUBLIC_JSON",
+                    help="run an explicit public construction action study through ordinary admission, "
+                         "sandbox and brokers; no provider")
+    ap.add_argument("--author-token-target", type=int, default=None,
+                    help="soft aggregate input (including cache) plus output token target across all authors; "
+                         "joint campaigns default to 40000000, not a hard token cap")
+    ap.add_argument("--author-token-reserve", type=int, default=None,
+                    help="portion of the author token target reserved for integration/repairs; joint default 8000000")
+    ap.add_argument("--author-token-admission", action="store_true",
+                    help="opt in to managed author token admission/checkpointing using live all-thread usage; "
+                         "not a hard token cap")
+    ap.add_argument("--author-token-turn-allowance", type=int, default=None,
+                    help="planning allowance per outstanding author turn; requires token admission; "
+                         "default 1000000, not a provider bound")
+    ap.add_argument("--author-token-unbounded", action="store_true",
+                    help="select no aggregate author token target, even for a joint campaign; "
+                         "excludes the other token options")
+    ap.add_argument(
+        "--validation-scope", choices=("full", "capsules"), default="full",
+        help="explicit completion scope; capsules exports a frozen compiler before external model validation",
+    )
     ap.add_argument(
         "--arm",
         choices=["raw_baseline", "merlin_assisted", "cpp_merlininfra"],
         default=default_arm,
-        help="stable runner arm: EL1 raw_baseline, EL2 cpp_merlininfra, or EL3/EL4 merlin_assisted "
+        help="stable runner arm: EL1 raw_baseline, EL2 cpp_merlininfra, or EL3–EL6 merlin_assisted "
         "(the selected bundle and treatment distinguish EL3 from EL4; default EL1)",
     )
+    from .author_profiles import NAMES
+
+    ap.add_argument("--author-profile", choices=NAMES, default="",
+                    help="versioned author environment; historical experiment levels remain unchanged")
     ap.add_argument("--run-id", required=True)
+    ap.add_argument("--joint-campaign", default="", metavar="POLICY_JSON",
+                    help="opt into joint correctness/performance development in the native loop")
+    ap.add_argument("--joint-epoch", default="", metavar="REVIEW_JSON",
+                    help="continue this campaign's frozen compiler with a reviewed new library epoch")
+    ap.add_argument(
+        "--fresh-backend", action="store_true",
+        help="require an empty isolated submission before author launch; refuse prior compiler seeds",
+    )
+    ap.add_argument(
+        "--codex-canary", action="store_true", help="stop after an explicit sealed fresh-client canary; no authoring"
+    )
+
+    def positive_subagent_count(value):
+        count = int(value)
+        if count < 1:
+            raise argparse.ArgumentTypeError("Codex subagent limit must be positive")
+        return count
+
+    ap.add_argument(
+        "--codex-max-subagents",
+        type=positive_subagent_count,
+        default=None,
+        metavar="N",
+        help="opt in to at most N concurrent Codex child agents in the existing bwrap sandbox",
+    )
+    ap.add_argument(
+        "--author-max-subagents",
+        type=positive_subagent_count,
+        default=None,
+        metavar="N",
+        help="recorded Codex helper-thread ceiling for the author session (no prompt change); default "
+        "MERLIN_AUTHOR_MAX_SUBAGENTS, else min(16, compute-pool CPUs)",
+    )
+    ap.add_argument(
+        "--author-helper-effort",
+        default=None,
+        metavar="EFFORT",
+        help="recorded reasoning effort for Codex helpers spawned without a full-history fork "
+        "(agents.default_subagent_reasoning_effort); full-history forks keep the lead's; default: unset, "
+        "helpers keep --effort",
+    )
+    ap.add_argument(
+        "--author-compact-limit",
+        default=None,
+        metavar="TOKENS|off",
+        help="recorded Codex context ceiling (model_auto_compact_token_limit, with a workspace-aware "
+        "compact_prompt) in the frozen home; applies to the lead and helpers; default 175000 for an "
+        "isolated Codex run, off keeps the CLI's own compaction",
+    )
+    ap.add_argument(
+        "--author-task-skills",
+        default=None,
+        choices=("on", "off"),
+        help="stage TASK.md's longer sections and a feedback-file guide as workspace skills "
+        "(.agents/skills, native Codex discovery; TASK.md unchanged); default on for an isolated Codex run",
+    )
+    ap.add_argument(
+        "--author-skills",
+        default=None,
+        choices=("on", "off"),
+        help="stage the harness's procedural author skills (phase1/author_skills) byte-identically into "
+        ".agents/skills and .claude/skills for native Codex and Claude Code discovery; recorded with their "
+        "digest; default on for those drivers",
+    )
+    ap.add_argument(
+        "--codex-binary", default="", help="explicit canonical Codex executable; requires complete client selection"
+    )
+    ap.add_argument(
+        "--codex-auth-source",
+        default="",
+        help="explicit credential file for the client only; never copied or exposed to tools",
+    )
+    ap.add_argument(
+        "--codex-home-root",
+        default="",
+        help="fresh isolated per-run client home root, shared selection policy for canary and authoring",
+    )
     ap.add_argument("--model", default="claude-opus-4-8")
     ap.add_argument("--effort", default="high")
     # AGENT DRIVER (Claude-Code-like interfaces). auto (default) preserves today's behavior: route by model
@@ -201,6 +353,14 @@ def build_parser(
         "Verilator's own global slot budget is unaffected either way.",
     )
     ap.add_argument(
+        "--sim-per-capsule-timeout",
+        type=sim_per_capsule_timeout,
+        default=0,
+        metavar="SECONDS",
+        help="explicit async certificate worker budget (1..86400 seconds); 0 retains engine-derived "
+        "budget. This does not override the sealed native engine ceiling or whole-model budget.",
+    )
+    ap.add_argument(
         "--model-budget-s",
         type=int,
         default=None,
@@ -243,6 +403,12 @@ def build_parser(
         "outlives the interval is not working blind. 0 disables the interval grades "
         "(the fast first verdict still lands).",
     )
+    ap.add_argument(
+        "--live-conformance-feedback",
+        action="store_true",
+        help="publish current advisory workflow check booleans and authored regex locations to "
+        "qa/workflow_conformance.json during authoring; does not run capsule grades or change formal gates",
+    )
     # Default sandbox=bwrap: enforced FS isolation (the agent cannot read a masked answer surface at all),
     # AND the driver-side broker tools (async simjob oracle, self-check, arc-model isa_tools, CCA) only
     # start under bwrap. The earlier "bwrap crashes claude" blocker was a sandbox-config bug, now fixed in
@@ -252,6 +418,21 @@ def build_parser(
     # detection-not-prevention and must not be used for scored runs.
     ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap")
     ap.add_argument(
+        "--compiler-execution", choices=("profile_strict_v1", "snapshot_external_v1"),
+        default="profile_strict_v1",
+        help="compiler execution boundary; snapshot_external_v1 uses an isolated compiler snapshot "
+             "and external grading",
+    )
+    ap.add_argument(
+        "--sandbox-reuse", choices=("persistent", "per_call"), default="persistent",
+        help="persistent: each compiler worker reuses one sandbox, reset between calls; "
+             "per_call: a new sandbox for every compiler call",
+    )
+    ap.add_argument("--compiler-access", choices=("selected_library", "full_compiler"), default="selected_library")
+    ap.add_argument("--full-compiler-root", default="", help="operator-selected public compiler source tree")
+    ap.add_argument("--full-compiler-manifest", default="", help="public compiler source inventory")
+    ap.add_argument("--full-compiler-manifest-sha256", default="", help="exact selected inventory digest")
+    ap.add_argument(
         "--allow-unsandboxed",
         action="store_true",
         help="explicitly permit a real (spending) run under --sandbox none; without it a "
@@ -259,6 +440,12 @@ def build_parser(
     )
     ap.add_argument("--no-oracle", action="store_true", help="QA = L0+trace only (fast dev)")
     ap.add_argument("--skip-hidden", action="store_true")
+    ap.add_argument(
+        "--hidden-capsule-mode",
+        choices=("rtl", "functional_spike"),
+        default="",
+        help="operator hidden validation after freeze; functional_spike is L2 corroboration only",
+    )
     ap.add_argument(
         "--public-object-build-budget-s",
         type=_public_object_build_budget,
@@ -271,13 +458,27 @@ def build_parser(
         "--readback-policy",
         choices=READBACK_TRANSPORTS,
         default="",
-        help="explicit full-value output transport; recorded for the run and immutable on resume",
+        help="global explicit full-value transport for every selected engine; incompatible selections refuse "
+        "before authoring. Omit to retain original per-engine transports; immutable on resume",
     )
     ap.add_argument(
         "--private-full-model-spec",
         default="",
         metavar="FILE",
         help="operator-only frozen complete-network validation declaration for the official post-freeze gate",
+    )
+    ap.add_argument(
+        "--instruction-selection",
+        default="",
+        metavar="FILE",
+        help="operator-private source-bound instruction policy for formal full-model grading",
+    )
+    ap.add_argument(
+        "--native-result-format-selection",
+        default="",
+        metavar="FILE",
+        help="original operator-only negative native output-format proof selection; "
+        "frozen privately for formal grading",
     )
     ap.add_argument(
         "--experiment",
@@ -356,6 +557,22 @@ def build_parser(
         default=environment.get("CLAUDE_CONFIG_DIR", ""),
         help="CLAUDE_CONFIG_DIR for the agent's claude CLI (a different subscription account)",
     )
+    ap.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="run ordinary sealed native readiness, then stop before authoring or completion",
+    )
+    ap.add_argument("--corpus-seal", default="", help="explicit reviewed corpus seal; required with --preflight-only")
+    ap.add_argument(
+        "--reference-experiments", default="", metavar="SELECTION_JSON",
+        help="explicit operator-selected reference experiment feedback; requires its exact SHA256",
+    )
+    ap.add_argument("--reference-experiments-sha256", default="", help="SHA256 of the reference experiment selection")
+    ap.add_argument(
+        "--reference-experiments-tasks", default="on", choices=("on", "off"),
+        help="off keeps the selection's reference analysis but serves none of its prior tasks "
+        "(no REFERENCE_EXPERIMENTS.json)",
+    )
     return ap
 
 
@@ -365,4 +582,16 @@ def parse_options(
     default_arm: str = "raw_baseline",
     environ: Mapping[str, str] | None = None,
 ) -> RunOptions:
-    return RunOptions(**vars(build_parser(default_arm=default_arm, environ=environ).parse_args(argv)))
+    parser = build_parser(default_arm=default_arm, environ=environ)
+    options = RunOptions(**vars(parser.parse_args(argv)))
+    from .providers.codex_context import selection as context_selection
+    from .skill_staging import selection as skill_selection
+    from .telemetry.token_budget import selection
+
+    try:
+        selection(options)
+        context_selection(options)
+        skill_selection(options)
+    except ValueError as exc:
+        parser.error(str(exc))
+    return options

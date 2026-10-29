@@ -1,0 +1,24 @@
+# xs_capsules (minimal ResNet-50 + TinyLlama corpus; design .tmp/xs_capsules/PLAN.md). UNSEALED until the
+# coordinator seals it. A future arm spec extends this file (instead of fresh-campaign-fresh8ref-paired.yaml)
+# and adds its own run id / unit / CPUs / reference settings, as fresh-campaign-fresh8ref-{raw,cca}.yaml do.
+extends: /work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/launch/fresh-campaign-fresh8ref-paired.yaml
+id: gemmini-open-compiler-xs_capsules
+variables:
+  # `inputs` refuses an existing directory: a fresh one per export.
+  INPUTS: ${FRAMEWORK}/out/artifacts/fresh-inputs-xs_capsules
+  CORPUS_XS: /work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs_capsules/frameworks/0bb2f1a37a96/out/artifacts/xs_capsules/source-release
+  PINS_XS: /work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs_capsules/pins
+  NEXT_TIMING_SELECTION: ${PINS_XS}/performance-selection.json
+  NEXT_TIMING_SELECTION_SHA256: f25f562f289c6cc3240af2740e4037975a03f99f3589d604661c70ed550e37f6
+  NEXT_CORRECTNESS_ROSTER_PIN: '{"path": "${PINS_XS}/original-roster-xs_capsules.json", "sha256": "81559f640abb72eb736c2818b3978b525232fd65640546bdf708b4fb9baea1cb"}'
+inputs:
+  corpus: ${CORPUS_XS}
+  public_program_suite:
+    path: /work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs_capsules/programs/program-selection.json
+    sha256: 58cde8e581f067dcfcd1de0d17a04a117cacc2101e9648daba98bf289c763de8
+plan:
+  policy:
+    base:
+      path: ${PINS_XS}/base-policy.json
+      sha256: 4cfb27ed65f9bbd287317f22ae7d2b21bd94314cd1f266ffd31e43a851091d56
+    performance_scope: null

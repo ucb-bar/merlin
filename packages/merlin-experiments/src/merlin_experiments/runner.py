@@ -3,52 +3,31 @@
 from __future__ import annotations
 
 import fcntl
-import hashlib
 import json
 import os
-import signal
 import subprocess
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
 
 from yaml import YAMLError
 
+from merlin.common.digest import sha256_file as _sha
+
 from .adapters import ADAPTERS, PHASE0_MODULE, PHASE1_MODULE, phase0_sources, phase0_startup_inputs, phase1_entrypoint
 from .phase1.source_inputs import fingerprint
+from .runner_process import _process_active as _process_active
+from .runner_process import _process_group_active as _process_group_active
+from .runner_process import _stop_process_group as _stop_process_group
 from .spec import ExperimentSpec, SpecError, read_yaml
+from .spec import default_run_dir as default_run_dir
+
+from merlin_experiments.runner_records import _write_json as _write_json
+from merlin_experiments.runner_records import _read_json as _read_json
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
-
-
-def _sha(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
-def default_run_dir(spec: ExperimentSpec, phase: str = "all") -> Path:
-    """Where a new orchestration lives when the operator names no ``--run-dir``.
-
-    A single-phase run is a phase run: ``out/runs/<target>/phase<N>/<TS>_<experiment>_<sha7>/``, so
-    a Phase 0 run owns its evidence, capsules and coverage at the phase address every later phase
-    and the target index cite. A multi-phase orchestration keeps
-    ``out/runs/<target>/<experiment>/<TS>_<uuid8>/``.
-    """
-    from merlin.common.artifacts import phase_run_id
-    from merlin.common.paths import phase_runs_root, runs_dir
-
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    if phase in ("0", "1", "2"):
-        base = phase_runs_root(spec.target, phase)
-        candidate = base / phase_run_id(spec.id, timestamp=stamp)
-        return candidate if not candidate.exists() else base / f"{candidate.name}_{uuid4().hex[:6]}"
-    return runs_dir() / spec.target / spec.id / f"{stamp}_{uuid4().hex[:8]}"
 
 
 def _corpus_closure(command: dict) -> dict:
@@ -203,6 +182,7 @@ _PHASE0_OPTIONAL_INPUTS = frozenset(
         "conformance_spec",
         "synth_profile",
         "smt_profile",
+        "chain_profile",
         "hidden_profile",
         "software_spec",
         "capability_contract",
@@ -467,11 +447,16 @@ def resolve_plan(
     phase0_capability_contract: Path | None = None,
     phase0_synth_profile: Path | None = None,
     phase0_hidden_profile: Path | None = None,
+    phase0_generation_scope: str | None = None,
     phase0_component_coverage: Path | None = None,
     phase0_rtl_facts: Path | None = None,
     phase0_evidence_mode: str | None = None,
     phase0_m2m_root: Path | None = None,
     phase0_m2m_python: Path | None = None,
+    phase0_capture_timeout_seconds: int | None = None,
+    phase0_capture_runtime_reuse: Path | None = None,
+    phase0_rtl_source_relocations: Path | None = None,
+    phase0_bwrap: Path | None = None,
 ) -> dict:
     from merlin.common.paths import out_dir, repo_root
 
@@ -509,17 +494,26 @@ def resolve_plan(
                 phase0_capability_contract,
                 phase0_synth_profile,
                 phase0_hidden_profile,
+                phase0_generation_scope,
                 phase0_component_coverage,
                 phase0_rtl_facts,
                 phase0_evidence_mode,
                 phase0_m2m_root,
                 phase0_m2m_python,
+                phase0_capture_timeout_seconds,
+                phase0_capture_runtime_reuse,
+                phase0_rtl_source_relocations,
+                phase0_bwrap,
             )
         )
         and phase != "0"
     ):
         raise SpecError("Phase 0 artifact selection requires --phase 0")
     phase0_selection = {}
+    if phase0_generation_scope is not None:
+        if phase0_generation_scope not in ("full", "phase1-functional"):
+            raise SpecError("Phase 0 generation scope must be full or phase1-functional")
+        phase0_selection["generation_scope"] = phase0_generation_scope
     for name, path in (
         ("conformance_spec", phase0_conformance_spec),
         ("capability_contract", phase0_capability_contract),
@@ -541,16 +535,54 @@ def resolve_plan(
     for name, path in (("m2m_root", phase0_m2m_root), ("m2m_python", phase0_m2m_python)):
         if path is not None:
             phase0_selection[name] = str(path.expanduser().absolute())
+    if phase0_capture_timeout_seconds is not None:
+        from .phase0.m2m_runtime import capture_timeout
+
+        try:
+            capture_timeout(phase0_capture_timeout_seconds)
+        except ValueError as exc:
+            raise SpecError(str(exc)) from exc
+    if phase0_bwrap is not None:
+        from .phase0.m2m_runtime import capture_bwrap
+
+        try:
+            phase0_bwrap = Path(capture_bwrap(phase0_bwrap))
+        except ValueError as exc:
+            raise SpecError(str(exc)) from exc
+    capture_runtime_reuse = None
+    if phase0_capture_runtime_reuse is not None:
+        from .phase0.m2m_runtime import read_runtime_reuse
+
+        phase0_capture_runtime_reuse = phase0_capture_runtime_reuse.expanduser().absolute()
+        try:
+            capture_runtime_reuse = read_runtime_reuse(phase0_capture_runtime_reuse)
+        except (OSError, ValueError) as exc:
+            raise SpecError(f"invalid Phase 0 capture runtime reuse selection: {exc}") from exc
+    rtl_source_relocations = None
+    if phase0_rtl_source_relocations is not None:
+        from .phase0.selected_records import read_mapping
+
+        phase0_rtl_source_relocations = phase0_rtl_source_relocations.expanduser().absolute()
+        try:
+            rtl_source_relocations = read_mapping(phase0_rtl_source_relocations, subject="RTL source relocations")
+        except (OSError, ValueError) as exc:
+            raise SpecError(f"invalid Phase 0 RTL source relocations: {exc}") from exc
     commands = {}
     corpus_closures = {}
     phase1_operator_inputs = None
     phase0_operator_inputs = None
     inputs = {f"declared:{name}": str(spec.resolve(value)) for name, value in spec.document.get("inputs", {}).items()}
     inputs["definition"] = str(spec.path)
+    if phase0_capture_runtime_reuse is not None:
+        inputs["phase0:capture-runtime-reuse-selection"] = str(phase0_capture_runtime_reuse)
+    if phase0_rtl_source_relocations is not None:
+        inputs["phase0:rtl-source-relocations-selection"] = str(phase0_rtl_source_relocations)
     for number in selected:
         entry = phases[number]
         adapter = ADAPTERS[entry["adapter"]]
         config = dict(entry["config"])
+        if rtl_source_relocations is not None and adapter.name != "capsule_derivation":
+            raise SpecError("--phase0-rtl-source-relocations requires the capsule derivation adapter")
         if number == "1" and phase1_selection:
             if adapter.name != "capsule_bench":
                 raise SpecError("Phase 1 launch overrides require the capsule_bench adapter")
@@ -583,7 +615,30 @@ def resolve_plan(
         if adapter.name == "capsule_bench" and command.get("module") == PHASE1_MODULE:
             # The native process inherits the caller's environment. Freeze selections
             # that otherwise could differ between preflight and launch/resume.
-            for key in ("MERLIN_TARGET_PATH", "MERLIN_TARGET_CONTRACT"):
+            for key in (
+                "MERLIN_TARGET_PATH",
+                "MERLIN_TARGET_CONTRACT",
+                "MERLIN_CODEX_CPUS",
+                "MERLIN_COMPUTE_CPUS",
+                "MERLIN_COMPUTE_CPU_SLOTS",
+                "MERLIN_DEVICE_BUILD_JOBS",
+                "MERLIN_CAPSULE_ORDER",
+                "MERLIN_BUILD_CPUS",
+                "MERLIN_BUILD_SLOT_ROOT",
+                "MERLIN_GRADE_WORKERS",
+                "MERLIN_GRADE_CPUS",
+                "MERLIN_GSIM_CPUS",
+                "MERLIN_GSIM_MAX_SLOTS",
+                "MERLIN_GSIM_STARTUP_PRELOAD",
+                "MERLIN_SPIKE_MAX_SLOTS",
+                "MERLIN_OPERATOR_GRADE_PROCESSES",
+                "MERLIN_PUBLIC_SCALE_BATCH_WORKERS",
+                "MERLIN_SELFCHECK_BROKER_JOBS",
+                "MERLIN_SNAPSHOT_LEASE_CACHE",
+                "MERLIN_SIMULATION_CERT_CACHE",
+                "MERLIN_COMMAND_RECORDER",
+                "MERLIN_GSIM_SLOT_ROOT",
+            ):
                 if key in os.environ:
                     command["env"][key] = os.environ[key]
             from merlin.targetgen.target_registry import effective_target_path
@@ -635,8 +690,27 @@ def resolve_plan(
                 from .phase0.sealed_generation import CONFIG_ENV
 
                 selection = command["phase0_m2m_selection"]
+                if phase0_capture_timeout_seconds is not None:
+                    # Frozen with the plan; the freeze rebinds and re-verifies the capture config.
+                    command["phase0_capture_timeout_seconds"] = phase0_capture_timeout_seconds
+                if phase0_bwrap is not None:
+                    command["phase0_bwrap"] = str(phase0_bwrap)
+                if capture_runtime_reuse is not None:
+                    command["phase0_capture_runtime_reuse"] = capture_runtime_reuse
+                try:
+                    capture_config = sealed_capture_config(
+                        selection,
+                        destination / "phase0",
+                        execution_timeout_seconds=phase0_capture_timeout_seconds,
+                        bwrap=phase0_bwrap,
+                        **({"runtime_reuse": capture_runtime_reuse} if capture_runtime_reuse is not None else {}),
+                    )
+                except (OSError, ValueError) as exc:
+                    raise SpecError(f"invalid selected sealed capture runtime: {exc}") from exc
+                if capture_runtime_reuse is not None:
+                    command["input_owner_roots"].append(capture_config["runtime_reuse"]["entry"])
                 command["env"][CONFIG_ENV] = json.dumps(
-                    sealed_capture_config(selection, destination / "phase0"),
+                    capture_config,
                     sort_keys=True,
                 )
                 # Keep the operator's shared store selection in the frozen
@@ -651,6 +725,8 @@ def resolve_plan(
                     continue  # Membership and present bytes are pinned below, not absent paths.
             inputs[f"phase{number}:{name}"] = value
         if adapter.name == "capsule_derivation":
+            if rtl_source_relocations is not None:
+                command["phase0_rtl_source_relocations"] = rtl_source_relocations
             if command["inputs"].get("software_spec"):
                 from .phase0.freeze import selected_inputs
 
@@ -695,6 +771,20 @@ def resolve_plan(
                 for visibility, roots in closure.items():
                     for index, path in enumerate(roots):
                         inputs[f"phase{number}:corpus:{visibility}:{index}"] = path
+    if phase0_bwrap is not None and "phase0_bwrap" not in commands.get("0", {}):
+        raise SpecError(
+            "--phase0-bwrap applies only to sealed generation captures: select "
+            "--phase0-m2m-root/--phase0-m2m-python with verified (or component-coverage) Phase 0 evidence"
+        )
+    if phase0_capture_timeout_seconds is not None and "phase0_capture_timeout_seconds" not in commands.get("0", {}):
+        raise SpecError(
+            "--phase0-capture-timeout-seconds applies only to sealed generation captures: select "
+            "--phase0-m2m-root/--phase0-m2m-python with verified (or component-coverage) Phase 0 evidence"
+        )
+    if phase0_capture_runtime_reuse is not None and "phase0_capture_runtime_reuse" not in commands.get("0", {}):
+        raise SpecError("--phase0-capture-runtime-reuse requires a selected sealed generation runtime")
+    if phase0_rtl_source_relocations is not None and not commands.get("0", {}).get("phase0_evidence"):
+        raise SpecError("--phase0-rtl-source-relocations requires selected Phase 0 RTL evidence")
     # No engine-owned output or editable workspace may overlap the immutable closure,
     # even when the orchestration directory itself lives elsewhere.
     mutable = [destination]
@@ -780,7 +870,7 @@ def _verify_rtlcheck_support(plan: dict) -> list[str]:
     support contract and its declared file.  Native startup still validates that
     the module loads and implements the complete check capability.
     """
-    from merlin.targetgen.plugins import resolve_support, validate
+    from merlin.targetgen.plugins import core_module_path, resolve_support, validate
 
     for command in plan["phases"].values():
         if command.get("module") != PHASE1_MODULE or "--treatment" not in command["argv"]:
@@ -802,6 +892,17 @@ def _verify_rtlcheck_support(plan: dict) -> list[str]:
                     "RTL checks cannot run from the metadata-only example. Select a reviewed OOT support provider."
                 ]
             problems = validate(plugin, root=support.base, where=f"{target} plugin")
+            # A data-only provider served by a GENERIC core backend has RTL checks only through the
+            # modules its plugin block selects; say so here rather than at native startup.
+            if core_module_path(str(plugin["backend"])) is not None and not (
+                plugin.get("rocc_semantics") and plugin.get("rtl_checks")
+            ):
+                declared = sorted(key for key in ("rocc_semantics", "rtl_checks") if plugin.get(key))
+                problems.append(
+                    f"{target} plugin: the generic backend {plugin['backend']!r} serves RTL checks only from "
+                    f"plugin.rocc_semantics and plugin.rtl_checks; "
+                    f"the selected provider declares {declared or 'neither'}"
+                )
             return [f"phase 1 EL4 support: {problem}" for problem in problems]
         except (OSError, ValueError) as exc:
             return [f"phase 1 EL4 support for {target!r} cannot be resolved: {exc}"]
@@ -846,6 +947,27 @@ def preflight(plan: dict) -> dict:
 
         verify_portfolio_plan(plan)
         synthesis = _phase0_synthesis_status(plan)
+        from .phase0.performance_readiness import check_performance_oracles
+
+        for command in plan["phases"].values():
+            if (
+                command["adapter"] == "capsule_derivation"
+                and command.get("phase0_evidence")
+                and command["inputs"].get("recipe")
+                and command["inputs"].get("capability_contract")
+            ):
+                try:
+                    check_performance_oracles(
+                        command,
+                        target=plan["target"],
+                        profile_target=_command_value(command, "--target"),
+                        diagnostic=(
+                            "--evidence-mode" in command["argv"]
+                            and _command_value(command, "--evidence-mode") == "diagnostic"
+                        ),
+                    )
+                except (OSError, ValueError, YAMLError) as exc:
+                    raise SpecError(f"invalid Phase 0 performance selection: {exc}") from exc
         for command in plan["phases"].values():
             if command.get("phase0_evidence") and command["phase0_evidence"]["status"] != "verified":
                 diagnostic = (
@@ -897,22 +1019,6 @@ def preflight(plan: dict) -> dict:
         "inputs": pins,
         "phase0_synthesis": synthesis,
     }
-
-
-def _write_json(path: Path, value: dict) -> None:
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    temporary.replace(path)
-
-
-def _read_json(path: Path) -> dict:
-    try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise SpecError(f"invalid run record {path}: {exc}") from exc
-    if not isinstance(document, dict):
-        raise SpecError(f"invalid run record {path}: expected an object")
-    return document
 
 
 @contextmanager
@@ -1170,67 +1276,6 @@ def _verify_completed_phase2(command: dict, attempt: dict) -> None:
         raise SpecError("completed installed Phase 2 terminal bytes changed; create a new experiment run")
 
 
-def _process_active(pid: int | None) -> bool:
-    if pid is None:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    # A reaped-by-another-supervisor zombie no longer owns any working process.
-    stat = Path(f"/proc/{pid}/stat")
-    try:
-        return stat.read_text().rpartition(") ")[2].split()[0] != "Z"
-    except (OSError, IndexError):
-        return True
-
-
-def _process_group_active(group: int) -> bool:
-    """A driver exit is not proof that its workers exited. Unknown stays active."""
-    processes = Path("/proc")
-    if not processes.is_dir():
-        return True
-    try:
-        for path in processes.iterdir():
-            if not path.name.isdigit():
-                continue
-            try:
-                fields = (path / "stat").read_text().rpartition(") ")[2].split()
-                if int(fields[2]) == group and fields[0] != "Z":
-                    return True
-            except FileNotFoundError:
-                continue  # a process exited during inspection
-            except (OSError, IndexError, ValueError):
-                return True
-    except OSError:
-        return True
-    return False
-
-
-def _stop_process_group(process: subprocess.Popen) -> None:
-    """Best-effort shutdown, never proof that an abnormal run left no descendants."""
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
-    try:
-        process.wait(timeout=1)
-    except subprocess.TimeoutExpired:
-        pass
-    finally:
-        # Workers may outlive their driver; always signal the whole private group.
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-    try:
-        process.wait(timeout=1)
-    except subprocess.TimeoutExpired:
-        pass
-
-
 @contextmanager
 def _engine_ownership(root: Path, plan: dict):
     """Retain ownership after ANY ambiguous post-spawn exit, even after killpg.
@@ -1402,8 +1447,12 @@ def _execute(root: Path, plan: dict, record: dict, *, checkpoint: Path | None = 
                 try:
                     _verify_inputs(plan)
                     entry["output_sha256"] = fingerprint(engine_output)
-                except (OSError, SpecError):
-                    entry.update(returncode=1, state="execution_failed", error="phase0 output identity not established")
+                except (OSError, SpecError) as exc:
+                    entry.update(
+                        returncode=1,
+                        state="execution_failed",
+                        error=f"phase0 output identity not established: {exc}",
+                    )
                     returncode = 1
             elif returncode == 0 and command["adapter"] == "capsule_bench":
                 try:

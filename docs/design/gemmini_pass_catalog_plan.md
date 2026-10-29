@@ -13,7 +13,7 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/resource_boundaries.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/resource_frontiers.py
   - src/merlin/perf/deps/liveness.py
-  - examples/gemmini/target/hardware.yaml
+  - examples/gemmini/platform/hardware.yaml
   - examples/gemmini/target/software-spec.yaml
   - examples/gemmini/target/contracts/target_contract.yaml
   - examples/gemmini/phase0/recipe.yaml

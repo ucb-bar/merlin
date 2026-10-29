@@ -153,3 +153,55 @@ def test_actual_c_prefix_all_radii_lanes_bytes_and_gather_masks(tmp_path):
                 word = sum(v << (8 * i) for i, v in enumerate(values))
                 required = sum(0x80 << (8 * i) for i, v in enumerate(values) if v == 0)
                 assert zero(word) & required == required
+
+
+@pytest.mark.parametrize("lhs_scale,rhs_scale,relu,bound", [(1.,1.,False,0),(.875,.375,False,1),(.625,1.125,True,2)])
+def test_loaded_sum_proof_matches_independent_compiled_f32_all_pairs(tmp_path_factory,lhs_scale,rhs_scale,relu,bound):
+    from merlin.llvmlower.quantized_affine_pair import prove_loaded_sum
+    from merlin.llvmlower.requantization import f32
+    root=tmp_path_factory.mktemp("loaded-sum")
+    store=f32(max(1,lhs_scale,rhs_scale));left=f32(lhs_scale/store);right=f32(rhs_scale/store)
+    proof=prove_loaded_sum(lhs_scale,rhs_scale,load_lhs_scale=left,load_rhs_scale=right,
+                           store_scale=store,bound_lsb=bound,relu=relu)
+    low=0 if relu else -128
+    source=f"""#include <stdint.h>
+#include <stddef.h>
+#include <math.h>
+static int sat(float x,int lo){{float y=nearbyintf(x);if(y<lo)y=lo;if(y>127)y=127;return (int)y;}}
+void run(const int8_t*a,const int8_t*b,int8_t*ref,int8_t*actual,size_t n){{
+ for(size_t i=0;i<n;i++){{
+  volatile float x=(float)a[i]*{float(f32(lhs_scale)).hex()}f;
+  volatile float y=(float)b[i]*{float(f32(rhs_scale)).hex()}f;
+  volatile float sum=x+y;ref[i]=(int8_t)sat(sum,{low});
+  volatile float load_a=(float)a[i]*{float(left).hex()}f;
+  volatile float load_b=(float)b[i]*{float(right).hex()}f;
+  int32_t acc=sat(load_a,-128)+sat(load_b,-128);
+  volatile float readout=(float)acc*{float(store).hex()}f;
+  actual[i]=(int8_t)sat(readout,{low});
+ }}
+}}"""
+    c=root/'sum.c';c.write_text(source);lib=root/'sum.so'
+    subprocess.run(['cc','-O2','-ffp-contract=off','-shared','-fPIC',str(c),'-lm','-o',str(lib)],check=True,capture_output=True)
+    run=ctypes.CDLL(str(lib)).run;run.argtypes=[ctypes.c_void_p]*4+[ctypes.c_size_t];run.restype=None
+    a=np.repeat(np.arange(-128,128,dtype=np.int8),256);b=np.tile(np.arange(-128,128,dtype=np.int8),256)
+    reference=np.full(65544,-73,dtype=np.int8);actual=reference.copy()
+    run(a.ctypes.data,b.ctypes.data,reference.ctypes.data,actual.ctypes.data,65536)
+    assert np.all(reference[65536:]==-73)and np.all(actual[65536:]==-73)
+    errors=np.abs(reference[:65536].astype(np.int16)-actual[:65536].astype(np.int16))
+    assert int(errors.max())==proof['max_error_lsb']<=bound
+    assert hashlib.sha256(reference[:65536].tobytes()).hexdigest()==proof['source_sha256']
+    assert hashlib.sha256(actual[:65536].tobytes()).hexdigest()==proof['proposed_sha256']
+
+
+def test_loaded_sum_never_invents_error_budget_or_ignores_load_clipping():
+    from merlin.llvmlower.quantized_affine_pair import prove_loaded_sum
+    with pytest.raises(ValueError,match='exceeds source error bound'):
+        prove_loaded_sum(.5,.5,load_lhs_scale=.5,load_rhs_scale=.5,store_scale=1,bound_lsb=0)
+    with pytest.raises(ValueError,match='exceeds source error bound'):
+        prove_loaded_sum(2.,.5,load_lhs_scale=2.,load_rhs_scale=.5,store_scale=1,bound_lsb=1)
+    for bound in (-1,256,True):
+        with pytest.raises(ValueError,match='explicit'):
+            prove_loaded_sum(1.,1.,load_lhs_scale=1.,load_rhs_scale=1.,store_scale=1,bound_lsb=bound)
+    for scale in (0,-1,float('inf'),float('nan')):
+        with pytest.raises(ValueError):
+            prove_loaded_sum(1.,1.,load_lhs_scale=scale,load_rhs_scale=1.,store_scale=1,bound_lsb=1)

@@ -27,7 +27,7 @@ import tempfile
 from pathlib import Path
 
 from merlin.common.paths import repo_root, work_dir
-from merlin.kernels.decode.objdump import disassemble_text
+from merlin.compile.analysis.disassembly import disassemble_text
 from merlin.mining import k1
 from merlin.mining.wholemodel_proposer import FAMILY_TEACHERS, FamilyTeacher, cca_asm_dir
 

@@ -51,7 +51,6 @@ import shlex
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -59,6 +58,44 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common.paths import module_source_path
+from merlin_experiments.phase1.providers import codex_context as _CTX
+from merlin_experiments.phase1.providers.authoring_prompt import (
+    authoring_prompt,
+    profile_authoring_prompt,
+)
+from merlin_experiments.phase1.providers.codex_context import delegation_user_prompt as delegation_user_prompt
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _INSTRUCTION_FILES as _INSTRUCTION_FILES,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _TOOL_OUTPUT_CAP as _TOOL_OUTPUT_CAP,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    ITEM_COMMAND_EXECUTION as ITEM_COMMAND_EXECUTION,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    ITEM_FILE_CHANGE as ITEM_FILE_CHANGE,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _clip_tool_output as _clip_tool_output,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _error_text as _error_text,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _instruction_files as _instruction_files,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _tool_block as _tool_block,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _Transcript as _Transcript,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    last_message_path as last_message_path,
+)
+from merlin_experiments.phase1.providers.codex_usage import usage_to_claude_shape as usage_to_claude_shape
+from merlin_experiments.phase1.telemetry import startup as _START
 
 # --- The measured event contract (codex-cli 0.147.0) ------------------------
 # Verified by capturing a live run, not read from documentation. Envelope types
@@ -73,11 +110,9 @@ EVENT_ITEM_UPDATED = "item.updated"
 EVENT_ITEM_COMPLETED = "item.completed"
 EVENT_ERROR = "error"
 
-ITEM_COMMAND_EXECUTION = "command_execution"
 ITEM_AGENT_MESSAGE = "agent_message"
 ITEM_REASONING = "reasoning"
 ITEM_ERROR = "error"
-ITEM_FILE_CHANGE = "file_change"
 ITEM_MCP_TOOL_CALL = "mcp_tool_call"
 ITEM_WEB_SEARCH = "web_search"
 # Emitted by the tool and observed in captured sessions, though this driver handles neither: a plan
@@ -126,9 +161,10 @@ DEFAULT_CODEX_MODEL = os.environ.get("CODEX_MODEL", "gpt-5.6-sol")
 
 #: Instruction files whose presence in the workspace changes what an agent is
 #: told. Recorded, never authored, so arms stay comparable.
-_INSTRUCTION_FILES = ("AGENTS.md", "CLAUDE.md", "AGENT.md", "TASK.md")
 
 _POLL_S = 0.25
+_CONTROL_POLL_S = 1.0
+OPERATOR_INTERRUPTED_EXIT_CODE = 130
 _CANDIDATE_PERMISSION_PROFILE = "merlin-candidate"
 
 
@@ -223,47 +259,6 @@ def build_cmd(
     return cmd
 
 
-def usage_to_claude_shape(usage: dict) -> tuple[dict, bool]:
-    """Translate a Codex ``turn.completed`` usage payload to the Claude shape.
-
-    Returns ``(usage_dict, reported)``. Codex's ``input_tokens`` is a TOTAL that
-    already contains the cache reads and writes; the Claude shape's
-    ``input_tokens`` is the uncached remainder. Subtracting is therefore the
-    correct translation, clamped at zero so a provider inconsistency cannot
-    produce a negative count. When nothing was reported, ``reported`` is False
-    and the caller must omit usage rather than emit zeros.
-    """
-
-    def _int(key: str) -> int | None:
-        value = usage.get(key)
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            return None
-        return int(value)
-
-    total_in = _int("input_tokens")
-    cache_read = _int("cached_input_tokens")
-    cache_write = _int("cache_write_input_tokens")
-    out = _int("output_tokens")
-    reasoning = _int("reasoning_output_tokens")
-    if all(v is None for v in (total_in, cache_read, cache_write, out, reasoning)):
-        return {}, False
-
-    uncached = None if total_in is None else max(total_in - (cache_read or 0) - (cache_write or 0), 0)
-    shaped = {
-        "input_tokens": uncached or 0,
-        "output_tokens": out or 0,
-        "cache_read_input_tokens": cache_read or 0,
-        "cache_creation_input_tokens": cache_write or 0,
-    }
-    # Kept alongside, not folded in: reasoning is a subset of output_tokens and
-    # adding it again would double-count the most expensive bucket.
-    if reasoning is not None:
-        shaped["reasoning_output_tokens"] = reasoning
-    if total_in is not None:
-        shaped["codex_input_tokens_total"] = total_in
-    return shaped, True
-
-
 #: The frozen per-experiment Codex config. Deliberately minimal: the user's own
 #: config.toml and unrelated project trust/notice state are never copied. The
 #: exact prepared workspace's trust is declared below before the config is
@@ -287,10 +282,20 @@ def _candidate_permission_config(codex_home: Path, *, read_paths: tuple[str, ...
     if not codex_home.is_absolute():
         raise ValueError("isolated CODEX_HOME must be absolute")
     if read_paths is not None:
-        if (not isinstance(read_paths, tuple) or not read_paths or len(set(read_paths)) != len(read_paths)
-            or any(not isinstance(path, str) or not Path(path).is_absolute() or ".." in Path(path).parts
-                   or Path(path) == Path("/") or codex_home.is_relative_to(Path(path))
-                   or Path(path).is_relative_to(codex_home) for path in read_paths)):
+        if (
+            not isinstance(read_paths, tuple)
+            or not read_paths
+            or len(set(read_paths)) != len(read_paths)
+            or any(
+                not isinstance(path, str)
+                or not Path(path).is_absolute()
+                or ".." in Path(path).parts
+                or Path(path) == Path("/")
+                or codex_home.is_relative_to(Path(path))
+                or Path(path).is_relative_to(codex_home)
+                for path in read_paths
+            )
+        ):
             raise ValueError("explicit candidate read grants must be exact absolute paths without control credentials")
         grants = "".join(f'{json.dumps(path)} = "read"\n' for path in read_paths)
         return (
@@ -298,8 +303,7 @@ def _candidate_permission_config(codex_home: Path, *, read_paths: tuple[str, ...
             'extends = ":workspace"\n'
             f"[permissions.{_CANDIDATE_PERMISSION_PROFILE}.filesystem]\n"
             '":root" = "deny"\n'
-            '":minimal" = "read"\n' + grants +
-            f'{json.dumps(str(codex_home))} = "deny"\n'
+            '":minimal" = "read"\n' + grants + f'{json.dumps(str(codex_home))} = "deny"\n'
             f'[permissions.{_CANDIDATE_PERMISSION_PROFILE}.filesystem.":workspace_roots"]\n'
             '"." = "write"\n'
             f"[permissions.{_CANDIDATE_PERMISSION_PROFILE}.network]\n"
@@ -334,25 +338,10 @@ _CLI_VERSION: dict = {}
 
 
 def cli_version(codex_bin: str = "codex") -> str | None:
-    """The CLI's self-reported version, or ``None`` when it cannot be asked.
+    """The verbatim CLI version, or ``None`` when it cannot be observed."""
+    from .codex_runtime import cached_cli_version
 
-    ``None`` is a real answer and is recorded as such: guessing a version would put a fabricated
-    provenance stamp on every run made with that binary, which is worse than an absent one. The
-    string is stored VERBATIM (e.g. ``codex-cli 0.153.0``) and never parsed here -- a comparison is
-    somebody else's job, and a parser is one more thing to drift.
-    """
-    if codex_bin in _CLI_VERSION:
-        return _CLI_VERSION[codex_bin]
-    out = None
-    try:
-        proc = subprocess.run([codex_bin, "--version"], capture_output=True, text=True, timeout=30)
-        if proc.returncode == 0:
-            text = (proc.stdout or proc.stderr or "").strip().splitlines()
-            out = text[0].strip() if text else None
-    except (OSError, subprocess.SubprocessError):
-        out = None
-    _CLI_VERSION[codex_bin] = out or None
-    return _CLI_VERSION[codex_bin]
+    return cached_cli_version(codex_bin, _CLI_VERSION)
 
 
 def real_codex_home() -> Path:
@@ -360,8 +349,16 @@ def real_codex_home() -> Path:
 
 
 def prepare_codex_home(
-    dest: Path, *, model: str, effort: str, workspace: Path,
+    dest: Path,
+    *,
+    model: str,
+    effort: str,
+    workspace: Path,
     candidate_read_paths: tuple[str, ...] | None = None,
+    auth_source: Path | None = None,
+    max_concurrent_subagents: int | None = None,
+    helper_effort: str | None = None,
+    author_context: dict | None = None,
 ) -> dict:
     """Build an ISOLATED ``CODEX_HOME`` at *dest* and describe it.
 
@@ -382,8 +379,16 @@ def prepare_codex_home(
     build its home the same way, or the cache-hit rate varies between arms for a
     reason that has nothing to do with the treatment.
     """
+    if max_concurrent_subagents is not None and (
+        type(max_concurrent_subagents) is not int or max_concurrent_subagents < 1
+    ):
+        raise ValueError("Codex subagent concurrency must be an explicit positive integer")
     if not workspace.is_absolute() or not workspace.is_dir() or workspace.resolve(strict=True) != workspace:
         raise ValueError("Codex workspace must be an existing canonical absolute directory")
+    if auth_source is not None:
+        from .codex_runtime import canonical_file
+
+        auth_source = canonical_file(str(auth_source), "client credential")
     dest.mkdir(parents=True, exist_ok=True)
     # A non-OpenAI model reaches codex-cli only through the LiteLLM bridge: codex 0.147 speaks the
     # Responses API and nothing else, so the provider block points it at our proxy and declares the
@@ -399,9 +404,13 @@ def prepare_codex_home(
         provider=provider,
         trust=f'[projects.{json.dumps(str(workspace))}]\ntrust_level = "trusted"\n',
     )
+    from merlin_experiments.phase1 import author_subagents as _AS
+
+    # Root-level dotted keys precede permission/provider tables; the CLI's strict-config preflight must accept them.
+    config = _AS.home_config(max_concurrent_subagents, helper_effort) + _CTX.home_config(author_context) + config
     config_path = dest / "config.toml"
     config_path.write_text(config)
-    auth = real_codex_home() / "auth.json"
+    auth = real_codex_home() / "auth.json" if auth_source is None else auth_source
     import hashlib
 
     return {
@@ -530,87 +539,9 @@ def codex_runtime_binds(codex_home: Path) -> list[str]:
     return binds
 
 
-def _instruction_files(ws: Path) -> dict[str, int]:
-    """Which instruction files the workspace carries, and their sizes."""
-    found = {}
-    for name in _INSTRUCTION_FILES:
-        path = ws / name
-        if path.is_file():
-            found[name] = path.stat().st_size
-    return found
-
-
-_TOOL_OUTPUT_CAP = 20000
-
-
-def _clip_tool_output(text: str, cap: int = _TOOL_OUTPUT_CAP) -> str:
-    """Bound a recorded tool result WITHOUT discarding its tail.
-
-    Head-only truncation destroys evidence silently. A discovery command that prints a large
-    structure and THEN its summary -- ``print(facts); print('DERIVED_LEVERS', levers)`` -- loses
-    exactly the closing lines the conformance checks read, so the run is graded as though the agent
-    never ran the tool. Measured on the atlas arm-4 run of 2026-09-04: 29 of 467 results were cut at
-    the cap, and the one carrying the arm-4 discovery evidence was among them. Keeping both ends
-    preserves the structure and the summary inside the same budget.
-    """
-    if len(text) <= cap:
-        return text
-    head = cap * 2 // 3
-    tail = cap - head
-    return f"{text[:head]}\n...[{len(text) - head - tail} chars elided by the harness]...\n{text[-tail:]}"
-
-
-def _tool_block(item: dict, tool_use_id: str) -> dict:
-    """Render a Codex tool item as a Claude ``tool_use`` block.
-
-    ``tool_use_id`` is REQUIRED and must be the same string the paired ``tool_result`` carries: it is
-    the only key joining a call to its result, so every consumer of the transcript keys on it. Emitting
-    the block WITHOUT an id silently costs the run its entire tool telemetry -- aet's stream parser
-    records a call only ``if tc.tool_use_id``, so the atlas round of 2026-09-04 reported
-    ``tool_call_count=0`` and ``unique_tools_used=[]`` for a round that made 125 tool calls, and the
-    per-call latency (measured as the gap between a tool_use and its tool_result) had nothing to pair.
-    """
-    itype = item.get("type")
-    if itype == ITEM_COMMAND_EXECUTION:
-        return {"type": "tool_use", "id": tool_use_id, "name": "Bash", "input": {"command": item.get("command", "")}}
-    if itype == ITEM_FILE_CHANGE:
-        changes = item.get("changes")
-        return {
-            "type": "tool_use",
-            "id": tool_use_id,
-            "name": "Edit",
-            "input": {"changes": changes if isinstance(changes, list) else []},
-        }
-    return {
-        "type": "tool_use",
-        "id": tool_use_id,
-        "name": str(itype or "tool"),
-        "input": {k: v for k, v in item.items() if k not in ("id", "type")},
-    }
-
-
-class _Transcript:
-    """Writes the harness's Claude-stream JSONL, one flushed line at a time."""
-
-    def __init__(self, path: Path):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self._f = open(path, "w")
-        self.path = path
-
-    def emit(self, obj: dict) -> None:
-        self._f.write(json.dumps(obj) + "\n")
-        self._f.flush()
-
-    def close(self) -> None:
-        try:
-            self._f.close()
-        except OSError:
-            pass
-
-
 def _terminate_process_group(pgid: int, proc: subprocess.Popen | None = None) -> None:
     """Terminate a saved child process group even after its leader has exited."""
-    if pgid <= 1:
+    if pgid <= 1 or pgid == os.getpgrp():
         raise ValueError("refusing to signal an unsafe process-group id")
     for sig, grace in ((signal.SIGTERM, 5.0), (signal.SIGKILL, 5.0)):
         try:
@@ -627,11 +558,40 @@ def _terminate_process_group(pgid: int, proc: subprocess.Popen | None = None) ->
         while time.monotonic() < deadline:
             if proc is not None:
                 proc.poll()  # reap an exited group leader so an empty group disappears
+                if proc.returncode is not None and _process_group_quiescent(pgid):
+                    return
             try:
                 os.killpg(pgid, 0)
             except ProcessLookupError:
                 return
             time.sleep(0.05)
+
+
+def _process_group_quiescent(pgid: int) -> bool:
+    """Confirm no remaining writer in the owned Linux group; zombies cannot write."""
+    if pgid <= 1 or pgid == os.getpgrp():
+        raise ValueError("cannot establish custody of the evaluator process group")
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return True
+    # A killed orphan may remain a zombie until its parent reaps it. killpg(0)
+    # alone cannot distinguish that harmless state from a still-running writer.
+    procfs = Path("/proc")
+    if not procfs.is_dir():
+        return False
+    for entry in procfs.iterdir():
+        if not entry.name.isdecimal():
+            continue
+        try:
+            fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+        except FileNotFoundError:
+            continue
+        except (OSError, IndexError):
+            return False
+        if int(fields[2]) == pgid and fields[0] not in {"Z", "X"}:
+            return False
+    return True
 
 
 def _kill_tree(proc: subprocess.Popen) -> None:
@@ -666,29 +626,12 @@ def _link_for_aet(run_dir: Path, raw_path: Path, rnd: int) -> Path | None:
         return None
 
 
-def last_message_path(ws: Path, final_path: Path, sandbox: str) -> Path:
-    """Where codex may actually WRITE its last message (``-o``).
-
-    ``final_path`` lives under the run directory, which is on /scratch -- and the sandbox tmpfs-hides
-    /scratch* by design, so codex could not create it and reported ``Failed to write last message file
-    ... (os error 2)`` on every sandboxed round. The read afterwards is guarded, so the loss was
-    SILENT: the round's ``result`` was simply empty. Inside the sandbox the workspace is the one
-    writable tree, so the file goes there and is copied out (and removed) once the process exits.
-    """
-    if sandbox != "bwrap":
-        return final_path
-    return ws / ".codex_out" / final_path.name
-
-
 #: A continuation needs enough budget left to be worth a turn; below this the session stops cleanly
 #: rather than spawning a process that will be killed mid-thought.
 _CONTINUE_MIN_S = 120
 #: A backstop so a pathological loop cannot spin against the API for the whole budget.
 _CONTINUE_MAX_TURNS = 200
-# Transient capacity refusals may resume the same continuous session, never
-# switch its model or start another grader. Keep retries within its wall budget.
-_CAPACITY_MAX_RETRIES = 3
-_CAPACITY_BACKOFF_S = 20
+from . import codex_capacity as _CAP  # noqa: E402
 
 
 def build_resume_cmd(
@@ -727,39 +670,7 @@ def build_resume_cmd(
     return cmd
 
 
-def _sandbox_script(rounds: Path, rnd: int, turn: int, command: str) -> list[str]:
-    """Run a bwrap command from a FILE rather than as a ``bash -c`` argument.
-
-    execve refuses any single argument over MAX_ARG_STRLEN (128 KiB) with E2BIG, and the error names
-    only the interpreter -- `Argument list too long: 'bash'` -- so a size refusal is indistinguishable
-    from a missing shell. Measured 2026-09-06 on the perf campaign: the composed sandbox command was
-    178,303 bytes and every trial died before its first round. The bind list has a size escape already
-    (``bwrap --args`` from a file descriptor), but the shell string that carries it does not, and the
-    mask set grows with the corpus, so the ceiling is reachable by adding capsules.
-
-    A file has no such limit. It lives beside the round's other artifacts and NOT in the workspace:
-    the agent must not be able to read or edit the command that sandboxes it.
-    """
-    script = rounds / f"round_{rnd:02d}.sandbox.turn{turn:02d}.sh"
-    # A completed launch seals this file 0500.  A checkpoint resume may retry the same round/turn and
-    # therefore the same path; opening the sealed inode for writing fails before Codex starts.  Replace
-    # it atomically with a newly sealed inode instead of temporarily making the old launch record
-    # writable.  The behaviour is identical for every driver invocation and independent of target.
-    rounds.mkdir(parents=True, exist_ok=True)
-    staged: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=rounds, prefix=f".{script.name}.", suffix=".tmp", delete=False
-        ) as handle:
-            handle.write(command)
-            staged = Path(handle.name)
-        staged.chmod(0o500)
-        os.replace(staged, script)
-        staged = None
-    finally:
-        if staged is not None:
-            staged.unlink(missing_ok=True)
-    return ["bash", str(script)]
+from .execution import sandbox_script as _sandbox_script
 
 
 def _verify_frozen_config(codex_home: Path, expected_sha256: str) -> None:
@@ -781,6 +692,7 @@ def _preflight_candidate_sandbox(
     rnd: int,
     *,
     runtime_binds: Callable[[Path], list[str]] | None = None,
+    prepared_plan=None,
 ) -> None:
     """No-model proof that the installed CLI enforces the frozen profile.
 
@@ -797,6 +709,14 @@ def _preflight_candidate_sandbox(
         f"test -r {shlex.quote(str(ws))} && test -w {shlex.quote(str(ws))} && "
         "command -v python3 >/dev/null && python3 --version >/dev/null"
     )
+    from .. import public_contract_preflight
+    from .execution import CodexSandboxCommand
+
+    expected_public = public_contract_preflight.expected_reads(
+        ws, bundle, repo=sandbox_command.context.repo if type(sandbox_command) is CodexSandboxCommand else None
+    )
+    if expected_public is not None:
+        probe += " && " + public_contract_preflight.command(expected_public)
     auth = shlex.quote(str(codex_home / "auth.json"))
     native_probe = shlex.join(
         (
@@ -817,7 +737,7 @@ def _preflight_candidate_sandbox(
         rounds,
         rnd,
         -1,
-        sandbox_command(
+        prepared_plan.command(inner) if prepared_plan is not None else sandbox_command(
             inner, ws, bundle, extra_binds=(codex_runtime_binds if runtime_binds is None else runtime_binds)(codex_home)
         ),
     )
@@ -827,8 +747,11 @@ def _preflight_candidate_sandbox(
             "Codex candidate permission profile preflight failed; refusing untrusted launch "
             f"(rc={result.returncode}, stderr={result.stderr[-1200:].strip()!r})"
         )
+    if expected_public is not None:
+        public_contract_preflight.record_success(expected_public, result.stdout, rounds, rnd)
 
 
+@_START.observed
 def run_round(
     ws: Path,
     run_dir: Path,
@@ -851,7 +774,15 @@ def run_round(
     candidate_read_paths: tuple[str, ...] | None = None,
     runtime_binds: Callable[[Path], list[str]] | None = None,
     require_fresh_home: bool = False,
+    allow_failed_home_retry: bool = False,
+    auth_source: Path | None = None,
     continuation_prompt: str | None = None,
+    continuation_stop: Callable[[], str | None] | None = None,
+    max_concurrent_subagents: int | None = None,
+    subagent_capacity: int | None = None,
+    helper_effort: str | None = None,
+    author_context: dict | None = None,
+    conformance_context: dict | None = None,
     **_ignored,
 ) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via ``codex exec``. Returns ``(rc, transcript_path)``.
@@ -870,16 +801,42 @@ def run_round(
     working; ``keep_launching``'s "one invocation per process" contract is preserved, because this is
     still one session -- just delivered over several processes. Off by default: in ROUNDS mode a
     round ending is how the harness re-grades and re-prompts, and continuing would break that cadence.
+    ``continuation_stop`` names a trusted host's stop reason. It is polled
+    between turns and at most once per second while a turn is running. An
+    explicit stop ends only the owned author process group before returning an
+    interrupted status to the host's normal drain/checkpoint path. Received
+    logs and workspace files are retained; a partial turn earns no success.
 
-    Tier-within-agent (``subagent_model`` / ``background_model``) has no Codex
-    equivalent — ``codex exec`` exposes no subagent mechanism — so a request for
-    one is recorded in the init record and otherwise ignored. Silently accepting
-    it would make an arm look tiered when it was not.
+    Legacy model-tier selections are recorded without changing spawned models.
+    Explicit ``max_concurrent_subagents`` selects the native multi-agent limit
+    in the frozen home; the same strict-config preflight applies on AWS. It does
+    not prove that an agent delegated or change its sandbox and runtime grants.
+    ``subagent_capacity`` is the run's recorded ceiling: the same config keys, no prompt change;
+    ``helper_effort`` its recorded helper reasoning effort (one config key and one sentence);
+    ``author_context`` its recorded context selection (:mod:`.codex_context`).
     """
     # Explicit round inputs avoid changing another concurrent round's executable
     # or credential-isolated home placement. Defaults retain historical callers.
+    from merlin_experiments.phase1 import author_subagents as _AS
+
+    capacity = _AS.effective_capacity(max_concurrent_subagents, subagent_capacity, sandbox)
+    if continuation_stop is not None and (not continue_session or not callable(continuation_stop)):
+        raise ValueError("host continuation stop requires an explicitly continuous session and callback")
     if codex_binary is not None and (not isinstance(codex_binary, (str, Path)) or not str(codex_binary).strip()):
         raise ValueError("explicit codex_binary must be a nonempty executable path or name")
+    if auth_source is not None:
+        from .codex_runtime import canonical_file
+
+        canonical_file(str(auth_source), "client credential")
+        if (
+            sandbox != "bwrap"
+            or codex_binary is None
+            or codex_home_root is None
+            or not candidate_read_paths
+            or runtime_binds is None
+            or not require_fresh_home
+        ):
+            raise ValueError("explicit credential selection requires complete isolated client inputs")
     codex_bin = str(codex_binary) if codex_binary is not None else os.environ.get("CODEX_BIN", "codex")
     # A rigorous caller may preflight model resolution and pass the content-addressed result.
     # In that mode do NOT consult CODEX_MODEL_MAP a second time between the declaration and
@@ -896,14 +853,29 @@ def run_round(
             # candidate shell. A future broker can deliver it without a shell
             # environment leak; clearenv intentionally does not do that today.
             raise RuntimeError("bridged Codex needs a host-side proxy credential broker under bwrap")
+    home_attempt = {}
+    selected_home = None
+    if allow_failed_home_retry and not (require_fresh_home and sandbox == "bwrap" and codex_home_root is not None):
+        raise ValueError("failed home retry requires the original isolated fresh-home route")
+    if require_fresh_home and sandbox == "bwrap" and codex_home_root is not None:
+        selected_home = Path(codex_home_root) / f"{run_dir.name}_r{rnd:02d}"
+        if allow_failed_home_retry:
+            from .codex_runtime import failed_round_retry
+            selected_home, home_attempt = failed_round_retry(Path(codex_home_root), run_dir, rnd)
+        if not home_attempt and (selected_home.exists() or selected_home.is_symlink()):
+            raise ValueError("fresh authoring refuses an existing Codex home or session history")
+        if selected_home.resolve().is_relative_to(ws.resolve()) or ws.resolve().is_relative_to(selected_home.resolve()):
+            raise ValueError("isolated CODEX_HOME must not overlap the candidate workspace")
     rounds = run_dir / "rounds"
     rounds.mkdir(parents=True, exist_ok=True)
-    tpath = rounds / f"round_{rnd:02d}.transcript.jsonl"
-    raw_path = rounds / f"round_{rnd:02d}.codex_events.raw.jsonl"
-    stamped_path = rounds / f"round_{rnd:02d}.codex_events.timestamped.jsonl"
-    stderr_path = rounds / f"round_{rnd:02d}.codex_stderr.log"
-    prompt_path = rounds / f"round_{rnd:02d}.prompt.txt"
-    final_path = rounds / f"round_{rnd:02d}.final.txt"
+    artifact_prefix = f"round_{rnd:02d}" + (".attempt_" + home_attempt["attempt_id"] if home_attempt else "")
+    script_rounds = rounds / "attempts" / home_attempt["attempt_id"] if home_attempt else rounds
+    tpath = rounds / f"{artifact_prefix}.transcript.jsonl"
+    raw_path = rounds / f"{artifact_prefix}.codex_events.raw.jsonl"
+    stamped_path = rounds / f"{artifact_prefix}.codex_events.timestamped.jsonl"
+    stderr_path = rounds / f"{artifact_prefix}.codex_stderr.log"
+    prompt_path = rounds / f"{artifact_prefix}.prompt.txt"
+    final_path = rounds / f"{artifact_prefix}.final.txt"
 
     tr = _Transcript(tpath)
     tr.emit(
@@ -912,6 +884,7 @@ def run_round(
             "subtype": "init",
             "driver": "codex",
             "round": rnd,
+            "home_attempt": home_attempt,
             "model": resolved,
             "model_requested": model,
             "codex_bin": codex_bin,
@@ -919,36 +892,23 @@ def run_round(
             "sandbox": sandbox,
             # Instruction parity between arms is an artifact-level fact, not a hope.
             "workspace_instruction_files": _instruction_files(ws),
+            "workspace_skills": _CTX.staged_skills(ws),
             "tiering_requested_but_unsupported": bool(subagent_model or background_model),
             "started_at": _now(),
+            "conformance_context": conformance_context if conformance_context is not None else {
+                "schema": "merlin.phase1.conformance_execution.v1", "workspace": str(ws.absolute()),
+                "target": getattr(te, "target", None), "selected_facts": None,
+            },
         }
     )
 
     # The graded instruction. ``prompt=`` overrides it only for out-of-band uses
     # (the sandbox canary states its own task); a measured arm always gets this
     # text, so two arms cannot silently differ in what they were asked to do.
-    msg = (
-        prompt
-        if prompt is not None
-        else (
-            "Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
-            "backend under submission/ per those instructions. During iteration, check the smallest affected capsule "
-            "or coherent comma-separated capsule cluster with `python3 agent_selfcheck.py --submission submission "
-            "--sim spike --capsules <names>`; do not repeatedly grade the whole corpus. Run `--capsules all` only "
-            "after the focused checks improve and the candidate is ready for a regression sweep. Do not edit "
-            "submission/ while a self-check is running, because that makes its result stale. Goldens are withheld; "
-            "iterate until the complete corpus passes. THE FIRST GRADE NEEDS YOUR SUBMISSION FIRST: the harness "
-            "grades submission/, so while submission/manifest.yaml does not exist there is NOTHING to grade and no "
-            "verdict can ever arrive -- an absent qa/verdict.json is not a queue you wait in, it means you have not "
-            "submitted yet. MEASURED: two runs each burned their whole first round blocked on await_verdict.py "
-            "reporting 'the waiter is healthy but has received nothing' while the harness logged 'no "
-            "submission/manifest.yaml to grade yet' every 30s -- a mutual wait that consumes the round timeout. "
-            "Build something minimal and write submission/manifest.yaml FIRST; only once a verdict exists does "
-            "waiting for the next one make sense (then use await_verdict.py rather than a poll loop, and do not "
-            "launch `--capsules all` merely to refresh it). Use exact capsule directory names for focused checks. "
-            "Begin now."
-        )
-    )
+    msg = prompt if prompt is not None else authoring_prompt()
+    msg = delegation_user_prompt(msg, max_concurrent_subagents)
+    msg += _AS.round_guidance(capacity, max_concurrent_subagents) + _AS.helper_effort_note(helper_effort)
+    msg += _CTX.round_note(author_context, capacity)
     prompt_path.write_text(msg)
 
     inner_final = last_message_path(ws, final_path, sandbox)
@@ -967,22 +927,46 @@ def run_round(
         # auth.json is bind-mounted writable for refresh, behind Codex's native
         # candidate-command sandbox (see codex_runtime_binds).
         home_root = Path(codex_home_root) if codex_home_root is not None else cache_dir("codex_home")
-        codex_home = home_root / f"{run_dir.name}_r{rnd:02d}"
+        codex_home = selected_home or home_root / f"{run_dir.name}_r{rnd:02d}"
         if codex_home.resolve().is_relative_to(ws.resolve()) or ws.resolve().is_relative_to(codex_home.resolve()):
             raise ValueError("isolated CODEX_HOME must not overlap the candidate workspace")
-        if require_fresh_home and (codex_home.exists() or codex_home.is_symlink()):
+        if home_attempt:
+            state = codex_home.stat()
+            if (codex_home.is_symlink() or codex_home.resolve() != codex_home
+                    or (state.st_dev, state.st_ino) != (home_attempt["home_device"], home_attempt["home_inode"])
+                    or any(codex_home.iterdir())):
+                raise ValueError("fresh retry home changed before preparation")
+        elif require_fresh_home and (codex_home.exists() or codex_home.is_symlink()):
             raise ValueError("fresh authoring refuses an existing Codex home or session history")
         home_options = {"candidate_read_paths": candidate_read_paths} if candidate_read_paths is not None else {}
+        if auth_source is not None:
+            home_options["auth_source"] = auth_source
+        if capacity is not None:
+            home_options["max_concurrent_subagents"] = capacity
+        if helper_effort is not None:  # without a capacity the home refuses it rather than dropping it
+            home_options["helper_effort"] = helper_effort
+        if author_context is not None:
+            home_options["author_context"] = author_context
         home_info = prepare_codex_home(codex_home, model=resolved, effort=effort, workspace=ws, **home_options)
+        home_info["attempt"] = home_attempt
         runtime_selector = codex_runtime_binds if runtime_binds is None else runtime_binds
-        _verify_frozen_config(codex_home, home_info["config_sha256"])
+        _START.call("config_verify", _verify_frozen_config, codex_home, home_info["config_sha256"])
         preflight_options = {"runtime_binds": runtime_selector} if runtime_binds is not None else {}
+        # Only the trusted composition owner supplies the launch-local plan.
+        from .execution import CodexSandboxCommand
+        prepared_plan = None
+        if type(sandbox_command) is CodexSandboxCommand:
+            binds = _START.call("runtime_bindings", runtime_selector, codex_home)
+            prepared_plan = _START.call("sandbox_assembly", sandbox_command.prepare, ws, bundle, binds)
+            preflight_options["prepared_plan"] = prepared_plan
         _preflight_candidate_sandbox(
-            ws, codex_home, codex_bin, bundle, sandbox_command, rounds, rnd, **preflight_options
+            ws, codex_home, codex_bin, bundle, sandbox_command, script_rounds, rnd, **preflight_options
         )
         inner = " ".join(shlex.quote(c) for c in run_cmd)
         cmd = _sandbox_script(
-            rounds, rnd, 0, sandbox_command(inner, ws, bundle, extra_binds=runtime_selector(codex_home))
+            script_rounds, rnd, 0, prepared_plan.command(inner) if prepared_plan is not None else
+            _START.call("sandbox_assembly", sandbox_command, inner, ws, bundle,
+                extra_binds=_START.call("runtime_bindings", runtime_selector, codex_home))
         )
     else:
         cmd = run_cmd
@@ -994,21 +978,38 @@ def run_round(
     unknown: list[str] = []
     errors: list[str] = []
     recovered_errors: set[int] = set()
-    capacity_retries = 0
+    capacity_retries = capacity_consecutive = 0
+    resumed_after_capacity = False
     thread_id = None
     timed_out = False
+    operator_interrupted = None
+    interrupted_turn = False
     seq = 0
 
     raw_f = open(raw_path, "wb")
     stamped_f = open(stamped_path, "w")
     #: Sent when resuming. Deliberately the SAME standing instruction, never a hint: an arm that got
     #: extra guidance mid-session would not be comparable to one that did not.
-    _CONTINUE_MSG = continuation_prompt if continuation_prompt is not None else (
-        "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
-        "backend under submission/. With agent_selfcheck, re-check only the smallest affected "
-        "capsule or coherent cluster after each edit; use `--capsules all` only after focused "
-        "checks improve, and never edit submission/ while a self-check is running."
+    _CONTINUE_MSG = (
+        continuation_prompt
+        if continuation_prompt is not None
+        else profile_authoring_prompt(continuation=True) or (
+            "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
+            "backend under submission/. Follow TASK.md for the selected engine routing and physical "
+            "qualification gates. With agent_selfcheck, check capsules an edit affects in one request with "
+            "`--wait-budget 5`, keep working, and collect it with `--attach <id>`; several requests "
+            "may be in flight. Check edits by naming capsules (`--capsules changed` is a slow sweep); "
+            "`--capsules failing` re-checks "
+            "what did not pass. Try alternatives with `--submission variants/<name>` and copy the "
+            "winner into submission/. Use `--capsules all` only after focused checks improve. You "
+            "may edit while a check runs; compare the verdict's source digest."
+        )
     )
+    _CONTINUE_MSG = delegation_user_prompt(_CONTINUE_MSG, max_concurrent_subagents)
+    _CONTINUE_MSG += _AS.continuation_guidance(capacity, max_concurrent_subagents)
+    _CONTINUE_MSG += _CTX.continuation_note(author_context)
+    from .token_admission import ManagedTokens
+    token_control = ManagedTokens(run_dir, rnd, homes=(codex_home,) if sandbox == 'bwrap' else ())
     turn_index = 0
     rc = 0
     active_proc: subprocess.Popen | None = None
@@ -1016,22 +1017,33 @@ def run_round(
     try:
         while True:
             turn_errors_start = len(errors)
-            turn_failed = turn_completed = False
+            turn_failed = turn_completed = turn_progress = False
+            _START.turn(turn_index)
+            admission = token_control.admit(turn_index)
+            if admission is not None:
+                tr.emit({'type': 'codex_token_admission', **admission})
+                if not admission['admitted']:
+                    rc = 75; errors.append('author token admission: ' + admission['reason']); break
             cur_prompt = (
                 prompt_path
                 if turn_index == 0
                 else prompt_path.with_name(f"{prompt_path.stem}.cont{turn_index:02d}{prompt_path.suffix}")
             )
+            if not turn_index and admission is not None:
+                cur_prompt.write_text(('' if token_control.phase == 'integration' else msg) + token_control.prompt())
             if turn_index:
                 # A previous attempt's final is not this resumed turn's answer.
                 if inner_final.is_file():
-                    previous_final = rounds / f"round_{rnd:02d}.turn{turn_index - 1:02d}.final.txt"
+                    previous_final = rounds / f"{artifact_prefix}.turn{turn_index - 1:02d}.final.txt"
                     previous_final.write_text(inner_final.read_text())
                     inner_final.unlink()
-                cur_prompt.write_text(_CONTINUE_MSG)
+                standing = '' if token_control.phase == 'integration' else _CONTINUE_MSG
+                note = _CAP.RESUME_NOTE if resumed_after_capacity else ''
+                cur_prompt.write_text(standing + note + token_control.prompt())
+                resumed_after_capacity = False
                 if sandbox == "bwrap":
-                    _verify_frozen_config(codex_home, home_info["config_sha256"])
-                resume_argv = build_resume_cmd(
+                    _START.call("config_verify", _verify_frozen_config, codex_home, home_info["config_sha256"])
+                resume_argv = _START.call("resume_argv", build_resume_cmd,
                     ws,
                     model=resolved,
                     effort=effort,
@@ -1049,26 +1061,31 @@ def run_round(
                         rounds,
                         rnd,
                         turn_index,
-                        sandbox_command(_inner, ws, bundle, extra_binds=runtime_selector(codex_home)),
+                        _START.call("sandbox_assembly", sandbox_command, _inner, ws, bundle,
+                            extra_binds=_START.call("runtime_bindings", runtime_selector, codex_home)),
                     )
                 else:
                     cmd = resume_argv
             with open(stderr_path, "ab") as err_f, open(cur_prompt, "rb") as in_f:
                 try:
-                    proc = subprocess.Popen(
-                        cmd,
-                        stdin=in_f,
-                        stdout=subprocess.PIPE,
-                        stderr=err_f,
-                        cwd=str(ws),
-                        env=dict(os.environ),
-                        start_new_session=True,
-                    )
+                    from merlin.common.cpu_pool import parse_roster, selected_pool
+
+                    with selected_pool(parse_roster(os.environ.get("MERLIN_CODEX_CPUS", ""))):
+                        proc = _START.call("provider_popen", subprocess.Popen,
+                            cmd,
+                            stdin=in_f,
+                            stdout=subprocess.PIPE,
+                            stderr=err_f,
+                            cwd=str(ws),
+                            env=dict(os.environ),
+                            start_new_session=True,
+                        )
                     active_proc, active_pgid = proc, proc.pid
+                    token_control.provider_started()
                     # Resource telemetry is sampled OUTSIDE the graded sandbox and follows the complete
                     # bwrap/Codex/tool descendant tree. One file per continuation turn prevents ambiguous
                     # counter resets when Codex is resumed in a new process.
-                    _resource_path = rounds / f"round_{rnd:02d}.turn{turn_index:02d}.resource_samples.jsonl"
+                    _resource_path = rounds / f"{artifact_prefix}.turn{turn_index:02d}.resource_samples.jsonl"
                     try:
                         subprocess.Popen(
                             [
@@ -1120,13 +1137,34 @@ def run_round(
                     return 127, tpath
 
                 buf = bytearray()
+                next_control_poll = time.monotonic()
+                stopped_drain_deadline = None
                 with selectors.DefaultSelector() as sel:
                     sel.register(proc.stdout.fileno(), selectors.EVENT_READ)
                     while True:
-                        if time.monotonic() >= deadline:
+                        now = time.monotonic()
+                        if operator_interrupted is None and (continuation_stop is not None or token_control.policy is not None) and now >= next_control_poll:
+                            next_control_poll = now + _CONTROL_POLL_S
+                            reason = continuation_stop() if continuation_stop is not None else None
+                            reason = reason or token_control.poll()
+                            if reason is not None:
+                                if type(reason) is not str or not reason.strip():
+                                    raise ValueError("host continuation stop must return a nonempty reason or None")
+                                operator_interrupted = reason
+                                interrupted_turn = not turn_completed
+                                tr.emit({"type": "codex_operator_interrupt", "reason": reason,
+                                         "turn": turn_index + 1, "turn_incomplete": interrupted_turn,
+                                         "author_process_group": proc.pid, "arrived_at": _now()})
+                                _kill_tree(proc)
+                                if not _process_group_quiescent(proc.pid):
+                                    raise RuntimeError("author process group remains live; refusing snapshot handoff")
+                                stopped_drain_deadline = time.monotonic() + _CONTROL_POLL_S
+                        if stopped_drain_deadline is not None and time.monotonic() >= stopped_drain_deadline:
+                            break
+                        if time.monotonic() >= deadline and operator_interrupted is None:
                             timed_out = True
                             break
-                        wait = min(_POLL_S, max(deadline - time.monotonic(), 0.0))
+                        wait = min(_POLL_S, max((stopped_drain_deadline or deadline) - time.monotonic(), 0.0))
                         if not sel.select(timeout=wait):
                             if proc.poll() is not None and not sel.select(timeout=0):
                                 break
@@ -1228,6 +1266,7 @@ def run_round(
                                 if not isinstance(item, dict):
                                     continue
                                 itype = item.get("type")
+                                turn_progress = turn_progress or (etype == EVENT_ITEM_COMPLETED and _CAP.progress(item))
                                 item_id = str(item.get("id") or f"anon_{seq}")
                                 if itype == ITEM_AGENT_MESSAGE and etype == EVENT_ITEM_COMPLETED:
                                     tr.emit(
@@ -1312,40 +1351,72 @@ def run_round(
             turn_index += 1
             remaining = deadline - time.monotonic()
             turn_errors = errors[turn_errors_start:]
+            token_control.finish()
+            if (token_control.can_resume_checkpoint(operator_interrupted, thread_id=thread_id,
+                    continuous=continue_session, remaining_s=remaining)
+                    and not timed_out and turn_index < _CONTINUE_MAX_TURNS and remaining > _CONTINUE_MIN_S
+                    and (continuation_stop is None or continuation_stop() is None)):
+                tr.emit({'type': 'codex_token_checkpoint', 'reason': operator_interrupted,
+                         'turn_incomplete': interrupted_turn, 'usage_complete': False})
+                operator_interrupted = None; rc = 0
+                recovered_errors.update(range(turn_errors_start, len(errors)))
+                continue
+            host_stop = operator_interrupted or (continuation_stop() if continuation_stop is not None else None)
+            if host_stop is not None and (type(host_stop) is not str or not host_stop.strip()):
+                raise ValueError("host continuation stop must return a nonempty reason or None")
+            if turn_completed or turn_progress:  # the model served this turn: earlier refusals have passed
+                capacity_consecutive = 0
+            backoff_s = _CAP.backoff_s(capacity_consecutive + 1)
             retry_capacity = (
                 continue_session
+                and host_stop is None
                 and thread_id
                 and turn_failed
                 and not turn_completed
                 and not timed_out
                 and rc != 0
-                and turn_errors
-                and all(error.lower().startswith("selected model is at capacity") for error in turn_errors)
-                and capacity_retries < _CAPACITY_MAX_RETRIES
+                and _CAP.refusal(turn_errors)
+                and capacity_consecutive < _CAP.MAX_CONSECUTIVE
                 and turn_index < _CONTINUE_MAX_TURNS
-                and remaining > _CAPACITY_BACKOFF_S + _CONTINUE_MIN_S
+                and remaining > backoff_s + _CONTINUE_MIN_S
             )
             if retry_capacity:
                 capacity_retries += 1
+                capacity_consecutive += 1
                 tr.emit(
                     {
                         "type": "codex_capacity_retry",
                         "attempt": capacity_retries,
+                        "consecutive": capacity_consecutive,
                         "thread_id": thread_id,
                         "model": resolved,
-                        "backoff_s": _CAPACITY_BACKOFF_S,
+                        "backoff_s": backoff_s,
                         "arrived_at": _now(),
                     }
                 )
-                time.sleep(_CAPACITY_BACKOFF_S)
+                time.sleep(backoff_s)
                 recovered_errors.update(range(turn_errors_start, len(errors)))
+                resumed_after_capacity = True
                 continue
+            control_stop = None
+            if continue_session and continuation_stop is not None and not timed_out and rc == 0:
+                try:
+                    control_stop = continuation_stop()
+                    if control_stop is not None and (type(control_stop) is not str or not control_stop):
+                        raise ValueError("continuation control must return None or a nonempty reason")
+                except Exception as exc:
+                    control_stop = f"continuation control refused ({type(exc).__name__})"
+                    errors.append(control_stop)
+                    rc = 1
+                remaining = deadline - time.monotonic()
             stop = (
-                ("" if continue_session else "continuation not enabled")
+                ("host: " + host_stop if host_stop is not None else "")
+                or ("" if continue_session else "continuation not enabled")
                 or ("no thread id to resume" if not thread_id else "")
                 or ("wall budget spent" if remaining <= _CONTINUE_MIN_S else "")
                 or ("the turn did not complete" if timed_out or rc != 0 else "")
                 or (f"turn cap {_CONTINUE_MAX_TURNS}" if turn_index >= _CONTINUE_MAX_TURNS else "")
+                or (control_stop or "")
             )
             tr.emit(
                 {
@@ -1355,6 +1426,8 @@ def run_round(
                     "stopped_because": stop,
                     "remaining_s": round(max(remaining, 0.0), 1),
                     "thread_id": thread_id,
+                    "interrupted": operator_interrupted is not None,
+                    "turn_incomplete": interrupted_turn,
                     "arrived_at": _now(),
                 }
             )
@@ -1363,6 +1436,7 @@ def run_round(
     finally:
         if active_proc is not None and active_pgid is not None:
             _terminate_process_group(active_pgid, active_proc)
+        token_control.finish()
         for handle in (raw_f, stamped_f):
             try:
                 os.fsync(handle.fileno())
@@ -1384,6 +1458,8 @@ def run_round(
     final_text = final_path.read_text() if final_path.is_file() else ""
     usage_complete = turns_started > 0 and turns_reported >= turns_started
     unrecovered_errors = [error for index, error in enumerate(errors) if index not in recovered_errors]
+    result_rc = (OPERATOR_INTERRUPTED_EXIT_CODE if operator_interrupted is not None else
+                 124 if timed_out else ((rc or 1) if unrecovered_errors else rc))
     summary = {
         "thread_id": thread_id,
         "turns_started": turns_started,
@@ -1394,7 +1470,11 @@ def run_round(
         "capacity_retries": capacity_retries,
         "unrecovered_errors": unrecovered_errors[:10],
         "timed_out": timed_out,
-        "exit_code": rc,
+        "operator_interrupted": operator_interrupted is not None,
+        "interruption_reason": operator_interrupted,
+        "turn_incomplete": interrupted_turn,
+        "exit_code": result_rc,
+        "process_exit_code": rc,
         # Which CLI parsed this stream. `unknown_types` above DETECTS contract drift; this says what
         # to compare a drifted run against. None means the binary could not be asked, never a guess.
         "cli_version": cli_version(codex_bin),
@@ -1402,6 +1482,9 @@ def run_round(
         # ChatGPT-auth runs consume a subscription, not metered dollars. Any USD
         # figure downstream is notional and must not enter a money budget.
         "billing_mode": BILLING_MODE,
+        "subagent_capacity": _AS.summary_record(capacity, max_concurrent_subagents, helper_effort),
+        "author_context": _CTX.summary_record(author_context),
+        "token_admission": token_control.last,
         "codex_home": home_info,
         "artifacts": {
             "raw": str(raw_path),
@@ -1411,16 +1494,22 @@ def run_round(
             "final": str(final_path),
         },
     }
-    (rounds / f"round_{rnd:02d}.codex_summary.json").write_text(json.dumps(summary, indent=2))
+    (rounds / f"{artifact_prefix}.codex_summary.json").write_text(json.dumps(summary, indent=2))
     tr.emit({"type": "codex_summary", **summary})
     _link_for_aet(run_dir, raw_path, rnd)
 
+    if operator_interrupted is not None:
+        tr.emit({"type": "result", "subtype": "interrupted", "is_error": True,
+                 "result": "trusted host interrupted author: " + operator_interrupted,
+                 "turn_incomplete": interrupted_turn})
+        tr.close()
+        return result_rc, tpath
     if timed_out:
         tr.emit(
             {"type": "result", "subtype": "error", "is_error": True, "result": f"codex exec timed out after {timeout}s"}
         )
         tr.close()
-        return 124, tpath
+        return result_rc, tpath
     if rc != 0 or unrecovered_errors:
         tr.emit(
             {
@@ -1431,19 +1520,7 @@ def run_round(
             }
         )
         tr.close()
-        return (rc or 1), tpath
+        return result_rc, tpath
     tr.emit({"type": "result", "subtype": "success", "is_error": False, "result": final_text[:2000]})
     tr.close()
     return 0, tpath
-
-
-def _error_text(value: Any) -> str:
-    """Render an error payload without losing the message nested inside it."""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        message = value.get("message")
-        if isinstance(message, str):
-            return message
-        return json.dumps(value, sort_keys=True)
-    return "" if value is None else str(value)

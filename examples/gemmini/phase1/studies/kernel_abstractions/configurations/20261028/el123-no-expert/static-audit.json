@@ -1,0 +1,108 @@
+{
+  "schema": "operator.el123_no_expert_static_audit.v1",
+  "all_passed": true,
+  "source_revision": "02d14a7d523f1ff72eaf4fb6ba6c56d2bbd47b33",
+  "export_id": "02d14a7d523f",
+  "author_jobs_launched": 0,
+  "cpu_reservations_created": 0,
+  "native_qualification": "pending",
+  "launch_authorized": false,
+  "common_normalized_spec_sha256": "eb8c53d3a0e5170962d8a49a1349492ecc619996cf60a3ca090ef19c1826b2b2",
+  "common_policy": {
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/base-policy.json",
+    "sha256": "2f959a363bd9c820d05341c94781055123fbc1cf1bebb9be826998389847b2d4"
+  },
+  "common_guidance": {
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/guidance.md",
+    "sha256": "74322cee22bd6c76431668df861613e25ebd89bd4594fcb038afec761a5d6295"
+  },
+  "arms": [
+    {
+      "arm": "el1",
+      "run_id": "xs-el123-noexpert-20261028-r1-el1",
+      "profile": "xs-el-no-expert-v1/el1",
+      "queued_cpus": [
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        56,
+        57,
+        58,
+        59,
+        60,
+        91,
+        92,
+        93
+      ],
+      "supplied_module_count": 0,
+      "expert_material_selected": false,
+      "fresh_author_paths_absent": true,
+      "spec": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/el1.yaml",
+        "sha256": "91c398ecccbd4d8476424efd73d9ca5a5b95e91e95218d58f0b7e16ce188f54a"
+      }
+    },
+    {
+      "arm": "el2",
+      "run_id": "xs-el123-noexpert-20261028-r1-el2",
+      "profile": "xs-el-no-expert-v1/el2",
+      "queued_cpus": [
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75
+      ],
+      "supplied_module_count": 12,
+      "expert_material_selected": false,
+      "fresh_author_paths_absent": true,
+      "spec": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/el2.yaml",
+        "sha256": "5bba66f6f52f2e6e0a2d3c8db8d836bfa0f8e0375a09cbb379f4245d034b3683"
+      }
+    },
+    {
+      "arm": "el3",
+      "run_id": "xs-el123-noexpert-20261028-r1-el3",
+      "profile": "xs-el-no-expert-v1/el3",
+      "queued_cpus": [
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90
+      ],
+      "supplied_module_count": 34,
+      "expert_material_selected": false,
+      "fresh_author_paths_absent": true,
+      "spec": {
+        "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/el3.yaml",
+        "sha256": "454d2499f8b2100e17cf9aad430852afd4cc087a1fcec1fcb4265eba878eae36"
+      }
+    }
+  ]
+}

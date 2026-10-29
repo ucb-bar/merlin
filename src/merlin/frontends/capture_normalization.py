@@ -19,7 +19,9 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass
+from functools import lru_cache
 
 from merlin.common import digest as _mdigest
 from merlin.frontends.linalg_mlir import parse_mlir_text
@@ -60,7 +62,7 @@ def _opaque_calls(module) -> dict[str, int]:
     return dict(sorted(names.items()))
 
 
-def normalize_capture_mlir(
+def _normalize_capture_mlir_uncached(
     raw_text: str,
     *,
     reported_opaque: Mapping[str, int] | None = None,
@@ -120,3 +122,25 @@ def normalize_capture_mlir(
         "remaining_opaque_detail": remaining,
     }
     return normalized, receipt
+
+
+@lru_cache(maxsize=2)
+def _normalize_capture_mlir_cached(raw_text: str) -> tuple[str, dict]:
+    # A complete-model source audit reopens the same immutable captured bytes in
+    # several independent proofs. Normalization parses and verifies that module
+    # twice; reuse the result only when the entire source text is identical.
+    return _normalize_capture_mlir_uncached(raw_text)
+
+
+def normalize_capture_mlir(
+    raw_text: str,
+    *,
+    reported_opaque: Mapping[str, int] | None = None,
+) -> tuple[str, dict]:
+    """Normalize captured MLIR, preserving independent importer-census checks."""
+    if reported_opaque is not None:
+        return _normalize_capture_mlir_uncached(raw_text, reported_opaque=reported_opaque)
+    normalized, receipt = _normalize_capture_mlir_cached(raw_text)
+    # Callers may attach their own observations to a receipt. The cache retains
+    # only the immutable normalization result, never a caller-mutated record.
+    return normalized, deepcopy(receipt)

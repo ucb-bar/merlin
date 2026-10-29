@@ -1,0 +1,24 @@
+{
+  "at_epoch": 1792675292.5184524,
+  "reason": "candidate profile still pinned predecessor feature engine; preserve failed attempt and correct exact source identity before replay",
+  "processes": [
+    {
+      "pid": 346091,
+      "ppid": 12743,
+      "command": "python3 ../.tmp/replay_fetch_refill.py ",
+      "start_ticks": "31145347"
+    },
+    {
+      "pid": 348933,
+      "ppid": 346091,
+      "command": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike --extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so --extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so --extension=gemmini -p1 --isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr -m0x80000000:0x400000000 --instructions=1000000000 --timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model.json --timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay/08.json --timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/08.json --timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63 retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf ",
+      "start_ticks": "31152533"
+    },
+    {
+      "pid": 348959,
+      "ppid": 346091,
+      "command": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike --extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so --extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so --extension=gemmini -p1 --isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr -m0x80000000:0x400000000 --instructions=1000000000 --timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model.json --timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay/09.json --timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/09.json --timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63 retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf ",
+      "start_ticks": "31152607"
+    }
+  ]
+}

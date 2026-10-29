@@ -1,0 +1,22 @@
+{
+  "AGENT.md": "d603cd7489b7bdecd87b899e7e7df5fb08bafcaf2522dccfa2c29b6719a59bfa",
+  "README.md": "0bfe472e05a6b06fe75ebf7903bd7bb44f1f8b5c5eece023402d28a6e2f5e426",
+  "acceptance.json": "ada62d8b4bfd0165cd66b75f4e6cf50b20cb56c255aaa6897bb12721deaf427e",
+  "build.json": "482ceb0ac00887f9d2e20978413e7b6e026101c75409bbf6c6d398efc82fde87",
+  "feedback-compact.json": "c32d0d765d66a23f179bf2037ee8b59d58e65f7757e85176b33d787b5268c4bc",
+  "feedback.json": "cd66af3e5b5e72f4a478c882e1869cb43f1a90471bfa2df20d03b97278faabb3",
+  "off-report.json": "688d6ff84e37ada690217a170d358fdff718252ceba69f3f6dfc82b177e428a7",
+  "on-report.json": "7aa27c291451567d242fbe18f24b5118c6000489e3d45673193be236fc6154ee",
+  "selected-base-build.json": "92179295aa776238246946ab6e36b2cf7f8ed63e0b5f3d697d6d33f3d4d90989",
+  "source-overlay.json": "abc7e63e26625ca08c6b246a3616d6b3bc89595c54f8e32a051a4571f3a11b7a",
+  "ws-acceptance.json": "f262a82e304cc0892c39f0abd249967b6532283c96506893059d3da376900712",
+  "ws-baseline-report.json": "802388c8c21f4aaa3722364bed284eff8c5cacf859b844ae16cb29e70c4e774e",
+  "ws-feedback-compact.json": "d08219f7db4ca87c311be411d231d5f386c0cbbd5c603f286001295f3c89c3d2",
+  "ws-off-report.json": "d888c044a37f0079f3411be361494a65520663f7e994b82ac17f4d85411fac10",
+  "ws-on-report.json": "d726bb6d8be1ecf8e91340ebd518a9a36a05a320751caed02c408a347eb4af08",
+  "ws-redaction.json": "4755fb14506ec62a266133a395e17778de5503b7878418c0bf72eb844f1a92b5",
+  "ws-runtime-freeze.json": "9beb820ba9dcf69fe8cacd6d4ba9ba68aee03d014d915051451a9f2dedbe74ed",
+  "ws-runtime.json": "0ca10a432b544703e3570fe242a39b38abf0205a7ce6d4aa5fd455f928e371f3",
+  "ws-selection-delta.json": "4cb9a6b7cc4976f0b8e0d5bbcc0f4b85306b2a6054a8fc715de5c866f35be60f",
+  "ws-timing-source-manifest.json": "b3de51a2494a2f06522d004b79e73bc63a99a27c6636c6f2971f0cb1dc947d37"
+}

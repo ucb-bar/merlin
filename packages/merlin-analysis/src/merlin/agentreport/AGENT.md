@@ -19,6 +19,8 @@ zero plots as a finding; a refusal plots as a gap.
 - `tokens.py` — token buckets and the three-state cost classification. Explicit owned rollout
   paths can supply cumulative counters and completed-request windows; cached input and reasoning
   output are subsets, never extra tokens. Session metadata does not prove agent ownership.
+- `campaign/` — one campaign (continuations + restarts) drawn as a single stitched run; inputs come
+  from a YAML manifest. `python -m merlin.agentreport.campaign --manifest <yaml>`; see its AGENT.md.
 - `corpus_coverage.py` — how much of a target's DECLARED corpus has evidence, unioned over
   every run. One row per capsule, not per run, so it does not live in `run_facts.json`.
 

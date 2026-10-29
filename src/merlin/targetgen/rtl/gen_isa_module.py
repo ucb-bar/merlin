@@ -246,7 +246,12 @@ def main(argv=None):
         if complete is not None:
             # Target-specific derivation is explicit support behavior, never a
             # guess from an address width. Derivation errors must not be hidden.
-            encoding = complete(encoding)
+            import inspect
+
+            # Generic support completes the encoding from the target's own contract, so it needs to
+            # know which target this is; a per-target support's completer takes the encoding alone.
+            takes_target = "target" in inspect.signature(complete).parameters
+            encoding = complete(encoding, target=a.target) if takes_target else complete(encoding)
     try:
         code = generate_header(facts, encoding or {}, a.target) if a.header else generate(facts, encoding)
     except NotARoccTarget as e:

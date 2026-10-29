@@ -307,6 +307,10 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
     validate_restrictions(document)
     if "transfer_contracts" in document:
         document["transfer_contracts"] = validate_transfer_contracts(document["transfer_contracts"])
+    if "isa" in document:
+        from merlin.targetgen.isa_spec import validate_isa_spec
+
+        validate_isa_spec(document["isa"])
     return document
 
 

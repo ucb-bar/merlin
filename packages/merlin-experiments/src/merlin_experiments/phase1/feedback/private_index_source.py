@@ -25,6 +25,7 @@ from merlin.frontends.linalg_patterns import (
 from merlin.frontends.prepared_index_source_body import PROOF_SCHEMA, PROOF_SCOPE, PROOF_STATUS
 from merlin.targetgen.application_inventory import verify_capture_receipt
 from merlin_experiments.phase1.feedback import private_control_support as control
+from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 from merlin_experiments.phase1.feedback.private_literal_arange import _range, prove_literal_arange_source
 
 PENDING = PROOF_STATUS
@@ -45,7 +46,7 @@ def _ids(op: Any) -> tuple[str, ...]:
     return tuple(item.data for item in value.data)
 
 
-def _static_tensor(value: Any, dtype: str, index_bits: int) -> tuple[int, ...]:
+def _static_tensor(value: Any, dtype: str, index_bits: int, *, allow_scalar: bool = False) -> tuple[int, ...]:
     from xdsl.dialects.builtin import NoneAttr, TensorType
 
     typ = value.type
@@ -53,7 +54,7 @@ def _static_tensor(value: Any, dtype: str, index_bits: int) -> tuple[int, ...]:
     shape = tuple(typ.get_shape())
     limit = (1 << (index_bits - 1)) - 1
     _need(
-        bool(shape)
+        (bool(shape) or allow_scalar)
         and str(typ.element_type) == dtype
         and all(type(dim) is int and 0 < dim <= limit for dim in shape)
         and prod(shape) * (8 if dtype == "i64" else 1) <= limit,
@@ -102,7 +103,9 @@ def _scalar_splat(value: Any, index_bits: int) -> int:
     from xdsl.dialects import arith, tensor
     from xdsl.dialects.builtin import IntegerAttr
 
-    _static_tensor(value, "i64", index_bits)
+    # A rank-zero tensor is one scalar element. Only this literal-offset path
+    # permits it; coordinate tensors still require a nonempty static shape.
+    _static_tensor(value, "i64", index_bits, allow_scalar=True)
     splat = value.owner
     _need(
         type(splat) is tensor.SplatOp
@@ -343,7 +346,7 @@ def prove_index_source(capture: Path, *, index_bits: int) -> dict[str, Any]:
         normalization.get("input_sha256") == raw_sha and normalization.get("output_sha256") == normalized_sha,
         "source normalization is not bound to raw bytes",
     )
-    module = mq.parse(normalized)
+    module = preparation.parse(source, normalized, raw=raw)
     try:
         module.verify()
     except Exception as exc:  # noqa: BLE001 - malformed source must refuse

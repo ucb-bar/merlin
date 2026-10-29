@@ -1,0 +1,195 @@
+{
+  "schema": "operator.observer_only_relink.v1",
+  "original_receipt": {
+    "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/build_receipt.json",
+    "sha256": "7df91fd3d7e6b1fa927b264f0b612f898a2056aa5a83a10660f18bc75c84d0d8",
+    "bytes": 1341067
+  },
+  "original_binary": {
+    "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/emulator",
+    "sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651",
+    "bytes": 5293168
+  },
+  "generated_header": {
+    "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/model/TestHarness.h",
+    "sha256": "9f5f74675c587ab4bc8a8571d2ed3e3889e94cef882ea4c70566f5518273bb8a",
+    "bytes": 4430029
+  },
+  "unchanged_objects": [
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/000_TestHarness0.o",
+      "sha256": "7988a7b0cf7890930ab8d90c000129585d4e3d8be731d358805424035c6b6656",
+      "bytes": 181208
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/001_TestHarness1.o",
+      "sha256": "54c60219968443acaa9a2097015e92e8e06415f2a768c5434c481c58bac3d2ec",
+      "bytes": 132624
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/002_TestHarness10.o",
+      "sha256": "b17a5256ebbbbcbdf1c149e0ae82703476a844a8c8266b59cd1cfb4a1f1d785b",
+      "bytes": 69048
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/003_TestHarness11.o",
+      "sha256": "5ef136b9c83a4429362489ac11d78741b5c58b537e8fd82dd68f41ccbbb066ac",
+      "bytes": 179128
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/004_TestHarness12.o",
+      "sha256": "46d82a20bbc0e518496ea494b6b0540e2ebe636c65178da4d2e3ae09241f27df",
+      "bytes": 706824
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/005_TestHarness13.o",
+      "sha256": "218250f61104040ee03bafff05af244a0177fdb0142cb4b44b54141f3513cb16",
+      "bytes": 312656
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/006_TestHarness2.o",
+      "sha256": "5cbb28832ff57da7fb818b6bc6faa19e4504515ecd30117a685715fed4541925",
+      "bytes": 221248
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/007_TestHarness3.o",
+      "sha256": "d53c7f32db9de3e7cccb93d884bc237c0004d615cf2775a842c4fde07a72e894",
+      "bytes": 179456
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/008_TestHarness4.o",
+      "sha256": "45904708599c3fec41f843177fb8b43957c5ce3bb057f47a29cfd30abc4b7d66",
+      "bytes": 176240
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/009_TestHarness5.o",
+      "sha256": "233f40a016717591c85582bd37cadcc2a2fe0d1b24cb48424db138653cbb6e7f",
+      "bytes": 278824
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/010_TestHarness6.o",
+      "sha256": "db8b68e59530f59316f3bce8449f830140fd3aa0e0c2827e22481225a0139386",
+      "bytes": 212496
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/011_TestHarness7.o",
+      "sha256": "58629af351109210fb76496f92aa3c3201c3418c15ceb19c5769520d2a9dbdc2",
+      "bytes": 199880
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/012_TestHarness8.o",
+      "sha256": "5b871c3fb4c09665d1529fc7735bcb6ebee1ec9e6488ea080f6d85b05a3bb16d",
+      "bytes": 219088
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/013_TestHarness9.o",
+      "sha256": "fd02db6db56f32681356fd0ced545820dd7adc7e3b265f640b139a40c50e3127",
+      "bytes": 150008
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/014_mm.o",
+      "sha256": "b5fd1508f7a65416363f5c2e2fd769aea6be1c80c646eb52dc0fa78637ca6b63",
+      "bytes": 22552
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/015_testchip_htif.o",
+      "sha256": "be40932d1641954634a4fa2da0827f01c800f778e6e060ff6495884e7d764ac9",
+      "bytes": 6552
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/016_testchip_tsi.o",
+      "sha256": "c15042c386c7522295db0b579a8ece04828f8e94d5d7638b82c87926b700925b",
+      "bytes": 18312
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/017_uart.o",
+      "sha256": "30b426900b07ae6d2c8072d56686892bfa66a671db65badef154a7204ece9edd",
+      "bytes": 8792
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/019_blackboxes.o",
+      "sha256": "41cca13128dab18da13b6f0421d463c06d562300b37f2a5d3ab1bba0b128bb6e",
+      "bytes": 98816
+    }
+  ],
+  "observer_sources": [
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/main.cpp",
+      "sha256": "4de69a6411368e564166c963a74202888aa84e6df9fe70c28c02c16b021fdb41",
+      "bytes": 3231
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/refill_observer.hpp",
+      "sha256": "0b42290441ed778e54a3e64afc838993447fa13329620a39e120e03ce9a8084d",
+      "bytes": 13416
+    }
+  ],
+  "replacement_main_object": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/main.o",
+    "sha256": "4a3faf7711c2def50d9f128888ec2f907f3165fc87623060c84e5a8507c50762",
+    "bytes": 33496
+  },
+  "binary": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/emulator",
+    "sha256": "bbde8b0bda803b953fe2a70d9da33fe85f3d214f1fbdfb703c2126b697e7ebf1",
+    "bytes": 5306112
+  },
+  "commands": [
+    {
+      "stage": "compile_observer_main",
+      "argv": [
+        "retained/workspace/toolchains/llvm-a47bddcc/install/bin/clang-23",
+        "--driver-mode=g++",
+        "-O2",
+        "-std=c++17",
+        "-Wno-format",
+        "-Iretained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/model",
+        "-Iretained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/testchipip/src/main/resources/testchipip/csrc",
+        "-Iretained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/include",
+        "-c",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/main.cpp",
+        "-o",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/main.o"
+      ],
+      "elapsed_s": 0.512737629993353,
+      "returncode": 0
+    },
+    {
+      "stage": "link_unchanged_model_objects",
+      "argv": [
+        "retained/workspace/toolchains/llvm-a47bddcc/install/bin/clang-23",
+        "--driver-mode=g++",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/000_TestHarness0.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/001_TestHarness1.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/002_TestHarness10.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/003_TestHarness11.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/004_TestHarness12.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/005_TestHarness13.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/006_TestHarness2.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/007_TestHarness3.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/008_TestHarness4.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/009_TestHarness5.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/010_TestHarness6.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/011_TestHarness7.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/012_TestHarness8.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/013_TestHarness9.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/014_mm.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/015_testchip_htif.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/016_testchip_tsi.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/017_uart.o",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/main.o",
+        "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/019_blackboxes.o",
+        "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/lib/libfesvr.a",
+        "-lgmp",
+        "-lpthread",
+        "-o",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/emulator"
+      ],
+      "elapsed_s": 0.056036219000816345,
+      "returncode": 0
+    }
+  ],
+  "target_execution_performed": false,
+  "guest_elf_unchanged": true,
+  "hardware_elaboration_or_regeneration": false
+}

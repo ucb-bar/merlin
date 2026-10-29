@@ -554,7 +554,10 @@ def compact_runtime_rows(rows, blob: bytes, projection: EntryWeightProjection):
         for index in projection.removed_original_indices
     ):
         raise ValueError("runtime projection removal/remap contract disagrees")
-    pack = bytearray()
+    from .weight_payload import WeightPayload
+
+    streamed = isinstance(blob, WeightPayload)
+    pack = WeightPayload() if streamed else bytearray()
     spans = {}
     selected = []
     for index in (*projection.retained_original_indices, *range(count, len(rows))):
@@ -567,9 +570,10 @@ def compact_runtime_rows(rows, blob: bytes, projection: EntryWeightProjection):
                 raise ValueError("retained weight span exceeds actual packed bytes")
             key = (offset, size)
             if key not in spans:
-                pack.extend(bytes((-len(pack)) % GENERATED_WEIGHT_ALIGNMENT))
+                padding = (-len(pack)) % GENERATED_WEIGHT_ALIGNMENT
+                pack.extend(WeightPayload.zeros(padding) if streamed else bytes(padding))
                 spans[key] = len(pack)
                 pack.extend(blob[offset : offset + size])
             offset = spans[key]
         selected.append((kind, offset, rank, shape, elem, dtype))
-    return selected, bytes(pack)
+    return selected, pack if streamed else bytes(pack)

@@ -71,6 +71,8 @@ class BrokerSpec:
     module: str  # the driver-side broker module
     log: str  # its log file, written into the channel dir
     shims: tuple[tuple[str, str], ...]  # (canonical Python module, staged workspace filename)
+    #: The request commands the broker answers (each a function its staged clients expose).
+    calls: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -95,6 +97,38 @@ class ToolSpec:
     #: False for a tool that other tools import. Dropping one alone does not measure its absence, it
     #: breaks every tool that depends on it — which has already happened once (see ``merlin_infra``).
     ablatable: bool = True
+    #: ``(bundle path, what that file provides)`` for a tool whose grant a release may narrow. When a
+    #: bundle grants only some of them, the rendered description names exactly the granted parts, so the
+    #: text an author reads cannot advertise a file the bundle denies. Empty: ``blurb`` is always used.
+    parts: tuple[tuple[str, str], ...] = ()
+    #: A brokered tool that offers the calls a narrowed grant no longer exposes as source.
+    brokered_alternative: str = ""
+
+
+def describe_grant(spec: ToolSpec, granted) -> str:
+    """The author-facing description of ``spec`` for a bundle that grants exactly the paths ``granted``.
+
+    ``granted(path) -> bool`` answers for one registry path. A tool without ``parts``, or one whose every
+    part is granted, keeps its reviewed ``blurb`` byte for byte (historical bundles are unchanged).
+    """
+    if not spec.parts:
+        return spec.blurb
+    given = [text for path, text in spec.parts if granted(path)]
+    if len(given) == len(spec.parts):
+        return spec.blurb
+    lines = [
+        f"This bundle grants part of `{spec.name}`: " + ("; ".join(given) if given else "none of its sources") + "."
+    ]
+    lines.append("Its other sources are operator-only here and not readable or importable.")
+    alternative = TOOLS.get(spec.brokered_alternative) if spec.brokered_alternative else None
+    if alternative is not None and alternative.broker is not None:
+        clients = ", ".join(f"`{name}`" for _, name in alternative.broker.shims)
+        calls = ", ".join(f"`{call}`" for call in alternative.broker.calls) or "its calls"
+        lines.append(
+            f"The `{alternative.name}` broker answers {calls} operator-side; call them through the "
+            f"staged clients {clients}."
+        )
+    return " ".join(lines)
 
 
 #: The ISA dev tools and the CCA contract tools are ORACLE-FREE by construction: the assembler encodes
@@ -115,6 +149,7 @@ _CCA_BROKER = BrokerSpec(
         ("merlin_experiments.phase1.tools.cca", "cca_contract.py"),
         ("merlin_experiments.phase1.tools.cca", "action_catalog.py"),
     ),
+    ("check_bijection", "escalation_ladder"),
 )
 
 # Public standalone clients common to every treatment; brokers remain host-owned.
@@ -122,6 +157,8 @@ COMMON_CLIENTS = (
     ("merlin_experiments.phase1.tools.selfcheck", "agent_selfcheck.py"),
     ("merlin_experiments.phase1.tools.simjob", "simjob.py"),
     ("merlin_experiments.phase1.tools.await_verdict", "await_verdict.py"),
+    ("merlin_experiments.phase1.tools.model_check", "agent_model_check.py"),
+    ("merlin_experiments.phase1.tools.result_details", "qa_result_details.py"),
 )
 
 # Common feedback is not an ablatable tool treatment. Its host owners share the
@@ -129,6 +166,12 @@ COMMON_CLIENTS = (
 COMMON_BROKERS = (
     BrokerSpec(".qa_channel", "merlin_experiments.phase1.brokers.selfcheck", "broker.log", (COMMON_CLIENTS[0],)),
     BrokerSpec(".qa_channel", "merlin_experiments.phase1.brokers.simjob", "simjob_broker.log", (COMMON_CLIENTS[1],)),
+    BrokerSpec(
+        ".model_check_channel",
+        "merlin_experiments.phase1.brokers.model_check",
+        "model_check_broker.log",
+        (COMMON_CLIENTS[3],),
+    ),
 )
 
 
@@ -190,6 +233,11 @@ TOOLS: dict[str, ToolSpec] = {
             # the complete kernels tree contains unrelated implementation and benchmark surfaces.
             f"{_PY}kernels/endpoints.py",
             f"{_PY}kernels/roles.py",
+            # The two above are compatibility identities for these generic analyses.
+            f"{_PY}compile/__init__.py",
+            f"{_PY}compile/analysis/__init__.py",
+            f"{_PY}compile/analysis/compute_endpoints.py",
+            f"{_PY}compile/analysis/instruction_roles.py",
         ),
         note="ALLOWED tool: xDSL kit / CCA spine",
         ablatable=False,
@@ -222,6 +270,19 @@ TOOLS: dict[str, ToolSpec] = {
         )
         + (f"{_PY}targetgen/rtl_backend.py",),
         note="ALLOWED tool: xDSL kit / CCA spine",
+        parts=(
+            (f"{_PY}kernels/cca.py", "extract a CCA (`merlin.kernels.cca`)"),
+            (f"{_PY}kernels/cca_compare.py", "diff two CCAs (`merlin.kernels.cca_compare`)"),
+            (f"{_PY}kernels/cca_contract.py", "check the CCA<->action bijection (`merlin.kernels.cca_contract`)"),
+            (f"{_PY}kernels/action_catalog.py", "walk the escalation ladder (`merlin.kernels.action_catalog`)"),
+            (f"{_PY}kernels/microkernel.py", "author a microkernel (`merlin.kernels.microkernel`)"),
+            (
+                f"{_PY}targetgen/rtl_backend.py",
+                "the target's structural profile and derived routing levers from its reviewed RTL facts "
+                "(`merlin.targetgen.rtl_backend.target_profile` / `derived_levers`)",
+            ),
+        ),
+        brokered_alternative="cca_tools",
     ),
     "rtl_generators": ToolSpec(
         "rtl_generators",
@@ -278,6 +339,35 @@ TOOLS: dict[str, ToolSpec] = {
         "as plain imports inside the sandbox. Oracle-free: public schema against public routes.",
         broker=_CCA_BROKER,
     ),
+    "isa_dialect_generation": ToolSpec(
+        "isa_dialect_generation",
+        "Optional ISA-derived instruction dialect generation. Run `python -m "
+        "merlin.targetgen.isa_codegen_cli --software-spec PATH --facts PATH --target NAME --out DIR` "
+        "using the admitted software declaration and selected RTL facts. Generates instruction "
+        "operations, local verifiers and encoding mechanics; no tensor lowering or schedules. "
+        "Unresolved declarations refuse generation.",
+        bundle_paths=tuple(f"{_PY}targetgen/{name}.py" for name in ("isa_spec", "isa_dialect_gen", "isa_codegen_cli")),
+        note="ALLOWED (ISA generation arm): declarative instruction generator",
+        deny_reason="optional ISA dialect generation requires EL5 or EL6",
+        ablatable=False,
+    ),
+    "lean_proof_authoring": ToolSpec(
+        "lean_proof_authoring",
+        "Optional interactive Lean transformation tools. Run `python -m merlin.verify.lean_cli --help` "
+        "for inspect/check on your own before/after IR and the admitted semantic contract. "
+        "The installed, pinned Lean toolchain must be available; a missing tool or timeout is not "
+        "a proof. You cannot alter admitted semantics or the host-owned formal coverage policy.",
+        bundle_paths=(
+            f"{_PY}verify/lean_contract.py",
+            f"{_PY}verify/lean_export.py",
+            f"{_PY}verify/lean_checker.py",
+            f"{_PY}verify/lean_cli.py",
+            f"{_PY}verify/lean/Merlin/Foundation.lean",
+        ),
+        note="ALLOWED (Lean authoring arm): checked transformation proof development",
+        deny_reason="interactive Lean proof development requires EL6",
+        ablatable=False,
+    ),
 }
 
 
@@ -301,6 +391,8 @@ ARM_TOOLS: dict[str, tuple[str, ...]] = {
     # stop being comparable to the later one. Same reasoning as the eqsat arm above; same resolution.
     "merlin_verify": _ASSISTED + ("rtl_generators", "rtl_facts", "verify_seam"),
     "merlin_pass_catalog": _ASSISTED + ("rtl_generators", "rtl_facts", "pass_catalog"),
+    "merlin_isa": _ASSISTED + ("rtl_generators", "rtl_facts", "isa_dialect_generation"),
+    "merlin_lean": _ASSISTED + ("rtl_generators", "rtl_facts", "isa_dialect_generation", "lean_proof_authoring"),
 }
 
 
@@ -334,6 +426,9 @@ def arm_tools(arm: str, *, add: tuple[str, ...] = (), drop: tuple[str, ...] = ()
     """
     for n in (*add, *drop):
         spec(n)  # fail closed on a typo before anything is generated
+    restricted = {"isa_dialect_generation", "lean_proof_authoring"} & set(add)
+    if restricted:
+        raise ValueError("optional ISA/Lean capabilities require their explicit EL5/EL6 level, not --with-tool")
     bad = [n for n in drop if not spec(n).ablatable]
     if bad:
         raise ValueError(

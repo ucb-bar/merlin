@@ -22,7 +22,7 @@ from merlin.capture import bundle
 from merlin.common import digest as _mdigest
 from merlin.common.artifacts import finish_run, new_product, start_run
 from merlin.common.paths import repo_root
-from merlin.common.yaml import load_yaml, write_yaml
+from merlin.common.yaml import write_yaml
 
 from .freeze import sha256_paths
 from .paper import MatrixCell, PaperStudySpec, Preflight, validate_paper_result
@@ -115,7 +115,7 @@ def execution_matrix(spec: PaperStudySpec) -> tuple[MatrixCell, ...]:
         blocks.setdefault((cell.model.name, cell.precision, cell.core_count), []).append(cell)
 
     def digest(label: str) -> str:
-        return hashlib.sha256(f"{seed}:{label}".encode("utf-8")).hexdigest()
+        return hashlib.sha256(f"{seed}:{label}".encode()).hexdigest()
 
     ordered: list[MatrixCell] = []
     for block in sorted(blocks, key=lambda value: digest("block:" + ":".join(map(str, value)))):
@@ -485,6 +485,19 @@ def environment_preflight(spec: PaperStudySpec) -> Preflight:
             blockers.append("K1 board/toolchain is unavailable")
     except Exception as exc:  # noqa: BLE001
         blockers.append(f"K1 availability check failed: {exc}")
+    if spec.contraction_format_requirements:
+        from .capture_format_policy import require_frozen_formats
+
+        try:
+            roots = {
+                (model.name, precision): _resolve_path(model.artifacts[precision]["path"])
+                for model in spec.models
+                for precision in model.precisions
+                if precision in spec.contraction_format_requirements
+            }
+            require_frozen_formats(spec.canonical_dict(), roots)
+        except (OSError, ValueError, KeyError):
+            blockers.append("Declared contraction format selection is unavailable.")
     return Preflight(tuple(dict.fromkeys(errors)), tuple(dict.fromkeys(blockers)), tuple(dict.fromkeys(warnings)))
 
 

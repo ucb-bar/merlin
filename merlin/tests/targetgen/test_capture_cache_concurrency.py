@@ -122,6 +122,8 @@ def test_local_implementation_bytes_change_cache_identity(tmp_path, monkeypatch)
     original = capture._cache_slot("model", "f32", "source", None)
     assert original is not None
     assert "merlin.targetgen._m2m_capture_worker" in owners
+    assert "merlin.targetgen._recipe_agreement" in owners
+    assert "merlin.targetgen._capture_integer_mm" in owners
     assert "merlin.frontends.capture_normalization" in owners
     for path in owners.values():
         path.write_text("changed source\n")

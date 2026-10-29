@@ -51,13 +51,22 @@ its category, its detail, its first mismatch -- and a record that carries only t
 replace actionable feedback with an assertion. Re-running a failing capsule is also the cheap direction:
 the ladder fail-fasts, so a refuted capsule never reaches the expensive tier anyway.
 
-**The first tier the ladder executes is always paid for.** The executable identity is only available
+A compared ``fail`` is still NOTED, apart from the store (:data:`NOTES`), under the same key and with
+no detail: :func:`noted_failure` answers only "did these exact bytes already fail this tier on this
+instrument?", so a selector can decline to re-buy a known failure without calling it anything but a
+failure. :func:`lookup` never reads a note, and a certificate for the same key outranks one.
+
+**The legacy first-tier path executes freshly.** The executable identity is only available
 once something in THIS run has built the ELF, and it is the first executed tier's adapter that builds
 it -- so that tier is never carried, on any target, without a single rule saying so. Which tier that is
 belongs to ``tier_policy.tier_order`` (cheapest-measured-first, with never-yet-measured tiers ahead of
 priced ones so the ladder always learns a price); on a calibrated target it is the screen, which is
 exactly where this wants it: the cheap tier is re-executed against the bytes on disk every time, and the
-expensive one is what gets carried.
+expensive one is what gets carried. An explicitly issued original semantic
+simulation request additionally permits lookup after a fresh engine-specific
+ELF build and before dispatch, including a first native tier. It binds all
+stimulus, oracle, policy, engine and grader inputs and reports a carry without
+new execution, wall timing or an independent measurement.
 
 **"The cheap tier is cheap" was true of its SIMULATION and false of its cost.** The 94.7% above is an
 adapter-wall figure measured while the cert tier was still being re-bought; once certificates carry, what
@@ -98,6 +107,13 @@ Two stores are read, narrowest first:
 
 Disable with ``MERLIN_TIER_CERT_CACHE=0``; point it elsewhere by setting that variable to a directory.
 Name a promotion ledger with ``MERLIN_TIER_CERT_LEDGER`` (os.pathsep-separated paths).
+
+**Across relaunches.** The judge's identity names its files by absolute path, so a run relaunched from a
+new frozen framework export is a new instrument even when its grading bytes are identical, and nothing
+carries between runs. ``MERLIN_TIER_CERT_PORTABLE=1`` names them relative to the repository instead, so a
+certificate earned by the same program under byte-identical grading code carries into the next run (and
+says so in its ``carried`` block). It is off by default because carrying into a new run is an operator
+decision: a reviewed joint seed must approve it (``inherit_certificates_for_identical_executables``).
 """
 
 from __future__ import annotations
@@ -120,6 +136,8 @@ __all__ = [
     "instrument_digest",
     "lookup",
     "record",
+    "noted_failure",
+    "NOTES",
     "carried_block",
     "reuse_block",
     "disabled",
@@ -136,12 +154,21 @@ RECORD_VERSION = 1
 _CACHE_ENV = "MERLIN_TIER_CERT_CACHE"
 #: Environment knob: promotion ledgers (``qa/tier_state.json``) to consult, os.pathsep-separated.
 _LEDGER_ENV = "MERLIN_TIER_CERT_LEDGER"
+#: Environment knob, ``1`` to identify the judge by repository-relative file names instead of absolute
+#: paths. Off by default. See :func:`instrument_digest`.
+PORTABLE_ENV = "MERLIN_TIER_CERT_PORTABLE"
 
 #: Spellings of "off". A value that is neither one of these nor a usable directory is a PATH.
 _OFF = frozenset({"0", "off", "no", "false", "none", "disabled"})
 
 #: The one status that may be carried. See the module docstring: a stored failure is re-run.
 _CARRYABLE = "pass"
+
+#: The one status that is NOTED instead: a tier executed and compared that disagreed. Never carried.
+_NOTED = "fail"
+
+#: Subdirectory of a store holding noted (never carried) verdicts, apart from its carryable records.
+NOTES = "noted-verdicts"
 
 #: Keys dropped from a carried tier record because they describe an act of measurement that did not
 #: happen now. Everything else is a property of the program and the device, which the key pins.
@@ -160,7 +187,7 @@ def disabled() -> bool:
     return (os.environ.get(_CACHE_ENV, "") or "").strip().lower() in _OFF
 
 
-def cache_root() -> "Path | None":
+def cache_root() -> Path | None:
     """The store directory, or ``None`` when the cache is off or its root cannot be created."""
     if disabled():
         return None
@@ -214,7 +241,7 @@ def _valid_pin(name, value) -> bool:
     )
 
 
-def execution_identity(*, target, executables, toolchain_shas) -> "str | None":
+def execution_identity(*, target, executables, toolchain_shas) -> str | None:
     """Content identity for exactly what one capsule's hardware tier executes, or ``None``.
 
     ``{the bytes of every executable this run produced} x {target} x {every declared hardware pin}``.
@@ -244,7 +271,7 @@ def execution_identity_reason(*, target, executables, toolchain_shas) -> str:
     return _identity(target=target, executables=executables, toolchain_shas=toolchain_shas)[1]
 
 
-def _identity(*, target, executables, toolchain_shas) -> "tuple[str | None, str]":
+def _identity(*, target, executables, toolchain_shas) -> tuple[str | None, str]:
     """``(identity, refusal reason)`` -- one implementation, so the two public forms agree."""
     try:
         if not isinstance(target, str) or not target.strip():
@@ -308,6 +335,7 @@ _GRADING_MODULES = (
     "merlin.targetgen.conformance",
     "merlin.targetgen.contract.materialize",
     "merlin.targetgen.capsule_runner",
+    "merlin.targetgen.capsule_source_identity",
     "merlin.targetgen.capsule_grade",
     "merlin.targetgen.capsule_golden",
     "merlin.targetgen.capsule_inputs",
@@ -327,10 +355,11 @@ _GRADING_MODULES = (
     "merlin.targetgen.rtl_engine_policy",
     "merlin.runtime.backends.base",
     "merlin.targetgen.tier_cache",
+    "merlin.targetgen.simulation_certificate",
 )
 
 
-def grading_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
+def grading_path(target: str | None = None) -> tuple[Path, ...] | None:
     """Every file whose bytes decide a verdict, or ``None`` when one of them cannot be located.
 
     ``None`` is not "no instrument" -- it is "the instrument cannot be established", and the caller must
@@ -375,8 +404,22 @@ def grading_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
                 helper, _ = _program_emitter(str(target))
                 files.extend((helper, selected.contract_path))
                 files.extend(python_members(provider_root, label="program emitter provider").values())
+            from merlin.targetgen.plugins import is_core_module_source
+
             if entrypoint.is_relative_to(provider_root):
                 home = provider_root
+            elif getattr(selected, "kind", None) == "external" and is_core_module_source(entrypoint):
+                # A data-only provider served by a GENERIC core backend: the instrument is that core
+                # package plus every byte of the provider's data (contract, specs) it reads.
+                home = entrypoint.parent
+                data = [
+                    path
+                    for path in sorted(provider_root.rglob("*"))
+                    if path.is_file() and not path.is_symlink() and "__pycache__" not in path.parts
+                ]
+                if not data:
+                    return None
+                files.extend(data)
             elif getattr(selected, "kind", None) == "external":
                 return None
             else:
@@ -395,7 +438,7 @@ def grading_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
 _INSTRUMENT_MEMO: dict = {}
 
 
-def _engine_token(target: "str | None", tier: str, rtl_tier: bool) -> "str | None":
+def _engine_token(target: str | None, tier: str, rtl_tier: bool) -> str | None:
     """The elaborated-RTL engine that would answer ``tier`` today, ``""`` for a non-RTL tier, or ``None``.
 
     A tier index names a FIDELITY, and two engines answering at that fidelity are two instruments. When
@@ -418,7 +461,48 @@ def _engine_token(target: "str | None", tier: str, rtl_tier: bool) -> "str | Non
     return engine or None
 
 
-def instrument_digest(target: "str | None", tier: str, *, rtl_tier: bool) -> "str | None":
+def portable() -> bool:
+    """Whether the judge is identified by repository-relative names (``MERLIN_TIER_CERT_PORTABLE=1``)."""
+    return (os.environ.get(PORTABLE_ENV, "") or "").strip() == "1"
+
+
+def _portable_source_digest(files) -> str:
+    """:func:`merlin.common.provenance.source_digest` over the same bytes, naming each file relative to
+    the implementation checkout it was read from.
+
+    The ordinary digest names each file by its absolute path. A run executes from a frozen export of the
+    framework, and every relaunch uses a new export directory, so byte-identical grading code was a
+    different instrument after every restart and no certificate ever carried into the next run: measured
+    over one campaign, nine relaunches produced nine instruments and every gSIM certificate was bought
+    again. Relative names keep the judge identical exactly when its bytes are. A file outside the
+    repository keeps its absolute name, so it can only match the same file.
+    """
+    import hashlib
+
+    from merlin.common.paths import checkout_root
+
+    # The implementation's own source tree (a frozen export, or a checkout): the operator's selected
+    # repository can be another tree, and the grading code is never read from there.
+    root = checkout_root()
+    root = root.resolve() if root is not None else None
+    labelled = []
+    for path in files:
+        resolved = Path(path).resolve()
+        label = str(resolved)
+        if root is not None and resolved.is_relative_to(root):
+            label = "checkout:" + resolved.relative_to(root).as_posix()
+        labelled.append((label, resolved))
+    digest = hashlib.sha256()
+    for label, resolved in sorted(labelled):
+        digest.update(label.encode("utf-8"))
+        try:
+            digest.update(resolved.read_bytes())
+        except OSError:
+            digest.update(b"<unreadable>")
+    return digest.hexdigest()
+
+
+def instrument_digest(target: str | None, tier: str, *, rtl_tier: bool) -> str | None:
     """Identity of the JUDGE for one (target, tier): the grading path's bytes plus the engine.
 
     ``None`` whenever any input is missing, which makes the tier re-run. Uses
@@ -426,7 +510,7 @@ def instrument_digest(target: "str | None", tier: str, *, rtl_tier: bool) -> "st
     working tree is a different instrument, and a certificate earned under it does not silently carry
     into a clean one.
     """
-    key = (str(target or ""), str(tier), bool(rtl_tier))
+    key = (str(target or ""), str(tier), bool(rtl_tier), portable())
     if key in _INSTRUMENT_MEMO:
         return _INSTRUMENT_MEMO[key]
     value = None
@@ -435,14 +519,13 @@ def instrument_digest(target: "str | None", tier: str, *, rtl_tier: bool) -> "st
     if files and engine is not None:
         from merlin.common.provenance import source_digest
 
-        value = _digest_of(
-            {
-                "version": RECORD_VERSION,
-                "grading_path": source_digest([str(p) for p in files]),
-                "engine": engine,
-                "tier": str(tier),
-            }
-        )
+        payload = {"version": RECORD_VERSION, "engine": engine, "tier": str(tier)}
+        if portable():
+            payload["grading_path"] = _portable_source_digest(files)
+            payload["path_basis"] = "checkout_relative"
+        else:
+            payload["grading_path"] = source_digest([str(p) for p in files])
+        value = _digest_of(payload)
     _INSTRUMENT_MEMO[key] = value
     return value
 
@@ -469,7 +552,7 @@ def _record_path(root: Path, capsule: str, tier: str, identity: str, instrument:
     return root / (_digest_of(_key_fields(capsule, tier, identity, instrument)) + ".json")
 
 
-def lookup(capsule: str, tier: str, identity, instrument, *, root: "Path | None" = None, ledgers=()) -> "dict | None":
+def lookup(capsule: str, tier: str, identity, instrument, *, root: Path | None = None, ledgers=()) -> dict | None:
     """The record that certifies EXACTLY these bytes on EXACTLY this instrument, or ``None``.
 
     Everything is re-verified against the stored record's own copy of the key, so a record reached by a
@@ -490,14 +573,14 @@ def lookup(capsule: str, tier: str, identity, instrument, *, root: "Path | None"
         if isinstance(raw, dict) and all(raw.get(k) == v for k, v in want.items()):
             if raw.get("status") == _CARRYABLE and isinstance(raw.get("tier_result"), dict):
                 return dict(raw)
-    for led in tuple(ledgers) or ledger_paths():
+    for led in () if ledgers is False else (tuple(ledgers) or ledger_paths()):
         hit = _from_ledger(led, capsule, tier, identity, instrument)
         if hit is not None:
             return hit
     return None
 
 
-def _from_ledger(path, capsule: str, tier: str, identity: str, instrument: str) -> "dict | None":
+def _from_ledger(path, capsule: str, tier: str, identity: str, instrument: str) -> dict | None:
     """A promotion ledger entry (``qa/tier_state.json``) that certifies these bytes on this instrument.
 
     The ledger is ``tier_promote``'s: ``{capsule: {"<certs>": {tier: {identity: entry}}}}``, where an
@@ -549,29 +632,33 @@ def record(
     *,
     status: str,
     tier_result: dict,
-    root: "Path | None" = None,
-    run_id: "str | None" = None,
-) -> "Path | None":
+    root: Path | None = None,
+    run_id: str | None = None,
+) -> Path | None:
     """Store one EXECUTED tier verdict against the bytes and the instrument that produced it.
 
     Returns the file written, or ``None`` when nothing was stored (cache off, no identity, no
-    instrument, a status that may not be carried, or an unwritable store). Never raises: a cache that
-    can fail a grade is worse than no cache.
+    instrument, a status that may not be carried, or an unwritable store). A compared ``fail`` is only
+    noted (:func:`noted_failure`) and still returns ``None``. Never raises: a cache that can fail a
+    grade is worse than no cache.
     """
     from .oracle_schedule import valid_execution_digest
 
-    if status != _CARRYABLE or not isinstance(tier_result, dict):
+    if status not in (_CARRYABLE, _NOTED) or not isinstance(tier_result, dict):
         return None
     if not valid_execution_digest(identity) or not valid_execution_digest(instrument):
         return None
     root = root if root is not None else cache_root()
     if root is None:
         return None
+    if status == _NOTED:
+        _note(root, capsule, tier, identity, instrument, run_id=run_id)
+        return None
     payload = _key_fields(capsule, tier, identity, instrument)
     payload.update(
         {
             "status": status,
-            "recorded_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+            "recorded_at": _dt.datetime.now(_dt.UTC).isoformat(),
             "run_id": run_id,
             "tier_result": {k: v for k, v in tier_result.items() if k not in _NOT_MEASURED_NOW},
         }
@@ -585,6 +672,46 @@ def record(
     except OSError:
         return None
     return dest
+
+
+def _note_path(root: Path, capsule: str, tier: str, identity: str, instrument: str) -> Path:
+    return root / NOTES / _record_path(root, capsule, tier, identity, instrument).name
+
+
+def _note(root: Path, capsule: str, tier: str, identity: str, instrument: str, *, run_id: str | None) -> None:
+    """Write the key a compared failure was earned under, and nothing about the failure itself."""
+    dest = _note_path(root, capsule, tier, identity, instrument)
+    payload = _key_fields(capsule, tier, identity, instrument)
+    payload.update({"status": _NOTED, "recorded_at": _dt.datetime.now(_dt.UTC).isoformat(), "run_id": run_id})
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(f".{dest.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        os.replace(tmp, dest)
+    except OSError:
+        return
+
+
+def noted_failure(capsule: str, tier: str, identity, instrument, *, root: Path | None = None) -> bool:
+    """Whether EXACTLY these bytes already failed ``tier`` on EXACTLY this instrument.
+
+    ``True`` only for a readable note whose own copy of the key matches and while no certificate for
+    the same key exists. Anything absent, unreadable or mismatched is ``False``: unknown, never failing.
+    A note is not a verdict to carry; it only lets a caller decline to simulate a known failure again.
+    """
+    from .oracle_schedule import valid_execution_digest
+
+    if not valid_execution_digest(identity) or not valid_execution_digest(instrument):
+        return False
+    root = root if root is not None else cache_root()
+    if root is None or lookup(capsule, tier, identity, instrument, root=root, ledgers=False) is not None:
+        return False
+    try:
+        raw = json.loads(_note_path(root, capsule, tier, identity, instrument).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    want = _key_fields(capsule, tier, identity, instrument)
+    return isinstance(raw, dict) and raw.get("status") == _NOTED and all(raw.get(k) == v for k, v in want.items())
 
 
 # ---------------------------------------------------------------------------------------------

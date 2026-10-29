@@ -13,7 +13,9 @@ grade is byte-identical to one from before this tier existed and no record is wr
 
 WHAT IT DOES, both steps fail-closed:
 
-1. A STATIC check over the decoded instruction trace (:func:`static_check`). Two inbound transfers whose
+1. A STATIC trigger. When the grade reached a completion-order verdict over the executed command
+   stream (:mod:`merlin.targetgen.completion_order`), that verdict is the trigger. Otherwise, the
+   accumulator-only check over the decoded instruction trace (:func:`static_check`): two inbound transfers whose
    destinations may overlap in the accumulator, with no barrier between them, are a hazard. A transfer
    whose direction or destination the decoder could not resolve, and a command whose memory effects
    this check does not model (a hardware loop unroller issues its own loads), count as UNRESOLVED.
@@ -287,17 +289,25 @@ def run_order_check(
     facts: OrderFacts | None = None,
     engine: tuple[Path | None, str] | None = None,
     sweep: Callable[..., dict] | None = None,
+    static: Mapping | None = None,
 ) -> OrderOutcome | None:
-    """Run the tier. None only when it is switched off; every other outcome is recorded."""
+    """Run the tier. None only when it is switched off; every other outcome is recorded.
+
+    ``static`` is the trigger verdict (``clear`` / ``hazard`` / ``unresolved``) when the caller already
+    has one -- the completion-order check over the executed stream
+    (:mod:`merlin.targetgen.completion_order`), which covers every local memory and follows the
+    dispatch's real dependency edges. Without it the accumulator-only :func:`static_check` decides."""
     seeds_n = seeds_requested()
     if seeds_n <= 0:
         return None
-    why = "supplied"
-    if facts is None:
-        facts, why = facts_for(target)
-    if facts is None:
-        return OrderOutcome({"status": "not_applicable", "detail": why})
-    static = static_check(trace, facts)
+    if static is None:
+        why = "supplied"
+        if facts is None:
+            facts, why = facts_for(target)
+        if facts is None:
+            return OrderOutcome({"status": "not_applicable", "detail": why})
+        static = static_check(trace, facts)
+    static = dict(static)
     if static["verdict"] == "clear":
         return OrderOutcome({"status": "static_clear", "static": static})
     path, engine_why = engine if engine is not None else engine_for(target)
@@ -356,6 +366,7 @@ def after_certificate(
     trace: Mapping | None,
     elf: Path,
     judge: Callable[[int, str], str],
+    static: Mapping | None = None,
 ) -> OrderOutcome | None:
     """The tier as the capsule ladder runs it, after a ladder whose cert tier passed.
 
@@ -369,7 +380,7 @@ def after_certificate(
     if not passed:
         return None
     try:
-        out = run_order_check(target=target, trace=trace, elf=elf, judge=judge)
+        out = run_order_check(target=target, trace=trace, elf=elf, judge=judge, static=static)
     except Exception as exc:  # noqa: BLE001 -- recorded, never swallowed
         out = OrderOutcome({"status": "error", "detail": f"{type(exc).__name__}: {exc}"})
     if out is not None:

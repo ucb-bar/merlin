@@ -17,8 +17,14 @@ phases:
       recipe: phase0/recipe.yaml
       software_spec: target/software-spec.yaml
       capability_contract: target/contracts/target_contract.yaml
-      hardware_spec: target/hardware.yaml
+      hardware_spec: platform/hardware.yaml
       # Diagnostic only: review and production-source consistency are not established.
+      # Kept diagnostic on purpose so an ordinary run of this example never claims verified
+      # evidence. A release run selects verified evidence explicitly on the command line
+      # (`merlin experiment run ... --phase0-evidence-mode verified`), which overrides this value
+      # and then requires an audited `validation.json` beside the selected RTL facts, sealed
+      # capture attestations, and the reviewed software/host inputs; any gap makes Phase 0 fail
+      # closed rather than silently downgrade.
       evidence_mode: diagnostic
       # Select freshly derived conformance/synthesis artifacts with CLI overrides.
       performance_template: ../../experiments/templates/phase0/performance.yaml
@@ -28,6 +34,10 @@ phases:
       hidden_profile: ../../merlin/contract/capsules/profiles/gemmini.hidden.yaml
       descriptor: target/descriptor.yaml
   1:
+    # The operator-supervised fire-aligned EL4 launch is pinned separately, argv and environment
+    # included, by phase1/launch/el4-fire-aligned.yaml and its release config
+    # phase0/release/fire-aligned-v10.yaml (merlin_experiments.phase1.launch_config render/verify).
+    # Those are operator inputs, not catalog definitions.
     adapter: capsule_bench
     config:
       require_reviewed_corpus: true

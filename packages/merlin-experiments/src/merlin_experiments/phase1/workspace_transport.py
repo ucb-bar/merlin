@@ -7,10 +7,12 @@ only the sandbox binds those names to the verified run-owned bytes.
 
 from __future__ import annotations
 
+import importlib.machinery
 import os
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -40,6 +42,33 @@ def _destination(ws: Path, name: str) -> Path:
     if not destination.parent.resolve().is_relative_to(ws.resolve()):
         raise ValueError("workspace destination escapes through a symlink")
     return destination
+
+
+def _implicit_alias(entry: dict) -> str:
+    name = entry.get("as") or Path(entry["path"]).name
+    if entry.get("as"):
+        return name
+
+    def shadows_stdlib(value: str) -> bool:
+        # Workspace processes run with the workspace on sys.path, so a root name must not shadow any
+        # top-level module the runtime can import: the standard library or an installed package (yaml).
+        for suffix in sorted(importlib.machinery.all_suffixes(), key=len, reverse=True):
+            if value.endswith(suffix):
+                value = value[: -len(suffix)]
+                break
+        if value in sys.stdlib_module_names:
+            return True
+        if not value.isidentifier():
+            return False
+        search = [entry for entry in sys.path if entry and Path(entry).resolve() != Path.cwd().resolve()]
+        return importlib.machinery.PathFinder.find_spec(value, search) is not None
+
+    if shadows_stdlib(name):
+        name = entry["path"].replace("/", "_").rstrip("_")
+        # A bare relative grant has no parent components to qualify its name.
+        while shadows_stdlib(name):
+            name = "grant_" + name
+    return name
 
 
 def _link_filtered(src: Path, dst: Path, *, link_target: Path | None = None) -> None:
@@ -81,11 +110,18 @@ def assemble_workspace(
         if not frozen.exists():
             skipped.append(entry["path"])
             continue
-        dst = _destination(ws, entry.get("as") or Path(entry["path"]).name)
+        dst = _destination(ws, _implicit_alias(entry))
         if dst.exists() or dst.is_symlink():
             dst = _destination(ws, entry["path"].replace("/", "_").rstrip("_"))
         if not dst.exists() and not dst.is_symlink():
-            _link_filtered(frozen, dst, link_target=src)
+            from . import public_contract_staging
+
+            if public_contract_staging.selected(bundle, entry):
+                if _policy_test_live_inputs:
+                    raise ValueError("public contract projection requires verified frozen inputs")
+                public_contract_staging.copy_grant(entry, frozen, dst)
+            else:
+                _link_filtered(frozen, dst, link_target=src)
     if skipped:
         print(f"[workspace] {len(skipped)} granted path(s) could not be placed: {sorted(skipped)}", flush=True)
     return [Path(d["path"]).name for d in bundle.get("denied", [])]

@@ -51,6 +51,7 @@ SCHEMA = "whole_program_v1"
 #: enum ``merlin/contract/schemas/command_buffer.schema.json`` admits. An op in neither is refused by
 #: name rather than mapped to the nearest thing, which would emit a command computing something else.
 _OPCODE_OF_OP = {
+    "maxpool2d": "MAXPOOL2D",
     "matmul": "MATMUL",
     "conv2d": "CONV2D",
     "residual_add": "RESIDUAL_ADD",
@@ -252,8 +253,9 @@ def _prepack_rows(groups, capture) -> tuple[dict[int, Mapping[str, Any]], str]:
         return {}, "no capture was given, so no weights manifest could be read and no weight laid out"
     beside = Path(capture)
     beside = beside if beside.is_dir() else beside.parent
-    manifest = next(iter(sorted(beside.glob("*.manifest.json"))), None)
-    weights = next(iter(sorted(beside.glob("*.safetensors"))), None)
+    from .weights_pack import weight_files_beside
+
+    manifest, weights = weight_files_beside(capture)
     if manifest is None or weights is None:
         return {}, f"no weights manifest and safetensors pair beside {beside}"
     from merlin.xdsl_dialects.lowering import group_prepack as GP
@@ -328,6 +330,13 @@ def group_binder(te, datapath: Mapping[str, Any] | None, *, contract=None, facts
 
 def group_interface(entry: Mapping[str, Any], binder, *, source_reference: str) -> str:
     """The interface MLIR a package is asked to lower for one stated group, through the one path."""
+    if entry.get("schema") == "connected_quantized_sum_entry_v1":
+        from merlin.llvmlower.quantized_sum_route import quantized_sum_interface
+        return quantized_sum_interface(entry, binder, source_reference=source_reference)
+    if entry.get("schema") == "connected_spatial_entry_v1":
+        from merlin.llvmlower.connected_spatial import spatial_pair_interface
+
+        return spatial_pair_interface(entry, binder, source_reference=source_reference)
     if binder is None:
         raise UnboundGroupCapsule(
             "no group binding was supplied (whole_program_buffer(binder=...)); a group is stated only "
@@ -338,6 +347,60 @@ def group_interface(entry: Mapping[str, Any], binder, *, source_reference: str) 
     stated = {**dict(entry), "source_reference": str(entry.get("source_reference") or source_reference)}
     _capsule, iface = interface_capsule(stated, binder(str(entry.get("operand_dtype") or "")))
     return iface
+
+
+def source_bound_group_buffers(entry, interface, *, binding=None, target=None):
+    """Reopen one source group's original logical observations.
+
+    A connected source entry owns its final result only after the complete
+    ordinary source builders reproduce the actual interface program. Saved
+    output names or candidate liveness never authorize hiding an observation.
+    The optional binding is the original caller's; otherwise the same selected
+    target binding is reopened for the source entry's operand format. The
+    original caller supplies that target; candidate metadata cannot select it.
+    """
+    from .device_shim import logical_buffers
+
+    schemas = {
+        "connected_spatial_entry_v1": "spatial_producer_pool",
+        "connected_quantized_sum_entry_v1": "quantized_producer_sum",
+    }
+    schema = entry.get("schema") if isinstance(entry, Mapping) else None
+    if schema not in schemas:
+        return logical_buffers(interface)
+    try:
+        from merlin.targetgen import corpus_spec as CS
+        from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+
+        actual = parse_interface_mlir(interface)
+        if entry.get("op") != schemas[schema]:
+            raise ValueError("connected entry lost its original composed source operation")
+        selected_target = binding.target if binding is not None else target
+        if (not isinstance(selected_target, str) or not selected_target
+                or target is not None and target != selected_target
+                or actual["target"] != selected_target):
+            raise ValueError("connected interface differs from its original selected target")
+        if binding is None:
+            from merlin.compile.mesh import _mesh_tile_binding
+            from .device_routing_placement import _accum_from_facts
+
+            operand = entry.get("operand_dtype")
+            if not isinstance(operand, str) or not operand:
+                raise ValueError("connected source has no original operand format")
+            accum = _accum_from_facts(selected_target, operand, operand)
+            binding = _mesh_tile_binding(selected_target, operand, accum)
+        capsule, expected_interface = CS.build(dict(entry), binding)
+        if parse_interface_mlir(expected_interface) != actual:
+            raise ValueError("connected interface differs from its complete original source program")
+        operation = capsule.get("operation") or {}
+        if operation.get("op") != schemas[schema]:
+            raise ValueError("ordinary source builder changed the connected operation")
+        output = (operation.get("attributes") or {}).get("out")
+        if not isinstance(output, str) or not output:
+            raise ValueError("ordinary source builder did not retain its final observation")
+        return logical_buffers(interface, observed_outputs=(output,))
+    except Exception as error:  # noqa: BLE001 -- one source/interface is a refusal
+        return None, f"original connected observations cannot be reopened ({type(error).__name__}: {error})"
 
 
 def _asked_orientation(entry: Mapping[str, Any], group: Any, operands: Mapping[str, str], tensors: Mapping[str, Any]):
@@ -400,6 +463,8 @@ def _ask_package(
     bound: dict[str, tuple[str, ...]] = {}
     if pinned is None:
         bound["output"] = (operands["dst"],)
+        if "src" in operands:
+            bound["input"] = (operands["src"],)
         # AN ACTIVATION IN THE STATIONARY SLOT binds where a weight would: the capsule states the
         # contraction's right operand in the weight role (the operand the unit holds), and the kernel's
         # argument for it is whatever buffer the program hands it at run time. This is checked FIRST and
@@ -479,7 +544,9 @@ def _ask_package(
     except Exception as error:  # noqa: BLE001
         return _refuse(PACKAGE_FAILED, f"the package did not run: {type(error).__name__}: {error}")
     # The whole-model arm reads one artifact per group beside the work dir, in the model's order.
-    (Path(work) / f"{tag}.artifact.txt").write_text(_artifact, encoding="utf-8")
+    from merlin.verify.lean_emission_context import write_emitted_artifact
+
+    write_emitted_artifact(Path(work) / f"{tag}.artifact.txt", _artifact)
     if record is not None:
         record["command_buffer"] = str(Path(work) / f"{tag}.generated" / "command_buffer.json")
         record["artifact"] = str(Path(work) / f"{tag}.artifact.txt")
@@ -735,6 +802,12 @@ def whole_program_buffer(
     from merlin.xdsl_dialects.lowering import model_closure as MC
 
     groups = CG.form_groups(module, device, oracle=oracle)
+    if capture is not None:
+        from merlin.xdsl_dialects.lowering import group_exact_float as GEF
+
+        refused = GEF.refusals(groups, capture, weight_args=weight_args)
+        if refused:
+            groups = CG.form_groups(module, device, oracle=oracle, numeric_refusals=refused)
     if not open_model:
         MC.require_closed(groups, error=WholeProgramError)
     host_produced: dict[str, dict[str, Any]] = {}
@@ -1090,7 +1163,17 @@ def whole_program_buffer(
         operands: dict[str, str] = {}
         bias_divisor: float | None = None
         weight_refusal = ""
-        if group.operand_sum is not None:
+        if group.window_pool is not None:
+            source = group.members[0].operands[0]
+            name = consume(source, why=f"group {group.index}")
+            want = [int(entry["M"]), int(entry["N"])]
+            if list(tensors[name]["shape"]) != want:
+                raise WholeProgramError(
+                    f"pool group {group.index} needs positions/channels layout {want}; "
+                    "use ordinary host/device rewriting to materialize its input layout"
+                )
+            operands["src"] = name
+        elif group.operand_sum is not None:
             # Two activations and no stored side. The operands are the integer tensors behind each
             # summand's own dequantize, in the order the entry states its two scales in.
             for key, operand in zip(("lhs", "rhs"), list(group.root.operands)[:2], strict=False):

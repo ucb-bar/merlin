@@ -1,0 +1,22 @@
+# Reviewed r7 public inputs and provisional V90 source-derived runtimes, prepared in the
+# existing grader-throughput task. Only `launch --confirm` starts the campaign.
+extends: fresh-campaign-next.yaml
+id: gemmini-open-compiler-fresh7
+variables:
+  NEXT_TIMING_SELECTION: ${WORKSPACE}/tasks/el4-cycle-source-repair-20261026/merlin/out/artifacts/prospective-performance-selection-fresh7-v90/performance-selection.json
+  NEXT_TIMING_SELECTION_SHA256: 614cc6ab19b2b3ab49734245bb579539fce681c9a86f224c0af621d903a9a4b8
+  NEXT_CORRECTNESS_ROSTER_PIN: '{"path": "${TASK}/.tmp/corpus-r7/original-roster-r7.json", "sha256": "8e9bf9e513442588ad1a3704b5ba5aaba9afd834c457bcc95a50ff02da925048"}'
+run:
+  run_id: gemmini-open-compiler-20261027-fresh7
+  unit: merlinphase1fresh20261027b
+inputs:
+  corpus: ${REPO}/out/artifacts/open-fresh/fresh7/corpus-source-release
+plan:
+  # Opt in through fresh-campaign-fresh7-reference.yaml; ordinary runs remain inert.
+  reference_experiments: null
+  policy:
+    base:
+      path: ${TASK}/.tmp/fresh7/preparation/base-policy.json
+      sha256: 59f5ec13c22572b1d89803a2fb9f82cb3bd8757350642afdf4dabec67dd4a989
+    # The prepared policy already carries the complete reviewed exclusion roster.
+    performance_scope: null

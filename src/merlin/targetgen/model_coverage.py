@@ -196,6 +196,102 @@ def _captured_input_formats(op) -> tuple[str | None, ...]:
     return tuple(formats)
 
 
+def typed_static_integer_demands(source, in_fmt, weight_fmt=None, *, source_kind="typed_static_integer_v1"):
+    """Observe an explicitly selected typed source, never manufacture capture provenance."""
+    from xdsl.dialects.builtin import ArrayAttr
+    from xdsl.dialects.linalg.attrs import IteratorType, IteratorTypeAttr
+    from xdsl.dialects.linalg.ops import GenericOp
+
+    from merlin.common import mlir_query as mq
+    from merlin.compile.analysis import contraction_shapes as ks
+    from merlin.targetgen.capsule_source import ModelDemandIncomplete
+    from merlin.targetgen.routing import OpDemand
+    from merlin.transforms.dense_ir import static_zero_integer_matmul_geometry
+    from merlin.xdsl_dialects.lowering import contraction_coverage as cc
+
+    if type(source_kind) is not str or source_kind != "typed_static_integer_v1":
+        raise ModelDemandIncomplete("unknown explicit whole-model source intake")
+    try:
+        module = mq.parse(source)
+        module.verify()
+    except Exception as error:
+        raise ModelDemandIncomplete(f"cannot verify typed integer model source: {error}") from error
+    observed = {id(op): shape for op, shape in ks.observe_contractions(module)}
+    demands = []
+    for ordinal, operation in enumerate(mq.walk(module)):
+        name = mq.op_name(operation)
+        if not name.startswith("linalg.") or name in {"linalg.fill", "linalg.yield", "linalg.index"}:
+            continue
+        formats = _captured_input_formats(operation)
+        reduction = name in cc.MATMUL_OPS
+        if name == "linalg.generic":
+            if (
+                type(operation) is not GenericOp
+                or type(operation.iterator_types) is not ArrayAttr
+                or any(type(row) is not IteratorTypeAttr for row in operation.iterator_types)
+                or any(
+                    row.data not in (IteratorType.PARALLEL, IteratorType.REDUCTION) for row in operation.iterator_types
+                )
+                or set(operation.properties) != {"indexing_maps", "iterator_types", "operandSegmentSizes"}
+                or any(not key.startswith("prov.") for key in operation.attributes)
+            ):
+                raise ModelDemandIncomplete(
+                    f"typed generic has unsupported iterator/effect metadata at operation {ordinal}"
+                )
+            reduction = IteratorType.REDUCTION in tuple(row.data for row in operation.iterator_types)
+        if reduction:
+            try:
+                m, k, n = static_zero_integer_matmul_geometry(operation, ("i8", "i8", "i32"))
+            except ValueError as error:
+                raise ModelDemandIncomplete(
+                    f"typed integer source has unsupported reduction at operation {ordinal} ({name}): {error}"
+                ) from error
+            shape = observed.get(id(operation))
+            if (
+                shape is None
+                or shape.parallel != (m, n)
+                or shape.reduction != (k,)
+                or shape.dtypes != ("i8", "i8", "i32")
+                or formats != ("int8", "int8")
+            ):
+                raise ModelDemandIncomplete(
+                    f"typed integer contraction shape observers disagree at operation {ordinal}"
+                )
+            demands.append(
+                OpDemand(
+                    op="matmul",
+                    in_fmt=in_fmt,
+                    weight_fmt=weight_fmt or in_fmt,
+                    site=f"operation {ordinal} ({name})",
+                    m=m,
+                    k=k,
+                    n=n,
+                    rank=2,
+                    family="contraction",
+                    elem_fmt="int8",
+                    batch=1,
+                    region_id=None,
+                    source_family=None,
+                    carrier_op=name,
+                    captured_input_formats=formats,
+                )
+            )
+        else:
+            # Unknown host bodies remain unknown. This inventory does not issue
+            # standalone arithmetic, movement or accelerator capabilities.
+            demands.append(
+                OpDemand(
+                    op=name,
+                    in_fmt=in_fmt,
+                    site=f"operation {ordinal} ({name})",
+                    carrier_op=name,
+                    elem_fmt=formats[0] if formats and len(set(formats)) == 1 else None,
+                    captured_input_formats=formats,
+                )
+            )
+    return demands
+
+
 def region_family(op, short: str | None = None) -> str | None:
     """Classify an emitted linalg region, checking structure before source-op provenance.
 
@@ -331,8 +427,10 @@ def regions_from_module(module, *, precisions: dict[str, str] | None = None) -> 
     whatever a tag claims), then provenance tags as a fallback for the unnamed ``linalg.generic`` case.
     Unresolved stays None, so the caller counts it as unclassified instead of assuming a family.
     """
+    from merlin.compile.analysis.contraction_shapes import contraction_extents
+
     out: list[RegionDescriptor] = []
-    extents = _contraction_extents(module)
+    extents = contraction_extents(module)
     for op in module.walk():
         if not _is_region_op(op):
             continue
@@ -367,77 +465,6 @@ def regions_from_module(module, *, precisions: dict[str, str] | None = None) -> 
             )
         )
     return tuple(out)
-
-
-def _contraction_extents(module) -> dict:
-    """``id(op) -> (m, k, n, rank)`` for every contraction the shape observer recognises.
-
-    Delegates to :func:`merlin.kernels.shapes.observe_contractions` and joins on op IDENTITY rather than
-    re-deriving extents here. A second implementation of "which axes are parallel and which reduce" is a
-    second thing that can disagree with the cover, and the disagreement would be invisible: both would
-    report a number.
-    """
-    try:
-        from merlin.kernels import shapes as KS
-
-        pairs = KS.observe_contractions(module)
-    except Exception:  # noqa: BLE001 - an unreadable module yields no extents, never a guess
-        return {}
-    import math
-
-    out: dict = {}
-    for op, cs in pairs:
-        par, red = list(cs.parallel), list(cs.reduction)
-        if not par:
-            continue
-        m = math.prod(par[:-1]) if len(par) > 1 else par[0]
-        n = par[-1] if len(par) > 1 else None
-        k = math.prod(red) if red else None
-        out[id(op)] = (m, k, n, len(par) + len(red))
-    _windowed_contraction_extents(module, out)
-    return out
-
-
-def _windowed_contraction_extents(module, out: dict) -> None:
-    """Extents for the contractions the shape observer does not accept, read off their loops.
-
-    The observer recognises a contraction whose operands are indexed by plain iteration dims. A
-    convolution in generic form indexes its input by ``stride * d + tap``, so it is a contraction by
-    structure (a reduction whose body multiplies and accumulates) that the observer passes over. On
-    a captured CNN that was every convolution: 53 of 54 contractions carried no extents, so offload
-    weighted by work could not see the model's work at all.
-
-    Multiply-accumulates are the product of the loop extents; the split follows the iterator kinds
-    (``m`` the leading parallel loops, ``n`` the last, ``k`` the reduction loops). An op whose loops
-    cannot be read stays absent, which a consumer reports as unknown rather than as zero.
-    """
-    try:
-        from merlin.common import mlir_query as mq
-        from merlin.xdsl_dialects.lowering import contraction_coverage as cc
-    except Exception:  # noqa: BLE001 - without the classifier there is nothing to add, never a guess
-        return
-    import math
-
-    for op in mq.walk(module):
-        if id(op) in out or mq.op_name(op) != "linalg.generic":
-            continue
-        try:
-            if cc.classify_generic(op) != "contraction":
-                continue
-            extents = cc.loop_extents(op)
-            kinds = op.properties.get("iterator_types") or op.attributes.get("iterator_types")
-            kinds = [str(kind) for kind in kinds]
-        except Exception:  # noqa: BLE001
-            continue
-        if not extents or len(extents) != len(kinds) or set(extents) != set(range(len(kinds))):
-            continue
-        par = [extents[i] for i, kind in enumerate(kinds) if "reduction" not in kind]
-        red = [extents[i] for i, kind in enumerate(kinds) if "reduction" in kind]
-        if not par or not red:
-            continue
-        m = math.prod(par[:-1]) if len(par) > 1 else par[0]
-        n = par[-1] if len(par) > 1 else 1
-        out[id(op)] = (m, math.prod(red), n, len(kinds))
 
 
 def _declared_config(op) -> dict:

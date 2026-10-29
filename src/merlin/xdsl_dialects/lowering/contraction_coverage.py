@@ -29,6 +29,8 @@ loop extents, parallel and reduction alike, each read off an operand that carrie
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -85,10 +87,67 @@ def _iterator_text(op) -> str:
     return str(op.properties.get("iterator_types") or op.attributes.get("iterator_types") or "")
 
 
+#: ``arith.cmpf`` predicates: unordered (either operand NaN) and ordered greater-than.
+_CMPF_UNO, _CMPF_OGT = 14, 2
+
+#: Whether a NaN-propagating select-max body classifies as a max reduction. Only a caller whose
+#: consumer cannot produce a NaN (an integer device readout) may say so: see :func:`select_max_is_max`.
+_SELECT_MAX_IS_MAX: ContextVar[bool] = ContextVar("select_max_is_max", default=False)
+
+
+@contextmanager
+def select_max_is_max(enabled: bool = True):
+    """Within this block, classify ``select(isnan(x) or x > acc, x, acc)`` reductions as max.
+
+    Exact for a consumer whose values cannot be NaN -- the integer readout of a device group, whose
+    pool takes the quantized accumulator -- and therefore scoped to the caller that routes such groups
+    rather than changed for every reader of a capture."""
+    token = _SELECT_MAX_IS_MAX.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _SELECT_MAX_IS_MAX.reset(token)
+
+
+def _is_select_max(op) -> bool:
+    """A reduction body ``select(isnan(x) or x > acc, x, acc)``: max that propagates NaN.
+
+    That is how a framework's ``max_pool2d`` is spelled when it must return NaN for a window holding
+    one. On any NaN-free input it IS the maximum, element for element; a reduction of it over a window
+    is a max-pool. Recognized by exact structure only -- the operands, the predicates and the order."""
+    if not op.regions or not op.regions[0].blocks:
+        return False
+    block = op.regions[0].blocks[0]
+    if len(block.args) < 2:
+        return False
+    x, acc = block.args[0], block.args[-1]
+    ops = list(block.ops)
+    if [mq.op_name(o) for o in ops] != ["arith.cmpf", "arith.cmpf", "arith.ori", "arith.select", "linalg.yield"]:
+        return False
+    nan, greater, either, pick, done = ops
+
+    def predicate(cmp) -> int | None:
+        raw = cmp.properties.get("predicate") or cmp.attributes.get("predicate")
+        value = getattr(raw, "value", None)
+        return int(value.data) if value is not None else None
+
+    return (
+        list(nan.operands) == [x, x]
+        and predicate(nan) == _CMPF_UNO
+        and list(greater.operands) == [x, acc]
+        and predicate(greater) == _CMPF_OGT
+        and set(either.operands) == {nan.results[0], greater.results[0]}
+        and list(pick.operands) == [either.results[0], x, acc]
+        and list(done.operands) == [pick.results[0]]
+    )
+
+
 def classify_generic(op) -> str:
     """What this `linalg.generic` computes, by structure alone."""
     reduces = "reduction" in _iterator_text(op)
     body = _body_op_names(op)
+    if reduces and _SELECT_MAX_IS_MAX.get() and _is_select_max(op):
+        return "max-reduction"
     if reduces and (body & _MUL) and (body & _ADD):
         return "contraction"
     if reduces and (body & _MAX) and (body & _ABS):

@@ -1,0 +1,20 @@
+{
+  "schema": "merlin.fased_soc_memory_smoke.v1",
+  "argv": [
+    "${ARTIFACT}/adapter/emulator-fased",
+    "${ARTIFACT}/adapter/memory-smoke.elf",
+    "+max-cycles=200000"
+  ],
+  "returncode": 0,
+  "wall_seconds": 3.040019046049565,
+  "maximum_target_cycles": 200000,
+  "completed_target_cycles": 77346,
+  "binary_sha256": "71149fa43189e9e8418c64c802ff302720bb077a550676a4928ee246f8bceaa4",
+  "elf_sha256": "3914a9cb485431f744c9b0fb899e6c68906e1abdc426b82dd4cc86f238b0506b",
+  "source_sha256": "c5fb570bcfe2a1ae69aa8d02ac87f2fd2c4ecca94343d5ef7c78c81e5b034648",
+  "stdout_sha256": "c182fa83b6c759214c9a89e29836074b20d7882fd19fbefeb79bce28a4ff8d01",
+  "stderr_sha256": "925b1cfc84a0fc2c5e6590ec7f208d0ef152039e2ce2eb46a1a45197fcee67ce",
+  "meaning": "CPU ELF numerical checks and tohost completion through integrated native FASED SimDRAM",
+  "deployment_equivalence": "NOT_ESTABLISHED",
+  "whole_system_timing_qualified": false
+}

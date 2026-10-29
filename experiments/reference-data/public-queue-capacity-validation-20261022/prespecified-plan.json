@@ -1,0 +1,227 @@
+{
+  "schema": "operator.public_queue_capacity_validation.v1",
+  "created_at": "2026-10-22T10:48:09.417073+00:00",
+  "status": "prespecified_before_new_execution_or_labels",
+  "physical_runs_authorized": false,
+  "source": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/probe.c",
+    "sha256": "89fc335699847c1997291a3196f470f656af9e7a4ce36d0bb8ac0eea59a6275e"
+  },
+  "frozen_model": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+    "sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869"
+  },
+  "frozen_runtime": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/runtime.json",
+    "sha256": "0684df369407bffad8ee67b1a36d53d7867595a620f105d6c6466c0f26d57801"
+  },
+  "active_selection": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/selection.json",
+    "sha256": "807f75767198d4f6b4d01fd0badf0f18f81a882878215a5ad39b6af2de31e990"
+  },
+  "continued_denial": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/continued-denial.json",
+    "sha256": "424c7ec4e6cc10572cd71dc6ceb31fa290264349632f3b61cad884c7211a492f"
+  },
+  "prior_family": {
+    "plan": {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/plan.json",
+      "sha256": "49e4da97daaabdcad168e25fc96c42af1dd7e2e5934e3d928bc439052f7247d3"
+    },
+    "comparison": {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/comparison.json",
+      "sha256": "8f5c958b18eead90a60771958b9df6cd10ebd4fe1d0456effe9b1ee0ea060e35"
+    },
+    "status": "prespecified_conditions_fail unchanged; no discarded repeats or modified prior rules"
+  },
+  "question": "Does the frozen pipeline/capacity structure predict deeper legally queued resident work and its difference from completion-serialized work under explicitly controlled occurrence history?",
+  "model_scope": {
+    "shape": [
+      16,
+      16,
+      16
+    ],
+    "dtype": "i8*i8->raw i32",
+    "dataflow": "WS untransposed nonaccumulating full tiles",
+    "source_interfaces": "same selected public custom ISA/FENCE and coherent readout",
+    "queue_facts": {
+      "accumulator_readout_arrival": 1,
+      "accumulator_streamed_readout": 1,
+      "allow_dependency_ordered_phases": 1,
+      "conservative_local_store_holds": 1,
+      "controller_entries": {
+        "execute": 10,
+        "load": 8,
+        "store": 2
+      },
+      "dma_commands": {
+        "load": 2,
+        "store": 2
+      },
+      "issue_latency_cycles": 1,
+      "issue_occupancy_cycles": 1,
+      "pool_relu_shared_scale_pipeline": 1,
+      "require_fenced_phases": 1,
+      "reservations": {
+        "execute": 16,
+        "load": 8,
+        "store": 4
+      },
+      "scratchpad_bank_count": 4,
+      "scratchpad_bank_rows": 4096,
+      "serialized_execute_epochs": 1,
+      "serialized_output_stationary_epochs": 1,
+      "split_ws_feed_lifetimes": 1,
+      "version": 5,
+      "ws_feed_queue_release": 1,
+      "ws_resident_mul_pre_pairing": 1
+    },
+    "preflight_support": "Configured structure supports WS pairing/queue release/controller and reservation accounting. Actual selected-window completeness and no unresolved feature are REQUIRED; static support is not qualification.",
+    "unsupported": "No claim for translation misses/cache replacement ground truth, tail/transpose/accumulate/FP or whole SoC accuracy."
+  },
+  "arms": [
+    {
+      "arm": 0,
+      "jobs": 1,
+      "mode": "queued",
+      "execute_commands": 2,
+      "readout_commands": 1,
+      "states": [
+        "first_arm_use_after_fixed_preparation",
+        "prewarmed_1",
+        "prewarmed_2"
+      ]
+    },
+    {
+      "arm": 1,
+      "jobs": 1,
+      "mode": "completion_serialized",
+      "execute_commands": 2,
+      "readout_commands": 1,
+      "states": [
+        "first_arm_use_after_fixed_preparation",
+        "prewarmed_1",
+        "prewarmed_2"
+      ]
+    },
+    {
+      "arm": 2,
+      "jobs": 3,
+      "mode": "queued",
+      "execute_commands": 6,
+      "readout_commands": 3,
+      "states": [
+        "first_arm_use_after_fixed_preparation",
+        "prewarmed_1",
+        "prewarmed_2"
+      ]
+    },
+    {
+      "arm": 3,
+      "jobs": 3,
+      "mode": "completion_serialized",
+      "execute_commands": 6,
+      "readout_commands": 3,
+      "states": [
+        "first_arm_use_after_fixed_preparation",
+        "prewarmed_1",
+        "prewarmed_2"
+      ]
+    },
+    {
+      "arm": 4,
+      "jobs": 7,
+      "mode": "queued",
+      "execute_commands": 14,
+      "readout_commands": 7,
+      "states": [
+        "first_arm_use_after_fixed_preparation",
+        "prewarmed_1",
+        "prewarmed_2"
+      ]
+    },
+    {
+      "arm": 5,
+      "jobs": 7,
+      "mode": "completion_serialized",
+      "execute_commands": 14,
+      "readout_commands": 7,
+      "states": [
+        "first_arm_use_after_fixed_preparation",
+        "prewarmed_1",
+        "prewarmed_2"
+      ]
+    },
+    {
+      "arm": 6,
+      "jobs": 11,
+      "mode": "queued",
+      "execute_commands": 22,
+      "readout_commands": 11,
+      "states": [
+        "first_arm_use_after_fixed_preparation",
+        "prewarmed_1",
+        "prewarmed_2"
+      ]
+    },
+    {
+      "arm": 7,
+      "jobs": 11,
+      "mode": "completion_serialized",
+      "execute_commands": 22,
+      "readout_commands": 11,
+      "states": [
+        "first_arm_use_after_fixed_preparation",
+        "prewarmed_1",
+        "prewarmed_2"
+      ]
+    }
+  ],
+  "capacity_interpretation": {
+    "execute_controller_entries": 10,
+    "execute_reservations": 16,
+    "jobs7": 14,
+    "jobs11": 22,
+    "limit": "Issued command count exceeds selected capacities; actual simultaneous occupancy/backpressure is not inferred. CPU issue may prevent saturation. Observe model resource events when available and label missing occupancy UNKNOWN."
+  },
+  "protocol": {
+    "one_elf": true,
+    "windows": 24,
+    "occurrence": "3*arm+rep",
+    "symbols": [
+      "capacity_begin",
+      "capacity_end"
+    ],
+    "initial_state": "All11A/B loaded/configured and drained once per arm. Same A/output addresses reused across arms; first is first ARM use, never asserted coldcache.",
+    "warm_state": "Before each of two warm measurements execute exact same mode/depth untimed, drain, verify every output, then write all output sentinels/guards and fence. Same sequence per warm occurrence.",
+    "output_state": "All11 output tiles sentinel-initialized before each measured/untimed execution; active results and inactive sentinels checked;32 guards each time.",
+    "reference": "Independent CPU integer multiplication outside windows, exact all elements; no downloaded source/golden.",
+    "printing": "Only after24 measured windows; fullprogram errors also aggregate16 untimed warmup checks.",
+    "operations_inside_window": "Execute pair(s), optional per-pair completionFENCE, common execute completionFENCE, queuedMVOUTs, finalFENCE; CSR bracketing.",
+    "not_additive": "Paired durations are inclusive; no inferred physical stage decomposition."
+  },
+  "acceptance": {
+    "functional": "All24 windows plus16 unmeasured warmups exact outputs/inactive sentinels/guards. Ordinary/annotated semantics equal excluding cycles.",
+    "observation": "Every selected scope timing_complete true/unresolved empty, exact ELF/input/model/provider/config/source/plan pins. No favorable fallback.",
+    "per_occurrence": "Each of24 predictions error <=max(32cycles,20%RTL); median relative error across24<=15%. First occurrence stays included.",
+    "warm_stability": "For each arm only two identically prewarmed occurrences: abs(warm1-warm2)/mean <=5%; failure remains failure. First-use state is separately labeled and never retrospectively discarded.",
+    "paired_throughput": "For each depth and each occurrence, predicted queued/serialized ratio relative error<=15%; correct faster/slower sign if physical separation>max(32cycles,5%slow).",
+    "depth_slope": "For each mode and warm occurrence, depth increments1to3,3to7,7to11: predicted delta residual<=max(32cycles,25%abs physicaldelta); no claimed saturation unless matched occupancy evidence supports it.",
+    "state_delta": "For each arm first_minus_mean_warm prediction residual<=max(32cycles,25%abs physicaldelta). No attribution to a cache without independent counters.",
+    "qualification": "All gates conjunctive, only narrow observed region. Existing denominator/heldout/fit prerequisites remain; one related protocol family is not four independent workloads.",
+    "failure": "Keep original model/denial unchanged. If results guide model edits this family becomes development and a new independent validation family is needed."
+  },
+  "budget": {
+    "future_physical_jobs_max": 1,
+    "timeout_s_max": 1200,
+    "ledger": "Existing cumulative diagnostic ledger only, no reset",
+    "authorization": "No physical launch until ordinary+allannotated scopes complete and parent reviews exact artifacts",
+    "cpus": "Outside campaign9-28"
+  },
+  "independence": {
+    "lineage": "New protocol/source and deterministic operands, related public fulltile ISA scaffold; previous labels informed question selection but no new labels used for code/model/threshold tuning.",
+    "model_changes": false,
+    "private_reference_use": false,
+    "author_grant": false
+  }
+}

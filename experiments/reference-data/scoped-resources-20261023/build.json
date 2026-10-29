@@ -1,0 +1,72 @@
+{
+  "source_identity": "986bea3e9c4110a7404123f42ec0b4ef74722978c4e9e495ce0576fd1eaf9fbd",
+  "source_sha256s": {
+    "riscv/annotated_timing.cc": "f0acc9febb62ef9e35f0c1bae3023639ccae043552879a680d894b3dfd4a7ea4",
+    "timing/scoped_resources.hpp": "1cf996be47c9d3d20302353027adfd4fccbb972c16df759f9cb2ea446732a7f6"
+  },
+  "base_build_sha256": "92179295aa776238246946ab6e36b2cf7f8ed63e0b5f3d697d6d33f3d4d90989",
+  "base_archive_sha256": "9cfa4c78ab3a86c36dc809509a9e601de423b193934a7f2ba585bfc4bdecdc29",
+  "commands": [
+    {
+      "argv": [
+        "g++",
+        "-std=c++20",
+        "-O2",
+        "-g0",
+        "-fPIC",
+        "-I/work/merlin/tasks/phase1-harness-v2/.tmp/boost-deps/usr/include",
+        "-iquote",
+        "/work/merlin/tasks/el4-memory-reference-20261023/.tmp/scoped-observer",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike",
+        "-I/work/merlin/tasks/el4-memory-reference-20261023/spike-timing",
+        "-I/work/merlin/tasks/el4-memory-reference-20261023/spike-timing/timing",
+        "-I/work/merlin/tasks/el4-memory-reference-20261023/spike-timing/timing/core/include",
+        "-iquote",
+        "/work/merlin/tasks/el4-memory-reference-20261023/spike-timing/riscv",
+        "-iquote",
+        "/work/merlin/tasks/el4-memory-reference-20261023/spike-timing/fesvr",
+        "-iquote",
+        "/work/merlin/tasks/el4-memory-reference-20261023/spike-timing/disasm",
+        "-iquote",
+        "/work/merlin/tasks/el4-memory-reference-20261023/spike-timing/customext",
+        "-iquote",
+        "/work/merlin/tasks/el4-memory-reference-20261023/spike-timing/fdt",
+        "-iquote",
+        "/work/merlin/tasks/el4-memory-reference-20261023/spike-timing/softfloat",
+        "-iquote",
+        "/work/merlin/tasks/el4-memory-reference-20261023/spike-timing/spike_main",
+        "-iquote",
+        "/work/merlin/tasks/el4-memory-reference-20261023/spike-timing/spike_dasm",
+        "-c",
+        "/work/merlin/tasks/el4-memory-reference-20261023/spike-timing/riscv/annotated_timing.cc",
+        "-o",
+        "/work/merlin/tasks/el4-memory-reference-20261023/.tmp/scoped-observer/annotated_timing.o"
+      ],
+      "wall_s": 3.16823073400883
+    },
+    {
+      "argv": [
+        "g++",
+        "-L/work/merlin/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu",
+        "-Wl,-rpath,/work/merlin/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu",
+        "-Wl,--export-dynamic",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/extension.o",
+        "-o",
+        "/work/merlin/tasks/el4-memory-reference-20261023/.tmp/scoped-observer/spike",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/spike.o",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libspike_main.a",
+        "/work/merlin/tasks/el4-memory-reference-20261023/.tmp/scoped-observer/libriscv.a",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libdisasm.a",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libsoftfloat.a",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libfesvr.a",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libfdt.a",
+        "-lcrypto",
+        "-lpthread",
+        "-lboost_regex",
+        "-lboost_system"
+      ]
+    }
+  ],
+  "spike_sha256": "e4e90609f3a2d907c7244322d7f96c5fd0e0dd74e30137177a97fd750157e87f"
+}

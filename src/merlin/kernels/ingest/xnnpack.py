@@ -92,7 +92,7 @@ def endpoint_markers() -> dict[str, tuple[str, ...]]:
     """
     out: dict[str, list[str]] = {}
     try:
-        from merlin.kernels import endpoints as _ep
+        from merlin.compile.analysis import compute_endpoints as _ep
         for name in _ep.endpoint_names():
             ep = _ep.load_endpoint(name)
             names = [n for names in ep.roles.values() for n in names]

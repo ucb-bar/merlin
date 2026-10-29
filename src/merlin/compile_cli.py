@@ -1082,7 +1082,19 @@ def compile_model(
                 else:
                     _module = _mq.parse(linalg_mlir)
                     _outlined = outline_dispatches(_module, groups=_groups.form_groups(_module, target))
-                out["stream_plan"] = _stream.plan(build_dispatch_program(_outlined), _outlined.dispatches)
+                _capture_source = (
+                    Path(capture_bundle) / "model.mlir" if capture_bundle
+                    else linalg_mlir if "\n" not in str(linalg_mlir) else None
+                )
+                _stored_args = _stream.weight_args_beside(_capture_source) if _capture_source else None
+                out["stream_plan"] = _stream.plan(
+                    build_dispatch_program(_outlined), _outlined.dispatches,
+                    weight_args=_stored_args or (),
+                )
+                out["stream_plan"]["stored_argument_binding"] = {
+                    "status": "selected_manifest" if _stored_args is not None else "unknown",
+                    "argument_indices": sorted(_stored_args or ()),
+                }
             except Exception as e:  # noqa: BLE001 -- analysis only; never fails a compile
                 out["stream_plan"] = {"error": f"{type(e).__name__}: {e}"}
             try:

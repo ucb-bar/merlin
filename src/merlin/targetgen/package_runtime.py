@@ -45,8 +45,9 @@ def scoped_package_executor(executor):
     host process (including a thread that did not inherit the context).
     """
     global _EXECUTOR_SCOPES
-    if (not callable(getattr(executor, "run_entrypoint", None))
-        or not callable(getattr(executor, "build_package", None))):
+    if not callable(getattr(executor, "run_entrypoint", None)) or not callable(
+        getattr(executor, "build_package", None)
+    ):
         raise TypeError("package executor must own builds and entrypoint invocation")
     token = _EXECUTOR.set(executor)
     with _EXECUTOR_LOCK:
@@ -124,7 +125,9 @@ def _is_input_dialect(mod: str) -> bool:
     return is_public_input_module(mod)
 
 
-def _py_imports_merlin(text: str, *, compiler_library: CompilerLibraryContract | None = None) -> str | None:
+def _py_imports_merlin(
+    text: str, *, compiler_library: CompilerLibraryContract | None = None, compiler_api=None, compiler_dependency=False, full_compiler=None
+) -> str | None:
     """Return the offending module name iff source imports a non-exempt core/extension harness module.
     The historical function name remains compatible. AST-based: docstrings, comments and ``merlin_iface``
     never match. The public input dialect (:data:`_INPUT_DIALECT_EXEMPT`) is allowed (using the interface,
@@ -136,8 +139,17 @@ def _py_imports_merlin(text: str, *, compiler_library: CompilerLibraryContract |
     except SyntaxError:
         return None
 
+    from .compiler_library_fork import permits_namespace
+
     def permitted(module: str) -> bool:
-        return _is_input_dialect(module) or (compiler_library is not None and compiler_library.permits(module))
+        return (
+            _is_input_dialect(module)
+            or (full_compiler is not None and full_compiler.permits(module))
+            or (compiler_library is not None and (compiler_library.permits(module) or permits_namespace(compiler_library, module)))
+            or (compiler_api is not None and compiler_api.permits(module))
+            or (compiler_dependency and compiler_library is not None
+                and any(member.module == module for member in compiler_library.members))
+        )
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -249,6 +261,21 @@ class InfraFailure(CertFailure):
     """
 
 
+class NotMeasuredFailure(CertFailure):
+    """A gate that produced NO verdict -- e.g. a mandatory tier stopped by its wall clock.
+
+    It still fails closed (never a pass), but ``status`` is one of the not-measured statuses
+    (``capsule_common.NOT_MEASURED_STATUSES``), so a timeout is neither counted against the submission
+    as a numeric failure nor allowed to certify it. ``facts`` (tier, tier_reason, cycles the run printed
+    before it was stopped, ...) are copied onto the recorded failure.
+    """
+
+    def __init__(self, plane: str, category, detail: str, *, status: str, **facts):
+        super().__init__(plane, category, detail)
+        self.status = status
+        self.facts = facts
+
+
 class BackendDeclined(Exception):
     """The backend STATED that it does not handle this capsule, instead of emitting a wrong program.
 
@@ -330,12 +357,19 @@ def load_package(
     *,
     contract: str | Path | None = None,
     artifact_profile: SelectedArtifactProfile | None = None,
+    shared_pass_requirement: dict | None = None,
 ) -> Package:
     """Load + validate a package manifest (fail-closed). Resolves the entrypoint tool path.
 
     Explicit ``artifact_profile`` admits ABI 0.2 structural inspection only,
     independently of the legacy executable-compiler capability. It never
     changes that capability verdict. Default ABI 0.2 loading refuses.
+
+    An explicit ``shared_pass_requirement`` also requires the declared shared
+    pass interfaces. This checks transport structure only; declarations confer
+    no numerical, effect, execution or performance qualification. Omission
+    preserves historical loading outside an original selected requirement scope,
+    including packages without these interfaces.
 
     Also ASKS the package classifier whether this directory provides the ``compiler`` capability at
     all, so "this is not a compiler package" is answered once, by name, instead of surfacing as
@@ -347,7 +381,9 @@ def load_package(
     from ..perf.gate_phase import blocks as _blocks
     from ..perf.gate_phase import configured_phase as _configured_phase
     from . import package as _package
+    from .shared_pass_context import selected_shared_pass_requirement
 
+    shared_pass_requirement = selected_shared_pass_requirement(shared_pass_requirement)
     d = Path(package_dir)
     capability = _package.capability(d, "compiler")
     if artifact_profile is None and _blocks(
@@ -377,6 +413,13 @@ def load_package(
         schemas.validate_manifest(manifest, contract=contract)
     except schemas.ContractViolation as e:
         raise CertFailure("contract", "structural_invariant_violation", str(e)) from e
+    if shared_pass_requirement is not None:
+        from .shared_pass_contract import validate_shared_pass_contract
+
+        try:
+            validate_shared_pass_contract(manifest, requirement=shared_pass_requirement)
+        except ValueError as e:
+            raise CertFailure("contract", "structural_invariant_violation", str(e)) from e
     # tool path: build.tool_output if a build block is declared, else entrypoints.tool
     build = manifest.get("build")
     tool_rel = build["tool_output"] if build else manifest["entrypoints"]["tool"]
@@ -495,7 +538,25 @@ def build_package(pkg: Package, *, timeout: int = 1800) -> None:
             )
 
 
-def integrity_scan(
+def integrity_scan(pkg, *, additional_forbidden=(), compiler_library=None, compiler_library_root=None):
+    """Keep default admission; external snapshot mode checks this immutable source once."""
+    def check():
+        return _integrity_scan(pkg, additional_forbidden=additional_forbidden,
+                               compiler_library=compiler_library, compiler_library_root=compiler_library_root)
+    executor = _scoped_executor()
+    if executor is not None:
+        try:
+            from merlin_experiments.phase1.feedback.snapshot_execution import active_snapshot
+        except ModuleNotFoundError as error:
+            if error.name != 'merlin_experiments.phase1.feedback.snapshot_execution':
+                raise
+        else:
+            if active_snapshot() is executor:
+                return executor.check_integrity_once(pkg, check)
+    return check()
+
+
+def _integrity_scan(
     pkg: Package,
     *,
     additional_forbidden: tuple[str, ...] = (),
@@ -508,6 +569,40 @@ def integrity_scan(
     oracle markers or structural import restrictions. Never read them from a
     candidate manifest or mutate the process-wide defaults for an experiment.
     """
+    from .compiler_library import active_compiler_library
+    from .compiler_profile_admission import active_compiler_imports
+
+    try:
+        from merlin_experiments.phase1.full_compiler_workspace import selected as full_selection, candidate_sources
+    except ModuleNotFoundError as error:
+        if error.name not in ('merlin_experiments', 'merlin_experiments.phase1.full_compiler_workspace'):
+            raise
+        full = None
+    else:
+        full = full_selection()
+    if full is not None:
+        if pkg.integrity_exempt:
+            raise CertFailure('integrity', 'forbidden_pattern', 'full compiler cannot exempt itself from integrity')
+        try:
+            full_sources = candidate_sources(full, pkg.directory)
+        except ValueError as error:
+            raise CertFailure('integrity', 'forbidden_pattern', str(error)) from error
+        baseline = {relative: digest for relative, digest, _ in full.members}
+        compiler_library = compiler_library_root = None
+    else:
+        full_sources = baseline = {}
+    compiler_api = None if full is not None else active_compiler_imports()
+    selected_library = None if full is not None else active_compiler_library()
+    if selected_library is not None:
+        if compiler_library is not None and (
+            compiler_library != selected_library.contract or compiler_library_root != selected_library.root
+        ):
+            raise CertFailure("integrity", "structural_invariant_violation", "compiler library selections disagree")
+        compiler_library, compiler_library_root = selected_library.contract, selected_library.root
+    if compiler_api is not None and pkg.integrity_exempt:
+        raise CertFailure(
+            "integrity", "forbidden_pattern", "profile-admitted candidates cannot claim an integrity exemption"
+        )
     if (compiler_library is None) != (compiler_library_root is None):
         raise CertFailure(
             "integrity", "structural_invariant_violation", "library contract and root must be supplied together"
@@ -528,6 +623,13 @@ def integrity_scan(
             continue
         if "build" in src.relative_to(pkg.directory).parts:  # skip the package's generated build trees
             continue
+        if full is not None and src.is_relative_to(pkg.directory / 'compiler_library'):
+            relative = src.relative_to(pkg.directory / 'compiler_library').as_posix()
+            # A reviewed public implementation can contain dormant imports of a
+            # private evaluator that is NOT mounted. Preserve that source; new
+            # or edited code receives the ordinary private-import/path checks.
+            if full_sources.get(relative) == baseline.get(relative) and relative in baseline:
+                continue
         text = src.read_text(encoding="utf-8", errors="ignore")
         for needle in (*_FORBIDDEN, *additional_forbidden):  # oracle-access paths (any lang)
             if needle in text:
@@ -538,7 +640,11 @@ def integrity_scan(
                     f"(a non-exempt package must not read the reference/oracle)",
                 )
         if src.suffix == ".py":  # real merlin-harness import (AST, not substring)
-            mod = _py_imports_merlin(text, compiler_library=compiler_library)
+            from .compiler_library_fork import DIRECTORY, enabled
+            fork_dependency = (enabled(selected_library)
+                               and src.is_relative_to(pkg.directory / DIRECTORY))
+            mod = _py_imports_merlin(text, compiler_library=compiler_library, compiler_api=compiler_api,
+                                    compiler_dependency=fork_dependency, full_compiler=full)
             if mod is not None:
                 raise CertFailure(
                     "integrity",
@@ -729,9 +835,16 @@ def run_entrypoint(
     output_json = Path(output_json).resolve() if output_json is not None else None
     executor = _scoped_executor()
     if executor is not None:
-        return executor.run_entrypoint(pkg, name, input_mlir, output_json, timeout=timeout,
-                                       write_bytecode=write_bytecode, artifact_profile=artifact_profile,
-                                       invocation_directory=invocation_directory)
+        return executor.run_entrypoint(
+            pkg,
+            name,
+            input_mlir,
+            output_json,
+            timeout=timeout,
+            write_bytecode=write_bytecode,
+            artifact_profile=artifact_profile,
+            invocation_directory=invocation_directory,
+        )
     argv = _resolve_argv(pkg, name, input_mlir, output_json, artifact_profile=artifact_profile)
     if _needs_interpreter(pkg, argv):
         argv = [sys.executable, *argv]
@@ -764,7 +877,11 @@ def run_entrypoint(
             str(Path(value or ".").resolve()) for value in env["PYTHONPATH"].split(os.pathsep)
         )
     if invocation_directory is None:
-        result = subprocess.run(argv, cwd=str(pkg.directory), env=env, capture_output=True, text=True, timeout=timeout)
+        from merlin.common import owned_process
+
+        result = owned_process.run(
+            argv, cwd=str(pkg.directory), env=env, capture_output=True, text=True, timeout=timeout
+        )
     else:
         from merlin.common import invocation_record
 
@@ -773,11 +890,21 @@ def run_entrypoint(
         # This parent owns the actual subprocess boundary. Package-written stage
         # labels are not invocation authority; semantic stage lift stays target-owned.
         result = invocation_record.run(
-            argv, directory=invocation_directory, stage=name, inputs=(input_mlir,),
+            argv,
+            directory=invocation_directory,
+            stage=name,
+            inputs=(input_mlir,),
             outputs=(output_json,) if output_json is not None else (),
-            dependencies=(Path(__file__), *tuple(path for path in pkg.directory.rglob("*")
-                                                 if path.is_file() and "__pycache__" not in path.parts)),
-            cwd=str(pkg.directory), env=env, capture_output=True, text=True, timeout=timeout,
+            dependencies=(
+                Path(__file__),
+                *tuple(path for path in pkg.directory.rglob("*") if path.is_file() and "__pycache__" not in path.parts),
+            ),
+            cwd=str(pkg.directory),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            owned_process_tree=True,
         )
     _admit_artifact_protocol(pkg, artifact_profile)
     return result

@@ -2014,7 +2014,7 @@ def _model_mnemonics(elf: Path) -> list[str] | None:
     look through."""
     import subprocess
 
-    from merlin.kernels.decode import objdump as OD
+    from merlin.compile.analysis import disassembly as OD
 
     try:
         out = subprocess.run([OD.nm_bin(), str(elf)], capture_output=True, text=True, timeout=300, check=True).stdout

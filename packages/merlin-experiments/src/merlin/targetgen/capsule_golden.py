@@ -138,7 +138,9 @@ def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor], operands: di
                     f"reproduces 'half_even'; grade this datapath against an independent golden.yaml "
                     f"instead of silently rounding half-even"
                 )
-            t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
+            from merlin.runtime.commandbuffer import apply_declared_acc_scale
+
+            t = apply_declared_acc_scale(t, attrs, op="acc_scale")
         elif stage == "relu":
             t = t.relu()
         elif stage == "maxpool":
@@ -308,8 +310,10 @@ def _load_golden_yaml(capsule_dir: str | Path | None) -> dict | None:
     if not capsule_dir:
         return None
     from merlin.targetgen.golden_store import load_golden
+    from merlin.targetgen.loader_reference import captured_reference
 
-    return load_golden(capsule_dir)
+    # A float capsule whose corpus ships no golden is graded against its own loader's host-eager output.
+    return load_golden(capsule_dir) or captured_reference(capsule_dir)
 
 
 def mx_operands(capsule: dict, capsule_dir: str | Path | None = None) -> dict | None:
@@ -476,12 +480,74 @@ def golden(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, li
     return _recompute_golden(capsule)
 
 
+def _original_residual_output(attrs,env,out_name):
+    """One original residual source evaluator, also consumed after staged Q1."""
+    from merlin.runtime.commandbuffer import residual_add_params
+    lhs_scale,rhs_scale,_bound=residual_add_params(attrs,op=f"residual_add {out_name!r}")
+    result=env[attrs["lhs"]].residual_add_scaled(env[attrs["rhs"]],lhs_scale,rhs_scale)
+    result=_narrow_to_dtype(result,str(attrs.get("output_dtype","i32")))
+    return result.relu() if "relu" in (attrs.get("epilogue") or ()) else result
+
+
 def _recompute_golden(capsule: dict) -> dict[str, list]:
-    """Compute the capsule's expected outputs on the integer Tensor engine (the integer-datapath path)."""
+    """Compute the capsule's expected outputs on the integer Tensor engine (the integer-datapath path).
+
+    A residual-state ``prelude`` (an independent contraction issued first, so the device's stores are
+    not empty when the operation under test runs) contributes its own output; it shares no operand
+    with the operation, so the operation's expected values are exactly what they are without it.
+    """
+    prelude = ((capsule.get("operation") or {}).get("attributes") or {}).get("prelude")
+    if prelude:
+        attrs = {k: v for k, v in capsule["operation"]["attributes"].items() if k != "prelude"}
+        main = {**capsule, "operation": {**capsule["operation"], "attributes": attrs}}
+        outputs = _recompute_golden(main)
+        env = materialize_capsule_leaves(capsule)
+        product = env[prelude["lhs"]].matmul(env[prelude["weight"]])
+        outputs[prelude["out"]] = _narrow_to_dtype(product, str(prelude.get("output_dtype", "i32"))).to_list()
+        return outputs
     if capsule["operation"]["op"] == "component_program":
         from merlin_experiments.phase0.component_numerics import evaluate
 
         return evaluate(capsule)
+    if capsule["operation"]["op"] == "quantized_producer_sum":
+        attrs=capsule["operation"].get("attributes") or {}
+        if set(attrs)!={"producer","residual","producer_result_operand","intermediate_shape","intermediate_dtype","out"}:
+            raise ValueError("closed original quantized producer/sum attributes required")
+        producer,residual=attrs["producer"],attrs["residual"]
+        side=attrs["producer_result_operand"]
+        if (producer.get("op") not in ("matmul","conv2d") or residual.get("op")!="residual_add"
+                or type(side)is not int or side not in (0,1) or attrs["intermediate_dtype"]!="i8"
+                or producer["attributes"].get("output_dtype")!="i8"):
+            raise ValueError("original INT8 Q1 and ordered sum source stages required")
+        edge=producer["attributes"]["out"]
+        if residual["attributes"].get(("lhs","rhs")[side])!=edge or residual["attributes"].get("out")!=attrs["out"]:
+            raise ValueError("quantized pair lost its complete original source edge")
+        values=_recompute_golden({**capsule,"operation":producer})
+        if set(values)!={edge}:raise ValueError("quantized producer has another observed output")
+        env=materialize_capsule_leaves(capsule)
+        env[edge]=Tensor(tuple(attrs["intermediate_shape"]),list(_flat(values[edge])),"i8")
+        return {attrs["out"]:_original_residual_output(residual["attributes"],env,attrs["out"]).to_list()}
+    if capsule["operation"]["op"] == "spatial_producer_pool":
+        attrs = capsule["operation"].get("attributes") or {}
+        if set(attrs) != {"producer", "pool", "intermediate_shape", "intermediate_dtype", "out"}:
+            raise ValueError("closed original spatial pair attributes required")
+        producer, pool = attrs["producer"], attrs["pool"]
+        if producer.get("op") != "conv2d" or pool.get("op") != "maxpool2d":
+            raise ValueError("spatial pair requires original convolution then maximum")
+        intermediate = producer["attributes"]["out"]
+        if (pool["attributes"].get("src") != intermediate or pool["attributes"].get("out") != attrs["out"]
+                or attrs["intermediate_dtype"] != "i8"
+                or producer["attributes"].get("output_dtype") != "i8"
+                or pool["attributes"].get("epilogue") != ["acc_scale", "maxpool"]):
+            raise ValueError("spatial pair must retain the exact signed-i8 source edge and ordered pool readout")
+        values = _recompute_golden({**capsule, "operation": producer})
+        if set(values) != {intermediate}:
+            raise ValueError("spatial producer has additional externally observed outputs")
+        # The first ordinary source evaluator already applied Q1 and narrowed.
+        # Widen those exact signed codes before the existing Q2/pool evaluator.
+        staged = Tensor(tuple(attrs["intermediate_shape"]), list(_flat(values[intermediate])), "i32")
+        env = materialize_capsule_leaves(capsule)
+        return {attrs["out"]: _apply_epilogue(staged, pool["attributes"], env).to_list()}
     env = materialize_capsule_leaves(capsule)
     op = capsule["operation"]["op"]
     attrs = capsule["operation"].get("attributes", {})
@@ -565,6 +631,12 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
             batches.append(_apply_epilogue(a_i.matmul(w_i), attrs, env).to_list())
         return {out_name: batches}
 
+    if op == "maxpool2d":
+        src = env[attrs.get("src", _pick("input"))]
+        if attrs.get("epilogue") != ["acc_scale", "maxpool"]:
+            raise ValueError("maxpool2d requires explicit acc_scale then maxpool")
+        return {out_name: _apply_epilogue(Tensor(src.shape, list(src.data), "i32"), attrs, env).to_list()}
+
     if op == "movement":
         src = env[attrs.get("src", _pick("input"))]
         return {out_name: src.to_list()}
@@ -591,16 +663,12 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         return {out_name: _apply_epilogue(src, {**attrs, "epilogue": stages, "bias": _bias_name()}, env).to_list()}
 
     if op == "residual_add":
-        # The single-rounding reference; the capsule's `bound_lsb` (carried into its numeric policy
-        # as the comparison tolerance) is how far a target may lie from it.
-        from merlin.runtime.commandbuffer import residual_add_params
+        return {out_name: _original_residual_output(attrs,env,out_name).to_list()}
 
-        lhs_scale, rhs_scale, _bound = residual_add_params(attrs, op=f"residual_add {out_name!r}")
-        t = env[attrs["lhs"]].residual_add_scaled(env[attrs["rhs"]], lhs_scale, rhs_scale)
-        t = _narrow_to_dtype(t, str(attrs.get("output_dtype", "i32")))
-        if "relu" in (attrs.get("epilogue") or ()):
-            t = t.relu()
-        return {out_name: t.to_list()}
+    if op == "sibling_feed":
+        from merlin.targetgen.corpus_sibling_feed import golden as sibling_feed_golden
+
+        return sibling_feed_golden(capsule, env, apply_epilogue=_apply_epilogue, narrow=_narrow_to_dtype)
 
     if op == "residual_seam":
         # A contraction and a residual add as two regions. Deliberately assembled from the SAME two
@@ -641,13 +709,8 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
             layout=attrs.get("layout", "nhwc"),
         )
         t = cols.matmul(w)
-        if "acc_scale" in (attrs.get("epilogue") or []):
-            # Validated here and not in the shared stage loop: a convolution is the one op whose
-            # builder used to drop the multiplier, and a stage applied at an assumed 1.0 agrees with
-            # every other engine that assumed it too.
-            from merlin.runtime.commandbuffer import declared_acc_scale
-
-            declared_acc_scale(attrs, op=f"conv2d {out_name!r}")
+        # The shared epilogue validates either explicit readout representation;
+        # neither receives an implicit multiplier.
         t = _apply_epilogue(t, attrs, env)
         return {out_name: t.to_list()}
 
@@ -674,8 +737,10 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
             sub = {
                 "epilogue": spec.get("epilogue", []),
                 "output_dtype": spec.get("output_dtype", "i32"),
-                "acc_scale": spec.get("acc_scale", attrs.get("acc_scale", 1.0)),
             }
+            readout_keys = ("acc_scale", "acc_scale_by_column")
+            selected = spec if any(key in spec for key in readout_keys) else attrs
+            sub.update({key: selected[key] for key in readout_keys if key in selected})
             t = _apply_epilogue(t, sub, env)
             outs[spec["out"]] = t.to_list()
         return outs
@@ -773,14 +838,76 @@ def _flat(nested) -> list:
 _MISMATCH_INDEX_CAP = 64
 
 
+def _per_output_value(value, mode):
+    if not isinstance(value, (int, float)):
+        return False
+    return not isinstance(value, float) or (math.isfinite(value) and (mode != "exact_int" or value.is_integer()))
+
+
+def _per_output_tolerances(policy):
+    for key in ("atol", "rtol"):
+        value = policy.get(key, 0.0)
+        if type(value) not in (int, float) or value < 0:
+            raise ValueError("per-output tolerances must be finite nonnegative numbers")
+        try:
+            finite = math.isfinite(value)
+        except OverflowError:
+            finite = False
+        if not finite:
+            raise ValueError("per-output tolerances must be finite nonnegative numbers")
+
+
+def match_per_output(observed: dict, expected: dict, policy: dict) -> bool:
+    """Match a complete versioned result roster without flat-policy defaults.
+
+    Integer leaves compare original values without narrowing or truncation.
+    Finite float leaves use the existing comparator and its declared thresholds.
+    Nonfinite values require a separately specified comparison contract.
+    """
+    if not observed or not expected or set(observed) != set(expected):
+        return False
+    policies = policy.get("outputs")
+    if (
+        set(policy) != {"schema", "compare", "outputs"}
+        or policy.get("schema") != "merlin.numeric_policy.per_output.v1"
+        or policy.get("compare") != "per_output"
+        or type(policies) is not dict
+        or set(policies) != set(expected)
+        or any(
+            type(p) is not dict or p.get("compare") not in {"exact_int", "tolerance_float"} for p in policies.values()
+        )
+    ):
+        raise ValueError("per-output matching requires the complete versioned result policy roster")
+    for name, child in policies.items():
+        actual, wanted = _flat(observed[name]), _flat(expected[name])
+        if len(actual) != len(wanted) or any(
+            not _per_output_value(value, child["compare"]) for values in (actual, wanted) for value in values
+        ):
+            return False
+        if child["compare"] == "exact_int":
+            if actual != wanted:
+                return False
+        else:
+            if compare({name: expected[name]}, {name: observed[name]}, child, _strict_values=True)["status"] != "pass":
+                return False
+    return True
+
+
 def compare(
-    expected: dict[str, list], observed: dict[str, list], policy: dict, *, golden_source: str = "merlin_tensor_int"
+    expected: dict[str, list],
+    observed: dict[str, list],
+    policy: dict,
+    *,
+    golden_source: str = "merlin_tensor_int",
+    _strict_values: bool = False,
 ) -> dict:
     """Exact-int (or tolerance-float) comparison; returns a numeric_report dict. ``golden_source`` is
     stamped into the report so provenance is honest — ``merlin_tensor_int`` for a recomputed integer
     golden, or the INDEPENDENT source (e.g. ``specir_refmodel_fp8_bf16``) when it was read from
     ``golden.yaml`` rather than recomputed."""
     mode = policy.get("compare", "exact_int")
+    if _strict_values and mode == "tolerance_float":
+        _per_output_tolerances(policy)
     rep: dict[str, Any] = {
         "policy": mode,
         "golden_source": golden_source,
@@ -792,6 +919,37 @@ def compare(
         "per_output": {},
     }
     total_mismatch = 0
+    if mode == "per_output":
+        policies = policy.get("outputs")
+        if (
+            not expected
+            or set(policy) != {"schema", "compare", "outputs"}
+            or policy.get("schema") != "merlin.numeric_policy.per_output.v1"
+            or type(policies) is not dict
+            or set(policies) != set(expected)
+            or set(observed) - set(expected)
+            or any(
+                type(p) is not dict or p.get("compare") not in {"exact_int", "tolerance_float"}
+                for p in policies.values()
+            )
+        ):
+            raise ValueError("per-output numerics require the complete original result policy roster")
+        for name, value in expected.items():
+            child = compare(
+                {name: value},
+                {name: observed[name]} if name in observed else {},
+                policies[name],
+                golden_source=golden_source,
+                _strict_values=True,
+            )
+            rep["per_output"][name] = {**child["per_output"][name], "policy": policies[name]["compare"]}
+            rep["mismatch_count"] += child["mismatch_count"]
+            rep["max_abs_error"] = max(rep["max_abs_error"], child["max_abs_error"])
+            rep["max_rel_error"] = max(rep["max_rel_error"], child["max_rel_error"])
+            if child["status"] != "pass":
+                rep["status"] = "fail"
+                rep["first_mismatch"] = rep["first_mismatch"] or child["first_mismatch"]
+        return rep
     for name, exp in expected.items():
         ef = _flat(exp)
         if name not in observed:
@@ -833,6 +991,8 @@ def compare(
         # indices are enough to see clustering, and `mismatch_count` already carries the total.
         bad_idx: list[int] = []
         for idx, (a, b) in enumerate(zip(ef, of)):
+            if _strict_values and (not _per_output_value(a, mode) or not _per_output_value(b, mode)):
+                raise ValueError("per-output values must be finite and integral for exact integer leaves")
             if mode == "exact_int":
                 bad = int(a) != int(b)
                 d = abs(int(a) - int(b))
@@ -840,7 +1000,10 @@ def compare(
                 rtol = float(policy.get("rtol", 0.0))
                 atol = float(policy.get("atol", 0.0))
                 d = abs(float(a) - float(b))
-                bad = d > (atol + rtol * abs(float(a)))
+                bound = atol + rtol * abs(float(a))
+                if _strict_values and (not math.isfinite(d) or not math.isfinite(bound)):
+                    raise ValueError("per-output floating comparison exceeds its finite arithmetic range")
+                bad = d > bound
             if bad:
                 mism += 1
                 maxabs = max(maxabs, d)
@@ -891,6 +1054,76 @@ def compare(
     if rep.get("outputs_never_written"):
         rep["failure_class"] = "output_never_written"
     return rep
+
+
+def compare_declared_outputs(
+    expected: dict[str, list],
+    observed: dict[str, list],
+    policy: dict,
+    *,
+    readback_outputs=(),
+    required_outputs=None,
+    golden_source: str = "merlin_tensor_int",
+) -> dict:
+    """Compare semantic results while allowing the ABI's declared intermediate readbacks.
+
+    The independent golden owns the required roster. Reference/simulator maps can carry more
+    published tensors, so their callers pass that same roster explicitly. Extra console outputs
+    must belong to the public logical readback boundary; they never expand the semantic golden
+    or acquire a numeric policy of their own. This rule is independent of kernel ABI kind.
+
+    Keep ``compare`` unchanged for its other consumers. In particular, project both maps before
+    calling its strict, complete-roster per-output policy implementation.
+    """
+    required = tuple(expected if required_outputs is None else required_outputs)
+    allowed = set(required) | set(readback_outputs)
+    issues = {}
+    if not required:
+        issues["__outputs__"] = {"status": "fail", "reason": "empty semantic output roster"}
+    for name in required:
+        if name not in expected:
+            issues[name] = {"status": "fail", "reason": "missing from expected"}
+            continue
+        wanted = _flat(expected[name])
+        actual = _flat(observed[name]) if name in observed else []
+        if not wanted:
+            issues[name] = {"status": "fail", "reason": "empty expected output"}
+        elif name not in observed:
+            issues[name] = {"status": "fail", "reason": "missing from observed"}
+        elif not actual:
+            issues[name] = {"status": "fail", "reason": "empty observed output"}
+        else:
+            leaf_policy = (
+                (policy.get("outputs") or {}).get(name, {}) if policy.get("compare") == "per_output" else policy
+            )
+            mode = leaf_policy.get("compare", "exact_int")
+            if any(not _per_output_value(v, mode) for values in (wanted, actual) for v in values):
+                issues[name] = {"status": "fail", "reason": "invalid numeric output value"}
+    unexpected = sorted(set(observed) - allowed)
+    for name in unexpected:
+        issues[name] = {"status": "fail", "reason": "not a declared readback output"}
+    if issues:
+        report = {
+            "policy": policy.get("compare", "exact_int"),
+            "golden_source": golden_source,
+            "status": "fail",
+            "failure_class": "output_contract_mismatch",
+            "mismatch_count": sum(max(1, len(_flat(expected.get(name, [])))) for name in issues),
+            "max_abs_error": 0,
+            "max_rel_error": 0.0,
+            "first_mismatch": None,
+            "per_output": issues,
+        }
+        if unexpected:
+            report["unexpected_outputs"] = unexpected
+        return report
+    return compare(
+        {name: expected[name] for name in required},
+        {name: observed[name] for name in required},
+        policy,
+        golden_source=golden_source,
+        _strict_values=True,
+    )
 
 
 def write_numeric_report(path: str | Path, report: dict) -> None:

@@ -48,6 +48,9 @@ Do not edit by hand — run the generator (it's `--check`ed by `check_structure.
 
 - **New to the repo?** Read [Architecture](reference/architecture.md) then
   [Repository structure](reference/repo_structure.md).
+- **Contributing to the joint compiler?** Start with [code entry points](guides/compiler_contributions.md).
+- **Running the joint experiment?** Use [artifact setup](guides/artifact_evaluation.md) and
+  [terminal monitoring](guides/experiment_dashboard.md); historical phase names remain in the code layout.
 - **Running something?** [Getting started](guides/getting_started.md) →
   the [CLI reference](reference/cli.md) → the relevant guide below.
 - **Writing generated output?** See `CLAUDE.md` "Generated-output convention" and the

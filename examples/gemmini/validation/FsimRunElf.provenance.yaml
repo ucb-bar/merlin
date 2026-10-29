@@ -1,0 +1,67 @@
+# Proposed next version of the EXISTING locked document; administrator installs.
+# Requires its fixed wrapper to implement manager-provenance.md before activation.
+schemaVersion: '2.2'
+description: Run one frozen complete-chain ELF with versioned download and consumed-file observations.
+parameters:
+  elfKey:
+    type: String
+    allowedPattern: '^firesim-elfs/[A-Za-z0-9._-]{1,128}\.elf$'
+    interpolationType: ENV_VAR
+  elfVersion:
+    type: String
+    allowedPattern: '^[A-Za-z0-9._~+/=-]{1,1024}$'
+    interpolationType: ENV_VAR
+  requestKey:
+    type: String
+    allowedPattern: '^firesim-requests/[A-Za-z0-9._-]{1,64}\.json$'
+    interpolationType: ENV_VAR
+  requestVersion:
+    type: String
+    allowedPattern: '^[A-Za-z0-9._~+/=-]{1,1024}$'
+    interpolationType: ENV_VAR
+  requestSha256:
+    type: String
+    allowedPattern: '^[a-f0-9]{64}$'
+    interpolationType: ENV_VAR
+  model:
+    type: String
+    allowedPattern: '^[A-Za-z0-9._-]{1,64}$'
+    interpolationType: ENV_VAR
+  elfSha256:
+    type: String
+    allowedPattern: '^[a-f0-9]{64}$'
+    interpolationType: ENV_VAR
+  elfBytes:
+    type: String
+    allowedPattern: '^[1-9][0-9]{0,12}$'
+    interpolationType: ENV_VAR
+  entrypointSha256:
+    type: String
+    allowedPattern: '^[a-f0-9]{64}$'
+    interpolationType: ENV_VAR
+  jobWallSeconds:
+    type: String
+    allowedPattern: '^[1-9][0-9]{0,4}$'
+    interpolationType: ENV_VAR
+  submissionId:
+    type: String
+    allowedPattern: '^[A-Za-z0-9._-]{1,64}$'
+    interpolationType: ENV_VAR
+mainSteps:
+  - action: aws:runShellScript
+    name: runElf
+    inputs:
+      timeoutSeconds: '21600'
+      runCommand:
+        - |
+          set -eu
+          : "${SSM_elfKey:?}" "${SSM_elfVersion:?}" "${SSM_requestKey:?}" "${SSM_requestVersion:?}"
+          : "${SSM_requestSha256:?}" "${SSM_model:?}" "${SSM_elfSha256:?}" "${SSM_elfBytes:?}"
+          : "${SSM_entrypointSha256:?}" "${SSM_jobWallSeconds:?}" "${SSM_submissionId:?}"
+          printf '%s  %s\n' "$SSM_entrypointSha256" /home/ubuntu/fsim-run-elf.sh | sha256sum --check --status
+          exec runuser -u ubuntu -- /home/ubuntu/fsim-run-elf.sh \
+            --elf-key "$SSM_elfKey" --elf-version "$SSM_elfVersion" \
+            --request-key "$SSM_requestKey" --request-version "$SSM_requestVersion" \
+            --request-sha256 "$SSM_requestSha256" --model "$SSM_model" \
+            --elf-sha256 "$SSM_elfSha256" --elf-bytes "$SSM_elfBytes" \
+            --job-wall-seconds "$SSM_jobWallSeconds" --submission-id "$SSM_submissionId"

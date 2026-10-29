@@ -116,6 +116,14 @@ def check_sync(kernel: Kernel, machine) -> SyncReport:
                 f"{call.instr}: placed on unit {call.unit!r}, which {machine.target} does not have ({sorted(units)})"
             )
 
+    from merlin.sched.ir.events import has_carried_events
+
+    if has_carried_events(kernel.body):
+        return SyncReport(
+            decidable=False, archetype=hazards, problems=tuple(problems), checked=len(calls),
+            reason="lexical loop-carried completion requires the SCF event-edge/stage checker and target binding",
+        )
+
     if hazards is None:
         return SyncReport(
             decidable=False,

@@ -1,0 +1,15 @@
+{
+  "source_revision": "02d14a7d523f1ff72eaf4fb6ba6c56d2bbd47b33",
+  "counts": {
+    "tests": 219,
+    "failures": 5,
+    "errors": 0,
+    "skipped": 1,
+    "passed": 213
+  },
+  "all_changed_behavior_tests_passed": true,
+  "known_preexisting_fixture_failures": 5,
+  "baseline_reproduction_receipt": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/reviews/load-order-fixture-audit/receipt.json",
+  "native_author_qualification": "pending; no author jobs launched",
+  "shared_task_branch_unchanged": true
+}
