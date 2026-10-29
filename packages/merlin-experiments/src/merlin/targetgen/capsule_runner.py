@@ -4708,6 +4708,10 @@ def run_capsule(
     if set(adapter_managed_tiers) - set(adapters or {}):
         raise ValueError("adapter-managed tiers require supplied oracle adapters")
     required = set(_tier_policy.required_tiers(capsule) or [])
+    # Cooperative revocation point (no-op outside a trusted, revocable snapshot owner).
+    from .capsule_scheduling import check_abort as _check_abort
+
+    _check_abort()
 
     paths = make_run_paths(runs_root, run_id, suite=cfg.suite, target=cfg.target, dtype=cfg.dtype, benchmark=name)
 
@@ -5397,6 +5401,7 @@ def run_capsule(
             stamp_cache_refusals(tiers, _cache_refusals)
 
         for tier in _tier_seq:
+            _check_abort()  # a revoked (preempted/frozen) snapshot stops before paying for another rung
             mand = tier in required
             # THE SCREEN IS ALWAYS PAID FOR; the tiers above it are what a budget can decline. A capsule
             # inside the derived covering set is never declined -- that is what the cover is for.

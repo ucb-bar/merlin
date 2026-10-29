@@ -283,6 +283,14 @@ class BackgroundGuard:
             stop = joint_control.stop_reason()
             if stop is not None:
                 return stop
+            # A newer snapshot owns the grader now: no further admission from this one, queued work
+            # is cancelled, and the verdict is recorded as superseded with its partial counts.
+            from .snapshot_publication import preempted_reason
+
+            preempted = preempted_reason()
+            if preempted is not None:
+                self.deferred = preempted
+                return preempted
             if joint_control.remaining() <= 0:
                 return "joint campaign deadline reached"
             return self.skip_reason()
@@ -300,3 +308,25 @@ class BackgroundGuard:
 
     def current(self):
         return self.source is not None and source_digest(self.ws) == self.source
+
+    def superseded_record(self, verdict):
+        """The ``background_grade`` record of a superseded snapshot, with its partial counts."""
+        from .snapshot_publication import preempted_reason
+
+        rows = [row for row in (verdict.get("per_capsule") or []) if isinstance(row, dict)]
+        status = lambda row: row.get("status")  # noqa: E731
+        counts = {
+            "n_rows": len(rows),
+            "n_pass": sum(status(r) == "pass" for r in rows),
+            "n_fail": sum(status(r) == "fail" for r in rows),
+            "n_not_run": sum(status(r) == "gated" for r in rows),
+            "n_other": sum(status(r) not in {"pass", "fail", "gated"} for r in rows),
+            "n_aborted_in_flight": sum(r.get("execution_status") == "aborted" for r in rows),
+        }
+        return {
+            "status": "superseded_snapshot" if self.finish_bounded_snapshot else "deferred",
+            "reason": self.deferred,
+            "source_sha256": self.source,
+            "preempted": preempted_reason() is not None,
+            "partial_counts": counts,
+        }

@@ -163,7 +163,7 @@ def test_budget_exhausted_during_core_cancels_following_work_without_new_clock(t
     def exhaust(candidate, **kwargs):
         score = original(candidate, **kwargs)
         monkeypatch.setattr(F.joint_control, "remaining", lambda **kw: 0)
-        assert kwargs["defer_pending"]() == "original joint campaign deadline exhausted"
+        assert kwargs["defer_pending"]() == "core coverage window exhausted"
         return score
 
     monkeypatch.setattr(CG, "grade", exhaust)

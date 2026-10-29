@@ -227,6 +227,19 @@ def completed_tier_costs(result):
     }
 
 
+def _capsule_document(capsule):
+    """Plain capsule data for the child, carrying the parent's tier-floor exemption.
+
+    The exemption (``tier_policy.floor_exempt``) is a per-process registry keyed by capsule directory,
+    which a child process cannot see; stamping the capsule's own field keeps the child's required
+    ladder identical to the parent's (a Spike-only scalability case must not gain L3 in the child).
+    """
+    data = CHILD._data(capsule)
+    if tier_policy.is_floor_exempt(capsule):
+        data[tier_policy.FLOOR_EXEMPT_FIELD] = True
+    return data
+
+
 def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, adapters, timeout, workers, no_oracle):
     from merlin.targetgen import capsule_runner as runner
 
@@ -240,7 +253,7 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
     costs = {tier: tier_policy.observed_cost(target, tier) for tier in selection}
     document = {
         "grade_kind": "operator",
-        "capsule": CHILD._data(capsule),
+        "capsule": _capsule_document(capsule),
         "package_dir": str(package_dir),
         "target": target,
         "runs_root": str(runs_root),

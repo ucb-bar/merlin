@@ -7,7 +7,8 @@ import fcntl
 import json
 from pathlib import Path
 
-_OWNER = ContextVar('phase1_snapshot_publication', default=None)
+_OWNER = ContextVar("phase1_snapshot_publication", default=None)
+_PREEMPTION = ContextVar("phase1_snapshot_preemption", default=None)
 
 
 @contextmanager
@@ -75,12 +76,21 @@ def superseding_snapshot(workspace, token):
 
 
 @contextmanager
-def scope(workspace, token):
+def scope(workspace, token, *, preempted=None):
+    """``preempted`` (optional) returns the reason this snapshot was superseded by a newer one."""
     selected = _OWNER.set((str(Path(workspace).resolve()), str(token)))
+    preemption = _PREEMPTION.set(preempted)
     try:
         yield
     finally:
+        _PREEMPTION.reset(preemption)
         _OWNER.reset(selected)
+
+
+def preempted_reason():
+    """Why the owning snapshot was preempted, or None (also None outside an owned snapshot)."""
+    probe = _PREEMPTION.get()
+    return probe() if probe is not None else None
 
 
 def publish_live(workspace, action, *, default=None):

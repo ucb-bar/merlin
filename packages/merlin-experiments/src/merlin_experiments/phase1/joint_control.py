@@ -57,9 +57,38 @@ def policy(path):
             correctness.setdefault(key, default)
             if type(correctness[key]) is not int or not 1 <= correctness[key] <= maximum:
                 raise ValueError(f"invalid joint gSIM correctness {key}")
+    _optional(value)
     from .joint_measurements import limits
     limits(value)
     return value
+
+
+#: Opt-in drain/preemption knobs. Never ``setdefault`` them into the stored policy: a resumed run compares
+#: its stored policy dict byte for byte, so absent keys must stay absent and be defaulted at read time.
+PREEMPTION_DEFAULT = {"mode": "abort", "min_age_s": 120, "abort_grace_s": 60}
+
+
+def _optional(value):
+    reserve = value.get("final_coverage_s")
+    if reserve is not None and (type(reserve) is not int or not 1 <= reserve <= value["drain_s"]):
+        raise ValueError("invalid joint campaign final_coverage_s")
+    grace = value.get("freeze_grace_s")
+    if grace is not None and (type(grace) is not int or not 0 <= grace <= 300):
+        raise ValueError("invalid joint campaign freeze_grace_s")
+    checkpoint = value.get("drain_checkpoint")
+    if checkpoint is not None and type(checkpoint) is not bool:
+        raise ValueError("invalid joint campaign drain_checkpoint")
+    preemption = value.get("snapshot_preemption")
+    if preemption is not None:
+        if (
+            not isinstance(preemption, dict)
+            or set(preemption) - set(PREEMPTION_DEFAULT)
+            or preemption.get("mode", "abort") not in {"off", "drain", "abort"}
+        ):
+            raise ValueError("invalid joint campaign snapshot_preemption")
+        for key, high in (("min_age_s", 3600), ("abort_grace_s", 900)):
+            if key in preemption and (type(preemption[key]) is not int or not 0 <= preemption[key] <= high):
+                raise ValueError(f"invalid joint campaign snapshot_preemption {key}")
 
 
 def validate(options):
@@ -120,7 +149,13 @@ def start():
         Path(os.environ[ENV]).write_text(json.dumps(value, indent=2) + "\n")
 
 
-def remaining(*, drain=False, now=None):
+def remaining(*, drain=False, now=None, coverage=False):
+    """Seconds to the original campaign deadline (or the freeze boundary with ``drain``).
+
+    ``coverage=True`` is only for the operator's frozen-submission final coverage: while its guaranteed
+    window is open (:func:`final_coverage_window`) it never reports less than that window. Every other
+    caller keeps the original hard deadline, so gSIM admission and author routing are unchanged.
+    """
     value = selected()
     if value is None:
         return None
@@ -129,14 +164,85 @@ def remaining(*, drain=False, now=None):
     end = value["started_at_epoch"] + value["policy"]["duration_s"]
     if drain:
         end -= value["policy"]["drain_s"]
-    return max(0.0, end - (time.time() if now is None else now))
+    when = time.time() if now is None else now
+    left = max(0.0, end - when)
+    if coverage and not drain and _COVERAGE_END is not None:
+        left = max(left, _COVERAGE_END - when)
+    return left
+
+
+_COVERAGE_END = None
+
+
+def final_coverage_reserve_s(value=None):
+    """Guaranteed seconds for the frozen submission's final coverage (default: half the drain)."""
+    value = selected() if value is None else value
+    policy = value["policy"]
+    return policy.get("final_coverage_s", max(1, policy.get("drain_s", 1800) // 2))
+
+
+def freeze_reached(value=None):
+    value = selected() if value is None else value
+    return value is not None and value["started_at_epoch"] is not None and remaining(drain=True) <= 0
+
+
+def pre_coverage_deadline_epoch(value=None):
+    """Latest wall time by which freeze-drain housekeeping (joins, checkpoints) must have ended."""
+    value = selected() if value is None else value
+    return value["started_at_epoch"] + value["policy"]["duration_s"] - final_coverage_reserve_s(value)
+
+
+def freeze_grace_s():
+    value = selected()
+    return 0 if value is None else value["policy"].get("freeze_grace_s", 30)
+
+
+def drain_checkpoint_enabled():
+    """Whether the freeze-drain turn end skips the redundant post-turn grade (final coverage supersedes it)."""
+    value = selected()
+    return value is not None and value["policy"].get("drain_checkpoint", True)
+
+
+def snapshot_preemption():
+    """Stale-snapshot preemption policy for joint grading; ``None`` outside a joint campaign."""
+    value = selected()
+    if value is None:
+        return None
+    return {**PREEMPTION_DEFAULT, **(value["policy"].get("snapshot_preemption") or {})}
+
+
+@contextmanager
+def final_coverage_window():
+    """Guarantee the final coverage at least its reserve, even after a drain overran the hard deadline.
+
+    The frozen-submission coverage is the campaign's only completion evidence; a late freeze path
+    (stuck background grades, a slow turn end) must not be able to hand it a zero budget. The window
+    is ``max(time left to the original deadline, reserve)`` from now, and is reported verbatim.
+    """
+    global _COVERAGE_END
+    now = time.time()
+    left = remaining(now=now)
+    reserve = final_coverage_reserve_s()
+    window = max(left, float(reserve))
+    previous, _COVERAGE_END = _COVERAGE_END, now + window
+    try:
+        yield {
+            "basis": "original_deadline" if left >= reserve else "reserved_floor",
+            "started_at_epoch": now,
+            "window_s": window,
+            "reserve_s": reserve,
+            "left_to_original_deadline_s": left,
+            "extended_past_original_deadline": left < reserve,
+        }
+    finally:
+        _COVERAGE_END = previous
 
 
 def require_full_model(*, engine="spike", now=None):
     value = selected()
     if value is None:
         return None
-    left = remaining(now=now)
+    left = remaining(now=now, coverage=True)
     if engine != "spike" or left <= 0 or left > value["policy"]["final_model_s"]:
         raise RuntimeError("joint full models are admitted only on Spike during the final model window")
     return left

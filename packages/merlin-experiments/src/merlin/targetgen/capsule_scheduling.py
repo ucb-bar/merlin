@@ -103,13 +103,37 @@ def timing_history(runs_roots: Iterable[str | Path]) -> Iterator[None]:
         _TIMING_HISTORY.reset(token)
 
 
-_ADMISSION_OBSERVER: ContextVar[tuple[Callable[[str], None], Callable[[], bool] | None] | None] = ContextVar("merlin_admission_observer", default=None)
+_ADMISSION_OBSERVER: ContextVar[tuple | None] = ContextVar("merlin_admission_observer", default=None)
+_ABORT_PROBE: ContextVar[Callable[[], str | None] | None] = ContextVar("merlin_snapshot_abort_probe", default=None)
+
+
+class BackgroundAbort(BaseException):
+    """A trusted snapshot owner revoked a started member (preempted or frozen snapshot).
+
+    Deliberately not an ``Exception``: grading code that converts ordinary errors into a capsule
+    failure must not turn a revocation into a verdict. The scheduler converts it into a gated,
+    never-started-equivalent ``BACKGROUND_DEFERRED`` row, which is neither a pass nor an attempt.
+    """
+
+
+def check_abort() -> None:
+    """Cooperative checkpoint for in-process capsule work; free outside a revocable snapshot."""
+    probe = _ABORT_PROBE.get()
+    if probe is not None:
+        reason = probe()
+        if reason:
+            raise BackgroundAbort(reason)
 
 
 @contextmanager
-def observe_admission(callback, *, stop_requested=None):
-    """Notify the trusted snapshot owner when this queue can admit no further work."""
-    token = _ADMISSION_OBSERVER.set((callback, stop_requested))
+def observe_admission(callback, *, stop_requested=None, abort_requested=None):
+    """Notify the trusted snapshot owner when this queue can admit no further work.
+
+    ``stop_requested`` closes admission and cancels queued members; started members drain.
+    ``abort_requested`` (returns a reason) additionally revokes STARTED members at their next
+    cooperative checkpoint (and any polling operator child).
+    """
+    token = _ADMISSION_OBSERVER.set((callback, stop_requested, abort_requested))
     try:
         yield
     finally:
@@ -519,6 +543,36 @@ def run_pipelined(
         if boundary_readiness is not None:
             boundary_readiness.started(cap)
 
+    # A trusted owner may revoke STARTED members (stale snapshot preemption, freeze boundary).
+    abort_probe = (_ADMISSION_OBSERVER.get() or (None, None, None))[2]
+    if abort_probe is not None:
+        revocable_run_one = run_one
+
+        def run_one(capsule, parallel):
+            token = _ABORT_PROBE.set(abort_probe)
+            try:
+                reason = abort_probe()
+                if reason:
+                    raise BackgroundAbort(reason)
+                return revocable_run_one(capsule, parallel)
+            except BackgroundAbort as abort:
+                return {
+                    "capsule": capsule["name"],
+                    "kind": capsule.get("kind"),
+                    "label": capsule.get("label"),
+                    "status": "gated",
+                    "background_deferred": str(abort) or "snapshot revoked",
+                    "execution_status": "aborted",
+                    "correctness": "unknown",
+                    "failure": {
+                        "plane": "gate",
+                        "category": "BACKGROUND_DEFERRED",
+                        "detail": str(abort) or "snapshot revoked",
+                    },
+                }
+            finally:
+                _ABORT_PROBE.reset(token)
+
     # Background snapshot replacement may drain started work at capsule boundaries.
     # Other callers retain cooperative cancellation of an owned running child.
     if defer_pending is not None:
@@ -530,7 +584,9 @@ def run_pipelined(
             stale = deferred or supersession_reason()
             if stale:
                 return deferred_row(capsule, stale)
-            token = _DEFER_PROBE.set((lambda: deferred) if defer_running else None)
+            token = _DEFER_PROBE.set(
+                (lambda: deferred or (abort_probe() if abort_probe else None)) if defer_running else abort_probe
+            )
             try:
                 return original_run_one(capsule, parallel)
             finally:

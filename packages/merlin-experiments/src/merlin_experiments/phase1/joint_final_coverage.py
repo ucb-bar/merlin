@@ -6,6 +6,8 @@ or resets the campaign clock. Native graders retain their exact artifact caches.
 """
 from __future__ import annotations
 
+import json
+import time
 from contextlib import redirect_stderr, redirect_stdout
 import json
 from pathlib import Path
@@ -149,83 +151,127 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
     def save():
         _write(path, _rollup(report))
 
-    def expired():
-        return "original joint campaign deadline exhausted" if joint_control.remaining() <= 0 else None
+    from contextlib import ExitStack
 
-    def budget():
-        return max(0, int(joint_control.remaining()))
+    from merlin.targetgen.tier_policy import floor_exempt
 
-    save()  # Persist the whole required denominator before starting any work.
-    adapters, engine = _adapters("spike", context.target, te.sim_via, **readback_kwargs(context))
-    if engine != "spike" or set(adapters) != {"L2"}:
-        raise ValueError("final cheap coverage requires the exact Spike-only adapter")
-    for name, root in (("core", core), ("scalability", scale_cases)):
-        group = groups[name]
-        try:
-            if budget() < 1:
-                raise TimeoutError("original joint campaign deadline exhausted")
-            prepared.verify_inputs()
-            if inputs.verify_grade_inputs is not None:
-                inputs.verify_grade_inputs()
-            runs = output / name
-            with compiler_execution(inputs, candidate=frozen, run_dir=prepared.run_dir):
-                with (output / f"{name}.log").open("w") as log, redirect_stdout(log), redirect_stderr(log):
-                    score = CG.grade(
-                        frozen, capsules_root=root, runs_root=runs, target=context.target,
-                        labels={"public", "dev"}, contract=contract, target_experiment=te,
-                        oracle_adapters=adapters, functional_public_tier="L2",
-                        timeout=max(1, min(900, budget())), max_workers=CG.default_grade_workers(),
-                        additional_forbidden=inputs.additional_forbidden,
-                        model_snapshot_root=runs / ".private_model_sources",
-                        defer_pending=expired, defer_running=True,
-                    )
-            score_path = output / f"{name}-score.json"
-            _write(score_path, score)
-            group["evidence"] = {"path": str(score_path), "sha256": sha256_file(score_path)}
-            _apply_score(group, score)
-        except Exception as exc:
-            group["error"] = f"{type(exc).__name__}: {exc}"
-        finally:
-            for row in group["obligations"].values():
-                if row["status"] == "pending":
-                    row.update(status="skipped", reason=group.get("error", "native grader did not close this obligation"))
+    #: Cumulative share of the guaranteed window a group may consume, so core cannot starve scalability
+    #: (and neither can starve the model checks): core <= 45%, core+scalability <= 85%.
+    shares = {"core": 0.45, "scalability": 0.85}
+    stack = ExitStack()
+    window = stack.enter_context(joint_control.final_coverage_window())
+    report["budget"] = {**window, "group_cumulative_share": shares}
+    window_end = window["started_at_epoch"] + window["window_s"]
+
+    def group_end(name):
+        share = shares.get(name)
+        return window_end if share is None else window["started_at_epoch"] + share * window["window_s"]
+
+    def budget(name=None):
+        end = window_end if name is None else group_end(name)
+        return max(0, int(min(joint_control.remaining(coverage=True), end - time.time())))
+
+    def expired(name=None):
+        return (
+            f"{name or 'final'} coverage window exhausted"
+            if joint_control.remaining(coverage=True) <= 0 or budget(name) <= 0
+            else None
+        )
+
+    save()  # Persist the whole required denominator and its guaranteed budget before any work.
+    try:
+        adapters, engine = _adapters("spike", context.target, te.sim_via, **readback_kwargs(context))
+        if engine != "spike" or set(adapters) != {"L2"}:
+            raise ValueError("final cheap coverage requires the exact Spike-only adapter")
+        for name, root, caps in (("core", core, core_caps), ("scalability", scale_cases, scale_caps)):
+            group = groups[name]
+            try:
+                if budget(name) < 1:
+                    raise TimeoutError("final coverage window exhausted")
+                prepared.verify_inputs()
+                if inputs.verify_grade_inputs is not None:
+                    inputs.verify_grade_inputs()
+                runs = output / name
+                # The Spike-only scalability suite owns no L3 adapter: keep it on its declared L0-L2 ladder
+                # under any operator tier floor. Core capsules keep the floor.
+                exempt = floor_exempt([root / cap["name"] for cap in caps]) if name == "scalability" else ExitStack()
+                with exempt, compiler_execution(inputs, candidate=frozen, run_dir=prepared.run_dir):
+                    with (output / f"{name}.log").open("w") as log, redirect_stdout(log), redirect_stderr(log):
+                        score = CG.grade(
+                            frozen,
+                            capsules_root=root,
+                            runs_root=runs,
+                            target=context.target,
+                            labels={"public", "dev"},
+                            contract=contract,
+                            target_experiment=te,
+                            oracle_adapters=adapters,
+                            functional_public_tier="L2",
+                            timeout=max(1, min(900, budget(name))),
+                            max_workers=CG.default_grade_workers(),
+                            additional_forbidden=inputs.additional_forbidden,
+                            model_snapshot_root=runs / ".private_model_sources",
+                            defer_pending=lambda name=name: expired(name),
+                            defer_running=True,
+                        )
+                score_path = output / f"{name}-score.json"
+                _write(score_path, score)
+                group["evidence"] = {"path": str(score_path), "sha256": sha256_file(score_path)}
+                _apply_score(group, score)
+            except Exception as exc:
+                group["error"] = f"{type(exc).__name__}: {exc}"
+            finally:
+                for row in group["obligations"].values():
+                    if row["status"] == "pending":
+                        row.update(
+                            status="skipped", reason=group.get("error", "native grader did not close this obligation")
+                        )
+                save()
+
+        for model, programs in PROGRAMS.items():
+            try:
+                if budget() < 1:
+                    raise TimeoutError("final coverage window exhausted")
+                joint_control.require_full_model(engine="spike")
+                result = execute_visible(
+                    prepared.workspace,
+                    {"action": "check", "model": model, "split": "visible", "mode": "full"},
+                    snapshot_source=frozen,
+                    timeout_s=budget(),
+                    stop=lambda: expired() is not None,
+                    context=inputs.context,
+                    compiler_bundle_manifest=prepared.run_dir / "input_bundle_manifest.yaml",
+                )
+                if result.get("source_sha256") != compiler_sha256:
+                    raise ValueError("full-model check returned another compiler identity")
+                result_path = output / f"model-{model}.json"
+                _write(result_path, result)
+                for program in programs:
+                    row = _program_row(model, program, result)
+                    row["evidence"] = {"path": str(result_path), "sha256": sha256_file(result_path)}
+                    groups["models"]["obligations"][f"{model}/{program}"] = row
+            except Exception as exc:
+                for program in programs:
+                    groups["models"]["obligations"][f"{model}/{program}"] = {
+                        "status": "skipped",
+                        "reason": f"{type(exc).__name__}: {exc}",
+                    }
             save()
 
-    for model, programs in PROGRAMS.items():
+        groups["models"]["passed"] = all(row["status"] == "pass" for row in groups["models"]["obligations"].values())
         try:
-            if budget() < 1:
-                raise TimeoutError("original joint campaign deadline exhausted")
-            joint_control.require_full_model(engine="spike")
-            result = execute_visible(
-                prepared.workspace, {"action": "check", "model": model, "split": "visible", "mode": "full"},
-                snapshot_source=frozen, timeout_s=budget(), stop=lambda: expired() is not None,
-                context=inputs.context, compiler_bundle_manifest=prepared.run_dir / "input_bundle_manifest.yaml",
-            )
-            if result.get("source_sha256") != compiler_sha256:
-                raise ValueError("full-model check returned another compiler identity")
-            result_path = output / f"model-{model}.json"
-            _write(result_path, result)
-            for program in programs:
-                row = _program_row(model, program, result)
-                row["evidence"] = {"path": str(result_path), "sha256": sha256_file(result_path)}
-                groups["models"]["obligations"][f"{model}/{program}"] = row
+            prepared.verify_inputs()
+            if hash_tree(frozen)["sha256"] != compiler_sha256:
+                raise ValueError("frozen compiler changed during final coverage")
         except Exception as exc:
-            for program in programs:
-                groups["models"]["obligations"][f"{model}/{program}"] = {
-                    "status": "skipped", "reason": f"{type(exc).__name__}: {exc}"}
-        save()
-    groups["models"]["passed"] = all(
-        row["status"] == "pass" for row in groups["models"]["obligations"].values())
-    try:
-        prepared.verify_inputs()
-        if hash_tree(frozen)["sha256"] != compiler_sha256:
-            raise ValueError("frozen compiler changed during final coverage")
-    except Exception as exc:
-        report["custody_error"] = f"{type(exc).__name__}: {exc}"
-        for group in groups.values():
-            group["passed"] = False
-            for row in group["obligations"].values():
-                if row["status"] == "pass":
-                    row.update(status="skipped", reason="final input/compiler custody check failed")
+            report["custody_error"] = f"{type(exc).__name__}: {exc}"
+            for group in groups.values():
+                group["passed"] = False
+                for row in group["obligations"].values():
+                    if row["status"] == "pass":
+                        row.update(status="skipped", reason="final input/compiler custody check failed")
+
+    finally:
+        stack.close()
     save()
     return {**report, "artifact": {"path": str(path), "sha256": sha256_file(path)}}

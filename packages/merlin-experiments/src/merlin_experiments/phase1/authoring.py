@@ -725,11 +725,18 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             break
 
         from . import joint_epochs
+        from .joint_handoff import drain_required
 
         if joint and joint_epochs.stop_reason(run_dir) is not None:
             from .joint_handoff import checkpoint
 
             verdict = checkpoint(ws, run_dir, rnd)
+        elif joint and drain_required(run_dir):
+            # Freeze/drain: final coverage of the frozen submission supersedes the post-turn grade,
+            # which would otherwise spend the guaranteed coverage budget (policy drain_checkpoint).
+            from .joint_handoff import checkpoint
+
+            verdict = checkpoint(ws, run_dir, rnd, drain=True)
         else:
             verdict = GR.post_turn_grade(
                 _driver_grade_receipt[0],

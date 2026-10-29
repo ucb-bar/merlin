@@ -8,7 +8,8 @@ import time
 
 from merlin.targetgen.capsule_scheduling import observe_admission
 from merlin.common.cpu_pool import GRADE, cpu_priority, preparation_cpus, selected_pool
-from ..compiler_library import library_thread, join_background
+from .. import joint_control
+from ..compiler_library import join_background, library_thread
 from . import snapshot_publication
 from .background_admission import SubmissionNotReady
 
@@ -30,16 +31,53 @@ def _completed_development_source(verdict, current_source):
     return None
 
 
-def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_identity,
-        on_finished=None, poll_s=1.0, first_required=True):
+def _partial_counts(run_dir, tick):
+    """Counts a snapshot had reached (completed redacted rows only), from its own progress stream."""
+    path = Path(run_dir) / "_qa_work" / f"fruns_{tick}" / "snapshot_progress.json"
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    rows = [r for r in data.get("per_capsule") or [] if isinstance(r, dict)]
+    return {
+        "n_selected": data.get("n_selected"),
+        "n_completed": data.get("n_completed"),
+        "n_passed": data.get("n_passed"),
+        "n_failed": sum(r.get("status") == "fail" for r in rows),
+        "state": data.get("state"),
+    }
+
+
+def run(
+    workspace,
+    run_dir,
+    stop,
+    *,
+    interval_s,
+    first_grade,
+    grade,
+    source_identity,
+    on_finished=None,
+    poll_s=1.0,
+    first_required=True,
+):
     """Own/join every worker. No scratch recycling or cancellation on ordinary edits.
 
     Same-source overlap is allowed only after the older admission queue closes;
     the curriculum's exact in-flight ledger excludes its admitted capsules.
+
+    Joint campaigns add preemption (``joint_control.snapshot_preemption``): once the author's source
+    has moved past a snapshot (and the next snapshot is due), the stale snapshot stops admitting,
+    its queued work is cancelled and, in ``abort`` mode, its in-flight capsules are revoked at their
+    next cooperative checkpoint after a short grace, so the newest snapshot gets the grader at once.
+    At most two non-abandoned snapshots exist; a revoked owner that fails to unwind within its grace
+    is abandoned (its daemon thread keeps unwinding, owning nothing the scheduler waits on). At the
+    freeze boundary every in-flight snapshot is revoked and joined only for ``freeze_grace_s``.
     """
     directory = Path(run_dir) / '_qa_work/background_snapshot_owners'
     directory.mkdir(parents=True, exist_ok=True)
     active = []
+    abandoned = []
     completed_source = None
     next_start = 0.0
     first_pending = first_required
@@ -61,25 +99,58 @@ def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_iden
         temporary.replace(path)
 
     def persist(job):
-        document = {key: job[key] for key in ('token', 'source', 'started_at_epoch', 'tick')}
-        document.update(schema='merlin.background_snapshot_owner.v1',
-                        admission_closed=job['closed'].is_set(),
-                        snapshot_dir=str(Path(run_dir) / '_qa_work' / f"fcand_{job['tick']}" / 'submission'),
-                        runs_dir=str(Path(run_dir) / '_qa_work' / f"fruns_{job['tick']}"),
-                        admission_reason=job.get('admission_reason'),
-                        state='deferred' if job.get('deferred') else 'complete' if job['done'].is_set() else 'draining' if job['closed'].is_set() else 'admitting',
-                        deferred_reason=job.get('deferred'),
-                        error=job.get('error'), source_scope='immutable grade owns its actual source/result pins')
-        path = directory / (job['token'] + '.json')
-        temporary = path.with_suffix('.next.json')
-        temporary.write_text(json.dumps(document, indent=2) + '\n')
+        document = {key: job[key] for key in ("token", "source", "started_at_epoch", "tick")}
+        document.update(
+            schema="merlin.background_snapshot_owner.v1",
+            admission_closed=job["closed"].is_set(),
+            snapshot_dir=str(Path(run_dir) / "_qa_work" / f"fcand_{job['tick']}" / "submission"),
+            runs_dir=str(Path(run_dir) / "_qa_work" / f"fruns_{job['tick']}"),
+            admission_reason=job.get("admission_reason"),
+            state=(
+                "abandoned"
+                if job.get("abandoned")
+                else "deferred"
+                if job.get("deferred")
+                else "complete"
+                if job["done"].is_set()
+                else "draining"
+                if job["closed"].is_set()
+                else "admitting"
+            ),
+            preemption=(
+                {
+                    "by_source": job.get("preempted_by"),
+                    "at_epoch": job.get("preempted_at"),
+                    "abort_reason": job.get("abort_reason"),
+                    "abort_at_epoch": job.get("aborted_at"),
+                    "partial_counts": _partial_counts(run_dir, job["tick"]),
+                }
+                if job["preempt"].is_set() or job["abort"].is_set()
+                else None
+            ),
+            deferred_reason=job.get("deferred"),
+            error=job.get("error"),
+            source_scope="immutable grade owns its actual source/result pins",
+        )
+        path = directory / (job["token"] + ".json")
+        temporary = path.with_suffix(".next.json")
+        temporary.write_text(json.dumps(document, indent=2) + "\n")
         temporary.replace(path)
 
     def launch(source):
         nonlocal next_start, first_pending
         tick = time.time_ns()
-        job = dict(token=str(tick), tick=tick, source=source, started_at_epoch=time.time(),
-                   closed=threading.Event(), done=threading.Event(), first=first_pending)
+        job = dict(
+            token=str(tick),
+            tick=tick,
+            source=source,
+            started_at_epoch=time.time(),
+            closed=threading.Event(),
+            done=threading.Event(),
+            first=first_pending,
+            preempt=threading.Event(),
+            abort=threading.Event(),
+        )
         first_pending = False
         snapshot_publication.claim(workspace, job['token'], source)
 
@@ -87,12 +158,30 @@ def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_iden
             job['admission_reason'] = reason
             job['closed'].set()
 
+        def preempted_reason():
+            return (
+                f"snapshot preempted: author source moved past {job['source'][:12]} and a newer snapshot is due"
+                if job["preempt"].is_set()
+                else None
+            )
+
+        def abort_reason():
+            return job.get("abort_reason") if job["abort"].is_set() else None
+
         def work():
             try:
-                with selected_pool(preparation_cpus()), cpu_priority(GRADE), \
-                        snapshot_publication.scope(workspace, job['token']), observe_admission(closed, stop_requested=stop.is_set):
-                    callback = first_grade if job['first'] else grade
-                    job['verdict'] = callback(tick)
+                with (
+                    selected_pool(preparation_cpus()),
+                    cpu_priority(GRADE),
+                    snapshot_publication.scope(workspace, job["token"], preempted=preempted_reason),
+                    observe_admission(
+                        closed,
+                        stop_requested=lambda: stop.is_set() or job["preempt"].is_set(),
+                        abort_requested=abort_reason,
+                    ),
+                ):
+                    callback = first_grade if job["first"] else grade
+                    job["verdict"] = callback(tick)
             except SubmissionNotReady as error:
                 job['deferred'] = str(error)[:500] or 'submission manifest not ready'
             except Exception as error:  # owned grade failure cannot strand the other owner
@@ -109,8 +198,68 @@ def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_iden
         job['thread'].start()
         next_start = time.monotonic() + interval_s
 
+    def preempt(job, newer):
+        job["preempted_by"], job["preempted_at"] = newer, time.time()
+        job["preempt"].set()
+        job["admission_reason"] = job.get("admission_reason") or "preempted by a newer snapshot"
+        job["closed"].set()  # it can admit nothing more, so the newest snapshot may start at once
+        persist(job)
+
+    def revoke(job, reason):
+        if not job["abort"].is_set():
+            job["abort_reason"], job["aborted_at"] = reason, time.time()
+            job["abort"].set()
+            persist(job)
+
+    def preemption_step(policy):
+        """Stale-snapshot preemption; returns nothing. Only called inside a joint campaign."""
+        now = time.time()
+        for job in tuple(active):
+            if job["preempt"].is_set() and policy["mode"] == "abort":
+                if not job["abort"].is_set() and now - job["preempted_at"] >= policy["abort_grace_s"]:
+                    revoke(job, "snapshot preempted by a newer snapshot")
+                elif (
+                    job["abort"].is_set()
+                    and not job["done"].is_set()
+                    and now - job["aborted_at"] >= max(15, policy["abort_grace_s"])
+                ):
+                    # Unwinding too slowly: stop counting it against the two-snapshot limit.
+                    job["abandoned"] = True
+                    active.remove(job)
+                    abandoned.append(job)
+                    persist(job)
+        due = (
+            time.monotonic() >= next_start
+            and (Path(workspace) / "submission/manifest.yaml").is_file()
+            and any(not job["done"].is_set() for job in active)
+        )
+        if not due:
+            return
+        source = source_identity()
+        if source is None or source == completed_source:
+            return
+        for job in tuple(active):
+            if (
+                not job["done"].is_set()
+                and not job["preempt"].is_set()
+                and source != job["source"]
+                and now - job["started_at_epoch"] >= policy["min_age_s"]
+            ):
+                preempt(job, source)
+        if policy["mode"] == "abort" and len(active) >= 2:
+            # Newest cannot start while two owners exist: revoke the oldest stale one now.
+            stale = [job for job in active if job["preempt"].is_set() and not job["done"].is_set()]
+            if stale:
+                revoke(
+                    min(stale, key=lambda job: job["started_at_epoch"]),
+                    "snapshot preempted; slot needed for the newest snapshot",
+                )
+
     try:
         while not stop.is_set():
+            policy = joint_control.snapshot_preemption()
+            if policy is not None and policy["mode"] != "off":
+                preemption_step(policy)
             for job in tuple(active):
                 persist(job)
                 if not job['done'].is_set():
@@ -145,7 +294,23 @@ def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_iden
                     launch(source)
             stop.wait(poll_s)
     finally:
-        # Preserve every started result and source scope across native turn handoff.
+        # Preserve every started result and source scope across native turn handoff, except at the
+        # joint freeze boundary: the frozen submission's final coverage needs the grader and its
+        # budget, so superseded in-flight snapshots are revoked and joined only for a short grace.
+        frozen = joint_control.selected() is not None and joint_control.freeze_reached()
+        if frozen:
+            for job in active:
+                job["preempt"].set()
+                job.setdefault("preempted_at", time.time())
+                revoke(job, "joint campaign freeze boundary; final coverage owns the grader")
+            until = time.monotonic() + joint_control.freeze_grace_s()
         for job in active:
-            join_background(job['thread'])
+            if frozen:
+                job["thread"].join(max(0.0, until - time.monotonic()))
+                if job["thread"].is_alive():
+                    job["abandoned"] = True
+                    abandoned.append(job)
+                    persist(job)
+                    continue
+            join_background(job["thread"])
             persist(job)
