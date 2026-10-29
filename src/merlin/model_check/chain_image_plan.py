@@ -71,6 +71,7 @@ def prepare(selection: dict, directory: Path) -> dict:
             pin(stage / "model.mlir"),
             pin(stage / "input_order.json"),
             pin(stage / "weights.safetensors.manifest.json"),
+            *production.get("completed_link_revalidation_pins", ()),
         ]
         programs.append(
             {

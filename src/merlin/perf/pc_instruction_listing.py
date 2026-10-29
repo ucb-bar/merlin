@@ -192,6 +192,8 @@ def control_flow(insns: Sequence[RawInsn]) -> dict[str, Any]:
     """
     if not insns:
         return {"blocks": [], "natural_loops": [], "unresolved": []}
+    if any(insn.relocations for insn in insns):
+        return {"blocks": [], "natural_loops": [], "unresolved": ["unresolved_object_relocations"]}
     if any(not insn.hexcode for insn in insns):
         return {"blocks": [], "natural_loops": [], "unresolved": ["instruction_encodings_missing"]}
     by_pc = {insn.addr: insn for insn in insns}
@@ -370,6 +372,7 @@ def pc_relative_constants(insns: Sequence[RawInsn]) -> tuple[dict[str, Any], ...
 def normalized_text(insns: Iterable[RawInsn]) -> str:
     """Existing objdump-tokenizer input, retaining listed words and addresses."""
     return "".join(f"{insn.addr:x}: {insn.hexcode} {insn.mnemonic} {','.join(insn.operands)}\n"
+                   + "".join(f"{insn.addr:x}: {relocation}\n" for relocation in insn.relocations)
                    for insn in insns)
 
 

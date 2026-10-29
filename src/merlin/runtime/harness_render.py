@@ -1,7 +1,8 @@
 """Neutral logical-pointer storage and complete readback for a selected contract.
 
-The harness transports semantic tensors in dense row-major order. It does not
-lower operations, prepare device layouts, compute answers or select a schedule.
+The harness transports dense tensors. Explicit readonly captured-input layouts
+compose the existing host byte-preparation owner before rendering. It does not
+lower operations, compute answers or select a schedule.
 Calling an entry/completion/counter supplied by a contract grants no hardware,
 effect, numerical or timing authority.
 """
@@ -325,6 +326,50 @@ def selected_storage_budget(contract):
     return budget
 
 
+def _prepared_immutable_storage(cb, inputs, authorizations, budget):
+    """Compose the existing host-only byte-layout owner with dense transport.
+
+    Only readonly inputs may change storage. Original outputs remain dense in
+    their logical type/order; this transport grants no transformed readback,
+    arithmetic, runtime packing, source scratch or device access permission.
+    """
+    import copy
+
+    from .storage_binding import resolve_storage_bindings
+    from merlin.perf.storage_encoding import GroupedAxesStorage
+
+    bindings = resolve_storage_bindings(cb, inputs, max_storage_bytes=budget,
+                                       prepack_authorizations=authorizations)
+    if bindings is None:
+        raise ValueError("neutral prepack requires the existing explicit storage contract")
+    if type(inputs) is not dict or set(inputs) != {name for name, b in bindings.items() if b.access != "write"}:
+        raise ValueError("neutral immutable preparation requires the exact complete source input roster")
+    prepared, payloads = copy.deepcopy(cb), {}
+    for name, binding in bindings.items():
+        encoding, spec = binding.encoding, prepared["tensors"][name]
+        declared = spec.pop("storage_encoding", None)
+        if declared is not None and GroupedAxesStorage.from_dict(declared) != encoding:
+            raise ValueError("source tensor and caller storage encodings differ")
+        if binding.access != "read":
+            if (binding.access != "write" or tuple(spec["shape"]) != encoding.logical_shape
+                    or encoding.offset_elements != 0 or encoding.storage_elements != math.prod(encoding.logical_shape)
+                    or any(n > 1 and d != s for d, n, s in encoding.linear_index_terms())):
+                raise ValueError("neutral immutable preparation requires unchanged dense output storage")
+            continue
+        if binding.logical_values is None:
+            raise ValueError("neutral immutable preparation requires complete explicit source inputs")
+        if any(key in spec for key in ("data", "preload_b64")):
+            raise ValueError("neutral immutable preparation requires independently supplied logical source bytes")
+        dtype = get(encoding.dtype)
+        logical = {"shape": list(encoding.logical_shape), "dtype": encoding.dtype}
+        raw = base64.b64decode(_payload(binding.logical_values, logical, encoding.logical_shape, dtype,
+                                       math.prod(encoding.logical_shape) * (dtype.element_bits // 8)))
+        if binding.prepack_authorization is not None:
+            binding.prepack_authorization.validate_payload(raw)
+        payloads[name] = encoding.pack_bytes(raw, max_storage_bytes=budget)
+    return prepared, payloads
+
+
 def render_harness(
     cb,
     *,
@@ -339,6 +384,7 @@ def render_harness(
     max_storage_bytes=16 * 1024 * 1024,
     source_owned_mutables=(),
     blobs=None,
+    prepack_authorizations=None,
 ):
     """Ordinary renderer: storage/calls only, with complete output-only poisoning.
 
@@ -368,6 +414,10 @@ def render_harness(
         raise ValueError("neutral harness requires a positive complete storage budget")
     if type(source_owned_mutables) is not tuple or len(set(source_owned_mutables)) != len(source_owned_mutables):
         raise ValueError("neutral source-owned scratch requires its original exact tuple")
+    if prepack_authorizations is not None or "storage_encodings" in cb.get("params", {}):
+        if source_owned_mutables or (blobs is not None and (type(blobs) is not dict or blobs)):
+            raise ValueError("neutral immutable preparation cannot compose source scratch or streamed sidecars")
+        cb, inputs = _prepared_immutable_storage(cb, inputs, prepack_authorizations, max_storage_bytes)
     normalized, slots = _roster(cb, source_owned_mutables=source_owned_mutables)
     layouts = {name: _tensor(spec) for name, spec in normalized["tensors"].items()}
     total = sum(row[2] for row in layouts.values())

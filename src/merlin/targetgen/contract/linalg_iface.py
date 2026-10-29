@@ -73,11 +73,37 @@ def make_linalg_context():
 
 
 def is_linalg_on_tensors(text: str) -> bool:
-    """Cheap discriminator: does this interface MLIR carry the linalg-on-tensors provenance level?
+    """Recognize the tensor-function input grammar with or without provenance metadata.
 
-    Lets a package's ``parse`` route between the two grammars without committing to a full parse.
+    The explicit legacy level is a fast routing hint, not a validity certificate.
+    Unannotated inputs are parsed structurally using the same context and entry
+    selection as the workload reader. The actual parser/verifier remains authoritative.
     """
-    return f'prov.level = "{LEVEL}"' in text
+    if f'prov.level = "{LEVEL}"' in text:
+        return True
+    from xdsl.dialects.builtin import TensorType
+    from xdsl.parser import Parser
+
+    try:
+        from ...common.ir_lock import IR_LOCK
+    except ImportError:  # flat-staged input readers have no enclosing package
+        import threading
+
+        IR_LOCK = threading.Lock()
+    try:
+        with IR_LOCK:
+            module = Parser(make_linalg_context(), text).parse_module()
+        if any(_op_name(op).startswith("merlin_iface.") for op in module.walk()):
+            return False
+        definitions = [op for op in module.walk() if op.name == "func.func" and op.body.blocks]
+        forward = [op for op in definitions if _fn_name(op) == "forward"]
+        if not definitions or len(forward) > 1 or (not forward and len(definitions) > 1):
+            return False
+        entry = forward[0] if forward else definitions[0]
+        boundary = [arg.type for arg in entry.body.blocks[0].args] + _fn_result_types(entry)
+        return any(isinstance(typ, TensorType) for typ in boundary)
+    except Exception:
+        return False
 
 
 # --------------------------------------------------------------------------- structural field reads
@@ -895,6 +921,7 @@ def bind_logical_io_metadata(text: str, inputs, outputs):
     """
     import hashlib
     import json
+
     from xdsl.dialects import builtin, func
     from xdsl.parser import Parser
 

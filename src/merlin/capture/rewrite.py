@@ -246,7 +246,7 @@ def hoist_safety_problems(
     try:
         with IR_LOCK:
             selected = _selected_relayouts(
-                mq.parse((src / "model.mlir").read_text()), hoisted_args, func_name, relayouts
+                mq.parse(src / "model.mlir"), hoisted_args, func_name, relayouts
             )
         header, payload_offset = load_header(src / "weights.safetensors")
         if "__metadata__" in header:
@@ -430,7 +430,7 @@ def _weight_selection(src, func_name, immutable_arguments):
     src = Path(src)
     mlir_text = (src / "model.mlir").read_text()
     with IR_LOCK:
-        report = weight_layout_report(mq.parse(mlir_text), func_name)
+        report = weight_layout_report(mq.parse(src / "model.mlir", source_text=mlir_text), func_name)
 
     man = json.loads((src / "weights.safetensors.manifest.json").read_text())
     if type(man) is not dict or any(
@@ -688,7 +688,7 @@ def verify_hoisted_bundle(
     expected, removed = rewrite_transposed_args(original, set(by_arg), func_name, relayouts=tuple(by_arg.values()))
     expected, retargeted = retarget_weights_file(expected, (dst / "weights.safetensors").resolve())
     with IR_LOCK:
-        actual_module, expected_module = mq.parse((dst / "model.mlir").read_text()), mq.parse(expected)
+        actual_module, expected_module = mq.parse(dst / "model.mlir"), mq.parse(expected)
         actual_module.verify()
         if text(actual_module, generic=True) != text(expected_module, generic=True):
             raise RewriteRefused("hoisted model IR differs from the checked source layout rewrite")

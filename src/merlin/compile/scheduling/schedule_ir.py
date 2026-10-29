@@ -100,7 +100,8 @@ def _block(problem, resources, storage, tiles):
         raise ValueError("dense schedule block exceeds original supported domain")
     m, k, n = tiles
     bounded = replace(resources, max_m_blocks=m, max_k_blocks=k, max_n_blocks=n)
-    blocks = dense_blocks(problem, bounded, k_limit=lambda m, n: storage.k_limit(problem, resources, m, n))
+    blocks = dense_blocks(problem, bounded, k_limit=lambda m, n: storage.k_limit(problem, resources, m, n),
+                          n_choices=(n,))
     for block in blocks:
         if (block.m, block.k, block.n) == tiles and storage.admits(problem, block, resources):
             return block

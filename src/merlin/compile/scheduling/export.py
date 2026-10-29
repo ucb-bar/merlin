@@ -189,6 +189,15 @@ PUBLIC_MODULES_V23 = (
 )
 PUBLIC_MODULES_V24 = (
     *PUBLIC_MODULES_V23,
+    "merlin.transforms.dense_reduction_layout",
+    "merlin.llvmlower.layout_propagation",
+    "merlin.compile.scheduling.convolution_input_reuse",
+    "merlin.compile.scheduling.tensor_storage",
+    "merlin.llvmlower.constant_panel_layout",
+    "merlin.compile.scheduling.dense_loaded_sum_composition",
+    "merlin.llvmlower.quantized_sum_source",
+    "merlin.llvmlower.generated_private_workspace",
+    "merlin.targetgen.oot_starterkit.llvm_context",
     "merlin.llvmlower.late_quant_rne",
     "merlin.llvmlower.source_expression_interval",
     "merlin.llvmlower.source_expression_interval_llvm",
@@ -197,6 +206,7 @@ PUBLIC_MODULES_V24 = (
     "merlin.llvmlower.scaled_integer_finite_llvm",
     "merlin.compile.scheduling.projection_dense",
     "merlin.compile.scheduling.rolling_lookahead",
+    "merlin.compile.scheduling.convolution_input_first_use",
     "merlin.compile.scheduling.operand_slots",
     "merlin.compile.scheduling.dense_shared_rhs",
     "merlin.compile.scheduling.horizontal_convolution",
@@ -219,6 +229,11 @@ _NAMESPACES_V20 = {
     **_NAMESPACES_V11,
     "merlin.runtime": '"""Selected host arithmetic helpers; execution and oracle modules are not exported."""\n',
     "merlin.xdsl_dialects.lowering": '"""Selected graph lowering leaves; other pipeline owners are not exported."""\n',
+}
+
+_NAMESPACES_V24 = {
+    **_NAMESPACES_V20,
+    "merlin.targetgen.oot_starterkit": '"""Selected generic LLVM parsing leaf; no package invocation or grading."""\n',
 }
 
 SOURCE_BINDING_PROTOCOL = "merlin.shared_source_binding.v1"
@@ -270,7 +285,7 @@ def namespace_replacements(version=6):
             21: _NAMESPACES_V20,
             22: _NAMESPACES_V20,
             23: _NAMESPACES_V20,
-            24: _NAMESPACES_V20,
+            24: _NAMESPACES_V24,
         }[version]
     )
 

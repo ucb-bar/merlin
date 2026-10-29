@@ -42,6 +42,7 @@ class GraphOptimizationContract:
     maximum_layout_assignments: int = 100_000
     maximum_layout_permutations: int = 16
     connected_layout: bool = False
+    column_reduction_layout: bool = False
 
     def validate(self, source: str):
         if self.source_sha256 != hashlib.sha256(source.encode()).hexdigest():
@@ -54,6 +55,7 @@ class GraphOptimizationContract:
             "floating_environment_unobserved_nontrapping",
             "physical_layout",
             "connected_layout",
+            "column_reduction_layout",
         ):
             if type(getattr(self, field)) is not bool:
                 raise ValueError("graph permissions must be explicit booleans")
@@ -205,7 +207,7 @@ def _check_fusion_growth(outlined, plan, entry, original_count, maximum_added):
 def _implementation_sources():
     from merlin.common import dense_float_ir
     from merlin.perf import physical_layout
-    from merlin.transforms import pipeline_state
+    from merlin.transforms import dense_ir, dense_reduction_layout, pipeline_state
     from merlin.xdsl_dialects.lowering import arena_plan
 
     # Trusted host observations, not an SDK/export grant or imported dependency lock.
@@ -220,6 +222,7 @@ def _implementation_sources():
                     "layout_conformance",
                     "quant_round_check",
                     "host_graph_policy",
+                    "constant_panel_layout",
                     "host_storage_policy",
                     "arena_bind",
                     "host_optimization_request",
@@ -229,6 +232,8 @@ def _implementation_sources():
             ),
             ("physical_layout", Path(physical_layout.__file__)),
             ("pipeline_state", Path(pipeline_state.__file__)),
+            ("dense_ir", Path(dense_ir.__file__)),
+            ("dense_reduction_layout", Path(dense_reduction_layout.__file__)),
             ("dense_float_ir", Path(dense_float_ir.__file__)),
             ("arena_plan", Path(arena_plan.__file__)),
         )
@@ -443,6 +448,25 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostG
             "library_sources_sha256": sources,
             "passes": [asdict(record) for record in session.records],
             "pointwise_work": session.analysis("conformance"),
+        }
+    if contract.column_reduction_layout:
+        from merlin.transforms.dense_reduction_layout import rewrite_module as orient_reductions
+
+        if not contract.independent_element_order_unobserved:
+            raise ValueError("contraction layout requires explicit independent-element order permission")
+        if (not contract.floating_environment_unobserved_nontrapping
+                and any(isinstance(v.type, builtin.TensorType)
+                        and not isinstance(v.type.element_type, builtin.IntegerType)
+                        for op in module.walk() for v in (*op.operands, *op.results))):
+            raise GraphOptimizationUnavailable("contraction layout requires its unobserved floating environment")
+        before_operations = sum(1 for _ in module.walk())
+        reduction = orient_reductions(module)
+        if sum(1 for _ in module.walk()) - before_operations > contract.maximum_added_operations:
+            raise ValueError("contraction layout exceeds its compilation-space cost contract")
+        report["column_reduction_layout"] = {
+            "rewrite": reduction.to_dict(),
+            "semantics": "checked_signed_modular_recurrence_and_original_reduction_order",
+            "hardware_conformance": "not_established",
         }
     if contract.fusion_groups:
         from merlin.xdsl_dialects.lowering.dispatch_program import build_dispatch_program

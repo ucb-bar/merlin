@@ -90,7 +90,7 @@ class BorrowedArenaLifetime:
     current. It is intentionally not a serializable capability.
     """
 
-    def __init__(self, seal, selection, source, llvm_ir, pins, accepted, annotations=()):
+    def __init__(self, seal, selection, source, llvm_ir, pins, accepted, annotations=(), scalar_emissions=()):
         if seal is not _SEAL or type(selection) is not BorrowedBufferCalls:
             raise TypeError("borrowed arena lifetimes require actual native lowering")
         fields = dict(
@@ -100,6 +100,7 @@ class BorrowedArenaLifetime:
             _callback=_callback_identity(selection.validate_original),
             _observer=_callback_identity(selection.observe_native),
             _annotations=annotations,
+            _scalar_emissions=scalar_emissions,
         )
         for name, value in fields.items():
             object.__setattr__(self, name, value)
@@ -120,6 +121,8 @@ class BorrowedArenaLifetime:
         for path, digest in self._pins:
             if path.is_symlink() or not path.is_file() or sha256_file(path) != digest:
                 raise ValueError("borrowed arena native observation changed")
+        for emission in self._scalar_emissions:
+            emission.revalidate()
 
     def checked(self, llvm_ir):
         """Validate once per allocator invocation; return symbols and a receipt.
@@ -135,10 +138,15 @@ class BorrowedArenaLifetime:
             "status": "checked" if current else "llvm_changed_conservative",
             "llvm_sha256": self._llvm_sha256,
             "accepted_symbols": list(symbols),
+            **({"noncapturing_scalar_calls": sorted({call for emission in self._scalar_emissions
+                                                     for call in emission.scalar_calls})}
+               if current and self._scalar_emissions else {}),
             "native_products": [{"path": str(path), "sha256": digest} for path, digest in self._pins],
             **({"abi_annotations": [dict(input_sha256=before, selected_sha256=after, functions=list(names),
                                          bodies_calls_memory="unchanged")
                                     for before, after, names in self._annotations]} if self._annotations else {}),
+            **({"scalar_legalizations": [emission.record() for emission in self._scalar_emissions]}
+               if self._scalar_emissions else {}),
             "scope": "original conditional effects; exact native-checked lowering; final implementation independent",
         }
 
@@ -162,7 +170,22 @@ class BorrowedArenaLifetime:
             _SEAL, self._selection, self._source, after,
             (*self._pins, (implementation, sha256_file(implementation))), self._accepted,
             (*self._annotations, (self._llvm_sha256, _sha(after), names)),
+            self._scalar_emissions,
         )
+
+    def after_bounded_rne(self, emission):
+        """Carry only the actual original callback's independently checked footprint."""
+        from .bounded_rne_custody import BoundedRNEEmission
+
+        self._check()
+        if type(emission) is not BoundedRNEEmission:
+            raise TypeError('borrowed lifetime requires the live original bounded RNE emission')
+        emission.revalidate()
+        if _sha(emission.before) != self._llvm_sha256:
+            raise ValueError('bounded RNE input differs from the actual native-checked LLVM')
+        return BorrowedArenaLifetime(
+            _SEAL, self._selection, self._source, emission.after, self._pins, self._accepted,
+            self._annotations, (*self._scalar_emissions, emission))
 
 
 def _from_verified_native(selection, source, work, llvm_ir, checked, runner):

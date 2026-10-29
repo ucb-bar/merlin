@@ -29,9 +29,12 @@ def parse_interface(mlir_text: str) -> dict[str, Any]:
 
 
 def is_linalg_on_tensors(mlir_text: str) -> bool:
-    """True when the interface MLIR is the `linalg-on-tensors` grammar (a `func.func @forward` of
-    linalg/tensor/math ops) rather than `merlin_iface` v0.1. Use it to route your `parse` entrypoint
-    between the two grammars."""
+    """Recognize a tensor-function input, including ordinary unannotated linalg/tensor/math IR.
+
+    Use this to route between the tensor-function and `merlin_iface` v0.1 readers.
+    An explicit legacy provenance level is only a routing hint; parse and verify
+    the selected input before using its inventory.
+    """
     return _LI.is_linalg_on_tensors(mlir_text)
 
 

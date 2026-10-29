@@ -132,6 +132,10 @@ def _groups(module, budgets):
         operation, (_, k, n), dtypes, root, _, rhs = row
         partitions.setdefault((operation.parent, k, n, dtypes, root, rhs), []).append(row)
     groups = []
+    # This discovery is read-only and invokes no external callbacks. Several
+    # independent partitions may share a large entry block; take its current
+    # order once, without keeping any snapshot across later source edits.
+    block_orders = {}
     for rows in partitions.values():
         if not 2 <= len(rows) <= budgets.max_members:
             continue
@@ -152,11 +156,15 @@ def _groups(module, budgets):
             limit = (1 << (budgets.index_bits - 1)) - 1
             if source_elements * max(v.type.element_type.width.data // 8 for v in rows[0][0].operands) > limit:
                 continue
-            body = tuple(rows[0][0].parent.ops)
+            block = rows[0][0].parent
+            if block not in block_orders:
+                body = tuple(block.ops)
+                block_orders[block] = body, {op: index for index, op in enumerate(body)}
+            body, positions = block_orders[block]
             members = tuple(row[0] for row in rows)
-            first = min(members, key=body.index)
-            last = max(members, key=body.index)
-            if not check.dominating(root, first) or not check.safe_span(body[body.index(first) : body.index(last) + 1]):
+            first = min(members, key=positions.__getitem__)
+            last = max(members, key=positions.__getitem__)
+            if not check.dominating(root, first) or not check.safe_span(body[positions[first] : positions[last] + 1]):
                 continue
             groups.append((members, first, root, total, k, n))
             if len(groups) == budgets.max_batches:

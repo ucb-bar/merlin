@@ -55,6 +55,7 @@ class OwnedHostModelCompiler:
         op_profile=False,
         require_all_accelerator_groups=False,
         connected_spatial=None,
+        quantized_sum=None,
         sibling_source=None,
         independent_heads=None,
         pre_group_layout=None,
@@ -147,6 +148,13 @@ class OwnedHostModelCompiler:
             if not require_all_accelerator_groups or connected_spatial is not None:
                 raise ValueError("pre-group layout deferred: unsupported partial or spatial source binding")
 
+        if quantized_sum is not None:
+            from merlin.llvmlower.quantized_sum_route import QuantizedSumRoute
+            if type(quantized_sum) is not QuantizedSumRoute:
+                raise TypeError("owned model quantized sum needs its original typed source route")
+            quantized_sum.record()
+            if any(v is not None for v in (connected_spatial, sibling_source, independent_heads)):
+                raise ValueError("quantized sum source grouping has a separately selected route")
         if linked_elf_admission is None:
             raise ValueError("an independently selected linked-ELF admission is required")
         if connected_spatial is not None:
@@ -201,6 +209,8 @@ class OwnedHostModelCompiler:
             device = replace(device, pre_group_layout=pre_group_layout, intermediate_storage=intermediate_storage)
         if descriptor_results or descriptor_effects is not None:
             device = replace(device, descriptor_results=descriptor_results, descriptor_effects=descriptor_effects)
+        if quantized_sum is not None:
+            device = replace(device, quantized_sum=quantized_sum)
         if connected_spatial is not None:
             from merlin.llvmlower.device_build import DeviceRouting
 

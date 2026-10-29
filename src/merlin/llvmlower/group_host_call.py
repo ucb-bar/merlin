@@ -329,6 +329,7 @@ def _contiguous_result_views(group, members, device, *, allow_no_views=False):
     from xdsl.dialects import tensor
     from xdsl.dialects.builtin import NoneAttr, TensorType
     from xdsl.dialects.linalg.attrs import IteratorType
+    from xdsl.dialects.linalg.ops import TransposeOp
     from xdsl.ir.affine import AffineMap
     from xdsl.traits import is_side_effect_free
 
@@ -337,7 +338,7 @@ def _contiguous_result_views(group, members, device, *, allow_no_views=False):
 
     if group.root not in members or len(group.root.results) != 1 or _shape(group.root.results[0]) != device:
         return None
-    value, views = group.root.results[0], []
+    value, views, pending_transpose = group.root.results[0], [], None
     for op in members[members.index(group.root) + 1:]:
         if (
             op.parent is not group.root.parent
@@ -350,6 +351,30 @@ def _contiguous_result_views(group, members, device, *, allow_no_views=False):
             return None
         shape, result = _shape(value), _shape(op.results[0])
         if not shape or not result or any(n < 1 for n in (*shape, *result)):
+            return None
+        if isinstance(op, TransposeOp):
+            permutation = _ints(op, "permutation")
+            if (len(op.operands) != 2 or op.operands[0] is not value
+                    or not isinstance(_owner(op.operands[1]), tensor.EmptyOp)
+                    or op.operands[1].type != op.results[0].type
+                    or value.type.element_type != op.results[0].type.element_type
+                    or set(op.properties) != {"permutation"}
+                    or any(not key.startswith("prov.") for key in op.attributes)
+                    or permutation is None or sorted(permutation) != list(range(len(shape)))
+                    or result != [shape[axis] for axis in permutation]):
+                return None
+            if pending_transpose is None:
+                pending_transpose = op
+            else:
+                first = _ints(pending_transpose, "permutation")
+                if (first is None or len(first) != len(permutation)
+                        or any(first[permutation[axis]] != axis for axis in range(len(first)))
+                        or pending_transpose.operands[0].type != op.results[0].type):
+                    return None
+                pending_transpose = None
+            value = op.results[0]
+            continue
+        if pending_transpose is not None:
             return None
         if isinstance(op, tensor.CollapseShapeOp | tensor.ExpandShapeOp):
             if len(op.operands) != 1 or value.type.element_type != op.results[0].type.element_type:
@@ -399,16 +424,18 @@ def _contiguous_result_views(group, members, device, *, allow_no_views=False):
             else:
                 return None
         value = op.results[0]
-    return views if views or allow_no_views else None
+    return views if pending_transpose is None and (views or allow_no_views) else None
 
 
-def _unit_leading_residual_view(group, members, entry):
-    """Prove a source-owned residual's dense leading-unit matrix view.
+def _contiguous_residual_matrix_view(group, members, entry):
+    """Prove a source-owned residual's dense leading-axis matrix view.
 
     The independently admitted residual still owns its arithmetic and quantization. This
-    additional proof only removes unit axes from its pointer ABI: the original add must use
-    identity coordinates, and its complete nonescaping readout must retain those coordinates.
+    This proof only collapses consecutive leading axes in its pointer ABI. The original add
+    must use identity coordinates, and its complete nonescaping readout must retain them.
     """
+    from math import prod
+
     from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, NoneAttr, TensorType, i64
     from xdsl.dialects.linalg.attrs import IteratorType
     from xdsl.ir.affine import AffineMap
@@ -423,7 +450,8 @@ def _unit_leading_residual_view(group, members, entry):
         return None
     shape = _shape(root.results[0])
     device = GC.device_output_shape(entry)
-    if len(shape) <= 2 or shape[-2:] != device or any(n != 1 for n in shape[:-2]) or any(n < 1 for n in device):
+    if (len(shape) <= 2 or any(n < 1 for n in (*shape, *device))
+            or [prod(shape[:-1]), shape[-1]] != device):
         return None
     values = [*root.operands, root.results[0]]
     if any(not isinstance(v.type, TensorType) or v.type.encoding != NoneAttr() or _shape(v) != shape for v in values):
@@ -441,7 +469,7 @@ def _unit_leading_residual_view(group, members, entry):
         or _contiguous_result_views(group, members, shape, allow_no_views=True) != []
     ):
         return None
-    # The first device row axis includes only the original leading unit axes and row.
+    # The row axis is exactly the ordered product of the original leading axes.
     return ArrayAttr([
         ArrayAttr([IntegerAttr(i, i64) for i in range(len(shape) - 1)]),
         ArrayAttr([IntegerAttr(len(shape) - 1, i64)]),
@@ -475,7 +503,7 @@ def _device_result(
     device_type = TensorType(element, device)
     if have == device or (batch and have == [*map(int, batch), *device]):
         return None, result_type, ""
-    residual_view = _unit_leading_residual_view(group, members, entry) if not batch and not transposed else None
+    residual_view = _contiguous_residual_matrix_view(group, members, entry) if not batch and not transposed else None
     if residual_view is not None:
         def relayout(value) -> list:
             return [tensor.ExpandShapeOp(value, (), residual_view, have, result_type)]
@@ -483,9 +511,22 @@ def _device_result(
         return relayout, device_type, ""
     views = (
         _contiguous_result_views(group, members, device)
-        if entry.get("op") == "matmul" and not batch and not transposed else None
+        if entry.get("op") in ("matmul", "conv2d") and not batch and not transposed else None
     )
     if views:
+        from math import prod
+
+        if len(have) > 2 and have[-1] == device[1] and prod(have[:-1]) == device[0]:
+            groups = ArrayAttr([
+                ArrayAttr([IntegerAttr(i, i64) for i in range(len(have) - 1)]),
+                ArrayAttr([IntegerAttr(len(have) - 1, i64)]),
+            ])
+
+            def relayout(value) -> list:
+                return [tensor.ExpandShapeOp(value, (), groups, have, result_type)]
+
+            return relayout, device_type, ""
+
         def relayout(value) -> list:
             result = []
             for view in views:
@@ -576,7 +617,8 @@ def _erase_dead(ops) -> None:
         pending.extend(producer for producer in producers if producer is not None)
 
 
-def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack, *, weight_rows=None, bind_weight=None):
+def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack, *, weight_rows=None, bind_weight=None,
+                        constant_panel_columns=None, constant_panel_minimum_input_channels=1):
     """``(operands, constants, roles, "")`` -- what a logical-ABI group call passes besides its
     destination, in call order -- or ``(None, (), (), reason)``.
 
@@ -617,6 +659,29 @@ def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack,
             return None, (), (), "window mean prepack has no exact constant-one operand"
         ones = _constant_tensor(laid_out, activation.type.get_element_type())
         return [activation, ones.results[0]], [*views, ones], ["input_0", "weight_0"], ""
+    if stated.stored_operand == 0 and not stated.transposed:
+        from merlin.xdsl_dialects.lowering import group_command as GC
+
+        if not GC.stationary_is_activation(entry):
+            return None, (), (), "an immutable left operand needs an explicitly activation-stationary statement"
+        # The prepared immutable bytes belong to the left operand, while the
+        # runtime right operand still occupies the interface's weight slot.
+        # Do not reinterpret either as the other's preparation.
+        weight_row = (row or {}).get("weight") or {}
+        laid_out = arrays.get(weight_row.get("array")) if isinstance(weight_row.get("array"), str) else None
+        constants = []
+        left = pair[0]
+        if laid_out is not None:
+            if list(laid_out.shape) != list(left.type.get_shape()):
+                return None, (), (), "the immutable left preparation differs from its source-oriented matrix shape"
+            if bind_weight is not None:
+                left = bind_weight(laid_out, left.type.get_element_type())
+            else:
+                constant = _constant_tensor(laid_out, left.type.get_element_type())
+                constants.append(constant)
+                left = constant.results[0]
+        return _with_logical_bias(entry, [left, pair[1]], constants,
+                                  ["input_0", "weight_0"], row, arrays, why_no_prepack)
     if stated.stored_operand is None:
         # AN ACTIVATION IN THE STATIONARY SLOT binds where a weight would (as the whole-program route binds
         # it): a contraction stated with a stationary activation holds its right operand in the weight
@@ -625,7 +690,7 @@ def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack,
         from merlin.xdsl_dialects.lowering import group_command as GC
 
         second = "weight_0" if GC.stationary_is_activation(entry) else "input_1"
-        residual_view = _unit_leading_residual_view(group, group.members, entry)
+        residual_view = _contiguous_residual_matrix_view(group, group.members, entry)
         views = []
         if residual_view is not None:
             from xdsl.dialects import tensor
@@ -655,6 +720,16 @@ def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack,
         reordered[weight_rows] = laid_out
         laid_out = reordered
     from xdsl.ir import BlockArgument
+
+    if constant_panel_columns is not None:
+        from .constant_panel_layout import prepare_constant_panels
+
+        laid_out, storage = prepare_constant_panels(entry, laid_out, constant_panel_columns,
+                                                   pair[1].type.get_element_type(),
+                                                   minimum_input_channels=constant_panel_minimum_input_channels)
+        if storage is not None:
+            entry["weight_storage_encoding"] = storage.to_dict()
+            relaid = True
 
     # A WEIGHT THE HOST WOULD RE-LAY OUT ON EVERY INFERENCE (a transpose or view of the stored argument)
     # is read from the prepack's copy: the same bytes, computed once from the same weights file.
@@ -713,7 +788,15 @@ def cancel_relayouts(views) -> dict[str, int]:
     relayout whose value also reaches a host op keeps that consumer; only what nothing reads any more
     is removed, so a single relayout survives at each true host boundary."""
     cancelled = folded = 0
-    for op in list(views):
+    transposes = list(views)
+    # An original input-layout transpose can directly undo a generated result
+    # transpose. Observe only that use relation, then apply the same exact
+    # inverse proof below; arbitrary surrounding operations remain untouched.
+    for op in views:
+        if op.parent is not None and op.name == "linalg.transpose":
+            transposes.extend(use.operation for use in op.results[0].uses
+                              if use.operation.name == "linalg.transpose" and use.operation.parent is op.parent)
+    for op in transposes:
         if op.parent is None or op.name != "linalg.transpose":
             continue
         before = _owner(op.operands[0])

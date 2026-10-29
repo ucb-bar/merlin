@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -79,8 +78,12 @@ class Bundle:
 
 
 def _git_commit(root: Path) -> str | None:
-    done = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, check=False)
-    return done.stdout.strip() or None
+    """``root``'s own source revision (export record or own checkout), never an enclosing repository's."""
+    from merlin.common.provenance import UNKNOWN
+    from merlin.targetgen.provenance import source_revision
+
+    revision = source_revision(root)
+    return None if revision == UNKNOWN else revision
 
 
 def build(

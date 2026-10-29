@@ -59,17 +59,23 @@ def payload(record):
 
 
 def completed_program(receipt_pin: dict) -> dict:
-    """Read the original successful compiler receipt and its actual final link."""
+    """Read an original completed link, preserving any exact-restoration record."""
     receipt = json.loads(payload(receipt_pin))
-    if receipt.get("schema") != "merlin.baremetal-saved-model.v1" or receipt.get("status") != "compiled":
+    recovery_pins = []
+    if receipt.get("schema") == "merlin.completed_model_link_revalidation.v1":
+        from merlin.compile.completed_model_link import verify
+
+        receipt, recipe, recovery_pins = verify(receipt_pin)
+    elif receipt.get("schema") != "merlin.baremetal-saved-model.v1" or receipt.get("status") != "compiled":
         raise ValueError("chain packaging requires a completed ordinary model build")
     output = receipt["output"]
     recipe_pin = output["compilation_recipe"]
-    recipe = verify_completed_recipe(
-        reopen(recipe_pin),
-        executable=Path(output["elf"]),
-        expected_recipe_sha256=recipe_pin["sha256"],
-    )
+    if not recovery_pins:
+        recipe = verify_completed_recipe(
+            reopen(recipe_pin),
+            executable=Path(output["elf"]),
+            expected_recipe_sha256=recipe_pin["sha256"],
+        )
     link = recipe["commands"][-1]
     root = Path(output["elf"]).parent
     objects = [row for row in link["inputs"] if Path(row["path"]).suffix == ".o"]
@@ -90,6 +96,7 @@ def completed_program(receipt_pin: dict) -> dict:
         "root": root,
         "objects": objects,
         "by_name": by_name,
+        "completed_link_revalidation_pins": recovery_pins,
     }
 
 
@@ -165,7 +172,7 @@ def namespace(program: dict, index: int, directory: Path, *, nm: Path, objcopy: 
     defined.update(EXPORTED_TABLES)
     mapping = {name: prefix + name for name in defined}
     wraps = []
-    for name in wrap_names(program["link"]["argv"]):
+    for name in (*wrap_names(program["link"]["argv"]), *program.get("profile_wraps", ())):
         if name in defined or "__wrap_" + name in defined:
             mapping[name] = prefix + name
             mapping["__wrap_" + name] = "__wrap_" + prefix + name

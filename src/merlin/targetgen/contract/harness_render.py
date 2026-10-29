@@ -870,12 +870,10 @@ class _Readout:
 def _contiguous_output_pointer(name: str, binding) -> str | None:
     encoding = binding.encoding
     shape = tuple(encoding.logical_shape)
-    strides = tuple(encoding.logical_strides_elements)
-    expected = tuple(prod(shape[axis + 1 :]) for axis in range(len(shape)))
     offset = encoding.offset_elements
     if (
         any(type(d) is not int or d <= 0 for d in shape)
-        or strides != expected
+        or any(extent > 1 and stride != divisor for divisor, extent, stride in binding.logical_offset_terms())
         or type(offset) is not int
         or offset < 0
         or prod(shape) <= 0

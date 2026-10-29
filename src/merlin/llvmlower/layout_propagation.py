@@ -98,6 +98,10 @@ def _input_layout(value, block):
     permutation = _permutation(op)
     if permutation is not None:
         return tuple(permutation.index(i) for i in range(len(permutation)))
+    from .layout_conformance import per_tensor_quantization
+
+    if per_tensor_quantization(op):
+        return _input_layout(op.operands[0], block)
     if op.name != "linalg.generic" or len(op.results) != 1:
         return None
     rank = len(ty.get_shape())
@@ -121,6 +125,19 @@ def _input_layout(value, block):
             return None
         if not operand_ty.get_shape() and index_map == AffineMap(rank, 0, ()):
             continue
+        # A projected channel vector has no conflicting physical permutation:
+        # moving its unit axes is a view. Keep its exact affine broadcast map.
+        # General multidimensional broadcasts still require their own layout.
+        if (len(operand_ty.get_shape()) == rank
+                and sum(d != 1 for d in operand_ty.get_shape()) <= 1
+                and index_map.num_symbols == 0 and index_map.num_dims == rank
+                and len(index_map.results) == rank
+                and all(
+                    (extent == 1 and expr == AffineExpr.constant(0))
+                    or (isinstance(expr, AffineDimExpr) and ty.get_shape()[expr.position] == extent)
+                    for extent, expr in zip(operand_ty.get_shape(), index_map.results)
+                )):
+            continue
         if operand_ty.get_shape() != ty.get_shape() or index_map != AffineMap.identity(rank):
             return None
         if isinstance(operand.owner, Operation) and operand.owner.name == "tensor.splat":
@@ -133,12 +150,19 @@ def _input_layout(value, block):
 
 
 def rewrite_module(module, *, reduction_channel_block: int = 0, pointwise_only: bool = False,
-                   maximum_added_operations: int = 8192) -> LayoutReport:
+                   maximum_added_operations: int = 8192, selected_transposes=None) -> LayoutReport:
+    from .layout_conformance import per_tensor_quantization
+
     if type(reduction_channel_block) is not int or reduction_channel_block < 0:
         raise ValueError("reduction_channel_block must be a nonnegative integer")
     if type(pointwise_only) is not bool or type(maximum_added_operations) is not int or maximum_added_operations <= 0:
         raise ValueError("layout checking requires an explicit family and positive code budget")
     report = LayoutReport()
+    if selected_transposes is not None and (
+        type(selected_transposes) is not tuple
+        or any(type(op) is not TransposeOp or op not in set(module.walk()) for op in selected_transposes)
+    ):
+        raise ValueError("selected layouts require current typed transpose requests")
     cache = {}
     segments = {}
     added = 0
@@ -211,6 +235,11 @@ def rewrite_module(module, *, reduction_channel_block: int = 0, pointwise_only: 
                 ),
                 anchor,
             )
+        elif same_block and per_tensor_quantization(op):
+            result = add(type(op).create(
+                operands=[demand(op.operands[0], permutation, anchor), *op.operands[1:]],
+                result_types=[out_ty], properties=dict(op.properties), attributes=dict(op.attributes)), anchor)
+            report.scalar_regions += 1
         elif not pointwise_only and same_block and op.name in ("tensor.extract_slice", "tensor.insert_slice"):
             expected = 1 if op.name == "tensor.extract_slice" else 2
             arrays = [op.properties.get(name) for name in ("static_offsets", "static_sizes", "static_strides")]
@@ -233,7 +262,9 @@ def rewrite_module(module, *, reduction_channel_block: int = 0, pointwise_only: 
                     )
                     report.static_slices += 1
         elif (same_block and op.name == "linalg.generic" and len(op.results) == 1
-              and (not pointwise_only or op.results[0].has_one_use())):
+              and (not pointwise_only or op.results[0].has_one_use()
+                   or selected_transposes is not None
+                   and sum(use.operation not in selected_transposes for use in op.results[0].uses) == 1)):
             maps = [x.data for x in op.properties["indexing_maps"].data]
             iters = [x.data.value for x in op.properties["iterator_types"].data]
             # Keep the relative order of reduction axes and every scalar instruction.
@@ -292,7 +323,8 @@ def rewrite_module(module, *, reduction_channel_block: int = 0, pointwise_only: 
         cache[key] = result
         return result
 
-    originals = [(op, _permutation(op) if eligible(op) else None) for op in module.walk()]
+    originals = [(op, _permutation(op) if eligible(op) else None)
+                 for op in (module.walk() if selected_transposes is None else selected_transposes)]
     for op, permutation in originals:
         if (not eligible(op) or permutation is None or not op.results[0].uses
                 or _static_type(op.results[0]) is None):
@@ -309,7 +341,7 @@ def rewrite_module(module, *, reduction_channel_block: int = 0, pointwise_only: 
             while isinstance(backing.owner, Operation) and pointwise_kind(backing.owner) == "unit_view":
                 backing = unit_source(backing.owner)
             snapshot = (isinstance(backing.owner, Operation)
-                        and pointwise_kind(backing.owner) in {"generic", "transpose", "splat", "constant"})
+                        and pointwise_kind(backing.owner) in {"generic", "quantized_pointwise", "transpose", "splat", "constant"})
             if not snapshot and any(use.operation.parent is not op.parent
                                     or segments.get(use.operation) != segments[op] for use in op.results[0].uses):
                 continue
@@ -327,6 +359,9 @@ def rewrite_module(module, *, reduction_channel_block: int = 0, pointwise_only: 
             if (operation.parent is not None and eligible(operation) and operation.results
                     and all(isinstance(value.type, TensorType) and not value.uses for value in operation.results)):
                 operation.parent.erase_op(operation)
+        module.verify()
+        return report
+    if selected_transposes is not None:
         module.verify()
         return report
     # Consume a preferred input layout at a reduction boundary. Only move
@@ -426,3 +461,27 @@ def rewrite_module(module, *, reduction_channel_block: int = 0, pointwise_only: 
         report.ordered_reductions += 1
     module.verify()
     return report
+
+
+def realize_input_layout(module, value, permutation, anchor):
+    """Realize one explicit source layout without rewriting unrelated requests.
+
+    The caller owns the new consumer and its semantic correspondence. A temporary
+    tensor cast observes the rewritten value while the existing demand consumer
+    preserves scalar bodies, coordinates and opaque effect boundaries.
+    """
+    ty = _static_type(value)
+    if (ty is None or sorted(permutation) != list(range(len(ty.get_shape())))
+            or anchor.parent is None or anchor not in set(module.walk())):
+        raise ValueError("input layout requires a current static source and consumer")
+    result_type = TensorType(ty.element_type, [ty.get_shape()[i] for i in permutation])
+    empty = tensor.EmptyOp([], result_type)
+    request = TransposeOp(value, empty.results[0], DenseArrayBase.from_list(i64, permutation), result_type)
+    marker = tensor.CastOp.create(operands=[request.results[0]], result_types=[result_type])
+    for operation in (empty, request, marker):
+        anchor.parent.insert_op_before(operation, anchor)
+    report = rewrite_module(module, pointwise_only=True, selected_transposes=(request,))
+    result = marker.operands[0]
+    marker.parent.erase_op(marker)
+    module.verify()
+    return result, report

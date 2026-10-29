@@ -282,7 +282,7 @@ def build(selection_path: Path, destination: Path):
         correspondence = dict(
             zip((r["path"] for r in renamed["original_objects"]), (r["path"] for r in renamed["objects"]), strict=True)
         )
-        if support is not None:
+        if support is not None and "original_object" in support:
             correspondence[support["original_object"]["path"]] = correspondence[support["object"]["path"]]
         mapping = dict(line.split() for line in Path(renamed["mapping"]["path"]).read_text().splitlines())
         for symbol, record in (program["production"]["recipe"].get("link_suppliers") or {}).get("symbols", {}).items():

@@ -330,6 +330,9 @@ def group_binder(te, datapath: Mapping[str, Any] | None, *, contract=None, facts
 
 def group_interface(entry: Mapping[str, Any], binder, *, source_reference: str) -> str:
     """The interface MLIR a package is asked to lower for one stated group, through the one path."""
+    if entry.get("schema") == "connected_quantized_sum_entry_v1":
+        from merlin.llvmlower.quantized_sum_route import quantized_sum_interface
+        return quantized_sum_interface(entry, binder, source_reference=source_reference)
     if entry.get("schema") == "connected_spatial_entry_v1":
         from merlin.llvmlower.connected_spatial import spatial_pair_interface
 
@@ -344,6 +347,60 @@ def group_interface(entry: Mapping[str, Any], binder, *, source_reference: str) 
     stated = {**dict(entry), "source_reference": str(entry.get("source_reference") or source_reference)}
     _capsule, iface = interface_capsule(stated, binder(str(entry.get("operand_dtype") or "")))
     return iface
+
+
+def source_bound_group_buffers(entry, interface, *, binding=None, target=None):
+    """Reopen one source group's original logical observations.
+
+    A connected source entry owns its final result only after the complete
+    ordinary source builders reproduce the actual interface program. Saved
+    output names or candidate liveness never authorize hiding an observation.
+    The optional binding is the original caller's; otherwise the same selected
+    target binding is reopened for the source entry's operand format. The
+    original caller supplies that target; candidate metadata cannot select it.
+    """
+    from .device_shim import logical_buffers
+
+    schemas = {
+        "connected_spatial_entry_v1": "spatial_producer_pool",
+        "connected_quantized_sum_entry_v1": "quantized_producer_sum",
+    }
+    schema = entry.get("schema") if isinstance(entry, Mapping) else None
+    if schema not in schemas:
+        return logical_buffers(interface)
+    try:
+        from merlin.targetgen import corpus_spec as CS
+        from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+
+        actual = parse_interface_mlir(interface)
+        if entry.get("op") != schemas[schema]:
+            raise ValueError("connected entry lost its original composed source operation")
+        selected_target = binding.target if binding is not None else target
+        if (not isinstance(selected_target, str) or not selected_target
+                or target is not None and target != selected_target
+                or actual["target"] != selected_target):
+            raise ValueError("connected interface differs from its original selected target")
+        if binding is None:
+            from merlin.compile.mesh import _mesh_tile_binding
+            from .device_routing_placement import _accum_from_facts
+
+            operand = entry.get("operand_dtype")
+            if not isinstance(operand, str) or not operand:
+                raise ValueError("connected source has no original operand format")
+            accum = _accum_from_facts(selected_target, operand, operand)
+            binding = _mesh_tile_binding(selected_target, operand, accum)
+        capsule, expected_interface = CS.build(dict(entry), binding)
+        if parse_interface_mlir(expected_interface) != actual:
+            raise ValueError("connected interface differs from its complete original source program")
+        operation = capsule.get("operation") or {}
+        if operation.get("op") != schemas[schema]:
+            raise ValueError("ordinary source builder changed the connected operation")
+        output = (operation.get("attributes") or {}).get("out")
+        if not isinstance(output, str) or not output:
+            raise ValueError("ordinary source builder did not retain its final observation")
+        return logical_buffers(interface, observed_outputs=(output,))
+    except Exception as error:  # noqa: BLE001 -- one source/interface is a refusal
+        return None, f"original connected observations cannot be reopened ({type(error).__name__}: {error})"
 
 
 def _asked_orientation(entry: Mapping[str, Any], group: Any, operands: Mapping[str, str], tensors: Mapping[str, Any]):

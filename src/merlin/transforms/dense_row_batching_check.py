@@ -282,20 +282,24 @@ def safe_span(operations):
 
 
 def supported_scope(operation):
-    """The first slice has no enclosing loop, lifecycle or unknown ABI contract."""
+    """Check the plain source shell, retaining its opaque quantization marker.
+
+    The typed module annotation does not alter the independently read integer
+    recurrence or coordinate proof and survives unchanged on the cloned module.
+    """
     function = operation.parent_op()
     module = None if function is None else function.parent_op()
     if type(function) is not func.FuncOp or type(module) is not builtin.ModuleOp:
         return False
     for op, attributes, properties in (
         (function, {"llvm.emit_c_interface"}, {"sym_name", "function_type", "sym_visibility"}),
-        (module, {"llvm.data_layout", "llvm.target_triple", "prov.weights_file", "prov.level"}, set()),
+        (module, {"llvm.data_layout", "llvm.target_triple", "prov.weights_file", "prov.level", "prov.quantization"}, set()),
     ):
         trace = {key: value for key, value in op.attributes.items() if key not in attributes}
         if any(
             type(value) is not builtin.StringAttr
             for key, value in op.attributes.items()
-            if key in ("prov.weights_file", "prov.level")
+            if key in ("prov.weights_file", "prov.level", "prov.quantization")
         ):
             return False
         if not _trace_attributes(trace) or set(op.properties) - properties:
@@ -438,6 +442,12 @@ def verify_dense_row_batching(before, after, *, index_bits):
 
     compare(before, after)
     records = []
+    # Many independent batches can share one large model entry block. Build
+    # its current linked-list snapshot and ordinal map once in this read-only
+    # check, rather than walking the entire block for every member lookup.
+    # Nothing survives this invocation, so a later source mutation is read
+    # afresh by the next check.
+    block_orders = {}
     for batch in batches:
         members = batch["members"]
         if len(members) != len(batch["views"]):
@@ -445,8 +455,12 @@ def verify_dense_row_batching(before, after, *, index_bits):
         first = members[0][0]
         if not supported_scope(first) or any(op.parent is not first.parent for op, _ in members):
             raise ValueError("row batching crosses an unproved enclosing scope")
-        body = tuple(first.parent.ops)
-        lo, hi = min(body.index(op) for op, _ in members), max(body.index(op) for op, _ in members)
+        block = first.parent
+        if block not in block_orders:
+            body = tuple(block.ops)
+            block_orders[block] = body, {op: index for index, op in enumerate(body)}
+        body, positions = block_orders[block]
+        lo, hi = min(positions[op] for op, _ in members), max(positions[op] for op, _ in members)
         if not safe_span(body[lo : hi + 1]):
             raise ValueError("row batching moved arithmetic across an unknown effect or observer")
         root = batch["root"]

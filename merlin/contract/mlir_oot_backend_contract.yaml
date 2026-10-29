@@ -112,17 +112,19 @@ logical_kernel_abi:
     a package's emitted code must obey this pointer ABI.
 
 whole_program_attribution:
-  public_plan_schema: "merlin/contract/schemas/mixed_program_plan.schema.json"
+  public_plan_schema: "schemas/mixed_program_plan.schema.json"
   public_preflight: >-
-    The granted xDSL kit exposes python -m merlin.targetgen.oot_starterkit.plan inventory
-    --source <capsule.interface.mlir> and validate --source <capsule.interface.mlir>
-    --command-buffer <command_buffer.json> --lowered-mlir <lowered.mlir>. The inventory
-    hashes exact UTF-8 source bytes and indexes every direct operation in the unique
+    The schema path is relative to the staged public contract directory. The source
+    inventory must hash exact UTF-8 source bytes and index every direct operation in the unique
     source function's entry block
     except func.return, including constants, tensor.empty, tensor.splat and linalg.fill;
     it does not index nested scalar-body operations. The payload-only linalg reader's op
     indices are NOT source_op_indices. Validation checks schema, source/task/range/tensor
     bindings and lowered task tags only; it is not numerical or execution evidence.
+    A selected environment may additionally supply a plan inventory/validation helper;
+    consult its actual source/tool inventory. Such a helper is not required or supplied
+    by this common ABI contract. The independent judge validates the same declarations
+    for every implementation language.
   source_to_task: >-
     Preserve each source operation's stable prov.region_id where present while lowering. In
     params.global_program_plan (schema mixed_program_plan_v1), tasks enumerate actual
@@ -143,8 +145,8 @@ whole_program_attribution:
     result's source operation. Its kernel_abi.args entry must be write-only.
     An output cannot borrow another task's writer or alias an entry argument:
     neither an input/output alias nor an epilogue copy is declared by this ABI.
-    The public plan validate preflight checks this source/plan consistency; it
-    does not prove actual output writes, execution, numerics or placement.
+    Source/plan validation checks this consistency; it does not prove actual output
+    writes, execution, numerics or placement.
   lowered_ir_task: >-
     Carry the same task_index into the lowered LLVM-dialect IR as the
     merlin.global_task attribute on operations owned by that task, including host

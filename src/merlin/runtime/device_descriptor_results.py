@@ -126,9 +126,16 @@ class DeviceDescriptorResults:
         if getattr(routing, "granularity", "contraction") not in ("contraction", "group") or any(
             getattr(routing, name, None) is not None
             for name in ("catalog_manifest", "catalog_object", "catalog_builder", "post_offload_transform",
-                         "connected_spatial", "sibling_source")
+                         "connected_spatial")
         ):
             raise ValueError("descriptor identity requires the original generated contraction or logical group shim route")
+        if routing.sibling_source is not None:
+            from merlin.llvmlower.head_source_route import HeadBatchSourceRoute
+            from merlin.llvmlower.sibling_source_route import SiblingSourceRoute
+
+            if routing.granularity != 'group' or type(routing.sibling_source) not in (HeadBatchSourceRoute, SiblingSourceRoute):
+                raise ValueError('mixed descriptor identity requires its original typed logical sibling route')
+            routing.sibling_source.record()
         if routing.descriptor_effects is None:
             raise ValueError(
                 "descriptor identity requires an original qualified borrowed-buffer effects owner; "
@@ -148,6 +155,8 @@ class DeviceDescriptorResults:
                     Path(K.__file__),
                     factory_source,
                     directory / "device_preparation.py",
+                    directory / "quantized_sum_route.py",
+                    directory / "quantized_sum_source.py",
                     directory / "device_input_views.py",
                     Path(__file__).with_name("backends") / "spike_model.py",
                     *implementation_paths(),
@@ -179,6 +188,7 @@ class DeviceDescriptorResults:
                 "post_offload_transform",
                 "connected_spatial",
                 "sibling_source",
+                "quantized_sum",
             )
         )
         callbacks = tuple(
@@ -195,15 +205,27 @@ class DeviceDescriptorResults:
         policy = json.dumps(route.numeric_policy, sort_keys=True, allow_nan=False)
         if len(policy.encode()) > 65536:
             raise ValueError("descriptor route numerical policy exceeds its byte budget")
-        return scalar, str(route.package_dir), objects, callbacks, policy
+        return scalar, str(route.package_dir), objects, callbacks, policy, (
+            None if route.quantized_sum is None else json.dumps(route.quantized_sum.record(),sort_keys=True,allow_nan=False)
+        )
 
     @staticmethod
     def _entrypoints():
         from merlin.frontends.linalg_mlir import parse_mlir_text, layout_to_buffer_type
         from merlin.llvmlower import descriptor_result_preparation as P
         from merlin.llvmlower import device_input_views as V
+        from merlin.llvmlower import quantized_sum_route as Q
+        from merlin.llvmlower import quantized_sum_source as QS
 
         return (
+            Q.QuantizedSumRoute.record,
+            Q.freeze_route,
+            Q.require_route,
+            Q.group_quantized_sum,
+            Q.prepare_host,
+            Q.quantized_sum_interface,
+            QS.plan_quantized_sum_source,
+            QS.QuantizedSumSource.revalidate,
             D.emit_translation_unit,
             D._with_descriptor_results,
             D._borrowed_result_wrapper,
@@ -453,7 +475,7 @@ class DeviceDescriptorResults:
         self._input_bound = True
         self.revalidate()
 
-    def prepare_dense_input_views(self, built, work, compilation):
+    def prepare_dense_input_views(self, built, work, compilation, *, sibling_source=None):
         """Own the existing checked derivation, retaining its original input pins."""
         from merlin.llvmlower.device_input_views import prepare
 
@@ -462,7 +484,11 @@ class DeviceDescriptorResults:
                 or self._views_prepared or len(self._inputs) != 2):
             raise ValueError("descriptor views require the original pre-build input")
         source, sidecar = self._inputs
-        selected = prepare(source.path, sidecar.path, built, work, compilation)
+        if (sibling_source is None) != (self.routing.sibling_source is None):
+            raise ValueError('mixed descriptor views require the original sibling source owner')
+        if sibling_source is not None and sibling_source[0] is not self.routing.sibling_source:
+            raise ValueError('mixed descriptor views changed the original sibling selection')
+        selected = prepare(source.path, sidecar.path, built, work, compilation, sibling_source=sibling_source)
         self.revalidate()
         product = HostLLVMArtifact.capture(selected)
         receipt = HostLLVMArtifact.capture(Path(work) / "selection.json")

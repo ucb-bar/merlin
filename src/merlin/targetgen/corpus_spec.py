@@ -2003,6 +2003,19 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     )
     idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(output_dtype)
     midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(output_dtype)
+    weight_spec = {"name": weight, "role": "weight", "shape": [Kdim, cout], "dtype": idt}
+    if "weight_storage_encoding" in entry:
+        from merlin.perf.storage_encoding import GroupedAxesStorage
+
+        storage = GroupedAxesStorage.from_dict(entry["weight_storage_encoding"])
+        storage.validate()
+        if storage.logical_shape != (Kdim, cout) or storage.dtype != midt:
+            raise ValueError("convolution weight storage differs from its original logical matrix")
+        weight_spec.update(shape=list(storage.physical_shape), storage_encoding=storage.to_dict())
+    weight_type = "tensor<" + "x".join(map(str, weight_spec["shape"])) + f"x{midt}>"
+    from merlin.targetgen.contract.interface_emit import _fmt_attrs
+
+    weight_attrs = _fmt_attrs({key: value for key, value in weight_spec.items() if key not in ("shape", "dtype")})
     attrs = {
         "ifm": ifm,
         "weight": weight,
@@ -2047,7 +2060,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "label": entry.get("label", "public"),
         "interface_mlir": "capsule.interface.mlir",
         "inputs": [
-            {"name": weight, "role": "weight", "shape": [Kdim, cout], "dtype": idt},
+            weight_spec,
             {"name": ifm, "role": "input", "shape": [1, H, W, ci], "dtype": idt},
             *([{"name": bias, "role": "bias", "shape": [cout], "dtype": bias_dt}] if bias else []),
         ],
@@ -2067,7 +2080,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     L = _iface_prelude(binding.target, entry.get("comment", ""))
     L += [
         f'  %{ifm} = merlin_iface.tensor {{name = "{ifm}", role = "input"}} : tensor<1x{H}x{W}x{ci}x{midt}>',
-        f'  %{weight} = merlin_iface.tensor {{name = "{weight}", role = "weight"}} : tensor<{Kdim}x{cout}x{midt}>',
+        f'  %{weight} = merlin_iface.tensor {weight_attrs} : {weight_type}',
         *(
             [
                 f'  %{bias} = merlin_iface.tensor {{name = "{bias}", role = "bias"}} : '
@@ -2077,7 +2090,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
             else []
         ),
         f'  %{weight}_res = merlin_iface.resident_pack %{weight} {{layout = "packed_conv_rhs"}} '
-        f": (tensor<{Kdim}x{cout}x{midt}>) -> !merlin_iface.resident",
+        f": ({weight_type}) -> !merlin_iface.resident",
         f"  %{out} = merlin_iface.conv2d %{ifm}, %{weight}_res {{kernel = [{kh}, {kw}, {ci}, {cout}], "
         f"stride = [{stride[0]}, {stride[1]}], padding = [{padding[0]}, {padding[1]}, {padding[2]}, {padding[3]}], "
         f'dilation = [{dilation[0]}, {dilation[1]}], name = "{out}", epilogue = [{epi}], '
@@ -2443,6 +2456,15 @@ def build_spatial_producer_pool(entry: dict, binding: CorpusBinding) -> tuple[di
 
 
 BUILDERS["spatial_producer_pool"] = build_spatial_producer_pool
+
+
+def build_quantized_producer_sum(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """Preserve the original producer Q1 and ordered residual Q2/activation."""
+    from .corpus_quantized_sum import build as build_pair
+    return build_pair(entry, binding)
+
+
+BUILDERS["quantized_producer_sum"] = build_quantized_producer_sum
 BUILDERS["sibling_feed"] = _build_sibling_feed  # sibling contractions, merged, feeding a contraction
 
 

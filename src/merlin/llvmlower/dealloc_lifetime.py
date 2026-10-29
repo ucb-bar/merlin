@@ -49,6 +49,41 @@ def _obl_plural_roots(op, indices, ignored):
         raise ValueError('plural caller results require distinct fresh allocation owners')
 
 
+def _obl_forwarding_body(block):
+    # The ownership pass surrounds an unchanged void forwarder with descriptor
+    # metadata and an all-false aggregate dealloc. False ownership releases no
+    # storage. Recognize only that complete inert form before aggregate splitting;
+    # the later post-motion check consumes the same actual call operation.
+    body = []
+    for item in block.operations:
+        op = item.operation
+        if (op.name == 'arith.constant' and len(op.results) == 1
+                and str(op.results[0].type) == 'i1'
+                and str(op.attributes['value']) in ('false', 'true')):
+            continue
+        if (op.name == 'memref.extract_strided_metadata' and len(op.operands) == 1
+                and op.operands[0] in block.arguments):
+            continue
+        if op.name == 'bufferization.dealloc':
+            n = len(op.operands) // 2
+            if (op.results or len(op.operands) != 2 * n
+                    or tuple(ir.DenseI32ArrayAttr(op.attributes['operandSegmentSizes'])) != (n, n, 0)):
+                raise ValueError('fresh-writer ownership bookkeeping has retained aliases or results')
+            for mem, cond in zip(op.operands[:n], op.operands[n:]):
+                owner, predicate = mem.owner, cond.owner
+                if (not isinstance(mem, ir.OpResult) or owner.name != 'memref.extract_strided_metadata'
+                        or len(owner.operands) != 1 or owner.operands[0] not in block.arguments
+                        or mem != owner.results[0]
+                        or not isinstance(cond, ir.OpResult) or predicate.name != 'arith.constant'
+                        or str(cond.type) != 'i1' or str(predicate.attributes['value']) != 'false'):
+                    raise ValueError('fresh-writer ownership bookkeeping may release storage')
+            continue
+        body.append(op)
+    # The remaining exact call/empty-return check also excludes every possible
+    # consumer of the ignored metadata/constants outside that inert aggregate.
+    return tuple(body)
+
+
 def _obl_borrowed_calls(module):
     if not _OBL_CALL_ROSTER:
         return set(), set(), []
@@ -102,7 +137,7 @@ def _obl_borrowed_calls(module):
                         or len(wrapper.regions) != 1 or len(wrapper.regions[0].blocks) != 1):
                     raise ValueError('current fresh-writer wrapper ABI differs: ' + wrapper_name)
                 block = wrapper.regions[0].blocks[0]
-                body = tuple(op.operation for op in block.operations)
+                body = _obl_forwarding_body(block)
                 replacements = {} if equivalent else {index: len(types) + position for position, index in enumerate(result_indices)}
                 expected = tuple(block.arguments[replacements.get(i, i)] for i in range(len(types)))
                 if (len(body) != 2 or _obl_callee(body[0]) != borrowed

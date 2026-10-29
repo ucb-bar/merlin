@@ -11,6 +11,7 @@ from merlin.llvmlower.host_tensor_rewrites import (
     CONTRACTION_SOURCE,
     SQUARED_SUM_SOURCE,
 )
+from merlin.llvmlower.finite_integer_math import SOURCE as FINITE_INTEGER_MATH_SOURCE
 
 _COMPOSE = r"""
 def _merlin_host_ordinary_scope(operation):
@@ -35,6 +36,8 @@ def _merlin_optimize_host_tensors(ctx, module, choices):
                    for block in region.blocks for inner in block.operations)
     if not scoped(module.operation):
         return counts
+    if choices.get('finite_integer_math', False):
+        counts['finite_integer_math'] = _memoize_finite_integer_math(ctx, module)
     if choices['broadcast_math']:
         counts['broadcast_math'] = _hoist_broadcast_source_math(ctx, module)
     if choices['contraction']:
@@ -64,10 +67,11 @@ def tensor_rewrite_source() -> str:
     lookup. The returned function `_merlin_optimize_host_tensors` accepts the
     selected context, module and three explicit Boolean choices.
     """
-    return CONTRACTION_SOURCE + SQUARED_SUM_SOURCE + BROADCAST_SOURCE + _COMPOSE
+    return CONTRACTION_SOURCE + SQUARED_SUM_SOURCE + BROADCAST_SOURCE + FINITE_INTEGER_MATH_SOURCE + _COMPOSE
 
 
-def rewrite_tensor_module(context, module, *, contractions=True, squared_sums=True, broadcast_math=True):
+def rewrite_tensor_module(context, module, *, contractions=True, squared_sums=True, broadcast_math=True,
+                          finite_integer_math=False):
     """Rewrite current pure static source tensors; preserve ordered arithmetic.
 
     Unsupported source stays on its original route. This API supplies no
@@ -75,6 +79,10 @@ def rewrite_tensor_module(context, module, *, contractions=True, squared_sums=Tr
     Named operations must already have their ordinary generic representation.
     """
     choices = dict(contraction=contractions, squared_sum=squared_sums, broadcast_math=broadcast_math)
+    if type(finite_integer_math) is not bool:
+        raise ValueError("explicit Boolean finite-domain math choice required")
+    if finite_integer_math:
+        choices['finite_integer_math'] = True
     if any(type(value) is not bool for value in choices.values()):
         raise ValueError("explicit Boolean host rewrite choices required")
     namespace = {}

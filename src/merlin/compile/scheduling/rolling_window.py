@@ -47,12 +47,16 @@ class RollingWindowPlan:
     slots: int
     row_stride_bytes: int
     alignment: int = 1
+    image_windows: int = 1
 
     def __post_init__(self):
         if type(self.window) is not Window2D or type(self.cache) is not AddressWindow:
             raise ValueError("rolling cache requires original typed window and caller-owned byte capacity")
         self.window.__post_init__()
         self.cache.__post_init__()
+        if (type(self.slots) is not int or type(self.image_windows) is not int or not 0 < self.image_windows < 1 << 63
+                or self.slots % self.image_windows):
+            raise ValueError("image windows require distinct equal caller-owned row ranges")
         if (
             type(self.source_identity) is not str
             or len(self.source_identity) != 64
@@ -72,7 +76,7 @@ class RollingWindowPlan:
         if (
             any(type(v) is not int or not 0 < v < 1 << 63 for v in (self.slots, self.row_stride_bytes, self.alignment))
             or self.alignment & (self.alignment - 1)
-            or self.slots < self.span_rows
+            or self.image_slots < self.span_rows
             or self.row_bytes <= 0
             or self.row_stride_bytes < self.row_bytes
             or self.row_stride_bytes % self.alignment
@@ -122,6 +126,10 @@ class RollingWindowPlan:
     @property
     def required_bytes(self):
         return self.slots * self.row_stride_bytes
+
+    @property
+    def image_slots(self):
+        return self.slots // self.image_windows
 
     @property
     def frontier_rows(self):
@@ -225,7 +233,7 @@ def _group_horizon(plan, output_rows):
     if plan.window.stride[0] > plan.span_rows:
         raise ValueError("grouped transport requires overlapping or adjacent source-row windows")
     horizon = plan.span_rows + (min(output_rows, plan.output_y_count) - 1) * plan.window.stride[0]
-    if horizon > plan.slots:
+    if horizon > plan.image_slots:
         raise ValueError("grouped source-row union exceeds the actual ring slots")
     return horizon
 
@@ -281,7 +289,10 @@ def _materialize_rolling_window(plan, output_rows):
                 binary(inner, arith.AddiOp, row, first),
             )
             source_y = binary(inner, arith.SubiOp, unbiased, w.padding[0])
-            slot = binary(inner, arith.RemUIOp, unbiased, plan.slots)
+            slot = binary(inner, arith.RemUIOp, unbiased, plan.image_slots)
+            if plan.image_windows > 1:
+                slot = binary(inner, arith.AddiOp, slot,
+                    binary(inner, arith.MuliOp, binary(inner, arith.RemUIOp, image, plan.image_windows), plan.image_slots))
             destination = binary(
                 inner, arith.AddiOp, plan.cache.start, binary(inner, arith.MuliOp, slot, plan.row_stride_bytes)
             )
@@ -530,7 +541,8 @@ def _verify_rolling_window(module, plan, output_rows):
             image,
             source_y,
             ((image * h + source_y) * width + plan.source_columns[0]) * ci,
-            plan.cache.start + (unbiased % plan.slots) * plan.row_stride_bytes,
+            plan.cache.start + ((unbiased % plan.image_slots)
+                + (image % plan.image_windows) * plan.image_slots) * plan.row_stride_bytes,
             z3.And(source_y >= 0, source_y < h),
         ]
         prove(
@@ -602,8 +614,13 @@ def _verify_rolling_window(module, plan, output_rows):
     # Independent inductive laws: injective live rows, retained row identity,
     # complete original dilated taps, and horizontal cropped-row coverage.
     a, c, base = z3.Ints("rolling_live_a rolling_live_c rolling_base_residue")
-    domain = [a >= 0, a < horizon, c >= 0, c < horizon, base >= 0, base < plan.slots]
-    prove(z3.Implies((base + a) % plan.slots == (base + c) % plan.slots, a == c), domain, "live cache rows alias")
+    domain = [a >= 0, a < horizon, c >= 0, c < horizon, base >= 0, base < plan.image_slots]
+    prove(z3.Implies((base + a) % plan.image_slots == (base + c) % plan.image_slots, a == c), domain, "live cache rows alias")
+    if plan.image_windows > 1:
+        prove((image % plan.image_windows) * plan.image_slots + a
+              != ((image + 1) % plan.image_windows) * plan.image_slots + c,
+              [image >= 0, image < b, a >= 0, a < plan.image_slots, c >= 0, c < plan.image_slots],
+              "adjacent original images share a private input row")
     advance = w.stride[0]
     if output_rows is not None:
         member, tap = z3.Ints("rolling_group_member rolling_group_tap")
@@ -618,7 +635,7 @@ def _verify_rolling_window(module, plan, output_rows):
         group, retained = z3.Ints("rolling_group_inductive rolling_group_retained")
         old = (group - output_rows) * advance + output_rows * advance + retained
         current = group * advance + retained
-        prove(z3.And(old == current, old % plan.slots == current % plan.slots,
+        prove(z3.And(old == current, old % plan.image_slots == current % plan.image_slots,
                      output_rows * advance + retained < horizon),
               [group >= plan.output_y_first + output_rows,
                group < plan.output_y_first + plan.output_y_count,
@@ -629,7 +646,7 @@ def _verify_rolling_window(module, plan, output_rows):
         old = (y - 1) * advance + (advance + a)
         current = y * advance + a
         prove(
-            z3.And(old - w.padding[0] == current - w.padding[0], old % plan.slots == current % plan.slots),
+            z3.And(old - w.padding[0] == current - w.padding[0], old % plan.image_slots == current % plan.image_slots),
             [
                 y >= plan.output_y_first + 1,
                 y < plan.output_y_first + plan.output_y_count,
@@ -639,14 +656,14 @@ def _verify_rolling_window(module, plan, output_rows):
             "retained row identity changed",
         )
         prove(
-            (base + a) % plan.slots != (base + c) % plan.slots,
+            (base + a) % plan.image_slots != (base + c) % plan.image_slots,
             [
                 a >= 0,
                 a < plan.span_rows - advance,
                 c >= plan.span_rows - advance,
                 c < horizon,
                 base >= 0,
-                base < plan.slots,
+                base < plan.image_slots,
             ],
             "frontier overwrites a retained live row",
         )
@@ -771,7 +788,7 @@ def _emit_rolling_window(module, plan, builder, lower, output_rows):
     return {**before, "emission": "actual counted SCF with explicit bound transport/consumer handles"}
 
 
-def emit_rolling_window_lookup(plan, builder, output_y, output_x, ky, kx, channel):
+def emit_rolling_window_lookup(plan, builder, output_y, output_x, ky, kx, channel, *, image=None):
     """Address one original NHWC tap in the current resident output row.
 
     The caller must execute this within the matching consume/complete boundary.
@@ -782,6 +799,8 @@ def emit_rolling_window_lookup(plan, builder, output_y, output_x, ky, kx, channe
     if type(plan) is not RollingWindowPlan:
         raise ValueError("rolling lookup requires its original typed source plan")
     plan.__post_init__()
+    if plan.image_windows > 1 and image is None:
+        raise ValueError("multiple input windows require the original source image coordinate")
     w = plan.window
     _, h, width, ci = w.input_shape
     unbiased_y = builder.op("add", builder.op("mul", output_y, w.stride[0]), builder.op("mul", ky, w.dilation[0]))
@@ -800,16 +819,22 @@ def emit_rolling_window_lookup(plan, builder, output_y, output_x, ky, kx, channe
         builder.cmp("ult", iy, h),
         builder.cmp("ult", ix, width),
     )
+    if plan.image_windows > 1:
+        checks = (*checks, builder.cmp("ult", image, w.input_shape[0]))
     predicate = checks[0]
     for check in checks[1:]:
         predicate = builder.op("and", predicate, check, "i1")
     offset = builder.op("add", builder.op("mul", builder.op("sub", ix, plan.source_columns[0]), ci), channel)
+    slot = builder.op("urem", unbiased_y, plan.image_slots)
+    if plan.image_windows > 1:
+        slot = builder.op("add", slot, builder.op("mul",
+            builder.op("urem", image, plan.image_windows), plan.image_slots))
     address = builder.op(
         "add",
         builder.op(
             "add",
             plan.cache.start,
-            builder.op("mul", builder.op("urem", unbiased_y, plan.slots), plan.row_stride_bytes),
+            builder.op("mul", slot, plan.row_stride_bytes),
         ),
         offset,
     )

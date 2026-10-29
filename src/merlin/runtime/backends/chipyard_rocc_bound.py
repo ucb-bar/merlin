@@ -495,6 +495,7 @@ class BoundRoCCBackend:
     def render_harness(
         self, cb, *, target, inputs=None, readback_policy=None, warm_profile=None, source_owned_mutables=(), blobs=None,
         host_storage_limit_bytes=None,
+        prepack_authorizations=None,
     ):
         _require(target == self.target, "logical harness target differs from the selected backend")
         if warm_profile is not None:
@@ -520,6 +521,7 @@ class BoundRoCCBackend:
             readback_policy=readback_policy,
             source_owned_mutables=source_owned_mutables,
             blobs=blobs,
+            prepack_authorizations=prepack_authorizations,
             **({"max_storage_bytes": budget} if budget is not None else {}),
         )
 
@@ -530,6 +532,9 @@ class BoundRoCCBackend:
 
     def build_source_paths(self):
         from merlin.runtime import complete_call_timing, direct_kernel_harness, harness_render, kernel_call_timing
+        from merlin.runtime import storage_binding, prepack_authority, captured_constants
+        from merlin.perf import storage_encoding
+        from merlin.compile.scheduling import tensor_storage
 
         # These files decide the emitted harness bytes. The counter's selected
         # Rocket/ISA source pins are verified by the timing selections and
@@ -541,6 +546,8 @@ class BoundRoCCBackend:
             Path(direct_kernel_harness.__file__).resolve(),
             Path(harness_render.__file__).resolve(),
             Path(kernel_call_timing.__file__).resolve(),
+            *(Path(module.__file__).resolve() for module in (
+                storage_binding, prepack_authority, captured_constants, storage_encoding, tensor_storage)),
         )
 
     def _engine(self, engine):

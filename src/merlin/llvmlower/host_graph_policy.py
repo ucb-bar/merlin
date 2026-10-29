@@ -46,6 +46,9 @@ class HostGraphPolicy:
     maximum_layout_assignments: int = 100_000
     maximum_layout_permutations: int = 16
     connected_layout: bool = False
+    column_reduction_layout: bool = False
+    constant_panel_columns: int | None = None
+    constant_panel_minimum_input_channels: int = 1
     context: HostOptimizationContext = field(init=False)
     sources: tuple[tuple[str, str], ...] = field(init=False)
 
@@ -55,8 +58,14 @@ class HostGraphPolicy:
         if not isinstance(self.software_path, Path) or type(self.software_bytes) is not bytes:
             raise ValueError("host graph policy requires original software bytes and path")
         if len(self.software_bytes) > _BUDGET or any(type(v) is not bool for v in (
-                self.enabled, self.physical_layout, self.connected_layout)):
+                self.enabled, self.physical_layout, self.connected_layout, self.column_reduction_layout)):
             raise ValueError("host graph policy requires bounded bytes and an explicit boolean choice")
+        if self.constant_panel_columns is not None and (
+                type(self.constant_panel_columns) is not int or not 1 <= self.constant_panel_columns <= _BUDGET):
+            raise ValueError("constant panel width must be an explicit bounded positive integer")
+        if (type(self.constant_panel_minimum_input_channels) is not int
+                or not 1 <= self.constant_panel_minimum_input_channels <= _BUDGET):
+            raise ValueError("constant panel input-channel capability must be a bounded positive integer")
         for value in (
             self.minimum_transpose_bytes_saved,
             self.maximum_added_operations,
@@ -84,7 +93,7 @@ class HostGraphPolicy:
             raise ValueError("host graph policy implementation changed; reselect and replan")
 
     def record(self):
-        return {
+        record = {
             "schema": SCHEMA,
             "software_spec": {
                 "path": str(self.software_path),
@@ -100,6 +109,12 @@ class HostGraphPolicy:
             "maximum_layout_permutations": self.maximum_layout_permutations,
             "connected_layout": self.connected_layout,
         }
+        if self.column_reduction_layout:
+            record["column_reduction_layout"] = True
+        if self.constant_panel_columns is not None:
+            record["constant_panel_columns"] = self.constant_panel_columns
+            record["constant_panel_minimum_input_channels"] = self.constant_panel_minimum_input_channels
+        return record
 
     def retain(self, directory):
         self.revalidate()
@@ -127,6 +142,7 @@ class HostGraphPolicy:
             maximum_layout_assignments=self.maximum_layout_assignments,
             maximum_layout_permutations=self.maximum_layout_permutations,
             connected_layout=self.connected_layout,
+            column_reduction_layout=self.enabled and allowed and self.column_reduction_layout,
         )
         reason = None if contract.propagate_layout else "disabled" if not self.enabled else "permission_not_admitted"
         try:
@@ -136,12 +152,24 @@ class HostGraphPolicy:
 
             reason = str(exc)
             selected, report = optimize_host_graph(source, replace(contract, propagate_layout=False))
-        if reason is not None:
+        column_applied = bool(report.get("column_reduction_layout", {}).get("rewrite", {}).get("rewritten"))
+        if reason is not None and not column_applied:
             selected = source
             report["transformed_sha256"] = _sha(source.encode())
+        if self.constant_panel_columns is not None and self.enabled and allowed:
+            from merlin.frontends.linalg_mlir import parse_mlir_text
+            from merlin.xdsl_dialects._common import text
+            from .constant_panel_layout import request_constant_panels
+
+            module = parse_mlir_text(selected)
+            request_constant_panels(module, self.constant_panel_columns,
+                                    minimum_input_channels=self.constant_panel_minimum_input_channels)
+            selected = text(module, generic=True)
+            report["transformed_sha256"] = _sha(selected.encode())
+            report["constant_panel_request"] = self.constant_panel_columns
         report["automatic_selection"] = {
             "policy": self.record(),
-            "status": "applied" if reason is None else "unchanged",
+            "status": "applied" if reason is None or column_applied else "unchanged",
             "reason": reason,
         }
         self.revalidate()

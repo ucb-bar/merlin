@@ -21,6 +21,7 @@ class _DeviceOffloadInvocation:
     target_schedule: tuple | None = None
     connected_spatial: tuple | None = None
     spatial_host: object | None = None
+    quantized_sum: tuple | None = None
     sibling_source: tuple | None = None
     sibling_host: object | None = None
     pre_group_layout: tuple | None = None
@@ -52,7 +53,7 @@ def device_route_requested(device):
         getattr(device, name, None) is not None
         for name in (
             "select", "exact_selection", "catalog_manifest", "catalog_builder", "offload_selection",
-            "connected_spatial", "sibling_source"
+            "connected_spatial", "sibling_source", "quantized_sum"
         )
     )
 
@@ -125,7 +126,7 @@ def retain_device_offload_source(frozen, path, *, compilation=None):
 def require_supported_device_preparation(frozen, transform):
     if (
         frozen is not None and (
-            frozen.selection is not None or frozen.connected_spatial is not None or frozen.sibling_source is not None
+            frozen.selection is not None or frozen.connected_spatial is not None or frozen.sibling_source is not None or frozen.quantized_sum is not None
         )
         and transform is not None
     ):
@@ -147,7 +148,7 @@ def finish_device_offload_selection(
         if frozen is None
         else (
             frozen.selection, frozen.sources, frozen.sidecar, frozen.llvm_transform, frozen.target_schedule,
-            frozen.connected_spatial, frozen.spatial_host, frozen.sibling_source, frozen.sibling_host,
+            frozen.connected_spatial, frozen.spatial_host, frozen.sibling_source, frozen.sibling_host, frozen.quantized_sum,
         )
     )
     custody = (
@@ -165,7 +166,7 @@ def finish_device_offload_selection(
     if custody is not None:
         revalidate_device_elf_custody(device, admission, custody)
     if frozen is not None:
-        selected, sources, sidecar, transform, target_schedule, spatial, spatial_host, sibling, sibling_host = original
+        selected, sources, sidecar, transform, target_schedule, spatial, spatial_host, sibling, sibling_host, quantized = original
         if (
             frozen.selection is not selected
             or getattr(device, "offload_selection", None) is not selected
@@ -176,6 +177,7 @@ def finish_device_offload_selection(
             or frozen.spatial_host is not spatial_host
             or frozen.sibling_source is not sibling
             or frozen.sibling_host is not sibling_host
+            or frozen.quantized_sum is not quantized
         ):
             raise ValueError("device offload selection or realized artifact pins changed during final admission")
         if selected is not None:
@@ -233,6 +235,8 @@ def freeze_device_offload_selection(device):
     from .connected_spatial_route import freeze_route
 
     spatial = freeze_route(device)
+    from .quantized_sum_route import freeze_route as freeze_quantized_sum
+    quantized = freeze_quantized_sum(device)
     layout = _layout_policy(device)
     storage = _layout_policy(device, "intermediate_storage")
     from .sibling_source_route import freeze_route as freeze_sibling
@@ -253,10 +257,10 @@ def freeze_device_offload_selection(device):
     if selected is None:
         result = (
             None
-            if all(value is None for value in (transform, schedule, spatial, sibling, layout, storage))
+            if all(value is None for value in (transform, schedule, spatial, sibling, quantized, layout, storage))
             else _DeviceOffloadInvocation(
                 None, None, llvm_transform=transform, target_schedule=schedule, connected_spatial=spatial,
-                sibling_source=sibling, pre_group_layout=layout, intermediate_storage=storage
+                sibling_source=sibling, quantized_sum=quantized, pre_group_layout=layout, intermediate_storage=storage
             )
         )
         _require_device_target_schedule(device, result)
@@ -280,6 +284,8 @@ def freeze_device_offload_selection(device):
 def require_device_offload_selection(device, frozen):
     _require_layout_policy(device, frozen)
     _require_layout_policy(device, frozen, "intermediate_storage")
+    from .quantized_sum_route import require_route as require_quantized_sum
+    require_quantized_sum(device, frozen.quantized_sum if type(frozen) is _DeviceOffloadInvocation else None)
     from .connected_spatial_route import require_host, require_route
     from .sibling_source_route import require_host as require_sibling_host
     from .sibling_source_route import require_route as require_sibling
@@ -389,9 +395,19 @@ def prepare_device_route(device, prepared, work, *, early_complete_groups=False,
         moved = selection.spatial_host.rewrite
         moved.write_sidecar(work)
         retain_device_offload_source(selection, prepared)
+    quantized = getattr(device, "quantized_sum", None)
+    if quantized is not None:
+        from .quantized_sum_route import prepare_host as prepare_quantized_sum
+        if early_complete_groups:
+            from .device_offload import load_sidecar
+            from .connected_spatial_route import restore_group_rewrite
+            moved = restore_group_rewrite(load_sidecar(work))
+        prepared, moved = prepare_quantized_sum(device, quantized, prepared, moved, Path(work)/"quantized_sum")
+        moved.write_sidecar(work)
+        retain_device_offload_source(selection, prepared)
     if sibling is not None:
         moved.write_sidecar(work)
-    if selected is not None or spatial is not None or sibling is not None:
+    if selected is not None or spatial is not None or sibling is not None or quantized is not None:
         from merlin.common.strict_json import loads
 
         path = (Path(work) / SIDECAR_NAME).absolute()

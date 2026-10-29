@@ -481,6 +481,8 @@ def rewrite(
     if host_isa == "portable" and edits and not declared:
         rewritten += "\ndeclare float @llvm.roundeven.f32(float)\n"
     receipt["rewritten_sha256"] = hashlib.sha256(rewritten.encode()).hexdigest()
+    if not edits:
+        receipt["identity"] = "no_matching_bounded_conversions"
     return rewritten, receipt
 
 
@@ -499,7 +501,7 @@ def merlin_host_llvm_transform(
         target, proof = rewrite(
             original, host_isa=host_isa, combine_clamp=combine_clamp, temporary_prefix=temporary_prefix
         )
-        if not proof["routes"]:
+        if not proof["routes"] and proof.get("identity") != "no_matching_bounded_conversions":
             raise ValueError("no proven bounded RNE chain: " + str(proof.get("refusal", "unrecognized source")))
         selected = work / "model.ll"
         selected.write_text(target)

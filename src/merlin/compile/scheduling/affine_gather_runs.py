@@ -69,20 +69,28 @@ class ConvolutionGatherRuns:
         return tuple(result)
 
 
-def emit_convolution_gather_runs(plan, builder, first, count):
+def emit_convolution_gather_runs(plan, builder, first, count, *, max_count=None):
     """Emit target-neutral integer index SSA using supplied arithmetic builders.
 
     Builders supply integer ``op``, ``cmp`` and ``select`` only. Zero-length
     inactive fragments may remain when a dynamic start needs fewer than the
     worst-case fragment count; command consumers must guard those lengths.
+    Dynamic counts require an explicit static ``max_count`` from the caller's
+    checked iteration domain. The caller proves ``0 <= count <= max_count``
+    and ``first + count`` within the complete spatial extent; this index emitter
+    does not establish those premises or grant a transfer's physical effects.
     """
     if type(plan) is not ConvolutionGatherRuns:
         raise ValueError("exact original affine gather plan required")
+    bound = count if max_count is None else max_count
+    fragments = plan.max_fragments(bound)
+    if type(count) is int and not 0 < count <= bound:
+        raise ValueError("gather row count exceeds its explicit bounded domain")
     _, h, w, ci = plan.input_shape
     _, oh, ow = plan.output_spatial
     sh, sw = plan.stride
     result, used = [], 0
-    for _ in range(plan.max_fragments(count)):
+    for _ in range(fragments):
         position = builder.op("add", first, used)
         image = builder.op("udiv", position, oh * ow)
         y = builder.op("urem", builder.op("udiv", position, ow), oh)
@@ -171,7 +179,8 @@ def plan_convolution_resident_panel(weight_shape, geometry, *, private_rows_owne
                                     geometry.operand_rows, geometry.accumulator_rows)
 
 
-def emit_convolution_matrix_gather(plan, builder, first, count, *, reduction_block, reduction_tile):
+def emit_convolution_matrix_gather(plan, builder, first, count, *, reduction_block, reduction_tile,
+                                   max_count=None):
     """Map one checked logical im2col tile to exact original NHWC fragments.
 
     The logical matrix is (B*OH*OW, KH*KW*CI), in original ky/kx/channel
@@ -201,4 +210,5 @@ def emit_convolution_matrix_gather(plan, builder, first, count, *, reduction_blo
     offset = builder.op("add", builder.op("add", builder.op("mul", ky, dh*width*ci),
                              builder.op("mul", kx, dw*ci)), channel)
     return tuple((builder.op("add", base, offset), row, rows)
-                 for base, row, rows in emit_convolution_gather_runs(plan, builder, first, count))
+                 for base, row, rows in emit_convolution_gather_runs(
+                     plan, builder, first, count, max_count=max_count))

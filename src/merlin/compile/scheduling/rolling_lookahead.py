@@ -100,6 +100,65 @@ class RollingRhsFrontier:
             raise ValueError("RHS frontier requires every original spatial/batch consumer and complete K runs")
 
 
+@dataclass(frozen=True)
+class RollingBatchFrontierAdmission:
+    """Original target law for replacing input rows after their final reads."""
+    hardware_identity: str
+    numerical_policy_identity: str
+    qualification_identity: str
+    scratchpad_read_write_dependencies: bool = False
+    ordered_configuration: bool = False
+    finite_queue_progress: bool = False
+    immutable_input: bool = False
+    full_consumer_transport_completion: bool = False
+    retained_consumer_continuations: bool = False
+
+    def require(self):
+        values = asdict(self)
+        if any(type(values[k]) is not str or not values[k].strip() for k in
+               ("hardware_identity", "numerical_policy_identity", "qualification_identity")) or any(
+            type(values[k]) is not bool or not values[k] for k in values if not k.endswith("identity")
+        ):
+            raise ValueError("batch frontier requires original input WAR/RAW, progress, continuation and completion admission")
+
+
+@dataclass(frozen=True)
+class RollingBatchFrontier:
+    """Derive next-image row writes from source K and actual window ownership.
+
+    A single window waits each row's final original reader. Distinct image
+    windows permit future rows between original complete kernel-tap traversals;
+    real cohort completion still precedes cycling back to a previous window.
+    """
+    source_identity: str
+    channel_tile: int
+
+    def stages(self, plan, output_rows, runs):
+        if (self.source_identity != plan.source_identity or type(self.channel_tile) is not int
+                or not 0 < self.channel_tile < 1 << 63):
+            raise ValueError("batch frontier requires its original source and channel tile")
+        w = plan.window
+        oh, ow = w.output_spatial
+        chunks = (w.input_shape[-1] + self.channel_tile - 1) // self.channel_tile
+        if (output_rows != oh or (plan.output_x_first, plan.output_x_count,
+                plan.output_y_first, plan.output_y_count) != (0, ow, 0, oh)
+                or runs != w.kernel[0] * w.kernel[1] * chunks):
+            raise ValueError("batch frontier needs one complete original spatial consumer and K traversal")
+        live = _validate(plan, output_rows, False)
+        result = []
+        for row in range(live):
+            taps = [ky for ky in range(w.kernel[0])
+                    if any(y * w.stride[0] + ky * w.dilation[0] == row for y in range(oh))]
+            # An untouched stride/dilation hole has no original readers. Its
+            # unchanged preparation can follow the first complete source run.
+            # Original kernel-tap boundaries keep the channel traversal in one
+            # counted loop. These are source work boundaries, not latency cuts.
+            last = (max(1,w.kernel[0]*w.kernel[1]*(row+1)//(live+1))*chunks-1 if plan.image_windows>1 else
+                    ((max(taps) + 1) * w.kernel[1] * chunks - 1) if taps else 0)
+            result.append((last, row))
+        return tuple(result)
+
+
 def _validate(plan, output_rows, future_input=True):
     if type(plan) is not RollingWindowPlan:
         raise ValueError("lookahead needs the original typed rolling source")
@@ -111,13 +170,13 @@ def _validate(plan, output_rows, future_input=True):
     # This includes invalid halo rows, which still write their original zeros.
     count = min((2 if future_input else 1) * output_rows, plan.output_y_count)
     live = plan.span_rows + (count - 1) * plan.window.stride[0]
-    if live > plan.slots:
+    if live > plan.image_slots:
         raise ValueError("lookahead future rows overlap the current live source union")
     return live
 
 
 def materialize_lookahead_rolling_window(plan, *, output_rows, consumer_runs=None,
-                                        rhs_frontier=None, future_input=True):
+                                        rhs_frontier=None, future_input=True, batch_frontier=None):
     """Build actual counted SCF using the existing typed transport effects.
 
     Prologue awaits current rows. Each cohort issues future frontier rows,
@@ -133,6 +192,9 @@ def materialize_lookahead_rolling_window(plan, *, output_rows, consumer_runs=Non
     Its separate target law must cover real scratchpad read/write completion.
     ``future_input=False`` serializes the original input rows while retaining
     this RHS continuation. Every original consumer completion remains present.
+    A separately admitted ``batch_frontier`` instead carries the next image's
+    original rows through the existing drain, replacing each ring row only
+    after its derived final source K run. It requires a full spatial consumer.
     """
     _validate(plan, output_rows, future_input)
     _runs(consumer_runs)
@@ -140,7 +202,11 @@ def materialize_lookahead_rolling_window(plan, *, output_rows, consumer_runs=Non
         if type(rhs_frontier) is not RollingRhsFrontier:
             raise ValueError("RHS frontier requires its typed original phase map")
         rhs_frontier.require(plan, consumer_runs)
-    return _materialize(plan, output_rows, consumer_runs, rhs_frontier, future_input)
+    if batch_frontier is not None:
+        if type(batch_frontier) is not RollingBatchFrontier or future_input:
+            raise ValueError("batch frontier is a separate complete-image input alternative")
+        batch_frontier.stages(plan, output_rows, consumer_runs)
+    return _materialize(plan, output_rows, consumer_runs, rhs_frontier, future_input, batch_frontier)
 
 
 def _runs(count):
@@ -148,7 +214,7 @@ def _runs(count):
         raise ValueError("split consumer requires its positive original reduction-run count")
 
 
-def _materialize(plan, output_rows, consumer_runs=None, rhs_frontier=None, future_input=True):
+def _materialize(plan, output_rows, consumer_runs=None, rhs_frontier=None, future_input=True, batch_frontier=None):
     w = plan.window
     batches, h, width, ci = w.input_shape
     root = Block()
@@ -174,8 +240,12 @@ def _materialize(plan, output_rows, consumer_runs=None, rhs_frontier=None, futur
             unbiased = binary(inner, arith.AddiOp, binary(inner, arith.MuliOp, y, w.stride[0]),
                               binary(inner, arith.AddiOp, index, first))
             source_y = binary(inner, arith.SubiOp, unbiased, w.padding[0])
+            slot=binary(inner,arith.RemUIOp,unbiased,plan.image_slots)
+            if plan.image_windows>1:
+                slot=binary(inner,arith.AddiOp,slot,binary(inner,arith.MuliOp,
+                    binary(inner,arith.RemUIOp,image,plan.image_windows),plan.image_slots))
             cache = binary(inner, arith.AddiOp, plan.cache.start,
-                           binary(inner, arith.MuliOp, binary(inner, arith.RemUIOp, unbiased, plan.slots), plan.row_stride_bytes))
+                           binary(inner, arith.MuliOp, slot, plan.row_stride_bytes))
             source = binary(inner, arith.AddiOp,
                             binary(inner, arith.MuliOp,
                                    binary(inner, arith.AddiOp, binary(inner, arith.MuliOp, image, h), source_y), width * ci),
@@ -189,13 +259,17 @@ def _materialize(plan, output_rows, consumer_runs=None, rhs_frontier=None, futur
     def ready(out, transfer):
         op = AwaitOp.create(operands=[transfer], result_types=[ResidentType()]); out.add_op(op); return op.resident
 
-    def consume(out, resident, image, y, count, future=None):
+    def consume(out, resident, image, y, count, future=None, next_image=None):
         if type(y) is int: y = _constant(out, y)
         if consumer_runs is not None:
             op = StartConsumerOp.create(operands=[resident, image, y], result_types=[ConsumerType()],
                                         properties={"output_rows": builtin.IntegerAttr(count, 64)})
             out.add_op(op)
             current = op.consumer
+            batch_transfer = None
+            if next_image is not None:
+                begin = BeginOp.create(result_types=[TransferType()]); out.add_op(begin)
+                batch_transfer = begin.transfer
             rhs_transfer = None
             if rhs_frontier is not None:
                 begin_rhs = BeginRhsOp.create(result_types=[TransferType()],
@@ -233,6 +307,18 @@ def _materialize(plan, output_rows, consumer_runs=None, rhs_frontier=None, futur
 
             position = 0
             transfer = None
+            if next_image is not None:
+                stages = batch_frontier.stages(plan, output_rows, consumer_runs)
+                for last in sorted({last for last, _ in stages}):
+                    stop = last + 1
+                    current = advance(position, stop); position = stop
+                    more = arith.CmpiOp(image, _constant(out, batches - 1), "ult"); out.add_op(more)
+                    yes, no = Block(), Block()
+                    for boundary, row in stages:
+                        if boundary == last:
+                            stage(yes, next_image, 0, row, 1, batch_transfer)
+                    yes.add_op(scf.YieldOp()); no.add_op(scf.YieldOp())
+                    out.add_op(scf.IfOp(more.result, [], Region(yes), Region(no)))
             if future is not None:
                 next_y, rows = future
                 begin = BeginOp.create(result_types=[TransferType()]); out.add_op(begin)
@@ -248,7 +334,7 @@ def _materialize(plan, output_rows, consumer_runs=None, rhs_frontier=None, futur
                 current = advance(position,consumer_runs)
             finish = FinishConsumerOp.create(operands=[current], result_types=[ConsumerType()])
             out.add_ops((finish, CompleteOp.create(operands=[finish.consumer])))
-            return transfer
+            return batch_transfer if next_image is not None else transfer
         op = ConsumeGroupOp.create(operands=[resident, image, y], result_types=[ConsumerType()],
                                    properties={"output_rows": builtin.IntegerAttr(count, 64)})
         out.add_ops((op, CompleteOp.create(operands=[op.consumer])))
@@ -291,7 +377,19 @@ def _materialize(plan, output_rows, consumer_runs=None, rhs_frontier=None, futur
             y = next_y
         consume(out, resident, image, y, tail or output_rows)
 
-    loop(root, 0, batches, image)
+    if batch_frontier is not None:
+        live = _validate(plan, output_rows, False)
+        resident = ready(root, stage(root, _constant(root, 0), 0, 0, live))
+        def next_batch(inner, index, current):
+            next_image = binary(inner, arith.AddiOp, index, 1)
+            transfer = consume(inner, current, index, 0, output_rows, next_image=next_image)
+            return (ready(inner, transfer),)
+        # One counted consumer body also handles the final image. Its guarded
+        # future transfer is empty, but still receives a real completion drain.
+        # This avoids duplicating the complete original K/N/M target program.
+        loop(root, 0, batches, next_batch, (resident,))
+    else:
+        loop(root, 0, batches, image)
     root.add_op(func.ReturnOp())
     module = builtin.ModuleOp([func.FuncOp("rolling_lookahead", ([], []), Region(root))])
     module.verify()
@@ -299,7 +397,7 @@ def _materialize(plan, output_rows, consumer_runs=None, rhs_frontier=None, futur
 
 
 def verify_lookahead_rolling_window(module, plan, *, output_rows, consumer_runs=None,
-                                   rhs_frontier=None,future_input=True):
+                                   rhs_frontier=None,future_input=True,batch_frontier=None):
     """Check closed actual SCF conformance plus independent source/lifetime laws.
 
     The existing checker independently proves original stage addresses, row
@@ -315,9 +413,14 @@ def verify_lookahead_rolling_window(module, plan, *, output_rows, consumer_runs=
         if type(rhs_frontier) is not RollingRhsFrontier:
             raise ValueError("RHS frontier requires its typed original phase map")
         rhs_frontier.require(plan,consumer_runs)
+    batch_stages = ()
+    if batch_frontier is not None:
+        if type(batch_frontier) is not RollingBatchFrontier or future_input:
+            raise ValueError("batch frontier is a separate complete-image input alternative")
+        batch_stages = batch_frontier.stages(plan, output_rows, consumer_runs)
     module.verify()
     actual = rolling_window_text(module)
-    if actual != rolling_window_text(_materialize(plan, output_rows, consumer_runs,rhs_frontier,future_input)):
+    if actual != rolling_window_text(_materialize(plan, output_rows, consumer_runs,rhs_frontier,future_input,batch_frontier)):
         raise ValueError("actual lookahead SCF changes checked source/effect/completion structure")
     base = verify_grouped_rolling_window(materialize_grouped_rolling_window(plan, output_rows=output_rows),
                                          plan, output_rows=output_rows)
@@ -328,9 +431,15 @@ def verify_lookahead_rolling_window(module, plan, *, output_rows, consumer_runs=
             "completion": "current consumer and future transport fully complete before next consumer or slot reuse",
             "consumer_runs": consumer_runs,
             "future_input":future_input,
+            "batch_frontier": None if batch_frontier is None else asdict(batch_frontier),
+            "batch_row_issue_runs": batch_stages,
+            "batch_input_image_windows": plan.image_windows,
+            "batch_final_empty_transfer_drains": int(batch_frontier is not None),
             "rhs_frontier":None if rhs_frontier is None else asdict(rhs_frontier),
             "rhs_frontier_tiles":0 if rhs_frontier is None else consumer_runs*len(rhs_frontier.next_columns),
-            "issue_order": ("last batch/spatial group: complete original K/N/M run; next RHS dead-prefix transfer; original full completion"
+            "issue_order": ("next original image rows after derived final K/N/M reads; final image retains selected RHS frontier; all original full completions"
+                            if batch_frontier is not None else
+                            "last batch/spatial group: complete original K/N/M run; next RHS dead-prefix transfer; original full completion"
                             if rhs_frontier is not None else
                             "original reduction slices interleaved with disjoint future strips; finish; complete both; await future"
                             if consumer_runs is not None and future_input else
@@ -341,7 +450,8 @@ def verify_lookahead_rolling_window(module, plan, *, output_rows, consumer_runs=
 
 
 def emit_lookahead_rolling_window(module, plan, builder, lower, *, output_rows, admission, consumer_runs=None,
-                                rhs_frontier=None,future_input=True,rhs_frontier_admission=None):
+                                rhs_frontier=None,future_input=True,rhs_frontier_admission=None,
+                                batch_frontier=None,batch_frontier_admission=None):
     """Consume the verified actual SCF, preserving its real completion edges."""
     if type(admission) is not RollingLookaheadAdmission:
         raise ValueError("lookahead requires its separate target effect admission")
@@ -355,8 +465,15 @@ def emit_lookahead_rolling_window(module, plan, builder, lower, *, output_rows, 
         if rhs_frontier_admission.hardware_identity != admission.hardware_identity:
             raise ValueError("RHS frontier and input transport have different target identities")
     frontier_identity=None if rhs_frontier_admission is None else asdict(rhs_frontier_admission)
+    if batch_frontier is not None:
+        if type(batch_frontier_admission) is not RollingBatchFrontierAdmission:
+            raise ValueError("batch frontier requires its separate target admission")
+        batch_frontier_admission.require()
+        if batch_frontier_admission.hardware_identity != admission.hardware_identity:
+            raise ValueError("batch frontier and input transport have different target identities")
+    batch_identity=None if batch_frontier_admission is None else asdict(batch_frontier_admission)
     before = verify_lookahead_rolling_window(module, plan, output_rows=output_rows, consumer_runs=consumer_runs,
-                                           rhs_frontier=rhs_frontier,future_input=future_input)
+                                           rhs_frontier=rhs_frontier,future_input=future_input,batch_frontier=batch_frontier)
     identity = asdict(admission)
     if not callable(lower) or not callable(getattr(builder, "loop_carried", None)):
         raise ValueError("lookahead needs actual effect bindings and carried-loop emission")
@@ -424,7 +541,11 @@ def emit_lookahead_rolling_window(module, plan, builder, lower, *, output_rows, 
         rhs_frontier_admission.require()
     if frontier_identity != (None if rhs_frontier_admission is None else asdict(rhs_frontier_admission)):
         raise ValueError("RHS frontier target admission changed during emission")
+    if batch_frontier_admission is not None:
+        batch_frontier_admission.require()
+    if batch_identity != (None if batch_frontier_admission is None else asdict(batch_frontier_admission)):
+        raise ValueError("batch frontier target admission changed during emission")
     if asdict(admission)!=identity or verify_lookahead_rolling_window(module,plan,output_rows=output_rows,
-            consumer_runs=consumer_runs,rhs_frontier=rhs_frontier,future_input=future_input)!=before:
+            consumer_runs=consumer_runs,rhs_frontier=rhs_frontier,future_input=future_input,batch_frontier=batch_frontier)!=before:
         raise ValueError("lookahead source/admission changed during emission")
     return {**before,"admission":identity,"emission":"actual counted SCF; real binding handles and full completion"}

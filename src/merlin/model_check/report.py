@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
@@ -24,16 +23,17 @@ _EXIT_OF_STATUS = {"pass": EXIT_PASS, "fail": EXIT_GATE_FAILED}
 
 
 def _tool_commit() -> str | None:
+    """The commit this tool's code was taken from: an export's own source record, never the HEAD of
+    a checkout that happens to enclose it (a frozen run export inside a live worktree reported the
+    worktree's moving HEAD)."""
+    from merlin.common.provenance import UNKNOWN
+    from merlin.targetgen.provenance import source_revision
+
     try:
-        done = subprocess.run(
-            ["git", "-C", str(repo_root()), "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        revision = source_revision(repo_root())
     except OSError:
         return None
-    return done.stdout.strip() or None
+    return None if revision == UNKNOWN else revision
 
 
 def new_report(command: str, *, model: str | None, split: str | None, submission: Mapping[str, Any]) -> dict:

@@ -236,11 +236,11 @@ def lower_model(
     if descriptor_result_identities:
         from .descriptor_result_preparation import DescriptorResultPreparation
 
-        descriptor_preparation = DescriptorResultPreparation(descriptor_result_identities, effects=descriptor_result_effects)
+        descriptor_preparation = DescriptorResultPreparation(
+            descriptor_result_identities, effects=descriptor_result_effects, additional_calls=borrowed_buffer_calls)
         descriptor_check = descriptor_preparation.revalidate
         if (
-            borrowed_buffer_calls is not None
-            or shared_source_lowerings
+            shared_source_lowerings
             or op_profile
             or textual
             or vectorize
@@ -258,7 +258,7 @@ def lower_model(
             raise ValueError("descriptor result identity requires its uninstrumented scalar serial 64-bit route")
         # Only this exact descriptor-only join can carry the original owner
         # through the checked rewrite and native alias/completion observation.
-        borrowed_buffer_calls = descriptor_preparation.effects
+        borrowed_buffer_calls = descriptor_preparation.initial_calls()
     source_choices = None
     if source_optimizations is not None:
         from .source_optimization_selection import SourceCompilationOptimization
@@ -643,12 +643,6 @@ def lower_model(
             except Exception:  # noqa: BLE001 -- an exotic constructor: keep the original
                 raise exc
             raise enriched from exc
-        if descriptor_preparation is not None:
-            descriptor_check()
-            descriptor_preparation.bind_recipe(work / "lowering_recipe.json", work / "model.upstream.mlir", ll_text)
-            descriptor_check()
-            stats["descriptor_result_identity"] = descriptor_preparation.record()
-            descriptor_check()
         if "source_observation" in lowering_selection:
             stats["source_observation"] = lowering_selection["source_observation"]
         if "automatic_host_optimizations" in lowering_selection:
@@ -704,6 +698,16 @@ def lower_model(
                 before_ciface_inline, ll_text, ciface_inline_report
             )
         stats["ciface_boundary_inline"] = ciface_inline_report
+        if before_ciface_inline != ll_text and not static_arena:
+            from .lowering_recipe import bind_ciface_annotation
+
+            bind_ciface_annotation(work / "lowering_recipe.json", before_ciface_inline, ll_text, ciface_inline_report)
+        if descriptor_preparation is not None:
+            descriptor_check()
+            descriptor_preparation.bind_recipe(work / "lowering_recipe.json", work / "model.upstream.mlir", ll_text)
+            descriptor_check()
+            stats["descriptor_result_identity"] = descriptor_preparation.record()
+            descriptor_check()
         audit.stage("llvm-final", ll_text, format="llvm-ir")
         ll_path = work / "model.ll"
         ll_path.write_text(ll_text, encoding="utf-8")

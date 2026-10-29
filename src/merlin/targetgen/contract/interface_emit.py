@@ -139,6 +139,8 @@ def _fmt_attrs(attrs: dict[str, Any]) -> str:
             parts.append(f"{k} = {v!r} : f32")
         elif isinstance(v, str):
             parts.append(f'{k} = "{v}"')
+        elif isinstance(v, dict):
+            parts.append(f"{k} = {_fmt_attrs(v)}")
         elif isinstance(v, list):
             # Element-wise, NOT blanket-quoted. Quoting every element turned an integer geometry
             # (``pool_size = [2, 2]``) into ``["2", "2"]``, which the parser reads back as STRINGS --
@@ -146,7 +148,9 @@ def _fmt_attrs(attrs: dict[str, Any]) -> str:
             # the spelling that caused it. String stages (``epilogue = ["relu"]``) are unchanged.
             inner = ", ".join(
                 f"{float(x)!r} : f32" if k in {"acc_scale_by_column", "source_scales"}
-                else f'"{x}"' if isinstance(x, str) else str(x)
+                else f'"{x}"' if isinstance(x, str)
+                else "[" + ", ".join(str(y) for y in x) + "]" if isinstance(x, list)
+                else str(x)
                 for x in v
             )
             parts.append(f"{k} = [{inner}]")
@@ -177,6 +181,8 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
             continue
         role = spec.get("role", "input")
         tensor_attrs = {"name": name, "role": role}
+        if "storage_encoding" in spec:
+            tensor_attrs["storage_encoding"] = _checked_storage_encoding(spec)
         if role == "scale":
             # Preserve the semantic pairing. A name suffix is not an ABI and cannot safely identify
             # which element tensor a scale stream belongs to.
@@ -373,26 +379,47 @@ def _last_type(tail: str) -> str:
     return (after if arrow else tail).strip()
 
 
+def _attribute_items(s: str) -> list[str]:
+    """Split complete nested array/dictionary attributes without losing axes."""
+    depth, quoted, escaped = 0, False, False
+    parts, current = [], ""
+    for ch in s:
+        if ch == '"' and not escaped:
+            quoted = not quoted
+        if not quoted:
+            if ch in "[{":
+                depth += 1
+            elif ch in "]}":
+                depth -= 1
+            if depth < 0:
+                raise InterfaceGrammarError("unbalanced interface attribute")
+        if ch == "," and depth == 0 and not quoted:
+            parts.append(current)
+            current = ""
+        else:
+            current += ch
+        escaped = ch == "\\" and not escaped
+    if depth or quoted:
+        raise InterfaceGrammarError("incomplete interface attribute")
+    if current.strip():
+        parts.append(current)
+    return parts
+
+
+def _checked_storage_encoding(spec):
+    from merlin.perf.storage_encoding import GroupedAxesStorage
+
+    encoding = GroupedAxesStorage.from_dict(spec["storage_encoding"])
+    encoding.validate()
+    if list(encoding.physical_shape) != spec["shape"] or encoding.dtype != spec["dtype"]:
+        raise InterfaceGrammarError("tensor storage encoding differs from its complete physical type")
+    return encoding.to_dict()
+
+
 def _parse_attr_block(s: str) -> dict[str, Any]:
     """Parse a ``{k = v, ...}`` attribute body into a dict (strings, ints, floats, lists)."""
     out: dict[str, Any] = {}
-    # split on commas that are not inside brackets
-    depth = 0
-    cur = ""
-    parts: list[str] = []
-    for ch in s:
-        if ch in "[":
-            depth += 1
-        elif ch in "]":
-            depth -= 1
-        if ch == "," and depth == 0:
-            parts.append(cur)
-            cur = ""
-        else:
-            cur += ch
-    if cur.strip():
-        parts.append(cur)
-    for part in parts:
+    for part in _attribute_items(s):
         if "=" not in part:
             continue
         k, v = part.split("=", 1)
@@ -404,11 +431,13 @@ def _parse_attr_block(s: str) -> dict[str, Any]:
 
 def _parse_value(v: str) -> Any:
     v = v.strip()
+    if v.startswith("{") and v.endswith("}"):
+        return _parse_attr_block(v[1:-1])
     if v.startswith("[") and v.endswith("]"):
         body = v[1:-1].strip()
         if not body:
             return []
-        return [_parse_value(x) for x in body.split(",")]
+        return [_parse_value(x) for x in _attribute_items(body)]
     if v.startswith('"') and v.endswith('"'):
         return v[1:-1]
     # typed scalar: "<num> : <type>"
@@ -642,6 +671,9 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
             name = attrs.get("name", result)
             shape, dtype = _shape_dtype(_last_type(op["tail"]))
             tensor_spec = {"shape": shape, "dtype": dtype, "role": attrs.get("role", "input")}
+            if "storage_encoding" in attrs:
+                tensor_spec["storage_encoding"] = attrs["storage_encoding"]
+                tensor_spec["storage_encoding"] = _checked_storage_encoding(tensor_spec)
             if tensor_spec["role"] == "scale":
                 for key in ("scale_of", "block"):
                     if key in attrs:

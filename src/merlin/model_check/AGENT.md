@@ -29,6 +29,8 @@ Build, run and judge complete quantized models for a device submission.
 - `chain_image_readback.py` — Decode explicit raw-array or complete all-element guest comparison transport.
 - `chain_group_profile.py` — Reconcile per-invocation routed group/gap traces without hiding dropped calls.
 - `chain_image_profile.py` — Add a reset hook to retained Merlin profiling support with explicit source/object receipts.
+- `chain_image_profile_new.py` — Add ordinary counter wrappers to completed unprofiled program objects.
+- `chain_image_profile_descriptor.py` — Reopen completed descriptor profiling pointer ABIs and their original artifacts.
 - `cli.py` — Command line of ``python -m merlin.model_check`` (contract: ``docs/reference/model_check.md`` §2).
 - `commands.py` — The subcommands behind ``python -m merlin.model_check`` (contract: ``docs/reference/model_check.md``).
 - `compute_execution.py` — Share the selected compute CPUs across model compilation and simulation steps.
@@ -62,6 +64,26 @@ Build, run and judge complete quantized models for a device submission.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Invariants
+
+- Ordinary chain packaging may consume an explicit completed-link revalidation
+  record. Reopen it through the generic finalizer; preserve the original failed
+  receipt, restoration evidence and finalizer source as independent source pins.
+  No source/object replacement or numerical/instruction verdict follows from it.
+
+- Completed descriptor profiling stays in this host-only package. Its reader
+  reopens the original source/selected wrapper, returned LLVM, native checkpoint,
+  compiled shim and final object roster. Check complete argument order and
+  destination identity and retain every observed pin. Serialized effects never
+  reconstruct live owners or grant lifetime, numerical or timing authority.
+  Public compiler modules must not import this reader or its model-check helpers.
+
+- Explicit chain group profiling may compile a new neutral host counter wrapper
+  for a completed unprofiled program. Reopen the actual model object, routing,
+  compiled pointer bridge and original compiler flags. Namespace and check every
+  original graph/device/weight section unchanged. The measured boundary includes
+  the selected ABI bridge, leaf and readout; gaps remain separate host intervals.
+  Wrapper overhead and changed between-call state require measured comparison;
+  these intervals are not pure accelerator time or a numerical certificate.
 
 - Chain image packaging supplies no new numerical, instruction or placement verdict.
   All original graph/device/weights objects and transformed allocated sections remain pinned.

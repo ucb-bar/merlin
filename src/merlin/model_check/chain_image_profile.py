@@ -24,7 +24,9 @@ void merlin_group_profile_reset(void) {
 def prepare(program, directory, *, nm, timeout):
     original = program["by_name"].get("group_profile.o")
     if original is None:
-        raise ValueError("selected program has no retained group profiling object")
+        from .chain_image_profile_new import prepare as prepare_completed
+
+        return prepare_completed(program, directory, nm=nm, timeout=timeout)
     table = objects.symbols(nm, objects.reopen(original), timeout=timeout)
     if table.get("merlin_group_profile_dump") != "T":
         raise ValueError("retained profiling object lacks the generated dump hook")
@@ -73,7 +75,11 @@ def prepare(program, directory, *, nm, timeout):
 
 def verify(record):
     if record is not None:
-        for key in ("original_object", "original_source", "source", "object"):
+        keys = ("source", "object", "bindings") if record.get("schema") == "merlin.completed_program_group_profile.v1" else (
+            "original_object", "original_source", "source", "object")
+        for key in keys:
             objects.reopen(record[key])
+        for row in (*record.get("inputs", ()), *record.get("original_objects", ())):
+            objects.reopen(row)
         for row in record["invocations"]:
             invocation_record.verify(objects.reopen(row))

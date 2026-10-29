@@ -262,6 +262,22 @@ def scheduling_capabilities(version=16):
                 "fact-derived storage bounds and independent target completion implementation",
             ],
         })
+    if version >= 24:
+        catalog["capabilities"].append({
+            "name": "current_source_quantized_residual_edges",
+            "symbols": ["merlin.llvmlower.quantized_sum_source.discover_quantized_sum_sources"],
+            "usage": [
+                "Discover current sole-use contraction-to-residual edges from actual host SSA.",
+                "Inspect each unchanged producer/readout and residual/readout program and source shape.",
+                "Try the target composition adapter before selecting an ordinary QuantizedSumRoute.",
+                "Keep unsupported alternatives separate; compare complete region cycles and private workspace.",
+            ],
+            "requires": [
+                "current ordinary DeviceRewrite and private complete borrowed source declarations",
+                "fresh unobserved intermediate, preserved Q1/Q2, target effects and actual completion",
+                "independent numerical execution and target admission; discovery supplies neither",
+            ],
+        })
     if version >= 23:
         catalog["capabilities"].append({
             "name": "capacity_phased_convolution_rhs_residency",
@@ -664,6 +680,107 @@ def scheduling_capabilities(version=16):
         ])
     if version >= 24:
         catalog["capabilities"].append({
+            "name": "factored_immutable_tensor_layouts",
+            "symbols": [prefix + "tensor_storage." + name for name in (
+                "FactoredTensorStorage", "column_panel_storage",
+            )],
+            "usage": [
+                "Factor original logical axes and select their physical order from the target's transfer/storage contract.",
+                "Carry the same checked map through actual constant preparation, call-buffer types, target addresses and readback.",
+                "Prepare source-owned immutable bytes once; include preparation in comparisons for mutable or invocation-local operands.",
+                "Inspect emitted transfer addresses and strides; a layout declaration alone does not change target code.",
+            ],
+            "requires": [
+                "exact positive source factors, a complete dense permutation and original byte extent",
+                "independent immutable-source authorization and an executable consumer of the declared physical map",
+                "original arithmetic, column coefficients and observers; unsupported tails or affine-only consumers keep their original layout",
+                "compare whole-region cycles and traffic with the actual prepared constant; no preferred panel width is supplied",
+            ],
+        })
+        catalog["capabilities"].append({
+            "name": "completed_input_with_rhs_frontier",
+            "symbols": [prefix + "convolution_input_reuse." + name for name in (
+                "ConvolutionInputReuseAdmission", "select_convolution_input_reuse",
+                "InvariantConvolutionInput",
+            )] + [prefix + "rolling_lookahead.RollingRhsFrontierAdmission",
+                  prefix + "convolution_exploration.emit_convolution_schedule"],
+            "usage": [
+                "Establish a completed original full-input union through the first actual RHS phase.",
+                "Select invariant_input_law and rhs_phase_prefetch_law independently, then pass both to the same ordinary emitter.",
+                "The checked consumer advances complete reduction runs before issuing future RHS writes into their dead prefix.",
+                "Keep all original preparation, group, input-last-use, phase and final drains; inspect actual reader/compute overlap and cycles.",
+            ],
+            "requires": [
+                "the complete original input union fits its injective assigned rows and remains immutable",
+                "every future RHS write is disjoint from retained input under its exact source/phase map",
+                "separate target RAW/WAR, ordered configuration, queue progress and real completion contracts",
+                "one complete column consumer per phase; unsupported compositions retain separate schedules",
+            ],
+        })
+        catalog["capabilities"].append({
+            "name": "capacity_derived_m_panels_with_rhs_reuse",
+            "symbols": [prefix + "dense_panel_pipeline." + name for name in (
+                "dense_m_panel_capacity", "schedule_dense_m_panels", "DenseMPanelAttempt",
+            )],
+            "usage": [
+                "Select the original N width; derive M limits from assigned padded LHS/RHS/ACC rows and byte capacity.",
+                "Construct one counted schedule with schedule_dense_m_panels; RHS staging is hoisted across M groups.",
+                "Inspect per-shape capacity/issue/tail blockers and checked load counts; compare whole-call cycles.",
+                "A constructed schedule is not an emitted mechanism. Reopen actual emission before crediting transfer.",
+            ],
+            "requires": [
+                "original private rows, full-K fit, supported tails and selected ordered-reduction/read-only law",
+                "source-bound scheduling dialect decisions and independent final source/storage/epoch checks",
+                "partial M families keep their explicit reloads; array STAY needs a separate selected target law",
+                "missing capacity or laws decline before emission; concrete verification failures propagate",
+            ],
+        })
+        catalog["capabilities"].append({
+            "name": "retained_ready_input_placement",
+            "symbols": [prefix + "dense_ready_readout." + name for name in (
+                "DenseReadyInputPlacement", "dense_ready_input_choices", "schedule_dense_pipeline",
+            )],
+            "usage": [
+                "Filter retained-weight full-K choices for two advancing LHS slots, one RHS and one ACC panel.",
+                "Build the selected ordinary plan and pass the SAME input_pipeline_placement to the ready consumer.",
+                "Actual projected accesses, wide-load composition and revalidation consume the same placement.",
+                "Optionally pass a separately selected array_prefix_admission: retain pure K-prefix K,N,M runs, "
+                "then issue only fresh final-K pairs and their original causal stores.",
+            ],
+            "requires": [
+                "original owned row views, padded physical footprints and combined operand byte capacity",
+                "at least two complete advancing groups and the separate selected load/ready conjunction",
+                "array prefix needs at least two K slices and a reusable M run; "
+                "no STAY overlaps stores and no store-preserves-array premise is inferred",
+                "explicit plans never shrink; counted source/products/completion checks "
+                "and target qualification remain",
+            ],
+        })
+        catalog["capabilities"].append({
+            "name": "staged_spatial_producer_bands",
+            "symbols": [prefix+"spatial_producer."+name for name in (
+                "SpatialProducerBand","SpatialProducerBandAdmission","SpatialProducerBandAlternative",
+                "spatial_producer_band_choices","emit_spatial_producer_band",
+                "spatial_producer_pass_space","explore_spatial_producer",
+            )]+[prefix+"convolution_exploration.emit_convolution_rhs_preparation"],
+            "usage": [
+                "Match the actual adjacent convolution/pool source and retain both original rounded readouts and every external observer.",
+                "Enumerate band heights from assigned ACC and Q1 scratch capacity; inspect exact halo recomputation and MAC costs.",
+                "Emit the producer union, actual Q1 stores/reloads and a complete multirow Q2 pool rectangle through selected target callbacks.",
+                "Optionally compose an existing complete immutable RHS owner; real preparation and final completion remain required.",
+                "Use the ordinary pass registry to explore independent band/RHS choices and legal planning orders, deduplicate actual emitted bytes, "
+                "then compare exact whole-region cycles. Unknown cycles remain unranked.",
+                "The ordinary connected host route uses the original band.source plan and full assigned scratch; rolling packed/readout-cache "
+                "paths retain their separate representation prerequisites.",
+            ],
+            "requires": [
+                "original pure producer with no additional live intermediate observer; original Q1/Q2 scalar coefficients and signed padding",
+                "separate source-bound rectangular pooling address/configuration and command-tracking law with actual field limits",
+                "exclusive assigned ACC/Q1 storage and actual completion of the entire pooled rectangle before reuse",
+                "actual original source callback and native execution; this library supplies no host effects or target qualification",
+            ],
+        })
+        catalog["capabilities"].append({
             "name": "source_checked_integer_observers",
             "symbols": [
                 "merlin.llvmlower.late_quant_rne.rewrite",
@@ -679,7 +796,8 @@ def scheduling_capabilities(version=16):
                 "Bind exact typed scalar arithmetic and complete saturated signed-byte observations.",
                 "Retain ordinary bounded roundeven representation and the existing late host legalizer.",
                 "Derive finite broadcast-scale scans and immutable tables from the current source only.",
-                "Consume returned LLVM/C in the ordinary compiler before object identity; validate the complete output.",
+                "Consume returned LLVM/C in the ordinary compiler before object identity; "
+                "validate the complete output.",
             ],
             "requires": [
                 "explicit RNE, gradual underflow, nontrapping and unobserved floating effects",
@@ -742,6 +860,9 @@ def scheduling_capabilities(version=16):
                 "emits first_run/run_count complete reductions; finish_consumer performs final readout.",
                 "For rolling convolution use emit_rolling_convolution_output_group(..., defer_consumer=True); "
                 "its returned continuation checks advance(first, count) coverage before finish().",
+                "For a complete invocation pass input_prefetch_law=RollingLookaheadAdmission(...) to "
+                "emit_convolution_schedule with its checked output group and grouped transport; original K runs "
+                "are derived from source. The separately selected RHS-frontier mode remains an alternative.",
                 "Compare complete-call cycles; earlier issue alone does not establish hidden latency.",
             ],
             "requires": [
@@ -750,6 +871,28 @@ def scheduling_capabilities(version=16):
                 "split consumers additionally require retained_consumer_continuations=True, live ACC/input "
                 "storage, complete fresh/stay runs and exactly one original initialization/readout",
                 "no arbitrary nested asynchronous schedule or fixed-cycle completion is implied",
+            ],
+        })
+        catalog["capabilities"].append({
+            "name": "direct_ring_convolution_row_fragments",
+            "symbols": [prefix + "convolution_output_groups." + name for name in (
+                "ConvolutionRowFragmentGroup", "plan_rolling_convolution_row_fragments",
+                "emit_rolling_convolution_output_group",
+            )],
+            "usage": [
+                "Request a capacity-safe source-row band with plan_rolling_convolution_row_fragments.",
+                "Pass its checked group to emit_convolution_schedule with the original rolling input, "
+                "array/readout laws and real completions; the default whole-row planner is unchanged.",
+                "Existing ConvolutionGatherRuns splits direct ring reads at original row boundaries. "
+                "Fragments compute into disjoint subrows of packed ACC tiles; readout covers each complete original contiguous interval.",
+                "Compare actual fragment/preload count, padded work, bytes and complete-call cycles; "
+                "fewer ACC/readout tiles can require more compute fragments.",
+            ],
+            "requires": [
+                "primitive-sized original row tiles, complete source-row bands and the actual staged ring horizon",
+                "original immutable input/RHS, independent output rows and separately selected array/readout laws",
+                "all original products, per-output reduction order, scalar exits, real pair boundaries and final drains",
+                "no extra DMA bytes, local copy instruction or packed LHS allocation is inferred",
             ],
         })
         catalog["capabilities"].append({

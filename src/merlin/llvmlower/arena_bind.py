@@ -315,7 +315,7 @@ def _is_terminator(inst: str) -> bool:
     return head in ("br", "ret", "switch", "unreachable", "resume", "indirectbr", "callbr")
 
 
-def _callees(lines: list[str], blocks: list["_Block"]) -> set[str]:
+def _callees(lines: list[str], blocks: list["_Block"], *, noncapturing_scalar_calls=frozenset()) -> set[str]:
     """Every ``@symbol`` a ``call`` in this function names.
 
     Read from the call instruction's own text: the callee is the last ``@name`` token before the
@@ -327,6 +327,8 @@ def _callees(lines: list[str], blocks: list["_Block"]) -> set[str]:
         for li in b.insts:
             inst = lines[li].strip()
             body = inst.partition(" = ")[2] or inst
+            if inst in noncapturing_scalar_calls:
+                continue  # Only an exact live checked scalar emission supplies this premise.
             if not body.startswith(("call ", "tail call ", "musttail call ", "notail call ", "invoke ")):
                 continue
             at = body.find("@")
@@ -696,8 +698,13 @@ def bind_arena(
     # Does any callee in this function possibly retain or free a pointer it is handed? If so the
     # descriptor relaxation is off for the WHOLE function -- an unknown callee is not evidence of
     # safety, and deciding per-allocation would mean deciding which arguments it captures.
-    unknown = sorted(c for c in _callees(lines, blocks)
-                     if not _is_non_capturing(c) and c.removeprefix("@") not in borrowed_symbols)
+    scalar_calls = frozenset((borrowed_record or {}).get("noncapturing_scalar_calls", ()))
+    from .llvm_scalar_effects import memory_none_float_callees
+
+    declared_scalar_calls = memory_none_float_callees(ll_text)
+    unknown = sorted(c for c in _callees(lines, blocks, noncapturing_scalar_calls=scalar_calls)
+                     if not _is_non_capturing(c) and c not in declared_scalar_calls
+                     and c.removeprefix("@") not in borrowed_symbols)
     allowed_uses = _ALLOWED_RAW_USES if not unknown else ("ptrtoint",)
     # An unknown call could also observe a derived aligned pointer. Do not use
     # the new raw-call relaxation in an entry with an unqualified callee.

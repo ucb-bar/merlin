@@ -12,6 +12,20 @@ the per-backend adapters under `backends/`.
 
 ## What belongs here
 
+- `device_borrowed_calls` carries the live selected sibling/head component
+  writers into ordinary model lowering after the actual device build and input
+  view preparation. Pin the original effects object, every result position,
+  exact compiled logical bridge and observed object closure. Check the complete
+  graph at that boundary, then reopen emitted bytes and live writer identities
+  without reparsing the whole model at each native callback. Saved records,
+  copied effects and matching ranks/names supply no ownership permission.
+  Native forwarding/fresh-result checks and final implementation qualification
+  remain separate; public plural output arguments still need disjointness proof.
+  A typed logical sibling route may independently select checked single-result
+  descriptor identities. The actual common compiled shim and each owner's
+  source/effects remain separately checked before ordinary lowering composes
+  their disjoint rosters; neither owner can qualify the other's implementation.
+
 - `bound_caller_layout` reopens the exact core data-bound runtime, selected
   capability contract and facts before exposing the original neutral renderer's
   dense extents and ordinal buffer symbols. Its versioned format-only query

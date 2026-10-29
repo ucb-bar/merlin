@@ -180,6 +180,17 @@ def validate_command_buffer(cb: Any, *, contract: str | Path | None = None) -> N
     expressed; it spent its session guessing spellings. A validator the submitter is told to run must fail
     on what the runner will refuse, or it is not the contract."""
     validate(cb, "command_buffer", contract=contract)
+    for name, tensor in (cb.get("tensors") or {}).items():
+        if "storage_encoding" not in tensor:
+            continue
+        from merlin.perf.storage_encoding import GroupedAxesStorage
+
+        try:
+            encoding = GroupedAxesStorage.from_dict(tensor["storage_encoding"])
+            if list(encoding.physical_shape) != tensor["shape"] or encoding.dtype != tensor["dtype"]:
+                raise ValueError("physical tensor shape or element type differs from its storage map")
+        except (TypeError, ValueError) as exc:
+            raise ContractViolation(f"command_buffer storage encoding for {name}: {exc}") from exc
     from merlin.runtime.commandbuffer import validate_command_buffer as _structural
 
     problems = [

@@ -1071,6 +1071,16 @@ def prepare_for_lowering(
         complete_group_device=device if _early_complete_groups else None,
         composed_host_layout=getattr(device, "pre_group_layout", None) if _sibling_selected else None,
     )
+    # The captured numerical policy binds precisely this preparation product.
+    # Consume it before later destination/layout/tagging passes change its
+    # source bytes. Those ordinary passes retain the checked numerical result;
+    # a stale policy is never rebound to an arbitrary later source.
+    if not _closed & {"lower_roundeven_to_intrinsic", "lower_exact_math_inline", _FUSE_QUANT_ROUND}:
+        from ...llvmlower.automatic_host import prepare_automatic_host
+
+        prepared = prepare_automatic_host(
+            Path(prepared), Path(work) / "automatic_host", policy_path=Path(work) / "quantization-policy.json"
+        )
     # SAY SO when a requested lever cannot fire on this module. A transform schedule matches by op
     # name, and `transform.structured.match` on a name nothing carries yields an empty handle, so
     # every op downstream of it is a vacuous no-op -- the feature builds, gates clean, and reports
@@ -1085,18 +1095,10 @@ def prepare_for_lowering(
     _applicability_source = _op_counts
 
     def _finish_preparation(path: Path) -> tuple[Path, frozenset[str]]:
-        from ...llvmlower.automatic_host import prepare_automatic_host
         from ...llvmlower.prepared_model_transform import apply_prepared_model_transform
         from ...llvmlower.repeated_pointwise import prepare_repeated_pointwise
 
         require_device_offload_selection(device, offload_selection)
-        # Placement, target ABI transforms and tagging have completed. Only
-        # canonical pure host tensor bodies are eligible, under the original
-        # captured policy. Explicit alternative lowerings retain their choice.
-        if not _closed & {"lower_roundeven_to_intrinsic", "lower_exact_math_inline", _FUSE_QUANT_ROUND}:
-            path = prepare_automatic_host(
-                Path(path), Path(work) / "automatic_host", policy_path=Path(work) / "quantization-policy.json"
-            )
         path = prepare_repeated_pointwise(
             Path(path), Path(work) / "repeated_pointwise", bundle_dir=Path(mlir_path).parent
         )

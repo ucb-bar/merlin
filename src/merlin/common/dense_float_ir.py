@@ -6,14 +6,28 @@ All grammar, shape checks and non-floating literals remain xDSL-owned. These
 adapters confer no numerical equivalence or permission to change arithmetic.
 """
 
+import re
+
 from xdsl.dialects.builtin import AnyFloat, BytesAttr, DenseIntOrFPElementsAttr
 from xdsl.parser import Parser
 from xdsl.printer import Printer
 from xdsl.utils.mlir_lexer import MLIRLexer, MLIRTokenKind
 
 
+_ESCAPED_LITERAL_BYTES = re.compile(rb'["\\\x00-\x1f\x7f-\xff]')
+
+
 class DenseFloatPrinter(Printer):
     """Use MLIR's raw-byte form, retaining NaN payloads and signed zeros."""
+
+    def print_bytes_literal(self, bytestring):
+        # Match xDSL's byte escaping exactly, while writing ordinary provenance
+        # strings as spans instead of one Python printer call per byte.
+        def escape(match):
+            byte = match[0][0]
+            return b"\\\\" if byte == 0x5C else f"\\{byte:02X}".encode("ascii")
+
+        self.print_string('"' + _ESCAPED_LITERAL_BYTES.sub(escape, bytestring).decode("ascii") + '"')
 
     def print_attribute(self, attribute):
         if isinstance(attribute, DenseIntOrFPElementsAttr) and isinstance(attribute.get_element_type(), AnyFloat):

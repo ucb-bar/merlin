@@ -416,11 +416,15 @@ def verify_completed_recipe(
     preparation = record.get("preparation", {})
     if not isinstance(preparation, dict) or any(not isinstance(key, str) or not key for key in preparation):
         raise ValueError("compilation recipe preparation is malformed")
-    preparation_paths = []
+    preparation_identities = {}
     for identity in preparation.values():
-        preparation_paths.append(_checked_identity(identity, "preparation")["path"])
-    if len(set(preparation_paths)) != len(preparation_paths):
-        raise ValueError("compilation recipe repeats a preparation identity")
+        checked = _checked_identity(identity, "preparation")
+        # Independent ordinary preparation stages may retain the same bytes
+        # under different roles. Reopen every role and require exact identity;
+        # an alias never transfers a different version or skips verification.
+        previous = preparation_identities.setdefault(checked["path"], checked)
+        if previous != checked:
+            raise ValueError("compilation recipe has conflicting preparation identities")
     _recheck_weight_preparation(preparation)
     commands = record["commands"]
     outputs: set[str] = set()

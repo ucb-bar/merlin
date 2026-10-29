@@ -27,7 +27,8 @@ from merlin.sched.ir import Call, Const, Kernel, Loop, TensorArg, Var, check_str
 from merlin.sched.ir.integer_domain import check_integer_domain
 from merlin.transforms.dense_planning import dense_blocks
 
-SEGMENTED_ISSUE_ORDERS = (*ISSUE_ORDERS, "prefetch_rhs_between_k_tiles")
+OUTPUT_GROUP_PREFETCH = "prefetch_rhs_between_output_groups"
+SEGMENTED_ISSUE_ORDERS = (*ISSUE_ORDERS, "prefetch_rhs_between_k_tiles", OUTPUT_GROUP_PREFETCH)
 
 @dataclass(frozen=True)
 class DenseSegmentedAdmission:
@@ -145,6 +146,10 @@ def build_dense_segmented_pipeline(
     use disjoint windows. The serialized control emits identical data commands
     with one extra completion boundary between those phases. No modulo address
     expression, dynamic instruction expansion or full-image buffer is needed.
+    Explicit output-group lookahead instead alternates full-K RHS N panels.
+    The constructor retains separate current-compute and future-load nests;
+    interleave_dense_segmented_frontier can weave their paired K bands before
+    the ordinary source, range and epoch checks qualify the emitted program.
     """
     if type(issue_order) is not str or issue_order not in SEGMENTED_ISSUE_ORDERS:
         raise ValueError("unsupported explicit segmented issue order")
@@ -168,6 +173,9 @@ def build_dense_segmented_pipeline(
         raise ValueError("segmented source needs exact original integer widths and serial continuation semantics")
     lhs, rhs = _assignment(problem, block, resources, storage, window_offsets)
     kt = problem.tiles[1]
+    output_lookahead = issue_order == OUTPUT_GROUP_PREFETCH
+    if output_lookahead and (block.k != kt or problem.tiles[2] <= block.n):
+        raise ValueError("output-group lookahead needs full K and at least two N groups")
     segments = (kt + block.k - 1) // block.k
     last = kt - (segments - 1) * block.k
     serial = 0
@@ -198,22 +206,26 @@ def build_dense_segmented_pipeline(
     def epoch(body):
         return Loop(variable("segment_epoch_"), 1, (*body, Call(DRAIN, ())))
 
-    def output_group(mg, ng):
+    def output_group(mg, ng, *, slot=0, future_group=None, initial=False):
         def depth(k, count, final):
             return (select(k, count - 1, problem.k % problem.tile_k, problem.tile_k)
                     if final and problem.k % problem.tile_k else Const(problem.tile_k))
 
-        def loads(slot, base, count, final=False):
+        def columns(group, n):
+            return _edge(group, n, problem.n, problem.tile_n)
+
+        def loads(slot, base, count, final=False, group=None):
+            group = ng if group is None else group
             def load(k, n):
-                return (call(Load("weight", (base + k, ng.base + n), (base + k) * problem.tile_k,
-                                  (ng.base + n) * problem.tile_n, depth(k, count, final),
-                                  _edge(ng, n, problem.n, problem.tile_n),
+                return (call(Load("weight", (base + k, group.base + n), (base + k) * problem.tile_k,
+                                  (group.base + n) * problem.tile_n, depth(k, count, final),
+                                  columns(group, n),
                                   rhs[slot].base + (k * block.n + n) * problem.tile_k, 1)),)
-            return nest((count, ng.blocks), load)
+            return nest((count, group.blocks), load)
 
         def computes(slot, base, count, first=False, final=False):
             def compute(k, m, n):
-                rows, cols = _edge(mg, m, problem.m, problem.tile_m), _edge(ng, n, problem.n, problem.tile_n)
+                rows, cols = _edge(mg, m, problem.m, problem.tile_m), columns(ng, n)
                 continuation = (select(k, 0, 0, 1) if first and bias_source is None else Const(1))
                 acc = storage.accumulator.base + (m * block.n + n) * problem.tile_m
                 return (call(Preload(rhs[slot].base + (k * block.n + n) * problem.tile_k,
@@ -232,11 +244,19 @@ def build_dense_segmented_pipeline(
             def initialize(m, n):
                 return (epoch((call(InitializeAccumulator(
                     (mg.base + m, ng.base + n), (ng.base + n) * problem.tile_n,
-                    _edge(mg, m, problem.m, problem.tile_m), _edge(ng, n, problem.n, problem.tile_n),
+                    _edge(mg, m, problem.m, problem.tile_m), columns(ng, n),
                     storage.accumulator.base + (m * block.n + n) * problem.tile_m)),)),)
             result.extend(nest((mg.blocks, ng.blocks), initialize))
-        result.append(epoch(loads(0, Const(0), last if segments == 1 else block.k, segments == 1)))
-        if segments >= 3:
+        if output_lookahead:
+            if initial:
+                result.append(epoch(loads(slot, Const(0), kt, True)))
+            current = computes(slot, Const(0), kt, first=True, final=True)
+            future = (() if future_group is None else
+                      loads(1 - slot, Const(0), kt, True, group=future_group))
+            result.append(epoch((*current, *future)))
+        else:
+            result.append(epoch(loads(0, Const(0), last if segments == 1 else block.k, segments == 1)))
+        if not output_lookahead and segments >= 3:
             result.extend(stage(0, Const(0), first=True))
             pairs, tail = divmod(segments - 3, 2)
             if pairs:
@@ -247,22 +267,58 @@ def build_dense_segmented_pipeline(
             if tail:
                 index = 1 + 2 * pairs
                 result.extend(stage(index % 2, Const(index * block.k)))
-        if segments >= 2:
+        if not output_lookahead and segments >= 2:
             index = segments - 2
             result.extend(stage(index % 2, Const(index * block.k), first=index == 0, final_frontier=True))
-        result.append(epoch(computes((segments - 1) % 2, Const((segments - 1) * block.k), last,
-                                     first=segments == 1, final=True)))
+        if not output_lookahead:
+            result.append(epoch(computes((segments - 1) % 2, Const((segments - 1) * block.k), last,
+                                         first=segments == 1, final=True)))
 
         def store(m, n):
             tiled = type(output_readout) is DenseTiledIntegerReadout
             operation = TiledIntegerStore if tiled else Store
             return (epoch((call(operation(
                 (mg.base + m) * problem.tile_m, (ng.base + n) * problem.tile_n,
-                _edge(mg, m, problem.m, problem.tile_m), _edge(ng, n, problem.n, problem.tile_n),
+                _edge(mg, m, problem.m, problem.tile_m), columns(ng, n),
                 storage.accumulator.base + (m * block.n + n) * problem.tile_m,
                 output_readout.identity if output_readout is not None else None,
                 **({"readout_tile": ng.base + n} if tiled else {}))),)),)
         result.extend(nest((mg.blocks, ng.blocks), store))
+        return tuple(result)
+
+    def output_groups(mg):
+        """Peel startup/drain and count pairs, keeping both RHS offsets static."""
+        full_n, tail_n = divmod(problem.tiles[2], block.n)
+
+        def group(index, blocks=block.n, *, last=False, var=None, trips=1):
+            return _Group(var, trips, index * block.n, blocks, last)
+
+        def stage(index, slot, *, initial=False, following=None, last=False):
+            return output_group(mg, group(index, last=last), slot=slot,
+                                future_group=following, initial=initial)
+
+        tail = None if not tail_n else group(Const(full_n), tail_n, last=True)
+        if full_n == 1:
+            result = list(stage(Const(0), 0, initial=True, following=tail))
+        else:
+            result = list(stage(Const(0), 0, initial=True,
+                                following=group(Const(1), last=full_n == 2 and not tail_n)))
+            middle = full_n - 2
+            pairs, odd = divmod(middle, 2)
+            if pairs:
+                period = variable("output_group_period_")
+                index = Var(period) * 2 + 1
+                result.append(Loop(period, pairs, (
+                    *stage(index, 1, following=group(index + 1)),
+                    *stage(index + 1, 0, following=group(index + 2,
+                        last=not tail_n and not odd, var=period, trips=pairs)))))
+            if odd:
+                index = Const(1 + 2 * pairs)
+                result.extend(stage(index, 1, following=group(index + 1, last=not tail_n)))
+            result.extend(stage(Const(full_n - 1), (full_n - 1) % 2,
+                                following=tail, last=not tail_n))
+        if tail is not None:
+            result.extend(output_group(mg, tail, slot=full_n % 2))
         return tuple(result)
 
     body = []
@@ -271,9 +327,12 @@ def build_dense_segmented_pipeline(
         retained = _emit_lhs_panel(problem, full, replace(storage, lhs=lhs), call, nest, mg,
                                    _Group(None, 1, Const(0), kt, True))
         row = [epoch(retained)]
-        for ng in _groups(problem.tiles[2], block.n, "outer_n"):
-            group = output_group(mg, ng)
-            row.extend((Loop(ng.var, ng.trips, group),) if ng.var is not None else group)
+        if output_lookahead:
+            row.extend(output_groups(mg))
+        else:
+            for ng in _groups(problem.tiles[2], block.n, "outer_n"):
+                group = output_group(mg, ng)
+                row.extend((Loop(ng.var, ng.trips, group),) if ng.var is not None else group)
         body.extend((Loop(mg.var, mg.trips, tuple(row)),) if mg.var is not None else row)
     kernel = Kernel(name, (
         TensorArg("lhs", (problem.m, problem.k), dtypes[0], "read"),
@@ -299,6 +358,8 @@ def interleave_dense_segmented_frontier(kernel, adapter, *, issue_order="prefetc
     load into the matching counted K/N loop by exact coordinate substitution. A shorter final frontier
     uses a counted compute-only suffix; no invalid speculative load is emitted.
     Full source and epoch checks MUST follow: this pass grants no target law.
+    The explicit full-K output-group choice requires equal K coordinates and
+    the exact following N panel, retaining a shorter final N load domain.
     """
     from merlin.compile.scheduling.loop_schedule import LoopTransform, propose_loop_transforms
     from merlin.compile.scheduling.tile_load_coalescing import _linear, _plain
@@ -355,8 +416,12 @@ def interleave_dense_segmented_frontier(kernel, adapter, *, issue_order="prefetc
             raise ValueError("frontier issue cannot split a physical pair or move unknown effects")
         preload, compute, load = (adapter.project(c) for c in (*paired, *loads))
         coordinates = {ck.var, cm.var, cn.var}
+        output_frontier = issue_order == OUTPUT_GROUP_PREFETCH
+        if output_frontier and (fk.extent != ck.extent or fn.extent > cn.extent):
+            raise ValueError("output-group frontier differs from complete K and bounded following N")
         if (type(preload) is not Preload or type(compute) is not Compute or type(load) is not Load
-                or load.role != "weight" or fk.extent > ck.extent or fn.extent != cn.extent
+                or load.role != "weight" or fk.extent > ck.extent
+                or (not output_frontier and fn.extent != cn.extent)
                 or coordinates & free_vars(compute.input_block[0]) != {cm.var}
                 or coordinates & free_vars(compute.input_block[1]) != {ck.var}
                 or coordinates & free_vars(preload.weight_block[0]) != {ck.var}
@@ -364,9 +429,12 @@ def interleave_dense_segmented_frontier(kernel, adapter, *, issue_order="prefetc
             raise ValueError("frontier issue axes differ from actual independent K/M/N source domains")
         renamed = _remap(_remap(loads, fk.var, ck.var), fn.var, cn.var)
         projected = adapter.project(renamed[0])
-        if (not equivalent(projected.block[0], preload.weight_block[0] + ck.extent)
-                or not equivalent(projected.block[1], preload.weight_block[1])):
-            raise ValueError("future RHS frontier is not the exact following K segment with the same columns")
+        k_offset, n_offset = (0, cn.extent) if output_frontier else (ck.extent, 0)
+        if (not equivalent(projected.block[0], preload.weight_block[0] + k_offset)
+                or not equivalent(projected.block[1], preload.weight_block[1] + n_offset)):
+            raise ValueError("future RHS frontier differs from its exact following source group"
+                             if output_frontier else
+                             "future RHS frontier is not the exact following K segment with the same columns")
         following = ()
         if fk.extent < ck.extent:
             name = ck.var + "_frontier_suffix"
@@ -375,7 +443,7 @@ def interleave_dense_segmented_frontier(kernel, adapter, *, issue_order="prefetc
             used.add(name)
             following = (Loop(name, ck.extent - fk.extent,
                               _remap(ck.body, ck.var, name, offset=fk.extent)),)
-        if issue_order == "prefetch_rhs_between_k_tiles":
+        if issue_order in ("prefetch_rhs_between_k_tiles", OUTPUT_GROUP_PREFETCH):
             # The existing typed fusion primitive substitutes the future K
             # coordinate into the current K loop. All M/N compute order stays
             # exactly as before. A short frontier leaves its suffix after the
@@ -525,9 +593,16 @@ def schedule_dense_segmented_pipeline(
     kernel = build_dense_segmented_pipeline(
         problem, decision.block, resources, decision.storage, adapter, name=name, dtypes=dtypes,
         prefetch=decision.pipeline_prefetch, outer_order=decision.outer_order,
-        window_offsets=decision.pipeline_window_offsets, output_readout=output_readout, bias_source=bias_source)
+        window_offsets=decision.pipeline_window_offsets, output_readout=output_readout, bias_source=bias_source,
+        issue_order=(OUTPUT_GROUP_PREFETCH if decision.pipeline_issue_order == OUTPUT_GROUP_PREFETCH
+                     else "compute_then_prefetch"))
     issue_report = None
-    if decision.pipeline_issue_order != "compute_then_prefetch":
+    if decision.pipeline_issue_order == OUTPUT_GROUP_PREFETCH:
+        issue_report = dict(schema="merlin.segmented_output_group_lookahead.v1", rhs_slots=2,
+                            lhs_slots=1, full_k_tiles=decision.block.k,
+                            completion="original full epoch drains before RHS/ACC reuse",
+                            target_execution="not_established")
+    elif decision.pipeline_issue_order != "compute_then_prefetch":
         if not decision.pipeline_prefetch:
             raise ValueError("frontier interleaving requires an explicit prefetched epoch")
         kernel, issue_report = interleave_dense_segmented_frontier(

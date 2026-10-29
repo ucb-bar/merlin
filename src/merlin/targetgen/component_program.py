@@ -13,6 +13,7 @@ import json
 from dataclasses import dataclass
 
 SCHEMA_V2 = "merlin.component_program.v2"
+SCHEMA_V3 = "merlin.component_program.v3"
 LOGICAL_IO_V1 = "merlin.logical_io.v1"
 
 
@@ -39,7 +40,8 @@ def _integer_dtype(value, *, operand_dtype, accumulator_dtype):
 
 def analyze(program, *, operand_dtype, accumulator_dtype):
     """Check a finite typed DAG and derive source effects, uses and live outputs."""
-    v2 = isinstance(program, dict) and program.get("schema") == SCHEMA_V2
+    v3 = isinstance(program, dict) and program.get("schema") == SCHEMA_V3
+    v2 = isinstance(program, dict) and program.get("schema") in {SCHEMA_V2, SCHEMA_V3}
     logical_io = isinstance(program, dict) and program.get("logical_io") == LOGICAL_IO_V1
     if not isinstance(program, dict) or set(program) != {"inputs", "nodes", "outputs"} | ({"schema"} if v2 else set()) | ({"logical_io"} if logical_io else set()):
         raise ValueError("component program requires exactly inputs, nodes and outputs")
@@ -75,15 +77,20 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
             if op == "reduce_sum"
             else {"shape"}
             if op == "reshape"
+            else {"offsets", "sizes", "strides"}
+            if op == "extract_slice"
+            else {"axis"}
+            if op == "concat"
             else set()
         )
         supported = {"matmul", "add", "copy", "transpose", "alias", "update"} | (
             {"cast", "reduce_sum", "reshape"} if v2 else set()
-        )
+        ) | ({"extract_slice", "concat"} if v3 else set())
         if set(node) != {"name", "op", "inputs"} | extra or op not in supported:
             raise ValueError("unsupported component node; use explicit supported generic tensor operations")
         arity = 2 if op in {"matmul", "add", "update"} else 1
-        if not isinstance(args, list) or len(args) != arity or any(arg not in types for arg in args):
+        if (not isinstance(args, list) or (len(args) < 2 if op == "concat" else len(args) != arity)
+                or any(not isinstance(arg, str) or arg not in types for arg in args)):
             raise ValueError("component node operand is absent or its arity differs")
         actual = [current[storage[arg]] for arg in args]
         selected = [types[arg] for arg in args]
@@ -103,6 +110,24 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
             result = lhs
         elif op == "transpose":
             result = ValueType((lhs.shape[1], lhs.shape[0]), lhs.dtype)
+        elif op == "extract_slice":
+            offsets, sizes, strides = (node[key] for key in ("offsets", "sizes", "strides"))
+            if (any(not isinstance(items, list) or len(items) != 2 for items in (offsets, sizes, strides))
+                    or any(type(x) is not int or x < 0 for x in offsets)
+                    or any(type(x) is not int or x < 1 for x in sizes + strides)
+                    or any(offset + (size - 1) * stride >= extent
+                           for offset, size, stride, extent in zip(offsets, sizes, strides, lhs.shape, strict=True))):
+                raise ValueError("component slice requires bounded positive static rank-two geometry")
+            result = ValueType(tuple(sizes), lhs.dtype)
+        elif op == "concat":
+            axis = node["axis"]
+            if (type(axis) is not int or axis not in {0, 1}
+                    or any(value.dtype != lhs.dtype or value.shape[1 - axis] != lhs.shape[1 - axis]
+                           for value in selected)):
+                raise ValueError("component concatenation requires one rank-two axis and matching storage")
+            shape = list(lhs.shape)
+            shape[axis] = sum(value.shape[axis] for value in selected)
+            result = ValueType(tuple(shape), lhs.dtype)
         elif op == "reshape":
             # A row-major reinterpretation: the same elements in the same order under a new
             # rank-two extent. Moves data, computes nothing, and preserves the element count.
@@ -180,7 +205,7 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
         "scope": "functionalized tensor semantics; physical alias, lifetime and synchronization unverified",
     }
     if v2:
-        result["schema"] = SCHEMA_V2
+        result["schema"] = SCHEMA_V3 if v3 else SCHEMA_V2
     if logical_io:
         if output_names & {row["name"] for row in inputs}:
             raise ValueError("logical IO requires distinct input and output names")
@@ -222,7 +247,7 @@ def render(program, *, operand_dtype, accumulator_dtype):
         # V2 reserves underscore-prefixed SSA names for builder temporaries.
         # Public source names start with a letter, so they cannot shadow a
         # scalar argument/product or another node's initialization value.
-        prefix = f"_component_{node['ordinal']}_" if program.get("schema") == SCHEMA_V2 else ""
+        prefix = f"_component_{node['ordinal']}_" if program.get("schema") in {SCHEMA_V2, SCHEMA_V3} else ""
 
         def scalar(token):
             return "%" + prefix + token
@@ -236,6 +261,19 @@ def render(program, *, operand_dtype, accumulator_dtype):
             values[name] = values[actual[0]]
             continue
         values[name] = "%" + name
+        if op == "extract_slice":
+            source = types[actual[0]]
+            geometry = "".join("[" + ", ".join(map(str, node[key])) + "]"
+                               for key in ("offsets", "sizes", "strides"))
+            lines.append(f"    %{name} = tensor.extract_slice {values[actual[0]]}{geometry} "
+                         f": {source.mlir} to {result.mlir}")
+            continue
+        if op == "concat":
+            operands = ", ".join(values[arg] for arg in actual)
+            operands_type = ", ".join(types[arg].mlir for arg in actual)
+            lines.append(f"    %{name} = tensor.concat dim({node['axis']}) {operands} "
+                         f": ({operands_type}) -> {result.mlir}")
+            continue
         if op == "reshape":
             source = types[actual[0]]
             flat = ValueType((source.shape[0] * source.shape[1],), source.dtype)

@@ -37,16 +37,19 @@ def rebind(device, *, source: Path, prepared: Path, work: Path, compilation=None
                 "prepared_transform",
                 "post_offload_transform",
                 "offload_selection",
-                "descriptor_effects",
                 "llvm_transform_chain",
                 "target_schedule",
                 "target_configuration",
                 "connected_spatial",
             )
         )
-        or device.descriptor_results
+        or device.descriptor_results and not callable(device.descriptor_effects)
+        or not device.descriptor_results and device.descriptor_effects is not None
     ):
         raise PrepackRefused("weight preparation has no checked composition with this source-bound device route")
+    # The descriptor owner is an unissued factory here. It must independently
+    # qualify the actual prepared source, generated shim and observed objects
+    # later; rebinding the complete selector carries no old effects certificate.
     capture = None if device.capture is None else Path(device.capture).resolve()
     if capture not in {source, source / "model.mlir"}:
         raise PrepackRefused("complete-group capture differs from the original weight-preparation source")

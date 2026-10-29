@@ -61,11 +61,15 @@ def choices(features):
     from .scalar_squared_sum import FEATURE as squared_sum
 
     selection = active()
-    return {
+    result = {
         "contraction": not bool(_OUTPUTS_FEATURES & features) and selection.state("scalar-contraction") is not False,
         "squared_sum": squared_sum not in features and selection.state("scalar-squared-sum") is not False,
         "broadcast_math": broadcast not in features and selection.state("broadcast-math-hoist") is not False,
     }
+    table_choice = selection.state("finite-integer-math")
+    if table_choice is True or (table_choice is None and os.environ.get("MERLIN_FINITE_INTEGER_MATH", "0") == "1"):
+        result['finite_integer_math'] = True
+    return result
 
 
 def bind_runner(source, *, features):

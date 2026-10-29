@@ -384,16 +384,21 @@ class ConvolutionRhsPhaseLaw:
 
 
 def _phase_input(schedule, input_rows, operand_rows, rhs_base):
+    """Bind input union to full source SP and RHS to its borrowed row prefix.
+
+    A source input segment may lie above the separately owned RHS prefix.
+    The complete physical source capacity still bounds every input segment.
+    """
     if input_rows is not None:
         if type(input_rows) is not ConvolutionResidentInputRows:
             raise ValueError("RHS phases require the exact original resident input footprint")
         input_rows.revalidate()
         if (input_rows.source_identity != schedule.source.identity
             or input_rows.window != schedule.source.plan.window
-            or input_rows.channel_tile != schedule.source.plan.channel_tile or input_rows.end > operand_rows):
+            or input_rows.channel_tile != schedule.source.plan.channel_tile or input_rows.end > schedule.source.plan.operand_rows):
             raise ValueError("RHS phases require the exact original resident input footprint")
         input_rows.revalidate()
-        if rhs_base < input_rows.end:
+        if not input_rows.disjoint_from(rhs_base,operand_rows-rhs_base):
             raise ValueError("RHS phases overlap the explicit resident input footprint")
 
 
@@ -520,8 +525,20 @@ def _prepare_convolution_rhs(rhs, builder, lower, complete, *, already_prepared=
     columns = {column: n for n, (column, _) in enumerate(intervals)}
 
     def address(kernel, chunk, column):
+        if type(column) is int:
+            slot = columns[column]
+        else:
+            # Counted consumers may carry the original column loop as SSA.
+            # Division is an exact slot map only for complete regular tiles
+            # (with an independent final tail), never arbitrary scalar exits.
+            start = intervals[0][0]
+            if any(c != start+n*p.column_tile or
+                   (width != p.column_tile and n != len(intervals)-1)
+                   for n, (c, width) in enumerate(intervals)):
+                raise ValueError("counted RHS columns require original regular tile boundaries")
+            slot = builder.op("udiv", builder.op("sub", column, start), p.column_tile)
         index = builder.op("add", builder.op("mul", kernel, chunks), chunk)
-        index = builder.op("add", builder.op("mul", index, len(intervals)), columns[column])
+        index = builder.op("add", builder.op("mul", index, len(intervals)), slot)
         return builder.op("add", rhs.layout.rhs_base, builder.op("mul", index, p.channel_tile))
 
     def kernel_body(kernel):
@@ -570,10 +587,31 @@ def _prepare_convolution_rhs(rhs, builder, lower, complete, *, already_prepared=
     return consume, check
 
 
+def emit_convolution_rhs_preparation(rhs,builder,lower,*,complete):
+    """Prepare real checked RHS tiles for an existing original consumer.
+
+    Return (consumer_lower, finish). Route every original consumer effect
+    through consumer_lower, then call finish after its real final drain. This
+    consumes the existing effect law and exact physical layout; it grants no
+    extra RHS lifetime, source-product coverage, completion or target authority.
+    """
+    if (type(rhs)is not ConvolutionRhsResidency or not callable(lower)or not callable(complete)
+            or any(not callable(getattr(builder,n,None))for n in('op','loop'))):
+        raise ValueError("RHS preparation requires its checked owner and actual emit/completion callbacks")
+    rhs.verify_current();identity=rhs.identity
+    consume,check=_prepare_convolution_rhs(rhs,builder,lower,complete)
+    def finish():
+        check();rhs.verify_current()
+        if rhs.identity!=identity:
+            raise ValueError("prepared convolution RHS changed during its original consumer lifetime")
+    return consume,finish
+
+
 def emit_convolution_schedule(schedule, builder, lower, *, complete=None, synchronous_completion=False, rhs=None,
                               spatial_iteration="rows", input_rows=None, readout_law=None, readout_transfer_law=None,
                               output_group=None, array_law=None, ready_readout=False, grouped_transport=False,
-                              rhs_phase_prefetch_law=None):
+                              rhs_phase_prefetch_law=None, input_prefetch_law=None, batch_input_prefetch_law=None, input_first_use_law=None,
+                              invariant_input_law=None):
     """Emit the checked complete invocation, optionally in original N phases.
 
     Full-fit/default schedules retain the same emitter. A phased owner must
@@ -591,11 +629,35 @@ def emit_convolution_schedule(schedule, builder, lower, *, complete=None, synchr
     group replaces dead K prefixes with the next original RHS phase. Its N
     footprint may not grow. Input transport is serialized, all original full
     drains remain, and no second accumulator or RHS allocation is introduced.
+    ``input_prefetch_law`` instead selects the existing counted K-run consumer
+    with future input strips in separately owned ring slots. Both the complete
+    two-group source horizon and selected continuation effects must be admitted.
+    These two prefetch modes are separate alternatives; neither is a default.
+    ``batch_input_prefetch_law`` selects a complete-image consumer whose source
+    proves every input row's final K run. Next-image rows replace those dead
+    spans under separately admitted target WAR/RAW effects; all drains remain.
+    ``input_first_use_law`` instead owns pending full-image input: original DMA
+    precedes each row's first K/N/M reader under actual target RAW ordering.
+    It grants no input-ready token; the real final consumer drain closes DMA.
+    ``invariant_input_law`` instead retains a completed full-image input union
+    across original N phases. Every original group/input-last-use/phase drain
+    remains; only redundant input transport in later phases is omitted.
+    It may compose with the independent RHS dead-prefix frontier when every
+    actual future RHS write remains disjoint from the retained input union.
     """
     if type(ready_readout) is not bool or ready_readout and output_group is None:
         raise ValueError("ready readout requires an explicit Boolean and checked spatial group")
     if type(grouped_transport) is not bool:
         raise ValueError("grouped transport requires an explicit Boolean")
+    if input_prefetch_law is not None and rhs_phase_prefetch_law is not None:
+        raise ValueError("input and RHS prefetch require separate selected alternatives")
+    if input_prefetch_law is not None and batch_input_prefetch_law is not None:
+        raise ValueError("spatial and batch input frontiers are separately selected alternatives")
+    if input_first_use_law is not None and (batch_input_prefetch_law is not None or input_prefetch_law is not None):
+        raise ValueError("first-use pending input requires a separate input transport selection")
+    if invariant_input_law is not None and (type(rhs) is not ConvolutionRhsPhases or not grouped_transport
+            or any(law is not None for law in (input_first_use_law,input_prefetch_law,batch_input_prefetch_law))):
+        raise ValueError("invariant input reuse needs a separate complete grouped phase traversal")
     if rhs_phase_prefetch_law is not None:
         from .rolling_lookahead import RollingRhsFrontierAdmission
         if (type(rhs_phase_prefetch_law) is not RollingRhsFrontierAdmission or type(rhs) is not ConvolutionRhsPhases
@@ -633,9 +695,22 @@ def emit_convolution_schedule(schedule, builder, lower, *, complete=None, synchr
                 blocks=_phase_blocks(schedule, phase.column_intervals))
             if grouped_transport and group is not None:
                 _verify_grouped_transport(schedule, input_rows, group)
+            _verify_input_prefetch(schedule,input_rows,group,
+                _phase_blocks(schedule,phase.column_intervals),grouped_transport,input_prefetch_law)
+            _verify_input_first_use(schedule,input_rows,group,
+                _phase_blocks(schedule,phase.column_intervals),grouped_transport,input_first_use_law)
+            _verify_batch_input_prefetch(schedule,input_rows,group,
+                _phase_blocks(schedule,phase.column_intervals),grouped_transport,batch_input_prefetch_law)
         group_identity = tuple(_law_digest(group) for group in groups)
         array_identity = _law_digest(array_law)
         frontier_identity=_law_digest(rhs_phase_prefetch_law)
+        input_prefetch_identity=_law_digest(input_prefetch_law)
+        first_use_identity=_law_digest(input_first_use_law)
+        batch_prefetch_identity=_law_digest(batch_input_prefetch_law)
+        input_reuse = None
+        if invariant_input_law is not None:
+            from .convolution_input_reuse import InvariantConvolutionInput
+            input_reuse = InvariantConvolutionInput(schedule, rhs, input_rows, groups, invariant_input_law)
         frontiers=[]
         for index, (phase, group) in enumerate(zip(rhs.phases, groups, strict=True)):
             frontier=None
@@ -649,6 +724,10 @@ def emit_convolution_schedule(schedule, builder, lower, *, complete=None, synchr
                         schedule.source.plan.channel_tile,schedule.source.plan.output_channels,
                         len(phase.column_intervals),next_phase.column_intervals)
                     frontier.require(input_rows.rolling_plan(),phase.layout.k_tiles)
+                if input_reuse is not None:
+                    input_reuse.check_rhs_frontier(index, frontier, rhs_phase_prefetch_law)
+                    if len(_phase_blocks(schedule, phase.column_intervals)) != 1:
+                        raise ValueError("retained input RHS frontier requires one complete phase column consumer")
             frontiers.append(frontier)
         results = []
         for index, (phase, group,frontier) in enumerate(zip(rhs.phases,groups,frontiers,strict=True)):
@@ -659,17 +738,27 @@ def emit_convolution_schedule(schedule, builder, lower, *, complete=None, synchr
                 ready_readout=ready_readout and group is not None,
                 grouped_transport=grouped_transport and group is not None,
                 rhs_frontier=frontier,rhs_frontier_law=rhs_phase_prefetch_law,
-                rhs_prefetched=rhs_phase_prefetch_law is not None and index>0))
-            complete("rhs_phase_last_use", dict(phase=index, local_row=phase.layout.rhs_base,
-                local_rows=phase.layout.rhs_rows))
+                rhs_prefetched=rhs_phase_prefetch_law is not None and index>0,
+                input_prefetch_law=input_prefetch_law,batch_input_prefetch_law=batch_input_prefetch_law, input_first_use_law=input_first_use_law,
+                reused_input=input_reuse if index > 0 else None))
+            phase_completion = dict(phase=index, local_row=phase.layout.rhs_base, local_rows=phase.layout.rhs_rows)
+            if input_reuse is None:
+                complete("rhs_phase_last_use", phase_completion)
+            else:
+                input_reuse.complete_phase(index, complete, phase_completion)
         rhs.verify_current()
         if (rhs.identity != identity or _law_digest(readout_law) != readout_identity
             or _law_digest(readout_transfer_law) != transfer_identity
             or tuple(_law_digest(group) for group in groups) != group_identity
             or _law_digest(array_law) != array_identity
-            or _law_digest(rhs_phase_prefetch_law) != frontier_identity):
+            or _law_digest(rhs_phase_prefetch_law) != frontier_identity
+            or _law_digest(input_prefetch_law)!=input_prefetch_identity
+            or _law_digest(input_first_use_law)!=first_use_identity
+            or _law_digest(batch_input_prefetch_law)!=batch_prefetch_identity):
             raise ValueError("original RHS phases changed during realization")
         phase_report=rhs.summary()
+        if input_reuse is not None:
+            phase_report=dict(phase_report,invariant_input=input_reuse.summary())
         if rhs_phase_prefetch_law is not None:
             rhs_phase_prefetch_law.require()
             phase_report=dict(phase_report,frontier_admission=asdict(rhs_phase_prefetch_law),
@@ -685,7 +774,47 @@ def emit_convolution_schedule(schedule, builder, lower, *, complete=None, synchr
         synchronous_completion=synchronous_completion, rhs=rhs, spatial_iteration=spatial_iteration,
         input_rows=input_rows, readout_law=readout_law, readout_transfer_law=readout_transfer_law,
         output_group=output_group, array_law=array_law, ready_readout=ready_readout,
-        grouped_transport=grouped_transport)
+        grouped_transport=grouped_transport,input_prefetch_law=input_prefetch_law,
+        batch_input_prefetch_law=batch_input_prefetch_law, input_first_use_law=input_first_use_law)
+
+
+def _verify_input_first_use(schedule, rows, group, blocks, grouped, law):
+    if law is None:
+        return
+    from .convolution_input_first_use import PendingConvolutionInput
+    if not grouped or len(blocks) != 1:
+        raise ValueError("first-use input needs one complete original grouped consumer")
+    PendingConvolutionInput(schedule, group, rows, law, image=0)
+
+
+def _verify_batch_input_prefetch(schedule,rows,group,blocks,grouped,law):
+    if law is None:
+        return
+    from .rolling_lookahead import RollingBatchFrontierAdmission,RollingBatchFrontier
+    if (type(law)is not RollingBatchFrontierAdmission or not grouped or group is None
+            or rows is None or schedule.epoch_law is None or len(blocks)!=1):
+        raise ValueError("batch input frontier requires its complete original consumer and target law")
+    law.require()
+    if (law.hardware_identity!=schedule.epoch_law.hardware_identity
+            or law.numerical_policy_identity!=schedule.epoch_law.numerical_policy_identity):
+        raise ValueError("batch input frontier differs from the original target/numerical scope")
+    p=schedule.source.plan
+    runs=p.window.kernel[0]*p.window.kernel[1]*((p.window.input_shape[-1]+p.channel_tile-1)//p.channel_tile)
+    RollingBatchFrontier(schedule.source.identity,p.channel_tile).stages(rows.rolling_plan(),group.output_rows,runs)
+
+
+def _verify_input_prefetch(schedule,rows,group,blocks,grouped,law):
+    if law is None:
+        return
+    from .rolling_lookahead import RollingLookaheadAdmission,_validate
+    if (type(law)is not RollingLookaheadAdmission or not grouped or group is None
+            or rows is None or schedule.epoch_law is None or len(blocks)!=1):
+        raise ValueError("input prefetch needs a complete grouped K-run consumer and selected target law")
+    law.require()
+    if (not law.retained_consumer_continuations
+            or law.hardware_identity!=schedule.epoch_law.hardware_identity):
+        raise ValueError("input prefetch lacks the original continuation/target admission")
+    _validate(rows.rolling_plan(),group.output_rows)
 
 
 def _phase_blocks(schedule, intervals):
@@ -728,17 +857,21 @@ def _verify_spatial_output_group(schedule, builder, lower, complete, *, rhs, inp
     group_identity = None
     array_identity = None
     if output_group is not None or array_law is not None:
-        from .convolution_output_groups import ConvolutionOutputGroup, plan_rolling_convolution_output_group
+        from .convolution_output_groups import (ConvolutionOutputGroup, ConvolutionRowFragmentGroup,
+            plan_rolling_convolution_output_group, plan_rolling_convolution_row_fragments)
         from .dense_array_retention import DenseArrayRetentionAdmission
         from .window_transfer import _validate_convolution_load_issue
-        if (type(array_law) is not DenseArrayRetentionAdmission or type(output_group) is not ConvolutionOutputGroup
+        if (type(array_law) is not DenseArrayRetentionAdmission
+            or type(output_group) not in (ConvolutionOutputGroup,ConvolutionRowFragmentGroup)
             or spatial_iteration != "rows" or readout_law is None):
             raise ValueError("spatial grouping needs separate array/readout premises")
         array_law.__post_init__()
         if (schedule.retention_law is None or not schedule.retention_law.independent_output_rows
             or not schedule.retention_law.no_intermediate_observers):
             raise ValueError("spatial grouping needs original independent-row and observer permissions")
-        expected = plan_rolling_convolution_output_group(schedule, rhs, input_rows,
+        planner=(plan_rolling_convolution_row_fragments if type(output_group)is ConvolutionRowFragmentGroup
+                 else plan_rolling_convolution_output_group)
+        expected = planner(schedule, rhs, input_rows,
             max_row_blocks=output_group.row_blocks, max_output_rows=output_group.output_rows)
         if expected is None or output_group != expected:
             raise ValueError("spatial output group differs from original rolling/RHS ownership")
@@ -778,7 +911,8 @@ def _verify_grouped_transport(schedule, input_rows, output_group):
 def _emit_convolution_schedule(schedule, builder, lower, *, complete=None, synchronous_completion=False, rhs=None,
                                spatial_iteration="rows", input_rows=None, readout_law=None, readout_transfer_law=None,
                                output_group=None, array_law=None, ready_readout=False, grouped_transport=False,
-                               rhs_frontier=None,rhs_frontier_law=None,rhs_prefetched=False):
+                               rhs_frontier=None,rhs_frontier_law=None,rhs_prefetched=False,
+                               input_prefetch_law=None,batch_input_prefetch_law=None, input_first_use_law=None, reused_input=None):
     """Emit the complete counted original invocation, consuming actual lifetimes.
 
     Scalar callbacks own actual selected instruction encodings and readouts.
@@ -826,14 +960,19 @@ def _emit_convolution_schedule(schedule, builder, lower, *, complete=None, synch
         input_rows.revalidate()
         if (schedule.choice.load_issue and input_rows.initial_load_commands > schedule.issue_law.load_issue_budget):
             raise ValueError("resident input transport exceeds the selected issued load budget")
-        if rhs is not None and not (input_rows.end <= rhs.layout.rhs_base
-                or input_rows.base >= rhs.layout.rhs_base+rhs.layout.rhs_rows):
+        if rhs is not None and not input_rows.disjoint_from(rhs.layout.rhs_base,rhs.layout.rhs_rows):
             raise ValueError("resident input rows overlap the assigned complete RHS")
     group_identity, array_identity = _verify_spatial_output_group(schedule, builder, lower, complete,
         rhs=rhs, input_rows=input_rows, spatial_iteration=spatial_iteration, readout_law=readout_law,
         readout_transfer_law=readout_transfer_law, output_group=output_group, array_law=array_law, blocks=blocks)
     if grouped_transport:
         _verify_grouped_transport(schedule, input_rows, output_group)
+    _verify_input_prefetch(schedule,input_rows,output_group,blocks,grouped_transport,input_prefetch_law)
+    _verify_input_first_use(schedule,input_rows,output_group,blocks,grouped_transport,input_first_use_law)
+    first_use_identity=_law_digest(input_first_use_law)
+    _verify_batch_input_prefetch(schedule,input_rows,output_group,blocks,grouped_transport,batch_input_prefetch_law)
+    prefetch_identity=_law_digest(input_prefetch_law)
+    batch_prefetch_identity=_law_digest(batch_input_prefetch_law)
     before = schedule.identity
     rhs_identity = None
     rhs_issue=lower
@@ -912,7 +1051,7 @@ def _emit_convolution_schedule(schedule, builder, lower, *, complete=None, synch
                     if tail:
                         column(whole*p.row_tile, tail)
                 elif output_group.output_rows > 1 or kind in ("consume_group", "start_consumer"):
-                    from .convolution_output_groups import emit_rolling_convolution_output_group
+                    from .convolution_output_groups import emit_rolling_convolution_output_group,ConvolutionRowFragmentGroup
                     # Preserve original transport and every real ready/last-use
                     # drain. Delay products until this bounded group is staged;
                     # the source-row union is injective in the selected ring.
@@ -921,12 +1060,15 @@ def _emit_convolution_schedule(schedule, builder, lower, *, complete=None, synch
                                    builder.op("sub", fields["output_y"], count - 1))
                         row = builder.op("mul", builder.op("add",
                             builder.op("mul", fields["image"], oh), first_y), ow)
-                        tiles = tuple((y * ow + x, min(p.row_tile, ow - x))
-                                      for y in range(count) for x in range(0, ow, p.row_tile))
+                        tiles = (output_group.tiles(count)if type(output_group)is ConvolutionRowFragmentGroup else
+                                 tuple((y * ow + x, min(p.row_tile, ow - x))
+                                      for y in range(count) for x in range(0, ow, p.row_tile)))
                         for block in blocks:
                             consumer = emit_rolling_convolution_output_group(schedule, output_group, builder, lower, complete,
                                 output_row=row, row_counts=tuple(t[1] for t in tiles),
-                                tile_origins=tuple(t[0] for t in tiles), output_tiles=block,
+                                tile_origins=(None if output_group.output_rows==1 and
+                                    type(output_group)is not ConvolutionRowFragmentGroup else tuple(t[0] for t in tiles)),
+                                output_tiles=block,
                                 input_rows=input_rows, array_law=array_law, readout_law=readout_law,
                                 ready_readout=ready_readout, readout_transfer_law=readout_transfer_law,
                                 defer_consumer=split)
@@ -971,18 +1113,38 @@ def _emit_convolution_schedule(schedule, builder, lower, *, complete=None, synch
             elif kind != "begin_transport":
                 raise ValueError("unknown original rolling input effect")
             return input_rows.base
-        if rhs_frontier_law is not None:
+        if reused_input is not None:
+            from .convolution_input_reuse import InvariantConvolutionInput
+            if type(reused_input) is not InvariantConvolutionInput:
+                raise ValueError("completed input reuse needs its original invocation lifetime owner")
+            rolling = reused_input.emit_reused_group(rhs, output_group, builder, lower, complete,
+                blocks=blocks, array_law=array_law, readout_law=readout_law,
+                readout_transfer_law=readout_transfer_law, ready_readout=ready_readout,
+                rhs_frontier=rhs_frontier, rhs_frontier_law=rhs_frontier_law, rhs_issue=rhs_issue)
+        elif input_first_use_law is not None:
+            from .convolution_input_first_use import emit_pending_input_images
+            rolling = emit_pending_input_images(schedule, output_group, input_rows, input_first_use_law,
+                builder, lower, complete, array_law=array_law, readout_law=readout_law,
+                readout_transfer_law=readout_transfer_law, ready_readout=ready_readout,
+                output_tiles=blocks[0], rhs_frontier=rhs_frontier, rhs_issue=rhs_issue)
+        elif rhs_frontier_law is not None or input_prefetch_law is not None or batch_input_prefetch_law is not None:
             from .rolling_lookahead import (RollingLookaheadAdmission,materialize_lookahead_rolling_window,
-                                            emit_lookahead_rolling_window)
+                                            emit_lookahead_rolling_window,RollingBatchFrontier)
             p=schedule.source.plan
             runs=p.window.kernel[0]*p.window.kernel[1]*((p.window.input_shape[-1]+p.channel_tile-1)//p.channel_tile)
-            admission=RollingLookaheadAdmission(rhs_frontier_law.hardware_identity,
-                rhs_frontier_law.qualification_identity,True,True,True,True,True,True)
+            selected_frontier=batch_input_prefetch_law or rhs_frontier_law
+            admission=(input_prefetch_law if input_prefetch_law is not None else
+                RollingLookaheadAdmission(selected_frontier.hardware_identity,
+                    selected_frontier.qualification_identity,True,True,True,True,True,True))
+            future_input=input_prefetch_law is not None
+            batch_frontier=(None if batch_input_prefetch_law is None else
+                RollingBatchFrontier(schedule.source.identity,p.channel_tile))
             module=materialize_lookahead_rolling_window(ring,output_rows=output_group.output_rows,
-                consumer_runs=runs,rhs_frontier=rhs_frontier,future_input=False)
+                consumer_runs=runs,rhs_frontier=rhs_frontier,future_input=future_input,batch_frontier=batch_frontier)
             rolling=emit_lookahead_rolling_window(module,ring,builder,transport,output_rows=output_group.output_rows,
-                consumer_runs=runs,rhs_frontier=rhs_frontier,future_input=False,admission=admission,
-                rhs_frontier_admission=rhs_frontier_law)
+                consumer_runs=runs,rhs_frontier=rhs_frontier,future_input=future_input,admission=admission,
+                rhs_frontier_admission=rhs_frontier_law,batch_frontier=batch_frontier,
+                batch_frontier_admission=batch_input_prefetch_law)
         elif grouped_transport:
             from .rolling_window import materialize_grouped_rolling_window, emit_grouped_rolling_window
             rolling = emit_grouped_rolling_window(materialize_grouped_rolling_window(
@@ -1013,16 +1175,26 @@ def _emit_convolution_schedule(schedule, builder, lower, *, complete=None, synch
     rhs_check()
     if (schedule.identity != before or _law_digest(readout_law) != readout_identity
         or _law_digest(readout_transfer_law) != transfer_identity
-        or _law_digest(output_group) != group_identity or _law_digest(array_law) != array_identity):
+        or _law_digest(output_group) != group_identity or _law_digest(array_law) != array_identity
+        or _law_digest(input_prefetch_law)!=prefetch_identity
+        or _law_digest(input_first_use_law)!=first_use_identity
+        or _law_digest(batch_input_prefetch_law)!=batch_prefetch_identity):
         raise ValueError("original convolution schedule changed during target realization")
     result = schedule.summary()
+    if input_first_use_law is not None:
+        result = dict(result, input_first_use_admission=asdict(input_first_use_law))
+    if input_prefetch_law is not None:
+        result=dict(result,input_prefetch_admission=asdict(input_prefetch_law))
+    if batch_input_prefetch_law is not None:
+        result=dict(result,batch_input_prefetch_admission=asdict(batch_input_prefetch_law))
     if output_group is not None:
         result = dict(result, spatial_output_group=dict(layout=asdict(output_group),
             group_sha256=group_identity, array_law_sha256=array_identity,
             iteration=("one output row; K,N,M; original row and channel tails"
                        if output_group.output_rows == 1 else
                        "source-row groups; K,N,M; exact per-row tails and ring union"),
-            completion="real final group drain and unchanged ring input-ready/last-use drains",
+            completion=("actual input RAW and real final group/last-use drains" if input_first_use_law is not None else
+                        "real final group drain and unchanged ring input-ready/last-use drains"),
             selected_by="original source row extent and explicitly owned RHS/SP/ACC capacity"))
         if ready_readout:
             result["spatial_output_group"]["ready_readout"] = dict(
@@ -1035,9 +1207,20 @@ def _emit_convolution_schedule(schedule, builder, lower, *, complete=None, synch
                 source_row_span=(p.window.kernel[0]-1)*p.window.dilation[0]+1
                                 +(output_group.output_rows-1)*p.window.stride[0],
                 slots=input_rows.slots,
-                completion=("group transports complete before products; group drain before the next source-row stage"
+                completion=("actual target RAW before each input reader; real group drain before image reuse"
+                            if input_first_use_law is not None else
+                            "group transports complete before products; group drain before the next source-row stage"
                             if grouped_transport else
                             "all original transport drains; group drain before the next source-row stage"))
+        from .convolution_output_groups import ConvolutionRowFragmentGroup
+        if type(output_group)is ConvolutionRowFragmentGroup:
+            tiles=output_group.tiles(output_group.output_rows)
+            result["spatial_output_group"]["row_fragments"]=dict(
+                mapping="existing affine gather; direct ring reads split at original output-row boundaries",
+                physical_ACC_tiles=len(tiles),
+                compute_fragments_per_K_N=sum(len(output_group.gather.fragments(first,rows))for first,rows in tiles),
+                extra_input_bytes=0,readout="one original contiguous interval per packed ACC tile",
+                selection="explicit executable alternative; no inferred performance win")
     if readout_law is not None:
         result = dict(result, readout_epoch=asdict(readout_law),
             completion=("full drain after each checked spatial group before input/ACC/RHS reuse"
@@ -1060,6 +1243,10 @@ def _emit_convolution_schedule(schedule, builder, lower, *, complete=None, synch
                         "original real final spatial group drain, before input/ACC/RHS ownership reuse")))
     if input_rows is not None:
         result = dict(result, resident_input_rows=input_rows.record(), rolling_transport=rolling)
+        if reused_input is not None:
+            result["spatial_output_group"]["completion"] = "completed invariant input view; unchanged real group/input-last-use/phase drains"
+            if "ring_read_horizon" in result["spatial_output_group"]:
+                result["spatial_output_group"]["ring_read_horizon"]["completion"] = "same completed immutable full input union; no phase input overwrite"
     if spatial_iteration == "linear":
         result = dict(result, spatial_iteration="linear",
             spatial_tiles=(batch*oh*ow+p.row_tile-1)//p.row_tile,
@@ -1147,7 +1334,7 @@ class ConvolutionStorageAlternative:
         self.verify_current()
         phases = self.rhs.phases if type(self.rhs) is ConvolutionRhsPhases else (self.rhs,)
         return dict(self._record(), realization_sha256=self._identity,
-            structural_effects=dict(input_private_rows=self.input_rows.end-self.input_rows.base,
+            structural_effects=dict(input_private_rows=self.input_rows.allocated_rows,
                 rhs_private_rows=[None if phase is None else phase.layout.rhs_rows for phase in phases],
                 complete_input_traversals=len(phases),
                 performance_score=None, basis="source and declared storage, not elapsed cycles"))
@@ -1155,17 +1342,19 @@ class ConvolutionStorageAlternative:
 
 def plan_convolution_storage_alternative(schedule, input_rows, *, operand_rows, rhs_law,
                                          rhs_phase_law=None, max_row_blocks=16, max_output_rows=1,
-                                         rhs_column_blocks=None):
+                                         rhs_column_blocks=None, rhs_base=None):
     """Plan RHS phases AFTER selecting one exact original input footprint.
 
     Call this for several independently admitted row maps rather than first
     maximizing input residency and treating the remaining RHS capacity as fixed.
+    Explicit rhs_base and operand_rows can bound an owned RHS gap between
+    original input segments; the source plan still bounds full physical SP.
     All legal alternatives survive for actual emission/cycle comparison. A
     capacity fallback remains ordinary streaming; it is not a measured loser.
     """
     from .convolution_output_groups import plan_rolling_convolution_output_group
     rhs = plan_convolution_rhs_phases(schedule, operand_rows=operand_rows, law=rhs_law,
-        phase_law=rhs_phase_law, input_rows=input_rows, max_column_blocks=rhs_column_blocks)
+        phase_law=rhs_phase_law, input_rows=input_rows, max_column_blocks=rhs_column_blocks, rhs_base=rhs_base)
     group = plan_rolling_convolution_output_group(schedule, rhs, input_rows,
         max_row_blocks=max_row_blocks, max_output_rows=max_output_rows)
     return ConvolutionStorageAlternative(schedule, input_rows, rhs, group, max_row_blocks, max_output_rows)

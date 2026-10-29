@@ -45,8 +45,8 @@ from pathlib import Path, PurePosixPath
 SCHEMA = "merlin.tuning_knobs.v1"
 DECLARATION = "TUNING_KNOBS.json"
 DEFAULT_SETTINGS = "tuning_settings.json"
-MAX_KNOBS = 16
-MAX_VALUES = 8
+MAX_KNOBS = 256  # generous bound only: a seeded compiler starts with all of its seed's knobs
+MAX_VALUES = 64
 MAX_NAME = 64
 MAX_TEXT = 200
 MAX_BYTES = 1 << 20

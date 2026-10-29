@@ -162,6 +162,22 @@ def binary_console_diagnostics(data: bytes) -> bytes:
     return _parse_binary_console(data, decode_values=False)[3]
 
 
+def restore_onlcr_console(data: bytes) -> bytes:
+    """Undo an explicitly selected terminal's LF-to-CRLF byte expansion.
+
+    FireSim's ``script`` transcript can apply ONLCR to raw guest payloads too.
+    Original CR bytes survive this inverse, including an original CR+LF pair.
+    Every complete frame and its original checksum must validate afterwards.
+    This is never applied implicitly to native or simulator byte streams.
+    The caller retains the original transcript and owns transport provenance.
+    """
+    if type(data) is not bytes:
+        raise OutBinError("ONLCR restoration requires raw console bytes")
+    restored = data.replace(b"\r\n", b"\n")
+    _parse_binary_console(restored, decode_values=False)
+    return restored
+
+
 def parse_binary_console(data: bytes) -> tuple[dict[str, list[list[int]]], dict[str, int]]:
     """Return all actual values and metrics after the full byte stream closes."""
 

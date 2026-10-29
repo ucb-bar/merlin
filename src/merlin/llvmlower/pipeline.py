@@ -875,6 +875,15 @@ def _split_fresh_local_deallocs(ctx, module):
         str(op.attributes['sym_name']).strip('"'): op
         for op in module.body.operations if op.operation.name == 'func.func'
     }
+    # Reuse the original selected effects and exact current positional ABI
+    # checker. A void call is not an escape barrier only when this actual call
+    # operation passed its native forwarding/fresh-result checks. Names and
+    # declaration access attributes alone supply no such premise.
+    borrowed_checker = globals().get('_obl_borrowed_calls')
+    borrowed_uses, _, borrowed_violations = (
+        (set(), set(), []) if borrowed_checker is None else borrowed_checker(module))
+    if borrowed_violations:
+        raise ValueError('fresh dealloc borrowed ABI: ' + '; '.join(borrowed_violations))
     moved = dropped_aliases = 0
     for func in module.body.operations:
         if func.operation.name != 'func.func' or not func.regions[0].blocks:
@@ -886,6 +895,7 @@ def _split_fresh_local_deallocs(ctx, module):
             op.operation.name == 'func.call'
             and any(str(value.type).startswith('memref') for value in (*op.operands, *op.results))
             and not is_device_output_alias(op, declarations)
+            and op.operation not in borrowed_uses
             for op in nested_operations(func)
         )
         for block in func.regions[0].blocks:

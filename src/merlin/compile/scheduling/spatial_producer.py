@@ -125,6 +125,222 @@ class SpatialProducerPlan:
 
 
 @dataclass(frozen=True)
+class SpatialProducerBand:
+    """An explicit staged Q1/Q2 band within the original assigned stores.
+
+    Neighboring bands may recompute pure halo products. This describes exact
+    storage/work costs, without selecting a profitable height or granting a
+    target multirow pool command. Every original observer/quantizer remains.
+    """
+    source: SpatialProducerPlan
+    output_rows: int
+
+    def __post_init__(self):
+        if type(self.source) is not SpatialProducerPlan:
+            raise ValueError("spatial band requires the complete original producer source")
+        self.source.__post_init__()
+        p,s=self.source.producer,self.source.spatial
+        if (type(self.output_rows) is not int or not 0<self.output_rows<=s.output_hw[0]
+                or self.source.readout_mode!='staged_readouts'
+                or p.accumulator_row+self.temporary_rows>p.accumulator_rows
+                or self.source.intermediate.size<self.temporary_rows*p.column_tile):
+            raise ValueError("spatial band needs both original readouts and complete assigned ACC/Q1 capacity")
+
+    @property
+    def height(self):
+        return (self.output_rows-1)*self.source.spatial.stride[0]+self.source.spatial.window[0]
+
+    @property
+    def width(self):
+        return (self.source.output_tile_width-1)*self.source.spatial.stride[1]+self.source.spatial.window[1]
+
+    @property
+    def temporary_rows(self):
+        return self.height*self.width
+
+    @property
+    def identity(self):
+        return hashlib.sha256(json.dumps(asdict(self),sort_keys=True).encode()).hexdigest()
+
+    def report(self):
+        self.__post_init__()
+        p,s=self.source.producer,self.source.spatial
+        oh,ow=s.output_hw;kh,kw=s.window;sh,sw=s.stride
+        whole,tail=divmod(oh,self.output_rows)
+        producer_y=whole*self.height+((tail-1)*sh+kh if tail else 0)
+        wide,last=divmod(ow,self.source.output_tile_width)
+        producer_x=wide*self.width+((last-1)*sw+kw if last else 0)
+        pixels=p.window.input_shape[0]*producer_y*producer_x
+        return dict(schema='merlin.spatial_producer_band.v1',band_sha256=self.identity,
+            original_plan_sha256=self.source.identity,output_rows=self.output_rows,
+            producer_height=self.height,producer_width=self.width,
+            private_accumulator_rows=self.temporary_rows,private_intermediate_bytes=self.temporary_rows*p.column_tile,
+            producer_halo_pixels=pixels,unique_producer_pixels=p.window.input_shape[0]*prod(s.input_hw),
+            logical_macs=pixels*prod(p.window.kernel)*p.window.input_shape[-1]*p.output_channels,
+            overlap_policy='bounded pure halo recomputation between bands; no external intermediate observers',
+            arithmetic='original Q1 store/reload then original Q2 and signed spatial maximum',
+            completion='complete every source effect and full pooled rectangle before ACC/Q1 reuse',
+            target_qualification=False,timing=None)
+
+
+def spatial_producer_band_choices(source, *, max_output_rows):
+    """Enumerate complete legal band heights from actual ACC and Q1 capacity."""
+    if type(source) is not SpatialProducerPlan:
+        raise ValueError("spatial bands require the original typed source")
+    source.__post_init__()
+    if type(max_output_rows) is not int or max_output_rows<=0 or source.readout_mode!='staged_readouts':
+        raise ValueError("spatial bands need an explicit positive bound and both original readouts")
+    p,s=source.producer,source.spatial
+    width=(source.output_tile_width-1)*s.stride[1]+s.window[1]
+    rows=min(p.accumulator_rows-p.accumulator_row,source.intermediate.size//p.column_tile)
+    height=rows//width
+    bound=min(max_output_rows,s.output_hw[0],1+(height-s.window[0])//s.stride[0])
+    return tuple(SpatialProducerBand(source,n)for n in range(1,bound+1))
+
+
+@dataclass(frozen=True)
+class SpatialProducerBandAdmission:
+    """Selected rectangular pool addressing/tracking and completed reuse law."""
+    source_identity: str
+    hardware_identity: str
+    qualification_identity: str
+    maximum_output_rows: int
+    maximum_output_columns: int
+    maximum_source_rows: int
+    maximum_source_columns: int
+    maximum_pool_row_requests: int
+    original_q1_q2: bool = False
+    exclusive_accumulator_and_scratch: bool = False
+    rectangular_pool_mapping: bool = False
+    complete_before_reuse: bool = False
+
+    def require(self,band):
+        band.__post_init__()
+        if (self.source_identity!=band.source.identity
+                or any(type(v)is not str or not v.strip()for v in
+                       (self.source_identity,self.hardware_identity,self.qualification_identity))
+                or any(type(v)is not int or not 0<v<1<<63 for v in
+                       (self.maximum_output_rows,self.maximum_output_columns,self.maximum_source_rows,
+                        self.maximum_source_columns,self.maximum_pool_row_requests))
+                or any(type(v)is not bool or not v for v in
+                       (self.original_q1_q2,self.exclusive_accumulator_and_scratch,
+                        self.rectangular_pool_mapping,self.complete_before_reuse))
+                or band.output_rows>self.maximum_output_rows
+                or band.source.output_tile_width>self.maximum_output_columns
+                or band.height>self.maximum_source_rows or band.width>self.maximum_source_columns
+                or band.output_rows*band.source.output_tile_width*prod(band.source.spatial.window)>self.maximum_pool_row_requests):
+            raise ValueError("spatial band needs selected complete rectangular pool mapping, tracking and Q1/Q2 lifetime admission")
+
+
+@dataclass(frozen=True)
+class SpatialProducerBandAlternative:
+    """Checked band and independent original RHS storage choice."""
+    band: SpatialProducerBand
+    rhs: object = None
+
+    def verify_current(self):
+        if type(self.band)is not SpatialProducerBand:
+            raise ValueError("spatial alternative requires its complete original band")
+        self.band.__post_init__()
+        if self.rhs is not None:
+            from .convolution_exploration import ConvolutionRhsResidency
+            p=self.band.source.producer;rhs=self.rhs
+            expected=tuple((n,min(p.column_tile,p.output_channels-n))for n in range(0,p.output_channels,p.column_tile))
+            if (type(rhs)is not ConvolutionRhsResidency or rhs.column_intervals is not None
+                    or rhs.schedule.source.plan!=p or rhs.schedule.source.source_identity!=self.band.source.identity
+                    or rhs.schedule.source.column_intervals!=expected):
+                raise ValueError("spatial band RHS differs from its complete original source")
+            rhs.verify_current()
+
+    @property
+    def identity(self):
+        self.verify_current()
+        value=(self.band.identity,None if self.rhs is None else self.rhs.identity)
+        return hashlib.sha256(json.dumps(value).encode()).hexdigest()
+
+
+def spatial_producer_pass_space(source, *, output_row_limits, rhs_choices=(None,),
+                               verify_source,realize,max_candidates=8):
+    """Register independent band/RHS planning before actual source emission.
+
+    Existing prerequisite ordering and emitted-byte dedup remain authoritative.
+    ``realize(alternative)`` must consume both checked owners and return an
+    EmittedProgram bound to alternative.identity. Neither counts nor these
+    choices supply a cycle score; original source/target review remains separate.
+    """
+    from merlin.transforms.pass_exploration import EmittedProgram,PassFamily,generate_candidates
+    from merlin.transforms.pipeline_policy import RegisteredPass
+    from merlin.transforms.pipeline_state import PassSpec
+    if (type(source)is not SpatialProducerPlan or not callable(verify_source)or not callable(realize)
+            or type(output_row_limits)is not tuple or not 1<=len(output_row_limits)<=16
+            or len(set(output_row_limits))!=len(output_row_limits)
+            or type(rhs_choices)is not tuple or not 1<=len(rhs_choices)<=16):
+        raise ValueError("spatial exploration requires bounded original band/storage choices and real callbacks")
+    source.__post_init__();identity=source.identity
+    for rows in output_row_limits:
+        for rhs in rhs_choices:SpatialProducerBandAlternative(SpatialProducerBand(source,rows),rhs).verify_current()
+    rhs_identities=tuple(None if rhs is None else rhs.identity for rhs in rhs_choices)
+    if len(set(rhs_identities))!=len(rhs_identities):
+        raise ValueError("spatial exploration requires distinct checked RHS choices")
+    def reopen(current):
+        if type(current)is not SpatialProducerPlan or current.identity!=identity:
+            raise ValueError("spatial exploration original source changed")
+        if verify_source(current)is not None or current.identity!=identity:
+            raise ValueError("spatial exploration source callback did not preserve/verify the original")
+        if tuple(None if rhs is None else rhs.identity for rhs in rhs_choices)!=rhs_identities:
+            raise ValueError("spatial exploration RHS ownership changed")
+    def band(options):
+        def action(session):
+            reopen(session.module)
+            return {'spatial_band':SpatialProducerBand(session.module,options['output_rows'])}
+        return RegisteredPass(PassSpec('spatial_producer_band',0,produces=('spatial_band',),
+            mutates_ir=False,ir_level='spatial_producer_source'),action)
+    def storage(options):
+        def action(session):
+            reopen(session.module)
+            return {'spatial_rhs':rhs_choices[options['rhs']]}
+        return RegisteredPass(PassSpec('spatial_producer_rhs',0,produces=('spatial_rhs',),
+            mutates_ir=False,ir_level='spatial_producer_source'),action)
+    def emit(_):
+        def action(session):
+            reopen(session.module)
+            value=SpatialProducerBandAlternative(session.analysis('spatial_band'),session.analysis('spatial_rhs'))
+            selected=value.identity;result=realize(value)
+            reopen(session.module)
+            if type(result)is not EmittedProgram or result.schedule_sha256!=selected or value.identity!=selected:
+                raise ValueError("spatial program is not bound to its actual band/RHS owners")
+            return {'spatial_producer_program':result}
+        return RegisteredPass(PassSpec('realize_spatial_producer',1,requires=('spatial_band','spatial_rhs'),
+            produces=('spatial_producer_program',),mutates_ir=False,ir_level='spatial_producer_source'),action)
+    return generate_candidates((PassFamily('band',band,knobs=(('output_rows',output_row_limits),)),
+        PassFamily('rhs',storage,knobs=(('rhs',tuple(range(len(rhs_choices)))),)),PassFamily('emit',emit)),
+        output='spatial_producer_program',max_candidates=max_candidates)
+
+
+def explore_spatial_producer(source,space,*,context,verify_source,feedback=None):
+    """Use the existing explorer, actual emitted bytes and optional real cycles."""
+    import copy
+    from merlin.transforms.pass_exploration import explore_candidates
+    from merlin.transforms.pipeline_policy import PolicyFacts
+    def verify(current):
+        if type(current)is not SpatialProducerPlan:
+            raise ValueError("spatial exploration source type changed")
+        current.__post_init__()
+        if verify_source(current)is not None:
+            raise ValueError("spatial exploration source did not verify")
+    def facts(session):
+        p=session.module.producer
+        return PolicyFacts(session.stamp(),shapes=(p.window.input_shape,
+            (*p.window.kernel,p.window.input_shape[-1],p.output_channels)),
+            operations=frozenset({'convolution','spatial_max'}),
+            resources=(('operand_rows',p.operand_rows),('accumulator_rows',p.accumulator_rows)))
+    return explore_candidates(source,space,facts,output='spatial_producer_program',
+        emission=lambda result:result.artifact,feedback=feedback,context=context,
+        ir_level='spatial_producer_source',clone=copy.deepcopy,
+        fingerprint=lambda current:current.identity,verify_ir=verify)
+
+
+@dataclass(frozen=True)
 class PackedSpatialProducerPlan:
     """A source-exact staged stripe with one reusable host input panel.
 
@@ -389,6 +605,55 @@ def emit_spatial_producer(plan, builder, lower, *, synchronous_completion):
     its inputs immutable, and no eliminated intermediate has another observer.
     Failure of any source or physical obligation retains the original route.
     """
+    return _emit_spatial_producer(plan,builder,lower,synchronous_completion=synchronous_completion)
+
+
+def emit_spatial_producer_band(band, builder, lower, *, synchronous_completion, admission,
+                              rhs=None,rhs_complete=None):
+    """Emit a real bounded producer union, Q1 reload and multirow pool readout.
+
+    The adapter must independently admit actual ``output_rows``, stride,
+    rectangle addressing, command tracking and full completion. All assigned
+    rows and the original source/readout identity are checked before effects.
+    The ordinary connected route uses ``band.source`` for its unchanged full
+    logical ABI and caller-owned scratch; this choice supplies no host effects.
+    An optional complete original RHS owner composes the existing preparation
+    wrapper with this consumer. Its separate immutable storage law and actual
+    preparation completion remain required. No RHS phase is inferred.
+    """
+    if type(band) is not SpatialProducerBand:
+        raise ValueError("spatial band emission requires its complete typed choice")
+    if type(admission)is not SpatialProducerBandAdmission:
+        raise ValueError("spatial band requires its separately selected target admission")
+    if (synchronous_completion is not True or not callable(lower)
+            or any(not callable(getattr(builder,name,None))
+                   for name in ('op','cmp','select','loop','branch'))):
+        raise ValueError("spatial band requires an actual synchronous target realization")
+    admission.require(band);target_identity=asdict(admission)
+    band.__post_init__();identity=band.identity
+    finish_rhs=None
+    if rhs is not None:
+        from .convolution_exploration import emit_convolution_rhs_preparation
+        SpatialProducerBandAlternative(band,rhs).verify_current()
+        if (not callable(rhs_complete)
+                or rhs.law.hardware_identity!=admission.hardware_identity):
+            raise ValueError("spatial band RHS preparation differs from the complete original source or selected target")
+        rhs.verify_current()
+        lower,finish_rhs=emit_convolution_rhs_preparation(rhs,builder,lower,complete=rhs_complete)
+    result=_emit_spatial_producer(band.source,builder,lower,
+        synchronous_completion=synchronous_completion,output_rows=band.output_rows)
+    band.__post_init__()
+    if band.identity!=identity:
+        raise ValueError("spatial source band changed during actual emission")
+    admission.require(band)
+    if asdict(admission)!=target_identity:
+        raise ValueError("spatial band target admission changed during actual emission")
+    if finish_rhs is not None:finish_rhs()
+    return dict(result,**band.report(),admission=target_identity,
+                rhs_preparation=None if rhs is None else rhs.summary())
+
+
+def _emit_spatial_producer(plan,builder,lower,*,synchronous_completion,output_rows=1):
     if type(plan) is not SpatialProducerPlan or synchronous_completion is not True:
         raise ValueError("spatial producer requires a checked plan and synchronous target realization")
     plan.__post_init__()
@@ -422,9 +687,10 @@ def emit_spatial_producer(plan, builder, lower, *, synchronous_completion):
             body(whole * tile, tail)
 
     def image_body(image):
-        def output_y_body(y):
+        def output_y_body(y,rows=1):
             def output_x_body(x, output_columns):
                 stripe_width = (output_columns - 1) * sw + kw
+                stripe_height = (rows-1)*sh+kh
                 base_x = op("sub", op("mul", x, sw), pl)
                 base_y = op("sub", op("mul", y, sh), pt)
 
@@ -475,7 +741,7 @@ def emit_spatial_producer(plan, builder, lower, *, synchronous_completion):
 
                         split(stripe_width, p.row_tile, stripe_x_body)
 
-                    builder.loop(0, kh, 1, stripe_y_body)
+                    builder.loop(0, stripe_height, 1, stripe_y_body)
                     if plan.readout_mode == "staged_readouts":
                         # The first complete loop publishes every Q1 byte before
                         # a second loop overwrites any raw accumulator with i8.
@@ -493,7 +759,7 @@ def emit_spatial_producer(plan, builder, lower, *, synchronous_completion):
                                         scratch_row_stride=p.column_tile,
                                         rows=rows,
                                         columns=columns,
-                                        stripe_rows=kh * stripe_width,
+                                        stripe_rows=stripe_height * stripe_width,
                                         output_column=column,
                                         readout_tile=op("udiv", column, p.column_tile),
                                     ),
@@ -501,8 +767,8 @@ def emit_spatial_producer(plan, builder, lower, *, synchronous_completion):
 
                             split(stripe_width, p.row_tile, stage_x)
 
-                        builder.loop(0, kh, 1, lambda ky: stage_row(ky, "store_intermediate"))
-                        builder.loop(0, kh, 1, lambda ky: stage_row(ky, "reload_intermediate"))
+                        builder.loop(0, stripe_height, 1, lambda ky: stage_row(ky, "store_intermediate"))
+                        builder.loop(0, stripe_height, 1, lambda ky: stage_row(ky, "reload_intermediate"))
                     output_row = op("add", op("mul", op("add", op("mul", image, oh), y), ow), x)
                     lower(
                         "store_spatial_max",
@@ -512,12 +778,13 @@ def emit_spatial_producer(plan, builder, lower, *, synchronous_completion):
                             columns=columns,
                             output_pixels=output_columns,
                             accumulator_row=p.accumulator_row,
-                            local_height=kh,
+                            local_height=stripe_height,
                             local_width=stripe_width,
                             window_height=kh,
                             window_width=kw,
                             stride_width=sw,
                             readout_tile=op("udiv", column, p.column_tile),
+                            **(dict(output_rows=rows,stride_height=sh)if output_rows>1 else {}),
                         ),
                     )
 
@@ -525,7 +792,10 @@ def emit_spatial_producer(plan, builder, lower, *, synchronous_completion):
 
             split(ow, plan.output_tile_width, output_x_body)
 
-        builder.loop(0, oh, 1, output_y_body)
+        if output_rows==1:
+            builder.loop(0, oh, 1, output_y_body)
+        else:
+            split(oh,output_rows,output_y_body)
 
     builder.loop(0, batches, 1, image_body)
     plan.__post_init__()

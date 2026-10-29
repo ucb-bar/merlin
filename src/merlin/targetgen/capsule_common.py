@@ -305,9 +305,21 @@ def _stderr_excerpt(stderr: str, limit: int = 400) -> str:
 
 
 def _cat(name: str):
-    """Resolve a FailureCategory by name, tolerant to the enum's membership."""
-    from aet.core.failures import FailureCategory
+    """Resolve a FailureCategory by name, tolerant to the enum's membership.
 
+    Without the optional ``aet`` package (core-only installs, and the model2MLIR capture interpreter
+    that runs full-model checks) this is the value-compatible token :class:`CertFailure` already
+    accepts. Classifying a gate failure must never replace it with an import error: in both fresh10
+    final grades every full-model obligation read ``No module named 'aet'`` instead of the kernel
+    failure that raised it.
+    """
+    try:
+        from aet.core.failures import FailureCategory
+    except ModuleNotFoundError as exc:
+        if exc.name != "aet" and not (exc.name or "").startswith("aet."):
+            raise
+        # aet's FailureCategory values are its lower-cased member names.
+        return name.lower()
     try:
         return getattr(FailureCategory, name)
     except AttributeError:

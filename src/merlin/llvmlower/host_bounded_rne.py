@@ -22,6 +22,14 @@ def require_report(document, *, require_combined=False):
 
     from . import late_quant_rne
 
+    identity = (isinstance(document, dict)
+                and document.get("routes") == []
+                and document.get("identity") == "no_matching_bounded_conversions"
+                and "refusal" not in document
+                and isinstance(document.get("source_sha256"), str)
+                and len(document["source_sha256"]) == 64
+                and document["source_sha256"] == document.get("rewritten_sha256")
+                == document.get("native_oracle_sha256"))
     if (not isinstance(document, dict)
             or document.get("schema") != "merlin_late_bounded_rne_v1"
             or document.get("host_isa") not in ("rv64gc", "portable")
@@ -30,7 +38,8 @@ def require_report(document, *, require_combined=False):
             or (require_combined and (document["host_isa"] != "rv64gc" or document["combine_clamp"] is not True))
             or document.get("legalizer_sha256") != sha256_file(late_quant_rne.__file__)
             or not isinstance(document.get("routes"), list)
-            or not document["routes"]):
+            or not document["routes"] and not identity
+            or document["routes"] and "identity" in document):
         raise ValueError("original host bounded RNE preparation is absent or changed")
 
 

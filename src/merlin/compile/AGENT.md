@@ -24,6 +24,13 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
 
 ## Invariants
 
+- `completed_model_link.finalize` may issue a separate completed-object transport
+  record for the precise final device-package tree refusal with `run=none`.
+  Every original source tree must be restored byte-exactly; completed recipe,
+  products and original storage permissions reopen. The failed receipt stays
+  failed, unsupported deferred checks refuse, and saved effects never recreate
+  allocator or device authority.
+
 - `merlin.compile_cli` is the front door: `compile_rvv`, `compile_model`, `compile_oot`, `main`, and the
   steps only they use (`_ensure_bundle`, `_workload_features`, `_session_correctness_gate`,
   `_summarize_route_plan`) stay DEFINED there, because other modules look them up through it at call

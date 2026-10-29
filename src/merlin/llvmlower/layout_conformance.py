@@ -87,8 +87,33 @@ def unit_source(op):
     return value if tuple(d for d in source if d != 1) == tuple(d for d in target if d != 1) else None
 
 
+def per_tensor_quantization(op):
+    """The declared scalar-broadcast quantization boundary, with no axis state.
+
+    Keep the operation opaque as a scalar function; moving coordinates never
+    changes its parameters, arithmetic, rounding or saturation semantics.
+    """
+    name = getattr(getattr(op, "op_name", None), "data", None)
+    fields = {"quant_min", "quant_max"}
+    if name == "quant_ext.quantize_per_tensor":
+        fields.add("output_dtype")
+    elif name != "quant_ext.dequantize_per_tensor":
+        return False
+    return (
+        isinstance(op, builtin.UnregisteredOp) and not op.regions and not op.successors
+        and len(op.operands) == 3 and len(op.results) == 1
+        and set(op.properties) == fields
+        and all(key == "op_name__" or key.startswith("prov.") for key in op.attributes)
+        and _shape(op.operands[0]) is not None
+        and _shape(op.operands[0]) == _shape(op.results[0])
+        and _shape(op.operands[1]) == _shape(op.operands[2]) == ()
+    )
+
+
 def pointwise_kind(op):
     """Strict registered schemas accepted by the checked production family."""
+    if per_tensor_quantization(op):
+        return "quantized_pointwise"
     if type(op) is arith.ConstantOp and _fields(op, {"value"}) and not op.operands and len(op.results) == 1:
         return "constant"
     if type(op) is tensor.EmptyOp and _fields(op, ()) and not op.operands and len(op.results) == 1:
@@ -220,7 +245,27 @@ def scalar_bodies(module):
 def layout_expression(module, *, include_work=False, connected=False):
     """Reconstruct observable coordinates and every opaque boundary's wiring."""
     kinds, epochs, identities, arguments, paths = {}, {}, {}, {}, {}
-    classify = connected_kind if connected else pointwise_kind
+    classifier = connected_kind if connected else pointwise_kind
+    classifications, metadata_cache, body_cache = {}, {}, {}
+
+    # One expression observes an immutable module. Reaching the same producer
+    # from another coordinate or effect epoch must recheck that observation,
+    # but need not reprint its identical attributes and complete scalar body.
+    # Keep these caches local so later mutations always get fresh identities.
+    def classify(op):
+        if op not in classifications:
+            classifications[op] = classifier(op)
+        return classifications[op]
+
+    def metadata(op):
+        if op not in metadata_cache:
+            metadata_cache[op] = _metadata(op)
+        return metadata_cache[op]
+
+    def body(op):
+        if op not in body_cache:
+            body_cache[op] = scalar_bodies(op)[0]
+        return body_cache[op]
 
     def register(block, path):
         if len(path) > 64:
@@ -273,7 +318,7 @@ def layout_expression(module, *, include_work=False, connected=False):
                 raise ValueError("layout expression has an unknown value owner")
             kind = kinds[op]
             if kind == "constant":
-                result = ("constant", _attribute(value.type), _metadata(op), coordinates)
+                result = ("constant", _attribute(value.type), metadata(op), coordinates)
             elif kind == "transpose":
                 permutation = tuple(op.permutation.get_values())
                 result = element(op.operands[0], tuple(
@@ -285,6 +330,11 @@ def layout_expression(module, *, include_work=False, connected=False):
                 result = element(source, source_coordinates, epoch)
             elif kind == "splat":
                 result = element(op.operands[0], (), epochs[op])
+            elif kind == "quantized_pointwise":
+                result = ("scalar_quantization", metadata(op),
+                          tuple(_attribute(v.type.get_element_type()) for v in (*op.operands, value)),
+                          element(op.operands[0], coordinates, epochs[op]),
+                          tuple(element(v, (), epochs[op]) for v in op.operands[1:]))
             elif kind in {"generic", "reduction"}:
                 observed_generics.add(op)
                 rank = len(coordinates)
@@ -308,7 +358,7 @@ def layout_expression(module, *, include_work=False, connected=False):
                                   else element(operand, input_coordinates, epochs[op]))
                     elif isinstance(item.owner, Operation) and item.owner.parent is block:
                         owner = item.owner
-                        answer = (owner.name, tuple(owner.results).index(item), _attribute(item.type), _metadata(owner),
+                        answer = (owner.name, tuple(owner.results).index(item), _attribute(item.type), metadata(owner),
                                   tuple(scalar(v, depth + 1) for v in owner.operands))
                     else:
                         answer = element(item, (), epochs[op])
@@ -316,13 +366,13 @@ def layout_expression(module, *, include_work=False, connected=False):
                     return answer
 
                 yielded = scalar(block.last_op.operands[0])
-                plain_copy = len(list(block.ops)) == 1 and _metadata(block.last_op) == ((), ())
+                plain_copy = len(list(block.ops)) == 1 and metadata(block.last_op) == ((), ())
                 if domain:
-                    result = ("ordered_reduction", _metadata(op)[0], scalar_bodies(op)[0], domain,
+                    result = ("ordered_reduction", metadata(op)[0], body(op), domain,
                               element(op.outputs[0], coordinates, epochs[op]) if block.args[-1].uses else None, yielded)
                 else:
                     result = yielded if plain_copy else (
-                        "pointwise", _metadata(op)[0], scalar_bodies(op)[0], yielded)
+                        "pointwise", metadata(op)[0], body(op), yielded)
             elif kind in {"empty", "flat_pair"}:
                 raise ValueError("layout coordinate checker has no semantics for this tensor producer")
             elif type(op) is tensor.EmptyOp:
@@ -350,7 +400,7 @@ def layout_expression(module, *, include_work=False, connected=False):
         for op in block.ops:
             if kinds[op] is not None:
                 continue
-            rows.append((identities[op], op.name, _metadata(op), tuple(_attribute(v.type) for v in op.results),
+            rows.append((identities[op], op.name, metadata(op), tuple(_attribute(v.type) for v in op.results),
                          tuple(observe(value, epochs[op]) for value in op.operands),
                          tuple(tuple(boundaries(child) for child in region.blocks) for region in op.regions)))
             # Keep the complete checked row, including all operands and effect
@@ -360,8 +410,8 @@ def layout_expression(module, *, include_work=False, connected=False):
             cache.clear()
         return (tuple(_attribute(v.type) for v in block.args), tuple(rows))
 
-    expression = (_metadata(module), tuple(
-        (function.sym_name.data, _metadata(function), tuple(boundaries(block) for block in function.body.blocks))
+    expression = (metadata(module), tuple(
+        (function.sym_name.data, metadata(function), tuple(boundaries(block) for block in function.body.blocks))
         for function in functions
     ), tuple(ir_text(op) for op in module.body.block.ops if type(op) is not func.FuncOp))
     if not include_work:
@@ -373,9 +423,9 @@ def layout_expression(module, *, include_work=False, connected=False):
                 continue
             # Typed arithmetic and lexical control scope, never provenance IDs
             # or cycle estimates. Count one complete static parallel domain.
-            metadata = tuple(tuple((name, value) for name, value in fields if not name.startswith("prov."))
-                             for fields in _metadata(scalar))
-            key = paths[op.parent], scalar.name, tuple(_attribute(v.type) for v in scalar.results), metadata
+            scalar_metadata = tuple(tuple((name, value) for name, value in fields if not name.startswith("prov."))
+                                    for fields in metadata(scalar))
+            key = paths[op.parent], scalar.name, tuple(_attribute(v.type) for v in scalar.results), scalar_metadata
             domain = ordered_reduction_bounds(op) if connected and kinds[op] == "reduction" else _shape(op.results[0])
             work[key] += prod(domain)
     return expression, work

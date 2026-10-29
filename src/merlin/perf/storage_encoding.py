@@ -98,6 +98,10 @@ class GroupedAxesStorage:
 
     @classmethod
     def from_dict(cls, record: Mapping) -> GroupedAxesStorage:
+        if isinstance(record, Mapping) and record.get("schema") == "factored_tensor_storage_v1":
+            from merlin.compile.scheduling.tensor_storage import FactoredTensorStorage
+
+            return FactoredTensorStorage.from_dict(record)
         fields = {
             "schema",
             "logical_shape",
@@ -130,6 +134,18 @@ class GroupedAxesStorage:
         )
         result.validate()
         return result
+
+    def linear_index_terms(self):
+        self.validate()
+        return tuple((prod(self.logical_shape[axis + 1:]), extent, stride)
+                     for axis, (extent, stride) in enumerate(zip(self.logical_shape,
+                         self.logical_strides_elements, strict=True)))
+
+    @property
+    def reorders_logical_elements(self):
+        active = [(axis, stride) for axis, (extent, stride) in enumerate(zip(
+            self.logical_shape, self.logical_strides_elements, strict=True)) if extent > 1]
+        return [axis for axis, _ in active] != [axis for axis, _ in sorted(active, key=lambda pair: -pair[1])]
 
     def _byte_contract(self, max_storage_bytes: int) -> tuple[int, int, int]:
         self.validate()

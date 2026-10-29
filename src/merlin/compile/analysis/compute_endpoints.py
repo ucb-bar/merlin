@@ -27,6 +27,32 @@ from merlin.compile.analysis import instruction_roles as _roles
 SPEC_NAME = "compute_endpoints.yaml"
 
 
+def roles_from_table(document, *, target, table):
+    """Bind explicitly supplied endpoint declarations to an original decode table.
+
+    This pure reader does not discover another target or load ambient RTL facts.
+    Missing declared names remain visible, and no unlisted name acquires a role.
+    """
+    from merlin.compile.analysis.rocc_commands import policy_instruction_declarations
+
+    names, _ = policy_instruction_declarations(table)
+    available = set(names.values())
+    roles, missing = {}, {}
+    for endpoint, block in (document.get("endpoints") or {}).items():
+        if block.get("target") != target or block.get("encoding", {}).get("source") != "rtl_facts":
+            continue
+        for role, instructions in (block.get("roles") or {}).items():
+            _roles.check_roles((role,))
+            for instruction in instructions:
+                if instruction in available:
+                    bound = roles.setdefault(instruction, [])
+                    if role not in bound:
+                        bound.append(role)
+                else:
+                    missing.setdefault(endpoint, {}).setdefault(role, []).append(instruction)
+    return roles, missing
+
+
 class EndpointSpecMissing(FileNotFoundError):
     """The selected contract carries no compute-endpoint declaration.
 

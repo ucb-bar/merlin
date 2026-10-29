@@ -74,6 +74,15 @@ _INTEGER_DATAPATH = "on in the integer (int8 compute) datapath"
 
 REGISTRY: tuple[OptionalPass, ...] = (
     OptionalPass(
+        name="finite-integer-math",
+        summary="memoize exact pure scalar math over small integer domains",
+        changes="evaluate the original arithmetic on the executing CPU once per domain value, then reuse exact results",
+        exactness=EXACT,
+        default="off; explicit cost choice for nonempty ordinary scalar tensor lowering",
+        stage="lowering",
+        switch="MERLIN_FINITE_INTEGER_MATH",
+    ),
+    OptionalPass(
         name="contraction-row-slice",
         summary="restrict a zero-seeded integer product to its sole static row observer",
         changes="push contiguous row slices through fixed pure epilogues and views before device group binding",

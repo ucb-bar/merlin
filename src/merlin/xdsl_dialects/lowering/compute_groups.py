@@ -601,6 +601,30 @@ def form_groups(
     return groups
 
 
+def _dequantize_feeds_add(op, stage_of) -> bool:
+    """A direct dequantized add input, through shape metadata only.
+
+    Input preparation remains outside this arithmetic region. In particular,
+    an integer transpose before the dequantize is still real host movement;
+    the operand-sum reader must never silently absorb that operation.
+    """
+    if len(op.results) != 1:
+        return False
+    value, seen = op.results[0], set()
+    while True:
+        users = _users(value)
+        if len(users) != 1 or id(users[0]) in seen:
+            return False
+        user = users[0]
+        seen.add(id(user))
+        stage = stage_of.get(id(user))
+        if stage is None:
+            return False
+        if stage.kind != VIEW or len(user.results) != 1:
+            return stage.kind == RESIDUAL_ADD
+        value = user.results[0]
+
+
 def _host_regions(ops, stage_of, taken: dict[int, Group], oracle: TargetOracle) -> list[Group]:
     """Every operation no accelerator group took, fused into explicit host regions.
 
@@ -631,6 +655,13 @@ def _host_regions(ops, stage_of, taken: dict[int, Group], oracle: TargetOracle) 
             # another Q/DQ region, or integer layout/movement on the way to a
             # contraction.  Joining across either edge lets downstream glue
             # obscure a complete quantized sum/mean on the producer side.
+            continue
+        if (stage_of[id(op)].kind in (VIEW, PAD, MOVEMENT)
+                and stage_of[id(users[0])].kind == DEQUANTIZE
+                and _dequantize_feeds_add(users[0], stage_of)):
+            # The scaled add reads the prepared integer tensor. Keep its
+            # upstream layout/padding as a separate original host region;
+            # its arithmetic statement contains only DQ/add/readout stages.
             continue
         parent[find(id(op))] = find(id(users[0]))
 

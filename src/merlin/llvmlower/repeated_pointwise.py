@@ -248,6 +248,20 @@ def hoist_repeated_pointwise(module, *, immutable_argument_loader=None, max_cons
         # Inputs omitting this coordinate remain runtime values; a varying
         # input must independently prove its complete repeated coordinates.
         owner = value.owner
+        if (type(owner) is tensor.SplatOp and owner.parent is before.parent
+                and len(owner.operands) == 1 and not _strict(owner)
+                and depth < 8 and len(computed) < 128):
+            shape = _shape(value)
+            if shape is None or shape[axis] % factor:
+                return None
+            small = list(shape)
+            small[axis] //= factor
+            reduced = tensor.SplatOp(owner.input, [], builtin.TensorType(value.type.element_type, small))
+            reduced.attributes = dict(owner.attributes)
+            before.parent.insert_op_before(reduced, before)
+            computed[key] = reduced.result
+            report["computed_side_producers"] += 1
+            return reduced.result
         specification = _generic(owner)
         if specification is None or owner.parent is not before.parent or depth >= 8 or len(computed) >= 128:
             return None

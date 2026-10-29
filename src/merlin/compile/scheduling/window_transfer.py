@@ -106,6 +106,9 @@ class ConvolutionResidentInputRows:
     binding; the target must independently implement this source-cell sampling.
     Optional stage_channels bounds actual transfer width without changing the
     source CI stride or physical channel-block map; no target limit is inferred.
+    Explicit image_windows partition the same private footprint into complete
+    original image-row ranges. The original image coordinate selects a window;
+    source lifetimes and target transfer/overlap permissions remain separate.
     """
     window: Window2D
     source_identity: str
@@ -119,6 +122,8 @@ class ConvolutionResidentInputRows:
     halo_value: int | None = None
     stage_channels: int | None = None
     compute_row_step: int | None = None
+    image_windows: int = 1
+    channel_segments: tuple[tuple[int, int, int], ...] | None = None
     _source_sha256: str = field(init=False, repr=False)
 
     def __post_init__(self):
@@ -129,6 +134,9 @@ class ConvolutionResidentInputRows:
         if type(self.window) is not Window2D:
             raise ValueError("resident input rows require the exact original window")
         self.window.__post_init__()
+        if (type(self.slots) is not int or type(self.image_windows) is not int or not 0 < self.image_windows < 1 << 63
+                or self.slots % self.image_windows):
+            raise ValueError("resident image windows need distinct equal private row ranges")
         if (type(self.source_identity) is not str or len(self.source_identity) != 64
             or any(c not in '0123456789abcdef' for c in self.source_identity)):
             raise ValueError("resident input rows require source-bound windows")
@@ -145,13 +153,35 @@ class ConvolutionResidentInputRows:
             or any(type(v) is not int or not 0 < v < 1 << 63 for v in
                    (self.channel_tile, self.row_pitch, self.slots, self.private_rows, self.stage_rows))
             or self.row_pitch < self.padded_width or self.stage_rows > self.row_pitch
-            or self.slots < (self.window.kernel[0]-1)*self.window.dilation[0]+1
+            or self.slots//self.image_windows < (self.window.kernel[0]-1)*self.window.dilation[0]+1
             or self.base < self.private_first or self.end > self.private_first+self.private_rows
             or self.end*self.channel_tile >= 1 << 63):
             raise ValueError("resident input row layout exceeds its explicit private footprint or transport bounds")
         if (self.stage_channels is not None and (type(self.stage_channels) is not int
             or not 0 < self.stage_channels < 1 << 63 or self.stage_channels % self.channel_tile)):
             raise ValueError("resident channel staging requires an explicit positive whole-channel-block limit")
+        if self.channel_segments is not None:
+            ci = self.window.input_shape[-1]
+            if (type(self.channel_segments) is not tuple or not self.channel_segments
+                    or any(type(s) is not tuple or len(s) != 3 or any(type(v) is not int for v in s)
+                           for s in self.channel_segments)):
+                raise ValueError("input channel segments require exact static original channel intervals and row bases")
+            first = 0
+            for channel, count, base in self.channel_segments:
+                if (channel != first or count <= 0 or channel % self.channel_tile
+                        or channel+count > ci or channel+count < ci and count % self.channel_tile
+                        or channel and channel % (self.stage_channels or ci)
+                        or base < self.private_first):
+                    raise ValueError("input channel segments change original channel coverage or transfer boundaries")
+                first += count
+            windows = self.physical_windows
+            if (first != ci or self.channel_segments[0][2] != self.base
+                    or any(a < d and c < b for i,(a,b) in enumerate(windows) for c,d in windows[i+1:])):
+                raise ValueError("input channel segments require complete original coverage and disjoint physical rows")
+        if self.image_windows>1 and self.slots//self.image_windows < (
+                (self.window.kernel[0]-1)*self.window.dilation[0]+1
+                +(self.window.output_spatial[0]-1)*self.window.stride[0]):
+            raise ValueError("resident image windows must each own their complete original source rows")
 
     @property
     def padded_width(self):
@@ -171,12 +201,50 @@ class ConvolutionResidentInputRows:
         return self.row_pitch*self.channel_blocks
 
     @property
+    def physical_windows(self):
+        """Actual disjoint row intervals; holes between segments are unowned."""
+        if self.channel_segments is None:
+            return ((self.base, self.base+self.slots*self.rows_per_source_row),)
+        if (type(self.channel_segments) is not tuple or not self.channel_segments
+                or any(type(s) is not tuple or len(s)!=3 or any(type(v) is not int for v in s)
+                       for s in self.channel_segments)):
+            raise ValueError("input channel segments require typed static interval triples")
+        return tuple((base, base+self.slots*((count+self.channel_tile-1)//self.channel_tile)*self.row_pitch)
+                     for channel,count,base in self.channel_segments)
+
+    @property
     def end(self):
-        return self.base+self.slots*self.rows_per_source_row
+        return max(stop for first,stop in self.physical_windows)
+
+    @property
+    def allocated_rows(self):
+        return sum(stop-first for first,stop in self.physical_windows)
+
+    def disjoint_from(self, first, count):
+        return all(stop <= first or base >= first+count for base,stop in self.physical_windows)
+
+    def _emit_slot_channel(self, builder, slot, channel, column):
+        if self.channel_segments is None:
+            return builder.op('add', self.base, builder.op('add', builder.op('mul', slot, self.rows_per_source_row),
+                builder.op('add', builder.op('mul', builder.op('udiv', channel, self.channel_tile), self.row_pitch), column)))
+        if len(self.channel_segments)>1 and not callable(getattr(builder, 'select', None)):
+            raise ValueError("segmented input row map requires the original typed index select builder")
+        def segment(channel_first, count, base):
+            blocks=(count+self.channel_tile-1)//self.channel_tile
+            within=builder.op('udiv',builder.op('sub',channel,channel_first),self.channel_tile)
+            return builder.op('add',base,builder.op('add',builder.op('mul',slot,blocks*self.row_pitch),
+                builder.op('add',builder.op('mul',within,self.row_pitch),column)))
+        result=segment(*self.channel_segments[-1])
+        for item in reversed(self.channel_segments[:-1]):
+            result=builder.select(builder.cmp('ult',channel,item[0]+item[1]),segment(*item),result)
+        return result
 
     @property
     def initial_load_commands(self):
-        return self.stage_command_bound((self.window.kernel[0]-1)*self.window.dilation[0]+1)
+        rows=(self.window.kernel[0]-1)*self.window.dilation[0]+1
+        if self.image_windows>1:
+            rows+=(self.window.output_spatial[0]-1)*self.window.stride[0]
+        return self.stage_command_bound(rows)
 
     def stage_command_bound(self, source_rows):
         """Bound emitted row/halo/channel transfers, independently of queue slots."""
@@ -202,7 +270,8 @@ class ConvolutionResidentInputRows:
         oh, ow = self.window.output_spatial
         pitch = self.rows_per_source_row*self.channel_tile
         return RollingWindowPlan(self.window, self.source_identity, 0, ow, 0, oh,
-            AddressWindow('logical_resident_input', 0, self.slots*pitch), self.slots, pitch)
+            AddressWindow('logical_resident_input', 0, self.slots*pitch), self.slots, pitch,
+            image_windows=self.image_windows)
 
     def physical_cell(self, cache_byte):
         """Exact static map used by independent cell/layout checks."""
@@ -215,16 +284,21 @@ class ConvolutionResidentInputRows:
         if within >= self.window.input_shape[2]*ci:
             raise ValueError("resident input padding hole has no source word")
         x, c = divmod(within, ci)
-        return (self.base+slot*self.rows_per_source_row+(c//self.channel_tile)*self.row_pitch
-                + self.window.padding[1]+x, c%self.channel_tile)
+        if self.channel_segments is None:
+            address=self.base+slot*self.rows_per_source_row+(c//self.channel_tile)*self.row_pitch
+        else:
+            first,count,base=next(s for s in self.channel_segments if s[0]<=c<s[0]+s[1])
+            address=base+slot*((count+self.channel_tile-1)//self.channel_tile)*self.row_pitch+((c-first)//self.channel_tile)*self.row_pitch
+        return address+self.window.padding[1]+x, c%self.channel_tile
 
     def emit_row(self, builder, output_row, ky, kx, channel):
         oh, ow = self.window.output_spatial
         y = builder.op('urem', builder.op('udiv', output_row, ow), oh)
         x = builder.op('urem', output_row, ow)
-        return self.emit_row_coordinates(builder, y, x, ky, kx, channel)
+        image = None if self.image_windows == 1 else builder.op('udiv', output_row, oh*ow)
+        return self.emit_row_coordinates(builder, y, x, ky, kx, channel, image=image)
 
-    def emit_row_coordinates(self, builder, output_y, output_x, ky, kx, channel):
+    def emit_row_coordinates(self, builder, output_y, output_x, ky, kx, channel, *, image=None):
         """Map original coordinates directly, without decoding a logical byte.
 
         The checked source consumer owns the output/tap domain and matching
@@ -233,38 +307,61 @@ class ConvolutionResidentInputRows:
         this neither changes source samples nor grants early slot reuse.
         """
         self.revalidate()
+        windows=getattr(self,'image_windows',1)
+        if windows > 1 and image is None:
+            raise ValueError("resident image windows require their original source image")
         # Physical columns already contain the original left halo, cancelling
         # the source's -left. Ring slots use unbiased y even for zero halo rows.
         slot = builder.op('urem', builder.op('add',
             builder.op('mul', output_y, self.window.stride[0]),
-            builder.op('mul', ky, self.window.dilation[0])), self.slots)
+            builder.op('mul', ky, self.window.dilation[0])), self.slots//windows)
+        if windows > 1:
+            slot=builder.op('add',slot,builder.op('mul',builder.op('urem',image,windows),self.slots//windows))
         sample_x = output_x if self.window.stride[1] == 1 else builder.op(
             'mul', output_x, self.window.stride[1])
         column = builder.op('add', sample_x, builder.op('mul', kx, self.window.dilation[1]))
-        chunk = builder.op('udiv', channel, self.channel_tile)
-        return builder.op('add', self.base, builder.op('add', builder.op('mul', slot, self.rows_per_source_row),
-            builder.op('add', builder.op('mul', chunk, self.row_pitch), column)))
+        return self._emit_slot_channel(builder, slot, channel, column)
 
-    def emit_stage(self, builder, fields, lower):
-        """Bind the checked logical stage row through its exact tiled cell map."""
+    def emit_stage(self, builder, fields, lower, *, channel_interval=None):
+        """Bind an original stage row through its exact tiled cell map.
+
+        A pending input owner may issue one original channel transfer at its
+        first reader. Its static interval must equal one complete transfer of
+        this row's existing stage_channels partition, including its real tail.
+        Default emission retains every original channel transfer in order.
+        """
         self.revalidate()
         width, ci = self.window.input_shape[2:]
+        if channel_interval is not None:
+            part = self.stage_channels or ci
+            if (type(channel_interval) is not tuple or len(channel_interval) != 2
+                    or any(type(v) is not int for v in channel_interval)
+                    or not 0 <= channel_interval[0] < ci
+                    or channel_interval[0] % part
+                    or channel_interval[1] != min(part, ci - channel_interval[0])):
+                raise ValueError("input stage interval changes its original channel transfer partition")
         slot = builder.op('udiv', fields['cache_byte'], self.rows_per_source_row*self.channel_tile)
         local = builder.op('add', self.base, builder.op('mul', slot, self.rows_per_source_row))
-        if self.stage_channels is not None and self.stage_channels < ci:
+        if channel_interval is not None or self.stage_channels is not None and self.stage_channels < ci:
             original_lower = lower
             def split_channels(kind, args):
                 def part(channel, depth):
-                    value = dict(args, columns=depth, local_row=builder.op('add', args['local_row'],
-                        builder.op('mul', builder.op('udiv', channel, self.channel_tile), self.row_pitch)))
+                    address=(builder.op('add', args['local_row'],
+                        builder.op('mul', builder.op('udiv', channel, self.channel_tile), self.row_pitch))
+                        if self.channel_segments is None else self._emit_slot_channel(builder,slot,channel,
+                            builder.op('sub',args['local_row'],local)))
+                    value = dict(args, columns=depth, local_row=address)
                     if kind == 'stage_input_rows':
                         value['first_element'] = builder.op('add', args['first_element'], channel)
                     original_lower(kind, value)
-                whole, tail = divmod(ci, self.stage_channels)
-                builder.loop(0, whole, 1, lambda index:
-                    part(builder.op('mul', index, self.stage_channels), self.stage_channels))
-                if tail:
-                    part(whole*self.stage_channels, tail)
+                if channel_interval is not None:
+                    part(*channel_interval)
+                else:
+                    whole, tail = divmod(ci, self.stage_channels)
+                    builder.loop(0, whole, 1, lambda index:
+                        part(builder.op('mul', index, self.stage_channels), self.stage_channels))
+                    if tail:
+                        part(whole*self.stage_channels, tail)
             lower = split_channels
         if not any(self.window.padding):
             def part(x, count):
@@ -315,10 +412,14 @@ class ConvolutionResidentInputRows:
     def record(self):
         self.revalidate()
         return dict(schema='merlin.convolution_resident_input_rows.v1', source_sha256=self._source_sha256,
-            layout=asdict(self), private_row_interval=[self.base, self.end],
+            layout=asdict(self), private_row_interval=[min(first for first,stop in self.physical_windows), self.end],
+            private_row_windows=self.physical_windows, allocated_rows=self.allocated_rows,
             compute_read_row_step=self.row_step,
-            mapping=('slot*rows_per_source_row + (channel//tile)*row_pitch + left+x; lane=channel%tile; '
-                'halo uses original padded coordinates and explicit original integer-zero fill'
+            mapping=(('segment_base+slot*segment_channel_blocks*row_pitch+((channel-segment_first)//tile)*row_pitch+left+x; lane=channel%tile; ' if self.channel_segments is not None else
+                'slot*rows_per_source_row + (channel//tile)*row_pitch + left+x; lane=channel%tile; ')
+                + 'halo uses original padded coordinates and explicit original integer-zero fill'
+                + ('; slot=(image%image_windows)*(slots/image_windows)+unbiased_y%(slots/image_windows)'
+                   if self.image_windows>1 else '')
                 + ('; compute source_x=output_x*stride_x+kx*dilation_x-left; '
                    'sample r reads base_compute_row+r*stride_x' if self.row_step != 1 else '')),
             qualification=('exact source-cell and lifetime map; target transfer, row-step and '
@@ -474,7 +575,7 @@ def _emit_convolution_tile_effects(plan, builder, lower, *, output_row, output_c
         if (type(input_rows) is not ConvolutionResidentInputRows or input_rows.window != window
             or input_rows.channel_tile != plan.channel_tile or gather_runs is not None
             or input_rows.end > plan.operand_rows
-            or not (input_rows.end <= plan.rhs_row or input_rows.base >= plan.rhs_row+plan.channel_tile)):
+            or not input_rows.disjoint_from(plan.rhs_row,plan.channel_tile)):
             raise ValueError("resident input layout differs from original source or overlaps its RHS tile")
         input_rows.revalidate()
     if gather_runs is not None:

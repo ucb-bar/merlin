@@ -43,7 +43,7 @@ _NAMESPACE_MODULES_V8 = (*_NAMESPACE_MODULES_V6,)
 _NAMESPACE_MODULES_V16 = (*_NAMESPACE_MODULES_V8, "merlin.xdsl_dialects", "merlin.sched.primitives")
 _NAMESPACE_MODULES_V20 = (*_NAMESPACE_MODULES_V16, "merlin.frontends", "merlin.integrations", "merlin.runtime",
                           "merlin.xdsl_dialects.lowering")
-_NAMESPACE_MODULES_V24 = (*_NAMESPACE_MODULES_V20, "merlin.capture")
+_NAMESPACE_MODULES_V24 = (*_NAMESPACE_MODULES_V20, "merlin.capture", "merlin.targetgen.oot_starterkit")
 
 
 def _namespace_modules(version):

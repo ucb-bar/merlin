@@ -92,6 +92,7 @@ def implementation_paths():
             (
                 Path(__file__),
                 Path(K.__file__),
+                Path(__file__).with_name('borrowed_call_composition.py'),
                 Path(__file__).with_name("lower.py"),
                 Path(lowering_recipe.__file__),
                 Path(linalg_mlir.__file__),
@@ -111,7 +112,7 @@ def implementation_paths():
 class DescriptorResultPreparation:
     """Freeze originals before callbacks; no cross-invocation cache or grant."""
 
-    def __init__(self, identities, *, effects=None):
+    def __init__(self, identities, *, effects=None, additional_calls=None):
         self.identities = identities
         self._original = tuple(identities)
         self._selection = _records(identities)
@@ -119,6 +120,9 @@ class DescriptorResultPreparation:
         self._original_effects = effects
         _join_effects(identities, effects)
         self._effects_state = _effects_state(effects)
+        self.additional_calls = additional_calls
+        self._additional_calls = additional_calls
+        self._additional_state = _effects_state(additional_calls)
         self._function_reader = self._fixed_functions
         self._functions = tuple((function, function.__code__) for function in self._function_reader())
         self._owners = tuple(_identity(path) for path in implementation_paths())
@@ -145,6 +149,7 @@ class DescriptorResultPreparation:
             _records,
             _effects_state,
             _join_effects,
+            DescriptorResultPreparation.initial_calls,
             implementation_paths,
             _identity,
             D.rewrite_descriptor_result_identities,
@@ -171,6 +176,8 @@ class DescriptorResultPreparation:
             or _records(self.identities) != self._selection
             or self.effects is not self._original_effects
             or _effects_state(self.effects) != self._effects_state
+            or self.additional_calls is not self._additional_calls
+            or _effects_state(self.additional_calls) != self._additional_state
             or any(actual is not original for actual, original in zip(self.identities, self._original, strict=True))
             or tuple(_identity(Path(pin["path"])) for pin in self._owners) != self._owners
             or any(_identity(Path(pin["path"])) != pin for pin in self._products)
@@ -183,6 +190,20 @@ class DescriptorResultPreparation:
             self.effects.revalidate()
             if _effects_state(self.effects) != self._effects_state:
                 raise ValueError("original descriptor effects changed during validation")
+        if self.additional_calls is not None:
+            self.additional_calls.revalidate()
+            if _effects_state(self.additional_calls) != self._additional_state:
+                raise ValueError('additional original borrowed owner changed during validation')
+
+    def initial_calls(self):
+        self.revalidate()
+        if self.additional_calls is None:
+            return self.effects
+        if self.effects is None:
+            return self.additional_calls
+        from .borrowed_call_composition import compose_borrowed_calls
+
+        return compose_borrowed_calls((self.effects, self.additional_calls))
 
     @staticmethod
     def _feature_values():
@@ -233,6 +254,8 @@ class DescriptorResultPreparation:
             "binding_stage": "after_automatic_source_passes_before_preprocessing",
             "selection": json.loads(self._selection),
             "borrowed_calls": None if self.effects is None else self.effects.record(),
+            **({'additional_borrowed_calls': self.additional_calls.record()}
+               if self.additional_calls is not None else {}),
             "rewrites": self.rewrites,
             "calls": rows,
             "original_source": _identity(original_path),
@@ -259,7 +282,7 @@ class DescriptorResultPreparation:
         """
         self.revalidate()
         if self.effects is None or not self.rewrites:
-            return None
+            return self.additional_calls
         record = json.loads(Path(self._report["path"]).read_text())
         selected = {row["wrapper_symbol"] for row in record["calls"] if row["calls"]}
         calls = tuple(call for call in self.effects.calls if call.wrapper_symbol in selected)
@@ -268,7 +291,11 @@ class DescriptorResultPreparation:
         pins = tuple((Path(pin["path"]), pin["sha256"]) for pin in self._products)
         result = replace(self.effects, calls=calls, pins=(*self.effects.pins, *pins), validate_original=self.revalidate)
         result.revalidate()
-        return result
+        if self.additional_calls is None:
+            return result
+        from .borrowed_call_composition import compose_borrowed_calls
+
+        return compose_borrowed_calls((result, self.additional_calls))
 
     def retain_upstream(self, path):
         self.revalidate()

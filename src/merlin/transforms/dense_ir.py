@@ -270,7 +270,8 @@ def static_zero_integer_matmul_geometry(operation, dtypes=("i8", "i8", "i32"), *
             or constant.result.type != init.type.element_type
             or constant.parent is None
             or constant.parent is not splat.parent
-            or next((op for op in splat.parent.ops if op is constant or op is splat), None) is not constant
+            or (constant.next_op is not splat
+                and next((op for op in splat.parent.ops if op is constant or op is splat), None) is not constant)
         ):
             raise ValueError("dense source splat initializer is not an exact local typed integer zero")
         try:

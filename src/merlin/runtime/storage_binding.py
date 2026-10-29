@@ -39,14 +39,7 @@ class StorageBinding:
     @property
     def requires_prepack(self) -> bool:
         """Whether non-unit logical axes change order, rather than merely adding padding."""
-        active = [
-            (axis, stride)
-            for axis, (extent, stride) in enumerate(
-                zip(self.encoding.logical_shape, self.encoding.logical_strides_elements, strict=True)
-            )
-            if extent > 1
-        ]
-        return [axis for axis, _ in active] != [axis for axis, _ in sorted(active, key=lambda pair: -pair[1])]
+        return self.encoding.reorders_logical_elements
 
     def setup_evidence(self) -> dict[str, Any]:
         return {
@@ -81,19 +74,15 @@ class StorageBinding:
             payload = b"".join((word % modulus).to_bytes(width, "little") for word in words)
             self.prepack_authorization.validate_payload(payload)
         result = [0] * encoding.storage_elements
-        strides = encoding.logical_strides_elements
-        for word, index in zip(words, product(*(range(d) for d in encoding.logical_shape)), strict=True):
-            offset = encoding.offset_elements + sum(i * s for i, s in zip(index, strides, strict=True))
+        terms = encoding.linear_index_terms()
+        for linear, word in enumerate(words):
+            offset = encoding.offset_elements + sum((linear // d % n) * s for d, n, s in terms)
             result[offset] = word
         return result
 
     def logical_offset_terms(self) -> tuple[tuple[int, int, int], ...]:
         """(row-major linear divisor, logical extent, physical stride) for readback."""
-        shape = self.encoding.logical_shape
-        return tuple(
-            (prod(shape[axis + 1 :]), extent, stride)
-            for axis, (extent, stride) in enumerate(zip(shape, self.encoding.logical_strides_elements, strict=True))
-        )
+        return self.encoding.linear_index_terms()
 
 
 def _logical_values(value: Any, shape: tuple[int, ...], dtype: str, *, name: str) -> tuple[Any, ...]:

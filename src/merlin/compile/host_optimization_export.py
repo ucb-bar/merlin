@@ -30,6 +30,7 @@ PUBLIC_MODULES = (
 )
 IMPLEMENTATION_MODULES = (
     "merlin.llvmlower.host_tensor_rewrites",
+    "merlin.llvmlower.finite_integer_math",
     "merlin.llvmlower.llvm_loop_metadata",
     "merlin.llvmlower.source_fma_batch",
     "merlin.llvmlower.late_quant_rne",

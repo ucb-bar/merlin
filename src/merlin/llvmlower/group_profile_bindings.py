@@ -226,9 +226,6 @@ def prepare_profile(work, prepared, directory, routing, arguments, undefined, *,
     The runtime driver supplies the observed undefined symbols and retains its
     own process, compilation and link authority. Returned flags select no target.
     """
-    from merlin.common.digest import sha256_file
-    from merlin.runtime.whole_model_readback import callees, group_names, render_group_profile, wrap_flags
-
     from .device_offload import SIDECAR_NAME
 
     rows = list(routing.get("routed") or [])
@@ -240,15 +237,40 @@ def prepare_profile(work, prepared, directory, routing, arguments, undefined, *,
         if missing and transformed
         else {}
     )
+    return emit_profile(directory, routing, arguments, undefined, bindings=bindings,
+                        source=prepared, model_object=work / "model.o", source_kind="prepared_mlir")
+
+
+def emit_profile(directory, routing, arguments, undefined, *, bindings, source, model_object,
+                 source_kind, observations=()):
+    """Emit the existing counter wrappers from an observed source/object ABI.
+
+    Completed-object packaging may observe already compiled pointer bridges.
+    This supplies no effects or implementation permission, and labels its
+    source independently from the ordinary prepared-MLIR observation.
+    """
+    from merlin.common.digest import sha256_file
+    from merlin.runtime.whole_model_readback import callees, group_names, render_group_profile, wrap_flags
+
+    rows = list(routing.get("routed") or [])
     selected = callees(rows, arguments.get("signatures") or {}, undefined, arguments.get("call_buffers"), bindings)
+    # A completed object proves its referenced callees and their ABI, not the
+    # dynamic order of source routes. Mixed producer routes may share a callee
+    # while their sidecar roster has a different order from actual calls.
+    names = group_names(rows) if source_kind == "prepared_mlir" else []
     (directory / "group_profile_bindings.json").write_text(
         json.dumps(
             dict(
                 schema="merlin.group_profile_bindings.v1",
                 bindings=bindings,
-                prepared_sha256=sha256_file(prepared),
-                model_object_sha256=sha256_file(work / "model.o"),
+                source_observation=dict(kind=source_kind, path=str(Path(source).resolve()),
+                                        sha256=sha256_file(source)),
+                **({"prepared_sha256": sha256_file(source)} if source_kind == "prepared_mlir" else {}),
+                model_object_sha256=sha256_file(model_object),
                 undefined_symbols=sorted(undefined),
+                observations=list(observations),
+                labels="source_route_order" if names else "observed_callee_only",
+                boundary="inclusive selected external ABI call; host gaps reported separately",
                 scope="source/ABI observation plus actual undefined symbols; no numerical or timing authority",
             ),
             indent=2,
@@ -256,5 +278,5 @@ def prepare_profile(work, prepared, directory, routing, arguments, undefined, *,
         + "\n"
     )
     source = directory / "merlin_group_profile.c"
-    source.write_text(render_group_profile(selected, group_names(rows)), encoding="utf-8")
+    source.write_text(render_group_profile(selected, names), encoding="utf-8")
     return source, wrap_flags(selected)

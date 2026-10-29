@@ -1436,7 +1436,128 @@ class DenseRetainedChoice:
     requested_operand_bytes: int
 
 
-def dense_retained_choices(problem, resources, storage, *, roles=("lhs", "weight")):
+def dense_m_panel_capacity(problem, resources, storage, *, n_tiles):
+    """Explain full-K M-panel bounds using the original private assignments.
+
+    Physical row widths include padding. The caller's emitter limits remain
+    limits; unused capacity in another role is never reassigned implicitly.
+    These are construction conditions, not a profitability prediction.
+    """
+    from merlin.transforms.dense_planning import DenseBlock
+
+    mt, kt, nt = problem.tiles
+    if type(n_tiles) is not int or not 1 <= n_tiles <= nt:
+        raise ValueError("M-panel capacity needs an original positive N tile extent")
+    lhs_per_m, acc_per_m = kt * problem.tile_m, n_tiles * problem.tile_m
+    rhs_rows = kt * n_tiles * problem.tile_k
+    rhs_bytes = rhs_rows * storage.rhs.unit_bytes
+    limits = dict(source_m_tiles=mt, emitter_m_tiles=resources.max_m_blocks,
+        lhs_private_rows=storage.lhs.capacity // lhs_per_m,
+        accumulator_private_rows=(storage.accumulator.capacity // acc_per_m if storage.accumulator else 0),
+        combined_operand_bytes=max(0, resources.operand_bytes - rhs_bytes)
+                               // (lhs_per_m * storage.lhs.unit_bytes),
+        accumulator_bytes=(resources.accumulator_bytes // (acc_per_m * storage.accumulator.unit_bytes)
+                           if storage.accumulator else 0))
+    one = DenseBlock(1, kt, n_tiles, lhs_per_m * storage.lhs.unit_bytes + rhs_bytes,
+                     acc_per_m * storage.accumulator.unit_bytes if storage.accumulator else 0, 0, 0, 0, 0, 0)
+    conditions = dict(rhs_private_rows=rhs_rows <= storage.rhs.capacity,
+        multiple_m_tiles=mt > 1,
+        full_k_emitter_domain=kt <= resources.max_k_blocks,
+        n_emitter_domain=n_tiles <= resources.max_n_blocks,
+        original_private_assignment=storage.admits(problem, one, resources),
+        partial_output_tiles=(resources.partial_output_tiles or
+                              problem.m % problem.tile_m == problem.n % problem.tile_n == 0))
+    maximum = min(limits.values()) if all(conditions.values()) else 0
+    return dict(mechanism="full_k_rhs_reuse_across_m_panels", n_tiles=n_tiles, k_tiles=kt,
+        primitive_m=problem.tile_m, maximum_m_tiles=maximum, maximum_m_rows=maximum * problem.tile_m,
+        m_tile_limits=limits, conditions=conditions, retained_rhs_rows=rhs_rows, retained_rhs_bytes=rhs_bytes,
+        lhs_rows_per_m_tile=lhs_per_m, accumulator_rows_per_m_tile=acc_per_m,
+        limiting_conditions=[key for key, bound in limits.items() if bound == maximum]
+                            + [key for key, value in conditions.items() if not value],
+        profitability="unknown", array_weight_retention="requires_separate_selected_array_law")
+
+
+@dataclass(frozen=True)
+class DenseMPanelAttempt:
+    """A checked current schedule or an explicit construction refusal per shape."""
+
+    result: DensePanelPipelineResult | None
+    feedback: dict
+
+
+def schedule_dense_m_panels(problem, resources, storage, adapter, admission, *, n_tiles,
+                           name, dtypes, source_identity, external_buffers_disjoint,
+                           m_tiles=None, static_budget=128, timeout_ms=5000,
+                           output_readout=None, bias_source=None, readout_qualification_identity=None):
+    """Construct one counted invocation with RHS staging outside the M panels.
+
+    An omitted M choice proposes the largest legal panel for the selected N
+    width. It is a capacity choice, not a measured winner. The real scheduling
+    dialect carries blocking, order and invariant hoists into the existing
+    complete source/storage/epoch checker. It never concatenates thin kernels.
+    A declined choice returns feedback before any alternative executes; errors
+    in a concrete source or target verification propagate normally.
+    """
+    from .compact_dense import emit_compact_dense
+    from .schedule_ir import make_dense_schedule_plan
+
+    capacity = dense_m_panel_capacity(problem, resources, storage, n_tiles=n_tiles)
+    feedback = dict(shape=dict(m=problem.m, k=problem.k, n=problem.n), capacity=capacity,
+                    mechanism=capacity["mechanism"], status="not_applied", emitted="not_observed",
+                    numerical_status="not_run", transfer_status="not_established")
+    if m_tiles is not None and (type(m_tiles) is not int or m_tiles < 1):
+        raise ValueError("explicit M panel must be a positive original tile extent")
+    blockers = list(capacity["limiting_conditions"]) if not capacity["maximum_m_tiles"] else []
+    if admission is None:
+        blockers.append("selected_read_only_operand_and_ordered_reduction_law")
+    elif type(admission) is not DenseRetainedReductionAdmission:
+        raise ValueError("M panels require the original typed retained-reduction admission")
+    if external_buffers_disjoint is not True:
+        blockers.append("original_external_buffer_disjointness")
+    if blockers:
+        return DenseMPanelAttempt(None, dict(feedback, extension_blockers=blockers))
+    issue_limit = min(admission.max_issued_compute_pairs // (problem.tiles[1] * n_tiles),
+                      admission.max_issued_loads // problem.tiles[1] - n_tiles)
+    feedback["selected_issue_m_tile_limit"] = max(0, issue_limit)
+    if issue_limit < 1:
+        return DenseMPanelAttempt(None, dict(feedback, extension_blockers=["selected_issue_limit"]))
+    bounded = replace(resources, max_m_blocks=min(capacity["maximum_m_tiles"], issue_limit))
+    choices = [choice for choice in dense_retained_choices(problem, bounded, storage, roles=("weight",),
+                                                          n_choices=(n_tiles,))
+               if choice.block.n == n_tiles and choice.block.m <= issue_limit
+               and (m_tiles is None or choice.block.m == m_tiles)]
+    if not choices:
+        return DenseMPanelAttempt(None, dict(feedback, extension_blockers=[
+            "requested_m_panel_exceeds_capacity_original_tail_domain_or_selected_issue_limit"]))
+    choice = max(choices, key=lambda item: item.block.m)
+    block = choice.block
+    raw = emit_compact_dense(problem, block, storage, adapter, name=name, dtypes=dtypes,
+                             outer_order=choice.outer_order, output_readout=output_readout, bias_source=bias_source)
+    hoists = dense_retained_operand_hoists(raw, adapter, role="weight")
+    plan = make_dense_schedule_plan(problem, resources, storage, adapter, source_identity=source_identity,
+        dtypes=dtypes, static_budget=static_budget, block_tiles=(block.m, block.k, block.n),
+        outer_order=choice.outer_order, loop_transforms=hoists, pipeline_kind="retained_full_k",
+        pipeline_prefetch=False, output_readout=output_readout, bias_source=bias_source)
+    result = schedule_dense_panel_pipeline(problem, resources, storage, adapter, admission, name=name,
+        dtypes=dtypes, schedule_plan=plan, source_identity=source_identity,
+        external_buffers_disjoint=True, static_budget=static_budget, timeout_ms=timeout_ms,
+        output_readout=output_readout, bias_source=bias_source,
+        readout_qualification_identity=readout_qualification_identity)
+    actual = result.realization["source"]
+    if actual["rhs_loads"] != choice.rhs_loads or actual["lhs_loads"] != choice.lhs_loads:
+        raise ValueError("M-panel RHS reuse did not survive actual source and operand checking")
+    feedback.update(status="checked_schedule_constructed", selected_m_tiles=block.m,
+        selected_m_rows=block.m * problem.tile_m, counted_m_panels=(problem.tiles[0] + block.m - 1) // block.m,
+        rhs_loads=actual["rhs_loads"], lhs_loads=actual["lhs_loads"],
+        schedule_sha256=result.realization["schedule_ir"]["sha256"],
+        checked_kernel_sha256=result.checked_kernel_sha256,
+        extension_blockers=(capacity["limiting_conditions"] if block.m == capacity["maximum_m_tiles"] else
+                            ["selected_issue_limit"] if block.m == issue_limit else ["original_tail_emitter_domain"]),
+        tail_scope="full groups share RHS; separate partial M families retain their checked reloads")
+    return DenseMPanelAttempt(result, feedback)
+
+
+def dense_retained_choices(problem, resources, storage, *, roles=("lhs", "weight"), n_choices=None):
     """Enumerate both reusable residency families within original assignments.
 
     No memory is reassigned between roles. The existing bounded geometric
@@ -1445,6 +1566,8 @@ def dense_retained_choices(problem, resources, storage, *, roles=("lhs", "weight
     separate partial N family still reloads it. RHS retention is symmetric in
     M. Thus even the traffic ranking accounts for remainder families without
     expanding the dynamic domain or assuming reuse across unrelated scopes.
+    Explicit ``n_choices`` restricts enumeration to original supported widths;
+    constructing one selected width does not search every unrelated N panel.
     """
     from merlin.transforms.dense_planning import dense_blocks
 
@@ -1456,7 +1579,8 @@ def dense_retained_choices(problem, resources, storage, *, roles=("lhs", "weight
     ):
         raise ValueError("retained selection requires distinct explicit LHS/weight residency families")
     mt, kt, nt = problem.tiles
-    blocks = dense_blocks(problem, resources, k_limit=lambda m, n: storage.k_limit(problem, resources, m, n))
+    blocks = dense_blocks(problem, resources, k_limit=lambda m, n: storage.k_limit(problem, resources, m, n),
+                          n_choices=n_choices)
     choices = []
     for block in blocks:
         if block.k != kt or not storage.admits(problem, block, resources):

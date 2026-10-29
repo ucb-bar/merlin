@@ -21,11 +21,12 @@ def _sha(payload):
 def _sources():
     from merlin.xdsl_dialects.lowering import arena_plan
 
-    from . import arena_bind, borrowed_arena, borrowed_buffer_calls
+    from . import arena_bind, borrowed_arena, borrowed_buffer_calls, late_quant_rne, llvm_scalar_effects
 
     return {name: _sha(Path(module.__file__).read_bytes()) for name, module in (
         ("arena_bind", arena_bind), ("arena_plan", arena_plan),
-        ("borrowed_arena", borrowed_arena), ("borrowed_buffer_calls", borrowed_buffer_calls))} | {
+        ("borrowed_arena", borrowed_arena), ("borrowed_buffer_calls", borrowed_buffer_calls),
+        ("llvm_scalar_effects", llvm_scalar_effects), ("llvm_scalar_lexer", late_quant_rne))} | {
             "host_storage_policy": _sha(Path(__file__).read_bytes())}
 
 

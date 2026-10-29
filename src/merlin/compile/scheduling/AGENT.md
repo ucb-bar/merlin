@@ -200,6 +200,12 @@ checking; it does not transfer an earlier epoch proof to a new access range.
 Decoded hardware bounds and independent target execution remain required.
 Historical library inventories and frozen exports do not gain this API.
 
+`affine_gather_runs` accepts an optional static `max_count` for a dynamic
+row count from an independently checked iteration domain. It emits the bounded
+worst-case fragments without copying payloads. Consumers prove the active row
+range, guard zero-length fragments, and retain their original physical access
+and completion laws; supplying a bound grants none of those premises.
+
 
 `convolution_exploration` exposes original counted spatial partitions, explicit
 ACC column lifetimes, and independent bounded load-issue choices through the

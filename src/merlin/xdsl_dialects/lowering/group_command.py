@@ -23,7 +23,7 @@ reason (:class:`~.compute_groups.NoCapsuleForm`); nothing here knows a target.
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from merlin.common import mlir_query as mq
@@ -49,7 +49,7 @@ class GroupProgram:
     entry: dict[str, Any]
     #: Root operand index of the stored tensor; ``None`` for a group that reads no stored tensor.
     stored_operand: int | None
-    #: The capture computes the transpose of the device form (stored tensor on the left).
+    #: The capture computes the transpose of the device form; independent of immutable ownership.
     transposed: bool
     #: Model-argument index of the stored tensor and of the bias, for the prepack.
     stored_arg: int | None = None
@@ -546,6 +546,16 @@ def program(
             return _activation_contraction(group, base)
         except CG.NoCapsuleForm as why:
             raise CG.NoCapsuleForm(f"{refusal}; {why}") from why
+    if stored == 0 and "merlin.preserve_contraction_orientation" in group.root.attributes:
+        # A source pass may select an activation-stationary orientation. Check
+        # the same maps, numerical readout and window restrictions as every
+        # runtime-bound contraction, while retaining the real immutable owner
+        # for prepacking and provenance.
+        oriented = _activation_contraction(group, base)
+        return replace(
+            oriented, stored_operand=stored, stored_arg=stored_arg,
+            notes=("the source-selected contraction orientation is preserved; its left operand remains immutable",),
+        )
     side, bias_arg = _bias_side(group)
     # The stored tensor's own output axis: rows when it is the left operand, columns when the right.
     wanted = "row" if stored == 0 else "column"

@@ -67,7 +67,7 @@ def plan(src: Path | str, func_name: str = "forward", *, immutable_arguments=Non
 
     src = Path(src)
     with IR_LOCK:
-        report = weight_layout_report(mq.parse((src / "model.mlir").read_text()), func_name)
+        report = weight_layout_report(mq.parse(src / "model.mlir"), func_name)
 
     man = json.loads((src / "weights.safetensors.manifest.json").read_text())
     weight_args = {int(k) for k, entry in man.items() if k.isdigit() and "weight" in entry}

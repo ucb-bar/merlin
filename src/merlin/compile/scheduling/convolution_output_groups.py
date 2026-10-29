@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from .affine_gather_runs import ConvolutionResidentPanel
+from .affine_gather_runs import ConvolutionGatherRuns, ConvolutionResidentPanel
 
 
 class ConvolutionGroupContinuation:
@@ -84,6 +84,74 @@ class ConvolutionOutputGroup:
         return (row_block * active + column_block) * self.panel.tile
 
 
+@dataclass(frozen=True)
+class ConvolutionRowFragmentGroup(ConvolutionOutputGroup):
+    """Packed ACC tiles whose direct ring reads split at source-row boundaries.
+
+    This alternative stages no additional input bytes. A physical ACC tile may
+    have several compute fragments, each retaining the original per-output K
+    order. The original readout drains its complete contiguous output interval.
+    """
+    source_identity: str = ""
+    gather: ConvolutionGatherRuns | None = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.gather) is not ConvolutionGatherRuns or not self.source_identity:
+            raise ValueError("row fragments require the original affine gather and source")
+        self.gather.__post_init__()
+        if (self.gather.max_rows != self.panel.tile
+                or self.row_blocks != (self.output_rows*self.gather.output_spatial[2]+self.panel.tile-1)//self.panel.tile):
+            raise ValueError("row fragments change their complete packed ACC footprint")
+
+    def tiles(self, count):
+        if type(count) is not int or not 0 < count <= self.output_rows:
+            raise ValueError("row fragments exceed their original source-row horizon")
+        pixels=count*self.gather.output_spatial[2]
+        return tuple((first,min(self.panel.tile,pixels-first))for first in range(0,pixels,self.panel.tile))
+
+
+def plan_rolling_convolution_row_fragments(schedule, rhs, input_rows, *, max_row_blocks=16, max_output_rows=1):
+    """Explicit direct-ring alternative; choose only a capacity-safe row band.
+
+    Reuse the existing original affine gather to split packed logical tiles.
+    More fragments can cost more than saved readouts, so this is an executable
+    alternative with no performance policy or automatic promotion. The initial
+    family retains primitive-sized original row tiles and whole source bands.
+    """
+    from .convolution_exploration import ConvolutionRhsPhases
+    if type(rhs) is ConvolutionRhsPhases:
+        rhs.verify_current()
+        groups=tuple(plan_rolling_convolution_row_fragments(schedule,phase,input_rows,
+            max_row_blocks=max_row_blocks,max_output_rows=max_output_rows)for phase in rhs.phases)
+        return groups if any(g is not None for g in groups)else None
+    ordinary=plan_rolling_convolution_output_group(schedule,rhs,input_rows,
+        max_row_blocks=max_row_blocks,max_output_rows=1)
+    if ordinary is None:
+        return None
+    p=schedule.source.plan;w=p.window
+    if p.row_tile != p.primitive:
+        return None
+    # Validate both caller bounds through the ordinary planner before using
+    # the same actual SP/ACC allocation with a different logical tile map.
+    plan_rolling_convolution_output_group(schedule,rhs,input_rows,
+        max_row_blocks=max_row_blocks,max_output_rows=max_output_rows)
+    oh,ow=w.output_spatial
+    span=(w.kernel[0]-1)*w.dilation[0]+1
+    horizon=min(max_output_rows,oh,1+(input_rows.slots-span)//w.stride[0])
+    panel=ordinary.panel
+    capacity=min(max_row_blocks,panel.rhs_base//panel.tile,
+                 panel.accumulator_capacity_rows//panel.accumulator_rows)
+    legal=[r for r in range(1,horizon+1)if r<=(r*ow+p.primitive-1)//p.primitive<=capacity]
+    if not legal:
+        return None
+    rows=max(legal);blocks=(rows*ow+p.primitive-1)//p.primitive
+    b,h,width,ci=w.input_shape;pt,pl,pb,pr=w.padding
+    gather=ConvolutionGatherRuns((b,h+pt+pb,width+pl+pr,ci),(b,oh,ow),
+        w.stride,w.dilation,w.kernel,p.primitive)
+    return ConvolutionRowFragmentGroup(panel,blocks,rows,schedule.source.identity,gather)
+
+
 def plan_convolution_output_group(panel, pixels, *, max_row_blocks=16):
     """Select a bounded M group without spilling full-K live accumulators.
 
@@ -154,7 +222,7 @@ def plan_rolling_convolution_output_group(schedule, rhs, input_rows, *, max_row_
         rhs.schedule.identity != schedule.identity
         or input_rows.window != p.window
         or input_rows.source_identity != schedule.source.identity
-        or input_rows.end > rhs.layout.rhs_base
+        or not input_rows.disjoint_from(rhs.layout.rhs_base,rhs.layout.rhs_rows)
         or input_rows.base < 0
     ):
         raise ValueError("spatial group differs from original disjoint rolling input/RHS")
@@ -203,6 +271,7 @@ def emit_rolling_convolution_output_group(
     ready_readout=False,
     readout_transfer_law=None,
     defer_consumer=False,
+    pending_input=None,
 ):
     """K,N,M original products with one fresh RHS then checked array stays.
 
@@ -235,7 +304,7 @@ def emit_rolling_convolution_output_group(
         raise ValueError("ready readout requires an explicit Boolean")
     if type(defer_consumer) is not bool:
         raise ValueError("consumer continuation selection requires an explicit Boolean")
-    if type(group) is not ConvolutionOutputGroup:
+    if type(group) not in (ConvolutionOutputGroup,ConvolutionRowFragmentGroup):
         raise ValueError("spatial output grouping requires its checked original planner")
     group.__post_init__()
     p = schedule.source.plan
@@ -246,7 +315,7 @@ def emit_rolling_convolution_output_group(
         or type(input_rows) is not ConvolutionResidentInputRows
         or input_rows.source_identity != schedule.source.identity
         or input_rows.window != p.window
-        or input_rows.end > group.panel.rhs_base
+        or not input_rows.disjoint_from(group.panel.rhs_base,group.panel.rhs_rows)
         or group.panel.tile != p.primitive
         or group.panel.accumulator_capacity_rows != p.accumulator_rows - p.accumulator_row
         or not p.column_tile == p.channel_tile == p.primitive
@@ -267,7 +336,20 @@ def emit_rolling_convolution_output_group(
         raise ValueError("spatial group needs original rows, independent array and readout premises")
     input_rows.revalidate()
     ow = p.window.output_spatial[1]
-    if group.output_rows == 1:
+    fragments=type(group)is ConvolutionRowFragmentGroup
+    if fragments:
+        count,partial=divmod(sum(row_counts),ow)
+        span=(p.window.kernel[0]-1)*p.window.dilation[0]+1
+        w=p.window;b,h,width,ci=w.input_shape;pt,pl,pb,pr=w.padding
+        expected_gather=ConvolutionGatherRuns((b,h+pt+pb,width+pl+pr,ci),
+            (b,*w.output_spatial),w.stride,w.dilation,w.kernel,p.primitive)
+        if (group.source_identity != schedule.source.identity or partial
+                or group.gather != expected_gather or p.row_tile != p.primitive
+                or tuple(zip(tile_origins or (),row_counts)) != group.tiles(count)
+                or span+(group.output_rows-1)*p.window.stride[0]>input_rows.slots):
+            raise ValueError("row fragments require complete original bands and live ring rows")
+        origins=tile_origins
+    elif group.output_rows == 1:
         if tile_origins is not None or sum(row_counts) > ow:
             raise ValueError("one-row spatial group requires original contiguous tiles")
         origins = tuple(m * p.row_tile for m in range(len(row_counts)))
@@ -325,8 +407,14 @@ def emit_rolling_convolution_output_group(
         oh, ow = p.window.output_spatial
         # Decode this source tile once, before K/N compute loops. The same
         # coordinates feed every original tap and stationary-weight consumer.
-        coordinates.append((builder.op("urem", builder.op("udiv", row, ow), oh),
-                            builder.op("urem", row, ow)))
+        if fragments:
+            coordinates.append(tuple((used,length,
+                (builder.op("urem",builder.op("udiv",builder.op("add",row,used),ow),oh),
+                 builder.op("urem",builder.op("add",row,used),ow)))
+                for _,used,length in group.gather.fragments(origins[m],rows)))
+        else:
+            coordinates.append(((0,rows,(builder.op("urem",builder.op("udiv",row,ow),oh),
+                                         builder.op("urem",row,ow))),))
         outputs.append(
             tuple(
                 dict(
@@ -344,6 +432,11 @@ def emit_rolling_convolution_output_group(
                                    accumulator_row=transfer[0].accumulator_row,
                                    columns=sum(t.columns for t in transfer))
                               for transfer in transfers))
+    if pending_input is not None:
+        from .convolution_input_first_use import PendingConvolutionInput
+        if type(pending_input) is not PendingConvolutionInput:
+            raise ValueError("first-use input requires its original typed pending owner")
+        pending_input.start(schedule, group, input_rows, origins, row_counts, builder, issue, columns=len(output_tiles))
     if p.bias:
         for row in outputs:
             for out in row:
@@ -351,7 +444,10 @@ def emit_rolling_convolution_output_group(
     ci = p.window.input_shape[-1]
     chunks = (ci + p.channel_tile - 1) // p.channel_tile
     kh, kw = p.window.kernel
-    total = kh * kw * chunks * len(output_tiles) * len(row_counts)
+    source_image = (builder.op("udiv",output_row,p.window.output_spatial[0]*p.window.output_spatial[1])
+                    if getattr(input_rows,"image_windows",1)>1 else None)
+    fragment_count=sum(map(len,coordinates))
+    total = kh * kw * chunks * len(output_tiles) * fragment_count
 
     def panel(ky, kx, c, depth, after_run=None):
         reduction = builder.op(
@@ -371,52 +467,60 @@ def emit_rolling_convolution_output_group(
                               builder.cmp("eq", kx, kw - 1), "i1")
             last = builder.op("and", last, builder.cmp("eq", c, ci - depth), "i1")
         for n, tile in enumerate(output_tiles):
+            fragment_index=0
             for m, row in enumerate(outputs):
-                out = row[n]
-                issue(
-                    "load_weight",
-                    dict(
-                        reduction_row=reduction,
-                        output_column=tile.output_column,
-                        local_row=p.rhs_row,
-                        rows=depth,
-                        columns=tile.columns,
-                    ),
-                )
-                fields = dict(
-                    out,
-                    lhs_row=input_rows.emit_row_coordinates(builder, *coordinates[m], ky, kx, c),
-                    rhs_row=p.rhs_row,
-                    depth=depth,
-                    first_reduction=first,
-                    bias=p.bias,
-                    fresh_weights=m == 0,
-                )
-                if input_rows.row_step != 1:
-                    fields["lhs_row_step"] = input_rows.row_step
-                issue("compute", fields)
-                if ready_readout and (readout_transfer_law is None or n == len(output_tiles) - 1):
-                    # Separate RAW/result/config-capture/progress law
-                    # orders this store. All later producers write
-                    # independently checked, disjoint ACC cells.
-                    stores = (out,) if readout_transfer_law is None else readouts[m]
-                    def publish():
-                        for store in stores:
-                            issue("store", store)
-                    builder.branch(last, publish, lambda: None)
-                pair = builder.op(
-                    "add",
-                    builder.op("mul", chunk, len(output_tiles) * len(row_counts)),
-                    n * len(row_counts) + m + 1,
-                )
-                boundary = builder.cmp("eq", builder.op("urem", pair, schedule.choice.compute_pairs), 0)
-                builder.branch(
-                    boundary,
-                    lambda: builder.branch(
-                        builder.cmp("eq", pair, total), lambda: None, lambda: complete("compute", fields)
-                    ),
-                    lambda: None,
-                )
+                for f,(used,length,coords)in enumerate(coordinates[m]):
+                    original_out=row[n]
+                    out=(dict(original_out,output_row=builder.op("add",original_out["output_row"],used),
+                        accumulator_row=original_out["accumulator_row"]+used,rows=length)if fragments else original_out)
+                    if pending_input is not None and f == 0:
+                        pending_input.before_reader(builder, issue, ky, kx, c, m, n=n)
+                    issue(
+                        "load_weight",
+                        dict(
+                            reduction_row=reduction,
+                            output_column=tile.output_column,
+                            local_row=p.rhs_row,
+                            rows=depth,
+                            columns=tile.columns,
+                        ),
+                    )
+                    fields = dict(
+                        out,
+                        lhs_row=input_rows.emit_row_coordinates(builder, *coords, ky, kx, c,
+                            **({"image":source_image} if source_image is not None else {})),
+                        rhs_row=p.rhs_row,
+                        depth=depth,
+                        first_reduction=first,
+                        bias=p.bias,
+                        fresh_weights=m == 0 and f == 0,
+                    )
+                    if input_rows.row_step != 1:
+                        fields["lhs_row_step"] = input_rows.row_step
+                    issue("compute", fields)
+                    if ready_readout and f==len(coordinates[m])-1 and (readout_transfer_law is None or n == len(output_tiles) - 1):
+                        # Separate RAW/result/config-capture/progress law
+                        # orders this store. All later producers write
+                        # independently checked, disjoint ACC cells.
+                        stores = (original_out,) if readout_transfer_law is None else readouts[m]
+                        def publish():
+                            for store in stores:
+                                issue("store", store)
+                        builder.branch(last, publish, lambda: None)
+                    pair = builder.op(
+                        "add",
+                        builder.op("mul", chunk, len(output_tiles) * fragment_count),
+                        n * fragment_count + fragment_index + 1,
+                    )
+                    boundary = builder.cmp("eq", builder.op("urem", pair, schedule.choice.compute_pairs), 0)
+                    builder.branch(
+                        boundary,
+                        lambda: builder.branch(
+                            builder.cmp("eq", pair, total), lambda: None, lambda: complete("compute", fields)
+                        ),
+                        lambda: None,
+                    )
+                    fragment_index+=1
         if after_run is not None:
             after_run(chunk, reduction, depth)
 
@@ -451,7 +555,11 @@ def emit_rolling_convolution_output_group(
             for row in readouts:
                 for out in row:
                     issue("store", out)
-        complete("spatial_group_last_use", dict(rows=sum(row_counts), output_row=output_row))
+        completion_fields = dict(rows=sum(row_counts), output_row=output_row)
+        if pending_input is None:
+            complete("spatial_group_last_use", completion_fields)
+        else:
+            pending_input.finish(complete, completion_fields)
         if (before != (schedule.identity, asdict(group), asdict(array_law), asdict(readout_law), input_rows.record())
             or transfer_identity != (None if readout_transfer_law is None else readout_transfer_law.identity)):
             raise ValueError("spatial group source, private layout or selected laws changed during emission")

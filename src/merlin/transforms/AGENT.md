@@ -7,6 +7,25 @@ Keep the state owner independent of host proof/execution orchestration.
 Hardware policies, instruction selection and device resource assignments stay in OOT
 repositories. Derive facts from the current IR; unknown effects and unsupported layouts
 must remain conservative. A structural witness is not a formal proof receipt.
+Exact integer row batching preserves the original typed module quantization
+annotation without interpreting it or granting any numerical transformation.
+
+`dense_reduction_layout.rewrite_module` preserves trailing-channel storage for
+sole-use single-column signed integer contractions. It exchanges the operands
+and parallel axes while retaining the original reduction sequence and external
+result shape. Invoke before contraction outlining; opaque effects, other users
+or incompatible index orders retain the source. The ordinary `merlin-opt`
+catalog exposes `merlin-column-reduction-layout`. No target schedule is supplied.
+The same consumer can demand an existing channel-last layout through pure
+pointwise chains and projected channel broadcasts. Exact affine maps and the
+original scalar bodies remain; arbitrary broadcast layouts are not inferred.
+Its source-orientation request is consumed by group statement and logical host
+binding. Immutable left operands retain their manifest ownership and preparation;
+the request still requires the ordinary checked matrix maps and readout contract.
+Scalar per-tensor quantization can carry the layout without expanding its scalar
+arithmetic; axis-dependent quantization remains a boundary. Original rounding,
+saturation and output quantization stay intact. `HostGraphPolicy` exposes the
+opt-in `column_reduction_layout` choice under existing layout/order permissions.
 
 `pipeline_policy.py` selects bounded semantic paths through `PipelineSession`.
 Source/context-stamped shape, graph, layout, numerical, capability and resource

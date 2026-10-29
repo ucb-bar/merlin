@@ -28,6 +28,7 @@ import time
 from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, wait
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -46,6 +47,41 @@ if TYPE_CHECKING:
     from .sibling_source_route import SiblingSourceRoute
     from .target_schedule import TargetScheduleSelection
 
+
+@contextmanager
+def _sibling_emission_batch(selection):
+    """Freeze source-bound interface bytes between two complete owner checks.
+
+    Package callbacks receive only these exact interfaces. No source/weight
+    validation cache crosses a callback: the complete owner is reopened after
+    all admitted callbacks and tool jobs have drained, including error paths,
+    before any DeviceBuild result can be returned. Individual emitted ABI
+    checks continue to consume the frozen interface's original arity.
+    """
+    from types import MappingProxyType
+
+    if selection is None:
+        yield MappingProxyType({})
+        return
+    from .sibling_source_route import _sha, component_hosts, require_host
+
+    selected, host = selection
+    require_host(host, selected)
+    interfaces = {}
+    for symbol, item in host.rewrite.expected_interfaces.items():
+        source = item.get("mlir")
+        if not isinstance(source, str) or _sha(source) != item.get("sha256"):
+            raise ValueError("original sibling batch interface changed")
+        interfaces[symbol] = source, len(host.rewrite.call_buffers[symbol])
+    for component in component_hosts(host):
+        if interfaces[component.device_symbol][0] != component.interface:
+            raise ValueError("original sibling component and batch interfaces disagree")
+    try:
+        yield MappingProxyType(interfaces)
+    finally:
+        # This is deliberately a fresh full check, not a same-stat/mtime cache.
+        # A failing callback cannot publish earlier objects under stale owners.
+        require_host(host, selected)
 from .device_routing_placement import _accum_from_facts, routing_for_placement  # noqa: F401  (re-exported)
 from .device_seam_buildability import (  # noqa: F401  (re-exported)
     _SEAM_EMITTERS,
@@ -167,12 +203,17 @@ class DeviceRouting:
     connected_spatial: ConnectedSpatialRoute | None = None
     #: Original source identity and selected synchronous borrowed sibling effects.
     sibling_source: SiblingSourceRoute | None = None
+    #: Explicit current-source producer Q1 and ordered residual grouping.
+    quantized_sum: object | None = None
     #: Original software-owned logical layout policy, consumed before complete group binding.
     pre_group_layout: object | None = None
     #: Original software-owned final host allocation lifetime policy.
     intermediate_storage: object | None = None
 
     def __post_init__(self):
+        if self.quantized_sum is not None:
+            from .quantized_sum_route import freeze_route
+            freeze_route(self)
         if self.sibling_source is not None:
             from .sibling_source_route import freeze_route
 
@@ -1113,14 +1154,8 @@ def build_device_objects(
             m, n, k = key[-3:] if len(key) in (3, 4) else (None, None, None)
             want = kernel_symbol(abi.symbol, index)
             stem = work / f"{sym}"
-            if sym in sibling_hosts:
-                require_host(sibling_hosts[sym], selected_sibling)
-                iface = sibling_hosts[sym].interface
-            elif sibling_source is not None:
-                chosen = expected_interfaces[sym]
-                iface = chosen.get("mlir")
-                if not isinstance(iface, str) or sha256_text(iface) != chosen.get("sha256"):
-                    raise ValueError("ordinary unmatched source interface changed")
+            if sibling_source is not None:
+                iface = sibling_interfaces[sym][0]
             elif expected_interfaces is None:
                 try:
                     _capsule, iface = CS.build(entry, binding)
@@ -1141,9 +1176,9 @@ def build_device_objects(
                     )
             if grouped:
                 observed_outputs = None
-                if entry.get("schema") == "connected_spatial_entry_v1":
+                if entry.get("schema") in ("connected_spatial_entry_v1", "connected_quantized_sum_entry_v1"):
                     operation = _capsule.get("operation") or {}
-                    if operation.get("op") != "spatial_producer_pool":
+                    if operation.get("op") not in ("spatial_producer_pool", "quantized_producer_sum"):
                         raise ValueError("connected source entry lost its original composed program")
                     observed_outputs = (operation["attributes"]["out"],)
                 buffers, refusal = (
@@ -1204,7 +1239,9 @@ def build_device_objects(
 
     # A selected target transformation has its own callback/lifetime contract;
     # package-entrypoint concurrency alone cannot authorize sharing that owner.
-    with ArtifactCompiler(workers) as compiler, EmissionJobs(workers if target_selection is None else 1) as emissions:
+    with (_sibling_emission_batch(sibling_source) as sibling_interfaces,
+          ArtifactCompiler(workers) as compiler,
+          EmissionJobs(workers if target_selection is None else 1) as emissions):
         for job, emission in emissions.map(prepare_emissions(), emit_interface):
             sym, provenance, want, stem, _ifc = job
             lowering = work / f"{sym}.lowering"
@@ -1218,14 +1255,10 @@ def build_device_objects(
             except (BackendDeclined, CertFailure, ValueError) as error:
                 skipped.append((sym, f"package lowering: {type(error).__name__}: {str(error)[:300]}"))
                 continue
-            if sym in sibling_hosts:
-                from .sibling_source_route import require_emission
-
-                require_emission(artifact, selected_sibling, sibling_hosts[sym], entry_symbol=entry_symbol)
-            elif sibling_hosts:
+            if sibling_source is not None:
                 from .sibling_source_route import require_logical_emission
 
-                require_logical_emission(artifact, entry_symbol=entry_symbol, arity=len(call_buffers[sym]))
+                require_logical_emission(artifact, entry_symbol=entry_symbol, arity=sibling_interfaces[sym][1])
             elif expected_interfaces is not None:
                 from .sibling_source_route import require_logical_emission
 

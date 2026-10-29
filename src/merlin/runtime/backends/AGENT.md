@@ -61,6 +61,18 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
 
 ## Notes for future agents
 
+- Ordinary intermediate storage also carries a live sibling or host-provider
+  borrowed lifetime through the exact original bounded-RNE callback. The
+  independent scalar footprint must preserve every pointer, memory, control and
+  other-call byte. Other callbacks/chains retain conservative storage behavior;
+  unqualified callees remain allocator barriers after this composition.
+
+- `prepare_for_lowering` consumes automatic host numerics immediately after
+  `_prepare_model_mlir`, whose exact emitted bytes the captured quantization
+  policy binds. Later destination reuse, layout and tagging stages consume that
+  checked result. Never refresh a stale policy hash merely to enable the pass;
+  explicit numerical alternatives and the original policy refusal remain.
+
 `cycles` from spike is mcycle delta on hart 0 between the start barrier and the final barrier; counters (pack/hits/evictions/commits) are counted by the generated driver itself, byte counters are computed statically by codegen using the simulator's formulas.
 
 - Whole-model `spike_model` build identity includes the actual linked device and

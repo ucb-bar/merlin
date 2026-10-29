@@ -152,7 +152,8 @@ def verify_dense_emission(choice: DenseChoice, emission: DenseEmission, *, stati
 
 
 def dense_blocks(
-    problem: DenseProblem, resources: DenseResources, *, k_limit: Callable[[int, int], int] | None = None
+    problem: DenseProblem, resources: DenseResources, *, k_limit: Callable[[int, int], int] | None = None,
+    n_choices: tuple[int, ...] | None = None,
 ) -> tuple[DenseBlock, ...]:
     """Enumerate bounded M/N choices without expanding tensors or dynamic loops.
 
@@ -162,16 +163,23 @@ def dense_blocks(
     The callback supplies a capacity limit, not a performance estimate. This
     initial family preserves increasing K per output and holds the complete
     output block in private accumulators. Other dataflows need other families.
+    Explicit ``n_choices`` narrows the original supported widths and the
+    candidate budget; it never extends the emitter's domain.
     """
     p, r = problem, resources
     mt, kt, nt = p.tiles
+    widths = range(1, min(nt, r.max_n_blocks) + 1) if n_choices is None else n_choices
+    if n_choices is not None and (type(n_choices) is not tuple or not n_choices
+            or any(type(n) is not int or not 1 <= n <= min(nt, r.max_n_blocks) for n in n_choices)
+            or len(set(n_choices)) != len(n_choices)):
+        raise ValueError("dense N choices must be distinct original supported tile extents")
     if not r.partial_output_tiles and (p.m % p.tile_m or p.n % p.tile_n):
         return ()
-    if min(mt, r.max_m_blocks) * min(nt, r.max_n_blocks) > r.candidate_budget:
+    if min(mt, r.max_m_blocks) * len(widths) > r.candidate_budget:
         raise ValueError("dense blocking search exceeds its candidate budget")
     choices = []
     for bm in range(1, min(mt, r.max_m_blocks) + 1):
-        for bn in range(1, min(nt, r.max_n_blocks) + 1):
+        for bn in widths:
             if not r.partial_output_blocks and (mt % bm or nt % bn):
                 continue
             acc = bm * bn * p.tile_m * p.tile_n * p.accumulator_bytes

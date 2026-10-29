@@ -83,6 +83,8 @@ class RawInsn:
     operands: list[str]  # comma-split, stripped: ["zero", "0x4", "e32", "m2", "ta", "ma"]
     hexcode: str = ""  # raw encoding word(s)
     section: str = ""  # enclosing section/symbol if known
+    section_name: str = ""  # ELF section identity, preserved across local/symbol labels
+    relocations: tuple[str, ...] = ()  # Tool annotations on bytes awaiting linking, never instructions
 
 
 def disassemble_text(obj_path: str | Path, triple: str = "riscv64", mattr: str | None = None) -> str:
@@ -126,6 +128,18 @@ def _parse_line(line: str, section: str) -> RawInsn | None:
     right = right.strip()
     if not right:
         return None
+    # LLVM renders RISC-V raw encodings as little-endian byte columns; GNU
+    # renders one instruction word. Both are actual bytes. Do not discard the
+    # scalar columns while recovering only custom .insn directives.
+    columns = right.split()
+    byte_count = 0
+    while (byte_count < len(columns) and len(columns[byte_count]) == 2
+           and all(char in "0123456789abcdefABCDEF" for char in columns[byte_count])):
+        byte_count += 1
+    if byte_count in (2, 4) and byte_count < len(columns):
+        raw_bytes = bytes.fromhex("".join(columns[:byte_count]))
+        word = int.from_bytes(raw_bytes, "little")
+        right = f"{word:0{byte_count * 2}x} " + " ".join(columns[byte_count:])
     parts = right.split(None, 2)
     # An optional complete encoding column, not any hexadecimal-looking word:
     # the scalar mnemonic "add" is also valid hexadecimal. Wordless objdump
@@ -157,18 +171,25 @@ def _tokenize_lines(text: str) -> list[RawInsn]:
     ``tokenize`` (from an object file) and ``tokenize_text`` (from already-disassembled text)."""
     out: list[RawInsn] = []
     section = ""
+    section_name = ""
     for line in text.splitlines():
         s = line.strip()
         # section/symbol headers look like "<name>:" with no hex address, or
         # "Disassembly of section .text:".
         if s.startswith("Disassembly of section"):
             section = s.split("section", 1)[1].strip().rstrip(":")
+            section_name = section
             continue
         if s.endswith(">:") or (s.endswith(":") and "<" in s):
             section = s.rstrip(":")
             continue
         insn = _parse_line(line, section)
         if insn is not None:
+            insn.section_name = section_name
+            if (not insn.hexcode and insn.mnemonic.startswith("R_") and out
+                    and out[-1].addr == insn.addr and out[-1].section_name == section_name):
+                out[-1].relocations += (line.partition(":")[2].strip(),)
+                continue
             out.append(insn)
     return out
 

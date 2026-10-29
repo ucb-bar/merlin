@@ -491,8 +491,12 @@ def build(
     ))
     descriptor_results = DeviceDescriptorResults(device)
     descriptor_check = descriptor_results.revalidate
-    if descriptor_results.selected and (host_llvm_transform is not None or host_llvm_transform_chain is not None):
-        raise ValueError("checked descriptor identity does not support a later host LLVM rewrite")
+    from ...llvmlower.bounded_rne_custody import select_custody
+
+    bounded_rne_custody = select_custody(
+        host_llvm_transform, descriptor_identity=descriptor_results.selected,
+        intermediate_storage=getattr(device, "intermediate_storage", None) is not None,
+        chain=host_llvm_transform_chain)
     early_device_objects = None
     device_admission_selection = freeze_device_elf_admission(device)
     if type(host_llvm_bitcode) is not bool:
@@ -766,6 +770,7 @@ def build(
         bind_group_layout_artifacts(device, work, compilation)
         retain_device_offload_source(offload_selection, prepared_path, compilation=compilation)
         source_choices.bind(prepared_path)
+        selected_borrowed_calls = None
 
         def lower_options():
             return dict(
@@ -783,12 +788,43 @@ def build(
                 masked_contraction_effects=masked_contraction_effects,
                 source_observation_effects=source_observation_effects,
                 source_scalar_carrier=source_scalar_carrier,
-                borrowed_buffer_calls=source_borrowed_calls(host_provider_builder, prepared_path),
+                borrowed_buffer_calls=selected_borrowed_calls,
                 **descriptor_results.options(),
                 **({"graph_optimizations": graph_optimizations} if graph_optimizations is not None else {}),
                 **({"op_profile": True} if op_profile else {}),
                 **source_choices.options(),
             )
+        sibling_writers = getattr(device, "sibling_source", None) is not None
+        if descriptor_results.selected or dense_input_views or sibling_writers:
+            from ...llvmlower.device_offload import SIDECAR_NAME
+
+            if descriptor_results.selected:
+                descriptor_results.bind_input(prepared_path, work / SIDECAR_NAME, compilation)
+            early_device_objects = build_routed_objects()
+            if dense_input_views:
+                from ...llvmlower.device_input_views import prepare as prepare_dense_input_views
+
+                if descriptor_results.selected:
+                    prepared_path = descriptor_results.prepare_dense_input_views(
+                        early_device_objects[2], work / "dense_input_views", compilation,
+                        sibling_source=(device.sibling_source, offload_selection.sibling_host)
+                        if sibling_writers else None)
+                else:
+                    prepared_path = prepare_dense_input_views(
+                        prepared_path, work / SIDECAR_NAME, early_device_objects[2], work / "dense_input_views", compilation,
+                        sibling_source=(device.sibling_source, offload_selection.sibling_host) if getattr(device, "sibling_source", None) else None,
+                    )
+                retain_device_offload_source(offload_selection, prepared_path, compilation=compilation)
+            if descriptor_results.selected and early_device_objects[2] is not None:
+                descriptor_results.bind_shim(early_device_objects[2], compilation)
+        selected_borrowed_calls = source_borrowed_calls(host_provider_builder, prepared_path)
+        if sibling_writers:
+            from ..device_borrowed_calls import sibling_borrowed_calls
+
+            if selected_borrowed_calls is not None:
+                raise ValueError("sibling device and host-provider borrowed owners need an explicit combined roster")
+            selected_borrowed_calls = sibling_borrowed_calls(
+                device, offload_selection, early_device_objects[2], prepared_path, compilation=compilation)
         recomputation_options = None
         if recomputation_check is not None:
             recomputation_check()
@@ -812,26 +848,6 @@ def build(
             )
             recomputation_check()
             recomputation_options.update(source_recomputation.options())
-        if descriptor_results.selected or dense_input_views:
-            from ...llvmlower.device_offload import SIDECAR_NAME
-
-            if descriptor_results.selected:
-                descriptor_results.bind_input(prepared_path, work / SIDECAR_NAME, compilation)
-            early_device_objects = build_routed_objects()
-            if dense_input_views:
-                from ...llvmlower.device_input_views import prepare as prepare_dense_input_views
-
-                if descriptor_results.selected:
-                    prepared_path = descriptor_results.prepare_dense_input_views(
-                        early_device_objects[2], work / "dense_input_views", compilation)
-                else:
-                    prepared_path = prepare_dense_input_views(
-                        prepared_path, work / SIDECAR_NAME, early_device_objects[2], work / "dense_input_views", compilation,
-                        sibling_source=(device.sibling_source, offload_selection.sibling_host) if getattr(device, "sibling_source", None) else None,
-                    )
-                retain_device_offload_source(offload_selection, prepared_path, compilation=compilation)
-            if descriptor_results.selected and early_device_objects[2] is not None:
-                descriptor_results.bind_shim(early_device_objects[2], compilation)
         res = lower_model_file(
             prepared_path,
             work / "lower",
@@ -890,7 +906,11 @@ def build(
         compilation.bind_preparation("source_observation", work / "lower" / REPORT)
     from merlin.common.digest import sha256_file
 
-    if host_llvm_transform_chain is None:
+    borrowed_arena_lifetime = getattr(res, "borrowed_arena_lifetime", None)
+    if bounded_rne_custody is not None:
+        model_ir, host_ir_receipt, bounded_rne_emission = bounded_rne_custody.apply(
+            res.ll_path, work / "host_llvm", compilation)
+    elif host_llvm_transform_chain is None:
         model_ir, host_ir_receipt = _transform_host_ir(res.ll_path, work / "host_llvm", host_llvm_transform)
     else:
         from ...llvmlower.lowering_recipe import FILENAME as LOWERING_RECIPE
@@ -907,6 +927,9 @@ def build(
     from ...llvmlower.host_bounded_rne import bind_preparation as bind_bounded_rne_preparation
 
     bind_bounded_rne_preparation(compilation, work / "host_llvm", host_ir_receipt)
+    if bounded_rne_custody is not None:
+        if borrowed_arena_lifetime is not None:
+            borrowed_arena_lifetime = borrowed_arena_lifetime.after_bounded_rne(bounded_rne_emission)
     # Prepare all driver inputs before any observed assembler/object invocation.
     cgen = work / "cgen"
     projection_options = {}
@@ -945,10 +968,10 @@ def build(
 
         blocked = ("source_recomputation_selected" if recomputation_check is not None else
                    "descriptor_results_selected" if descriptor_results.selected
-                   and getattr(res, "borrowed_arena_lifetime", None) is None else None)
+                   and borrowed_arena_lifetime is None else None)
         model_ir = prepare_intermediate_storage(
             model_ir, storage_policy, work / "intermediate_storage", compilation, blocked_reason=blocked,
-            borrowed_lifetime=getattr(res, "borrowed_arena_lifetime", None))
+            borrowed_lifetime=borrowed_arena_lifetime)
     compiler_input = model_ir
     bitcode_receipt = None
     if host_llvm_bitcode:
@@ -1396,7 +1419,7 @@ def build(
         **({"execution_memory_admission": memory_admission} if memory_admission is not None else {}),
         **({"linked_elf_admission": linked_admission} if linked_admission is not None else {}),
         **info,
-    }, getattr(res, "borrowed_arena_lifetime", None) if storage_policy is not None else None)
+    }, borrowed_arena_lifetime if storage_policy is not None else None)
 
 
 def run(

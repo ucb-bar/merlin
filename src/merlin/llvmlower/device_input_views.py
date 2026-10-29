@@ -152,6 +152,7 @@ def prepare(source, sidecar, built, work, compilation, *, sibling_source=None):
     from merlin.frontends.linalg_mlir import parse_mlir_text
 
     from . import device_shim as S
+    from . import whole_program as W
     from .device_build import DeviceBuild
 
     if type(built) is not DeviceBuild or not built.ok or built.shim_unit is None or built.shim_invocation is None:
@@ -174,10 +175,11 @@ def prepare(source, sidecar, built, work, compilation, *, sibling_source=None):
     if data.get("device") != built.device or data.get("granularity") != "group":
         raise ValueError("dense input views require the original complete group call sidecar")
     groups, selected, paths = {}, {}, [source, sidecar, shim, built.shim_object, invocation_path, Path(S.__file__),
-                                     Path(__file__)]
+                                     Path(W.__file__), Path(__file__)]
     for symbol in built.kernels:
         interface = built.shim_object.parent / f"{symbol}.iface.mlir"
-        buffers, reason = S.logical_buffers(interface.read_text())
+        entry = data.get("entries", {}).get(symbol)
+        buffers, reason = W.source_bound_group_buffers(entry, interface.read_text(), target=built.device)
         call = data.get("call_buffers", {}).get(symbol)
         access = data.get("arg_access", {}).get(symbol)
         if buffers is None or call is None or access is None or len(call) != len(access):
