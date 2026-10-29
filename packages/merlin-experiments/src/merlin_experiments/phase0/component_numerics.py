@@ -63,6 +63,12 @@ def evaluate(capsule):
                 else [sum(int(args[0].data[row * cols + col]) for col in range(cols)) for row in range(rows)]
             )
             output = Tensor(tuple(node["shape"]), values, node["dtype"])
+        elif op == "sub":
+            output = Tensor(
+                tuple(node["shape"]),
+                [int(a) - int(b) for a, b in zip(args[0].data, args[1].data, strict=True)],
+                node["dtype"],
+            )
         elif op == "affine":
             output = Tensor(
                 tuple(node["shape"]),

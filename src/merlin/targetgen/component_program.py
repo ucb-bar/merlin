@@ -70,6 +70,8 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
             if op == "cast"
             else {"weight", "bias", "dtype"}
             if op == "affine"
+            else {"dtype"}
+            if op == "sub"
             else {"axis", "dtype"}
             if op == "reduce_sum"
             else {"shape"}
@@ -77,11 +79,11 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
             else set()
         )
         supported = {"matmul", "add", "copy", "transpose", "alias", "update"} | (
-            {"cast", "reduce_sum", "reshape", "affine"} if v2 else set()
+            {"cast", "reduce_sum", "reshape", "affine", "sub"} if v2 else set()
         )
         if set(node) != {"name", "op", "inputs"} | extra or op not in supported:
             raise ValueError("unsupported component node; use explicit supported generic tensor operations")
-        arity = 2 if op in {"matmul", "add", "update"} else 1
+        arity = 2 if op in {"matmul", "add", "update", "sub"} else 1
         if not isinstance(args, list) or len(args) != arity or any(arg not in types for arg in args):
             raise ValueError("component node operand is absent or its arity differs")
         actual = [current[storage[arg]] for arg in args]
@@ -111,6 +113,15 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
             if shape[0] * shape[1] != lhs.shape[0] * lhs.shape[1]:
                 raise ValueError("component reshape must preserve the element count")
             result = ValueType(tuple(shape), lhs.dtype)
+        elif op == "sub":
+            # Two tensor operands, lhs - rhs, in the node's own (wide) dtype: the affine map with weights
+            # (1, -1). Both operands are widened first, so no operand is ever negated at int8 width.
+            dtype = _integer_dtype(node["dtype"], operand_dtype=operand_dtype, accumulator_dtype=accumulator_dtype)
+            if selected[1] != lhs:
+                raise ValueError("component sub requires matching shapes and dtypes")
+            if int(lhs.dtype[1:]) > int(dtype[1:]):
+                raise ValueError("component sub requires a result at least as wide as its operands")
+            result = ValueType(tuple(lhs.shape), dtype)
         elif op == "affine":
             # A scalar-immediate affine map y = weight * x + bias: ONE tensor operand and two literal
             # integer immediates. The weight is a signed int8 (the mesh weight / load-path multiplier);
@@ -322,6 +333,33 @@ def render(program, *, operand_dtype, accumulator_dtype):
                     f"    %{name} = tensor.expand_shape {output_name} [[0, 1]] "
                     f"output_shape [{result.shape[0]}, {result.shape[1]}] : {inner.mlir} into {result.mlir}"
                 )
+            continue
+        if op == "sub":
+            lhs, rhs = (types[arg] for arg in actual)
+            lines.append(
+                f"    %{name} = linalg.generic {{indexing_maps = [{', '.join([identity] * 3)}], "
+                f'iterator_types = ["parallel", "parallel"]}} '
+                f"ins({values[actual[0]]}, {values[actual[1]]} : {lhs.mlir}, {rhs.mlir}) "
+                f"outs({temporary('empty')} : {result.mlir}) "
+                f'attrs = {{prov.region_id = "component_{node["ordinal"]}", prov.op = "sub", '
+                f'prov.family = "elementwise"}} {{'
+            )
+            lines.append(
+                f"      ^bb{node['ordinal']}({scalar('lhs')}: {lhs.dtype}, {scalar('rhs')}: {rhs.dtype}, "
+                f"{scalar('old')}: {result.dtype}):"
+            )
+            operands = []
+            for side, value_type in (("lhs", lhs), ("rhs", rhs)):
+                if value_type.dtype != result.dtype:
+                    lines.append(
+                        f"        {scalar(side + '_wide')} = arith.extsi {scalar(side)} : "
+                        f"{value_type.dtype} to {result.dtype}"
+                    )
+                    operands.append(scalar(side + "_wide"))
+                else:
+                    operands.append(scalar(side))
+            lines.append(f"        {scalar('difference')} = arith.subi {operands[0]}, {operands[1]} : {result.dtype}")
+            lines.extend([f"        linalg.yield {scalar('difference')} : {result.dtype}", f"    }} -> {result.mlir}"])
             continue
         if op == "matmul":
             maps = [

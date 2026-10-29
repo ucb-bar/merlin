@@ -78,6 +78,8 @@ def _metadata(program, operand_dtype, accumulator_dtype, limits):
             if v2 and op == "cast"
             else {"weight", "bias", "dtype"}
             if v2 and op == "affine"
+            else {"dtype"}
+            if v2 and op == "sub"
             else {"axis", "dtype"}
             if v2 and op == "reduce_sum"
             else {"shape"}

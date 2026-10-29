@@ -115,6 +115,8 @@ def derive(source, semantics):
                 prefix = min(0, interval[0]), max(0, interval[1])
                 _require(prefix, bits, owner=node["name"], stage="partial sum")
                 proof.update(partial_sum_interval=list(prefix), reduction_axis=node["axis"], reduction_extent=reduction)
+            elif op == "sub":
+                interval = args[0][0] - args[1][1], args[0][1] - args[1][0]
             elif op == "affine":
                 ends = [value * node["weight"] + node["bias"] for value in args[0]]
                 interval = min(ends), max(ends)

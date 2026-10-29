@@ -216,6 +216,7 @@
             "activation_matmul",
             "column_sum",
             "scalar_affine",
+            "tensor_sub",
             "concat",
             "insert_slice",
             "fill",
