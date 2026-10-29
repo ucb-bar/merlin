@@ -719,10 +719,16 @@ selected. Candidate JSON supplies no factory or effects. The ordinary receipt
 retains the actual descriptor lowering and borrowed-call selection. A missing
 original owner leaves the prior opaque-call allocation rules in force.
 
-Later host LLVM rewrites still refuse this descriptor route until their exact
-ownership correspondence is independently supplied. This includes a selected
-late bounded-RNE host transform; do not drop that arithmetic choice to claim a
-same-recipe whole-model improvement.
+The ordinary late bounded-RNE factory composes with this descriptor route. Its
+actual callback, original scalar policy and compiler are frozen before package
+callbacks. The normal assembler checks, numerical matcher and paired native
+oracle still execute. An independent linear check admits only its exact scalar
+conversion edits, preserving every other instruction, pointer, memory operation,
+call, control edge, signature and attribute byte. Only this live emission carries
+native lifetime custody to the final LLVM. Its exact scalar assembly calls are
+also retained as noncapturing, so they do not erase the allocator's checked
+borrowed-call knowledge. Saved reports cannot recreate this binding. Unknown
+callbacks, chains, extra assembly effects and stale products still refuse.
 
 The generated checked C forwarder calls the original shim and requires its
 returned allocated pointer, aligned pointer, offset, sizes and strides to match

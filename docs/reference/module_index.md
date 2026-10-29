@@ -69,9 +69,9 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.targetgen.contract` | Experiment-ABI contract layer. |
 | `merlin.targetgen.evidence` | Evidence layer: deterministically discover source files and detect concepts. |
 | `merlin.targetgen.fixed_format` | Building device images for targets whose ISA is a fixed-format re-encoding of a stock one. |
-| `merlin.targetgen.generate` | Generate the merlin-target-<name>/ repository skeleton and its artifacts. |
+| `merlin.targetgen.generate` | Lazy public compiler generators; selected components do not import sibling tools. |
 | `merlin.targetgen.ingest` | Ingest layer: record TargetGen inputs as a SourceManifest. |
-| `merlin.targetgen.oot_starterkit` | OOT starter kit — hw-agnostic, answer-free framework plumbing for authoring an MLIR OOT backend. |
+| `merlin.targetgen.oot_starterkit` | Lazy, target-neutral authoring plumbing and separately selectable transforms. |
 | `merlin.targetgen.oracle_helpers` | Target-independent subprocess helpers for program execution and ISA introspection. |
 | `merlin.targetgen.rocc` | The RoCC coprocessor interface: decoding a trace of it, and emitting one. |
 | `merlin.targetgen.rtl` | merlin-rtl-introspect: extract structure-only facts from elaborated RTL (CIRCT/FIRRTL). |
@@ -96,6 +96,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin_experiments.phase1.brokers` | Host-only Phase-1 tool brokers; public clients remain in merlin.benchharness. |
 | `merlin_experiments.phase1.feedback` | Host-only functional feedback, independent grading and certificate promotion. |
 | `merlin_experiments.phase1.providers` | Host-only agent transports; import individual providers to observe their runtime defaults. |
+| `merlin_experiments.phase1.seed_prep` | (no module docstring — add one) |
 | `merlin_experiments.phase1.telemetry` | Host-owned phase-1 timeline analysis, retained evidence and timing reports. |
 | `merlin_experiments.phase1.tools` | Public standalone Phase 1 clients, copied individually into candidate workspaces. |
 | `merlin_experiments.phase2` | Performance experiment contracts and frozen functional admission. |

@@ -3,9 +3,9 @@ title: Reference-guided kernel reconstruction
 kind: guide
 status: current
 owner: mining
-last_verified: 2026-10-27
+last_verified: 2026-10-28
 related: [kernel_mining, rvv_kernel_mining_methodology, core_dialects, reference_guided_compilation]
-code_refs: [src/merlin/kernels/reconstruction.py, src/merlin/kernels/kernel_evidence.py, packages/merlin-mining/src/merlin/mining/reconstruction_cli.py]
+code_refs: [src/merlin/kernels/reconstruction.py, src/merlin/kernels/kernel_evidence.py, src/merlin/kernels/instruction_comparison.py, src/merlin/kernels/mechanism_inference.py, src/merlin/kernels/source_product_views.py, src/merlin/kernels/consumer_structure.py, src/merlin/compile/scheduling/dense_panel_pipeline.py, packages/merlin-mining/src/merlin/mining/reconstruction_cli.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/reference_mechanisms.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_build_views.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/public_scalability_inspection.py]
 ---
 
 # Reference-guided kernel reconstruction
@@ -22,6 +22,54 @@ match the complete region before comparing implementations.
 This is an explicitly selected `reference_guided` workflow. It does not change an existing
 campaign's reference selection, source inventory, or visibility. Private reference source,
 traces, indexed results, and derived task cards belong only to the selected workflow.
+
+## Mechanism questions across representations
+
+The reference-analysis endpoint reports `mechanism_observations` for parsed source
+IR and selected native captures. Yielded multiply-accumulate domains expose every
+proved reduction axis. When the selected facts derive a square block geometry,
+suffix grouping profiles report conditional useful and physical reduction extents.
+These profiles ask whether the actual consumer packs compatible axes; they do not
+establish which partition the emitted program uses. Padding/indexing, numerical
+order and the selected consumer still need witnesses. Unavailable domains or
+geometry remain unknown.
+
+Closed interface convolutions use the existing canonical work-domain validator
+before exposing their kernel reduction axes. Sharing coverage names unsupported
+command kinds explicitly; an empty dense-product sharing list does not establish
+that a convolution or another consumer has no shared operands. Large replies keep
+bounded mechanism questions visible and retain full evidence in the pinned detail.
+
+Exact shared tensor SSA values and original interface operands expose opportunities
+to share preparation or transfers across products. Selected normalized native
+effects expose repeated reads in finite affine recurrences, including their units
+and repeated volume. Possible intervening writes, incompatible units, incomplete
+captures and exhausted budgets prevent an invariant-read conclusion. Even a proved
+repeated read needs destination lifetime, capacity, alias and completion checks
+before retention is legal; repeated volume is not a prediction of cycle savings.
+
+The `product_views` source observation traces static rank-two operand slices to
+their original function arguments, including composed offsets and strides. It
+records each ordinary integer matrix product's reduction and numerical recipe,
+then follows ordered concatenations into each returned output. Coverage names
+all observed products and returns separately from the shorter reduction preview.
+Nonzero initialization, unsupported numerical bodies, dynamic/rank-changing views
+and arbitrary consumers remain partial; exhausted budgets return unknown. These
+are logical source coordinates. Physical packing, source-to-command/capture
+correspondence and emitted application still need their original evidence owners.
+
+Emitted LLVM reports `consumer_structure`: the selected root's actual reachable
+call closure, shared pointer arguments, external bodies and unselected definitions.
+A helper that exists outside that closure cannot establish that a mechanism was
+selected. Static call sites neither establish dynamic multiplicity nor prove that
+two pointer arguments retain the same values.
+
+Artifact comparisons return `mechanism_alignment` questions connecting these
+independent observations. Supplied source/schedule/emitted/binary associations,
+matching counts and passing output checks cannot replace original producer
+correspondence. Optimization application, numerical equivalence and performance
+retain separate unknown statuses until their ordinary evidence owners establish
+them. The endpoint supplies no optimization implementation or success verdict.
 
 ## Install and inspect a corpus
 
@@ -259,6 +307,124 @@ CCA comparison denominator means missing evidence. Declared semantic contracts c
 compared separately with `--reference-format semantic_region`; declarations alone do
 not bind either artifact. Candidate `schedule_mlir` analysis verifies scheduling intent;
 actual executable consumer receipts and emitted mechanism witnesses remain required.
+
+Large little-endian RV64 ELFs are inspected through pinned descriptors: hashing streams
+the file, and disassembly reads executable sections without copying model weights into
+Python. The limits are 4 GiB per ELF and 32 MiB of executable code. Stripped binaries
+receive artifact-bound static span IDs. Spans are inferred boundaries, not recovered
+source functions. Inventory all pages before choosing a span:
+
+```sh
+python agent_selfcheck.py --reference-analysis inventory --reference-path reference-kernels/model.elf
+python agent_selfcheck.py --reference-analysis lift --reference-path reference-kernels/model.elf \
+  --reference-region REGION_ID --reference-limit 1 --reference-instruction-offset 0
+```
+
+Operand witnesses use the same instruction offset. Follow
+`mechanism_projection.command_page.next_instruction_offset` to inspect later commands.
+CPU dataflow preserves known bits through branches, loops and stack spills; unresolved
+values remain unknown. Object relocation records are retained as annotations; unresolved
+relocations prevent operand/control proofs until linked bytes are available.
+Accelerator opcodes, classes and fields come from the original
+selected ISA/operand definitions. Endpoint roles bind declared names against that ISA
+table, and their input hashes are retained. Static field profiles and instruction order
+do not establish residency, overlap, accepted execution or cycles.
+
+Comparisons retain ordered instructions, registers, immediates, decoded operand profiles
+and complete recovered-operand digests. They distinguish changed operand populations
+from reordered equal populations even when command counts match. `emitted_mlir` applies
+the same field comparison to actual LLVM inline assembly. Initialization-only aggregate
+issue-count differences do not create optimization trials. Grounded load/configuration/
+completion differences still need compatible scope, declared alternatives and ordinary
+correctness and performance checks.
+
+To inspect independent representations together, select `artifact_views` with a
+`merlin.reference_artifact_views.v2` JSON document. Its `views` object may contain
+`source`, `schedule`, `emitted` and `binary`; each has `path`, `sha256`, `format` and an
+optional `symbol` or `region`. Source supports C, Python/Exo, source MLIR or the existing
+declared semantic format; schedule supports scheduling MLIR or Python; emission uses
+`emitted_mlir`; binary supports ELF, listing or disassembly. Every pin is reopened.
+Supplied associations do not prove that a binary implements that source. When matching
+upstream source/build records are unavailable, source correspondence remains unknown.
+
+For source inspection of an operator-selected public scalability member, use one
+explicit action through the ordinary selfcheck interface:
+
+```sh
+python agent_selfcheck.py --submission submission --suite scalability --sim spike \
+  --tiers L0,L1,L2 --capsules PUBLIC_CAPSULE --candidate-diagnostics
+python agent_selfcheck.py --submission submission --suite scalability --sim spike \
+  --tiers L0,L1,L2 --capsules PUBLIC_CAPSULE --compile-only
+```
+
+Diagnostics expose the existing source/schedule observations; compile-only additionally
+runs the original compiler and native build owners. Both reopen the selected public
+source and ABI, reject tuning/sweep combinations, and publish their response only after
+the final selected-input check. Neither supplies a numerical or performance grade.
+These evidence requests remain separate from controlled optimization experiments;
+missing goal bindings cannot be invented to turn an inspection into a tuning trial.
+Compile-only retains the selected corpus's explicit global instruction prohibitions
+and any additional capsule restrictions. Public layer sources need no model coverage
+sidecar for this static build check; model coverage and required numerical tiers remain
+obligations of the ordinary certifying path. Missing global policy still refuses.
+
+Ordinary public selfchecks and `--compile-only` can publish a `candidate_build_view`
+locator on each completed case. Use its exact returned path:
+
+```sh
+python agent_selfcheck.py --reference-analysis candidate --reference-format candidate_build \
+  --reference-path "$PUBLISHED_CANDIDATE_BUILD"
+```
+
+The original host build owner retains source, command-buffer and emitted-LLVM bytes
+alongside the selected linked function instructions. It exposes no harness ELF or
+tensor data. A private publication index binds the original producer chain; author
+JSON cannot register a build. Missing original compiler ownership leaves
+`compiler_emission_binding` unknown even when the native LLVM/object/link chain is
+observed. Later source edits do not rewrite the original build identity. This view
+removes unresolved object relocations only for the original linked function;
+unlinked expert inputs retain their operand/control unknowns. These byte joins
+supply no source semantic equivalence, numerical result or performance claim.
+
+Successful reports larger than the broker response limit retain `status="analyzed"`.
+The response includes `report_in_detail=true` and a hash-pinned `detail` path under
+`qa/cases/`; that JSON contains the complete response, including experiment tasks and
+requests. The inline report is explicitly a summary. Numerical and qualification
+fields keep their original meanings.
+
+For an operator coverage check, run `build_tools/scripts/check_reference_readiness.py`
+with the original `--workspace`, `--facts`, `--contract`, `--target`, repeated
+`--reference` machine artifact paths and a fresh `--output` directory. It retains every
+region report. Missing pages, duplicate regions, unaccounted sites, absent source joins
+and unsupported comparisons prevent a ready result. Exit 2 means unresolved readiness;
+static coverage alone supplies no experiment or performance qualification.
+
+### Capacity-derived M panels
+
+Use `dense_panel_pipeline.dense_m_panel_capacity(problem, resources, storage,
+n_tiles=...)` to inspect full-K row-panel bounds. Limits include assigned LHS and
+accumulator rows, padded row widths, retained RHS capacity, combined operand bytes,
+accumulator bytes and the original emitter domain. Capacity in another role is not
+silently borrowed. The report names the limiting conditions.
+
+`schedule_dense_m_panels(...)` consumes the same inputs, original source identity and
+typed retained-reduction admission. Choose the N width explicitly; supply M tiles or
+let construction propose the largest legal M panel. Selected issue bounds and tail
+support can narrow that choice. It constructs one scheduling-dialect plan, hoists RHS
+staging across counted full M groups, and rechecks actual products, addresses and
+completion epochs. Independent thin-kernel calls can reload RHS and are not equivalent
+to this construction. Separate partial M families retain their explicitly reported
+reloads; array STAY behavior requires its separate selected target law.
+
+The returned attempt records per-shape construction status, capacity/issue blockers,
+selected rows and checked load counts. `checked_schedule_constructed` is not successful
+transfer to emitted code. Missing capacity or laws returns `not_applied` before emission;
+a failed concrete verification propagates. Ordinary reference A/B feedback reports
+`optimization_did_not_apply_emitted_fallback` per capsule only after reopening matched
+baseline/variant executable identities and finding unchanged emitted bytes. Changed
+bytes still require a mechanism check. Here fallback means retained baseline emission;
+whether that baseline already used the mechanism remains unknown. A numerical pass never
+establishes application.
 
 Construction feedback joins this analysis to the selected operation/pass catalogs and
 existing A/B tools, including explicit adapter gaps before correctness is complete.

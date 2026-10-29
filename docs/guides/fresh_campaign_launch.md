@@ -3,7 +3,7 @@ title: Launch a fresh open-compiler campaign from a reviewed spec
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-27
+last_verified: 2026-10-28
 related: [artifact_evaluation, frozen-execution-source]
 code_refs:
   - examples/gemmini/phase1/launch/fresh_campaign.py
@@ -48,6 +48,34 @@ settings; inspect the prepared plan before starting it.
 
 Only `launch --confirm` starts a campaign. Every other subcommand prepares
 inputs, renders files or reads status.
+
+To prepare inputs under a newly generated hardware context, select the genuine
+completed Phase 0 producer and its Phase 1 policy overlay explicitly:
+
+```yaml
+inputs:
+  source_run:
+    path: /absolute/new/phase0-run
+    sha256: <SHA256 of phase0-run/resolved-plan.json>
+  phase1_policy_descriptor:
+    path: /absolute/new/phase1-policy.yaml
+    sha256: <SHA256 of this YAML file>
+```
+
+These options are forwarded to `prepare_source_release.prepare`. The native
+release owner verifies the producer's frozen inputs, successful execution and
+exact output receipts. Its policy overlay may differ from the producer's
+descriptor only in `phase1_gates`; `carry_phase1_gates` constructs that overlay
+when retaining previous reviewed gates. Preparation creates a new release for
+inspection and sealing. A selected plan hash does not carry the old seal,
+hardware qualification or compiler certificates. Omitting these options keeps
+the previous release's source context.
+
+For a fresh fact-bound operand protocol, `inputs.operand_protocol_selection` and
+optional `inputs.operand_protocol_revision` each accept an explicit file
+`{path, sha256}` pin. A new protocol without a revision forwards `None`; it never
+inherits the previous release's revision. Omitting both retains the previous
+protocol and revision. A revision alone is refused by source preparation.
 
 ## Select reference guidance
 
