@@ -115,8 +115,9 @@ def licensed (op : Op) : Nat :=
         | _ => false) then 1 else 0
 
 -- `contract`-licensed float multiplies and adds anywhere in a program, including nested regions.
--- `Rules.Bf16F32AccFusion.fused_step` covers fused execution only if the source has none, so
--- every licensed operation of the output is a contract step.
+-- The local `fused_step_on_image` theorem has no program-wide premise. Its use as a
+-- program interpretation requires every licensed operation to be a contract step.
+-- Counting pre-existing source licenses exposes one possible violation of that condition.
 mutual
   def licensedOps : List Op → Nat
     | [] => 0
@@ -238,7 +239,7 @@ def report (ib : Nat) (before after : Module) : Json := Id.run do
     ("index_bits", toJson ib), ("candidates", toJson (candidates before)),
     ("fusion_premises", Json.mkObj [("source_licensed_operations", toJson (licensedIn before)),
       ("site_formats", toJson (siteFormats before)),
-      ("theorem", toJson "MerlinVerify.Rules.Bf16F32AccFusion.fused_step")]),
+      ("theorem", toJson "MerlinVerify.Rules.Bf16F32AccFusion.fused_step_on_image")]),
     ("sites", toJson sites), ("conditional_match", toJson matched),
     ("qualification_passed", toJson qualified), ("policy_reviewed", toJson false),
     ("pass_boundary", siteReport ib before after),

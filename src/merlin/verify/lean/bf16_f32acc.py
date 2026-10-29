@@ -60,13 +60,15 @@ CONTRACT_THEOREMS = {
     "MerlinVerify.Rules.Bf16F32AccSite.accumulating_op_sound": "MerlinVerify.Rules.Bf16F32AccSite",
     "MerlinVerify.Rules.Bf16F32AccSite.final_op_sound": "MerlinVerify.Rules.Bf16F32AccSite",
     "MerlinVerify.Rules.Bf16F32AccFusion.fused_step": "MerlinVerify.Rules.Bf16F32AccFusion",
+    "MerlinVerify.Rules.Bf16F32AccFusion.fused_step_on_image": "MerlinVerify.Rules.Bf16F32AccFusion",
 }
 ASSUMPTIONS = [
     *LEDGER,
     "f32-accumulation contract is a review candidate written after reading the pass (not barrier-authored)",
-    "contract-flagged multiply-add fusion: covered by Bf16F32AccFusion.fused_step only when the target fuses "
-    "every contract step or none, the operand extension is injective, and the source has no licensed "
-    "operations (cert fusion_premises)",
+    "contract-flagged multiply-add fusion: Bf16F32AccFusion.fused_step_on_image needs no extension "
+    "injectivity; program correspondence requires one operand format, uniform target fusion of every "
+    "contract step or none, and no other contract-flagged f32 multiply/add operations outside those "
+    "steps (cert fusion_premises)",
 ]
 BOUNDARY_DOMAIN = "every input and context, wherever the contract reference is modelled (conditional policy refinement)"
 SEGMENT_DOMAIN = (

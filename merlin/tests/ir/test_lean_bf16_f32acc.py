@@ -380,6 +380,7 @@ def test_fusion_premise_counts_licensed_source_operations(lean_tools, tmp_path):
     source = bmm(body=STANDARD_BODY.replace("fastmath<none>", "fastmath<contract>"))
     outcome = check(lean_tools, tmp_path, source, source)
     assert outcome["fusion_premises"]["source_licensed_operations"] == 2
+    assert outcome["fusion_premises"]["theorem"] == "MerlinVerify.Rules.Bf16F32AccFusion.fused_step_on_image"
     assert not outcome["conditional_match"]  # a pre-licensed body is outside the contract
 
 

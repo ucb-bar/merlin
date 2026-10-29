@@ -3,16 +3,16 @@ Fusion of a `contract`-licensed multiply-add is an instance of the parametric fl
 
 MLIR permits the lowering to evaluate `acc + ext(a) * ext(b)`, with `contract` on both operations,
 as one fused multiply-add. The frozen semantics instead gives each flagged operation its own
-uninterpreted function (`Bf16F32AccContract.contract_distinct`). `fused_step` shows that this
-loses nothing for the contract's step: for any base model `M`, any fused operation `fma`, and an
-`extf` that is injective on the operand format, there is a model that agrees with `M` on every
-other operation key and whose contract step is exactly `fma(ext a, ext b, acc)`. Every claim that
-quantifies over all float models therefore covers a uniformly fused execution as well.
+uninterpreted function (`Bf16F32AccContract.contract_distinct`). `fused_step_on_image` shows that
+for any base model `M`, any fused operation `fma`, and any operand-format conversion, there is
+a model that agrees with `M` on every other operation key and whose contract step is exactly
+`fma(ext a, ext b, acc)`. Recovering the extended operands needs no conversion injectivity.
+The historical pinned `fused_step` retains its stronger, unnecessary injectivity premise.
 
 Premises a claim citing this must discharge: (1) the program's only `contract`-flagged f32
 `arith.mulf`/`arith.addf` operations are contract steps in one operand format `k`; (2) the target
-fuses either every such step or none; (3) the target's `extf` from `k` is injective (bf16 → f32 is a
-bit shift; f16 → f32 is injective on non-NaN inputs).
+fuses either every such step or none. These are program/target correspondence premises, not
+conclusions of the local step theorem. No bit-shift implementation or non-NaN domain is assumed.
 -/
 import MerlinVerify.Rules.Bf16F32AccContract
 
@@ -98,8 +98,22 @@ theorem fused_step (M : FloatModel) (k : FKind) (hk : k.width = 16)
   rw [fused_binary, fused_binary]
   simp only [add_ne_mul, ↓reduceIte, recover, unpack_pack, BitVec.cast_cast, BitVec.cast_eq]
 
+/-- Only the converted values are observed by FMA. An arbitrary selected preimage
+recreates those values even when conversion merges NaNs or other bit patterns.
+This additive theorem preserves the historical pinned statement above. -/
+theorem fused_step_on_image (M : FloatModel) (k : FKind) (hk : k.width = 16)
+    (fma : FBits .f32 → FBits .f32 → FBits .f32 → FBits .f32)
+    (a b : FBits k) (acc : FBits .f32) :
+    step (fused M k hk fma) ⟨.contract, .contract⟩ a b acc = fma (ext M k a) (ext M k b) acc := by
+  have recover (x : FBits k) : ext M k (source M k (ext M k x)) = ext M k x :=
+    Function.invFun_eq ⟨x, rfl⟩
+  simp only [step, fused_ext]
+  rw [fused_binary, fused_binary]
+  simp only [add_ne_mul, ↓reduceIte, unpack_pack, BitVec.cast_cast, BitVec.cast_eq, recover]
+
 #print axioms unpack_pack
 #print axioms fused_agrees
 #print axioms fused_step
+#print axioms fused_step_on_image
 
 end MerlinVerify.Rules.Bf16F32AccFusion
