@@ -38,6 +38,7 @@ from .capsule_inputs import (  # noqa: F401 — stable legacy input/helper expor
     _flatten_row_major,
     _leaf_dtype,
     bind_exact_integer_stimulus,
+    bind_palette_stimulus,
     canonical_input_raws,
     canonical_input_values,
     capsule_stimulus_range,

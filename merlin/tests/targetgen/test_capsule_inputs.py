@@ -285,3 +285,61 @@ assert "merlin.targetgen.capsule_runner" not in sys.modules
         [sys.executable, "-c", script, str(tmp_path)], cwd=tmp_path, env=env, capture_output=True, text=True
     )
     assert result.returncode == 0, result.stderr
+
+
+def _palette_matmul():
+    capsule = {
+        "name": "palette_matmul",
+        "inputs": [
+            {"name": "W", "role": "weight", "dtype": "i8", "shape": [4, 6]},
+            {"name": "A0", "role": "input", "dtype": "i8", "shape": [4, 4]},
+            {"name": "B", "role": "bias", "dtype": "i32", "shape": [6]},
+        ],
+        "operation": {"op": "matmul", "attributes": {
+            "lhs": "A0", "weight": "W", "out": "Y0", "bias": "B", "epilogue": ["bias_add", "relu"],
+            "output_dtype": "i8"}},
+        "input_palette": {"schema": "merlin.component_input_palette.v1", "inputs": [
+            {"name": "A0", "axis": 0, "values": [1, -1], "offset": 0},
+            {"name": "W", "axis": 1, "values": [8, -8, 0, 1, -1, 2], "offset": 0},
+            {"name": "B", "axis": "linear", "values": [-1, 3, 255], "offset": 0}]},
+        "stimulus_range": [-128, 127],
+    }
+    cb = {"tensors": {
+        "W": {"shape": [4, 6], "dtype": "i8", "role": "weight"},
+        "A0": {"shape": [4, 4], "dtype": "i8", "role": "input"},
+        "B": {"shape": [6], "dtype": "i32", "role": "bias"},
+        "Y0": {"shape": [4, 6], "dtype": "i8", "role": "output"}},
+        "commands": [
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}, "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A0", "rhs": "W_res", "dst": "acc0"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"},
+             "attributes": {"epilogue": ["bias_add", "relu"], "output_dtype": "i8", "bias": "B"}}]}
+    return capsule, cb
+
+
+def _flat(rows):
+    return [v for r in rows for v in (r if isinstance(r, list) else [r])]
+
+
+def test_palette_stimulus_binds_reference_to_golden_operands():
+    from merlin.runtime.reference import reference_outputs
+
+    capsule, cb = _palette_matmul()
+    gold = _flat(golden._recompute_golden(capsule)["Y0"])
+    assert _flat(reference_outputs(cb)["Y0"]) != gold  # unbound: the reference invents its own leaves
+    assert inputs.bind_palette_stimulus(capsule, cb) is True
+    assert _flat(reference_outputs(cb)["Y0"]) == gold
+
+
+def test_palette_stimulus_is_all_or_nothing_and_noop_without_palette():
+    capsule, cb = _palette_matmul()
+    cb["tensors"].pop("B")
+    assert inputs.bind_palette_stimulus(capsule, cb) is False
+    assert all("data" not in s for s in cb["tensors"].values())
+    capsule, cb = _palette_matmul()
+    capsule.pop("input_palette")
+    assert inputs.bind_palette_stimulus(capsule, cb) is False
+    assert all("data" not in s for s in cb["tensors"].values())
+    capsule, cb = _palette_matmul()
+    cb["tensors"]["W"]["shape"] = [6, 4]
+    assert inputs.bind_palette_stimulus(capsule, cb) is False

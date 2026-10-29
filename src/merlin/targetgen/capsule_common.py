@@ -280,6 +280,8 @@ NOT_MEASURED_STATUSES = (
 
 def _flat(nested) -> list:
     """Preserve row-major scalar order across logical ranks and dense readback rows."""
+    if not isinstance(nested, (list, tuple)):
+        return [nested]  # a rank-0 output reads back as a bare scalar
     out: list = []
     for value in nested:
         if isinstance(value, list):

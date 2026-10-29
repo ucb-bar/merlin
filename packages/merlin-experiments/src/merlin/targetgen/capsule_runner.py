@@ -5010,6 +5010,11 @@ def run_capsule(
                         for _leaf, _rb in zip(_leaves, list(_raws.values())):
                             _tensors[_leaf]["preload_b64"] = _b64.b64encode(_rb).decode()
 
+        if not whole_program and not independent_float:
+            # A palette-declared stimulus is what the golden was evaluated on; the reference, simulator and
+            # harness must read the same leaf bytes (all-or-nothing, by name; a no-op without a palette).
+            CG.bind_palette_stimulus(capsule, cb)
+
         if CG.is_exact_pytorch_integer_source(capsule):
             # Reference, simulator, RTL and whole-program harness all consume the same
             # captured bytes as the independently checked Torch output.

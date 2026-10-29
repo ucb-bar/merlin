@@ -331,6 +331,30 @@ def bind_exact_integer_stimulus(capsule: dict, command_buffer: dict) -> None:
         spec["data"] = list(value["values"])
 
 
+def bind_palette_stimulus(capsule: dict, command_buffer: dict) -> bool:
+    """Pin a palette-declared stimulus on an ordinary command buffer's leaf data.
+
+    A capsule that declares ``input_palette`` has its golden evaluated on the realized palette, not on the
+    name-materialized fill the reference and simulator otherwise invent for every leaf. Without this the
+    L0/L1 command-buffer tiers interpret a *correct* buffer on different operands than the golden and
+    report "does not compute the declared operation". The binding is all-or-nothing and by name: if any
+    palette leaf is not a matching command-buffer leaf the buffer is left untouched (previous behaviour).
+    Returns whether the stimulus was bound. Exact PyTorch integer slices have their own binder.
+    """
+    if capsule.get("input_palette") is None or is_exact_pytorch_integer_source(capsule):
+        return False
+    values = materialized_input_values(capsule)
+    tensors = command_buffer.get("tensors") or {}
+    for name, value in values.items():
+        spec = tensors.get(name)
+        if (not isinstance(spec, dict) or spec.get("role") not in ("input", "weight", "bias")
+                or list(spec.get("shape") or ()) != value["shape"]):
+            return False
+    for name, value in values.items():
+        tensors[name]["data"] = list(value["values"])
+    return True
+
+
 def _flatten_row_major(x: object) -> list:
     """Flatten an arbitrarily-nested list to a single row-major list of scalars; a non-list passes through
     as a 1-element list. Idempotent on an already-flat list."""
