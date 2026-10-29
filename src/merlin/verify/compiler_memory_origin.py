@@ -26,6 +26,9 @@ _ACTIVE = ContextVar("merlin_original_memory_compile", default=None)
 _LIVE = weakref.WeakKeyDictionary()
 _MODULES = (
     "merlin.verify.compiler_memory_origin",
+    "merlin.verify.memory_scalar_nan_admission",
+    "merlin.verify.lean_graph_input_admission",
+    "merlin.verify.gate_errors",
     "merlin.verify.compiler_transforms",
     "merlin.verify.pass_validation",
     "merlin.llvmlower.lower",
@@ -38,6 +41,10 @@ _MODULES = (
     "merlin.xdsl_dialects._common",
     "merlin.common.dense_float_ir",
     "xdsl.parser",
+    "xdsl.parser.core",
+    "xdsl.parser.attribute_parser",
+    "xdsl.utils.lexer",
+    "xdsl.utils.mlir_lexer",
     "xdsl.printer",
     "xdsl.context",
     "xdsl.ir.core",
@@ -72,8 +79,22 @@ def _functions(*, canonical=False):
     from merlin.xdsl_dialects._common import text
 
     from .compiler_transforms import apply, memory_lowering_pipeline
+    from .lean_graph_input_admission import _attributes, _fields
+    from .memory_scalar_nan_admission import (
+        _admit_nan_attributes,
+        _parse_bounded,
+        admit_memory_scalar_attributes,
+        parse_memory_module,
+    )
 
     functions = (
+        (_canonical_source, "merlin.verify.compiler_memory_origin"),
+        (admit_memory_scalar_attributes, "merlin.verify.memory_scalar_nan_admission"),
+        (_admit_nan_attributes, "merlin.verify.memory_scalar_nan_admission"),
+        (_parse_bounded, "merlin.verify.memory_scalar_nan_admission"),
+        (parse_memory_module, "merlin.verify.memory_scalar_nan_admission"),
+        (_attributes, "merlin.verify.lean_graph_input_admission"),
+        (_fields, "merlin.verify.lean_graph_input_admission"),
         (parse_ir, "merlin.transforms.certificates"),
         (text, "merlin.xdsl_dialects._common"),
         (apply, "merlin.verify.compiler_transforms"),
@@ -114,13 +135,15 @@ def _functions(*, canonical=False):
 def _canonical_source(raw):
     from xdsl.utils.exceptions import ParseError, VerifyException
 
-    from merlin.transforms.certificates import parse_ir
     from merlin.xdsl_dialects._common import text
+
+    from .memory_scalar_nan_admission import admit_memory_scalar_attributes, parse_memory_module
 
     if type(raw) is not str:
         raise ValueError("actual memory source text required")
     try:
-        module = parse_ir(raw)
+        module = parse_memory_module(raw)
+        admit_memory_scalar_attributes(module)
         # SSA hints and dictionary insertion order are printer choices. Preserve
         # every property/attribute value, symbol, type, binding and block.
         for operation in module.walk():
@@ -350,6 +373,10 @@ class MemoryScope:
         )
         if type(entry) is not dict or entry != expected:
             raise ValueError("CSE capture differs from its original memory scope/runner/pipeline/buffers")
+        # Even raw-identity CSE capture remains inside the scalar-NaN-free
+        # memory profile; canonicalize supplies no proof of these literals.
+        _canonical_source(before)
+        _canonical_source(after)
         if precanonical != expected_upstream or _canonical_source(precanonical) != original.upstream_canonical:
             raise ValueError("actual pre-canonicalize whole module differs from original frozen upstream input")
         self.upstream_text(work)

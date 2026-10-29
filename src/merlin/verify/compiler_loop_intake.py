@@ -7,7 +7,7 @@ independently projected, and Lean checks the local body/control/carry joins.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from .loop_transform_intake import ROOT, Settings, Unavailable, Unsupported, canonical, digest, file_ref
@@ -51,6 +51,50 @@ class PreparedCompilerLoop:
         }
 
 
+def _admit_actual_nan_free_buffers(buffers):
+    from .lean_graph_input_admission import InputAdmissionError
+    from .memory_scalar_nan_admission import admit_loop_scalar_attributes, parse_loop_module
+
+    # This check precedes every mode/context/inner dispatch. A successful
+    # fallback may not bypass admission of an actual source/middle/target.
+    try:
+        for raw in buffers:
+            admit_loop_scalar_attributes(parse_loop_module(raw))
+    except InputAdmissionError as error:
+        raise Unsupported(str(error)) from error
+
+
+def _bind_nan_admission(prepared):
+    from merlin.common.paths import module_source_path
+
+    parent = Path(__file__).parent
+    paths = {
+        parent / "memory_scalar_nan_admission.py",
+        parent / "lean_graph_input_admission.py",
+        parent / "gate_errors.py",
+    }
+    paths.update(
+        module_source_path(name)
+        for name in (
+            "merlin.common.paths",
+            "merlin.common.dense_float_ir",
+            "merlin.transforms.certificates",
+            "xdsl.dialects.builtin",
+            "xdsl.parser",
+            "xdsl.parser.core",
+            "xdsl.parser.attribute_parser",
+            "xdsl.printer",
+            "xdsl.context",
+            "xdsl.ir.core",
+            "xdsl.utils.lexer",
+            "xdsl.utils.mlir_lexer",
+        )
+    )
+    sources = {row["path"]: row for row in json.loads(prepared.sources_json)}
+    sources.update({str(path.resolve()): file_ref(path) for path in paths})
+    return replace(prepared, sources_json=canonical([sources[key] for key in sorted(sources)]))
+
+
 def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
     from xdsl.utils.exceptions import VerifyException
 
@@ -76,6 +120,7 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
         raise Unavailable("actual compiler buffer byte resource budget exceeded")
     if any(a == b for a, b in zip(buffers, buffers[1:])):
         raise Unsupported("unchanged compiler boundaries require no proof job")
+    _admit_actual_nan_free_buffers(buffers)
     if kinds == (UNROLL,):
         from .compiler_unroll_modes_intake import prepare as prepare_mode
 
@@ -84,7 +129,7 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
         except (ValueError, KeyError, TypeError, IndexError, VerifyException):
             mode = None
         if mode is not None:
-            return mode
+            return _bind_nan_admission(mode)
     actual_buffers = buffers
     try:
         modules = [parse_admitted(x, parse_ir, calls="external-only") for x in buffers]
@@ -156,13 +201,15 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
             from .compiler_loop_context_intake import prepare as prepare_context
 
             try:
-                return prepare_context(actual_buffers, kinds=kinds, factor=max(2, factor), tile=tile)
+                return _bind_nan_admission(
+                    prepare_context(actual_buffers, kinds=kinds, factor=max(2, factor), tile=tile)
+                )
             except (ValueError, KeyError, TypeError, IndexError, VerifyException):
                 pass
         from .compiler_loop_inner_intake import prepare as prepare_inner
 
         try:
-            return prepare_inner(actual_buffers, kinds=kinds, factor=max(2, factor), tile=tile)
+            return _bind_nan_admission(prepare_inner(actual_buffers, kinds=kinds, factor=max(2, factor), tile=tile))
         except (ValueError, KeyError, TypeError, IndexError, VerifyException) as error:
             raise Unsupported(str(error)) from error
     roots, namespaces = [], []
@@ -202,8 +249,16 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
     paths.update((parent.parent / "transforms").glob("*.py"))
     paths.update((parent.parent / "common").glob("owned_*.py"))
     sources.extend(file_ref(p) for p in sorted(paths))
-    return PreparedCompilerLoop(
-        buffers, Settings(factor=factor, tile=tile), kinds, canonical(capture), query, tuple(roots), canonical(sources)
+    return _bind_nan_admission(
+        PreparedCompilerLoop(
+            buffers,
+            Settings(factor=factor, tile=tile),
+            kinds,
+            canonical(capture),
+            query,
+            tuple(roots),
+            canonical(sources),
+        )
     )
 
 

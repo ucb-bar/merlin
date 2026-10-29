@@ -12,6 +12,8 @@ import json
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
+from merlin.common.paths import module_source_path
+
 from .buffer_reuse_bridge import parse, reconstruct_chain
 from .buffer_reuse_emit import factor, shape_validity, theorem_roster
 from .lean_graph_loops_memory_scf_after_entries import prepare_entries
@@ -127,8 +129,25 @@ def prepare(source, final, hint, *, allocator, index_bits=64):
         parent / "__init__.py",
         parent.parent / "__init__.py",
         parent / "lean_graph_input_admission.py",
+        parent / "memory_scalar_nan_admission.py",
+        parent / "gate_errors.py",
         parent / "lean_graph_pipeline_gate_projection.py",
     }
+    paths.update(
+        module_source_path(name)
+        for name in (
+            "merlin.common.dense_float_ir",
+            "xdsl.dialects.builtin",
+            "xdsl.parser",
+            "xdsl.parser.core",
+            "xdsl.parser.attribute_parser",
+            "xdsl.printer",
+            "xdsl.context",
+            "xdsl.ir.core",
+            "xdsl.utils.lexer",
+            "xdsl.utils.mlir_lexer",
+        )
+    )
     paths.update(parent.glob("lean_graph_loops*.py"))
     # Literal rendering imports the Kernel IR namespace through
     # lean_graph_loops_unroll -> lean_graph_loops. These five project sources

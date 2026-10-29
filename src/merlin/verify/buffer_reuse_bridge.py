@@ -8,22 +8,14 @@ from __future__ import annotations
 
 import hashlib
 
-from xdsl.context import Context
-from xdsl.dialects import arith, builtin, func, memref, scf
-from xdsl.parser import Parser
-
 from .lean_graph_input_admission import parse_admitted
 from .lean_graph_loops_shape_capture import export
+from .memory_scalar_nan_admission import admit_memory_scalar_attributes, parse_memory_module
 
 
 def parse(raw):
-    def parser(text):
-        context = Context(allow_unregistered=True)
-        for dialect in (builtin.Builtin, arith.Arith, func.Func, memref.MemRef, scf.Scf):
-            context.load_dialect(dialect)
-        return Parser(context, text).parse_module()
-
-    module = parse_admitted(raw, parser, calls="shape-direct")
+    module = parse_admitted(raw, parse_memory_module, calls="shape-direct")
+    admit_memory_scalar_attributes(module)
     module.verify()
     return module
 
