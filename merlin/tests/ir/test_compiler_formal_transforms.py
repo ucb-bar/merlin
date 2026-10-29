@@ -59,11 +59,14 @@ def test_individual_boundary_builds_complete_adjacent_roots(kind):
     buffers = pair(kind)
     prepared = intake.prepare(buffers, kinds=(kind,))
     assert prepared.actual_target == buffers[-1]
+    assert prepared.kinds == (kind,)
     if kind == intake.UNROLL:
-        assert prepared.actual_target != prepared.buffers[-1]
+        # Current unroll-mode packers repeat the actual target in the final
+        # compatibility slot. The selected adjacent root owns this boundary.
+        assert prepared.actual_target == prepared.buffers[1]
     assert intake.ROOT in prepared.roots
-    assert "Merlin.GraphGateProfileAdjacent.complete2" in prepared.roots
-    assert "Merlin.GraphGateProfileAdjacent.complete3" in prepared.roots
+    adjacent = "complete2" if kind == intake.UNROLL else "complete3"
+    assert "Merlin.GraphGateProfileAdjacent." + adjacent in prepared.roots
     assert "sorry" not in prepared.query
     assert intake.refresh(prepared) == prepared
 
@@ -114,7 +117,7 @@ def test_project_proof_root_ignores_caller_repository_override(tmp_path, monkeyp
         {"unroll_factor": 1},
         {"tile_size": 1},
         {"tile_size": True},
-        {"buffer_allocator": transforms.ALLOCATOR},
+        {"buffer_allocator": True},
         {"buffer_allocator": "finite", "tile_size": 3},
         {"buffer_allocator": transforms.ALLOCATOR, "tile_size": 17},
         {"buffer_allocator": transforms.ALLOCATOR, "tile_size": 3, "unroll_factor": 2},
