@@ -50,7 +50,7 @@ theorem actual_materialized : After.check actual = true := by
 theorem complete_actual_chain {{Value User : Type}} (scalar : Epoch.BinaryMeaning Value)
     (inputs : List (Runtime Value)) (typed : ValuesHold kernel.function.parameters inputs)
     (callers : Epoch.CallersValid plan.objects.length plan.callers (assign emptyEnv kernel.function.parameters inputs))
-    (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User) :
+    (heap : GraphLoopsReuse.Heap Value) (user : User) (observed : Epoch.Observation Value User) :
     Epoch.graphOutcomes plan.objects.length (finalMeaning {_nat(index_bits)} indices plan.opcodes scalar)
       independentSource kernel.function.name inputs heap user observed ↔
     Epoch.graphOutcomes plan.objects.length (finalMeaning {_nat(index_bits)} indices plan.opcodes scalar)

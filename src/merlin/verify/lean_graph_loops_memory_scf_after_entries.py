@@ -50,7 +50,7 @@ def _theorems(bits):
 theorem complete_roster {{Value User : Type}} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
     (row : EntryRow) (member : row ∈ rows) (inputs : List (Runtime Value))
     (domain : EntryDomain independentSource plan kernel row inputs)
-    (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User) :
+    (heap : GraphLoopsReuse.Heap Value) (user : User) (observed : Epoch.Observation Value User) :
     Epoch.graphOutcomes plan.objects.length (entryMeaning {bits} indices plan.opcodes scalar literals literal)
       independentSource row.name inputs heap user observed ↔
     Epoch.graphOutcomes plan.objects.length (entryMeaning {bits} indices plan.opcodes scalar literals literal)
@@ -67,7 +67,7 @@ theorem every_definition {{Value User : Type}} (scalar : Epoch.BinaryMeaning Val
     (function : Function) (defined : function ∈ independentSource.functions) :
     ∃ row ∈ rows, row.name = function.name ∧
       ∀ inputs : List (Runtime Value), EntryDomain independentSource plan kernel row inputs →
-      ∀ (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),
+      ∀ (heap : GraphLoopsReuse.Heap Value) (user : User) (observed : Epoch.Observation Value User),
       (Epoch.graphOutcomes plan.objects.length (entryMeaning {bits} indices plan.opcodes scalar literals literal)
         independentSource row.name inputs heap user observed ↔
        Epoch.graphOutcomes plan.objects.length (entryMeaning {bits} indices plan.opcodes scalar literals literal)
