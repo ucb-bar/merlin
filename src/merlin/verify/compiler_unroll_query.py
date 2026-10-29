@@ -72,8 +72,8 @@ def prepare_query(before, after, *, factor, index_bits, mode):
         if function["declaration"] or function["before"] == function["after"]:
             continue
         loops = [row["loop"] for row in function["before"] if "loop" in row]
-        if len(loops) != 1 or any("loop" in row for row in loops[0]["body"]):
-            raise ValueError("one region-free changed source loop per entry required")
+        if len(loops) != 1:
+            raise ValueError("one changed source loop per entry required")
         if any(set(ty) != {"bits"} for ty in loops[0]["carries"]):
             raise ValueError("word-typed carried state required")
         lower, upper, step = static_controls(function["before"], capture, input_count=len(function["inputs"]))
@@ -110,6 +110,8 @@ def prepare_query(before, after, *, factor, index_bits, mode):
         parent / f"lean_graph_pipeline_{mode}_emit.py",
         parent / "lean_graph_pipeline_tail.py",
         parent / "lean_graph_input_admission.py",
+        parent / "compiler_loop_nested.py",
+        parent / "compiler_unroll_inline_nested.py",
         parent / "lean_graph_pipeline_gate_projection.py",
     }
     paths.update(parent.glob("lean_graph_state*.py"))

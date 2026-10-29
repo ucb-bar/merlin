@@ -42,9 +42,9 @@ def emit(capture, *, flexible_parameters=False):
         "namespace Merlin.GraphStatePipelineInstance", "namespace Merlin.GraphStatePipelineInlineInstance"
     )
     text = "import Merlin.GraphStatePipelineInline\n" + text.replace("set_option linter.unusedSimpArgs false\n", "")
-    text = text.replace("import Merlin.GraphStatePipelineLoops\n", "").replace(
-        "import Merlin.GraphStatePipelineScope\n", ""
-    )
+    text = text.replace("import Merlin.GraphStatePipelineLoops\n", "")
+    if not flexible_parameters:
+        text = text.replace("import Merlin.GraphStatePipelineScope\n", "")
     for fi, function in enumerate(pair["functions"]):
         if function["declaration"]:
             continue
@@ -68,12 +68,18 @@ def emit(capture, *, flexible_parameters=False):
         arg_text = " ".join(args)
         binder = f"({' '.join(args)} : Int)" if args else ""
         start = len(text)
-        if (not flexible_parameters and input_count != 2) or len(positions) != 1 or any("loop" in row for row in after):
+        if (
+            (not flexible_parameters and input_count != 2)
+            or len(positions) != 1
+            or (not flexible_parameters and any("loop" in row for row in after))
+        ):
             raise ValueError("one changed top-level source loop/two arguments/no target loop required")
         pos = positions[0]
         loop = before[pos]["loop"]
         count = len(loop["carries"])
-        if (not flexible_parameters and not 1 <= count <= 2) or any("loop" in row for row in loop["body"]):
+        if (not flexible_parameters and not 1 <= count <= 2) or (
+            not flexible_parameters and any("loop" in row for row in loop["body"])
+        ):
             raise ValueError("region-free inline body with one/two carries required")
         env = prefix_environment(before, args, capture)
         lower, upper, step = static_controls(before, capture, input_count=input_count)
@@ -108,34 +114,43 @@ def emit(capture, *, flexible_parameters=False):
             text += "theorem empty_body_never_runs (world : World) :\n"
             text += f"    loopEval {count} {body} (indexIterations {lower} {upper} {step}) {lean_list(initial)} world = .ok ({lean_list(initial)},world) :=\n"
             text += f"  Inline.empty_no_body {count} _ {lower} {upper} {step} (by decide) (by decide) _ world rfl\n"
-        text += "theorem actual_inputs (world : World) : evalProgram (M primitive external) S0 [x0,x1] world =\n    evalProgram (M primitive external) S1 [x0,x1] world := by\n"
-        text += "  rw [source_form]\n"
-        if trips == 0:
-            text += "  rw [empty_body_never_runs]\n"
-        elif flexible_parameters:
-            text += f"  have indices : indexIterations ({lower} : Int) {upper} {step} = (progression {lower} {step} {trips}).map Int.ofNat :=\n"
-            text += f"    indexIterations_count (lower := {lower}) (upper := {upper}) (step := {step}) (count := {trips}) (by decide) (by decide)\n"
-            text += "  rw [indices]\n"
+        if flexible_parameters and any("loop" in row for row in loop["body"]):
+            from .compiler_unroll_inline_nested import emit as nested_inline
+
+            text += nested_inline(capture, before, after, loop, env, initial, trips, lower, upper, step, args)
         else:
-            text += f"  rw [Inline.counted_continuation {count} {body} {nxt} {lower} {upper} {step} {trips} (by decide) (by decide)]\n"
-        text += f"  simp only [B,N,E,S1,progression,List.map_cons,List.map_nil,{SIMPS},loopEval]\n"
-        values = list(initial)
-        calls = []
-        control_map = {r["identity"]: r for r in capture["index_operations"]}
-        for lane in range(trips):
-            values, more = symbolic_body(
-                loop["body"],
-                [f"({lower + lane * step} : Int)", *values, *env],
+            text += "theorem actual_inputs (world : World) : evalProgram (M primitive external) S0 [x0,x1] world =\n    evalProgram (M primitive external) S1 [x0,x1] world := by\n"
+            text += "  rw [source_form]\n"
+            if trips == 0:
+                text += "  rw [empty_body_never_runs]\n"
+            elif flexible_parameters:
+                text += f"  have indices : indexIterations ({lower} : Int) {upper} {step} = (progression {lower} {step} {trips}).map Int.ofNat :=\n"
+                text += f"    indexIterations_count (lower := {lower}) (upper := {upper}) (step := {step}) (count := {trips}) (by decide) (by decide)\n"
+                text += "  rw [indices]\n"
+            else:
+                text += f"  rw [Inline.counted_continuation {count} {body} {nxt} {lower} {upper} {step} {trips} (by decide) (by decide)]\n"
+            text += f"  simp only [B,N,E,S1,progression,List.map_cons,List.map_nil,{SIMPS},loopEval]\n"
+            values = list(initial)
+            calls = []
+            control_map = {r["identity"]: r for r in capture["index_operations"]}
+            for lane in range(trips):
+                values, more = symbolic_body(
+                    loop["body"],
+                    [f"({lower + lane * step} : Int)", *values, *env],
+                    control_map,
+                    len(calls),
+                    "world" if not calls else f"w{len(calls) - 1}",
+                )
+                calls += more
+            _, more = symbolic_body(
+                before[pos + 1 :],
+                [*values, *env],
                 control_map,
                 len(calls),
                 "world" if not calls else f"w{len(calls) - 1}",
             )
             calls += more
-        _, more = symbolic_body(
-            before[pos + 1 :], [*values, *env], control_map, len(calls), "world" if not calls else f"w{len(calls) - 1}"
-        )
-        calls += more
-        text += _calls(calls, max_calls=None if flexible_parameters else 16)
+            text += _calls(calls, max_calls=None if flexible_parameters else 16)
         text += "theorem actual (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) :\n"
         text += "    evalProgram (M primitive external) S0 arguments world = evalProgram (M primitive external) S1 arguments world := by\n"
         text = text[:start] + text[start:].replace("(x0 x1 : Int)", binder).replace(

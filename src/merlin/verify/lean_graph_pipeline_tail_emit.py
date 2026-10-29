@@ -69,7 +69,7 @@ def emit(capture, *, flexible_parameters=False):
         p, q = pos[0][0], pos[1][0]
         loops = {2: before[p]["loop"], 3: after[q]["loop"]}
         tail = after[q + 1]["loop"]
-        if any("loop" in row for loop in (*loops.values(), tail) for row in loop["body"]):
+        if not flexible_parameters and any("loop" in row for loop in (*loops.values(), tail) for row in loop["body"]):
             raise ValueError("nested original/tail bodies require separate bridges")
         count = len(loops[2]["carries"])
         if (not flexible_parameters and not 1 <= count <= 2) or any(
@@ -114,9 +114,14 @@ def emit(capture, *, flexible_parameters=False):
             text += (
                 f"    (fun r => evalProgram (M primitive external) N{s} (r.1++E{s} primitive x0 x1) r.2) := by rfl\n"
             )
-        text += body_group_text(
-            capture, loops, envs, count, factor, step, "x0 x1", max_calls=None if flexible_parameters else 16
-        )
+        if flexible_parameters and any("loop" in row for row in loops[2]["body"]):
+            from .compiler_loop_nested import body_group_text as nested_body_group
+
+            text += nested_body_group(capture, loops, envs, count, factor, step, "x0 x1")
+        else:
+            text += body_group_text(
+                capture, loops, envs, count, factor, step, "x0 x1", max_calls=None if flexible_parameters else 16
+            )
         intro = unpack("previous", "previousSize", count, "p") + unpack("carry", "arity", count, "c")
         statement = f"theorem tail_body (iv : Int) (previous carry : List Int) (world : World) (previousSize : previous.length = {count}) (arity : carry.length = {count}) :\n"
         statement += "  evalProgram (M primitive external) B2 (iv::carry++E2 primitive x0 x1) world =\n"
