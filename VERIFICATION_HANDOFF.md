@@ -1,3 +1,23 @@
+# Overnight pass integration — 2026-10-29
+
+Continue on **`feat/pass-verif-integration`**. MACC checker commit `ce4369279`
+preserves shared SSA operands and initialization-as-input in local site proofs;
+draft numerical admission is unchanged. Current-source empty/inline/tail unroll
+adapters, mixed-entry composition, nested-body bridges and checked Q/DQ prefix
+composition are in the working tree, under qualification. The exact pinned
+native Q/DQ source environment is now available; the former missing-tool blocker
+has been resolved without changing pins. The user requested continuous progress,
+incremental integration commits and periodic proof/interface documentation.
+
+Use the [current progress and evidence cuts](out/artifacts/handoff/pass-verif-integration-20261028/README.md),
+[completion scope](docs/design/lean_pass_integration_completion.md) and
+[stack/interface guide](docs/guides/lean_compiler_stack.md). All-pass completion
+and the human-review-only milestone remain open. Production MACC fixes remain
+an unapplied review packet; Q/DQ source specification and MACC numerical policy
+remain proposed/draft.
+
+---
+
 # Pass proof completion plan and loop generalization — 2026-10-29
 
 Continue on **`feat/pass-verif-integration`**. Code `0fd1b0294` removes separate

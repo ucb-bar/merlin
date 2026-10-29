@@ -1,3 +1,66 @@
+# Overnight integration work — 2026-10-29
+
+Active branch: **`feat/pass-verif-integration`**. The latest committed checker
+slice is `ce4369279`, preserving repeated MACC SSA operands and initialization
+used as contraction inputs. Further loop and Q/DQ integration is in the working
+tree and is undergoing source-frozen qualification. The active objective still
+covers all current pass interfaces through Merlin output IR; it is not complete.
+
+Current evidence, with distinct source cuts retained:
+
+- Current-source empty/full-inline/bulk-plus-tail unroll adapters passed 14
+  targeted cases: operational kernel/audit/delivery, actual corruption refusal,
+  and three compiler→LLVM→native comparisons. Legacy held entry points remain
+  held. An initial native test harness reused a loaded library pathname; fresh
+  process checks diagnosed it, unique per-case library paths fixed the harness,
+  and the three affected native comparisons passed on rerun.
+- A common-registry five-function query covers empty, inline, tail, bulk and an
+  unchanged dynamic-loop entry. Kernel compilation/audit and the real complete
+  compiler/native case passed. One earlier direct delivery test correctly
+  refused concurrent source changes after audit; its isolated stable-cut rerun
+  is pending. Actual corrupt inline and bulk functions were rejected.
+- Nested-body unrolling and standalone tiling queries now compile. The nested
+  body is retained operationally and related with the existing scope checker,
+  not replaced by a trip-count claim. Canonical delivery/mutation/native
+  qualification is running. This does not yet claim arbitrary inner-loop
+  rewrites, multiple sibling changes or all nested inline/tail modes.
+- MACC has 24 new direct checker cases and 29 existing direct regressions
+  passing on the updated checker. Both initialized-input formats passed fresh
+  live delivery and replay. Earlier shared-operand live checks retain their
+  earlier cuts. The new helper theorems audit to the standard three axioms;
+  frozen semantics/specifications and numerical approval are unchanged.
+- Q/DQ's previously missing exact CPU Torch wheel/runtime is provisioned in
+  isolated owned scratch, with the existing wheel hash and pinned producer
+  verified. Real original-program capture/replay passed, including the expected
+  precision-loss refusal. Eight captured xDSL/textual boundaries passed before
+  the later MACC checker rebuild; their old replay correctly refused changed
+  checker provenance. A fresh final source-qualified compiler matrix is running;
+  its first real optional-SourceCapture compiler case passed.
+- Q/DQ now has an explicit checked prefix option joining captured IR to the
+  actual lowering input, with a composed captured-IR→output refinement. Exact
+  input binding remains the default. This claim remains under the proposed
+  source model; native examples do not approve universal framework semantics.
+- Current-compiler configuration elision intake/worker/hook work is prepared in
+  isolated scratch while numerical source bindings are frozen. It is not yet
+  installed in the ordinary compiler; the historical standalone API is intact.
+
+Do not sum overlapping runs or relabel scratch candidate proofs as compiler
+acceptance. A 21-call tail stress query exceeded its 180-second resource budget;
+no acceptance is claimed for that case. Operational budgets remain explicit.
+
+The unapplied MACC producer-review packet contains real counterexamples and two
+proposals: preserve the unsupported module with zero policy coverage, or reject
+an unsupported policy request before mutation. Installation requires separate
+review under `merlin/lean/AGENT.md`; numerical admission is an independent review.
+Q/DQ per-group and broader precision forms still need semantic/proof coverage.
+Untiled buffer reuse, configuration consumers and general loop/context coverage
+remain engineering tasks. Detailed limits are tracked in the
+[completion plan](../../../../docs/design/lean_pass_integration_completion.md).
+
+Earlier results below retain their stated source cuts.
+
+---
+
 # Completion plan and scalar loop generalization — 2026-10-29
 
 Use **`feat/pass-verif-integration`**, code `0fd1b0294`, based on the colleague's

@@ -16,6 +16,15 @@ code_refs:
   - src/merlin/verify/buffer_reuse_intake.py
   - src/merlin/verify/configuration_elision_gate.py
   - src/merlin/verify/configuration_hoist_gate.py
+  - src/merlin/verify/lean_graph_pipeline_inline.py
+  - src/merlin/verify/lean_graph_pipeline_tail.py
+  - src/merlin/verify/lean_graph_pipeline_gate_profiles.py
+  - src/merlin/transforms/planning.py
+  - src/merlin/compile/scheduling/configuration_ir.py
+  - src/merlin/compile/scheduling/configuration_loops.py
+  - src/merlin/compile/scheduling/schedule_pipeline.py
+  - src/merlin/llvmlower/device_target_passes.py
+  - src/merlin/sched/codegen/__init__.py
   - merlin/lean/MerlinVerify/Check/TypedModule.lean
   - merlin/lean/MerlinVerify/Check/Bf16F32AccBoundary.lean
   - src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean
@@ -77,6 +86,169 @@ Numerical producer fixes can be prepared while the loop/storage bridges are
 developed. Approval of numerical policies remains independent of technical
 implementation and testing. No phase closes by changing a status field or
 adding a selector to `all`.
+
+## Engineering scope and effort
+
+Here upstream integration means Merlin's normal compiler and selected scheduling
+consumers. The transformation algorithms largely exist. Seven checks are already
+registered, including the two explicitly selected numerical checks; configuration
+elision and hoisting have separate proof APIs. Most remaining work concerns
+coverage, current-source intake and real consumer enforcement.
+
+These are planning estimates from the current implementation, not measured
+completion times. One day means an experienced contributor's working day with
+Lean/Merlin familiarity. The broader target covers legal changing cases of the
+selected current producers under the compiler's index64 contract and the agreed
+IR language. Additional dialect semantics, a revised frozen semantic interface,
+new allocator policies and index32 support need separate estimates after an
+inventory. In particular, the DCE/CSE closure estimates assume the existing
+modeled tensor language; they do not budget every possible MLIR operation.
+
+Ranges include implementation, useful mutation controls, exact delivery and
+fresh replay for the work item. Human review turnaround, missing pinned tools,
+large toolchain builds and unrelated repository gate debt add calendar time.
+The first-delivery column is a subset of the broader estimate, not an extra
+charge. Broader row estimates exclude the shared foundation and final combined
+qualification below.
+
+| Pass | Current compiler status | Next contained delivery | Broader coverage effort | Main uncertainty |
+| --- | --- | --- | --- | --- |
+| Tensor DCE | Integrated in `all` | Existing route; 1–3 days for domain/source-support closure | 1–3 days within the current modeled domain | Additional operation families found by the inventory |
+| Leading tensor CSE | Integrated in `all` | Existing route; 1–3 days for coverage and endpoint audit | 1–3 days within the current modeled domain | Complete context and source-support coverage |
+| Ordered unrolling | Integrated for no-tail bulk loops | 5–8 days: activate empty/inline/tail cases through a real audited worker | 10–18 days | Typed cloning/renaming, tail joins, nested and unchanged context |
+| Ordered tiling | Integrated for one-dimensional scalar loops and the memory chain | 3–5 days: multiple/unchanged-loop context on the scalar route | 7–12 days | Nested/depth-selected bodies and composition with unrolling |
+| Private buffer reuse | Integrated through normalization→reuse→tiling | 5–8 days: independently selected untiled reuse for the current rank-two/i32 fragment | 15–25 days | General heap/epoch framing, current producer ranks/word widths and surrounding code |
+| Q/DQ lowering | Explicit compiler gate on both paths | 3–5 days: real pinned SourceCapture qualification and complete existing-route checks | 10–18 days | Capture-to-boundary joins, precisions/granularities and exact scalar conversion |
+| bf16/f16 MACC | Explicit draft-contract compiler gate | 3–5 days: separately reviewable producer legality fixes and regression packet | 8–15 days | Initialization/maps/operand wiring, mixed formats and permitted fusion policies |
+| Configuration-write elision | Producer has compiler consumers; Lean gate remains separate | 3–5 days: instruction-IR consumer requires fresh proof before returning changed IR | 7–12 days | Current-source intake, nested instruction context and the separate Kernel consumer |
+| Scoped configuration hoist | Producer and scoped proof API exist; no ordinary producer invocation found in the inspected source | 5–8 days: one real loop-capable Kernel owner runs and gates the current positive-loop case | 10–18 days | Choosing the owner, multiple prefixes, nesting and scoped effect/frame proofs |
+
+The shared foundation is **10–20 days**, counted once: roughly 5–10 for typed
+SSA renaming/context closure and 5–10 for the required semantic joins, common
+claim/coverage records and adapters. Reuse the existing owned workers, audits,
+capture and delivery machinery. Prove joins where actual routes cross models;
+separate routes do not require a universal replacement interpreter.
+
+Reserve **5–10 days** for combined qualification, installed-resource checks where
+promised, dependency regressions and the final review packet. The broader nine
+rows total 69–124 days; with shared work and final qualification this is
+**84–154 contributor-days, approximately 17–31 engineer-weeks before contingency**.
+For planning, reserve another 25–35 percent until the high-risk spikes below
+close. Three experienced contributors could target roughly 10–16 calendar weeks
+with that reserve, subject to shared-proof dependencies and review availability.
+This is a staffing scenario, not a committed delivery date.
+
+A narrower delivery that wires one real owner per existing configuration proof
+domain, prepares the known MACC producer fixes, qualifies the existing source
+capture route and runs focused qualification is approximately **4–6
+engineer-weeks**, assuming the pinned tools are available. It leaves the broader
+loop/storage/numerical coverage work open and does not satisfy the
+human-review-only milestone.
+
+### Concrete integration work per family
+
+**DCE/CSE:** keep the existing `pass_validation.observe` and leading-CSE route.
+Compare actual producer eligibility with the typed rulebook and source-support
+checker, inventory retained baseline refusals, and check complete module/context
+binding. Resolve genuine missing rules in the promised language. No additional
+selector or duplicate CSE implementation is needed.
+
+**Unrolling:** the inline and tail source preparations already exist in
+`lean_graph_pipeline_inline.py` and `lean_graph_pipeline_tail.py`. They explicitly
+remain held and issue no compiler authority. Review and kernel-qualify their
+actual generated statements, then add current-buffer intake, canonical dispatch,
+every adjacent boundary root and live delivery. Extend the structural theorem
+for multiple/nested loops, arbitrary typed cloned bodies, untouched context and
+effect/failure preservation. The first spike should compile and corrupt one real
+inline and one real nonempty-tail boundary using this route.
+
+**Tiling:** reuse the ordered-iteration theorems and the same context/SSA
+foundation. Extend actual projection and adjacent roots to multiple and nested
+loops, broader typed bodies and unroll-plus-tail outputs. A standalone scalar
+tiling proof and a storage-chain proof retain their respective relations.
+Dynamic/negative controls that the current producer leaves unchanged need
+identity handling, rather than a new dynamic tiling algorithm.
+
+**Buffer reuse:** separate the reuse boundary from the four-buffer requirement
+in `buffer_reuse_bridge.reconstruct_chain`. Build direct untiled intake and a
+heap/epoch simulation rooted in actual alloc/init/access/free operations, then
+generalize ranks, byte-addressable integer widths and surrounding contexts to
+match `transforms.planning.plan_storage`. The current producer already refuses
+escapes, unknown aliases, dynamic layouts and asynchronous lifetimes. Inventing
+new analyses to optimize those cases is an additional optimization project;
+the present gate must account for their unchanged context correctly. Existing
+normalization/identity proofs and lifetime lemmas remain reusable.
+
+**Q/DQ:** the worker and both compiler hooks already exist. Provision/select the
+exact source capture environment, run real original-PT2 reconstruction and fresh
+replay, then bind every earlier preprocessing change through a checked prefix.
+Close the production granularity/precision inventory, especially per-group and
+non-current output formats. Preserve reciprocal/conversion/rounding/clamp order.
+The source model's approval is a separate human decision. A new successful-source
+execution claim would add definedness work beyond the current refinement claim.
+
+**MACC:** first prepare independent fixes for generic-body operand recognition,
+map handling and initialization, preserving the counterexamples. A legitimate
+producer legality fix must follow the intended transform contract; suppressing
+rewrites merely to match the existing proof is insufficient. Then extend source
+site qualification/reference binding to all promised formats, maps and initial
+values, and account for the fusion choices licensed by emitted IR. Keep the
+claim as f32-policy conformance with numerical admission pending.
+
+**Configuration elision:** use `ConfigurationIRSelection.apply` and the existing
+selected instruction-IR transport for the first gated boundary. Introduce a
+current-compiler intake bound to the actual selected ISA/effect contracts;
+preserve the historical pinned-producer API. Hold changed IR until the live
+completion accepts. `schedule_pipeline` also calls
+`eliminate_redundant_configuration` on Kernel programs. Cover that distinct
+consumer with a Kernel intake or a proved representation bridge, then add the
+nested instruction-block context proof required by the production traversal.
+
+**Configuration hoisting:** choose the actual owner of the counted Kernel
+before emission, supply the original effect selection, and invoke the existing
+producer under explicit transformation/proof controls. The first proof can reuse
+the current positive-loop constant-setter domain. The straight-line
+`schedule_pipeline` is not a loop-capable insertion point. Existing structured
+Kernel owners that call `sched.codegen.emit_c_function` are candidate sites to
+audit. Extend proof coverage to the producer's complete movable prefixes and
+recursive scopes, with exact error/terminal-state preservation. Preserve
+zero-trip no-op behavior; any new guarded hoist is a separately proved change.
+
+### Additional prepared passes
+
+These are separate from the nine-interface total. Their transformations exist,
+but the larger scalar/integer profile's `public_check` refuses and
+`compiler_eligible` returns false. Budget **3–5 shared days** to build and review
+the operational provider using the common proof/delivery infrastructure, then:
+
+| Additional pass | Incremental effort after shared prerequisites | Required work |
+| --- | --- | --- |
+| Exact integer simplification | 3–6 days | Standalone actual-boundary intake and dispatch; prove/check canonical word entry/result conditions and wrapping-width cases |
+| Scalar redundancy elimination | 3–6 days | Integrate the existing pure scalar CSE/DCE producer with complete scopes, dominance/captures and canonical boundary roots |
+| Scalar LICM | 5–10 days | Prove actual motion/context correspondence, invariant SSA operands and producer-checked total speculation; handle dynamic/zero-trip cases of this pure domain |
+| Standalone shape/view normalization | 3–5 days | Factor the existing normalization proof out of the storage chain; expose a real selected compiler boundary with complete-module binding |
+
+The scalar LICM producer moves total, state-free expressions, so zero-trip
+speculation can be legal. Configuration setters change state and have a
+different zero-trip obligation. These passes must keep separate semantics and
+legality checks even if they share the worker infrastructure.
+
+### First investigations and delivery order
+
+Start with a **2–3 day inventory/proof spike**, charged to the shared budget:
+enumerate every actual producer branch and consuming route; compile the held
+inline/tail examples; identify the loop-capable configuration owner; and prove
+one reusable SSA/context lemma against the existing models. Verify the exact
+Q/DQ tool inputs and enumerate formats/granularities. Use the results to revise
+the broad ranges before committing calendar dates.
+
+The smallest production milestone is configuration elision at the instruction-IR
+boundary. In parallel work streams, prepare the numerical producer fixes/tool
+environment and develop the shared loop/context theorem. Next deliver inline/
+tail unrolling and scalar tiling context closure; then direct untiled reuse and
+its rank/width generalization. Finish the numerical and configuration coverage
+extensions and run a frozen combined qualification cut. Review only remains
+when every promised consumer and producer branch has the evidence defined below.
 
 ## 1. Bind complete programs and compose the right relations
 
