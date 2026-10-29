@@ -789,3 +789,94 @@ def test_shape_changing_movement_broadcast_class_is_read_from_the_form(attribute
     }
     rows = [row for row in command_rows(cb) if row["semantic_family"] == "movement"]
     assert len(rows) == 1 and rows[0].get("broadcasting") == expected
+
+
+def _window_sum_cb(attributes, src, out, *, dtype="i8", output_dtype="i8"):
+    return {
+        "abi_version": "0.1",
+        "target": "fixture",
+        "tensors": {
+            "X": {"shape": src, "dtype": dtype, "role": "input"},
+            "Y": {"shape": out, "dtype": output_dtype, "role": "output"},
+        },
+        "commands": [
+            {
+                "opcode": "WINDOW_SUM",
+                "operands": {"src": "X", "dst": "Y"},
+                "attributes": {"readout_scale": 1.0, "output_dtype": output_dtype, "layout": "nchw", **attributes},
+            }
+        ],
+    }
+
+
+_POOL = {"mode": "window", "kernel": [2, 2], "stride": [2, 2], "padding": [0, 0], "count_include_pad": True}
+
+
+@pytest.mark.parametrize(
+    ("attributes", "src", "out", "dtype", "tails"),
+    [
+        (_POOL, [1, 3, 8, 8], [1, 3, 4, 4], "i8", "zero_pad_valid_window"),
+        ({"mode": "adaptive"}, [1, 3, 7, 7], [1, 3, 3, 3], "i8", "zero_pad_valid_window"),
+        ({"mode": "reduce", "dims": [2, 3], "average": True}, [1, 3, 7, 7], [1, 3, 1, 1], "i8", "zero_pad_valid_window"),
+        (
+            {"mode": "fold", "kernel": [2, 2], "stride": [1, 1], "padding": [0, 0], "dilation": [1, 1]},
+            [1, 12, 9],
+            [1, 3, 4, 4],
+            "i8",
+            "zero_pad_valid_window",
+        ),
+        # a mode whose geometry is not stated exactly, a float operand and a dynamic extent observe no tail
+        ({"mode": "window", "kernel": [2, 2], "stride": [2, 2]}, [1, 3, 8, 8], [1, 3, 4, 4], "i8", None),
+        ({**_POOL, "stride": "auto"}, [1, 3, 8, 8], [1, 3, 4, 4], "i8", None),
+        (_POOL, [1, 3, 8, 8], [1, 3, 4, 4], "f32", None),
+        (_POOL, [1, 3, 8, 8], [1, 3, 0, 4], "i8", None),
+    ],
+)
+def test_window_sum_observes_its_reduction_kind_and_tails_from_its_geometry(attributes, src, out, dtype, tails):
+    from merlin.targetgen.interface_observations import command_rows
+
+    rows = [r for r in command_rows(_window_sum_cb(attributes, src, out, dtype=dtype)) if r["operation"] == "window_sum"]
+    assert len(rows) == 1
+    assert rows[0]["semantic_family"] == "reduction"
+    assert rows[0]["reduction_kind"] == "sum"
+    assert rows[0].get("tails") == tails
+
+
+def test_unlisted_reduction_observes_no_kind():
+    from merlin.targetgen.semantic_families import reduction_kind_of_op
+
+    assert reduction_kind_of_op("window_sum") == "sum"
+    assert reduction_kind_of_op("some_unlisted_reduction") is None
+
+
+def test_window_sum_is_admitted_by_the_standalone_sum_row_and_not_by_a_max_pool_row():
+    from merlin.targetgen.interface_observations import command_rows
+    from merlin.targetgen.operation_accounting import admit_operation_row
+
+    contract = deepcopy(_CONTRACT)
+    contract["compute_units"][0]["semantic_capabilities"].append(
+        {"family": "reduction", "dtypes": ["int8"], "kinds": ["sum"]}
+    )
+    spec = dict(_SPEC)
+    spec["operations"] = {
+        **_SPEC["operations"],
+        "reduction_standalone": {
+            "placement": "accelerator",
+            "families": ["reduction"],
+            "arithmetic": "integer_sum",
+            "dtypes": ["int8"],
+            "kinds": ["sum"],
+            "ranks": [0, 1, 2, 3, 4, 5],
+            "layouts": ["row_major_contiguous"],
+            "tails": ["zero_pad_valid_window"],
+            "aliasing": ["disjoint_inputs_outputs"],
+        },
+    }
+    spec = validate_software_spec(spec, "fixture")
+    [row] = [r for r in command_rows(_window_sum_cb(_POOL, [1, 3, 8, 8], [1, 3, 4, 4])) if r["operation"] == "window_sum"]
+    admitted = admit_operation_row(row, software_spec=spec, capability_contract=contract, host_capabilities=None)
+    assert admitted["accelerator_admission"]["status"] == "admitted", admitted["accelerator_admission"]
+    # without the observations the same program is only undetermined
+    bare = {k: v for k, v in row.items() if k not in {"reduction_kind", "tails"}}
+    unobserved = admit_operation_row(bare, software_spec=spec, capability_contract=contract, host_capabilities=None)
+    assert unobserved["accelerator_admission"]["status"] == "unknown"
