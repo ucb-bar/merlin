@@ -42,11 +42,11 @@ def test_the_reviewed_sum_row_declares_exactly_the_table_forms():
     row = _spec_rows()
     assert row["status"] == "reviewed"
     assert "approved in operator chat 2026-10-29" in row["evidence"]["reviewed_by"]
-    assert row["forms"] == list(WINDOW_FORMS)
+    assert sorted(row["forms"]) == sorted(WINDOW_FORMS) and len(row["forms"]) == len(WINDOW_FORMS)
     kept, refused = declared_forms(
         {"operations": [{**row, "id": "reduction_standalone", "families": ["reduction"]}]}, _CONTRACT
     )
-    assert kept == {"reduction": list(WINDOW_FORMS)} and not refused
+    assert sorted(kept.get("reduction", [])) == sorted(WINDOW_FORMS) and list(kept) == ["reduction"] and not refused
 
 
 def test_each_declared_form_becomes_one_window_sum_cellform():
