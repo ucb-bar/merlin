@@ -94,7 +94,7 @@ opcodes:
       form: >-
         "identity (default) | permute | slice | pad | broadcast | repeat". Absent, the op is the identity
         round-trip below. Each other form names its own REQUIRED attributes and no default is applied:
-        permute {perm}; slice {offsets, sizes, strides}; pad {low, high, mode: constant|reflect|replicate,
+        permute {perm}; slice {offsets, sizes, strides (nonzero; a negative stride walks the dim backwards from its offset, so flip is offset d-1 stride -1)}; pad {low, high, mode: constant|reflect|replicate,
         value_code (constant only: the already-quantized pad code)}; broadcast {} (to dst's declared
         shape, LEADING dims only -- a stride-0 load replays whole rows); repeat {repeats}
       scale: >-

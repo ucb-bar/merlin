@@ -203,13 +203,15 @@ def move(src: Tensor, attrs: dict[str, Any], dst_shape: list[int] | None, *, op:
         offsets = _int_list(attrs, "offsets", op=op, length=rank)
         sizes = _int_list(attrs, "sizes", op=op, length=rank)
         strides = _int_list(attrs, "strides", op=op, length=rank)
-        if any(s < 1 for s in strides) or any(
-            o < 0 or n < 0 or o + (n - 1) * s >= d
+        # A stride is any nonzero integer: a negative stride walks the dimension backwards from its offset
+        # (flip is the slice with offset d-1, stride -1). Positive strides are unchanged.
+        if any(s == 0 for s in strides) or any(
+            n < 0 or not (0 <= o < d and 0 <= o + (n - 1) * s < d)
             for o, n, s, d in zip(offsets, sizes, strides, a.shape, strict=True)
             if n
         ):
-            raise IntegerOpError(f"{op}: slice is out of bounds or has a nonpositive stride")
-        out = a[tuple(slice(o, o + n * s, s) for o, n, s in zip(offsets, sizes, strides, strict=True))]
+            raise IntegerOpError(f"{op}: slice is out of bounds or has a zero stride")
+        out = a[np.ix_(*(np.arange(n) * s + o for o, n, s in zip(offsets, sizes, strides, strict=True)))]
     elif form == "pad":
         low = _int_list(attrs, "low", op=op, length=rank)
         high = _int_list(attrs, "high", op=op, length=rank)

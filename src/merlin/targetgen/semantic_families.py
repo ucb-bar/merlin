@@ -452,6 +452,8 @@ _OP_FAMILY: dict[str, str] = {
     # The exact integer sum over a tensor's OUTER (row) axis, one total per column: the corpus's
     # standalone sum-reduction builder (`corpus_spec.column_sum_program`).
     "column_sum": "reduction",
+    # Exact window sums with one readout per output (mean, average pools): `window_sum_capsule`.
+    "window_sum": "reduction",
     "sum": "reduction",
     "max": "reduction",
     "argmax": "reduction",
@@ -784,6 +786,7 @@ def from_op(op: str | None) -> str | None:
 _OP_REDUCTION_KIND: dict[str, str] = {
     "reduce_sum": "sum",
     "column_sum": "sum",
+    "window_sum": "sum",
     "sum": "sum",
     "reduce_mean": "sum",
     "avgpool2d": "sum",

@@ -15,6 +15,7 @@ needs the external ``specir`` refmodel, available only at generation time) — t
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -23,6 +24,7 @@ from merlin.targetgen.capsule_dram import dtype_bits
 
 from .capsule_intent import _semantic_block as _semantic_block
 from .column_sum_capsule import build_column_sum, column_sum_program
+from .window_sum_capsule import build_window_sum
 
 # canonical dtype token -> (capsule.yaml spelling, MLIR spelling, is_integer). Keyed on the dtype, never
 # on a target — a target selects its dtypes via its compute-unit contract.
@@ -1246,8 +1248,128 @@ def build_resident_reuse(entry: dict, binding: CorpusBinding) -> tuple[dict, str
     return cap, "\n".join(L) + "\n"
 
 
+#: The attributes each MOVEMENT ``form`` states (``merlin.runtime.integer_ops._MOVE_FORMS``, plus the pad
+#: ``value_code``). A movement entry that declares a ``form`` carries them under these entry keys.
+_MOVE_FORM_KEYS: dict[str, tuple[str, ...]] = {
+    "permute": ("perm",),
+    "slice": ("offsets", "sizes", "strides"),
+    "pad": ("low", "high", "mode", "value_code"),
+    "broadcast": (),
+    "repeat": ("repeats",),
+}
+
+
+def _mlir_attr(value: Any) -> str:
+    """One interface attribute value: ``[0, 1]``, ``"mode"`` or ``1 : i64``."""
+    if isinstance(value, list):
+        return "[" + ", ".join(str(v) if type(v) is int else _mlir_attr(v) for v in value) + "]"
+    if isinstance(value, str):
+        return f'"{value}"'
+    return f"{value} : i64"
+
+
+def _tensor_type(shape: list[int], dtype: str) -> str:
+    return "tensor<" + "".join(f"{d}x" for d in shape) + f"{dtype}>"
+
+
+def _integer_movement_capsule(
+    entry: dict, binding: CorpusBinding, *, op: str, inputs: list[tuple[str, list[int]]], attrs: dict, out_shape: list[int],
+    iface_attrs: str, operands: list[str],
+) -> tuple[dict, str]:  # fmt: skip
+    """The shared body of the shape-general integer movement capsules (movement forms, concat, insert_slice).
+
+    Operands and result share the operand dtype: these ops move values and widen nothing. The golden is
+    ``merlin.runtime.integer_ops`` (one definition for every engine); ``attrs`` is the capsule operation."""
+    out = entry.get("out", "Y0")
+    idt, midt = binding.cap_dtype(binding.operand_dtype), binding.mlir_dtype(binding.operand_dtype)
+    cap = {
+        "name": entry["name"],
+        "kind": entry["kind"],
+        "source_role": entry["source_role"],
+        "source_reference": entry["source_reference"],
+        "label": entry.get("label", "public"),
+        "interface_mlir": "capsule.interface.mlir",
+        "inputs": [{"name": n, "role": "input", "shape": list(sh), "dtype": idt} for n, sh in inputs],
+        "operation": {"op": op, "attributes": {"out": out, **attrs, "output_dtype": idt, "shape": list(out_shape)}},
+        "numeric_policy": _numeric_policy(binding, binding.operand_dtype, None),
+        "expected": {
+            "instruction_classes": binding.classes_for(op="movement", movement=True),
+            "modes": {"movement": True},
+        },
+        "required_oracle_tiers": list(binding.tiers),
+        "vcs": "optional",
+        "firesim": "optional",
+    }
+    L = _iface_prelude(binding.target, entry.get("comment", ""))
+    L += [
+        f'  %{n} = merlin_iface.tensor {{name = "{n}", role = "input"}} : {_tensor_type(sh, midt)}' for n, sh in inputs
+    ]
+    L += [
+        f'  %{out} = merlin_iface.{op} {", ".join("%" + o for o in operands)} {{name = "{out}", {iface_attrs}'
+        f'output_dtype = "{idt}"}} : ({", ".join(_tensor_type(dict(inputs)[o], midt) for o in operands)}) '
+        f"-> {_tensor_type(out_shape, midt)}",
+        "}",
+    ]
+    return cap, "\n".join(L) + "\n"
+
+
+def _build_movement_form(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """A shape-general movement capsule (op == movement with ``form``): ``X`` of ``shape`` -> permute / slice
+    / pad / broadcast / repeat, exact integer values (nothing widened or requantized)."""
+    from merlin.runtime import integer_ops
+    from merlin.runtime.tensor import Tensor
+
+    form, shape = entry["form"], list(entry["shape"])
+    if form not in _MOVE_FORM_KEYS:
+        raise ValueError(f"{entry.get('name')}: movement form must be one of {sorted(_MOVE_FORM_KEYS)}, got {form!r}")
+    src = entry.get("src", "X")
+    fa = {k: entry[k] for k in _MOVE_FORM_KEYS[form] if k in entry}
+    if form == "broadcast":
+        out_shape = list(entry["out_shape"])
+        probe = integer_ops.move(Tensor(tuple(shape), [0] * math.prod(shape), "i8"), {"form": form}, out_shape)
+    else:
+        probe = integer_ops.move(Tensor(tuple(shape), [0] * math.prod(shape), "i8"), {"form": form, **fa}, None)
+    out_shape = list(probe.shape)
+    iface = f'form = "{form}", ' + "".join(f"{k} = {_mlir_attr(v)}, " for k, v in fa.items())
+    return _integer_movement_capsule(
+        entry, binding, op="movement", inputs=[(src, shape)],
+        attrs={"src": src, "semantic": entry.get("semantic", "mvin_mvout"), "form": form, **fa},
+        out_shape=out_shape, iface_attrs=iface, operands=[src],
+    )  # fmt: skip
+
+
+def build_concat(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """Tensors joined along one axis (op == concat): ``sources`` (names), ``shapes``, ``axis``; torch.cat."""
+    import numpy as np
+
+    names, shapes, axis = list(entry["sources"]), [list(s) for s in entry["shapes"]], entry["axis"]
+    out_shape = list(np.concatenate([np.zeros(s, dtype=np.int8) for s in shapes], axis=axis).shape)
+    return _integer_movement_capsule(
+        entry, binding, op="concat", inputs=list(zip(names, shapes, strict=True)), attrs={"sources": names, "axis": axis},
+        out_shape=out_shape, iface_attrs=f"axis = {axis} : i64, ", operands=names,
+    )  # fmt: skip
+
+
+def build_insert_slice(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """A tensor written into a strided slice of another (op == insert_slice): slice_scatter / select_scatter
+    with the selected dim kept at size 1. ``dest``/``src`` names, ``dest_shape``/``src_shape``, ``offsets``,
+    ``strides`` (>= 1)."""
+    dest, src = entry.get("dest", "D"), entry.get("src", "S")
+    offsets, strides = list(entry["offsets"]), list(entry["strides"])
+    return _integer_movement_capsule(
+        entry, binding, op="insert_slice", inputs=[(dest, list(entry["dest_shape"])), (src, list(entry["src_shape"]))],
+        attrs={"dest": dest, "src": src, "offsets": offsets, "strides": strides},
+        out_shape=list(entry["dest_shape"]),
+        iface_attrs=f"offsets = {_mlir_attr(offsets)}, strides = {_mlir_attr(strides)}, ", operands=[dest, src],
+    )  # fmt: skip
+
+
 def build_movement(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
-    """A load->store dequant movement capsule (op == movement): operand dtype in, accumulate dtype out."""
+    """A load->store dequant movement capsule (op == movement): operand dtype in, accumulate dtype out.
+
+    An entry that declares a ``form`` (and its ``shape``) is the shape-general integer movement instead."""
+    if entry.get("form") not in (None, "identity"):
+        return _build_movement_form(entry, binding)
     D = binding.tile_dim
     M = entry.get("M", entry.get("M_tiles", 1) * D)
     N = entry.get("N", entry.get("N_tiles", 1) * D)
@@ -2415,6 +2537,8 @@ BUILDERS: dict[str, Callable[[dict, CorpusBinding], tuple[dict, str]]] = {
     "residual_seam": build_residual_seam,
     "resident_reuse": build_resident_reuse,
     "movement": build_movement,
+    "concat": build_concat,
+    "insert_slice": build_insert_slice,
     "attention_qk": build_attention_qk,
     "rmsnorm": build_rmsnorm,
     "conv2d": build_conv2d,
@@ -2479,6 +2603,7 @@ def build_activation_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, 
 
 BUILDERS["activation_matmul"] = build_activation_matmul
 BUILDERS["column_sum"] = build_column_sum  # an integer standalone sum reduction (column_sum_capsule)
+BUILDERS["window_sum"] = build_window_sum  # exact window sums with one readout: mean / avg pools (window_sum_capsule)
 
 #: Builders whose capsule is a generic component program derived from the entry's own extents.
 #: A component program is signed-integer only (``component_program._integer_dtype``), so these ops are
