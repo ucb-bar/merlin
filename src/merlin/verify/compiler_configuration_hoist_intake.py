@@ -27,7 +27,8 @@ INDEXED_DOMAIN = "current-compiler-one-positive-loop-indexed-retained-data-hoist
 PREFIX_DOMAIN = "current-compiler-one-positive-loop-pure-prefix-fixed-state-hoist-v3"
 MULTI_DOMAIN = "current-compiler-multiple-positive-flat-loops-pure-prefix-hoist-v4"
 WIDE_DOMAIN = "current-compiler-original-C64-consumer-wide-flat-prefix-hoist-v5"
-DOMAINS = frozenset({DOMAIN, INDEXED_DOMAIN, PREFIX_DOMAIN, MULTI_DOMAIN, WIDE_DOMAIN})
+NESTED_DOMAIN = "current-compiler-recursive-positive-loops-pure-prefix-hoist-v6"
+DOMAINS = frozenset({DOMAIN, INDEXED_DOMAIN, PREFIX_DOMAIN, MULTI_DOMAIN, WIDE_DOMAIN, NESTED_DOMAIN})
 RELATION = "equal_conditional_complete_kernel_error_terminal_state_hoist"
 
 
@@ -39,6 +40,10 @@ def _program(text):
 
 
 def proof_sources(domain=DOMAIN):
+    if domain == NESTED_DOMAIN:
+        from .compiler_configuration_hoist_recursive import proof_sources as recursive_sources
+
+        return recursive_sources()
     if domain in {MULTI_DOMAIN, WIDE_DOMAIN}:
         from .compiler_configuration_hoist_multi import proof_sources as multi_sources
 
@@ -53,6 +58,10 @@ def proof_sources(domain=DOMAIN):
 
 
 def emit_profile(projection, domain):
+    if domain == NESTED_DOMAIN:
+        from .configuration_hoist_recursive_emit import emit as recursive_emit
+
+        return recursive_emit(projection)
     if domain in {MULTI_DOMAIN, WIDE_DOMAIN}:
         from .configuration_hoist_multi_emit import emit as multi_emit
 
@@ -66,7 +75,7 @@ def emit_profile(projection, domain):
     return emit(projection)
 
 
-def _sources(selection, *, indexed=False, prefix=False, multi=False, c_consumer=None):
+def _sources(selection, *, indexed=False, prefix=False, multi=False, recursive=False, c_consumer=None):
     rows = list(configuration_sources(selection))
     if c_consumer is not None:
         rows += c_consumer.record()["sources"]
@@ -89,6 +98,14 @@ def _sources(selection, *, indexed=False, prefix=False, multi=False, c_consumer=
                 "merlin.verify.configuration_hoist_multi_emit",
             )
         ]
+    if recursive:
+        rows += [
+            file_ref(module_source_path(name))
+            for name in (
+                "merlin.verify.compiler_configuration_hoist_recursive",
+                "merlin.verify.configuration_hoist_recursive_emit",
+            )
+        ]
     rows += [
         file_ref(module_source_path(name))
         for name in (
@@ -104,7 +121,9 @@ def _sources(selection, *, indexed=False, prefix=False, multi=False, c_consumer=
     ]
     rows += [
         {key: row[key] for key in ("path", "sha256", "bytes")}
-        for row in proof_sources(MULTI_DOMAIN if multi else PREFIX_DOMAIN if prefix else DOMAIN)
+        for row in proof_sources(
+            NESTED_DOMAIN if recursive else MULTI_DOMAIN if multi else PREFIX_DOMAIN if prefix else DOMAIN
+        )
     ]
     return sorted({row["path"]: row for row in rows}.values(), key=lambda row: row["path"])
 
@@ -160,8 +179,15 @@ class CurrentHoistCandidate:
                 "trusted_host_index64_bounds" if projection.get("indexed_data_analysis") else "static_constants"
             ),
             "all_index_model_premise_retained": True,
+            **(
+                {"all_environment_model_premise_retained": True, "max_loop_depth": projection["max_loop_depth"]}
+                if self.domain == NESTED_DOMAIN
+                else {}
+            ),
             "moved_setter_count": (
-                sum(len(stage["focus"]["move"]["setups"]) for stage in projection["stages"])
+                sum(len(stage["move"]["setups"]) for stage in projection["stages"])
+                if self.domain == NESTED_DOMAIN
+                else sum(len(stage["focus"]["move"]["setups"]) for stage in projection["stages"])
                 if self.domain in {MULTI_DOMAIN, WIDE_DOMAIN}
                 else len(projection["move"]["setups"])
                 if self.domain == PREFIX_DOMAIN
@@ -172,14 +198,18 @@ class CurrentHoistCandidate:
                     "actual_loop_count": projection["actual_loop_count"],
                     "focused_loop_count": projection["focused_loop_count"],
                 }
-                if self.domain in {MULTI_DOMAIN, WIDE_DOMAIN}
+                if self.domain in {MULTI_DOMAIN, WIDE_DOMAIN, NESTED_DOMAIN}
                 else {}
             ),
             "premises": [
                 "trusted complete typed Kernel parser/projection and original selected ISA/effect interpretation",
                 "exact nonaliasing configuration/world cells and complete relevant "
                 "caller/return/memory/error/observer state",
-                "one common indexed partial meaning for retained ordered calls respecting declared writes and frame",
+                "one common all-environment indexed partial meaning for retained ordered calls "
+                "respecting declared writes and frame"
+                if self.domain == NESTED_DOMAIN
+                else "one common indexed partial meaning for retained ordered calls "
+                "respecting declared writes and frame",
                 "each moved setter is a total exact overwrite with no failure/pulse/token/memory/observer effect",
             ],
         }
@@ -224,7 +254,17 @@ def prepare(source, final, *, selection, c_consumer=None):
     if c_consumer is not None:
         c_consumer.admit(parse_kernel(source))
         c_consumer.admit(parse_kernel(final))
-    if wide:
+    nested = any(
+        row.get("class") == "merlin.sched.ir.kernel.Loop"
+        and any(child.get("class") == "merlin.sched.ir.kernel.Loop" for child in sequence(row["fields"]["body"]))
+        for row in sequence(source_tree["fields"]["body"])
+    )
+    if nested:
+        from .compiler_configuration_hoist_recursive import project_current as recursive_project
+
+        projection = recursive_project(source, final, isa=isa, effects=effects, c_consumer=c_consumer)
+        domain = NESTED_DOMAIN
+    elif wide:
         from .compiler_configuration_hoist_wide import project_current as wide_project
 
         projection = wide_project(source, final, isa=isa, effects=effects, c_consumer=c_consumer)
@@ -284,8 +324,9 @@ def prepare(source, final, *, selection, c_consumer=None):
             _sources(
                 selection,
                 indexed=domain != DOMAIN,
-                prefix=domain in {PREFIX_DOMAIN, MULTI_DOMAIN, WIDE_DOMAIN},
+                prefix=domain in {PREFIX_DOMAIN, MULTI_DOMAIN, WIDE_DOMAIN, NESTED_DOMAIN},
                 multi=domain in {MULTI_DOMAIN, WIDE_DOMAIN},
+                recursive=domain == NESTED_DOMAIN,
                 c_consumer=c_consumer,
             )
         ),

@@ -91,14 +91,25 @@ def test_invalid_zero_trip_kernel_refuses_before_any_positive_motion(tmp_path):
         intake.prepare(invalid.text(), original.text(), selection=chosen)
 
 
-def test_current_profile_rejects_nested_kernel_instead_of_treating_it_as_flat(tmp_path):
+def test_flat_multi_profile_refuses_nested_while_current_V6_binds_real_tree(tmp_path):
     chosen, original, _, adapter = actual(tmp_path, "both")
     first, second = original.body[1], original.body[4]
     nested = replace(original, body=(replace(first, body=(second,)),))
     result = hoist_loop_configuration(nested, adapter)
     assert result.kernel.text() != nested.text()
+    from merlin.verify import compiler_configuration_hoist_multi as multi
+    from merlin.verify.compiler_configuration_kernel import tree
+
     with pytest.raises(Unsupported):
-        intake.prepare(nested.text(), result.kernel.text(), selection=chosen)
+        multi.project(
+            tree(nested),
+            tree(result.kernel),
+            isa=chosen.selected_contracts.isa.record(),
+            effects=json.loads(chosen.selected_contracts.effects_json),
+        )
+    current = intake.prepare(nested.text(), result.kernel.text(), selection=chosen)
+    intake.revalidate(current)
+    assert current.domain == intake.NESTED_DOMAIN
 
 
 def test_context_copy_budget_refuses_before_building_unbounded_stages(tmp_path, monkeypatch):
