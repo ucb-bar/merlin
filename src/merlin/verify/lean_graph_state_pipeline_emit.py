@@ -142,7 +142,7 @@ theorem naturalRange (lower upper step : Nat) (positive : 0 < step) :
 """
 
 
-def body_group_text(capture, loops, envs, count, factor, step, args):
+def body_group_text(capture, loops, envs, count, factor, step, args, *, max_calls=16):
     # Exact actual Program suffixes, not a replacement body/evaluator.
     control_map = {r["identity"]: r for r in capture["index_operations"]}
     result, groups = "", {}
@@ -200,7 +200,7 @@ def body_group_text(capture, loops, envs, count, factor, step, args):
             "world" if not calls else f"w{len(calls) - 1}",
         )
         calls += more
-    if len(calls) > 16:
+    if max_calls is not None and len(calls) > max_calls:
         raise ValueError("bounded lane proof supports at most sixteen retained calls")
     for depth, call in enumerate(calls):
         pad = "  " + "  " * depth
@@ -227,7 +227,8 @@ def scope_text(capture, loops, envs, count, args):
     outer_carry = [f"outerCarry{i}" for i in range(count)]
     outer_env = prefix_environment(loops[4]["body"], ["outer", *outer_carry, *envs[4]], capture)
     inner_loop = next(row["loop"] for row in loops[4]["body"] if "loop" in row)
-    logical = ["iv", *carry, *outer_env]
+    target_frame = ["iv", *carry, *outer_env]
+    logical = list(dict.fromkeys(target_frame))
     source = ["iv", *carry, *envs[3]]
     selectors = [logical.index(value) for value in source]
 
@@ -236,7 +237,7 @@ def scope_text(capture, loops, envs, count, args):
 
     result = "def I4 : Program := " + program(inner_loop["body"]) + "\n"
     result += "def LS : List Expr := " + symbols(selectors) + "\n"
-    result += "def RS : List Expr := " + symbols(range(len(logical))) + "\n"
+    result += "def RS : List Expr := " + symbols([logical.index(value) for value in target_frame]) + "\n"
     result += "theorem innerAccepted : Scope.check registry LS RS B3 I4 = true := by decide\n"
     result += f"theorem inner_same (iv outer {' '.join(outer_carry)} : Int) (carry : List Int) (world : World) (arity : carry.length = {count}) :\n"
     result += "  evalProgram (M primitive external) I4 (iv::carry++" + lean_list(outer_env) + ") world =\n"
@@ -247,10 +248,13 @@ def scope_text(capture, loops, envs, count, args):
     )
     result += "  simpa only [LS,RS,E3,evalExpr,List.cons_append,List.nil_append,List.map_cons,List.map_nil,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some] using checked.symm\n"
     for left, right in ((2, 3), (3, 4)):
-        logical = [*carry, *envs[right]]
+        target_frame = [*carry, *envs[right]]
+        logical = list(dict.fromkeys(target_frame))
         selected = [logical.index(value) for value in [*carry, *envs[left]]]
         result += f"def CL{left}{right} : List Expr := " + symbols(selected) + "\n"
-        result += f"def CR{left}{right} : List Expr := " + symbols(range(len(logical))) + "\n"
+        result += (
+            f"def CR{left}{right} : List Expr := " + symbols([logical.index(value) for value in target_frame]) + "\n"
+        )
         result += f"theorem suffixAccepted{left}{right} : Scope.check registry CL{left}{right} CR{left}{right} N{left} N{right} = true := by decide\n"
         result += (
             f"theorem suffix_same{left}{right} (carry : List Int) (world : World) (arity : carry.length = {count}) :\n"
@@ -490,7 +494,14 @@ def emit(capture, *, identity_unroll=False, flexible_parameters=False):
             initial = lean_list([env[i] for i in loop["initial"]])
             text += f"theorem form{stage} (world : World) : evalProgram (M primitive external) S{stage} {vector} world =\n  (loopEval {len(loop['carries'])} (fun i carry w => evalProgram (M primitive external) B{stage} (i::carry++E{stage} primitive {args}) w)\n    (indexIterations {control_args}) {initial} world).bind\n      (fun result => evalProgram (M primitive external) N{stage} (result.1++E{stage} primitive {args}) result.2) := by rfl\n"
         if not identity_unroll:
-            text += body_group_text(capture, loops, envs, count, factor, step, args)
+            if flexible_parameters and any("loop" in row for row in loops[2]["body"]):
+                from .compiler_loop_nested import body_group_text as nested_body_group
+
+                text += nested_body_group(capture, loops, envs, count, factor, step, args)
+            else:
+                text += body_group_text(
+                    capture, loops, envs, count, factor, step, args, max_calls=None if flexible_parameters else 16
+                )
         text += scope_text(capture, loops, envs, count, args)
         text += outer_text(count, bulk_bounds[1], bulk_bounds[2], tile, args)
         initial = lean_list([envs[2][i] for i in loops[2]["initial"]])

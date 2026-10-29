@@ -180,7 +180,7 @@ def _domain(capture, *, flexible_entries=False):
             raise ValueError("two entry arguments required")
         if records[2] == records[4]:
             raise ValueError("unchanged loop entry lacks the selected explicit bridge")
-        if any("loop" in row for row in loops[0][0]["body"]):
+        if not flexible_entries and any("loop" in row for row in loops[0][0]["body"]):
             raise ValueError("region-free original loop body required")
         carries = loops[0][0]["carries"]
         if (not flexible_entries and not 1 <= len(carries) <= 4) or any(set(t) != {"bits"} for t in carries):

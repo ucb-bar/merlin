@@ -30,7 +30,7 @@ theorem loop_append {Value World Error : Type} (arity : Nat)
   | nil =>
     by_cases size : values.length = arity
     · simp only [List.nil_append, loopEval, size, ↓reduceIte, Except.bind]
-    · simp only [List.nil_append, loopEval, size, ↓reduceIte, Except.bind]
+    · cases rest <;> simp only [List.nil_append, loopEval, size, ↓reduceIte, Except.bind]
   | cons index later ih =>
     by_cases size : values.length = arity
     · simp only [List.cons_append, loopEval, size, ↓reduceIte]

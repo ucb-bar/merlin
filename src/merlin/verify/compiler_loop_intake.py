@@ -74,6 +74,15 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
         raise Unavailable("actual compiler buffer byte resource budget exceeded")
     if any(a == b for a, b in zip(buffers, buffers[1:])):
         raise Unsupported("unchanged compiler boundaries require no proof job")
+    if kinds == (UNROLL,):
+        from .compiler_unroll_modes_intake import prepare as prepare_mode
+
+        try:
+            mode = prepare_mode(buffers, factor=factor, tile=tile)
+        except (ValueError, KeyError, TypeError, IndexError) as exc:
+            raise Unsupported(str(exc)) from exc
+        if mode is not None:
+            return mode
     try:
         modules = [parse_admitted(x, parse_ir, calls="external-only") for x in buffers]
         # Charge actual SSA references, results and block arguments as well as
@@ -124,8 +133,8 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
                     continue
                 if len(loops) != 1:
                     raise ValueError("one changed top-level loop required")
-                if any(set(t) != {"bits"} for t in loops[0]["carries"]) or any("loop" in r for r in loops[0]["body"]):
-                    raise ValueError("region-free scalar word body required")
+                if any(set(t) != {"bits"} for t in loops[0]["carries"]):
+                    raise ValueError("scalar word carried state required")
                 lower, upper, step = static_controls(records, capture, input_count=len(function["inputs"]))
                 if not 0 <= lower < upper or step <= 0 or upper + step * tile >= 2**63:
                     raise ValueError("nonempty static fitting positive-stride controls required")
@@ -171,6 +180,7 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
         parent / "lean_graph_input_admission.py",
         parent / "lean_graph_pipeline_gate_projection.py",
         parent / "lean_graph_pipeline_gate_profile_prepare.py",
+        parent / "compiler_loop_nested.py",
     }
     paths.update(parent.glob("lean_graph_state*.py"))
     paths.update((parent.parent / "transforms").glob("*.py"))
