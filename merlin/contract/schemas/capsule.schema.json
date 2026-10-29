@@ -217,6 +217,7 @@
             "column_sum",
             "concat",
             "insert_slice",
+            "fill",
             "window_sum",
             "model"
           ],

@@ -1350,6 +1350,16 @@ def build_concat(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     )  # fmt: skip
 
 
+def build_fill(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """One quantized code written everywhere (op == fill): ``shape`` and ``value_code``; full / full_like /
+    scalar_tensor / fill.Scalar with a nonzero code, zero_fill with code 0. No source operand."""
+    shape, code = [int(d) for d in entry["shape"]], int(entry["value_code"])
+    return _integer_movement_capsule(
+        entry, binding, op="fill", inputs=[], attrs={"value_code": code}, out_shape=shape,
+        iface_attrs=f"value_code = {code} : i64, ", operands=[],
+    )  # fmt: skip
+
+
 def build_insert_slice(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     """A tensor written into a strided slice of another (op == insert_slice): slice_scatter / select_scatter
     with the selected dim kept at size 1. ``dest``/``src`` names, ``dest_shape``/``src_shape``, ``offsets``,
@@ -2539,6 +2549,7 @@ BUILDERS: dict[str, Callable[[dict, CorpusBinding], tuple[dict, str]]] = {
     "movement": build_movement,
     "concat": build_concat,
     "insert_slice": build_insert_slice,
+    "fill": build_fill,
     "attention_qk": build_attention_qk,
     "rmsnorm": build_rmsnorm,
     "conv2d": build_conv2d,

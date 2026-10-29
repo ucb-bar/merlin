@@ -81,6 +81,26 @@ def _insert_slice(m: int, n: int) -> dict[str, Any]:
     }  # fmt: skip
 
 
+def _fill(code: int) -> Callable[[int, int], dict[str, Any]]:
+    def make(m: int, n: int) -> dict[str, Any]:
+        return {"shape": [m, n], "value_code": code}
+
+    return make
+
+
+def _select(m: int, n: int) -> dict[str, Any]:
+    # select.int on dim 0 at an interior index: ONE row, the selected dim kept at size 1 (rank-reducing
+    # reshape of the result is a representation change, a separate reshape form).
+    idx = m // 2
+    return {"form": "slice", "shape": [m, n], "offsets": [idx, 0], "sizes": [1, n], "strides": [1, 1]}
+
+
+def _split_chunk(m: int, n: int) -> dict[str, Any]:
+    # split_with_sizes along dim 0, the SECOND chunk (the first one starts at offset 0; this one does not).
+    first = max(1, m // 2)
+    return {"form": "slice", "shape": [m, n], "offsets": [first, 0], "sizes": [max(1, m - first), n], "strides": [1, 1]}
+
+
 FORM_TABLE: dict[tuple[str, str], FormEntry] = {
     ("movement", "slice"): FormEntry("movement", _slice, ("copy",)),
     ("movement", "flip"): FormEntry("movement", _flip, ("copy", "permutation")),
@@ -91,6 +111,10 @@ FORM_TABLE: dict[tuple[str, str], FormEntry] = {
     ("movement", "repeat"): FormEntry("movement", _repeat, ("copy", "broadcast")),
     ("movement", "permute"): FormEntry("movement", _permute, ("permutation",)),
     ("movement", "concat"): FormEntry("concat", _concat, ("copy",)),
+    ("movement", "select"): FormEntry("movement", _select, ("copy",)),
+    ("movement", "split_chunk"): FormEntry("movement", _split_chunk, ("copy",)),
+    ("movement", "fill"): FormEntry("fill", _fill(5), ("broadcast",)),
+    ("movement", "fill_zero"): FormEntry("fill", _fill(0), ("zero_fill",)),
     ("movement", "insert_slice"): FormEntry("insert_slice", _insert_slice, ("copy",)),
 }
 

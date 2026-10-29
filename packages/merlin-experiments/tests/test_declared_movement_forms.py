@@ -23,7 +23,10 @@ def test_form_fields_evaluate(form, alignment):
     ext = extents_for(alignment, PROBES)
     m, n = ft.resolve_extents(ext, PROBES)
     f = ft.entry_fields("movement", form, m, n)
-    if "sources" in f:
+    if "value_code" in f and "form" not in f:
+        out = integer_ops.fill(f["shape"], {"value_code": f["value_code"], "output_dtype": "i8"})
+        assert out.shape == tuple(f["shape"])
+    elif "sources" in f:
         out = integer_ops.concat([_t(s) for s in f["shapes"]], {"axis": f["axis"]})
         assert out.shape[f["axis"]] == 2 * f["shapes"][0][f["axis"]]
     elif "dest" in f:
@@ -49,3 +52,19 @@ def test_declared_forms_checked_against_contract_primitives():
     contract = {"compute_units": [{"semantic_capabilities": [{"family": "movement", "forms": ["copy"]}]}]}
     kept, refused = ft.declared_forms(spec, contract)
     assert kept == {"movement": ["slice"]} and refused[0]["form"] == "pad_constant"
+
+
+@pytest.mark.parametrize("form", sorted(f for _, f in ft.FORM_TABLE))
+def test_every_form_builds_a_capsule_and_golden(form):
+    from merlin.targetgen import corpus_spec as CS
+    binding = CS.CorpusBinding(
+        target="gemmini", tile_dim=16, operand_dtype="int8", accum_dtype="i32", integer=True,
+        tiers=["L0"], compare="exact_int",
+    )  # fmt: skip
+    row = ft.FORM_TABLE[("movement", form)]
+    entry = {
+        "name": f"T_{form}", "kind": "isa", "op": row.op, "source_role": "synthesized", "source_reference": "t",
+        **ft.entry_fields("movement", form, 16, 15),
+    }  # fmt: skip
+    cap, mlir = CS.BUILDERS[row.op](entry, binding)
+    assert cap["operation"]["op"] == row.op and "merlin_iface." + row.op in mlir

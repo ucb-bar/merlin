@@ -694,9 +694,11 @@ operations:
     # zero_fill; target contract semantic_capabilities movement forms, DMA facts: arbitrary row stride,
     # contiguous rows, stride-0 replay of OUTER dims only, DRAM address 0 zero load, 16x16 transposer).
     # Not declared here (no interface form / builder, covered by the capture route or host): rank-reducing
-    # select/diagonal/squeeze/unsqueeze/view, fill/full (no fill builder), split_with_sizes (multi-output),
-    # upsample_nearest2d (needs a multi-axis expand+reshape).
-    forms: [slice, flip, pad_constant, pad_reflect, pad_replicate, broadcast, repeat, permute, concat, insert_slice]
+    # diagonal/as_strided (a one-element-per-row view of a flat buffer overlaps its own storage: no
+    # representation-preserving slice), upsample_nearest2d (replicates INNER axes; broadcast is leading dims
+    # only), the rank-dropping reshape of select/squeeze/unsqueeze/view (reshape form, agent V),
+    # multi-output split (one capsule per chunk form: split_chunk).
+    forms: [slice, flip, pad_constant, pad_reflect, pad_replicate, broadcast, repeat, permute, concat, insert_slice, select, split_chunk, fill, fill_zero]
     evidence:
       review_status: reviewed
       reviewed_by: "Reviewed by Loren Hung (approved in operator chat 2026-10-29); the stated evidence and qualification scope remain mandatory."
