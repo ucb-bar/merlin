@@ -158,3 +158,9 @@ def compiler_macc_contract(job: dict[str, Any]) -> dict[str, Any]:
     from .compiler_macc import check
 
     return check(job)
+
+
+def compiler_qdq_refinement(job: dict[str, Any]) -> dict[str, Any]:
+    from .compiler_qdq import check
+
+    return check(job)

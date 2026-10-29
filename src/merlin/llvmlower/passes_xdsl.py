@@ -131,6 +131,7 @@ _QUANT_KINDS = {
 }
 
 
+@observed("lower_quant_ext")
 def lower_quant_ext(module, *, on_rewrite: Callable[[Any, tuple[Any, ...], Any], None] | None = None) -> int:
     """Rewrite supported quant_ext quantize/dequantize ops; returns the count.
 

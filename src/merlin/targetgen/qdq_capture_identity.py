@@ -14,7 +14,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-from merlin.common.paths import repo_root
+from merlin.common.paths import checkout_root
 
 
 def sha(raw: bytes) -> str:
@@ -59,10 +59,18 @@ def producer_identity(checkout: Path) -> dict:
     return {"root": str(root), "commit": commit, "sources": sources}
 
 
+def requirements_path() -> Path:
+    """The installed checker owns the wheel pin; caller work roots do not."""
+    root = checkout_root()
+    if root is None or (root / "src/merlin/targetgen/qdq_capture_identity.py").resolve() != Path(__file__).resolve():
+        raise ValueError("Q/DQ wheel pin requires its installed source owner")
+    return root / "build_tools/toolchains/lean-torch-requirements.txt"
+
+
 def torch_identity(wheel: Path) -> dict:
     import torch
 
-    requirements = repo_root() / "build_tools/toolchains/lean-torch-requirements.txt"
+    requirements = requirements_path()
     row = next(line for line in requirements.read_text().splitlines() if line.startswith("torch @ "))
     expected = row.rsplit("#sha256=", 1)[1]
     wheel_digest = sha(wheel.read_bytes())

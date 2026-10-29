@@ -21,6 +21,7 @@ BUILTIN_CHECKS = (
     "compiler_loop_refinement",
     "compiler_buffer_refinement",
     "compiler_macc_contract",
+    "compiler_qdq_refinement",
 )
 
 
@@ -61,6 +62,34 @@ def _stop_group(signum, frame) -> None:
 
 
 def _require_builtin_result(name, detail):
+    if name == "compiler_qdq_refinement":
+        from .gate_checks import THEOREMS
+        from .gate_errors import GateRejected
+
+        if (
+            type(detail) is not dict
+            or detail.get("status") != "checked_proposed_qdq_refinement"
+            or detail.get("claim_type") != "proposed_qdq_model_refinement"
+            or detail.get("refinement_verdict") != "verified"
+            or detail.get("theorems") != list(THEOREMS)
+            or type(detail.get("functions")) is not list
+            or not detail["functions"]
+            or type(detail.get("source_sites")) is not list
+            or not detail["source_sites"]
+            or detail.get("source_model_status") != "proposed"
+            or detail.get("source_spec_approved") is not False
+            or type(detail.get("source_correspondence")) is not dict
+            or detail["source_correspondence"].get("status") not in {"matched", "not_requested"}
+        ):
+            raise GateRejected("Q/DQ handler did not establish its complete proposed-model claim")
+        source = detail["source_correspondence"]
+        if source["status"] == "matched" and (
+            source.get("original_program_bound") is not True or not source.get("sites")
+        ):
+            raise GateRejected("Q/DQ source qualification returned an incomplete binding")
+        if source["status"] == "not_requested" and source.get("original_program_bound") is not False:
+            raise GateRejected("Q/DQ source qualification was not requested")
+        return
     if name != "compiler_macc_contract":
         return
     from .compiler_macc import THEOREM

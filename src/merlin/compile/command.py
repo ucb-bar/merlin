@@ -120,10 +120,17 @@ def parser(
         "--validate-passes",
         metavar="PASSES",
         help="check selected DCE, CSE, ordered loop and private-buffer boundaries with Lean "
-        "('all' selects DCE/CSE/loop/buffer checks; bf16_f32acc_draft_contract requires explicit selection); "
+        "('all' selects DCE/CSE/loop/buffer checks; "
+        "lower_quant_ext and bf16_f32acc_draft_contract require explicit selection); "
         "failed checks stop the compile",
     )
     ap.add_argument("--lean-sdk-bin", metavar="DIR", help="Lean SDK bin directory for --validate-passes")
+    ap.add_argument(
+        "--qdq-source-capture",
+        metavar="DIR",
+        help="freshly bind an original Q/DQ capture to the selected lower_quant_ext boundary; "
+        "requires explicit Q/DQ tool selections",
+    )
     ap.add_argument(
         "--macc-f32acc",
         action="store_true",
@@ -259,6 +266,11 @@ def apply_pass_validation(a: argparse.Namespace) -> None:
     if a.lean_sdk_bin:
         os.environ[pass_validation.ENV_SDK_BIN] = a.lean_sdk_bin
     from merlin.verify import compiler_transforms
+
+    if getattr(a, "qdq_source_capture", None):
+        from merlin.verify.compiler_qdq import ENV_CAPTURE
+
+        os.environ[ENV_CAPTURE] = a.qdq_source_capture
 
     if getattr(a, "macc_f32acc", False):
         os.environ[compiler_transforms.ENV_MACC] = "1"

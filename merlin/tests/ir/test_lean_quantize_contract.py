@@ -280,7 +280,12 @@ def test_an_injected_quantizer_bug_stops_compilation(tmp_path, pass_gate_tools, 
     output = tmp_path / "compiled"
     try:
         with pytest.raises(GateFailure) as failure:
-            lower.lower_model(source(), output, targets=(), pass_validation=PassValidation(gate, pass_gate_tools))
+            lower.lower_model(
+                source(),
+                output,
+                targets=(),
+                pass_validation=PassValidation(gate, pass_gate_tools, frozenset({"lower_quant_ext"})),
+            )
     finally:
         gate.close()
     assert failure.value.report["label"] == "lower_quant_ext"

@@ -14,6 +14,17 @@ independent review. Configuration-write elision and partial loop
 hoisting use separate explicit instruction/effect APIs. Their state relations
 must not be substituted for a numerical-policy proof or for one another.
 
+The explicit `lower_quant_ext` compiler selector now checks actual xDSL and
+textual Q/DQ lowering boundaries with typed refinement, source support and
+chain composition under the existing proposed Q/DQ semantics. It stays outside
+`all`; source-specification approval and framework/IEEE/native fidelity are
+not established. Optional `SourceCapture` selection freshly reconstructs the
+retained original PT2 graph, checks source correspondence and reopens the pinned
+producer/Torch payload before and after the compiler proof. This is trusted
+operator source binding, not execution attestation or a closed dependency proof.
+Quantizer definedness remains separate from lowering refinement. No source
+specification, frozen interface, software pin or semantic assumption is changed.
+
 Source quantize/dequantize expansion proofs and compiler corrections are
 inherited. W8A8 source-domain/calibration/bounds work and the bf16/f16
 f32-accumulation contract remain candidates with the independent-review and

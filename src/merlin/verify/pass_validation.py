@@ -36,10 +36,11 @@ CHECKS = {
     "ordered_loop_segmentation": "compiler_loop_refinement",
     "buffer_reuse": "compiler_buffer_refinement",
     "bf16_f32acc_draft_contract": "compiler_macc_contract",
+    "lower_quant_ext": "compiler_qdq_refinement",
 }
 # Numerical draft conformance requires explicit selection. It is neither an
 # admitted numerical policy nor an original-source refinement check.
-DEFAULT_CHECKS = frozenset(CHECKS) - {"bf16_f32acc_draft_contract"}
+DEFAULT_CHECKS = frozenset(CHECKS) - {"bf16_f32acc_draft_contract", "lower_quant_ext"}
 ENV_PASSES = "MERLIN_VALIDATE_PASSES"
 ENV_SDK_BIN = "MERLIN_LEAN_SDK_BIN"
 ENV_COMPILER_PYTHON = "MERLIN_COMPILER_PYTHON"
@@ -98,6 +99,7 @@ class PassValidation:
     tools: CheckerTools
     passes: frozenset[str] = DEFAULT_CHECKS
     index_bits: int = 64
+    qdq_source: Any | None = None
 
     def __post_init__(self) -> None:
         from .speculative_gate import SpeculativeGate
@@ -110,6 +112,11 @@ class PassValidation:
             raise ValueError(f"validated passes must be a nonempty subset of {sorted(CHECKS)}")
         for name in self.passes:
             require_canonical_handler(self, CHECKS[name])
+        if self.qdq_source is not None:
+            from .compiler_qdq import SELECTOR, SourceCapture
+
+            if type(self.qdq_source) is not SourceCapture or SELECTOR not in self.passes:
+                raise ValueError("Q/DQ source capture requires explicit SourceCapture and lower_quant_ext selection")
         if self.index_bits != 64:
             # merlin/lean/LEDGER.md S6: at index32 the Lean model and the pinned native pipeline
             # disagree on a retained overflow example; a refinement claim there is not established.
@@ -149,7 +156,11 @@ def from_environment(workdir: Path, *, index_bits: int | None = None) -> PassVal
     if not workers.isdigit() or int(workers) < 1:
         raise ValueError(f"{ENV_WORKERS} must be a positive integer, not {workers!r}")
     gate = SpeculativeGate(Path(workdir) / "pass-validation", interrupt=True, workers=int(workers))
-    return PassValidation(gate, tools, passes, 64 if index_bits is None else index_bits)
+    from .compiler_qdq import SourceCapture
+
+    return PassValidation(
+        gate, tools, passes, 64 if index_bits is None else index_bits, SourceCapture.from_environment()
+    )
 
 
 @contextmanager
@@ -215,7 +226,9 @@ def validated(workdir_argument: str, *, index_bits_argument: str | None = None, 
 
 def observe(pass_name: str, module, transform: Callable):
     """Run ``transform(module)`` and, when ``pass_name`` is validated, submit its exact before/after IR."""
-    if not selected(pass_name) or any(name == pass_name and actual is module for name, actual in _OBSERVING.get()):
+    if not selected(pass_name) or any(
+        name == pass_name and (actual is module or actual is None) for name, actual in _OBSERVING.get()
+    ):
         return transform(module)
     from merlin.xdsl_dialects._common import text
 
@@ -256,15 +269,18 @@ def submit(pass_name: str, before: str, after: str, *, label: str | None = None)
     if validation is None or pass_name not in validation.passes or before == after:
         return False
     require_canonical_handler(validation, CHECKS[pass_name])
+    params = {
+        "sdk_bin": str(validation.tools.sdk_bin),
+        "compiler_python": str(validation.tools.compiler_python),
+        "index_bits": validation.index_bits,
+    }
+    if pass_name == "lower_quant_ext" and validation.qdq_source is not None:
+        params["source_capture"] = validation.qdq_source.describe()
     validation.gate.submit(
         CHECKS[pass_name],
         before=before,
         after=after,
-        params={
-            "sdk_bin": str(validation.tools.sdk_bin),
-            "compiler_python": str(validation.tools.compiler_python),
-            "index_bits": validation.index_bits,
-        },
+        params=params,
         label=label or pass_name,
     )
     return True

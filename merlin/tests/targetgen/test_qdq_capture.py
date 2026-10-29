@@ -220,7 +220,7 @@ def test_torch_identity_checks_archive_and_installed_bytes(tmp_path, monkeypatch
     )
     distribution = SimpleNamespace(version="2.10.0+cpu", locate_file=lambda name: installed / name)
     monkeypatch.setitem(sys.modules, "torch", torch)
-    monkeypatch.setattr(identity, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(identity, "requirements_path", lambda: requirements)
     monkeypatch.setattr(identity.importlib.metadata, "distribution", lambda name: distribution)
     if mutation == "wheel":
         archive.write_bytes(b"different wheel")
@@ -233,6 +233,14 @@ def test_torch_identity_checks_archive_and_installed_bytes(tmp_path, monkeypatch
     else:
         with pytest.raises(ValueError, match="differs"):
             identity.torch_identity(archive)
+
+
+def test_caller_repository_cannot_replace_the_torch_pin(tmp_path, monkeypatch):
+    from merlin.targetgen.qdq_capture_identity import requirements_path
+
+    original = requirements_path()
+    monkeypatch.setenv("MERLIN_REPO_ROOT", str(tmp_path))
+    assert requirements_path() == original
 
 
 def test_native_capture_and_worker_refuse_lossy_scale(tmp_path):

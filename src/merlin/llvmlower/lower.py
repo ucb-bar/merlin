@@ -629,9 +629,10 @@ def lower_model(
 
         def preprocess(source):
             if textual:
+                from ..verify.compiler_qdq import observe_textual
                 from .passes_xdsl import preprocess_text_textual
 
-                return preprocess_text_textual(source)
+                return observe_textual(source, preprocess_text_textual)
             observed = audit.directory is not None or compile_trace.active() is not None
             return preprocess_text(source, audit=audit) if observed else preprocess_text(source)
 
