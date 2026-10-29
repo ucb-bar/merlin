@@ -68,3 +68,16 @@ def test_every_form_builds_a_capsule_and_golden(form):
     }  # fmt: skip
     cap, mlir = CS.BUILDERS[row.op](entry, binding)
     assert cap["operation"]["op"] == row.op and "merlin_iface." + row.op in mlir
+
+
+@pytest.mark.parametrize(("src", "dst"), [([4, 6], [24]), ([4, 6], [4, 1, 6]), ([4, 1, 6], [4, 6]), ([2, 3, 4], [6, 4])])
+def test_reshape_keeps_row_major_order(src, dst):
+    out = integer_ops.move(_t(src), {"form": "reshape"}, dst)
+    assert list(out.shape) == dst and out.data == list(range(math.prod(src)))
+
+
+def test_reshape_refuses_a_different_element_count_or_no_shape():
+    with pytest.raises(integer_ops.IntegerOpError):
+        integer_ops.move(_t([4, 6]), {"form": "reshape"}, [5, 5])
+    with pytest.raises(integer_ops.IntegerOpError):
+        integer_ops.move(_t([4, 6]), {"form": "reshape"}, None)

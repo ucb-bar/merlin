@@ -772,7 +772,12 @@ def test_written_per_operand_screen_selects_its_own_contract():
         ({"form": "repeat", "repeats": [2, 1]}, [2, 3], [4, 3], "outer"),
         ({"form": "repeat", "repeats": [1, 2]}, [2, 3], [2, 6], "inner"),
         ({"form": "repeat", "repeats": [2, 1]}, [2, 3], [5, 3], None),
+        ({"form": "permute", "perm": [1, 0]}, [2, 3], [3, 2], "none"),
+        ({"form": "permute", "perm": [2, 0, 1]}, [2, 3, 4], [4, 2, 3], "none"),
         ({"form": "permute"}, [2, 3], [3, 2], None),
+        ({"form": "reshape"}, [2, 3], [6], "none"),
+        ({"form": "reshape"}, [4, 1, 3], [4, 3], "none"),
+        ({"form": "reshape"}, [2, 3], [3, 3], None),
     ],
 )
 def test_shape_changing_movement_broadcast_class_is_read_from_the_form(attributes, src, out, expected):
@@ -880,3 +885,19 @@ def test_window_sum_is_admitted_by_the_standalone_sum_row_and_not_by_a_max_pool_
     bare = {k: v for k, v in row.items() if k not in {"reduction_kind", "tails"}}
     unobserved = admit_operation_row(bare, software_spec=spec, capability_contract=contract, host_capabilities=None)
     assert unobserved["accelerator_admission"]["status"] == "unknown"
+
+
+@pytest.mark.parametrize(("attributes", "src", "out", "work"), [
+    ({"form": "permute", "perm": [1, 0]}, [2, 3], [3, 2], "permutation"),
+    ({"form": "reshape"}, [2, 3, 1], [6], "copy"),
+])  # fmt: skip
+def test_view_like_movement_states_its_work(attributes, src, out, work):
+    from merlin.targetgen.interface_observations import command_rows
+
+    cb = {
+        "abi_version": "0.1", "target": "fixture",
+        "tensors": {"X": {"shape": src, "dtype": "i8", "role": "input"}, "Y": {"shape": out, "dtype": "i8", "role": "output"}},
+        "commands": [{"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "Y"}, "attributes": attributes}],
+    }  # fmt: skip
+    [row] = [r for r in command_rows(cb) if r["semantic_family"] == "movement"]
+    assert row["movement_form"] == work

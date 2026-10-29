@@ -24,6 +24,7 @@ names a target or an opcode's hardware meaning beyond the grammar's own families
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 _ROW_MAJOR = "row_major_contiguous"
@@ -52,6 +53,10 @@ def _static(*typed: dict | None) -> bool:
     )
 
 
+#: Interface movement forms whose single-source work is stated by the form itself.
+_VIEW_FORM_WORK = {"permute": "permutation", "reshape": "copy"}
+
+
 def _movement_broadcasting(attributes: dict, source: dict | None, result: dict | None) -> str | None:
     """Broadcast class of a shape-changing single-source movement, from its form's own static parameters.
 
@@ -65,6 +70,17 @@ def _movement_broadcasting(attributes: dict, source: dict | None, result: dict |
     form = attributes.get("form")
     if form in {"slice", "pad"}:
         return "none"
+    if form == "permute":
+        perm = attributes.get("perm")
+        # An axis permutation reads each result element from exactly one source element: nothing is
+        # broadcast. The parameter must state a true permutation of the source's axes.
+        if isinstance(perm, list) and sorted(perm) == list(range(len(source["shape"]))) and len(result["shape"]) == len(perm):
+            return "none" if all(result["shape"][i] == source["shape"][p] for i, p in enumerate(perm)) else None
+        return None
+    if form == "reshape":
+        # A row-major reshape (view, squeeze, unsqueeze, flatten) relabels the same elements in the same
+        # order: no element is replayed and none is dropped.
+        return "none" if math.prod(source["shape"]) == math.prod(result["shape"]) else None
     src, out = source["shape"], result["shape"]
     if form == "broadcast":
         if len(out) < len(src):
@@ -339,6 +355,10 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
             observed = _movement_broadcasting(attributes, typed_sources[0], result)
             if observed is not None:
                 row["broadcasting"] = observed
+            # The work a view-like form performs, stated so a form-constrained capability applies to it:
+            # an axis permutation needs the transposing mechanism; a reshape relabels row-major bytes (a copy).
+            if row.get("broadcasting") == "none" and attributes.get("form") in _VIEW_FORM_WORK:
+                row["movement_form"] = _VIEW_FORM_WORK[attributes["form"]]
         if family == "movement" and "broadcasting" not in row and operation in {"concat", "insert_slice"}:
             observed = _joined_movement_broadcasting(operation, attributes, typed_sources, result)
             if observed is not None:

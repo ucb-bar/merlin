@@ -70,6 +70,18 @@ def _permute(m: int, n: int) -> dict[str, Any]:
     return {"form": "permute", "shape": [m, n], "perm": [1, 0]}
 
 
+def _flatten(m: int, n: int) -> dict[str, Any]:
+    return {"form": "reshape", "shape": [m, n], "out_shape": [m * n]}  # torch view / reshape to one axis
+
+
+def _unsqueeze(m: int, n: int) -> dict[str, Any]:
+    return {"form": "reshape", "shape": [m, n], "out_shape": [m, 1, n]}  # torch unsqueeze(1)
+
+
+def _squeeze(m: int, n: int) -> dict[str, Any]:
+    return {"form": "reshape", "shape": [m, 1, n], "out_shape": [m, n]}  # torch squeeze(1)
+
+
 def _concat(m: int, n: int) -> dict[str, Any]:
     return {"sources": ["X0", "X1"], "shapes": [[m, n], [m, n]], "axis": 0}
 
@@ -112,6 +124,9 @@ FORM_TABLE: dict[tuple[str, str], FormEntry] = {
     ("movement", "broadcast"): FormEntry("movement", _broadcast, ("broadcast",)),
     ("movement", "repeat"): FormEntry("movement", _repeat, ("copy", "broadcast")),
     ("movement", "permute"): FormEntry("movement", _permute, ("permutation",)),
+    ("movement", "view"): FormEntry("movement", _flatten, ("copy",)),
+    ("movement", "unsqueeze"): FormEntry("movement", _unsqueeze, ("copy",)),
+    ("movement", "squeeze"): FormEntry("movement", _squeeze, ("copy",)),
     ("movement", "concat"): FormEntry("concat", _concat, ("copy",)),
     ("movement", "select"): FormEntry("movement", _select, ("copy",)),
     ("movement", "split_chunk"): FormEntry("movement", _split_chunk, ("copy",)),

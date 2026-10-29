@@ -44,6 +44,7 @@ _MOVE_FORMS = {
     "pad": frozenset({"low", "high", "mode"}),
     "broadcast": frozenset(),
     "repeat": frozenset({"repeats"}),
+    "reshape": frozenset(),
 }
 _MOVE_COMMON = frozenset(
     {"form", "output_dtype", "semantic", "scale", "quant_min", "quant_max", "value_code"} | _EXACT_ATTRS
@@ -177,7 +178,7 @@ def affine_map(x: Tensor, y: Tensor | None, attrs: dict[str, Any], *, op: str = 
 
 
 def move(src: Tensor, attrs: dict[str, Any], dst_shape: list[int] | None, *, op: str = "MOVEMENT") -> Tensor:
-    """A single-source ``MOVEMENT``: identity, permute, slice, pad, broadcast or repeat (+ optional scale)."""
+    """A single-source ``MOVEMENT``: identity, permute, slice, pad, broadcast, repeat or reshape (+ optional scale)."""
     form = str(attrs.get("form", "identity"))
     if form not in _MOVE_FORMS:
         raise IntegerOpError(f"{op}: form must be one of {sorted(_MOVE_FORMS)}, got {form!r}")
@@ -232,6 +233,15 @@ def move(src: Tensor, attrs: dict[str, Any], dst_shape: list[int] | None, *, op:
             out = np.pad(a, widths, mode="edge")
         else:
             raise IntegerOpError(f"{op}: pad mode must be constant, reflect or replicate, got {mode!r}")
+    elif form == "reshape":
+        # torch view / reshape / squeeze / unsqueeze / flatten on a row-major contiguous tensor: the same
+        # elements in the same order under the declared result extents (no replay, no drop).
+        if dst_shape is None:
+            raise IntegerOpError(f"{op}: a reshape needs its declared destination shape")
+        target = tuple(int(d) for d in dst_shape)
+        if any(d < 0 for d in target) or int(np.prod(target, dtype=np.int64)) != a.size:
+            raise IntegerOpError(f"{op}: {list(a.shape)} cannot be reshaped to {list(target)}")
+        out = a.reshape(target)
     elif form == "broadcast":
         if dst_shape is None:
             raise IntegerOpError(f"{op}: a broadcast needs its declared destination shape")

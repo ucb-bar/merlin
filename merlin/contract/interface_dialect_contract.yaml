@@ -51,7 +51,7 @@ dialect:
         name: string
         semantic: string
         output_dtype: string
-        form: "identity (default) | permute {perm} | slice {offsets, sizes, strides: nonzero, negative walks backwards} | pad {low, high, mode, value_code} | broadcast | repeat {repeats}"
+        form: "identity (default) | permute {perm} | slice {offsets, sizes, strides: nonzero, negative walks backwards} | pad {low, high, mode, value_code} | broadcast | repeat {repeats} | reshape (row-major, to the declared result shape)"
         scale: "f32 (optional; one load-path requantization)"
       maps_to: MOVEMENT
     - name: merlin_iface.attention_pv
