@@ -53,4 +53,3 @@ theorem finite_product_not_entailed :
 #print axioms finite_product_not_entailed
 
 end MerlinVerify.Rules.W8A8FiniteProductsCountermodel
-
