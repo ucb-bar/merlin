@@ -85,6 +85,97 @@ def test_region_trial_requires_its_selected_capsule_binding():
     assert task["region_id"] == "selected-source"
 
 
+def test_comparison_evidence_uses_diagnostics_instead_of_requiring_an_optimization_knob():
+    # The retained attention comparison declared an evidence knob, but its
+    # operator-selected public capsule admitted only dispatch goals.
+    context = selected_context()
+    goal = "evidence.cca_comparison"
+    context["tuning"] = dict(current=dict(schedule="batched"), domains=dict(
+        schedule=dict(values=["off", "batched"], goals=[goal])))
+    context["capsules"][0]["goals"] = ["dispatch.role.load", "dispatch.n_fences"]
+    report = dict(kind="reference_candidate_comparison", cca=dict(
+        status="compared", compared_axes=["dispatch.loop_offloaded"], divergences=[],
+        unknowns=[dict(axis="compute.op", reason="value_unavailable", missing_sides=["expert", "ours"])]))
+    task, = build_experiment_packet(report, context=context)["tasks"]
+    assert task["status"] == "blocked" and not task["requests"]
+    assert task["next_action"]["gaps"] == ["evidence.current_source_and_emission_observations"]
+    assert task["next_action"]["phase"] == "evidence_collection"
+    diagnostic, = task["next_action"]["diagnostics"]
+    assert diagnostic["capsule"] == context["capsules"][0]["id"]
+    assert diagnostic["argv"] == [*context["capsules"][0]["selfcheck_argv"][:3], "submission",
+                                  *context["capsules"][0]["selfcheck_argv"][4:], "--candidate-diagnostics"]
+    assert "--tuning-overrides" not in diagnostic["argv"]
+    assert not task["hypotheses"]
+    assert task["mechanism_status"] == task["performance_status"] == "unknown"
+
+
+def test_analysis_diagnostics_never_select_held_out_or_fabricate_commands():
+    context = selected_context()
+    report = dict(kind="source_syntax", semantic_region_status="unknown")
+    for change in ("held_out", "command", "empty_command"):
+        invalid = copy.deepcopy(context)
+        if change == "held_out":
+            invalid["capsules"][0]["split"] = "held_out"
+        elif change == "command":
+            invalid["capsules"][0]["selfcheck_argv"] = ["python3", "-c", "unreviewed()"]
+        else:
+            invalid["capsules"][0]["selfcheck_argv"] = []
+        task, = build_experiment_packet(report, context=invalid)["tasks"]
+        assert not task["next_action"]["diagnostics"] and not task["requests"]
+        assert task["next_action"]["gaps"] == ["binding.development_diagnostic_command"]
+
+
+def test_evidence_tasks_do_not_spend_the_controlled_trial_budget():
+    context = selected_context()
+    report = dict(kind="source_syntax", semantic_region_status="unknown", **missing_mechanism())
+    packet = build_experiment_packet(report, context=context, budget=dict(max_tasks=2, max_variants=1, max_requests=2))
+    evidence = next(row for row in packet["tasks"] if row["kind"] == "missing_evidence")
+    trial = next(row for row in packet["tasks"] if row["kind"] == "bounded_search_exhaustion")
+    assert not evidence["requests"] and evidence["next_action"]["diagnostics"]
+    assert len(trial["requests"]) == 2 and trial["status"] == "ready"
+
+
+def test_knob_and_capsule_must_share_the_same_diagnosed_goal():
+    context = selected_context()
+    context["capsules"][0]["goals"] = ["scheduling.completion"]
+    report = missing_mechanism()
+    report["gaps"][0]["goals"] = [GOAL, "scheduling.completion"]
+    task, = build_experiment_packet(report, context=context)["tasks"]
+    assert not task["requests"] and task["status"] == "blocked"
+    assert task["next_action"]["gaps"] == ["binding.shared_goal_applicability"]
+    bindings = task["next_action"]["binding_requirements"]["goals"]
+    assert bindings[0]["declared_knobs"] == ["reuse"] and not bindings[0]["selected_capsules"]
+    assert not bindings[1]["declared_knobs"] and bindings[1]["development_capsules"]
+
+
+def test_each_capsule_gets_only_alternatives_for_its_own_goal():
+    context = selected_context()
+    context["tuning"]["domains"]["unrelated"] = dict(values=[False, True], goals=["scheduling.completion"])
+    second = copy.deepcopy(context["capsules"][0])
+    second.update(id="another-public-identifier", goals=["scheduling.completion"])
+    second["selfcheck_argv"][second["selfcheck_argv"].index("--capsules") + 1] = second["id"]
+    context["capsules"].append(second)
+    report = missing_mechanism()
+    report["gaps"][0]["goals"] = [GOAL, "scheduling.completion"]
+    task, = build_experiment_packet(report, context=context)["tasks"]
+    assert task["status"] == "ready" and len(task["requests"]) == 4
+    variants = [row for row in task["requests"] if row["role"] == "variant"]
+    assert [(row["capsule"], row["tuning_overrides"]) for row in variants] == [
+        (context["capsules"][0]["id"], dict(reuse="resident")),
+        (second["id"], dict(unrelated=True)),
+    ]
+
+
+def test_binding_feedback_keeps_held_out_shapes_unavailable_for_trials():
+    context = selected_context()
+    context["capsules"][0]["split"] = "held_out"
+    task, = build_experiment_packet(missing_mechanism(), context=context)["tasks"]
+    binding, = task["next_action"]["binding_requirements"]["goals"]
+    assert binding["selected_capsules"] == binding["held_out_capsules"]
+    assert not binding["development_capsules"] and not task["requests"]
+    assert "binding.development_capsule" in task["next_action"]["gaps"]
+
+
 def receipt(request, context, *, cycles=100, gates=None, established=()):
     return dict(
         context_identity=execution_context_identity(context),
@@ -605,6 +696,28 @@ def test_missing_static_projection_is_unknown_and_does_not_disappear():
     assert not task["requests"]
 
 
+def test_partial_machine_projection_and_representation_views_retain_actionable_gaps():
+    machine = dict(kind="static_instruction_analysis", regions=[dict(region_id="body",
+        mechanism_projection=dict(status="partial", missing=["complete_semantic_region"],
+                                  next_action="join_original_source"))])
+    packet = build_experiment_packet(machine, context=selected_context())
+    task, = packet["tasks"]
+    assert task["kind"] == "adapter_gap" and "complete_semantic_region" in task["summary"]
+    assert not task["requests"]
+    bundle = dict(kind="representation_bundle", views=dict(binary=machine), input=dict(sha256="1" * 64))
+    tasks = build_experiment_packet(bundle, context=selected_context())["tasks"]
+    assert any(row["evidence"][0]["pointer"].startswith("/views/binary/regions/0") for row in tasks)
+    assert all(not row["requests"] for row in tasks)
+
+
+def test_explicit_unknown_semantics_prevent_machine_differences_becoming_executable_trials():
+    report = dict(kind="reference_candidate_comparison", semantic_compatibility="unknown",
+        cca=dict(status="compared", compared_axes=[GOAL],
+                 divergences=[dict(axis=GOAL, expert=True, ours=False)], unknowns=[]))
+    tasks = build_experiment_packet(report, context=selected_context())["tasks"]
+    assert tasks and all(row["kind"] != "scoped_mechanism_difference" and not row["requests"] for row in tasks)
+
+
 def test_cross_view_source_mismatch_and_recorded_difference_keep_separate_obligations():
     report = dict(kind="artifact_cross_view_comparison", declared_source_join="unknown_or_mismatch",
         gaps=[dict(kind="scoped_mechanism_difference", goals=[GOAL], reason="recorded issue mixes differ")])
@@ -618,3 +731,133 @@ def test_cross_view_source_mismatch_and_recorded_difference_keep_separate_obliga
     declaration = dict(kind="declared_semantic_comparison", declared_contracts=dict(status="mismatch"))
     tasks = build_experiment_packet(declaration, context=selected_context())["tasks"]
     assert any(row["kind"] == "semantic_mismatch" for row in tasks)
+
+
+def captured_comparison():
+    scope = "selected_function_body; caller preparation and wrapper commands excluded"
+
+    def counts(reference, candidate):
+        return dict(reference=reference, candidate=candidate, status="compared_function_body_counts")
+
+    return dict(
+        kind="captured_reference_candidate_comparison",
+        declared_contraction_alignment="matches",
+        reference=dict(
+            input=dict(path="reference-kernels/selected.c", sha256="1" * 64),
+            capture=dict(path="cca-evidence/capture.jsonl", sha256="2" * 64),
+            count_scope=scope,
+            schedule_model=dict(complete=True, unknowns=["hardware_completion_and_timing_not_established"]),
+        ),
+        candidate=dict(
+            input=dict(path="artifacts/views.json", sha256="3" * 64),
+            captured_reference_axes=dict(
+                status="observed_counted_emission", count_scope=scope, traffic="unknown", residency="unknown"
+            ),
+        ),
+        command_role_comparison=dict(load=counts(4128, 18432), configure=counts(4, 4), synchronize=counts(1, 2083)),
+        cca=dict(
+            status="compared",
+            compared_axes=["dispatch.n_dispatches", "dispatch.n_fences", "dispatch.config_fraction"],
+            divergences=[
+                dict(axis="dispatch.n_dispatches", expert=37028, ours=51333),
+                dict(axis="dispatch.n_fences", expert=1, ours=2083),
+                dict(axis="dispatch.config_fraction", expert=4 / 37028, ours=4 / 51333),
+            ],
+            unknowns=[dict(axis="memory.onchip_resident", reason="value_unavailable", missing_sides=["ours"])],
+        ),
+        semantic_equivalence="unknown",
+        schedule_consumption="unknown",
+        completion="unknown",
+        overlap="unknown",
+    )
+
+
+def capture_context():
+    context = selected_context()
+    context["capsules"][0]["goals"] = ["dispatch.role.load", "dispatch.n_dispatches", "dispatch.n_fences"]
+    return context
+
+
+def test_captured_comparison_creates_scoped_construction_tasks_from_actual_role_gaps():
+    report = captured_comparison()
+    tasks = build_experiment_packet(report, context=capture_context())["tasks"]
+    mechanisms = [task for task in tasks if task["kind"] == "scoped_mechanism_difference"]
+    assert {tuple(task["goals"]) for task in mechanisms} == {
+        ("dispatch.role.load",),
+        ("dispatch.n_fences",),
+    }
+    assert not any("dispatch.config_fraction" in task["goals"] for task in tasks)
+    for task in mechanisms:
+        assert task["status"] == "blocked" and not task["requests"]
+        assert task["next_action"]["gaps"] == [
+            "binding.mechanism_to_declared_knob",
+            "construction.declare_goal_bound_alternative",
+        ]
+        assert task["next_action"]["library_routes"]
+        assert all(
+            route["symbols"] and route["authority"].startswith("discovery only")
+            for route in task["next_action"]["library_routes"]
+        )
+        witness = task["evidence"][0]
+        assert witness["scope"] == report["reference"]["count_scope"]
+        assert witness["input_pins"]["reference"]["capture"] == report["reference"]["capture"]
+        assert witness["unresolved"]["candidate_traffic"] == witness["unresolved"]["candidate_residency"] == "unknown"
+        assert task["mechanism_status"] == task["performance_status"] == "unknown"
+    load = next(task for task in mechanisms if task["goals"] == ["dispatch.role.load"])
+    assert "18432" in load["summary"] and "4128" in load["summary"]
+    assert "traffic and residency remain unknown" in load["summary"]
+
+
+@pytest.mark.parametrize("change", ["contract", "count_scope", "candidate_count"])
+def test_captured_mechanisms_need_aligned_declared_contract_and_complete_count_scope(change):
+    report = captured_comparison()
+    if change == "contract":
+        report["declared_contraction_alignment"] = "unknown_or_mismatch"
+    elif change == "count_scope":
+        report["candidate"]["captured_reference_axes"]["count_scope"] = "static_sites"
+    else:
+        report["candidate"]["captured_reference_axes"]["status"] = "unknown"
+    tasks = build_experiment_packet(report, context=capture_context())["tasks"]
+    assert tasks and not any(task["kind"] == "scoped_mechanism_difference" for task in tasks)
+    assert all(task["performance_status"] == "unknown" and not task["requests"] for task in tasks)
+
+
+def test_equal_configuration_work_suppresses_denominator_only_ratio_task():
+    report = captured_comparison()
+    tasks = build_experiment_packet(report, context=capture_context())["tasks"]
+    assert not any(task["goals"] == ["dispatch.config_fraction"] for task in tasks)
+    report["command_role_comparison"]["configure"]["candidate"] = 8
+    tasks = build_experiment_packet(report, context=capture_context())["tasks"]
+    assert any(task["goals"] == ["dispatch.config_fraction"] for task in tasks)
+
+
+def test_initialization_only_count_difference_spends_no_proposal_budget():
+    report = captured_comparison()
+    report["command_role_comparison"] = {}
+    report["cca"]["divergences"] = [dict(axis="dispatch.n_dispatches", expert=37028, ours=37029)]
+    report["cca"]["unknowns"] = []
+    context = capture_context()
+    context["tuning"]["domains"]["reuse"]["goals"] = ["dispatch.n_dispatches"]
+    tasks = build_experiment_packet(report, context=context)["tasks"]
+    assert all(row["kind"] != "scoped_mechanism_difference" and not row["requests"] for row in tasks)
+
+
+def test_declared_load_alternative_uses_existing_ab_requests_but_unknown_semantics_stays_unranked():
+    report = captured_comparison()
+    context = capture_context()
+    context["tuning"]["domains"]["reuse"]["goals"] = ["dispatch.role.load"]
+    tasks = build_experiment_packet(report, context=context)["tasks"]
+    task = next(task for task in tasks if task["goals"] == ["dispatch.role.load"])
+    assert task["status"] == "ready" and len(task["requests"]) == 2
+    assert task["next_action"]["depends_on"] and not task["next_action"]["gaps"]
+    results = [
+        receipt(request, context, cycles=100 - i * 10, established=task["goals"])
+        for i, request in enumerate(task["requests"])
+    ]
+    results[1]["gates"]["source_semantics"] = "unknown"
+    context["evaluator"]["trusted_result_sha256"] = [digest(result) for result in results]
+    tasks = build_experiment_packet(report, context=context, history=results)["tasks"]
+    task = next(task for task in tasks if task["goals"] == ["dispatch.role.load"])
+    assert task["requests"][1]["status"] == "unranked"
+    assert task["mechanism_status"] == task["performance_status"] == "unknown"
+    assert all("measured_comparison" not in request for request in task["requests"])
