@@ -138,3 +138,30 @@ def test_multiple_selected_host_groups_run_normally_with_unverified_coverage(tmp
     coverage = json.loads((validation.gate.directory / "coverage.json").read_text())
     assert coverage["unverified_boundaries"] == 1
     assert coverage["boundaries"][0]["code"] == "fusion-selection"
+
+
+def test_unexpected_admission_error_blocks_and_quarantines_compiler_output(tmp_path, monkeypatch):
+    controller = pass_validation
+    validation = validation_at(tmp_path, monkeypatch, [transforms.UNROLL])
+    product = tmp_path / "model.ll"
+    quarantined = []
+
+    def quarantine(work):
+        quarantined.append(work)
+        product.unlink()
+
+    def unexpected(raw):
+        raise RuntimeError("unexpected source projection failure")
+
+    @pass_validation.validated("work", on_failure=quarantine)
+    def compile_with_fault(work, *, pass_validation):
+        product.write_text("compiler product before a later source admission")
+        return controller.source_admission(transforms.UNROLL, SOURCE, predicate=unexpected)
+
+    with pytest.raises(GateFailure, match="unexpected source projection failure") as failure:
+        compile_with_fault(tmp_path, pass_validation=validation)
+    assert isinstance(failure.value.__cause__, RuntimeError)
+    assert not product.exists() and quarantined == [tmp_path]
+    coverage = json.loads((validation.gate.directory / "coverage.json").read_text())
+    assert coverage["compiler_completed"] is False
+    assert coverage["unverified_boundaries"] == 0

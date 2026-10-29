@@ -332,7 +332,6 @@ def submit(pass_name: str, before: str, after: str, *, label: str | None = None)
 
 def source_admission(pass_name, before, *, predicate=None):
     """Return a fixed model or a known source exclusion; all other failures block."""
-    from .gate_errors import GateError
     from .speculative_gate import GateFailure
 
     validation = current()
@@ -372,7 +371,7 @@ def source_admission(pass_name, before, *, predicate=None):
         return admit_source(before, pass_name=pass_name, validation=validation)
     except SourceOutsideProfile as exclusion:
         return exclusion
-    except (GateError, OSError, ValueError, TypeError) as error:
+    except Exception as error:  # noqa: BLE001 -- every unexpected admission failure must quarantine products
         raise GateFailure(
             {
                 "check": CHECKS[pass_name],
