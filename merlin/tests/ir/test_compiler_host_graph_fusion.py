@@ -154,7 +154,7 @@ def test_explicit_selector_and_worker_result_require_actual_claim():
 def test_canonical_gate_refusal_quarantines_compiler_products(pass_gate_tools, tmp_path, monkeypatch):
     from merlin.llvmlower.lower import lower_model
 
-    submit = pass_validation.submit
+    submit = pass_validation._submit_admitted
 
     def corrupt_boundary(name, before, after, **kwargs):
         # Inject a valid but wrong target at the compiler's actual gate boundary.
@@ -163,7 +163,7 @@ def test_canonical_gate_refusal_quarantines_compiler_products(pass_gate_tools, t
             after = mutate(after, "arithmetic")
         return submit(name, before, after, **kwargs)
 
-    monkeypatch.setattr(pass_validation, "submit", corrupt_boundary)
+    monkeypatch.setattr(pass_validation, "_submit_admitted", corrupt_boundary)
     worker = SpeculativeGate(tmp_path / "gate", interrupt=False, job_timeout=300)
     validation = pass_validation.PassValidation(worker, pass_gate_tools, frozenset({gate.SELECTOR}))
     raw = source(context=True)
