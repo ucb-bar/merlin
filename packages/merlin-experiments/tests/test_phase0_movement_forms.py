@@ -168,3 +168,42 @@ def test_forms_are_declared_by_the_reviewed_movement_row():
     kept, refused = ft.declared_forms(doc, contract)
     assert set(FORMS + ["fill_scalar"]) <= set(kept.get("movement", [])), (kept, refused)
     assert "split_chunk" not in kept.get("movement", [])
+
+
+SECOND_WINDOW_FORMS = [
+    "pool1d_k2", "pool2d_k4", "pool3d_overlap", "adaptive1d_even", "adaptive2d_even", "adaptive3d_even",
+    "pool2d_backward_overlap", "adaptive2d_backward_even", "mean_dim_h", "mean_all_small",
+]
+
+
+@pytest.mark.parametrize("form", SECOND_WINDOW_FORMS)
+def test_second_window_geometries_are_built_graded_and_admitted(form):
+    binding = SPEC.CorpusBinding(
+        target="gemmini", tile_dim=16, operand_dtype="int8", accum_dtype="int32", integer=True,
+        tiers=["L2", "L3"], compare="exact",
+    )  # fmt: skip
+    row = ft.FORM_TABLE[("reduction", form)]
+    assert row.once
+    entry = {
+        "name": f"T_{form}", "kind": "isa", "source_role": "derived_sweep", "source_reference": "test",
+        "op": row.op, "label": "public", **ft.entry_fields("reduction", form, 16, 16),
+    }  # fmt: skip
+    capsule, text = SPEC.build(entry, binding)
+    assert capsule_golden.golden(capsule, None)
+    base = repo_root() / "examples/gemmini/target"
+    host = load_yaml(repo_root() / "examples/gemmini/platform/host-capabilities-core-aten.yaml")
+    evidence = SimpleNamespace(
+        software_spec=fixture_resolved(base, "gemmini"),
+        contract=load_yaml(base / "contracts/target_contract.yaml"),
+        host_capabilities={
+            "profile": {
+                "capability_spec": host, "package_sha256": host["compiler"]["package_sha256"],
+                "capability_spec_sha256": "b" * 64, "dtype_strategy": host["compiler"]["dtype_strategy"],
+            }
+        },
+        whole_program_admission=None,
+    )  # fmt: skip
+    path = Path(tempfile.mkdtemp()) / "capsule.interface.mlir"
+    path.write_text(text)
+    rows = account_interface(path, target="gemmini", evidence=evidence, numeric_screens=[])
+    assert summarize(rows, host_only=False, scope="test")["status"] == "admitted"

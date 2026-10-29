@@ -794,7 +794,9 @@ operations:
     # reduction, geometries in corpus_window_forms): window pools of rank 1/2/3 (avg_pool1d/2d/3d, one with a
     # non-power-of-two count), adaptive pools (rank 1/2/3), their transposes (avg_pool2d_backward,
     # _adaptive_avg_pool2d_backward), fold (col2im, raw i32 sum) and reduce (mean.dim, mean.default).
-    forms: [pool1d, pool2d, pool2d_odd_count, pool3d, adaptive1d, adaptive2d, adaptive3d, pool2d_backward, adaptive2d_backward, fold, mean_dim, mean_all]
+    # A second geometry (_k2, _k4, _overlap, _even, _h, _small) of each pool, adaptive pool, pool backward and mean exists so
+    # no operator rests on one capsule; every added geometry has a power-of-two window count (exact f32 readout 1/count).
+    forms: [pool1d, pool2d, pool2d_odd_count, pool3d, adaptive1d, adaptive2d, adaptive3d, pool2d_backward, adaptive2d_backward, fold, mean_dim, mean_all, pool1d_k2, pool2d_k4, pool3d_overlap, adaptive1d_even, adaptive2d_even, adaptive3d_even, pool2d_backward_overlap, adaptive2d_backward_even, mean_dim_h, mean_all_small]
     evidence:
       review_status: reviewed
       reviewed_by: "Reviewed by Loren Hung (approved in operator chat 2026-10-29); the stated evidence and qualification scope remain mandatory."
