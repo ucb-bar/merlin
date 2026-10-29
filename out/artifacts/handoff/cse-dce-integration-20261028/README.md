@@ -3,7 +3,33 @@
 Status: implementation complete and ready for integration review within the
 scope below. Human semantic/trust approval has not been recorded.
 
-## Integration source
+## Current upstream ancestry
+
+The branch now retains the complete original history of both
+`origin/feat/pass-verification` at `c3ad8e10f` (521 commits absent from main)
+and `origin/feat/pass-verification-verf` at `4b1d71a20` (eight additional
+independent review commits). Their original SHAs and authors are preserved.
+The previous main-based import organization did not preserve that ancestry;
+merges `a0ed35163` and `4f2cf9ec0` repair it without rewriting a published ref.
+Neither upstream branch nor main is changed.
+
+Upstream compiler features, Q/DQ arithmetic corrections, graph verification,
+policy refusal controls and independent review evidence are inherited. The
+DCE/CSE alpha-comparison, receipt reuse and worker cleanup remain present.
+The shared tensor proof delta from upstream is only the proved AlphaFast
+implementation and its imports; the frozen semantics and SPEC_LOCK are unchanged.
+Use `--validate-passes prune_dead_pure_tensor_ops,cse` for this delivery's
+DCE/CSE scope. Upstream `all` also selects the unapproved BF16 policy and refuses
+until its independent review admission exists. No quantization proof work is
+advanced by this ancestry repair.
+
+The qualification counts below describe the earlier DCE/CSE-only snapshot
+`3ca03a23f`, before upstream code was restored. They remain historical evidence,
+not a claim that every restored upstream component was rerun. Focused merge
+validation is recorded separately under
+`out/build/dce-cse-ancestry-repair-20261028/`.
+
+## Original DCE/CSE qualification source
 
 Worktree: `/scratch/grammy/blast/merlin-lean-dce-cse`.
 Review branch: `feat/pass-verif-dce-cse`. The published replacement separates
@@ -18,10 +44,10 @@ Proof/enforcement logic and the Lean binary remain unchanged since `d73cbcfe8`.
 The feature branch is published for integration review; it is not merged into
 `main` and no pull request is opened by this delivery.
 
-The branch includes the Lean checker library plus two compiler gates:
+The original DCE/CSE-only qualification selected two compiler gates:
 `prune_dead_pure_tensor_ops` in xDSL preprocessing, and the pipeline's leading
 tensor `cse` in the actual compiler runner on both routes. Enable them with
-`merlin-compile ... --validate-passes all --lean-sdk-bin <sdk>/bin`, or the
+`merlin-compile ... --validate-passes prune_dead_pure_tensor_ops,cse --lean-sdk-bin <sdk>/bin`, or the
 environment/API described in the [gate guide](../../../../docs/guides/lean_pass_gate.md).
 Validation is opt-in. Missing/stale tools and unsupported or rejected checks
 stop the requested validated compilation; unchanged boundaries need no check.

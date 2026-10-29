@@ -13,17 +13,21 @@ implementation to existing callers, including the dequantizer body checker.
   quantization gates and regression tests. This is the published reference.
 * `feat/lean-prune-gate` and `feat/lean-quant-contract` currently point to
   `a21388cd3`, the earlier combined compiler integration worktree state.
-* `feat/pass-verif-dce-cse` (formerly `integrate/lean-dce-cse-gate`) is
-  the current DCE/CSE integration-review branch.
-  Its gate roster contains only `prune_dead_pure_tensor_ops` and tensor `cse`.
-  The quantization specifications, source semantics and SPEC_LOCK match the
-  published reference, but the production quantization lowerings remain those
-  of its `origin/main` base. A retained source Q/DQ operation's support/purity
-  can be needed to prove pruning; that is not a quantization-lowering gate.
+* `feat/pass-verif-dce-cse` now retains the complete original histories of
+  `feat/pass-verification` through `c3ad8e10f` and the independent review branch
+  `feat/pass-verification-verf` through `4b1d71a20`. It inherits the source Q/DQ
+  proofs, numerical compiler corrections and existing quantization gate hooks.
+  Frozen tensor semantics and SPEC_LOCK still match the published reference.
+  The DCE/CSE-specific qualification selection is
+  `prune_dead_pure_tensor_ops,cse`; inherited Q/DQ gates remain separate selections.
+  `all` additionally selects an unapproved BF16 policy and refuses without its
+  independently installed human review admission.
 
-Do not merge the entire historical feature branch merely to acquire a numeric
-fix. Review isolated compiler changes against the chosen integration base and
-preserve the separation of gate scopes.
+The ancestry repair restores existing upstream work; it does not advance
+quantization proofs or broaden their profile. Requalify inherited gates against
+the integrated checkout before numerical rollout. Earlier instructions to port
+isolated numerical fixes applied to the former main-based import and are
+superseded by the restored upstream ancestry.
 
 ## Implemented proof scope
 
@@ -59,7 +63,7 @@ The published tests check 230 retained quantizers (35 forms) and 627 retained
 per-tensor dequantizers (83 forms), with geometry/width, nested, composition and
 mutation cases. The prior combined publication qualification records 118 gate,
 lowering, fuzz and supervision tests plus 3 Spike tests. Those counts belong to
-that source version, not this later CSE-only integration candidate.
+that source version; they are not fresh qualification of the ancestry repair.
 
 Full prior qualification is retained at:
 
@@ -81,9 +85,9 @@ rebuild/replay for a new checkout rather than treating saved JSON as authority.
 2. Review the deliberate SPEC_LOCK updates and ledger A9: the three modeled
    Q/DQ operations only compute values, permitting DCE and CSE reuse. Lock
    consistency and passing tests are not human approval.
-3. For a separate quantization integration, port the isolated compiler
-   corrections before enabling its gate; then reconcile hooks with the current
-   CSE/DCE gate and validate actual before/after buffers on both routes.
+3. Requalify the inherited numerical compiler corrections and gate hooks on
+   the integrated branch; validate actual before/after buffers on both routes.
+   The restored ancestry already contains those corrections; no new port is needed.
    Carry forward the current gate's reporting correction: universal conditional
    boundary acceptance does not widen strict refinement beyond the declared
    input types on which source support was proved. Older human-readable report

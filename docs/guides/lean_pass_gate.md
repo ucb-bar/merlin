@@ -11,6 +11,8 @@ code_refs:
   - src/merlin/verify/gate_checks.py
   - src/merlin/verify/speculative_gate.py
   - src/merlin/verify/lean/check.py
+  - src/merlin/verify/lean/receipt_session.py
+  - merlin/lean/MerlinVerify/Check/AlphaFast.lean
   - src/merlin/llvmlower/passes_xdsl.py
   - src/merlin/llvmlower/lower.py
   - src/merlin/llvmlower/leading_cse.py
@@ -87,9 +89,10 @@ upstream `cse` merges in the captured models: `tensor.empty`, `tensor.collapse_s
 `linalg.fill` and generics.
 
 It then attempts two strengthenings and reports them, never requiring them: the universal boundary
-theorem (`moduleCheck_sound`, for all inputs) and source definedness (no undefined behaviour or
-poison). The receipt's `claim` says exactly what was established, for example "strict refinement
-for all inputs; definedness not established". Axioms: `propext`, `Classical.choice`, `Quot.sound`.
+theorem (`moduleCheck_sound`, for all inputs) and source definedness on typed, nonpoison
+inputs (no undefined behaviour or observable poison). Strict refinement still applies to the
+declared typed domain on which support was established; universal conditional boundary
+acceptance does not widen this domain. Axioms: `propext`, `Classical.choice`, `Quot.sound`.
 Assumptions: `merlin/lean/LEDGER.md` A1–A9 and T1–T6 (A9: the three modeled `quant_ext` Q/DQ operations are
 effect-free and may be erased when dead) (notably T2, the exporter and Python bridge,
 and T3, fidelity of the op semantics to MLIR). Only the 64-bit index width is admitted: at index32
@@ -174,7 +177,7 @@ A checker that is out of date with `merlin/lean` (`lake build --no-build`) is re
 ## Turn it on
 
 ```
-merlin-compile ... --validate-passes all --lean-sdk-bin <lean-4.35.0>/bin
+merlin-compile ... --validate-passes prune_dead_pure_tensor_ops,cse --lean-sdk-bin <lean-4.35.0>/bin
 ```
 
 or set `MERLIN_VALIDATE_PASSES` (`all` or a comma list) and `MERLIN_LEAN_SDK_BIN`, with
@@ -229,3 +232,41 @@ A candidate's boundary must lie in the checker's typed module domain (the theore
 `merlin/lean/MerlinVerify/Check/`). Add it to `pass_validation.CHECKS`, report its exact before/after
 IR with `pass_validation.observe` (or `submit` for text) where it runs, and add a real-capture
 acceptance, an injected-bug test and fuzz coverage.
+
+## DCE/CSE performance and review
+
+For DCE/CSE only, select `prune_dead_pure_tensor_ops,cse` explicitly. This branch
+retains the original `feat/pass-verification` and `feat/pass-verification-verf`
+histories; inherited Q/DQ and scoped policy gates keep their separate scope and
+review requirements. `all` includes the pending BF16 policy gate described above.
+
+`Check/AlphaFast.lean` indexes alpha-comparison lookup and image membership.
+Lean proves `alphaOps_eq_fast` for every correspondence and operation list;
+`@[csimp]` chooses the equal compiled implementation. Frozen definitions and
+soundness statements are unchanged.
+
+A process/job-local receipt session remembers only actual successful checks.
+Composition still checks schema, provenance, axiom exports and byte bindings.
+Only that live authority can avoid duplicate deterministic proof execution;
+saved, edited, forged and other-job receipts replay. This host orchestration
+remains trusted under ledger T2. Owned workers retain parent-death race checks
+and group cleanup after worker crashes.
+
+Further optimizations remain deferred: reorder/index TypedModule/synthC1Live
+alternatives; batch ExactCse continuation substitutions; index FromElementsSelect
+and DenseExtract scans. Historical accepting-normalizer measurements improved
+from roughly 61 minutes to 98 seconds in the profiling worktree, not as a bound
+on complete compile latency. No further optimization is implemented here.
+
+Before production rollout, review the refinement/input domain, ledger A1–A9,
+purity eligibility, locked source Q/DQ meanings and T1–T6. Ignoring
+`linalg.memoized_indexing_maps` specifically requires a cache-consistency
+invariant because local xDSL QuantizedMatmul reads it; actual `indexing_maps`
+remain semantic. `llvm.emit_c_interface` changes are reported separately and
+do not establish an ABI proof or ignore the function body.
+
+[DCE/CSE qualification and ancestry](../../out/artifacts/handoff/cse-dce-integration-20261028/README.md)
+records the historical 779-test suite, corrected 75-test comparison suite and
+native baseline failure, separately from focused merge validation.
+[Quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md)
+records the inherited numerical scope and review work without advancing proofs.
