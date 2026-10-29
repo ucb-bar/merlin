@@ -820,6 +820,51 @@ operations:
         written region (a sum reduction gated by linalg.index compare and a select against the literal zero) is observed
         zero_pad_valid_window only when the select's other arm is the literal zero (access_observations). Primitives
         required: accumulate-on-load of int8 rows into the int32 accumulator, or the int8 mesh with a 0/1 weight.
+  # div.Scalar by a power-of-two divisor, as the readout scale of a one-element window sum. Same hardware, signature and
+  # constraints as reduction_standalone (the same anchor); this row only names the capsule form that exercises its
+  # window-sum-then-readout class, so it adds no new admission.
+  reduction_scalar_div:
+    status: reviewed
+    families: [reduction]
+    forms: [scalar_div]
+    hardware: standalone
+    arithmetic: integer_sum
+    kinds: [sum]
+    ranks: [0, 1, 2, 3, 4, 5]
+    layouts: [row_major_contiguous]
+    tails: [zero_pad_valid_window]
+    aliasing: [disjoint_inputs_outputs]
+    evidence:
+      review_status: reviewed
+      reviewed_by: "Reviewed by Loren Hung (approved in operator chat 2026-10-29); the stated evidence and qualification scope remain mandatory."
+      scope: >-
+        Declares which window-sum capsule form the derived corpus must contain for div.Scalar; not RTL qualification of
+        any compiler lowering. Exact integer semantics: merlin.runtime.integer_ops.window_sum (mode window, a 1x1
+        window, divisor_override d, readout_scale 1.0): out = clamp_i8(round_half_even(x / d)), ONE rounding of an
+        exact rational.
+      requires_hardware: >-
+        Required primitives (the same as reduction_standalone, nothing else is composed): the standalone
+        accumulate-on-load SUM path (contract reduction capability, kinds [sum]) over a window of one element, i.e.
+        the identity sum, and ONE f32 readout scale 1/d with RNE and i8 saturation. EXACT CLAIM: the form is declared
+        ONLY for a divisor d that is a power of two (the capsule uses d = 2, which makes every odd int8 value an exact
+        tie, so the half-to-even rule is exercised). For such d the scale 1/d is an exact f32 and f32(x) * (1/d) is
+        exact for every int8 x, so the f32 product path equals the exact rational golden bit for bit
+        (runtime.exact_readout.prove_fp32_products(1/d, -128, 127) returns proven). NOT claimed: a divisor that is not
+        a power of two (3, 5, 6, 10, ...). Integer division is not an affine map and 1/d is then not an f32, so
+        the exact rational readout has no f32 equality proof from the facts; for an even non-power-of-two d the f32
+        scale can differ from the golden by one LSB at an exact tie. Such divisors, and a divisor outside the
+        integers (a fractional float scalar), are outside this row and stay with the backend-evidence route
+        (the case still runs on the device under the spec_int8 numeric policy; this row does not extend its claim).
+        The int8-world meaning of the op is the recipe's, not this row's: the captured canonical program is the float
+        `arith.divf x, 2.0` (backend-verify corpus_193 aten.div.Scalar), which the recipe quantizes as an
+        affine_map island; this row states only the unit-scale integer readout 1/d of an int8 operand and makes no
+        statement about the island's output scale.
+      basis: >-
+        Same evidence as reduction_standalone (operator decision D3a, 2026-10-17: Spike and stock
+        GemminiRocketConfig RTL bit-exact for the mean / average-pool window sums with a float readout scale;
+        gate-3 int8 numerics 0 LSB; FireSim jobs 2933/2944), read for a window of one element; the divisor is the
+        window count of the same readout. /scratch2/loren/backend-verify/results-all.csv canonical corpus_193
+        aten.div.Scalar: device, spec_int8, pass.
   movement:
     # Operator reviewed standalone copies/broadcasts; no fact-derived placement claim.
     status: reviewed

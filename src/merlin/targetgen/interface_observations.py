@@ -176,6 +176,34 @@ def _joined_movement_broadcasting(operation: str, attributes: dict, sources: lis
                 return None
         return "none"
     return None
+#: The static window parameters each ``window_sum`` mode states (``WINDOW_SUM`` in the command-buffer ABI);
+#: the adaptive modes state none -- their windows follow from the source and result extents alone.
+_WINDOW_SUM_GEOMETRY = {
+    "window": ("kernel", "stride", "padding"),
+    "window_transpose": ("kernel", "stride", "padding"),
+    "fold": ("kernel", "stride", "padding", "dilation"),
+    "reduce": ("dims",),
+    "adaptive": (),
+    "adaptive_transpose": (),
+}
+
+
+def _window_sum_tails(attributes: dict, source: dict | None, result: dict | None) -> str | None:
+    """``zero_pad_valid_window`` for an integer window sum whose geometry the command states exactly.
+
+    The sums are exact integer accumulations over windows whose out-of-range taps are zero (padding) or
+    absent (a clipped window), the same tail rule an integer contraction over static extents is observed
+    by. Nothing is observed unless the operand is an integer, every extent is static and the mode's own
+    geometry parameters are all stated as integer lists: a geometry left implicit stays unresolved.
+    """
+    geometry = _WINDOW_SUM_GEOMETRY.get(attributes.get("mode"))
+    if geometry is None or source is None or not _is_integer(source["dtype"]) or not _static(source, result):
+        return None
+    for key in geometry:
+        values = attributes.get(key)
+        if not isinstance(values, list) or not values or any(type(value) is not int for value in values):
+            return None
+    return "zero_pad_valid_window"
 
 
 #: The static window parameters each ``window_sum`` mode states (``WINDOW_SUM`` in the command-buffer ABI);
