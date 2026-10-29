@@ -39,14 +39,16 @@ CHECKS = {
     "lower_quant_ext": "compiler_qdq_refinement",
     "configuration_write_elision": "compiler_configuration_refinement",
     "configuration_loop_hoisting": "compiler_configuration_hoist_refinement",
+    "host_graph_fusion": "compiler_host_graph_fusion",
 }
-# Draft numerical claims and gates requiring an original ISA/effect selection
-# stay explicit; selecting them does not approve their semantic premises.
+# Numerical, ISA-specific and logical host-graph profiles stay explicit;
+# selecting them does not approve their semantic premises.
 DEFAULT_CHECKS = frozenset(CHECKS) - {
     "bf16_f32acc_draft_contract",
     "lower_quant_ext",
     "configuration_write_elision",
     "configuration_loop_hoisting",
+    "host_graph_fusion",
 }
 ENV_PASSES = "MERLIN_VALIDATE_PASSES"
 ENV_SDK_BIN = "MERLIN_LEAN_SDK_BIN"

@@ -3,6 +3,37 @@
 Everything a verified claim depends on without proving it (design §10). Each entry says what is
 assumed, why, and what evidence stands behind it. A claim that relies on an entry must cite it.
 
+## Actual logical host dispatch fusion
+
+The explicit `host_graph_fusion` compiler check is outside `all`.
+`Merlin.HostGraphFusion.check_sound` connects the actual projected target call
+body to the existing `GraphRegions` observer-preservation theorem. It proves
+equality of the complete ordered public results, including producer fanout and
+unchanged prefix/suffix computations, for every well-typed state under a common
+typed total pure-action interpretation. No local native-implementation equality
+premise or producer report supplies the target body.
+
+The admitted source is one public single-block entry with positive static,
+unencoded, byte-addressable integer tensors and identity-indexed parallel
+pointwise generics. Supported scalar bodies are the existing closed total
+integer subset, with no poison-generating modifiers or destination reads.
+Direct private calls are expanded with actual typed argument/result bindings.
+One target call may fuse 2 through 128 stages; other calls contain at most one
+stage. Input-port permutations are allowed only with their actual body bindings
+and a checked live-input permutation. Every public output and the complete
+expanded primitive sequence must match. Shape elements are not enumerated.
+
+Trust boundaries are xDSL parsing and source projection, ordinary private-call
+semantics, canonical scalar-body keys, the common typed pure tensor actions,
+initialized public inputs and unobservable successful logical allocation.
+Kernel soundness is relative to that model. It does not prove the actions agree
+with concrete MLIR arithmetic, allocation failures, physical buffers, downstream
+MLIR/LLVM or hardware. This is dispatch grouping, not scalar-loop fusion or a
+performance theorem. Floating-point, reductions, dynamic/encoded layouts,
+external/effectful calls, uninitialized reads and broader fusion patterns refuse.
+Fresh canonical proof objects, audited roots, source/ledger/tool bytes and live
+process ownership are required for delivery. Serialized reports grant no authority.
+
 ## Integration status — 2026-10-29
 
 The current collaboration branch is `feat/pass-verif-integration`. Its five
