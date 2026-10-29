@@ -48,8 +48,11 @@ An earlier verified boundary gives no composed proof through an unverified suffi
 All ten selectors now have integrated source admission, actual-boundary workers
 and end coverage within the declared models. The generic UNROLL/TILE and
 configuration refreshes have retained fresh proofs/replay with independent
-review; final default-all memory qualification is tracked separately in the
-[handoff](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md).
+review. Final default-all memory qualification passes untiled/tiled cases with
+four accepted workers, stable source hashes and explicit two-verified/zero-
+unverified coverage per case. Its 24 native observations remain finite tests.
+The [handoff](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md)
+records exact evidence and publication status.
 Source-predicate/protocol tests are reported separately from semantic proofs and
 finite native tests. The chronological coverage estimates below retain their
 original broader endpoint.
@@ -139,8 +142,8 @@ extensions, not requirements for this bounded integration milestone.
 The effort table below is the earlier scope estimate, not remaining effort.
 Broader buffer ranks, producer-language coverage and numerical/source-contract
 coverage remain engineering for the earlier broader endpoint. The latest bounded
-milestone instead requires finishing current-source qualification, per-pass
-supported/excluded-case documentation and compiler gate publication. Broader
+milestone has source-bound qualification and per-pass supported/excluded-case
+documentation for its integrated gates, recorded in the current handoff. Broader
 domains remain optional extensions; numerical and ISA/effect approvals stay
 separate human-review items.
 

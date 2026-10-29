@@ -27,14 +27,16 @@ Completed implementation landmarks include `7ba2b8e6a` (generic loop math),
 replay), `819b6020c` (generic TILE), and `590b34aa5` / `9c7a71678` (failure identity
 and original-source index/grammar exclusions). `594d54068` repairs the host
 mutation test's injection hook while retaining canonical rejection assertions.
-Independent full-series and incremental reviews cleared those commits for normal
-publication; remote-tip/attribution verification is recorded after publication.
+Independent full-series and incremental reviews cleared the implementation and
+case documentation. Checkpoint `e85130c37` is published on the branch: its remote
+tip and all 18 new commits' GitHub author/committer attribution to `grammy117`
+were verified. Subsequent qualification is recorded below.
 
 Qualification is separated by scope and exact source cut:
 
 - **Generic UNROLL/TILE:** two public compiler tests and four fresh kernel proof
-  invocations, including independent-process replay, passed at the recorded
-  `819b6020c` cut. UNROLL audits 41 roots/940 declarations, TILE 47/929, with only
+  invocations, including independent-process replay, passed for the implementation
+  committed as `819b6020c`; the receipts record their exact source hashes. UNROLL audits 41 roots/940 declarations, TILE 47/929, with only
   standard logical axioms; all 91 bound sources per receipt matched at that cut.
   A corrupted TILE inner bound reaches Lean and blocks. The 54 host ABI and
   compatibility controls pass. Exact generic support is one module `scf.for`,
@@ -61,11 +63,19 @@ Qualification is separated by scope and exact source cut:
   coverage. Independent audit checks the retained actual endpoints and bindings.
   The separate 32-case source-policy cohort covers 23 intrinsic memory width
   controls, three prior-worker failure identity controls and six controller cases.
-- **Default `all` memory:** final untiled/tiled compiler refresh is running with
-  all five defaults, explicit verified/unverified/unchanged coverage assertions,
-  retained proof trees and finite native/reference comparisons. Earlier default
-  memory qualification retains its historical cut; this line will record the
-  terminal refresh before final publication.
+  Five additional current adapter tests pass with independent audit: three
+  selector paths recognize scalar identity versus a memref signature, while
+  bf16/f16 MACC recognizes +0 versus nonzero initialization. Their ten source
+  decisions grant neither boundary-proof credit nor policy approval.
+- **Default `all` memory:** both final cases pass in 1238.92s: untiled extent
+  three and tile-size-32 extent-257 with a short tail. All five defaults remain
+  selected. Four fresh workers accept; each case records two verified boundaries,
+  zero unverified boundaries and one authentic unchanged CSE with zero job/credit.
+  All 81 guarded source hashes remain unchanged across the run. The actual BUFFER
+  final bytes join the following memory-DCE input exactly; baseline/checked LLVM
+  bytes match. The retained native tests execute 24 original/baseline/checked
+  observations and six untouched-entry assertions. This establishes the stated
+  formal relations and finite regressions, not native allocator/LLVM fidelity.
 - **Other focused controls:** the corrected host regression cohort passes 246
   cases (27 deliberately deselected); registry/identity controls pass 11. Earlier
   root-policy tests pass 30, and buffer/configuration predicates pass 30. These
@@ -76,8 +86,16 @@ Evidence roots are `out/build/pass-bounded-models-20261029/`, the generic
 and independent audits in `out/build/validator-alignment-20261029/`. The final
 configuration retained run is `buffer-configuration/installed-qualification-final-v2/`
 under the bounded-model root. The latest actual policy controls are
-`final-qualification/policy-entry-v3/`; their independent audit is
-`policy-entry-v3-four-case-audit-v1/RESULT.json` under the validator root.
+`final-qualification/policy-entry-v3/`; final default-memory trees and source
+manifest are in `final-qualification/memory-final-v2/`. The policy audit is
+`policy-entry-v3-four-case-audit-v1/RESULT.json` under the validator root; the
+memory audit is `memory-final-current-audit-v1/`. The five admission controls
+and their ten decisions are in `final-qualification/source-admission-positive-v4/`.
+
+Docs and touched Python lint/format checks pass; the lock-only Lean guard passes
+without rerunning pinned-statement checks. The repository structure check retains
+the same 16 baseline findings (two optional-dependency imports and 14 module-size
+findings), with no added findings. No full legacy suite was run.
 
 No new proof placeholders, axioms, protected semantic edits or approval changes
 were found. Q/DQ remains proposed-model and MACC remains draft. Primitive/effect

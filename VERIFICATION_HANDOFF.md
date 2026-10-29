@@ -20,8 +20,11 @@ configuration has a retained three-case/four-query refresh. The compiler matrix'
 11 passes and stale host-test injection failure are recorded; the repaired
 actual host negative and three source-exclusion cases subsequently pass with
 independent artifact review. The latest source-policy cohort passes 37 host
-controls. Final default-all memory refresh is running; its terminal result is
-recorded in the handoff before final publication.
+controls, followed by five actual source-admission cases with independent audit.
+The final default-all memory refresh passes both untiled/tiled cases: four fresh
+accepted workers, 24 finite native observations and six untouched-entry checks.
+All 81 guarded source hashes remain unchanged; each case records two verified
+boundaries, zero unverified boundaries and an unchanged CSE with zero proof credit.
 
 Broader generic bodies/carries/nesting, computed initialization, rank-three
 storage and changed memory CSE are explicit future coverage extensions. They do

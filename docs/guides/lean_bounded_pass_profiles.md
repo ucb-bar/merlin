@@ -30,7 +30,8 @@ eligibility.
 These profiles bound the current integration milestone. Extending a profile is
 future engineering, not a requirement to finish the bounded gate. Keeping normal
 compiler behavior outside a model does not approve or prove that behavior.
-Ordinary compiler legality errors still propagate.
+Validation still requires its configured toolchain and original owner. Source
+exclusions do not bypass setup, custody or ordinary producer legality checks.
 
 | Pass | Bounded source model | Principal exclusions and remaining premises |
 | --- | --- | --- |

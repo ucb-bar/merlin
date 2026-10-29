@@ -353,7 +353,8 @@ Generic TILE uses `Options(tile_size=32)` with the
 performs a fresh check and delivery rather than trusting saved success fields.
 
 Both generic UNROLL and TILE have installed-worker/live-delivery and fresh-replay
-qualification at their recorded `819b6020c` source cut. Generic TILE accepts a nonempty
+qualification for the implementation committed as `819b6020c`; receipts bind
+their individually recorded source hashes. Generic TILE accepts a nonempty
 top-level loop with the same zero-carry/one-event structure and tile sizes
 2–65536; the actual tile32 public route and a corrupted inner-bound refusal are
 qualified. TILE retains its exact source parameter in its replay request.

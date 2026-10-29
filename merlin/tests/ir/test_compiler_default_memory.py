@@ -52,6 +52,13 @@ def test_actual_default_all_memory_gate_keeps_DCE_proof_and_observed_CSE_identit
     )
     assert checked.ll_path.read_bytes() == baseline.ll_path.read_bytes()
     assert len(worker.verdicts) == 2 and all(row["verdict"] == "accepted" for row in worker.verdicts)
+    coverage = json.loads((worker.directory / "coverage.json").read_text())
+    assert coverage["compiler_completed"] is True
+    assert coverage["verified_boundaries"] == 2 and coverage["unverified_boundaries"] == 0
+    observed_cse = [row for row in coverage["boundaries"] if row["pass"] == "cse"]
+    assert observed_cse and all(row["status"] == "unchanged" and row["proof_credit"] is False for row in observed_cse)
+    verified = [row for row in coverage["boundaries"] if row["proof_credit"]]
+    assert {row["check"] for row in verified} == {"compiler_buffer_refinement", compiler_memory_dce.CHECK}
     labels = {row["label"] for row in worker.verdicts}
     assert "prune_dead_pure_tensor_ops" in labels
     assert not any(row["label"] == "cse" for row in worker.verdicts)  # No proof/optimization credit for identity.

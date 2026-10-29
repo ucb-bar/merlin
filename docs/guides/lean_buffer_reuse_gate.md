@@ -71,7 +71,11 @@ Known source exclusions still run ordinary storage transformations and are logge
 unverified at the end. Admitted pairs must pass their actual chain check. The
 direct proof/delivery/replay APIs below remain strict on unsupported inputs;
 an exclusion never manufactures an accepted receipt. The v3 compiler evidence
-above retains its historical source cut; current refreshes are in the handoff.
+above retains its historical source cut. The final bounded-policy refresh in
+`out/build/pass-bounded-models-20261029/final-qualification/memory-final-v2/`
+passes both untiled/tiled cases with four fresh workers, stable guarded sources
+and explicit verified/unverified/unchanged coverage assertions. The handoff
+records its finite native comparisons and independent artifact audit.
 The public private-buffer tile resource policy is now 2..65,536; actual signed
 index64 safety checks remain mandatory. This policy does not widen supported
 initializer types or allocator semantics.
