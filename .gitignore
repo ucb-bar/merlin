@@ -451,3 +451,7 @@ merlin/tests/data/lit/.lit_test_times.txt
 !/out/artifacts/handoff/quantization-lean-qualification-20261029/
 !/out/artifacts/handoff/quantization-lean-qualification-20261029/README.md
 !/out/artifacts/handoff/quantization-lean-qualification-20261029/PROPOSAL.md
+
+# Curated MACC review and remaining compiler-pass integration handoff.
+!/out/artifacts/handoff/macc-pass-integration-20261029/
+!/out/artifacts/handoff/macc-pass-integration-20261029/README.md

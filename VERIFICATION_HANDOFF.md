@@ -1,3 +1,16 @@
+# MACC freshness fix and remaining integration — 2026-10-29
+
+On `feat/pass-verif-integration`, `ae144d959` makes checker admission require
+current audit-only proof objects as well as both executables. The
+[handoff for the next owner](out/artifacts/handoff/macc-pass-integration-20261029/README.md)
+records the reproduced defect, regression, current pass inventory and remaining
+configuration/scalar integration work. On the combined Q/DQ/MACC cut, 119
+MACC-related cases and 22 Q/DQ controls passed, with four fresh MACC boundaries
+and four separate-process replays. Numerical/source-spec approval remains pending;
+broader repository gate failures remain explicit.
+
+---
+
 # Current Q/DQ compiler integration — 2026-10-29
 
 `feat/pass-verif-integration`, compiler code `0a463e725`, now registers explicit `lower_quant_ext` validation
