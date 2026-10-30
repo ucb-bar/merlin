@@ -1,6 +1,8 @@
 """SDK-free admission/authority controls; no mocked positive kernel completion."""
 
+import ast
 import copy
+import importlib
 import json
 import pickle
 import subprocess
@@ -66,18 +68,32 @@ def test_changed_requests_and_saved_status_refused_before_native(candidate, kind
 
 
 def test_complete_current_source_closure_includes_actual_local_imports(candidate):
-    import sys
-
     refs = {row["path"] for row in json.loads(candidate.sources_json)}
-    for name, module in tuple(sys.modules.items()):
-        if name.startswith("merlin.verify.configuration_elision_") or name in {
-            "merlin",
-            "merlin.verify",
-            "merlin.common",
-            "merlin.common.owned_process",
-            "merlin.common.paths",
-        }:
-            assert str(Path(module.__file__).resolve()) in refs
+    # A sibling imported by a different test is not a dependency of this
+    # legacy checker. Walk its actual local imports, including lazy imports,
+    # so extracting a reachable helper still requires a source binding.
+    prefix = "merlin.verify.configuration_elision_"
+    pending = [gate.__name__, "merlin.verify.configuration_elision_intake"]
+    modules = {"merlin", "merlin.verify", "merlin.common", "merlin.common.owned_process", "merlin.common.paths"}
+    while pending:
+        name = pending.pop()
+        if name in modules:
+            continue
+        modules.add(name)
+        module = importlib.import_module(name)
+        for node in ast.walk(ast.parse(Path(module.__file__).read_text())):
+            if isinstance(node, ast.ImportFrom):
+                imported = importlib.util.resolve_name("." * node.level + (node.module or ""), module.__package__)
+                choices = (
+                    [imported] if imported.startswith(prefix) else [imported + "." + alias.name for alias in node.names]
+                )
+            elif isinstance(node, ast.Import):
+                choices = [alias.name for alias in node.names]
+            else:
+                continue
+            pending.extend(value for value in choices if value.startswith(prefix) and value not in modules)
+    for name in modules:
+        assert str(Path(importlib.import_module(name).__file__).resolve()) in refs
     assert len(json.loads(candidate.proof_sources_json)) == 7
 
 

@@ -48,6 +48,24 @@ def test_current_intake_uses_selected_inputs_without_historical_git(work_path):
     assert candidate.describe()["independently_qualified"] is False
 
 
+def test_current_candidate_binds_its_actual_runner_and_refuses_runner_mutation(work_path, monkeypatch):
+    from merlin.common.paths import module_source_path
+
+    chosen, source, final = actual(work_path)
+    candidate = intake.prepare(source, final, selection=chosen)
+    runner = module_source_path("merlin.verify.configuration_elision_runner").resolve()
+    assert str(runner) in {row["path"] for row in json.loads(candidate.sources_json)}
+    original = Path.read_bytes
+
+    def changed(path):
+        data = original(path)
+        return data + b"\n" if path.resolve() == runner else data
+
+    monkeypatch.setattr(Path, "read_bytes", changed)
+    with pytest.raises(ValueError, match="source/proof/selection changed"):
+        intake.revalidate(candidate)
+
+
 @pytest.fixture
 def work_path(tmp_path):
     return tmp_path
