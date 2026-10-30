@@ -865,7 +865,6 @@ def fast_grade(
         policy_roots=inputs.policy_roots,
         public_roots=lambda: inputs.public_root() if callable(inputs.public_root) else inputs.public_root,
     )
-    adapters = _CR.defer_tiers(adapters, _withheld)  # operator patch: a withheld cert tier reads deferred (skipped), not unavailable
     # Resolve once before the suite: every completed functional result can feed
     # the existing queue without waiting for the last capsule in this batch.
     completed_promotion = None
