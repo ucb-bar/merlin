@@ -8,6 +8,7 @@ Parsing and input admission belong to the shared capture owner.
 
 from __future__ import annotations
 
+from .lean_graph_input_admission import ModelRefusal
 from .lean_graph_loops_segment_projection import _key, _metadata, _one_block, _types
 from .lean_graph_loops_shape_projection import Decoder
 from .lean_graph_loops_shape_types import binding, index_constant, kind, operation_key, standard_yield
@@ -28,11 +29,11 @@ class SingleDecoder(Decoder):
             any(row["kind"] != dict(tag="index") or row["known"] is None for row in operands[:3])
             or operands[2]["known"] <= 0
         ):
-            raise ValueError("ordinary SCF requires static controls and positive stride")
+            raise ModelRefusal("ordinary SCF requires static controls and positive stride")
 
     def ordinary_block(self, block, context, *, terminal):
         if not block["operations"]:
-            raise ValueError("complete ordinary block requires a terminator")
+            raise ModelRefusal("complete ordinary block requires a terminator")
         self.define(block["arguments"], context)
         commands = []
         for position, op in enumerate(block["operations"]):
@@ -50,11 +51,11 @@ class SingleDecoder(Decoder):
                     or len(operands) != 1
                     or len(op["results"]) != 1
                 ):
-                    raise ValueError("ordinary cast requires exact supported metadata and arity")
+                    raise ModelRefusal("ordinary cast requires exact supported metadata and arity")
                 origin = operands[0]
                 result = self.define(op["results"], context)[0]
                 if origin["kind"]["tag"] != "view" or result["kind"]["tag"] != "view":
-                    raise ValueError("cast requires ranked descriptor types")
+                    raise ModelRefusal("cast requires ranked descriptor types")
                 commands.append(
                     dict(
                         tag="cast",
@@ -73,13 +74,13 @@ class SingleDecoder(Decoder):
                     or len(operands) != 2
                     or len(op["results"]) != 1
                 ):
-                    raise ValueError("ordinary dimension requires exact metadata and arity")
+                    raise ModelRefusal("ordinary dimension requires exact metadata and arity")
                 view, axis = operands
                 if view["kind"]["tag"] != "view" or axis["known"] is None:
-                    raise ValueError("dimension requires a ranked view and known axis")
+                    raise ModelRefusal("dimension requires a ranked view and known axis")
                 index, shape = axis["known"], view["kind"]["type"]["shape"]
                 if not 0 <= index < len(shape):
-                    raise ValueError("dimension axis outside its declared shape")
+                    raise ModelRefusal("dimension axis outside its declared shape")
                 value = shape[index]
                 result = self.define(op["results"], context, known=value)[0]
                 commands.append(
@@ -100,11 +101,11 @@ class SingleDecoder(Decoder):
                 commands.append(dict(tag="constant", result=result, value=value))
             elif op["regions"]:
                 if name != "scf.for" or op["attributes"] or op["properties"] or len(operands) < 3:
-                    raise ValueError("ordinary region outside the single-body SCF subset")
+                    raise ModelRefusal("ordinary region outside the single-body SCF subset")
                 self.check_loop_controls(operands)
                 body = _one_block(op)
                 if _types(body["arguments"]) != ["index", *_types(op["results"])]:
-                    raise ValueError("ordinary SCF induction/carry signature differs")
+                    raise ModelRefusal("ordinary SCF induction/carry signature differs")
                 parameters = [binding(identity, self.types) for identity, _ in body["arguments"]]
                 nested = self.ordinary_block(body, dict(context), terminal="scf.yield")
                 results = self.define(op["results"], context)
@@ -120,14 +121,14 @@ class SingleDecoder(Decoder):
                 )
             else:
                 if name in ("memref.subview", "memref.reinterpret_cast", "memref.view", "memref.reshape"):
-                    raise ValueError("descriptor construction outside the ordinary shape subset")
+                    raise ModelRefusal("descriptor construction outside the ordinary shape subset")
                 results = self.define(op["results"], context)
                 key = operation_key(op)
                 commands.append(dict(tag="action", key=key, operands=operands, results=results))
                 if name == "func.call":
                     call = self.call_targets.get(_key(op))
                     if call is None or call["nested"]:
-                        raise ValueError("ordinary call has no admitted flat target")
+                        raise ModelRefusal("ordinary call has no admitted flat target")
                     self.calls.append([key, call["target"]])
         for command in reversed(commands):
             code = dict(command, rest=code)
@@ -138,21 +139,21 @@ class SingleDecoder(Decoder):
         if tree["name"] != "builtin.module" or any(
             tree[field] for field in ("operands", "results", "attributes", "properties")
         ):
-            raise ValueError("ordinary whole plain module required")
+            raise ModelRefusal("ordinary whole plain module required")
         block = _one_block(tree)
         if block["arguments"]:
-            raise ValueError("module block arguments are outside this subset")
+            raise ModelRefusal("module block arguments are outside this subset")
         self.frame.append(_key(_metadata(tree)))
         functions = []
         for op, prototype in zip(block["operations"], self.before["functions"], strict=True):
             if op["name"] != "func.func" or op["operands"] or op["results"]:
-                raise ValueError("every module operation must be a complete function")
+                raise ModelRefusal("every module operation must be a complete function")
             for record in prototype["parameters"] + prototype["returned"]:
                 kind(record)
             self.frame.append(_key(dict(metadata=_metadata(op), prototype=prototype)))
             if prototype["declaration"]:
                 if len(op["regions"]) != 1 or op["regions"][0]:
-                    raise ValueError("declaration unexpectedly contains a region")
+                    raise ModelRefusal("declaration unexpectedly contains a region")
                 continue
             body = _one_block(op)
             parameters = [binding(identity, self.types) for identity, _ in body["arguments"]]

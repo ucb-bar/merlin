@@ -15,9 +15,10 @@ from enum import Enum
 from pathlib import Path
 
 from .lean_graph_generic_affine import affine_payload
+from .lean_graph_input_admission import ModelRefusal
 
 
-class InputAdmissionError(ValueError):
+class InputAdmissionError(ModelRefusal):
     """Unsupported proof domain; parser/IR-verifier errors remain distinct."""
 
     def __init__(self, code: str, path: str):

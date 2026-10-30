@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 
+from .lean_graph_input_admission import ModelRefusal
+
 OP_FIELDS = {"name", "operands", "results", "attributes", "properties", "location", "regions", "index_constant"}
 
 
@@ -19,13 +21,13 @@ def _key(value):
 
 def _metadata(op):
     if set(op) != OP_FIELDS:
-        raise ValueError("unknown operation fields need an explicit projection extension")
+        raise ModelRefusal("unknown operation fields need an explicit projection extension")
     return {name: op[name] for name in ("name", "attributes", "properties", "location", "index_constant")}
 
 
 def _one_block(op):
     if len(op["regions"]) != 1 or len(op["regions"][0]) != 1:
-        raise ValueError("supported loop requires exactly one actual body block")
+        raise ModelRefusal("supported loop requires exactly one actual body block")
     return op["regions"][0][0]
 
 
@@ -47,7 +49,7 @@ class _Projection:
         self._definitions(before, self.before_defs)
         self._definitions(after, self.after_defs)
         if type(max_nodes) is not int or max_nodes <= 0 or self.count > max_nodes:
-            raise ValueError("complete structural node budget exceeded; no prefix accepted")
+            raise ModelRefusal("complete structural node budget exceeded; no prefix accepted")
         self.mapping = {}
         self.inverse_mapping = {}
         self.plans = []
@@ -57,25 +59,25 @@ class _Projection:
         self.count += 1
         for identity, _type in op["results"]:
             if identity in definitions:
-                raise ValueError("duplicate actual SSA definition")
+                raise ModelRefusal("duplicate actual SSA definition")
             definitions[identity] = op
         for region in op["regions"]:
             for block in region:
                 if set(block) != {"arguments", "operations"}:
-                    raise ValueError("unknown actual block fields")
+                    raise ModelRefusal("unknown actual block fields")
                 for identity, _type in block["arguments"]:
                     if identity in definitions:
-                        raise ValueError("duplicate actual SSA argument")
+                        raise ModelRefusal("duplicate actual SSA argument")
                     definitions[identity] = None
                 for child in block["operations"]:
                     self._definitions(child, definitions)
 
     def _bind(self, left, right):
         if _types(left) != _types(right):
-            raise ValueError("actual SSA argument/result types or arity changed")
+            raise ModelRefusal("actual SSA argument/result types or arity changed")
         for (source, _), (target, _) in zip(left, right, strict=True):
             if source in self.mapping or target in self.inverse_mapping:
-                raise ValueError("SSA correspondence must preserve unique definitions")
+                raise ModelRefusal("SSA correspondence must preserve unique definitions")
             self.mapping[source] = target
             self.inverse_mapping[target] = source
 
@@ -83,13 +85,13 @@ class _Projection:
         try:
             return [self.mapping[value] for value in values]
         except KeyError as error:
-            raise ValueError("actual operation uses an unbound source capture") from error
+            raise ModelRefusal("actual operation uses an unbound source capture") from error
 
     def _inverse(self, values):
         try:
             return [self.inverse_mapping[value] for value in values]
         except KeyError as error:
-            raise ValueError("target capture has no corresponding actual source value") from error
+            raise ModelRefusal("target capture has no corresponding actual source value") from error
 
     def _constant(self, value, *, after=False):
         op = (self.after_defs if after else self.before_defs).get(value)
@@ -102,10 +104,10 @@ class _Projection:
             or op["regions"]
             or set(dict(op["properties"])) != {"value"}
         ):
-            raise ValueError("loop control must use actual static index constants")
+            raise ModelRefusal("loop control must use actual static index constants")
         result = op["index_constant"]
         if type(result) is not int or result < 0:
-            raise ValueError("negative or unknown static loop bounds are outside this family")
+            raise ModelRefusal("negative or unknown static loop bounds are outside this family")
         return result
 
     def _eligible(self, op, depth):
@@ -119,14 +121,14 @@ class _Projection:
 
     def operation(self, left, right, depth=0):
         if _metadata(left) != _metadata(right) or self._mapped(left["operands"]) != right["operands"]:
-            raise ValueError("actual untouched operation, capture, attribute or property changed")
+            raise ModelRefusal("actual untouched operation, capture, attribute or property changed")
         self._bind(left["results"], right["results"])
         if len(left["regions"]) != len(right["regions"]):
-            raise ValueError("actual unchanged region boundary changed")
+            raise ModelRefusal("actual unchanged region boundary changed")
         left_regions, right_regions = [], []
         for first, second in zip(left["regions"], right["regions"], strict=True):
             if len(first) != len(second):
-                raise ValueError("actual block/control structure changed")
+                raise ModelRefusal("actual block/control structure changed")
             first_blocks, second_blocks = [], []
             for a, b in zip(first, second, strict=True):
                 x, y = self.block(a, b, depth + (left["name"] == "scf.for"))
@@ -149,18 +151,18 @@ class _Projection:
         for op in left["operations"]:
             if self._eligible(op, depth):
                 if cursor + 1 >= len(right["operations"]):
-                    raise ValueError("complete segmented boundary is missing")
+                    raise ModelRefusal("complete segmented boundary is missing")
                 a, b = self.segment(op, right["operations"][cursor], right["operations"][cursor + 1])
                 cursor += 2
             else:
                 if cursor >= len(right["operations"]):
-                    raise ValueError("an actual unchanged operation is missing")
+                    raise ModelRefusal("an actual unchanged operation is missing")
                 a, b = self.operation(op, right["operations"][cursor], depth)
                 cursor += 1
             first.append(a)
             second.append(b)
         if cursor != len(right["operations"]):
-            raise ValueError("extra actual operations are outside the complete changed boundary")
+            raise ModelRefusal("extra actual operations are outside the complete changed boundary")
         return {"arguments": left["arguments"], "operations": first}, {
             "arguments": list(zip(self._inverse(_ids(right["arguments"])), _types(right["arguments"]), strict=True)),
             "operations": second,
@@ -168,7 +170,7 @@ class _Projection:
 
     def segment(self, source, stride, outer):
         if source["attributes"] or source["properties"]:
-            raise ValueError("unmodeled source loop attributes/properties refuse")
+            raise ModelRefusal("unmodeled source loop attributes/properties refuse")
         if (
             stride["name"] != "arith.constant"
             or _types(stride["results"]) != ["index"]
@@ -178,15 +180,15 @@ class _Projection:
             or outer["properties"]
             or outer["location"] != source["location"]
         ):
-            raise ValueError("actual outer loop/stride is not the supported pure index control")
+            raise ModelRefusal("actual outer loop/stride is not the supported pure index control")
         if len(source["operands"]) < 3 or len(outer["operands"]) < 3:
-            raise ValueError("actual loop control operands are incomplete")
+            raise ModelRefusal("actual loop control operands are incomplete")
         lower, upper, step = [self._constant(value) for value in source["operands"][:3]]
         if (
             outer["operands"][:2] != self._mapped(source["operands"][:2])
             or outer["operands"][2] != stride["results"][0][0]
         ):
-            raise ValueError("actual outer bound/stride SSA binding changed")
+            raise ModelRefusal("actual outer bound/stride SSA binding changed")
         target_lower, target_upper, target_stride = [
             self._constant(value, after=True) for value in outer["operands"][:3]
         ]
@@ -195,7 +197,7 @@ class _Projection:
         self._bind(source["results"], outer["results"])
         source_body, outer_body = _one_block(source), _one_block(outer)
         if len(outer_body["operations"]) != 4 or not outer_body["arguments"]:
-            raise ValueError("all add/min/inner/yield operations and actual outer IV are required")
+            raise ModelRefusal("all add/min/inner/yield operations and actual outer IV are required")
         add, minimum, inner, final_yield = outer_body["operations"]
         if (
             add["name"] != "arith.addi"
@@ -217,12 +219,12 @@ class _Projection:
             or final_yield["regions"]
             or final_yield["results"]
         ):
-            raise ValueError("unknown or incomplete generated control semantics")
+            raise ModelRefusal("unknown or incomplete generated control semantics")
         inner_body = _one_block(inner)
         if any(op["regions"] for op in source_body["operations"]):
-            raise ValueError("nested source body regions require a separate admitted semantics")
+            raise ModelRefusal("nested source body regions require a separate admitted semantics")
         if not source_body["operations"] or source_body["operations"][-1]["name"] != "scf.yield":
-            raise ValueError("complete source body yield is required")
+            raise ModelRefusal("complete source body yield is required")
         left_body, right_body = self.block(source_body, inner_body, 1)
         carry_types = _types(source_body["arguments"])[1:]
         plan = {

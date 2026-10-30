@@ -13,6 +13,7 @@ from merlin.frontends.linalg_mlir import make_context
 from merlin.transforms.normalization import constant_integer
 
 from .compiler_profile import SourceOutsideProfile
+from .lean_graph_input_admission import ModelRefusal
 from .memory_scalar_nan_admission import _parse_bounded, admit_loop_scalar_attributes
 
 WORD_PROFILE = "compiler-static-ordered-scf-index64-v1"
@@ -60,7 +61,7 @@ def _word(module, *, kind, factor, tile, depth):
         admit_loop_scalar_attributes(module)
         _admit([module])
         project(module, module)
-    except ValueError as error:
+    except ModelRefusal as error:
         raise _outside("word-source-model", str(error)) from error
     for op in operations:
         if type(op) is scf.ForOp:

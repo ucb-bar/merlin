@@ -34,18 +34,18 @@ def operation_tree(module, *, calls="external-only"):
 
     def bind(value):
         if value in identities:
-            raise ValueError("SSA definition appears more than once")
+            raise admission.ModelRefusal("SSA definition appears more than once")
         index = len(identities)
         identities[value] = index
         return [index, str(value.type)]
 
     def operation(op):
         if op.successors:
-            raise ValueError("successor-based control is outside this structural family")
+            raise admission.ModelRefusal("successor-based control is outside this structural family")
         try:
             operands = [identities[value] for value in op.operands]
         except KeyError as error:
-            raise ValueError("operation uses an unbound or forward SSA value") from error
+            raise admission.ModelRefusal("operation uses an unbound or forward SSA value") from error
         results = [bind(value) for value in op.results]
         regions = []
         for region in op.regions:
@@ -57,7 +57,7 @@ def operation_tree(module, *, calls="external-only"):
         constant = None
         if isinstance(op, arith.ConstantOp) and isinstance(op.result.type, builtin.IndexType):
             if not isinstance(op.value, builtin.IntegerAttr):
-                raise ValueError("index constant requires an actual integer attribute")
+                raise admission.ModelRefusal("index constant requires an actual integer attribute")
             constant = op.value.value.data
         return {
             "name": op.name,

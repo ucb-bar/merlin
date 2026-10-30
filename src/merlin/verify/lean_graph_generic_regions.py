@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from . import lean_graph_generic_admission as admission
 from .lean_graph_generic_exact import canonical, exact, metadata
+from .lean_graph_input_admission import ModelRefusal
 
 
 @dataclass(frozen=True)
@@ -57,7 +58,7 @@ def capture_regions(module, requests, *, syntax_budget=65536):
     output = []
     for operation, lexical in requests:
         if operation not in members:
-            raise ValueError("opaque operation must belong to complete admitted module")
+            raise ModelRefusal("opaque operation must belong to complete admitted module")
         output.append(_capture_region(operation, lexical, syntax_budget=syntax_budget))
     return tuple(output)
 
@@ -66,10 +67,10 @@ def _capture_region(operation, lexical, *, syntax_budget):
     if type(syntax_budget) is not int or syntax_budget <= 0:
         raise ValueError("positive exact syntax resource budget required")
     if not operation.regions:
-        raise ValueError("structured operation required")
+        raise ModelRefusal("structured operation required")
     available = tuple(lexical)
     if len(set(available)) != len(available):
-        raise ValueError("unique actual lexical SSA slots required")
+        raise ModelRefusal("unique actual lexical SSA slots required")
     available_slots = {value: i for i, value in enumerate(available)}
     captures, capture_slots = [], {}
     work = 0
@@ -78,7 +79,7 @@ def _capture_region(operation, lexical, *, syntax_budget):
         if value in local:
             return local[value]
         if value not in available_slots:
-            raise ValueError("implicit SSA capture lacks lexical availability/dominance")
+            raise ModelRefusal("implicit SSA capture lacks lexical availability/dominance")
         if value not in capture_slots:
             capture_slots[value] = len(captures)
             captures.append(value)
@@ -88,22 +89,22 @@ def _capture_region(operation, lexical, *, syntax_budget):
         nonlocal work
         work += 1 + len(op.operands) + len(op.results)
         if work > syntax_budget:
-            raise ValueError("opaque closure syntax resource budget exceeded")
+            raise ModelRefusal("opaque closure syntax resource budget exceeded")
         if op.successors:
-            raise ValueError("opaque CFG successor semantics not yet admitted")
+            raise ModelRefusal("opaque CFG successor semantics not yet admitted")
         fields = metadata(op)
         fields["location"] = exact(op.location)
         fields["operands"] = [use(value, inherited) for value in op.operands]
         fields["regions"] = []
         for ri, region in enumerate(op.regions):
             if len(region.blocks) != 1:
-                raise ValueError("opaque single-block region geometry required")
+                raise ModelRefusal("opaque single-block region geometry required")
             blocks = []
             for bi, block in enumerate(region.blocks):
                 local = dict(inherited)
                 work += len(block.args)
                 if work > syntax_budget:
-                    raise ValueError("opaque closure syntax resource budget exceeded")
+                    raise ModelRefusal("opaque closure syntax resource budget exceeded")
                 for ai, value in enumerate(block.args):
                     local[value] = ["block-argument", [*path, ri, bi], ai]
                 ops = []

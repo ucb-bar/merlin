@@ -7,10 +7,12 @@ Lean semantics is substituted. New source identity; no historical qualification.
 """
 from __future__ import annotations
 
+from .lean_graph_input_admission import ModelRefusal
+
 
 def integer(value, *, natural=False):
     if type(value) is not int or natural and value < 0:
-        raise ValueError("exact integer graph field required; bool/float refused")
+        raise ModelRefusal("exact integer graph field required; bool/float refused")
     return str(value) if natural else "(" + str(value) + ")"
 
 
@@ -39,7 +41,7 @@ def types(values):
 
 def indices(values):
     if type(values) is not list:
-        raise ValueError("complete ordered SSA operand list required")
+        raise ModelRefusal("complete ordered SSA operand list required")
     return "[" + ",".join(integer(value, natural=True) for value in values) + "]"
 
 
@@ -136,7 +138,7 @@ def budget(records, count, work, captured_sizes=None):
         size = 1 + sum(environment[index] for index in args)
         work[0] += size
         if size > 4096 or work[0] > 65536:
-            raise ValueError("supported scalar symbolic expression budget exceeded")
+            raise ModelRefusal("supported scalar symbolic expression budget exceeded")
         if "pure" in record:
             environment.insert(0, size)
         elif "effect" in record:

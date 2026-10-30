@@ -154,7 +154,7 @@ def admit_source(raw, *, pass_name, validation):
 def admit_memory_dce(raw):
     from .buffer_reuse_bridge import decode_pair
     from .compiler_memory_stage_intake import decode
-    from .lean_graph_input_admission import InputAdmissionError
+    from .lean_graph_input_admission import ModelRefusal
 
     profile = "ordinary-memory-context-dead-index-constants-index64-v1"
     if len(raw.encode()) > 256 * 1024:
@@ -162,7 +162,7 @@ def admit_memory_dce(raw):
     try:
         projected = decode_pair(raw, raw)  # Source-only identity; never a producer or a proof.
         decoded = decode(projected["source_export"], index_bits=64, max_nodes=5000)
-    except (ValueError, InputAdmissionError) as error:
+    except ModelRefusal as error:
         raise _outside(profile, "source-model", str(error)) from error
     # These are exactly the intrinsic ConstantFacts/ValidDimension width facts
     # in the original ordinary Code model. A view's type alone has no such cap.

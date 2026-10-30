@@ -65,8 +65,8 @@ def exact(value):
     if isinstance(value, Data):
         return ["data-attribute", kind.__module__ + "." + kind.__qualname__, value.name, exact(value.data)]
     if isinstance(value, Attribute):
-        raise ValueError("unsupported complete opaque attribute representation: " + kind.__qualname__)
-    raise ValueError("unsupported complete parsed representation: " + kind.__qualname__)
+        raise admission.ModelRefusal("unsupported complete opaque attribute representation: " + kind.__qualname__)
+    raise admission.ModelRefusal("unsupported complete parsed representation: " + kind.__qualname__)
 
 
 def metadata(operation):
@@ -131,19 +131,19 @@ def project(before, after, *, context=(), _allow_captured_stride=False):
     from xdsl.ir import BlockArgument
 
     if type(before) is not builtin.ModuleOp or type(after) is not builtin.ModuleOp:
-        raise ValueError("complete actual builtin.module pair required")
+        raise admission.ModelRefusal("complete actual builtin.module pair required")
     if metadata(before) != metadata(after):
-        raise ValueError("complete surrounding module metadata changed")
+        raise admission.ModelRefusal("complete surrounding module metadata changed")
     if len(before.body.blocks) != 1 or len(after.body.blocks) != 1:
-        raise ValueError("unsupported complete module block geometry")
+        raise admission.ModelRefusal("unsupported complete module block geometry")
     functions = [tuple(module.body.block.ops) for module in (before, after)]
     if len(functions[0]) != len(functions[1]) or not functions[0]:
-        raise ValueError("complete nonempty function/declaration roster required")
+        raise admission.ModelRefusal("complete nonempty function/declaration roster required")
     if any(type(function) is not func.FuncOp for rows in functions for function in rows):
-        raise ValueError("unsupported module-level operation; no missing surrounding context")
+        raise admission.ModelRefusal("unsupported module-level operation; no missing surrounding context")
     names = [function.sym_name.data for function in functions[0]]
     if len(set(names)) != len(names):
-        raise ValueError("duplicate actual function symbols")
+        raise admission.ModelRefusal("duplicate actual function symbols")
     defined_names = {function.sym_name.data for function in functions[0] if function.body.blocks}
     universe = (before, after, *context)
     registry_tokens = sorted(
@@ -200,20 +200,20 @@ def project(before, after, *, context=(), _allow_captured_stride=False):
         environment = [*block.args, *captured]
         operations = list(block.ops)
         if not operations or type(operations[-1]) is not terminator:
-            raise ValueError("missing/unsupported actual terminator")
+            raise admission.ModelRefusal("missing/unsupported actual terminator")
         records = []
 
         def uses(values):
             if any(value not in environment for value in values):
-                raise ValueError("actual operand lacks lexical availability/dominance")
+                raise admission.ModelRefusal("actual operand lacks lexical availability/dominance")
             return [environment.index(value) for value in values]
 
         for operation in operations:
             count += 1
             if count > 2048:
-                raise ValueError("complete graph exceeds explicit scalar intake budget")
+                raise admission.ModelRefusal("complete graph exceeds explicit scalar intake budget")
             if operation.successors:
-                raise ValueError("unsupported actual CFG; no unreachable block can be dropped")
+                raise admission.ModelRefusal("unsupported actual CFG; no unreachable block can be dropped")
             if type(operation) in (func.ReturnOp, scf.YieldOp):
                 if (
                     operation is not operations[-1]
@@ -221,7 +221,7 @@ def project(before, after, *, context=(), _allow_captured_stride=False):
                     or operation.attributes
                     or operation.properties
                 ):
-                    raise ValueError("changed/unsupported terminator metadata or control")
+                    raise admission.ModelRefusal("changed/unsupported terminator metadata or control")
                 records.append({"ret": uses(operation.operands)})
                 continue
             primitive = selected_primitive(operation)
@@ -229,7 +229,7 @@ def project(before, after, *, context=(), _allow_captured_stride=False):
                 records.append({"pure": primitive, "arguments": uses(operation.operands)})
             elif type(operation) is scf.ForOp:
                 if operation.attributes or operation.properties or len(operation.body.blocks) != 1:
-                    raise ValueError("unsupported loop metadata or block geometry")
+                    raise admission.ModelRefusal("unsupported loop metadata or block geometry")
                 from xdsl.dialects import arith
 
                 step_owner = operation.step.owner
@@ -242,13 +242,15 @@ def project(before, after, *, context=(), _allow_captured_stride=False):
                 # fragments. Every actual module uses the strict default.
                 captured = _allow_captured_stride and isinstance(operation.step, BlockArgument)
                 if not (positive_literal or captured):
-                    raise ValueError("supported actual SCF control needs a checked positive constant stride")
+                    raise admission.ModelRefusal(
+                        "supported actual SCF control needs a checked positive constant stride"
+                    )
                 carries = [type_code(value.type) for value in operation.iter_args]
                 arguments = list(operation.body.block.args)
                 if [type_code(value.type) for value in arguments] != [{"index": True}, *carries]:
-                    raise ValueError("actual induction/carry argument slots differ")
+                    raise admission.ModelRefusal("actual induction/carry argument slots differ")
                 if [type_code(value.type) for value in operation.results] != carries:
-                    raise ValueError("actual loop result slots differ from carries")
+                    raise admission.ModelRefusal("actual loop result slots differ from carries")
                 records.append(
                     {
                         "loop": {
@@ -261,9 +263,11 @@ def project(before, after, *, context=(), _allow_captured_stride=False):
                 )
             else:
                 if operation.regions:
-                    raise ValueError("unsupported region semantics; entire boundary refused")
+                    raise admission.ModelRefusal("unsupported region semantics; entire boundary refused")
                 if type(operation) is func.CallOp and operation.callee.root_reference.data in defined_names:
-                    raise ValueError("internal-call/fuel composition bridge unavailable; external contracts only")
+                    raise admission.ModelRefusal(
+                        "internal-call/fuel composition bridge unavailable; external contracts only"
+                    )
                 token = canonical(metadata(operation))
                 records.append(
                     {
@@ -278,9 +282,9 @@ def project(before, after, *, context=(), _allow_captured_stride=False):
     result = []
     for original, actual in zip(*functions, strict=True):
         if metadata(original) != metadata(actual):
-            raise ValueError("complete function interface/attributes changed")
+            raise admission.ModelRefusal("complete function interface/attributes changed")
         if len(original.body.blocks) != len(actual.body.blocks) or len(original.body.blocks) > 1:
-            raise ValueError("unsupported/dropped function CFG blocks")
+            raise admission.ModelRefusal("unsupported/dropped function CFG blocks")
         signature = original.function_type
         row = {
             "name": original.sym_name.data,
@@ -294,7 +298,7 @@ def project(before, after, *, context=(), _allow_captured_stride=False):
             if tuple(v.type for v in original.body.block.args) != tuple(signature.inputs) or tuple(
                 v.type for v in actual.body.block.args
             ) != tuple(signature.inputs):
-                raise ValueError("actual function argument slots differ from interface")
+                raise admission.ModelRefusal("actual function argument slots differ from interface")
             row.update(
                 before=block_code(original.body.block, [], func.ReturnOp),
                 after=block_code(actual.body.block, [], func.ReturnOp),

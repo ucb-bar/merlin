@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 
 from .buffer_reuse_bridge import decode_pair
+from .lean_graph_input_admission import ModelRefusal
 from .lean_graph_loops_shape_after_projection import SingleDecoder, definition_roster
 from .lean_graph_loops_shape_epoch_model import module_literal
 from .lean_graph_loops_unroll import _list, _nat, _string
@@ -21,7 +22,7 @@ class DceDecoder(SingleDecoder):
         # arbitrary partial region meanings. It needs no trip-count, success or
         # totality premise, including when an index control is dynamic.
         if any(row["kind"] != dict(tag="index") for row in operands[:3]):
-            raise ValueError("memory DCE SCF controls must be index bindings")
+            raise ModelRefusal("memory DCE SCF controls must be index bindings")
 
 
 def decode(exported, *, index_bits, max_nodes):

@@ -10,6 +10,7 @@ from xdsl.dialects import arith, builtin, func, scf
 from . import lean_graph_generic_admission as admission
 from .lean_graph_generic_exact import canonical, exact, metadata, selected_primitive
 from .lean_graph_generic_regions import capture_regions
+from .lean_graph_input_admission import ModelRefusal
 
 MAX_WEIGHTED_SYNTAX = 65536
 MAX_RAW_BYTES = 4 * 1024 * 1024
@@ -32,15 +33,15 @@ def project_pair(before, after):
             )
             > MAX_WEIGHTED_SYNTAX
         ):
-            raise ValueError("complete module weighted syntax resource budget exceeded")
+            raise ModelRefusal("complete module weighted syntax resource budget exceeded")
     if metadata(before) != metadata(after) or exact(before.location) != exact(after.location):
-        raise ValueError("actual module metadata changed")
+        raise ModelRefusal("actual module metadata changed")
     functions = [tuple(module.body.block.ops) for module in modules]
     if len(functions[0]) != len(functions[1]) or any(type(op) is not func.FuncOp for rows in functions for op in rows):
-        raise ValueError("complete exact function roster required")
+        raise ModelRefusal("complete exact function roster required")
     for left, right in zip(*functions, strict=True):
         if metadata(left) != metadata(right) or exact(left.location) != exact(right.location):
-            raise ValueError("actual function interface/frame changed")
+            raise ModelRefusal("actual function interface/frame changed")
     tokens = sorted(
         {
             canonical(exact(value.type))
@@ -71,7 +72,7 @@ def project_pair(before, after):
         for op in block.ops:
             if type(op) is scf.ForOp:
                 if len(op.body.blocks) != 1:
-                    raise ValueError("operational SCF loop needs one actual body block")
+                    raise ModelRefusal("operational SCF loop needs one actual body block")
                 gather(op.body.block, environment, requests)
             elif op.regions:
                 requests.append((op, tuple(environment)))
@@ -81,7 +82,7 @@ def project_pair(before, after):
         requests = []
         for function in rows:
             if len(function.body.blocks) > 1:
-                raise ValueError("whole function CFG is unsupported")
+                raise ModelRefusal("whole function CFG is unsupported")
             if function.body.blocks:
                 gather(function.body.block, [], requests)
         requests_by_module.append(requests)
@@ -94,19 +95,19 @@ def project_pair(before, after):
 
     def block_code(block, captured, terminator, depth=0):
         if depth > MAX_REGION_DEPTH or len(tuple(block.ops)) > MAX_BLOCK_RECORDS:
-            raise ValueError("Program block/depth resource budget exceeded")
+            raise ModelRefusal("Program block/depth resource budget exceeded")
         environment = [*block.args, *captured]
         operations = tuple(block.ops)
         if not operations or type(operations[-1]) is not terminator:
-            raise ValueError("actual exact terminator required")
+            raise ModelRefusal("actual exact terminator required")
         records = []
         for op in operations:
             if op.successors:
-                raise ValueError("operational CFG unsupported")
+                raise ModelRefusal("operational CFG unsupported")
 
             def uses(values):
                 if any(value not in environment for value in values):
-                    raise ValueError(
+                    raise ModelRefusal(
                         "actual SSA use lacks lexical availability at "
                         + op.name
                         + ": "
@@ -120,7 +121,7 @@ def project_pair(before, after):
 
             if type(op) in (func.ReturnOp, scf.YieldOp):
                 if op is not operations[-1] or type(op) is not terminator or op.attributes or op.properties:
-                    raise ValueError("changed exact terminator")
+                    raise ModelRefusal("changed exact terminator")
                 records.append({"ret": uses(op.operands)})
                 continue
             primitive = selected_primitive(op)
@@ -136,10 +137,10 @@ def project_pair(before, after):
                     or not isinstance(owner.value, builtin.IntegerAttr)
                     or owner.value.value.data <= 0
                 ):
-                    raise ValueError("actual operational loop requires existing positive constant stride profile")
+                    raise ModelRefusal("actual operational loop requires existing positive constant stride profile")
                 carries = [ty(value.type) for value in op.iter_args]
                 if [ty(value.type) for value in op.body.block.args] != [{"index": True}, *carries]:
-                    raise ValueError("exact operational IV/carry slots required")
+                    raise ModelRefusal("exact operational IV/carry slots required")
                 records.append(
                     {
                         "loop": {
@@ -163,7 +164,7 @@ def project_pair(before, after):
                     "outputs": [ty(value.type) for value in op.results],
                 }
                 if token in registry and registry[token] != row:
-                    raise ValueError("same exact opaque key has inconsistent actual ABI")
+                    raise ModelRefusal("same exact opaque key has inconsistent actual ABI")
                 registry[token] = row
                 records.append({"effect": token, "arguments": uses(inputs), "outputs": row["outputs"]})
             environment = [*op.results, *environment]
@@ -186,7 +187,7 @@ def project_pair(before, after):
                 ]
             )
         except ValueError as error:
-            raise ValueError(f"actual stage{stage}: {error}") from error
+            raise ModelRefusal(f"actual stage{stage}: {error}") from error
     ordered = sorted(registry)
     identities = {token: i for i, token in enumerate(ordered)}
 

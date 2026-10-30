@@ -9,6 +9,7 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from .lean_graph_input_admission import ModelRefusal
 from .lean_graph_pipeline_gate_profiles import INTEGER, Settings, selected
 from .lean_graph_pipeline_gate_projection import canonical, project_lean_sources, sha, source_ref
 
@@ -73,7 +74,7 @@ def _admit(modules):
         admit_module(module, calls="external-only")
         operations = tuple(module.walk())
         if len(operations) > 2048:
-            raise ValueError("bounded complete scalar/SCF syntax required")
+            raise ModelRefusal("bounded complete scalar/SCF syntax required")
         for op in operations:
             values = (*op.operands, *op.results, *(a for r in op.regions for b in r.blocks for a in b.args))
             for value in values:
@@ -84,13 +85,13 @@ def _admit(modules):
                     and t.signedness.data == builtin.Signedness.SIGNLESS
                     and 1 <= t.width.data <= 256
                 ):
-                    raise ValueError("larger adapter supports only signless scalar words/index values")
+                    raise ModelRefusal("larger adapter supports only signless scalar words/index values")
             if type(op) in (
                 arith.AddiOp,
                 arith.SubiOp,
                 arith.MuliOp,
             ) and op.overflow_flags != arith.IntegerOverflowAttr("none"):
-                raise ValueError("overflow-flagged arithmetic outside explicit larger profile")
+                raise ModelRefusal("overflow-flagged arithmetic outside explicit larger profile")
 
 
 def _recheck(buffers, modules, profile, settings):

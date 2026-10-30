@@ -21,6 +21,7 @@ from .lean_graph_generic_projection import project_pair
 from .lean_graph_generic_render import program as program
 from .lean_graph_generic_render import types as types
 from .lean_graph_generic_roles import bind as bind_control_roles
+from .lean_graph_input_admission import ModelRefusal
 
 
 def frame_growth(records):
@@ -111,7 +112,7 @@ def controls_from_actual(modules, capture):
             if actual is not None:
                 value = {"identity": identity, **actual}
                 if identity in controls and controls[identity] != value:
-                    raise ValueError("one exact actual index key has inconsistent interpretation")
+                    raise ModelRefusal("one exact actual index key has inconsistent interpretation")
                 controls[identity] = value
     return [controls[i] for i in sorted(controls)]
 

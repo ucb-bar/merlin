@@ -14,6 +14,7 @@ from enum import Enum
 from pathlib import Path
 
 from .lean_graph_generic_affine import affine_payload
+from .lean_graph_input_admission import ModelRefusal
 
 REVISION = "4499eebb959c0f92cefd92cc6d80646ba66474ed"
 
@@ -60,8 +61,8 @@ def exact(value):
     if (affine := affine_payload(value)) is not None:
         return ["affine-data", exact(affine)]
     if isinstance(value, Attribute):
-        raise ValueError("unsupported complete opaque attribute representation: " + kind.__qualname__)
-    raise ValueError("unsupported complete parsed representation: " + kind.__qualname__)
+        raise ModelRefusal("unsupported complete opaque attribute representation: " + kind.__qualname__)
+    raise ModelRefusal("unsupported complete parsed representation: " + kind.__qualname__)
 
 
 def metadata(operation):

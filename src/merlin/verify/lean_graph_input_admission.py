@@ -15,7 +15,16 @@ from enum import Enum
 from pathlib import Path
 
 
-class InputAdmissionError(ValueError):
+class ModelRefusal(ValueError):
+    """A projector's explicit refusal of input outside its proof model.
+
+    Original-source admission may record only this as a coverage exclusion.
+    Any other projector error, including an implicit ValueError, is an
+    implementation failure and must block the selected optimization.
+    """
+
+
+class InputAdmissionError(ModelRefusal):
     """Unsupported proof domain; parser/IR-verifier errors remain distinct."""
 
     def __init__(self, code: str, path: str):

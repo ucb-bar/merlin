@@ -17,6 +17,7 @@ from merlin.verify.lean_graph_state_scalar import budget
 
 from .lean_graph_generic_parser import parse_generic
 from .lean_graph_generic_prepare import admission, builtin, controls_from_actual, frame_growth, project_pair
+from .lean_graph_input_admission import ModelRefusal
 
 MAX_RAW_BYTES = 4 * 1024 * 1024
 MAX_TILE = 65536
@@ -108,7 +109,9 @@ def source_profile(raw, *, kind, factor=2, tile=3, index_bits=64, depth=1):
             raise OutsideProfile("generic captured data/return slots are outside actual lexical frame")
     except OutsideProfile:
         raise
-    except (ValueError, KeyError, TypeError, IndexError) as error:
+    except ModelRefusal as error:
+        # Only an explicit projector refusal is a known exclusion. Any other
+        # error is an implementation failure and blocks at source admission.
         raise OutsideProfile(str(error)) from error
     return {
         "supported": True,
