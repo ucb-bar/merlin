@@ -239,6 +239,10 @@ ignore = ["F821"]
 [tool.ruff.lint.isort]
 known-first-party = ["merlin"]
 
+[tool.ruff.lint.per-file-ignores]
+# Byte-exact pinned numerical oracle; its source SHA is checked by the kernel suite.
+"merlin/tests/ir/kernel_benchmark_handoff_oracle.py" = ["I001"]
+
 [tool.ruff.format]
 docstring-code-format = true
 # The repo gates excuse a flagged literal with an inline marker on the SAME LINE (`# target-ok:`,
@@ -252,6 +256,8 @@ exclude = [
     "src/merlin/llvmlower/requant_fuse.py",
     # Its markers sit inside fixture STRINGS; pinning them would change what the test feeds the gate.
     "merlin/tests/infra/test_overfit_gate_regression.py",
+    # Preserve the original handoff oracle bytes and their pinned source hash.
+    "merlin/tests/ir/kernel_benchmark_handoff_oracle.py",
     # GSIM engine build scripts a sealed certificate was built with; kept byte-identical to that build.
     "merlin/contract/external/gsim/model_build/**",
     # Markdown carries its own gates (docs freshness, doc paths), and task text an agent reads is a
