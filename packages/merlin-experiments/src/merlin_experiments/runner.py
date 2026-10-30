@@ -641,6 +641,8 @@ def resolve_plan(
                 "MERLIN_GSIM_STARTUP_PRELOAD",
                 "MERLIN_SPIKE_MAX_SLOTS",
                 "MERLIN_OPERATOR_GRADE_PROCESSES",
+                "MERLIN_GRADE_PROCS",
+                "MERLIN_GRADE_PROCS_STARTUP_S",
                 "MERLIN_PUBLIC_SCALE_BATCH_WORKERS",
                 "MERLIN_SELFCHECK_BROKER_JOBS",
                 "MERLIN_SNAPSHOT_LEASE_CACHE",

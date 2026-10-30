@@ -40,7 +40,7 @@ ENV = "MERLIN_GRADE_PROCS"
 DEFAULT_PROCS = 8
 _SCHEMA = "merlin.operator_grade_pool.v1"
 _STARTUP_S = float(os.environ.get("MERLIN_GRADE_PROCS_STARTUP_S", "900"))
-_POLL_S = 1.0
+_POLL_S = 5.0  # the original child wait polls its deferral probe at the same cadence
 _KILL_WAIT_S = 10
 _POOL: contextvars.ContextVar = contextvars.ContextVar("merlin_operator_grade_pool", default=None)
 
