@@ -1,0 +1,5518 @@
+{
+  "schema": "merlin.kernel-handoff-gate-qualification.v1",
+  "published_gate_commit_before_campaign": "b7626bbf4ec1df88c10dfb026a79e5e36101bf22",
+  "handoff_commit": "ebf58f2c11816370ee27f99557a6bd0b5363643f",
+  "campaign": "campaign-v2",
+  "cases": 16,
+  "passed": 16,
+  "failed": 0,
+  "parallel_cases": 8,
+  "cpus": [
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35
+  ],
+  "threads_and_lean_workers_per_case": 1,
+  "full_input_arrays_checked": 106,
+  "full_output_arrays_checked": 81,
+  "accepted_typed_rewrite_checks": 7,
+  "unchanged_boundaries": 41,
+  "unverified_boundaries": 0,
+  "source_cut": {
+    "case_timeout": 1200.0,
+    "cases": [
+      "G01",
+      "G02",
+      "G03",
+      "G04",
+      "G05",
+      "G06",
+      "C01",
+      "C02",
+      "C03",
+      "T01",
+      "T02",
+      "T03",
+      "T04",
+      "T05",
+      "T06",
+      "T07"
+    ],
+    "cpus": [
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35
+    ],
+    "files": [
+      {
+        "bytes": 30630,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/test_kernel_benchmark_formal_gates.py",
+        "sha256": "30eb57721125cae2bee1a7a104dcd32f4dee80b5d7955beab8fc8696df0d9add"
+      },
+      {
+        "bytes": 11555,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/kernel_benchmark_handoff_inputs.py",
+        "sha256": "9e17ff835bedc051a5d9bfaa6ff514574d063f14f84f79cf6863f47f2e2cb69c"
+      },
+      {
+        "bytes": 4997,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/kernel_benchmark_handoff_oracle.py",
+        "sha256": "2ece855c1438b0aceacb58313ee7f45430f6547d5ecef90f1ba76ebc089587b2"
+      },
+      {
+        "bytes": 30572,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/data/kernel_benchmark_handoff_contracts.json",
+        "sha256": "2c0a50f9128a8fbb9c5426bce6fa7b43d419a8926c5164598a2b79ca6439ec7b"
+      },
+      {
+        "bytes": 12781,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/kernel_benchmark_handoff_campaign.py",
+        "sha256": "9efd7604e26cdc78977403eed6a0618db1b2c479bce09fbfbb39d5fe5b83f046"
+      }
+    ],
+    "jobs": 8,
+    "kernel_sizes": "original complete handoff dimensions",
+    "lean_workers_per_case": 1,
+    "proof_claim": "only actual bounded pass coverage; native/reference comparison is finite evidence",
+    "threads_per_case": 1
+  },
+  "first_attempt": "campaign-v1:16 harness data-layout prerequisite failures, no kernel/proof credit",
+  "native_comparison": "exact complete signed integer outputs and FP32-RNE epilogues, against immutable pinned oracle; finite regression evidence",
+  "claim": "required typed pass-boundary refinement only; no whole-kernel, LLVM, physical allocator or accelerator theorem",
+  "records": [
+    {
+      "case": "G01",
+      "status": "PASS",
+      "outputs": 1,
+      "verified_boundaries": 0,
+      "unchanged_boundaries": 3,
+      "unverified_boundaries": 0,
+      "checked_passes": "",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 15.46,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G01/pytest-tmp/test_kernel_benchmark_handoff_0/G01/CASE-REPORT.json",
+      "source": {
+        "bytes": 1675,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G01/pytest-tmp/test_kernel_benchmark_handoff_0/G01/source.mlir",
+        "sha256": "c7efe6a8f4e77b02bfd34c880c7ee7f99c3f89827a0638c2c377cdbe043efc00"
+      },
+      "specification": {
+        "id": "G01",
+        "kind": "matmuls",
+        "products": [
+          [
+            "A0",
+            "W",
+            "Y0"
+          ]
+        ],
+        "roster": [
+          [
+            "W",
+            [
+              512,
+              512
+            ]
+          ],
+          [
+            "A0",
+            [
+              512,
+              512
+            ]
+          ]
+        ],
+        "scale": 1.0
+      },
+      "inputs": [
+        {
+          "bytes": 262144,
+          "dtype": "int8",
+          "name": "W",
+          "sha256": "e76f19cf3e46ef434359a2a17d1ab86b1915a7d1a77a9acdc211054fcbcfa4f2",
+          "shape": [
+            512,
+            512
+          ]
+        },
+        {
+          "bytes": 262144,
+          "dtype": "int8",
+          "name": "A0",
+          "sha256": "14c6c6618d3ca402d1dc3607fd0fcb80d395b73f85d648440d2e07ee0af57687",
+          "shape": [
+            512,
+            512
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 262144,
+          "dtype": "int8",
+          "name": "Y0",
+          "sha256": "ee7a67420a55cec9c45abd2b3a7b2646144ceaf3c3e5cbb9ddd67d85395f853e",
+          "shape": [
+            512,
+            512
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G01/pytest-tmp/test_kernel_benchmark_handoff_0/G01/host-index-observation/COMMAND.json",
+          "sha256": "0a7253e02e7f89e1d795166f88233c7beac6f82fada8a60a2c169565951a53ea"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G01/pytest-tmp/test_kernel_benchmark_handoff_0/G01/host-index-observation/host-pointer.ll",
+          "sha256": "240b064fa1daf999c5a4cabc3ad404e8a16da68a88609014da02c1208f448ee1"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G01/pytest-tmp/test_kernel_benchmark_handoff_0/G01/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "d0c9443932a374d49b577ef9dce9b7e20ca1d96406069a4cdbdf07990fa34403"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G01/pytest-tmp/test_kernel_benchmark_handoff_0/G01/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "unchanged",
+          "proof_credit": false
+        }
+      },
+      "typed_rewrite_checks": [],
+      "checked_llvm": {
+        "bytes": 6684,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G01/pytest-tmp/test_kernel_benchmark_handoff_0/G01/checked/model.ll",
+        "sha256": "723840c4e5a02bd8a5b48704bbef7bfa83f3c7149e6eabfd326ed896cc6cceb3"
+      },
+      "baseline_llvm": {
+        "bytes": 6684,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G01/pytest-tmp/test_kernel_benchmark_handoff_0/G01/baseline/model.ll",
+        "sha256": "723840c4e5a02bd8a5b48704bbef7bfa83f3c7149e6eabfd326ed896cc6cceb3"
+      },
+      "case_report_sha256": "b5b3fa10b3133db33ce95a593156ba2850f66d6fa02f9482a4a1a2dcbe1591de",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "G02",
+      "status": "PASS",
+      "outputs": 1,
+      "verified_boundaries": 0,
+      "unchanged_boundaries": 3,
+      "unverified_boundaries": 0,
+      "checked_passes": "",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 12.64,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G02/pytest-tmp/test_kernel_benchmark_handoff_0/G02/CASE-REPORT.json",
+      "source": {
+        "bytes": 1688,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G02/pytest-tmp/test_kernel_benchmark_handoff_0/G02/source.mlir",
+        "sha256": "42324da29a305e9c3f0f11dad785c23a8aea111cfd283226706f000af904c299"
+      },
+      "specification": {
+        "id": "G02",
+        "kind": "matmuls",
+        "products": [
+          [
+            "A0",
+            "W",
+            "Y0"
+          ]
+        ],
+        "roster": [
+          [
+            "W",
+            [
+              256,
+              64
+            ]
+          ],
+          [
+            "A0",
+            [
+              12544,
+              256
+            ]
+          ]
+        ],
+        "scale": 1.0
+      },
+      "inputs": [
+        {
+          "bytes": 16384,
+          "dtype": "int8",
+          "name": "W",
+          "sha256": "ceef293d98d966e554c9103ea2723d0c2d3e45b8303d360bcebd065a0a822e29",
+          "shape": [
+            256,
+            64
+          ]
+        },
+        {
+          "bytes": 3211264,
+          "dtype": "int8",
+          "name": "A0",
+          "sha256": "7d62b35edab34871723011b46954773464bce902333a06a1d69df1cdc9400273",
+          "shape": [
+            12544,
+            256
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 802816,
+          "dtype": "int8",
+          "name": "Y0",
+          "sha256": "6c3472756a40bb823f204ddf5f0082c1290355173808c528212d20a6def61621",
+          "shape": [
+            12544,
+            64
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G02/pytest-tmp/test_kernel_benchmark_handoff_0/G02/host-index-observation/COMMAND.json",
+          "sha256": "85e5358819df9540c6c2283f36c80e8deb62ced21f712135fd594041ec134d4f"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G02/pytest-tmp/test_kernel_benchmark_handoff_0/G02/host-index-observation/host-pointer.ll",
+          "sha256": "03ff87f8cc21eced17016164722d93d21b1107dd6f5ee17a90249f6384b7c912"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G02/pytest-tmp/test_kernel_benchmark_handoff_0/G02/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "2c843ecb315616f175c89d855685f8666ffcc997f2b857ce2e3544fc290e7bce"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G02/pytest-tmp/test_kernel_benchmark_handoff_0/G02/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "unchanged",
+          "proof_credit": false
+        }
+      },
+      "typed_rewrite_checks": [],
+      "checked_llvm": {
+        "bytes": 6716,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G02/pytest-tmp/test_kernel_benchmark_handoff_0/G02/checked/model.ll",
+        "sha256": "2669a8e4db701bdf6023b74e8020621a8434c5795d16664ca49e26b165a87fd4"
+      },
+      "baseline_llvm": {
+        "bytes": 6716,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G02/pytest-tmp/test_kernel_benchmark_handoff_0/G02/baseline/model.ll",
+        "sha256": "2669a8e4db701bdf6023b74e8020621a8434c5795d16664ca49e26b165a87fd4"
+      },
+      "case_report_sha256": "6529354859f04b0a468ef0e7af68cb0538132d1db07dde99ea922f9f6ec51bc6",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "G03",
+      "status": "PASS",
+      "outputs": 1,
+      "verified_boundaries": 0,
+      "unchanged_boundaries": 3,
+      "unverified_boundaries": 0,
+      "checked_passes": "",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 12.36,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G03/pytest-tmp/test_kernel_benchmark_handoff_0/G03/CASE-REPORT.json",
+      "source": {
+        "bytes": 1697,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G03/pytest-tmp/test_kernel_benchmark_handoff_0/G03/source.mlir",
+        "sha256": "ca59373d6c0b1e788ce878e7be238343cb1d6c8ddd31d9b6c21540082f8a05bb"
+      },
+      "specification": {
+        "id": "G03",
+        "kind": "matmuls",
+        "products": [
+          [
+            "A0",
+            "W",
+            "Y0"
+          ]
+        ],
+        "roster": [
+          [
+            "W",
+            [
+              64,
+              256
+            ]
+          ],
+          [
+            "A0",
+            [
+              12544,
+              64
+            ]
+          ]
+        ],
+        "scale": 1.0
+      },
+      "inputs": [
+        {
+          "bytes": 16384,
+          "dtype": "int8",
+          "name": "W",
+          "sha256": "ceef293d98d966e554c9103ea2723d0c2d3e45b8303d360bcebd065a0a822e29",
+          "shape": [
+            64,
+            256
+          ]
+        },
+        {
+          "bytes": 802816,
+          "dtype": "int8",
+          "name": "A0",
+          "sha256": "103a62a7ee459bf9db385e1b424547bfbdee96db37f7228268ce3f51b9835568",
+          "shape": [
+            12544,
+            64
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 3211264,
+          "dtype": "int8",
+          "name": "Y0",
+          "sha256": "321c4c6834a3b33e02d603c2cb18819111cb084d4146fe29b1790b8fb5c5c5e4",
+          "shape": [
+            12544,
+            256
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G03/pytest-tmp/test_kernel_benchmark_handoff_0/G03/host-index-observation/COMMAND.json",
+          "sha256": "b4db52313af9dcdbeecee6d9fa33244f0e6703a94de7c04819ab992b8ea328c2"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G03/pytest-tmp/test_kernel_benchmark_handoff_0/G03/host-index-observation/host-pointer.ll",
+          "sha256": "a00a2ee9c95181776e248f07656452c0a3da38f227d5996ddae4c7b76546468d"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G03/pytest-tmp/test_kernel_benchmark_handoff_0/G03/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "056b84f42f827a1938c4fd00ba6eea04f67bee051f190a26cd7f5b35d72410cd"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G03/pytest-tmp/test_kernel_benchmark_handoff_0/G03/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "unchanged",
+          "proof_credit": false
+        }
+      },
+      "typed_rewrite_checks": [],
+      "checked_llvm": {
+        "bytes": 6722,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G03/pytest-tmp/test_kernel_benchmark_handoff_0/G03/checked/model.ll",
+        "sha256": "00bafa695d5eb4b709c6c1bfa30296f4364ee7b6fb0a0439d8c8e00de775570e"
+      },
+      "baseline_llvm": {
+        "bytes": 6722,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G03/pytest-tmp/test_kernel_benchmark_handoff_0/G03/baseline/model.ll",
+        "sha256": "00bafa695d5eb4b709c6c1bfa30296f4364ee7b6fb0a0439d8c8e00de775570e"
+      },
+      "case_report_sha256": "8c01c8bf078ab108439469f05827655e105c2208bfedec0e15c02b6b6d4ec97a",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "G04",
+      "status": "PASS",
+      "outputs": 1,
+      "verified_boundaries": 0,
+      "unchanged_boundaries": 3,
+      "unverified_boundaries": 0,
+      "checked_passes": "",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 14.66,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G04/pytest-tmp/test_kernel_benchmark_handoff_0/G04/CASE-REPORT.json",
+      "source": {
+        "bytes": 1688,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G04/pytest-tmp/test_kernel_benchmark_handoff_0/G04/source.mlir",
+        "sha256": "8dbddfeaf81d441008c1ce483aaaf88a4373352d0bdda1161c632e0a6baf3e5c"
+      },
+      "specification": {
+        "id": "G04",
+        "kind": "matmuls",
+        "products": [
+          [
+            "A0",
+            "W",
+            "Y0"
+          ]
+        ],
+        "roster": [
+          [
+            "W",
+            [
+              512,
+              128
+            ]
+          ],
+          [
+            "A0",
+            [
+              3136,
+              512
+            ]
+          ]
+        ],
+        "scale": 1.0
+      },
+      "inputs": [
+        {
+          "bytes": 65536,
+          "dtype": "int8",
+          "name": "W",
+          "sha256": "9de640762b9fa7aab8bff36199f20f5b2df1a853083d592476fb4d82da1ea33b",
+          "shape": [
+            512,
+            128
+          ]
+        },
+        {
+          "bytes": 1605632,
+          "dtype": "int8",
+          "name": "A0",
+          "sha256": "7774b102f3b2cd66b063db245114c33db6b307a44035966a1bf3900e758b2ac6",
+          "shape": [
+            3136,
+            512
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 401408,
+          "dtype": "int8",
+          "name": "Y0",
+          "sha256": "0152163ef4c0f07e1249b1ae40582969a073b5476780b5827447183b50644b19",
+          "shape": [
+            3136,
+            128
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G04/pytest-tmp/test_kernel_benchmark_handoff_0/G04/host-index-observation/COMMAND.json",
+          "sha256": "9d680347947b34801f42c172090280e7cee35f88394a96a44ff6bcce1c317f8b"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G04/pytest-tmp/test_kernel_benchmark_handoff_0/G04/host-index-observation/host-pointer.ll",
+          "sha256": "bbfab97cf63087ce9cd419d87b9bc69da04292b1ab879ca681c0ef59d9e7725a"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G04/pytest-tmp/test_kernel_benchmark_handoff_0/G04/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "39eea93ef23634b0f6cf3ccdc057dc2ec0c4f0a58bb65dc602fd351a991d9e52"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G04/pytest-tmp/test_kernel_benchmark_handoff_0/G04/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "unchanged",
+          "proof_credit": false
+        }
+      },
+      "typed_rewrite_checks": [],
+      "checked_llvm": {
+        "bytes": 6720,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G04/pytest-tmp/test_kernel_benchmark_handoff_0/G04/checked/model.ll",
+        "sha256": "44d4abc660c80a3678adec3fb2692f7fa6bee4f02f22ec8fa0840e6ec7f51fc7"
+      },
+      "baseline_llvm": {
+        "bytes": 6720,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G04/pytest-tmp/test_kernel_benchmark_handoff_0/G04/baseline/model.ll",
+        "sha256": "44d4abc660c80a3678adec3fb2692f7fa6bee4f02f22ec8fa0840e6ec7f51fc7"
+      },
+      "case_report_sha256": "2944718feb851a11649d003e4f7145289e1955157ed4610c08788407f36755b3",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "G05",
+      "status": "PASS",
+      "outputs": 1,
+      "verified_boundaries": 0,
+      "unchanged_boundaries": 3,
+      "unverified_boundaries": 0,
+      "checked_passes": "",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 7.81,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G05/pytest-tmp/test_kernel_benchmark_handoff_0/G05/CASE-REPORT.json",
+      "source": {
+        "bytes": 1688,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G05/pytest-tmp/test_kernel_benchmark_handoff_0/G05/source.mlir",
+        "sha256": "e3cf5e468dfa65987d3dfb8362eb87f5feb3adcdfadc27372e0d4ff1a41464a2"
+      },
+      "specification": {
+        "id": "G05",
+        "kind": "matmuls",
+        "products": [
+          [
+            "A0",
+            "W",
+            "Y0"
+          ]
+        ],
+        "roster": [
+          [
+            "W",
+            [
+              128,
+              512
+            ]
+          ],
+          [
+            "A0",
+            [
+              3136,
+              128
+            ]
+          ]
+        ],
+        "scale": 1.0
+      },
+      "inputs": [
+        {
+          "bytes": 65536,
+          "dtype": "int8",
+          "name": "W",
+          "sha256": "9de640762b9fa7aab8bff36199f20f5b2df1a853083d592476fb4d82da1ea33b",
+          "shape": [
+            128,
+            512
+          ]
+        },
+        {
+          "bytes": 401408,
+          "dtype": "int8",
+          "name": "A0",
+          "sha256": "5e901afc35d03fdde2c622e655528bc45c0c5f1be6a1dc7980fcf10f37c10042",
+          "shape": [
+            3136,
+            128
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 1605632,
+          "dtype": "int8",
+          "name": "Y0",
+          "sha256": "46cf149b6635e6f5c6128bca06421c41a13ba2ea93cb4359c3c6d58c6557e8a9",
+          "shape": [
+            3136,
+            512
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G05/pytest-tmp/test_kernel_benchmark_handoff_0/G05/host-index-observation/COMMAND.json",
+          "sha256": "47c1978088517ad34a273d336004907ff5ab25a47c58ec59402ad8d05064829a"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G05/pytest-tmp/test_kernel_benchmark_handoff_0/G05/host-index-observation/host-pointer.ll",
+          "sha256": "523487e5e44ce233aad4d98c0b049337662008398029be3190f4e9d13a4e8084"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G05/pytest-tmp/test_kernel_benchmark_handoff_0/G05/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "9524c74260f035514403a67e8f84fc9e7e99f31d8585c02dee7978f0b07e2bc4"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G05/pytest-tmp/test_kernel_benchmark_handoff_0/G05/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "unchanged",
+          "proof_credit": false
+        }
+      },
+      "typed_rewrite_checks": [],
+      "checked_llvm": {
+        "bytes": 6720,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G05/pytest-tmp/test_kernel_benchmark_handoff_0/G05/checked/model.ll",
+        "sha256": "899615b792433ff7b882cc21be9be28920fd4be3bd1fc06bab34fddd8ae4cdff"
+      },
+      "baseline_llvm": {
+        "bytes": 6720,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G05/pytest-tmp/test_kernel_benchmark_handoff_0/G05/baseline/model.ll",
+        "sha256": "899615b792433ff7b882cc21be9be28920fd4be3bd1fc06bab34fddd8ae4cdff"
+      },
+      "case_report_sha256": "2c18eb0b5aaa317932ac644c35402bdcf1f28822c92aac8b0bc4f400d080ec74",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "G06",
+      "status": "PASS",
+      "outputs": 1,
+      "verified_boundaries": 0,
+      "unchanged_boundaries": 3,
+      "unverified_boundaries": 0,
+      "checked_passes": "",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 6.13,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G06/pytest-tmp/test_kernel_benchmark_handoff_0/G06/CASE-REPORT.json",
+      "source": {
+        "bytes": 1688,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G06/pytest-tmp/test_kernel_benchmark_handoff_0/G06/source.mlir",
+        "sha256": "85981a800ce737f30f83e5d5eb58c75471a28bb47e736973164a0418b945a6ca"
+      },
+      "specification": {
+        "id": "G06",
+        "kind": "matmuls",
+        "products": [
+          [
+            "A0",
+            "W",
+            "Y0"
+          ]
+        ],
+        "roster": [
+          [
+            "W",
+            [
+              256,
+              1024
+            ]
+          ],
+          [
+            "A0",
+            [
+              784,
+              256
+            ]
+          ]
+        ],
+        "scale": 1.0
+      },
+      "inputs": [
+        {
+          "bytes": 262144,
+          "dtype": "int8",
+          "name": "W",
+          "sha256": "e76f19cf3e46ef434359a2a17d1ab86b1915a7d1a77a9acdc211054fcbcfa4f2",
+          "shape": [
+            256,
+            1024
+          ]
+        },
+        {
+          "bytes": 200704,
+          "dtype": "int8",
+          "name": "A0",
+          "sha256": "fadbfac46cf60161fc1194de7f0332d1298667c82aec7f4e70cd2caf11a2f1c3",
+          "shape": [
+            784,
+            256
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 802816,
+          "dtype": "int8",
+          "name": "Y0",
+          "sha256": "d14474f16875d40ad6613c5f3a4f10185591fcf3bc2832a09bd7b175f3ab6b6b",
+          "shape": [
+            784,
+            1024
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G06/pytest-tmp/test_kernel_benchmark_handoff_0/G06/host-index-observation/COMMAND.json",
+          "sha256": "9f3114527ea3a10806089f28344fcd1a95722b8b1d19ae98ab7bf5f4bc613cf7"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G06/pytest-tmp/test_kernel_benchmark_handoff_0/G06/host-index-observation/host-pointer.ll",
+          "sha256": "a9518c17939731fa58e96081106e2faf265e96ba89834ecd722b764a0ce376e5"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G06/pytest-tmp/test_kernel_benchmark_handoff_0/G06/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "ff55221941e449f8ae1fdbef213d0a4e97f9e13f90ff2f78693006145d2220f9"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G06/pytest-tmp/test_kernel_benchmark_handoff_0/G06/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "unchanged",
+          "proof_credit": false
+        }
+      },
+      "typed_rewrite_checks": [],
+      "checked_llvm": {
+        "bytes": 6724,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G06/pytest-tmp/test_kernel_benchmark_handoff_0/G06/checked/model.ll",
+        "sha256": "7d00020e8613fc79a370485ddcd5fe147813fca0022eeab10955e95d936db7d7"
+      },
+      "baseline_llvm": {
+        "bytes": 6724,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/G06/pytest-tmp/test_kernel_benchmark_handoff_0/G06/baseline/model.ll",
+        "sha256": "7d00020e8613fc79a370485ddcd5fe147813fca0022eeab10955e95d936db7d7"
+      },
+      "case_report_sha256": "8b9d0deb2129002bab4dcace2ed65a6832616d88939f79c12b24370bd80547f1",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "C01",
+      "status": "PASS",
+      "outputs": 1,
+      "verified_boundaries": 1,
+      "unchanged_boundaries": 2,
+      "unverified_boundaries": 0,
+      "checked_passes": "prune_dead_pure_tensor_ops",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 66.68,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C01/pytest-tmp/test_kernel_benchmark_handoff_0/C01/CASE-REPORT.json",
+      "source": {
+        "bytes": 2387,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C01/pytest-tmp/test_kernel_benchmark_handoff_0/C01/source.mlir",
+        "sha256": "bc35f59793869082792a623f28c6d521155a029f225f4bff805575b0a9f1bdb9"
+      },
+      "specification": {
+        "bias_seed": 24576,
+        "id": "C01",
+        "kind": "conv",
+        "roster": [
+          [
+            "IFM",
+            [
+              4,
+              58,
+              58,
+              64
+            ]
+          ],
+          [
+            "W",
+            [
+              576,
+              64
+            ]
+          ]
+        ],
+        "scale": 1.0
+      },
+      "inputs": [
+        {
+          "bytes": 861184,
+          "dtype": "int8",
+          "name": "IFM",
+          "sha256": "6fed1c88576475f3bd3c586b519f9a5ae4585854b246a72e5f2d2c90f55687c9",
+          "shape": [
+            4,
+            58,
+            58,
+            64
+          ]
+        },
+        {
+          "bytes": 36864,
+          "dtype": "int8",
+          "name": "W",
+          "sha256": "9baab4c15f51b28312d20620bb5a7bbd285fb677e9de28b3bd4f63d0e37bd039",
+          "shape": [
+            576,
+            64
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int32",
+          "name": "B",
+          "sha256": "1b52781409e5ce84422011058f0072f8cc7857c5e8f86de0da649369a1b52d4e",
+          "shape": [
+            64
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 802816,
+          "dtype": "int8",
+          "name": "Y0",
+          "sha256": "b5657078f67e8888d196da614c553bf29dd1193cb498e1cb7001bd60c13f2f1d",
+          "shape": [
+            12544,
+            64
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C01/pytest-tmp/test_kernel_benchmark_handoff_0/C01/host-index-observation/COMMAND.json",
+          "sha256": "28482aee0816fa28136b632dd3ed98b8a1d7177b7e942115206adf8c149870d3"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C01/pytest-tmp/test_kernel_benchmark_handoff_0/C01/host-index-observation/host-pointer.ll",
+          "sha256": "21e0936762a0d224a53d22d5e92c91a1f62410737e7a32abc781d95bcede5626"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C01/pytest-tmp/test_kernel_benchmark_handoff_0/C01/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "be57543f960543577628a019daf47e8e44fead99747105d73685c6f85859a4b9"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C01/pytest-tmp/test_kernel_benchmark_handoff_0/C01/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "verified",
+          "proof_credit": true
+        }
+      },
+      "typed_rewrite_checks": [
+        {
+          "label": "prune_dead_pure_tensor_ops",
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; defined on typed, nonpoison inputs (no UB or poison)",
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "required_theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "optional_strengthenings": {
+            "definedness": "verified",
+            "universal_boundary": "verified"
+          },
+          "receipt": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C01/pytest-tmp/test_kernel_benchmark_handoff_0/C01/pass-validation/0001-prune-dead-pure-tensor-ops/stage/receipt.json"
+        }
+      ],
+      "checked_llvm": {
+        "bytes": 12083,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C01/pytest-tmp/test_kernel_benchmark_handoff_0/C01/checked/model.ll",
+        "sha256": "c9c1ddb6baf3b85583f22deb66a201b7bdc4389c94da6bedd1b9fe40677ffee0"
+      },
+      "baseline_llvm": {
+        "bytes": 12083,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C01/pytest-tmp/test_kernel_benchmark_handoff_0/C01/baseline/model.ll",
+        "sha256": "c9c1ddb6baf3b85583f22deb66a201b7bdc4389c94da6bedd1b9fe40677ffee0"
+      },
+      "case_report_sha256": "949692979d8d4cd21901c1e28fad44e8afc824fd8da6433b4c9570f97eb7498e",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "C02",
+      "status": "PASS",
+      "outputs": 1,
+      "verified_boundaries": 1,
+      "unchanged_boundaries": 2,
+      "unverified_boundaries": 0,
+      "checked_passes": "prune_dead_pure_tensor_ops",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 64.28,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C02/pytest-tmp/test_kernel_benchmark_handoff_0/C02/CASE-REPORT.json",
+      "source": {
+        "bytes": 2411,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C02/pytest-tmp/test_kernel_benchmark_handoff_0/C02/source.mlir",
+        "sha256": "05c57fb6d195cc0cf52addac367f4637fb34c9d77a408e7191e3ff84d5b1fc77"
+      },
+      "specification": {
+        "bias_seed": 20480,
+        "id": "C02",
+        "kind": "conv",
+        "roster": [
+          [
+            "IFM",
+            [
+              4,
+              30,
+              30,
+              128
+            ]
+          ],
+          [
+            "W",
+            [
+              1152,
+              128
+            ]
+          ]
+        ],
+        "scale": 1.0
+      },
+      "inputs": [
+        {
+          "bytes": 460800,
+          "dtype": "int8",
+          "name": "IFM",
+          "sha256": "9dd01b9241975ba89a30165184de8dc30f5651b433c02f585b32d4a0592f10dd",
+          "shape": [
+            4,
+            30,
+            30,
+            128
+          ]
+        },
+        {
+          "bytes": 147456,
+          "dtype": "int8",
+          "name": "W",
+          "sha256": "361b41523a75eda72e2440b80ff734fc6050483cf5dc0a6959975e265dae35b1",
+          "shape": [
+            1152,
+            128
+          ]
+        },
+        {
+          "bytes": 512,
+          "dtype": "int32",
+          "name": "B",
+          "sha256": "5220ba55526b02aff127218145caa2b037dd350469bd4b02201e2027d20f03d8",
+          "shape": [
+            128
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 401408,
+          "dtype": "int8",
+          "name": "Y0",
+          "sha256": "7c4a3a46623d818a25af4960a6f5fb8d02d871eea31de9e20235592f6a1e911d",
+          "shape": [
+            3136,
+            128
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C02/pytest-tmp/test_kernel_benchmark_handoff_0/C02/host-index-observation/COMMAND.json",
+          "sha256": "5595745bcde3401e0b24dc9495eb2c1443cc451db01d9f45bb5b57c4ef8abcd5"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C02/pytest-tmp/test_kernel_benchmark_handoff_0/C02/host-index-observation/host-pointer.ll",
+          "sha256": "34c0729c9051aa502bf78be5f2f3ed02eb33330a9f74c9b4d27feec7c64c17c7"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C02/pytest-tmp/test_kernel_benchmark_handoff_0/C02/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "9ea264c5d12641ee2b336891682c939191585e57c9589438f7d4a1d09b2fc4dd"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C02/pytest-tmp/test_kernel_benchmark_handoff_0/C02/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "verified",
+          "proof_credit": true
+        }
+      },
+      "typed_rewrite_checks": [
+        {
+          "label": "prune_dead_pure_tensor_ops",
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; defined on typed, nonpoison inputs (no UB or poison)",
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "required_theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "optional_strengthenings": {
+            "definedness": "verified",
+            "universal_boundary": "verified"
+          },
+          "receipt": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C02/pytest-tmp/test_kernel_benchmark_handoff_0/C02/pass-validation/0001-prune-dead-pure-tensor-ops/stage/receipt.json"
+        }
+      ],
+      "checked_llvm": {
+        "bytes": 12093,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C02/pytest-tmp/test_kernel_benchmark_handoff_0/C02/checked/model.ll",
+        "sha256": "052bba84816ce79155dfb1f3e2927f79ba03e7974470f477896c3345afd5b35d"
+      },
+      "baseline_llvm": {
+        "bytes": 12093,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C02/pytest-tmp/test_kernel_benchmark_handoff_0/C02/baseline/model.ll",
+        "sha256": "052bba84816ce79155dfb1f3e2927f79ba03e7974470f477896c3345afd5b35d"
+      },
+      "case_report_sha256": "cb842963857ec0ed232d79e18a5ab6272fe1c30063dd6521e8539c0458eada4d",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "C03",
+      "status": "PASS",
+      "outputs": 1,
+      "verified_boundaries": 1,
+      "unchanged_boundaries": 2,
+      "unverified_boundaries": 0,
+      "checked_passes": "prune_dead_pure_tensor_ops",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 62.23,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C03/pytest-tmp/test_kernel_benchmark_handoff_0/C03/CASE-REPORT.json",
+      "source": {
+        "bytes": 2408,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C03/pytest-tmp/test_kernel_benchmark_handoff_0/C03/source.mlir",
+        "sha256": "f7dd3e2423e7bd7aca6f685474fc5c34e5dd845acb3f5327ad660ba921de85bd"
+      },
+      "specification": {
+        "bias_seed": 16384,
+        "id": "C03",
+        "kind": "conv",
+        "roster": [
+          [
+            "IFM",
+            [
+              4,
+              16,
+              16,
+              256
+            ]
+          ],
+          [
+            "W",
+            [
+              2304,
+              256
+            ]
+          ]
+        ],
+        "scale": 1.0
+      },
+      "inputs": [
+        {
+          "bytes": 262144,
+          "dtype": "int8",
+          "name": "IFM",
+          "sha256": "e76f19cf3e46ef434359a2a17d1ab86b1915a7d1a77a9acdc211054fcbcfa4f2",
+          "shape": [
+            4,
+            16,
+            16,
+            256
+          ]
+        },
+        {
+          "bytes": 589824,
+          "dtype": "int8",
+          "name": "W",
+          "sha256": "66fe99f6ac53d7d4038f420aee079f5b8cbcb81487c805f704f13705d37d13bc",
+          "shape": [
+            2304,
+            256
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "B",
+          "sha256": "4d6381105dbd8d2bd14b4b9e613ccbcd620477491ce1e862a6dadc033a33adb1",
+          "shape": [
+            256
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 200704,
+          "dtype": "int8",
+          "name": "Y0",
+          "sha256": "948a01d6f6339728d77789aac11d494bd23709e65844da09f3e49790c6411fef",
+          "shape": [
+            784,
+            256
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C03/pytest-tmp/test_kernel_benchmark_handoff_0/C03/host-index-observation/COMMAND.json",
+          "sha256": "da488b793f3a362f5227f60fc3ec15a880a531921fb2771bc18bed47566659b4"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C03/pytest-tmp/test_kernel_benchmark_handoff_0/C03/host-index-observation/host-pointer.ll",
+          "sha256": "4bb24486fc178ddc242f1e294b46b60938a44dd3ae547a1b7a377d6423d4c95b"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C03/pytest-tmp/test_kernel_benchmark_handoff_0/C03/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "1e96f3c43b52e02fa84c92c8cfc7c0d21967635c17fa9b4de36c5aef77477694"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C03/pytest-tmp/test_kernel_benchmark_handoff_0/C03/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "verified",
+          "proof_credit": true
+        }
+      },
+      "typed_rewrite_checks": [
+        {
+          "label": "prune_dead_pure_tensor_ops",
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; defined on typed, nonpoison inputs (no UB or poison)",
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "required_theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "optional_strengthenings": {
+            "definedness": "verified",
+            "universal_boundary": "verified"
+          },
+          "receipt": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C03/pytest-tmp/test_kernel_benchmark_handoff_0/C03/pass-validation/0001-prune-dead-pure-tensor-ops/stage/receipt.json"
+        }
+      ],
+      "checked_llvm": {
+        "bytes": 12089,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C03/pytest-tmp/test_kernel_benchmark_handoff_0/C03/checked/model.ll",
+        "sha256": "bfb40e05e450b07f8282068abd5a334066794d71885da9fd185ba7ccf354b2c2"
+      },
+      "baseline_llvm": {
+        "bytes": 12089,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/C03/pytest-tmp/test_kernel_benchmark_handoff_0/C03/baseline/model.ll",
+        "sha256": "bfb40e05e450b07f8282068abd5a334066794d71885da9fd185ba7ccf354b2c2"
+      },
+      "case_report_sha256": "99486e90e1448f83ec810bf78c5f1099e5d5a14d8dc19f4664d893945199ad0c",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "T01",
+      "status": "PASS",
+      "outputs": 32,
+      "verified_boundaries": 1,
+      "unchanged_boundaries": 2,
+      "unverified_boundaries": 0,
+      "checked_passes": "cse",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 65.12,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T01/pytest-tmp/test_kernel_benchmark_handoff_0/T01/CASE-REPORT.json",
+      "source": {
+        "bytes": 27607,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T01/pytest-tmp/test_kernel_benchmark_handoff_0/T01/source.mlir",
+        "sha256": "12cacbc06517b5dcebab8de193ba60c62d392b65e97c45f47ca3378510556968"
+      },
+      "specification": {
+        "id": "T01",
+        "kind": "matmuls",
+        "products": [
+          [
+            "A0",
+            "K0",
+            "Y0"
+          ],
+          [
+            "A1",
+            "K0",
+            "Y1"
+          ],
+          [
+            "A2",
+            "K0",
+            "Y2"
+          ],
+          [
+            "A3",
+            "K0",
+            "Y3"
+          ],
+          [
+            "A4",
+            "K0",
+            "Y4"
+          ],
+          [
+            "A5",
+            "K0",
+            "Y5"
+          ],
+          [
+            "A6",
+            "K0",
+            "Y6"
+          ],
+          [
+            "A7",
+            "K0",
+            "Y7"
+          ],
+          [
+            "A8",
+            "K1",
+            "Y8"
+          ],
+          [
+            "A9",
+            "K1",
+            "Y9"
+          ],
+          [
+            "A10",
+            "K1",
+            "Y10"
+          ],
+          [
+            "A11",
+            "K1",
+            "Y11"
+          ],
+          [
+            "A12",
+            "K1",
+            "Y12"
+          ],
+          [
+            "A13",
+            "K1",
+            "Y13"
+          ],
+          [
+            "A14",
+            "K1",
+            "Y14"
+          ],
+          [
+            "A15",
+            "K1",
+            "Y15"
+          ],
+          [
+            "A16",
+            "K2",
+            "Y16"
+          ],
+          [
+            "A17",
+            "K2",
+            "Y17"
+          ],
+          [
+            "A18",
+            "K2",
+            "Y18"
+          ],
+          [
+            "A19",
+            "K2",
+            "Y19"
+          ],
+          [
+            "A20",
+            "K2",
+            "Y20"
+          ],
+          [
+            "A21",
+            "K2",
+            "Y21"
+          ],
+          [
+            "A22",
+            "K2",
+            "Y22"
+          ],
+          [
+            "A23",
+            "K2",
+            "Y23"
+          ],
+          [
+            "A24",
+            "K3",
+            "Y24"
+          ],
+          [
+            "A25",
+            "K3",
+            "Y25"
+          ],
+          [
+            "A26",
+            "K3",
+            "Y26"
+          ],
+          [
+            "A27",
+            "K3",
+            "Y27"
+          ],
+          [
+            "A28",
+            "K3",
+            "Y28"
+          ],
+          [
+            "A29",
+            "K3",
+            "Y29"
+          ],
+          [
+            "A30",
+            "K3",
+            "Y30"
+          ],
+          [
+            "A31",
+            "K3",
+            "Y31"
+          ]
+        ],
+        "roster": [
+          [
+            "K0",
+            [
+              64,
+              16
+            ]
+          ],
+          [
+            "K1",
+            [
+              64,
+              16
+            ]
+          ],
+          [
+            "K2",
+            [
+              64,
+              16
+            ]
+          ],
+          [
+            "K3",
+            [
+              64,
+              16
+            ]
+          ],
+          [
+            "A0",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A1",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A2",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A3",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A4",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A5",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A6",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A7",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A8",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A9",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A10",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A11",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A12",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A13",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A14",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A15",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A16",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A17",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A18",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A19",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A20",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A21",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A22",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A23",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A24",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A25",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A26",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A27",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A28",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A29",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A30",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A31",
+            [
+              16,
+              64
+            ]
+          ]
+        ],
+        "scale": null
+      },
+      "inputs": [
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "K0",
+          "sha256": "72e0455aeebfbd27d2645ad8bf3c8f85845e56d127ccc497dee6f90f42996d54",
+          "shape": [
+            64,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "K1",
+          "sha256": "2316960bd9071b1676fe46de6029d08c9daac3283f436a973801a01d6b811d57",
+          "shape": [
+            64,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "K2",
+          "sha256": "38a759cb8c0da2ac75c4ae77f30ebf2527726d183fa659f0d86f4dacbff23d77",
+          "shape": [
+            64,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "K3",
+          "sha256": "326591c034d5258b238df15f6aaa4b431ecb024f12a5b883d49bf4d4de4d100e",
+          "shape": [
+            64,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A0",
+          "sha256": "1074bbd7d206d4bf841e2be1066a2a5df4f0033b0d33ebc620582db142265d59",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A1",
+          "sha256": "210080483e1217d6fb9ad3bd209c474d8919f4c46e1c46a215b117e4f9f37bc7",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A2",
+          "sha256": "c86d2fc386d4c3e895933411524cd85e9cf3c32a15d31935b4a5c1c0a2e78377",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A3",
+          "sha256": "e38715fdcc8dc6fb57548f2b118c24c7322ff6d387a2104e867f9ff04ffd8aa0",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A4",
+          "sha256": "08e54cb4b5eb13d910ce7dd8654486ab2424801f375fb1a821d618bb777d8be7",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A5",
+          "sha256": "6b93996d5b9e5c856a2c167db735624b03bafb1fe6bb88901509fab07e744fa3",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A6",
+          "sha256": "7224c83c030281122e762e1dbcd4a2a2e23fa9a328e6131499ccf4c1d740a0b6",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A7",
+          "sha256": "bad8543a7c6fde94865a47b245a72566eb8043dac4c09d4eda5ec420804f55a7",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A8",
+          "sha256": "6d73ffd9f4c6fa55e29e3f5e516ea460f4d7a0654eed6e5d517d6e75a5f64ef6",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A9",
+          "sha256": "c4a076e267d97201fab6024ecca8fe869ad4956cceb91950af90bcbd0e71a5cf",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A10",
+          "sha256": "f969355ce07b6693132fd893dca0e18cf2fa574996a72afe3eea5867955d8cf7",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A11",
+          "sha256": "0d8718f0c43141bf4eb508e8dd9287ebc5506057653d2f8567a4cd8052215821",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A12",
+          "sha256": "864ef33badaab31ec4db98a2bd8666a430983d8bf079e2eb586c95cfaacf9c9b",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A13",
+          "sha256": "637200899a49d110dd6189e311485c9760c1db2c41e4ca2bf827bafbbb90f655",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A14",
+          "sha256": "280da3c01015f7907987a6482cc078c8360622216cb0691c6fa4878376c856b3",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A15",
+          "sha256": "434e10fa3dca49a023e0810d93e2fe4e690b0d9f809c749ff21ef5cd5ca66c8d",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A16",
+          "sha256": "ee3ca7bed19c8de372123b02633209245e8d36aabfc8b4f1bfe9612e40c9cf11",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A17",
+          "sha256": "655685ad1c8d24edecc82ecc84a3fbfab591564713b192eadf4fcd1613411f0e",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A18",
+          "sha256": "a4bbdd58ab48c3ff6c568cc00ea23f9433b496c7146bb638038f638759f4577c",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A19",
+          "sha256": "0eb4d559ba526d4c2514334518f1d1748f76a554badc8536d2607ba1e37592ae",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A20",
+          "sha256": "8a63b128670c6d2f95681e15703cae988fc831ec40a109e1df1172db66ae03f0",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A21",
+          "sha256": "dabde981745a4ce0acccdddf0788450381b242c68b8f7305ad9ee774398cfb51",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A22",
+          "sha256": "830a143c1fe9bfc4f44f92e79dbcc278c6a1d1d79db68d201e69c76592071c69",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A23",
+          "sha256": "923666e457689de9e48529871942c89a2eca18e9233d037ab756465801030cb8",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A24",
+          "sha256": "06890632a6ec7cba0fde9da42e39b5167d6d68ed2ddc3ef795050972f373cf88",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A25",
+          "sha256": "d22468bebdbed7c53ca8aa7a1d8a39c73610afd34a7630a658e94fbfb31bbd71",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A26",
+          "sha256": "853c4cfeec65feced8b14c77cd338c65c475946d5bd66a0a13ad62d9bc6bc051",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A27",
+          "sha256": "ac310aa9eedc992c90b691c2498e9681ca0960ce2da369df79f41998e1d906d8",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A28",
+          "sha256": "e0052410ae09e383756a2c9dbed6e461b46bc7a229bdedc54754e821daab6c67",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A29",
+          "sha256": "38dd9fd2908647c8cbc2b4d22507cfff8c903271672fe5e616b7a795f16805b6",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A30",
+          "sha256": "d92249d9bc3eaa4460ca52fbdb5dad418495ed404cf1d773650a14073626933a",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "A31",
+          "sha256": "60e5ec416d0083c84691d47fe99d583d2e607570c96db3ffdae7e5840d44c91f",
+          "shape": [
+            16,
+            64
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y0",
+          "sha256": "6a18db0fbf288c2da7397286ad65b3fb41743ca5b117baaa3b2f035ef36e4fd4",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y1",
+          "sha256": "11f17d7c0dcc2a5306ade3f2ffefd82ab4d74b2bf5386ae6a2f63fb5c788ce1e",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y2",
+          "sha256": "766c9b743651d99ad36125e179090542bac6dedce848e9e21c4e39b219b5aaa6",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y3",
+          "sha256": "89937dedf2a1d819ebb43a87315a96de685671394253fc89e7399cae94c1ec86",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y4",
+          "sha256": "2d5253e78eba69d3f610d434f178ddd8fd440f3d459d3459d91cd5ac3a3d9551",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y5",
+          "sha256": "dfb6607f4c7a859eee002270cc6b65664ffab7ae8ac6a3d8f75d48eafb478c40",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y6",
+          "sha256": "be15abc65ca7bfb8f3787d879d8a01715bc5a5f45179b361706ec344541bb5d7",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y7",
+          "sha256": "332eefba3c824909fc33fc2bdf810e3ea495e7d8777d1632cc474f9a0a962cd0",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y8",
+          "sha256": "cb045eb8de5ced577c3cc485dfbaefcb32e660ab27490a494124524ec6e3f532",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y9",
+          "sha256": "03675f7b9dfc7b8e9b24031c416a45dc4c8fbcbb061f237ace450754bd75af4c",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y10",
+          "sha256": "49b1e7249a219bca2b520ae1849dbe96866bf85356ce39ea24481ba6b201c21d",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y11",
+          "sha256": "3acd892d15a81b28c47bcb0e26c37e9e191b5d05b3e824a3fc5caf90a20546e7",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y12",
+          "sha256": "e3bd1a376702cf1e9e5eb15897f891c09a5f8e4b449ba6b159b40cab656f7735",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y13",
+          "sha256": "1d77d30dcbeea1dc18f91bd809202cec68833ade376ccdac49836bd662e3138c",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y14",
+          "sha256": "29332894f8b523d0c0db713919a21cda35a93668a0c31269e0fc76596dc55468",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y15",
+          "sha256": "06dfb807387c9be39ed0261a8655eb60ce95cc67dc574aec0ab1082ac7e2d8e2",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y16",
+          "sha256": "ac0ccc538ea8e9996ddf3c8221658cd0b06529b68f659a9400f0a1854fb74e4e",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y17",
+          "sha256": "e1210ee8fe0dfd29710b84f23cf5a3f909bc4067d835aeeb1883bfaac32d22d7",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y18",
+          "sha256": "ff2928207c72ac2ec6959955ebf676e1490400d4ece108c73f6c1a7ed4bd196f",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y19",
+          "sha256": "0902c0eb40eb1ce8d7a7b64cd462efcb2968a3b302ae9b78f95530e4509ec428",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y20",
+          "sha256": "033e6f847de865626cf840856fca7306a57f47e9df482943094b9d0e3c3c730f",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y21",
+          "sha256": "8abe78e9b2a41ee918397c3b94d4f2ab43d780227b2cea7b6de3823cd18de615",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y22",
+          "sha256": "888bce2cc1a88a7f8c0c5472fcfe98de7d5700cc4d8baac54b32324b01f89105",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y23",
+          "sha256": "3642c68a6cf363cb40f9e40240d80933e64c2b5469ade9e8644b926c11f84cd0",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y24",
+          "sha256": "e200dfeaa660f40088a93d924a13b84f619aed1f4991c9e5bfedf3550e242add",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y25",
+          "sha256": "5788c05db0ac69308e571a2fab13fb01d95aca32ad6d88ce3d3ff157bc072bd6",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y26",
+          "sha256": "b709a632f75a06a369f26ea005a038d165522e604168561e1affb0b407d43c6d",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y27",
+          "sha256": "9aa67996852cec562fd91640211053e1e243b0b5be3f14009245a82baa824e28",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y28",
+          "sha256": "38c7a677a8091d609e1fc4044fabbc04cf0ccb95dfc71a367ab3a83e9f92a3ad",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y29",
+          "sha256": "875c58befc183c2d6e4e4fab77b4fbefdb8a1fcea696c996eb8abad6910c85ef",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y30",
+          "sha256": "fa6f6ff60f5043652895606a1e76561aa61cd74b30880b5fd12121bebc687cbb",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int32",
+          "name": "Y31",
+          "sha256": "195e134f653f6f824549975debb4d2e43647a819c38a1ce63b2027c45f9c5596",
+          "shape": [
+            16,
+            16
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T01/pytest-tmp/test_kernel_benchmark_handoff_0/T01/host-index-observation/COMMAND.json",
+          "sha256": "52937541dd1513273f333f563988b10b38d81a49e4aacbc1e685dbbc8523a601"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T01/pytest-tmp/test_kernel_benchmark_handoff_0/T01/host-index-observation/host-pointer.ll",
+          "sha256": "53fc231516e45eabaad08a1d2afc03138aea625b3db1d781952f272b3fe6f36c"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T01/pytest-tmp/test_kernel_benchmark_handoff_0/T01/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "18022a0ccceadad15c4ae905fae44ce5785daf508f629ba2a13c64e2b36eb4f6"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T01/pytest-tmp/test_kernel_benchmark_handoff_0/T01/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "verified",
+          "proof_credit": true
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "unchanged",
+          "proof_credit": false
+        }
+      },
+      "typed_rewrite_checks": [
+        {
+          "label": "cse",
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; defined on typed, nonpoison inputs (no UB or poison)",
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "required_theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "optional_strengthenings": {
+            "definedness": "verified",
+            "universal_boundary": "abstracted"
+          },
+          "receipt": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T01/pytest-tmp/test_kernel_benchmark_handoff_0/T01/pass-validation/0001-cse/stage/receipt.json"
+        }
+      ],
+      "checked_llvm": {
+        "bytes": 112600,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T01/pytest-tmp/test_kernel_benchmark_handoff_0/T01/checked/model.ll",
+        "sha256": "5e785d88f2e3cdf332e422cc705ae82cedc8df35fad121a39f249537d056dd6b"
+      },
+      "baseline_llvm": {
+        "bytes": 112600,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T01/pytest-tmp/test_kernel_benchmark_handoff_0/T01/baseline/model.ll",
+        "sha256": "5e785d88f2e3cdf332e422cc705ae82cedc8df35fad121a39f249537d056dd6b"
+      },
+      "case_report_sha256": "672fbe0a2153315a9551aa963a3a9c9a9af3973764f026f4ef016cd20d55d596",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "T02",
+      "status": "PASS",
+      "outputs": 32,
+      "verified_boundaries": 1,
+      "unchanged_boundaries": 2,
+      "unverified_boundaries": 0,
+      "checked_passes": "cse",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 87.51,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T02/pytest-tmp/test_kernel_benchmark_handoff_0/T02/CASE-REPORT.json",
+      "source": {
+        "bytes": 55389,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T02/pytest-tmp/test_kernel_benchmark_handoff_0/T02/source.mlir",
+        "sha256": "09b9ca8e1923916f2d49fef5053e99f00c531baebd9f417c15759813ae9f8420"
+      },
+      "specification": {
+        "id": "T02",
+        "kind": "matmuls",
+        "products": [
+          [
+            "A0",
+            "K0",
+            "Y0"
+          ],
+          [
+            "A1",
+            "K0",
+            "Y1"
+          ],
+          [
+            "A2",
+            "K0",
+            "Y2"
+          ],
+          [
+            "A3",
+            "K0",
+            "Y3"
+          ],
+          [
+            "A4",
+            "K0",
+            "Y4"
+          ],
+          [
+            "A5",
+            "K0",
+            "Y5"
+          ],
+          [
+            "A6",
+            "K0",
+            "Y6"
+          ],
+          [
+            "A7",
+            "K0",
+            "Y7"
+          ],
+          [
+            "A8",
+            "K1",
+            "Y8"
+          ],
+          [
+            "A9",
+            "K1",
+            "Y9"
+          ],
+          [
+            "A10",
+            "K1",
+            "Y10"
+          ],
+          [
+            "A11",
+            "K1",
+            "Y11"
+          ],
+          [
+            "A12",
+            "K1",
+            "Y12"
+          ],
+          [
+            "A13",
+            "K1",
+            "Y13"
+          ],
+          [
+            "A14",
+            "K1",
+            "Y14"
+          ],
+          [
+            "A15",
+            "K1",
+            "Y15"
+          ],
+          [
+            "A16",
+            "K2",
+            "Y16"
+          ],
+          [
+            "A17",
+            "K2",
+            "Y17"
+          ],
+          [
+            "A18",
+            "K2",
+            "Y18"
+          ],
+          [
+            "A19",
+            "K2",
+            "Y19"
+          ],
+          [
+            "A20",
+            "K2",
+            "Y20"
+          ],
+          [
+            "A21",
+            "K2",
+            "Y21"
+          ],
+          [
+            "A22",
+            "K2",
+            "Y22"
+          ],
+          [
+            "A23",
+            "K2",
+            "Y23"
+          ],
+          [
+            "A24",
+            "K3",
+            "Y24"
+          ],
+          [
+            "A25",
+            "K3",
+            "Y25"
+          ],
+          [
+            "A26",
+            "K3",
+            "Y26"
+          ],
+          [
+            "A27",
+            "K3",
+            "Y27"
+          ],
+          [
+            "A28",
+            "K3",
+            "Y28"
+          ],
+          [
+            "A29",
+            "K3",
+            "Y29"
+          ],
+          [
+            "A30",
+            "K3",
+            "Y30"
+          ],
+          [
+            "A31",
+            "K3",
+            "Y31"
+          ]
+        ],
+        "roster": [
+          [
+            "K0",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "K1",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "K2",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "K3",
+            [
+              16,
+              64
+            ]
+          ],
+          [
+            "A0",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A1",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A2",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A3",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A4",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A5",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A6",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A7",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A8",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A9",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A10",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A11",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A12",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A13",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A14",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A15",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A16",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A17",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A18",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A19",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A20",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A21",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A22",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A23",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A24",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A25",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A26",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A27",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A28",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A29",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A30",
+            [
+              16,
+              16
+            ]
+          ],
+          [
+            "A31",
+            [
+              16,
+              16
+            ]
+          ]
+        ],
+        "scale": 0.0078125
+      },
+      "inputs": [
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "K0",
+          "sha256": "72e0455aeebfbd27d2645ad8bf3c8f85845e56d127ccc497dee6f90f42996d54",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "K1",
+          "sha256": "2316960bd9071b1676fe46de6029d08c9daac3283f436a973801a01d6b811d57",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "K2",
+          "sha256": "38a759cb8c0da2ac75c4ae77f30ebf2527726d183fa659f0d86f4dacbff23d77",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "K3",
+          "sha256": "326591c034d5258b238df15f6aaa4b431ecb024f12a5b883d49bf4d4de4d100e",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A0",
+          "sha256": "84973190c27fdae5616cd40a095c9a8c2564b40fcaaee364df47f7d806247bc8",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A1",
+          "sha256": "568241b976d5197de0930f4a797f6875ecd51f3f2d6b1a850c7c9c0b06883fe7",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A2",
+          "sha256": "2068d5c7ecefe8f75f66f0566a805c3226df5f667cc0b73923c0741e10dd81c9",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A3",
+          "sha256": "8296cff59f109c7a76852ec018fd060a6b56f76537f132b6c18d1fdebb5e1b18",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A4",
+          "sha256": "e8fb21fee5cca341f785d6ad47160b466f1677d3a9dba678ed66f55b083c1926",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A5",
+          "sha256": "a8650b3e74b98ea5a207038090520797995cd14da73ab20ed7f77def02144e57",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A6",
+          "sha256": "9036ec6fef06a2885a87d4234fdc7692a33d9f4889608c137c5924242222e65b",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A7",
+          "sha256": "97ead79b9871989a43a654dba029ee09e396291c5837b23918096f6338abb655",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A8",
+          "sha256": "b1a35999e80ae30a6a1beb2b204898d053ea2ca96899aa7b1ae9df1258ded8b4",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A9",
+          "sha256": "d16bb97d554aef348a2e5fe75b6adf021d48356221cff3b8561d99f3d463f87a",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A10",
+          "sha256": "2804e49a01c22a0a3d183a8e12d4853cf088915fcdca4a0bc242020a31ef0b6f",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A11",
+          "sha256": "5e67ca11e72b6f85e29fca35d603761f7244c1df9b91142673320c01905918a4",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A12",
+          "sha256": "16372d824e89e54d6b373ac0597c131e26ad8c82739a10cba5ca4e78db2a319e",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A13",
+          "sha256": "5fc49e51b1abf11dfa2c08cc35cfe101c1288aa416a40fd44dbeeb9770f13556",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A14",
+          "sha256": "8875da444b436da70e1b8a31873641747f96841375a70bf433b5ce501d64b5d4",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A15",
+          "sha256": "a2b9e3865392138c3c9e4d13e5f35bf3dd872012ae3fb9bb873972e8a18e6d24",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A16",
+          "sha256": "888dd78698168480d0d6b39bb13ff94dcb58c4e56420b06efb3f71778f81b213",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A17",
+          "sha256": "30ab35f03d39d0bda1c79cfd794fcf1bf157146d1a925a443d355d8b9e1495c6",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A18",
+          "sha256": "562d219d3051f839640deea9ba177ba05ecc3d8d4910cc666f3f0845c214057c",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A19",
+          "sha256": "6a22b9dbb9eb2c4277274986da72da3ae13dca27b15b6b1101c36e18f085cdd9",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A20",
+          "sha256": "a455e9be6da771efc96f580be5e64685752be4fa386f1f031ed8793c674f8ef1",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A21",
+          "sha256": "57e4c1ee60619b5cd7635f88f14d8fa3cdcd58348f054b857e79e686d04822e2",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A22",
+          "sha256": "f6316693c3e7ff1108bfe115b4d288c62700e9e4df920b1ee8062c1593c1b5c3",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A23",
+          "sha256": "ba92cb8169907a4fa36b997300b48c23146364afb58783e00868171eda89144e",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A24",
+          "sha256": "274f2d9575db5401ed6137784f2a172ed07ec8cec1ffd18beaa1603f425c657b",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A25",
+          "sha256": "dfae5fe2c9237897a6ac2aa134a54a0a5683152c863f860d8000ccb9838be59e",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A26",
+          "sha256": "19cebee0854470262577a52b813241e9f36a7f4cf9448a35fb536071e2ebbc96",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A27",
+          "sha256": "5cad3c2cda9b524a6c323c2d1345de7efe99214e5c9b3d89c37f77253cad3d84",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A28",
+          "sha256": "c766b1f6b5de15595ae51a4bedd03a35a91cb532bb6fffb4194dab9fa8490df5",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A29",
+          "sha256": "55b31ca8a154235463932898bba10eb8ad4d91f643e62c92d31bc127e8a93584",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A30",
+          "sha256": "3ba31e6ea5f6af5ce437746dda42ca0e3aac3a40ebf2884daefd648a103d7f3e",
+          "shape": [
+            16,
+            16
+          ]
+        },
+        {
+          "bytes": 256,
+          "dtype": "int8",
+          "name": "A31",
+          "sha256": "af3055bd94258b40f62a66b6f1f62231a7cea21213aa5c5d9d73e7456373f2ff",
+          "shape": [
+            16,
+            16
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y0",
+          "sha256": "0127775b2b613f876002b5f7a681da3d2b7b70326a798ca010d9702b9cc96964",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y1",
+          "sha256": "3ab6992215fac37958c238956e6cad7f4b3b6e0546e242aaab164d3dc84293d3",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y2",
+          "sha256": "14f33e8dc33c6d736cfc8931c4263e71a1e900e6ed8c36b2b53df53122b90477",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y3",
+          "sha256": "31943c1416672faeb48400b5c0e44d6c2b5446ba8b9b2f3157fae5ea496cb6d7",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y4",
+          "sha256": "3fe753dce295692b5ca090dc1946a4da645c6dea02cad15a1c20c7e24e422061",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y5",
+          "sha256": "6f48b6815bf24051ef417a20e7fc0f91382aa5a204a885ba9468e8bdec0488f2",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y6",
+          "sha256": "13efb65a2f3aa1748d116bb80a45f66eaf65e4b23f2b1040df0376264cfeda79",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y7",
+          "sha256": "2f0410ab3f005c1bb0a321dc36a3e4b2e2b5d57f136f97dbe3aaa87dc6cf23a2",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y8",
+          "sha256": "f0a1e162367bec675c5ab365d5d3a601040f4b57af7e10cdc6346fc9800b61d6",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y9",
+          "sha256": "8b32794b0a604a8f061875250f8d6a3d55f1cb411baaa17d446d751f542cbe44",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y10",
+          "sha256": "680d15029970533ca85d4a21d4f53a82cd4ea7b2e41d267fb0782bab472eed76",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y11",
+          "sha256": "12cf862b65ea575cfe79684ccadd1344ac093ebad689f7c5a035b348563300fc",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y12",
+          "sha256": "2033d21a4183ca781c1d0a44f5d0a1ddce3834f1d9fb68ad403b4f6a15d133e8",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y13",
+          "sha256": "605f5ecf86e09b8db5a212bd7ef06cb090b7b3223f69381e38dd6141f75689c1",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y14",
+          "sha256": "befe5c15bb4e54ff4313809a9f5f0e965f523f2fd930eb0ed06cbf315fe92cd6",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y15",
+          "sha256": "c6a5a8dd4ee8b64a9860d6048cd93c249a9c592e15cd0591de35dc14e2d87261",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y16",
+          "sha256": "fc9e2dd2e08d67d5f4111ad1af79239fbfbf6a1f964e9514882f01ee540fb5c4",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y17",
+          "sha256": "0e62d65cdc3ca71d2d51ecedde5f5aede8d5f79c89775356dd37be2c53aaed31",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y18",
+          "sha256": "b84b83d4d1e434a1992592da1549704a8db7e6f44ecb75c8c18831c2c2fd2705",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y19",
+          "sha256": "0f8f026bfad645a66e4deb3d76f6e1be5da0011432c4a290887d7bfc50038dec",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y20",
+          "sha256": "29283a4932d5127841a5f9b1f1e937822d2c15e9e4f3a6ccbae3f28552a762fa",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y21",
+          "sha256": "25baa8c57c13780fab9dcec251df07d11a42f48e43aa5cbcedf18458720efc33",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y22",
+          "sha256": "a7a1df8ccf0b339a96ad4c775ec08982dd079aa915c9cf14bcec7588075f7967",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y23",
+          "sha256": "efc362e4752e0b924579c32a5ca2bbe75c899b98e8851e1dce01dbbcf369b088",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y24",
+          "sha256": "f92d98792a8b2370cac73967ce9c526723065705624feeaff683ee3578dd3bdf",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y25",
+          "sha256": "4ddc5a55b85842bc457e2fead89d37a20fc88eb1e91b888e00f0b6f47587d640",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y26",
+          "sha256": "c4af4802e1c92f46fba9178302b5d0ff1219eac562ce6bca5030e1e1812e976c",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y27",
+          "sha256": "f6140b71126a61cff3f129b3998e31d3476b3e9579542f32fdab83f976d53748",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y28",
+          "sha256": "2809ddc3ab2046d3dcc081a42a2db39beaf2c4a9ff729715353c4347966dee63",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y29",
+          "sha256": "3408d21ba84977cbdc9e5e85ce9ec636dce616983345dbd681a455566ffce464",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y30",
+          "sha256": "a6594c0ecbed1915d541415cac51b4a26b4f1e5eadaa9abeafb8a863d840d0db",
+          "shape": [
+            16,
+            64
+          ]
+        },
+        {
+          "bytes": 1024,
+          "dtype": "int8",
+          "name": "Y31",
+          "sha256": "832fb7357659dd4bd9ee18339f7a2e583c53d0cbd2c7c975aef33b5a70bc5bad",
+          "shape": [
+            16,
+            64
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T02/pytest-tmp/test_kernel_benchmark_handoff_0/T02/host-index-observation/COMMAND.json",
+          "sha256": "2ca2dd8436be2730a004db736a9c251d742d3ad99dd2e962afedef61a9ef6c4e"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T02/pytest-tmp/test_kernel_benchmark_handoff_0/T02/host-index-observation/host-pointer.ll",
+          "sha256": "a4cb83505e59797ad66f206854d10050ca76c0935879af507e42b8333a9699e7"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T02/pytest-tmp/test_kernel_benchmark_handoff_0/T02/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "1fa3c4c589621c0bc85b82ebb2088dfbceb4b69aa407501658bffe66fb459f41"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T02/pytest-tmp/test_kernel_benchmark_handoff_0/T02/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "verified",
+          "proof_credit": true
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "unchanged",
+          "proof_credit": false
+        }
+      },
+      "typed_rewrite_checks": [
+        {
+          "label": "cse",
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "required_theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "optional_strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "receipt": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T02/pytest-tmp/test_kernel_benchmark_handoff_0/T02/pass-validation/0001-cse/stage/receipt.json"
+        }
+      ],
+      "checked_llvm": {
+        "bytes": 162362,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T02/pytest-tmp/test_kernel_benchmark_handoff_0/T02/checked/model.ll",
+        "sha256": "4aa155a7ab33c37cec5eee0be4dc1b996ade780ce868f18da2fb94c66dc0e5a5"
+      },
+      "baseline_llvm": {
+        "bytes": 162362,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T02/pytest-tmp/test_kernel_benchmark_handoff_0/T02/baseline/model.ll",
+        "sha256": "4aa155a7ab33c37cec5eee0be4dc1b996ade780ce868f18da2fb94c66dc0e5a5"
+      },
+      "case_report_sha256": "5bc92749b18b0f173d2408be87512399d89cf046db22fcc9d3008fa7b297b883",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "T03",
+      "status": "PASS",
+      "outputs": 1,
+      "verified_boundaries": 0,
+      "unchanged_boundaries": 3,
+      "unverified_boundaries": 0,
+      "checked_passes": "",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 12.88,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T03/pytest-tmp/test_kernel_benchmark_handoff_0/T03/CASE-REPORT.json",
+      "source": {
+        "bytes": 1036,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T03/pytest-tmp/test_kernel_benchmark_handoff_0/T03/source.mlir",
+        "sha256": "034f3f1a5f8e1bd335489e70ad13e8aca1efb8baa2b19478670c917d79a51550"
+      },
+      "specification": {
+        "id": "T03",
+        "kind": "matmuls",
+        "products": [
+          [
+            "A0",
+            "W",
+            "Y0"
+          ]
+        ],
+        "roster": [
+          [
+            "W",
+            [
+              5632,
+              2048
+            ]
+          ],
+          [
+            "A0",
+            [
+              16,
+              5632
+            ]
+          ]
+        ],
+        "scale": null
+      },
+      "inputs": [
+        {
+          "bytes": 11534336,
+          "dtype": "int8",
+          "name": "W",
+          "sha256": "9aab5e78f7dca7a746cb88ed7d4f4fa21ad00fb9be70398aede4770940456854",
+          "shape": [
+            5632,
+            2048
+          ]
+        },
+        {
+          "bytes": 90112,
+          "dtype": "int8",
+          "name": "A0",
+          "sha256": "735e785eafb6266ba2cd7e81306ef3bf9e7162d48bbf01fc9068081c1d2a099b",
+          "shape": [
+            16,
+            5632
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 131072,
+          "dtype": "int32",
+          "name": "Y0",
+          "sha256": "c12692f28a6fc96890ab1c19cbaf6e7909840f5ccd1fda9279901c70cba78bc3",
+          "shape": [
+            16,
+            2048
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T03/pytest-tmp/test_kernel_benchmark_handoff_0/T03/host-index-observation/COMMAND.json",
+          "sha256": "331a3dcd14401e3cbd7b2869b26bcb45d8d4f14b8961bceb6fb8fe074a472a26"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T03/pytest-tmp/test_kernel_benchmark_handoff_0/T03/host-index-observation/host-pointer.ll",
+          "sha256": "2230dbde69a7a3a361d322ca436e97ec08b916b8ef2c15a63724ec4c2b41595e"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T03/pytest-tmp/test_kernel_benchmark_handoff_0/T03/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "a5d474510e9798ca9be95082a1955bdb55dddeb9a57c94cda2e6a7cd20ce9dea"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T03/pytest-tmp/test_kernel_benchmark_handoff_0/T03/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "unchanged",
+          "proof_credit": false
+        }
+      },
+      "typed_rewrite_checks": [],
+      "checked_llvm": {
+        "bytes": 4958,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T03/pytest-tmp/test_kernel_benchmark_handoff_0/T03/checked/model.ll",
+        "sha256": "a3fdff5dc359f65ff7c3e57b3fe1237e0605e1323461ca04a53a55e9c57cce03"
+      },
+      "baseline_llvm": {
+        "bytes": 4958,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T03/pytest-tmp/test_kernel_benchmark_handoff_0/T03/baseline/model.ll",
+        "sha256": "a3fdff5dc359f65ff7c3e57b3fe1237e0605e1323461ca04a53a55e9c57cce03"
+      },
+      "case_report_sha256": "7f2a93f1fe1558df7f0082b5b0c8142571c2dc8cf2066652baae1edac327b759",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "T04",
+      "status": "PASS",
+      "outputs": 2,
+      "verified_boundaries": 1,
+      "unchanged_boundaries": 2,
+      "unverified_boundaries": 0,
+      "checked_passes": "cse",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 81.65,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T04/pytest-tmp/test_kernel_benchmark_handoff_0/T04/CASE-REPORT.json",
+      "source": {
+        "bytes": 3622,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T04/pytest-tmp/test_kernel_benchmark_handoff_0/T04/source.mlir",
+        "sha256": "bc2fd9163ee198749bf37beb79e00c15ecb091cf110cbf068b39357dc62b37b1"
+      },
+      "specification": {
+        "id": "T04",
+        "kind": "matmuls",
+        "products": [
+          [
+            "A0",
+            "Wg",
+            "Yg"
+          ],
+          [
+            "A0",
+            "Wu",
+            "Yu"
+          ]
+        ],
+        "roster": [
+          [
+            "Wg",
+            [
+              2048,
+              5632
+            ]
+          ],
+          [
+            "Wu",
+            [
+              2048,
+              5632
+            ]
+          ],
+          [
+            "A0",
+            [
+              16,
+              2048
+            ]
+          ]
+        ],
+        "scale": 0.0078125
+      },
+      "inputs": [
+        {
+          "bytes": 11534336,
+          "dtype": "int8",
+          "name": "Wg",
+          "sha256": "9aab5e78f7dca7a746cb88ed7d4f4fa21ad00fb9be70398aede4770940456854",
+          "shape": [
+            2048,
+            5632
+          ]
+        },
+        {
+          "bytes": 11534336,
+          "dtype": "int8",
+          "name": "Wu",
+          "sha256": "f31ac141331d88b818fce9366584f356398d3045ffdfda3869b391971b309a6e",
+          "shape": [
+            2048,
+            5632
+          ]
+        },
+        {
+          "bytes": 32768,
+          "dtype": "int8",
+          "name": "A0",
+          "sha256": "da2ecaf1af81e85e23753c63295384b1a8beadf1b4c684559b3ec7918c395dd5",
+          "shape": [
+            16,
+            2048
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 90112,
+          "dtype": "int8",
+          "name": "Yg",
+          "sha256": "0e666056ae4a68a5f12afc8e6717f9a07f12f18488e1cc50008755de81a0b31c",
+          "shape": [
+            16,
+            5632
+          ]
+        },
+        {
+          "bytes": 90112,
+          "dtype": "int8",
+          "name": "Yu",
+          "sha256": "4b7d45b9e7e0c56ed6f085e64f4f2b1313d4f031d929d8a82fa96c4f101c3622",
+          "shape": [
+            16,
+            5632
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T04/pytest-tmp/test_kernel_benchmark_handoff_0/T04/host-index-observation/COMMAND.json",
+          "sha256": "4aebd6e20832a84388fced7a08bbc38a76587901419619fe313eb7273004fe7a"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T04/pytest-tmp/test_kernel_benchmark_handoff_0/T04/host-index-observation/host-pointer.ll",
+          "sha256": "8f81d65364d69a923e9f9afc2a56606b19843e7204e53dae55ed319d459635e9"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T04/pytest-tmp/test_kernel_benchmark_handoff_0/T04/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "e2dedbe09681323edb4cd7cc3cea2fdc8c9188d6655c0c9b43b2916588956dac"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T04/pytest-tmp/test_kernel_benchmark_handoff_0/T04/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "verified",
+          "proof_credit": true
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "unchanged",
+          "proof_credit": false
+        }
+      },
+      "typed_rewrite_checks": [
+        {
+          "label": "cse",
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "required_theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "optional_strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "receipt": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T04/pytest-tmp/test_kernel_benchmark_handoff_0/T04/pass-validation/0001-cse/stage/receipt.json"
+        }
+      ],
+      "checked_llvm": {
+        "bytes": 12092,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T04/pytest-tmp/test_kernel_benchmark_handoff_0/T04/checked/model.ll",
+        "sha256": "3414a04c307a2231a78959c8e3b3373608ac9b78b6c67fdf2d695f6a9d8ec781"
+      },
+      "baseline_llvm": {
+        "bytes": 12092,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T04/pytest-tmp/test_kernel_benchmark_handoff_0/T04/baseline/model.ll",
+        "sha256": "3414a04c307a2231a78959c8e3b3373608ac9b78b6c67fdf2d695f6a9d8ec781"
+      },
+      "case_report_sha256": "cd17f60097599cb5cfb9f218d96cb04980b0a73277ddf106d7a64d5888a07117",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "T05",
+      "status": "PASS",
+      "outputs": 1,
+      "verified_boundaries": 0,
+      "unchanged_boundaries": 3,
+      "unverified_boundaries": 0,
+      "checked_passes": "",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 10.68,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T05/pytest-tmp/test_kernel_benchmark_handoff_0/T05/CASE-REPORT.json",
+      "source": {
+        "bytes": 1036,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T05/pytest-tmp/test_kernel_benchmark_handoff_0/T05/source.mlir",
+        "sha256": "49c19342736e02983b843e2929bbe4bbe53b4a4c112b4bf00eb6386e4ef76fb6"
+      },
+      "specification": {
+        "id": "T05",
+        "kind": "matmuls",
+        "products": [
+          [
+            "A0",
+            "W",
+            "Y0"
+          ]
+        ],
+        "roster": [
+          [
+            "W",
+            [
+              2048,
+              2048
+            ]
+          ],
+          [
+            "A0",
+            [
+              16,
+              2048
+            ]
+          ]
+        ],
+        "scale": null
+      },
+      "inputs": [
+        {
+          "bytes": 4194304,
+          "dtype": "int8",
+          "name": "W",
+          "sha256": "a616374040d251323b47bbda4fc97ca9ea8633e028470dfcbafb57eb4b614a2c",
+          "shape": [
+            2048,
+            2048
+          ]
+        },
+        {
+          "bytes": 32768,
+          "dtype": "int8",
+          "name": "A0",
+          "sha256": "5f65a80ff3de86bc68f9e98b4087507be75dca485d52c20a5d9b05e627de8f8d",
+          "shape": [
+            16,
+            2048
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 131072,
+          "dtype": "int32",
+          "name": "Y0",
+          "sha256": "9ab31fe73a0f56161543ca6b1bed9e4037c7517089820581e98bbf8a8f4620ee",
+          "shape": [
+            16,
+            2048
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T05/pytest-tmp/test_kernel_benchmark_handoff_0/T05/host-index-observation/COMMAND.json",
+          "sha256": "8469983274a4ad0e26b62c578afdb4ec5db1147c0db965cc33ffd9f6ea62a216"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T05/pytest-tmp/test_kernel_benchmark_handoff_0/T05/host-index-observation/host-pointer.ll",
+          "sha256": "910fa77490511154060320815852002f7395a1f778f26b839b2f71c31c36ed16"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T05/pytest-tmp/test_kernel_benchmark_handoff_0/T05/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "69ccd39573b330abb845f0a5dfaa4245e1c1f3f0378b62aea7c4c2ecee83ddb5"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T05/pytest-tmp/test_kernel_benchmark_handoff_0/T05/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "unchanged",
+          "proof_credit": false
+        }
+      },
+      "typed_rewrite_checks": [],
+      "checked_llvm": {
+        "bytes": 4924,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T05/pytest-tmp/test_kernel_benchmark_handoff_0/T05/checked/model.ll",
+        "sha256": "2691cbac2f97c73c999287d4d7582ad326c51cd41b3ede0f311863f4353b32a1"
+      },
+      "baseline_llvm": {
+        "bytes": 4924,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T05/pytest-tmp/test_kernel_benchmark_handoff_0/T05/baseline/model.ll",
+        "sha256": "2691cbac2f97c73c999287d4d7582ad326c51cd41b3ede0f311863f4353b32a1"
+      },
+      "case_report_sha256": "eb41d4716a1b78885dfa2e54cb0e66be2fc48ddab31bd7ef18ab93e690bd6f72",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "T06",
+      "status": "PASS",
+      "outputs": 3,
+      "verified_boundaries": 1,
+      "unchanged_boundaries": 2,
+      "unverified_boundaries": 0,
+      "checked_passes": "cse",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 84.81,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T06/pytest-tmp/test_kernel_benchmark_handoff_0/T06/CASE-REPORT.json",
+      "source": {
+        "bytes": 5319,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T06/pytest-tmp/test_kernel_benchmark_handoff_0/T06/source.mlir",
+        "sha256": "a065918265865d50d930e00750ec9b66db048e77f8d569cfe48300215941743b"
+      },
+      "specification": {
+        "id": "T06",
+        "kind": "matmuls",
+        "products": [
+          [
+            "A0",
+            "Wq",
+            "Yq"
+          ],
+          [
+            "A0",
+            "Wk",
+            "Yk"
+          ],
+          [
+            "A0",
+            "Wv",
+            "Yv"
+          ]
+        ],
+        "roster": [
+          [
+            "Wq",
+            [
+              2048,
+              2048
+            ]
+          ],
+          [
+            "Wk",
+            [
+              2048,
+              256
+            ]
+          ],
+          [
+            "Wv",
+            [
+              2048,
+              256
+            ]
+          ],
+          [
+            "A0",
+            [
+              16,
+              2048
+            ]
+          ]
+        ],
+        "scale": 0.0078125
+      },
+      "inputs": [
+        {
+          "bytes": 4194304,
+          "dtype": "int8",
+          "name": "Wq",
+          "sha256": "a616374040d251323b47bbda4fc97ca9ea8633e028470dfcbafb57eb4b614a2c",
+          "shape": [
+            2048,
+            2048
+          ]
+        },
+        {
+          "bytes": 524288,
+          "dtype": "int8",
+          "name": "Wk",
+          "sha256": "cd10a11b593036077483d01f087da059dec7105ecd19cff4cd4969b93b60315c",
+          "shape": [
+            2048,
+            256
+          ]
+        },
+        {
+          "bytes": 524288,
+          "dtype": "int8",
+          "name": "Wv",
+          "sha256": "bd143088311a49a1cc3f344051d0518d272dc3dcea8cb407630e1b3b9e02d855",
+          "shape": [
+            2048,
+            256
+          ]
+        },
+        {
+          "bytes": 32768,
+          "dtype": "int8",
+          "name": "A0",
+          "sha256": "21523795eeaaeb6553d4295e8f6eb559492c4298fafeadd852fda4164b002e6e",
+          "shape": [
+            16,
+            2048
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 32768,
+          "dtype": "int8",
+          "name": "Yq",
+          "sha256": "694a3b3ec665592c267c30c35b0ab010e81bf6d3d8bb7164f6c2543e17007887",
+          "shape": [
+            16,
+            2048
+          ]
+        },
+        {
+          "bytes": 4096,
+          "dtype": "int8",
+          "name": "Yk",
+          "sha256": "3540fa5607352e49e0410c3e261d4e7bc9a7c822b2851ae113617daa5ffcc147",
+          "shape": [
+            16,
+            256
+          ]
+        },
+        {
+          "bytes": 4096,
+          "dtype": "int8",
+          "name": "Yv",
+          "sha256": "59b63ff246c61c8f6fbf580d6cec7c70d7080d1cae28ee0aeb175a8f93dcc03e",
+          "shape": [
+            16,
+            256
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T06/pytest-tmp/test_kernel_benchmark_handoff_0/T06/host-index-observation/COMMAND.json",
+          "sha256": "2ad401beeaf66c221a695e67b5e65296214ab149ea5aaa628e114f87ce643564"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T06/pytest-tmp/test_kernel_benchmark_handoff_0/T06/host-index-observation/host-pointer.ll",
+          "sha256": "1362b5c857af98bc28ae28450f6192eb9b2a81a08a8fc0a748f6e9fc3402cd4f"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T06/pytest-tmp/test_kernel_benchmark_handoff_0/T06/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "7355c5ee701c6ab318fe1475ab4bbe3d4fa972ca7659b4ececb4df86fdc98af3"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T06/pytest-tmp/test_kernel_benchmark_handoff_0/T06/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "verified",
+          "proof_credit": true
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "unchanged",
+          "proof_credit": false
+        }
+      },
+      "typed_rewrite_checks": [
+        {
+          "label": "cse",
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "required_theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "optional_strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "receipt": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T06/pytest-tmp/test_kernel_benchmark_handoff_0/T06/pass-validation/0001-cse/stage/receipt.json"
+        }
+      ],
+      "checked_llvm": {
+        "bytes": 17678,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T06/pytest-tmp/test_kernel_benchmark_handoff_0/T06/checked/model.ll",
+        "sha256": "71c4e96c0e27efd91bc1dddbcd863955773f8bab701a76efc37fc1f4cf6045e2"
+      },
+      "baseline_llvm": {
+        "bytes": 17678,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T06/pytest-tmp/test_kernel_benchmark_handoff_0/T06/baseline/model.ll",
+        "sha256": "71c4e96c0e27efd91bc1dddbcd863955773f8bab701a76efc37fc1f4cf6045e2"
+      },
+      "case_report_sha256": "21ea705adbb1c8a1e2893f0e42a56fa47519326ccabd00578a2fc7e1c505d4bf",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    },
+    {
+      "case": "T07",
+      "status": "PASS",
+      "outputs": 1,
+      "verified_boundaries": 0,
+      "unchanged_boundaries": 3,
+      "unverified_boundaries": 0,
+      "checked_passes": "",
+      "native_outputs_exact": true,
+      "inputs_unchanged": true,
+      "guards_intact": true,
+      "ordinary_llvm_identical": true,
+      "elapsed_seconds": 9.81,
+      "artifact_path": "out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T07/pytest-tmp/test_kernel_benchmark_handoff_0/T07/CASE-REPORT.json",
+      "source": {
+        "bytes": 1036,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T07/pytest-tmp/test_kernel_benchmark_handoff_0/T07/source.mlir",
+        "sha256": "ea9582d7cd95bbb170f9a28f49f068a2437f5302d17360ce2d932efdb9b8fc4f"
+      },
+      "specification": {
+        "id": "T07",
+        "kind": "matmuls",
+        "products": [
+          [
+            "A0",
+            "W",
+            "Y0"
+          ]
+        ],
+        "roster": [
+          [
+            "W",
+            [
+              2048,
+              32000
+            ]
+          ],
+          [
+            "A0",
+            [
+              1,
+              2048
+            ]
+          ]
+        ],
+        "scale": null
+      },
+      "inputs": [
+        {
+          "bytes": 65536000,
+          "dtype": "int8",
+          "name": "W",
+          "sha256": "d4a3bda3c973abc99f743a447a4e23a4a3b6aaf23c91904196eebc377d6e30e9",
+          "shape": [
+            2048,
+            32000
+          ]
+        },
+        {
+          "bytes": 2048,
+          "dtype": "int8",
+          "name": "A0",
+          "sha256": "4cf74bebdad4c53e20cab0693157957adb488b54a8a532fe8218cbd9df54b311",
+          "shape": [
+            1,
+            2048
+          ]
+        }
+      ],
+      "outputs_full_hashes": [
+        {
+          "bytes": 128000,
+          "dtype": "int32",
+          "name": "Y0",
+          "sha256": "09a8ea4a6fde60613b8771df36e2a98dd93ec49b9fa3722c2734e79e09c8aa85",
+          "shape": [
+            1,
+            32000
+          ]
+        }
+      ],
+      "native_host_lowering": {
+        "command": {
+          "bytes": 939,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T07/pytest-tmp/test_kernel_benchmark_handoff_0/T07/host-index-observation/COMMAND.json",
+          "sha256": "f3890b4e87ac3f9fcef9f280beeff0a9c4acf28c9874a74bae19feb3eb981455"
+        },
+        "compiler": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_after": {
+          "bytes": 195979552,
+          "path": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+          "sha256": "d9a8bd7e1fa89bdc156f6033f906e8c8dcefd86b23dd42dd94f75a182e9b5afc"
+        },
+        "compiler_requested": "/scratch/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "ctypes_pointer_bits": 64,
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "index_bits": 64,
+        "index_selection": "explicit MLIR index64 for the handoff ranked-memref ABI",
+        "llvm": {
+          "bytes": 958,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T07/pytest-tmp/test_kernel_benchmark_handoff_0/T07/host-index-observation/host-pointer.ll",
+          "sha256": "001d1ccb8af61fe883d4e8105d6a72942b0c217c6eab537da18c0a3e505e3101"
+        },
+        "native_pointer_bits": 64,
+        "process": {
+          "bytes": 976,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T07/pytest-tmp/test_kernel_benchmark_handoff_0/T07/host-index-observation/PROCESS-RESULT.json",
+          "sha256": "bbaaa3cb151ed07d6b39df137884ba96c3da885942df351b12cce8d56f94b099"
+        },
+        "schema": "merlin.kernel-handoff-native-host-index-selection.v1",
+        "scope": "native host pointer ABI observed64; MLIR index64 explicitly selected; raw clang layout unchanged; no inferred default p0, cross-target admission or LLVM proof",
+        "source": {
+          "bytes": 222,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T07/pytest-tmp/test_kernel_benchmark_handoff_0/T07/host-index-observation/host-pointer.c",
+          "sha256": "d9800fd1602b8a20fa4c244b07a3116d8969168c4a577409b6a88a24d5ce264c"
+        },
+        "status": "PASS"
+      },
+      "all_requested_checks": [
+        "bf16_f32acc_draft_contract",
+        "buffer_reuse",
+        "configuration_loop_hoisting",
+        "configuration_write_elision",
+        "cse",
+        "host_graph_fusion",
+        "lower_quant_ext",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "prune_dead_pure_tensor_ops"
+      ],
+      "selectors": {
+        "bf16_f32acc_draft_contract": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "buffer_reuse": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_loop_hoisting": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "configuration_write_elision": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "cse": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "host_graph_fusion": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "lower_quant_ext": {
+          "status": "unchanged",
+          "proof_credit": false
+        },
+        "ordered_loop_segmentation": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "ordered_loop_unrolling": {
+          "status": "not_observed",
+          "proof_credit": false
+        },
+        "prune_dead_pure_tensor_ops": {
+          "status": "unchanged",
+          "proof_credit": false
+        }
+      },
+      "typed_rewrite_checks": [],
+      "checked_llvm": {
+        "bytes": 4961,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T07/pytest-tmp/test_kernel_benchmark_handoff_0/T07/checked/model.ll",
+        "sha256": "c918a208236282d13eddcc1509e1a10af7e8960f50924438e65e86c977d48b43"
+      },
+      "baseline_llvm": {
+        "bytes": 4961,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/kernel-benchmark-formal-gate-20261029/campaign-v2/T07/pytest-tmp/test_kernel_benchmark_handoff_0/T07/baseline/model.ll",
+        "sha256": "c918a208236282d13eddcc1509e1a10af7e8960f50924438e65e86c977d48b43"
+      },
+      "case_report_sha256": "d60865ee74564378c4ddf63760eba6d99af6652202e8556d7e68baf150f33121",
+      "whole_kernel_formally_verified": false,
+      "elapsed_scope": "full_pytest_case_wall_time_not_kernel_performance"
+    }
+  ],
+  "elapsed_seconds_description": "Full per-case pytest process walltime, including setup, compilation, gates, reference/native comparisons and cleanup; not isolated kernel latency, accelerator cycles, or a kernel performance benchmark. JUnit suite_seconds is separately recorded.",
+  "test_inventory": {
+    "cohort_csv": "ALL-TEST-COHORTS.csv",
+    "retained_junit_files": 248,
+    "original_snapshot_junit_files": 232,
+    "appended_campaign_v2_junit_files": 16,
+    "historical_header_child_anomalies": 5,
+    "counts_policy": "passed/failed/errors/skipped use declared JUnit header counts; parsed fields and explicit anomaly status remain separate. Inconsistent/partial rows do not establish a fully confirmed run; zero-test interrupted rows receive zero pass credit. Do not sum overlapping cohorts.",
+    "immutable_original_local_snapshot": "out/build/kernel-benchmark-formal-gate-20261029/test-inventory/",
+    "original_snapshot_status": "Preserved unchanged historical 232-file metadata capture; corrected counts and later 16 campaign rows are in this consolidated report."
+  },
+  "newly_imported_colleague_audit": {
+    "handoff": "../frozen-followup-20261029/HANDOFF.md",
+    "results": "../frozen-followup-20261029/RESULTS.json",
+    "tested_source_commit": "591687da8bf6a7f99807dbe0978ff297669867d3",
+    "reported_distinct_overlapping_tests": 207,
+    "reported_full_lean_guard_exit": 0,
+    "unexpected_admission_error_regression_failures": 6,
+    "incomplete_handler_result_protocol_failures": 9,
+    "bad_unroll_output_blocked_verdict": "unavailable",
+    "not_team_reruns": true,
+    "raw_junit_present_in_this_report": false,
+    "included_in_248_junit_files": false,
+    "status": "Controller gaps remain open for separate review and current-cut requalification; successful kernel cases do not establish universal controller hardening."
+  }
+}

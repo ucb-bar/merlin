@@ -32,6 +32,14 @@ not become assumptions of accepted proofs. Q/DQ remains proposed-model and MACC
 remains draft pending independent numerical review. The profile catalogue lists
 primitive/effect, projection and logical-allocation premises for review.
 
+The all-ten selector was published in `b7626bbf4` before the kernel regression.
+All 16 full-size handoff cases subsequently pass with eight parallel workers;
+seven actual typed rewrite checks accept, while nine cases are unchanged and
+earn zero rewrite-proof credit. Every one of 81 output arrays matches the pinned
+reference and all 106 inputs/guards remain intact. See the
+[kernel suite, results and full test inventory](out/artifacts/audits/kernel-benchmark-formal-gate-20261029/README.md).
+The corrected all-ten regression also passes both focused compiler cases.
+
 The [merge qualification](out/artifacts/audits/ledger-review-20261029/merge-README.md)
 combines the ledger/fusion corrections with Graham's published memory-gate
 changes through `df8799c42`. Its evidence binds the combined sources; the older

@@ -45,6 +45,16 @@ compiler-v1 and compiler-v2 subdirectories of the all-checks evidence root.
 The benchmark campaign is a subsequent task; no benchmark kernel compilation
 or execution is included in this checkpoint.
 
+The corrected all-ten environment/textual-QDQ repeat subsequently passes both
+cases (290.71s). The full-size benchmark campaign was run only after the all-ten
+gate push: all 16 cases pass with eight concurrent workers, 106 unchanged input
+arrays and 81 exact output arrays. Seven changed boundaries receive accepted
+typed checks; nine cases have unchanged observations and zero rewrite credit.
+See the [kernel results and suite](../../audits/kernel-benchmark-formal-gate-20261029/README.md)
+and [complete test inventory](../../audits/kernel-benchmark-formal-gate-20261029/TESTS.md).
+Optional definedness remains unestablished for the three scaled CSE cases;
+these results do not constitute whole-kernel or LLVM correctness proofs.
+
 Completed implementation landmarks include `7ba2b8e6a` (generic loop math),
 `d6661c5b1` (portable projection), `2ba2fbce3` (source profiles), `39877dee3`
 (bounded controller/coverage/worker), `8a7693738` (configuration consumers and
