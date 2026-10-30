@@ -15,6 +15,9 @@ code_refs:
   - src/merlin/verify/compiler_configuration_source_profile.py
   - merlin/lean/MerlinVerify/Driver/SourceProfile.lean
   - src/merlin/verify/pass_validation.py
+  - src/merlin/verify/lean_graph_input_admission.py
+  - src/merlin/verify/compiler_loop_generic_profile.py
+  - src/merlin/verify/gate_worker.py
 ---
 
 # Bounded compiler pass verification profiles
@@ -84,6 +87,17 @@ raise `SourceOutsideProfile(profile_id, code, reason)`. They use original inputs
 only and call no producer or proposed-target matcher. Source admission itself
 is not a semantic preservation proof. Standalone proof/replay APIs retain their
 strict unsupported/refusal behavior.
+
+Inside the loop and memory predicates, a projector refuses an unmodeled construct
+by raising `ModelRefusal` (`lean_graph_input_admission`; both `InputAdmissionError`
+classes derive from it). Only that refusal becomes a source exclusion. Any other
+projector error, including an implicit `ValueError`, `KeyError`, `TypeError` or
+`IndexError`, is an implementation failure and blocks the selected optimization.
+A wrong generic-loop target whose generated Lean obligations are left unsolved
+is a refusal (`not_established`), never a counterexample. Mixed, tool and resource
+diagnostics stay `unavailable`. Worker results from every built-in handler are
+checked for their complete claim shape, so an empty or pending return cannot be
+accepted.
 
 ## Interface and final coverage
 
