@@ -1,9 +1,20 @@
 # Current compiler verification checkpoint — 2026-10-29
 
+An independent [frozen-gate audit handoff](out/artifacts/audits/frozen-followup-20261029/HANDOFF.md)
+records 207 distinct passing existing tests and a successful full Lean guard at
+`591687da8`. It also retains six admission-error counterexamples, nine injected
+incomplete-worker-result failures and a blocked UNROLL mutation whose verdict
+was classified as unavailable. These controller findings remain open. That
+audit's 44-route kernel/model campaign is unfinished. Its results predate
+`b7626bbf4`, which expands `all` to ten checks; they do not qualify that newer
+default. The subsequent 16-case xDSL/native kernel campaign below is complete;
+it does not complete the separate two-route kernel/model audit.
+
 The latest user policy keeps ordinary compiler transformations for original
 sources outside an explicit Lean profile and logs those boundaries as unverified
-at invocation completion. Admitted source boundaries still block on unsuccessful
-proofs, unsupported targets, missing tools or custody failures. This supersedes
+at invocation completion. Admitted source boundaries must block on unsuccessful
+proofs, unsupported targets, missing tools or custody failures; the audit above
+records remaining controller defects in that enforcement. This supersedes
 the proposed skip/no-op policy. See the [bounded profile catalogue](docs/guides/lean_bounded_pass_profiles.md).
 End coverage is per boundary, finalized after worker join; it grants no proof of
 an unverified suffix or downstream LLVM/native behavior. All ten selectors are

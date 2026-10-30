@@ -1,0 +1,38 @@
+{
+  "commit": "591687da8bf6a7f99807dbe0978ff297669867d3",
+  "branch": "feat/pass-verif-integration",
+  "tracked_changes": [],
+  "scope": "frozen incoming compiler; testing, read-only review and proposed bug fixes only",
+  "process_limits": {
+    "heavy_cohorts": 1,
+    "MemoryHigh": 6442450944,
+    "MemoryMax": 8589934592,
+    "MemorySwapMax": 0
+  },
+  "files": [
+    {
+      "path": "merlin/lean/LEDGER.md",
+      "sha256": "4faaf9894d6fd5e9dbfbcea22c4ebf5d6c46c45db574cf04fb905bc2f093874f"
+    },
+    {
+      "path": "merlin/lean/SPEC_LOCK",
+      "sha256": "6cc97b6a0742795378cca76393642932b62cc9f8998693f3961f22a5bc44b23b"
+    },
+    {
+      "path": "src/merlin/verify/pass_validation.py",
+      "sha256": "6bcdbfcd7427288d6503104210af38d44099d003f146455a354b6e929fe3c06f"
+    },
+    {
+      "path": "src/merlin/verify/gate_worker.py",
+      "sha256": "d5ead5b4d93275ea2e9afdaf7e0beec79e08c56c7defeced8e2d41e8caafb131"
+    },
+    {
+      "path": "out/build/lean/build/bin/merlin-lean",
+      "sha256": "92bbfe85016ff99ed59b7f1956add1e1a6b780bfb96e1ddd4895ef43ed439998"
+    },
+    {
+      "path": "out/build/lean/build/bin/merlin-lean-audit",
+      "sha256": "763fde022dfab8e4c1d96ec4e13fe5172c74a6e68d0b48e5fbc266f2b4d91aa8"
+    }
+  ]
+}

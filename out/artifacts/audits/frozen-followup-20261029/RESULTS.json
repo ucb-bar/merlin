@@ -1,0 +1,79 @@
+{
+  "schema": "merlin.frozen-gate-audit.summary.v1",
+  "source_commit": "591687da8bf6a7f99807dbe0978ff297669867d3",
+  "report_only": true,
+  "production_fixes_applied": false,
+  "whole_corpus_qualified": false,
+  "existing_tests": {
+    "cohorts": {
+      "policy.xml": {
+        "total": 91,
+        "passed": 91,
+        "skipped": 0
+      },
+      "controller-host.xml": {
+        "total": 156,
+        "passed": 156,
+        "skipped": 0
+      },
+      "controller-worker-failures.xml": {
+        "total": 5,
+        "passed": 5,
+        "skipped": 0
+      },
+      "newproofs.xml": {
+        "total": 38,
+        "passed": 38,
+        "skipped": 0
+      }
+    },
+    "distinct_cases": 207,
+    "all_distinct_pass": true,
+    "overlap_removed": 83
+  },
+  "build_exit": 0,
+  "lock_only_exit": 0,
+  "full_lean_guard_exit": 0,
+  "fault_probes": {
+    "unexpected_admission_errors": {
+      "expected_failures": 6,
+      "passing_controls": 5
+    },
+    "incomplete_handler_results": {
+      "expected_failures": 9,
+      "mocked_handlers": true
+    },
+    "additional_generic_unroll": {
+      "passed": 1,
+      "failed": 1,
+      "wrong_output_blocked": true,
+      "negative_verdict": "unavailable"
+    }
+  },
+  "audit_bookkeeping_tests": {
+    "passed": 26,
+    "skipped": 0,
+    "compiler_or_proof_execution": false
+  },
+  "pending": [
+    "Complete 16-kernel fixture construction and independent review",
+    "Run 16 kernels and six models on both routes at a newly pinned source cut",
+    "Native oracle comparisons for complete output rosters",
+    "Current-cut malformed controls and numerical receipt qualification",
+    "Review proposed bug fixes and requalify changed sources"
+  ],
+  "publication_note": "Graham commit b7626bbf4 expands all to ten checks after the tested cut. Raw proof receipts and logs remain local and are not bundled in Git.",
+  "publication_checks": {
+    "base_commit": "b7626bbf4",
+    "staged_diff_whitespace": "passed",
+    "check_structure": {
+      "exit": 1,
+      "problems": 16,
+      "scope": "existing dependency and module-size violations in unchanged source"
+    },
+    "check_artifact_layout": {
+      "exit": 1,
+      "scope": "existing stale generated roots and tracked event logs in unchanged files"
+    }
+  }
+}

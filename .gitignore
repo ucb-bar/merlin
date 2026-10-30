@@ -501,3 +501,12 @@ merlin/tests/data/lit/.lit_test_times.txt
 !/out/artifacts/audits/ledger-review-20261029/projection-inventory.json
 !/out/artifacts/audits/ledger-review-20261029/merge-README.md
 !/out/artifacts/audits/ledger-review-20261029/merge-results.json
+
+# Curated frozen-gate audit report; raw work trees and dependencies stay local.
+!/out/artifacts/audits/frozen-followup-20261029/
+!/out/artifacts/audits/frozen-followup-20261029/AGENT.md
+!/out/artifacts/audits/frozen-followup-20261029/HANDOFF.md
+!/out/artifacts/audits/frozen-followup-20261029/controller-review.md
+!/out/artifacts/audits/frozen-followup-20261029/proof-domain-review.md
+!/out/artifacts/audits/frozen-followup-20261029/SOURCE-CUT.json
+!/out/artifacts/audits/frozen-followup-20261029/RESULTS.json
