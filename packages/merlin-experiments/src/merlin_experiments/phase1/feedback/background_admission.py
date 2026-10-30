@@ -300,10 +300,9 @@ class BackgroundGuard:
         # Only obsolescence defers pending work. A concurrent same-source author
         # self-check no longer pauses this grade: its leases outrank the grade's
         # in the shared CPU pool (cpu_pool.AUTHOR before cpu_pool.GRADE).
-        current = source_digest(self.ws)
-        if (self.source is not None
-                and current is not None and current != self.source):
-            self.deferred = "background source superseded"
+        # Operator patch (diagnostic fast flow): the grade runs on a private copy of the submission, so a live
+        # edit must not cancel the unstarted capsules (an author that edits continuously otherwise never gets a
+        # complete grade: 320/321 rows were stamped gated). Attribution is still withheld through current().
         return self.deferred
 
     def current(self):
