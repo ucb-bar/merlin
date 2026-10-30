@@ -45,6 +45,12 @@ approval work without changing the gates' claims.
 Current qualification and remaining limits are in
 the [integration handoff](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md).
 That handoff distinguishes retained evidence from checks on the current source.
+Complete-model compiler and finite native examples are in the
+[larger-model demonstration](../../out/artifacts/audits/larger-model-gate-demo-20261029/README.md).
+Its portable runner requires an actual changing Q/DQ or MACC check, audits the
+complete boundary records, then compares full native outputs on both routes.
+This is evidence for the observed gates and finite scenarios; it does not prove
+intervening ordinary passes or source-framework numerical fidelity.
 The [completion plan](../design/lean_pass_integration_completion.md) defines the
 remaining work to cover Merlin pass proofs and compiler integration through
 output IR, leaving only explicit semantic contracts for human review.
@@ -487,7 +493,8 @@ binding; an alpha check binds target captures back to the actual source IDs.
 The result is **draft-policy conformance**: `policy_reviewed=false`, numerical
 policy verdict `abstracted`, and no original-source equivalence claim. The user
 has explicitly retained this draft status pending independent review. `all`
-excludes it. Matching bf16 or matching f16 operand/result formats are supported;
+selects its gate without enabling the transformation or approving the policy.
+Matching bf16 or matching f16 operand/result formats are supported;
 mixed source formats, nonzero initialization and incompatible named maps remain
 refused. Generic mathematical lemmas do not broaden the source recognizer.
 

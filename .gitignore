@@ -494,6 +494,14 @@ merlin/tests/data/lit/.lit_test_times.txt
 !/out/artifacts/audits/kernel-benchmark-formal-gate-20261029/TESTS.md
 !/out/artifacts/audits/kernel-benchmark-formal-gate-20261029/ALL-TEST-COHORTS.csv
 
+# Curated complete-model gate demonstrations; raw products and receipts stay local.
+!/out/artifacts/audits/larger-model-gate-demo-20261029/
+!/out/artifacts/audits/larger-model-gate-demo-20261029/README.md
+!/out/artifacts/audits/larger-model-gate-demo-20261029/RESULTS.csv
+!/out/artifacts/audits/larger-model-gate-demo-20261029/summary.json
+!/out/artifacts/audits/larger-model-gate-demo-20261029/INPUTS.json
+!/out/artifacts/audits/larger-model-gate-demo-20261029/TESTS.md
+
 # Curated ledger review; generated proof objects, receipts and logs stay local.
 !/out/artifacts/audits/ledger-review-20261029/
 !/out/artifacts/audits/ledger-review-20261029/README.md

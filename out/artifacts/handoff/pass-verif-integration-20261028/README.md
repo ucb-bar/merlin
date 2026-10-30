@@ -1,5 +1,25 @@
 # Compiler pass verification checkpoint — 2026-10-29
 
+## Larger-model qualification follow-up
+
+The larger-model demonstration is tracked in its [dedicated report](../../audits/larger-model-gate-demo-20261029/README.md).
+It uses complete unchanged model inputs on both compiler routes and a separately
+constructed twelve-layer f16 MLP with an independent ordered-policy reference.
+All ten checks are selected, and a changing Q/DQ or MACC boundary is required;
+absent or unchanged transformations earn no proof credit.
+
+Remote controller corrections through `fbe68e888` are merged: incomplete worker
+claims now fail, unexpected projector faults block source admission, and genuine
+unsolved generic-loop goals retain their distinct `not_established` classification.
+The fresh model campaign rechecks actual boundaries against that implementation
+and the recorded finite tensor resource-policy changes. On the recorded v3 cut,
+all fourteen compiler phases passed with 34 accepted changing checks. Twelve model/route cases also pass
+full native observation; the two stored TinyLlama cases hit the demo observer's
+300-second native-build deadline. Their finite-budget correction and fresh
+two-case retry remain explicit in the dedicated report. Earlier kernel and
+model records retain their historical source cuts. See the dedicated report for
+terminal results and exact current input, compiler, receipt and native artifacts.
+
 ## Current bounded-profile policy
 
 Original sources outside a declared proof profile still run ordinary compiler

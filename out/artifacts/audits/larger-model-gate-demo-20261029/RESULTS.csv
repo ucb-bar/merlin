@@ -1,0 +1,15 @@
+case,status,compiler_status,verified_boundaries,changing_checks,unverified_boundaries,native_scenarios,independent_reference,llvm_byte_equal,elapsed_seconds,failure_reason
+small_llama_int8_consistent-xdsl,PASS,PASS,3,prune_dead_pure_tensor_ops;lower_quant_ext;cse,0,2,False,True,269.4815053490456,
+small_llama_int8_consistent-textual,PASS,PASS,2,lower_quant_ext;cse,0,2,False,True,210.65865379502065,
+M0_small_llama_gemmini-xdsl,PASS,PASS,3,prune_dead_pure_tensor_ops;lower_quant_ext;cse,0,2,False,True,276.886103376979,
+M0_small_llama_gemmini-textual,PASS,PASS,2,lower_quant_ext;cse,0,2,False,True,200.1866301249247,
+M2_microvit_gemmini-xdsl,PASS,PASS,3,prune_dead_pure_tensor_ops;lower_quant_ext;cse,0,2,False,True,268.5572636970319,
+M2_microvit_gemmini-textual,PASS,PASS,2,lower_quant_ext;cse,0,2,False,True,189.47822168585844,
+M4_smolvla_denoise_gemmini-xdsl,PASS,PASS,3,prune_dead_pure_tensor_ops;lower_quant_ext;cse,0,2,False,True,305.06658273679204,
+M4_smolvla_denoise_gemmini-textual,PASS,PASS,2,lower_quant_ext;cse,0,2,False,True,247.79859657213092,
+MLP12_F16_xdsl,PASS,PASS,3,bf16_f32acc_draft_contract;prune_dead_pure_tensor_ops;cse,0,2,True,True,225.85526626883075,
+MLP12_F16_textual,PASS,PASS,2,bf16_f32acc_draft_contract;cse,0,2,True,True,147.96915251784958,
+SY_model_resnet50-xdsl,PASS,PASS,3,prune_dead_pure_tensor_ops;lower_quant_ext;cse,0,2,False,True,394.5041860199999,
+SY_model_resnet50-textual,PASS,PASS,2,lower_quant_ext;cse,0,2,False,True,339.17582983290777,
+SY_model_tiny_llama-xdsl,FAILED,PASS,2,lower_quant_ext;cse,0,0,False,True,930.3534344660584,"Command '['/scratch/grammy/blast/merlin-cse-dce-gate-lean/compiler-venv/bin/python', '-c', 'from pathlib import Path; import sys; from merlin.llvmlower.codegen import build_host_shared; build_host_shared(Path(sys.argv[1]), Path(sys.argv[2]))', '/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-xdsl/case/compile/baseline/model.ll', '/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-xdsl/case/native/20261029/baseline/execution.so']' timed out after 300 seconds"
+SY_model_tiny_llama-textual,FAILED,PASS,2,lower_quant_ext;cse,0,0,False,True,929.9507318339311,"Command '['/scratch/grammy/blast/merlin-cse-dce-gate-lean/compiler-venv/bin/python', '-c', 'from pathlib import Path; import sys; from merlin.llvmlower.codegen import build_host_shared; build_host_shared(Path(sys.argv[1]), Path(sys.argv[2]))', '/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-textual/case/compile/baseline/model.ll', '/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-textual/case/native/20261029/baseline/execution.so']' timed out after 300 seconds"

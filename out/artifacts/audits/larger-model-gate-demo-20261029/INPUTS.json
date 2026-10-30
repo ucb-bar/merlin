@@ -1,0 +1,880 @@
+{
+  "local_full_inventory": {
+    "bytes": 249773,
+    "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/current-inputs-inventory-v3.json",
+    "sha256": "d8f90f042512ef493a7cd62e2d70ec8b8f12b65843d097fb37cc91e811f3f79f"
+  },
+  "models": [
+    {
+      "category": "original_consistent_recapture",
+      "id": "small_llama_int8_consistent",
+      "metadata": null,
+      "model_accuracy_claim": false,
+      "model_parameters": null,
+      "native_ABI_summary": {
+        "argument_count": 52,
+        "entry": "forward",
+        "input_bytes_include_all_runtime_weight_and_scalar_arguments": true,
+        "logical_input_bytes": 576288,
+        "logical_input_bytes_by_dtype": {
+          "float32": 145280,
+          "int64": 64,
+          "int8": 430944
+        },
+        "logical_output_bytes": 8192,
+        "output_count": 1,
+        "outputs": [
+          {
+            "dtype": "float32",
+            "logical_bytes": 8192,
+            "name": "result0",
+            "shape": [
+              1,
+              8,
+              256
+            ]
+          }
+        ],
+        "physical_peak_memory_estimated": false
+      },
+      "original_metadata_declarations": {},
+      "original_source_mutated": false,
+      "pretrained_model_claim": false,
+      "provenance": [
+        {
+          "bytes": 14,
+          "path": "/scratch/grammy/blast/merlin/out/artifacts/recaptures/small_llama_int8_consistent/input_order.json",
+          "sha256": "7d7a8c58ece7bfc98c2a19123abfee5ec16a6c02b255baa559e9e391162cb096"
+        },
+        {
+          "bytes": 8183,
+          "path": "/scratch/grammy/blast/merlin/out/artifacts/recaptures/small_llama_int8_consistent/weights.safetensors.manifest.json",
+          "sha256": "8104b637e856cbf60dcfad924ef03779e754f72a55ba894fc0f742b7f434b9a1"
+        },
+        {
+          "bytes": 12347,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_prepare.py",
+          "sha256": "9b0f2a368390b49b66006aa192a32fe74a865c842068f02a39e4543db5ce2c14"
+        },
+        {
+          "bytes": 28168,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_gate_demo.py",
+          "sha256": "311decbbe171ae912bab8634b4ce288227582a41f1f222a68e23f2f2e7622cfa"
+        },
+        {
+          "bytes": 5882,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_mlp.py",
+          "sha256": "01ecc774f947b35e7418f569cf1e3358902f42a1fe9b35c4f9ce91d1603c70fd"
+        },
+        {
+          "bytes": 17668,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_native_demo.py",
+          "sha256": "06f05e3992b93736ad7b2cdab1d5c502867414d9873196f7e84939643445e776"
+        }
+      ],
+      "provenance_notes": [
+        "Existing consistent small-Llama model2MLIR recapture; all source bytes retained.",
+        "Input order and weight-manifest files are pinned, but no checkpoint or original graph-to-IR qualification is inferred from their existence.",
+        "Campaign native scenarios use synthetic values, not loaded pretrained weights or dataset samples."
+      ],
+      "required_changed_selectors": [
+        "lower_quant_ext"
+      ],
+      "required_verified_selectors": [
+        "lower_quant_ext"
+      ],
+      "routes": [
+        "xdsl",
+        "textual"
+      ],
+      "source": {
+        "bytes": 204511,
+        "path": "/scratch/grammy/blast/merlin/out/artifacts/recaptures/small_llama_int8_consistent/model.mlir",
+        "sha256": "0151af847ba81b2e12b8ee7f8a28891142594d2eb72a648077e815accafc2145"
+      },
+      "source_QDQ_signatures": [
+        {
+          "count": 10,
+          "operation": "quant_ext.dequantize_per_channel",
+          "scale_type": "tensor<128xf32>",
+          "zero_point_type": "tensor<128xi32>"
+        },
+        {
+          "count": 1,
+          "operation": "quant_ext.dequantize_per_channel",
+          "scale_type": "tensor<256xf32>",
+          "zero_point_type": "tensor<256xi32>"
+        },
+        {
+          "count": 4,
+          "operation": "quant_ext.dequantize_per_channel",
+          "scale_type": "tensor<344xf32>",
+          "zero_point_type": "tensor<344xi32>"
+        }
+      ],
+      "source_QDQ_sites": 15,
+      "source_half_matmul_sites": 0,
+      "source_kind": "original_capture",
+      "source_operations": 1175
+    },
+    {
+      "category": "existing_scaled_or_tile_sized_model_capsule",
+      "id": "M0_small_llama_gemmini",
+      "metadata": {
+        "bytes": 2367,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M0_small_llama_gemmini/capsule.yaml",
+        "sha256": "208b45eb52de45efa8b9d5991df067e9e31669fd784e892baf03a58626883263"
+      },
+      "model_accuracy_claim": false,
+      "model_parameters": null,
+      "native_ABI_summary": {
+        "argument_count": 22,
+        "entry": "forward",
+        "input_bytes_include_all_runtime_weight_and_scalar_arguments": true,
+        "logical_input_bytes": 561728,
+        "logical_input_bytes_by_dtype": {
+          "float32": 133632,
+          "int64": 64,
+          "int8": 428032
+        },
+        "logical_output_bytes": 8192,
+        "output_count": 1,
+        "outputs": [
+          {
+            "dtype": "float32",
+            "logical_bytes": 8192,
+            "name": "result0",
+            "shape": [
+              1,
+              8,
+              256
+            ]
+          }
+        ],
+        "physical_peak_memory_estimated": false
+      },
+      "original_metadata_declarations": {
+        "declarations_not_independently_authenticated": true,
+        "input_provenance": {
+          "accuracy_claim_supported": false,
+          "accuracy_claim_withheld_because": "the loader declares no input provenance (status 'undeclared'), so whether these inputs are real dataset samples is UNKNOWN -- an unknown may not be quoted as either",
+          "declared": {},
+          "grades": "compiler_correctness",
+          "loader_env": {},
+          "note": "This capsule grades COMPILER CORRECTNESS: whether the compiled program reproduces, on these exact inputs, the reference the same loader produced. It is not a statement about the model's accuracy on real data; only a capture whose inputs are real and attributed can support that.",
+          "paper_ready": "unknown",
+          "status": "undeclared",
+          "synthetic_inputs": "unknown",
+          "workload": "small_llama"
+        },
+        "source_reference": "small_llama int8 \u2014 whole-model capstone (embed/RMSNorm/RoPE/attn/SwiGLU/lm_head)",
+        "source_role": "pytorch_model_slice"
+      },
+      "original_source_mutated": false,
+      "pretrained_model_claim": false,
+      "provenance": [
+        {
+          "bytes": 2367,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M0_small_llama_gemmini/capsule.yaml",
+          "sha256": "208b45eb52de45efa8b9d5991df067e9e31669fd784e892baf03a58626883263"
+        },
+        {
+          "bytes": 3330,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M0_small_llama_gemmini/capsule.pytorch.py",
+          "sha256": "aa859e6ffb6ec765c372511a97d63aba6205b8a5dd092cb2ac5b36864d9c2c5b"
+        },
+        {
+          "bytes": 216,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M0_small_llama_gemmini/README.md",
+          "sha256": "0411c5840e5ffd93fd2c3e90a302d9e7f21b653dc2b3f552a5fe907926606cb4"
+        },
+        {
+          "bytes": 12347,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_prepare.py",
+          "sha256": "9b0f2a368390b49b66006aa192a32fe74a865c842068f02a39e4543db5ce2c14"
+        },
+        {
+          "bytes": 28168,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_gate_demo.py",
+          "sha256": "311decbbe171ae912bab8634b4ce288227582a41f1f222a68e23f2f2e7622cfa"
+        },
+        {
+          "bytes": 5882,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_mlp.py",
+          "sha256": "01ecc774f947b35e7418f569cf1e3358902f42a1fe9b35c4f9ce91d1603c70fd"
+        },
+        {
+          "bytes": 17668,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_native_demo.py",
+          "sha256": "06f05e3992b93736ad7b2cdab1d5c502867414d9873196f7e84939643445e776"
+        }
+      ],
+      "provenance_notes": [
+        "Existing complete capsule graph is unchanged; dimensions were not reduced for this campaign.",
+        "Source is a bounded model capsule, not an authenticated production pretrained checkpoint."
+      ],
+      "required_changed_selectors": [
+        "lower_quant_ext"
+      ],
+      "required_verified_selectors": [
+        "lower_quant_ext"
+      ],
+      "routes": [
+        "xdsl",
+        "textual"
+      ],
+      "source": {
+        "bytes": 247785,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M0_small_llama_gemmini/capsule.interface.mlir",
+        "sha256": "5c5f72eb415e551a54de2484c61c0ac642aa1c3cd16cacb5d99aa7b7dacb8ef9"
+      },
+      "source_QDQ_signatures": [
+        {
+          "count": 30,
+          "operation": "quant_ext.dequantize_per_tensor",
+          "scale_type": "tensor<f32>",
+          "zero_point_type": "tensor<i64>"
+        },
+        {
+          "count": 9,
+          "operation": "quant_ext.quantize_per_tensor",
+          "scale_type": "tensor<f32>",
+          "zero_point_type": "tensor<i64>"
+        }
+      ],
+      "source_QDQ_sites": 39,
+      "source_half_matmul_sites": 0,
+      "source_kind": "existing_model_capsule",
+      "source_operations": 1280
+    },
+    {
+      "category": "existing_scaled_or_tile_sized_model_capsule",
+      "id": "M2_microvit_gemmini",
+      "metadata": {
+        "bytes": 2873,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M2_microvit_gemmini/capsule.yaml",
+        "sha256": "4c3a7ab46de01fc11ec635b21da72cf6c1db8b90fb065b601e3376af81b33411"
+      },
+      "model_accuracy_claim": false,
+      "model_parameters": null,
+      "native_ABI_summary": {
+        "argument_count": 21,
+        "entry": "forward",
+        "input_bytes_include_all_runtime_weight_and_scalar_arguments": true,
+        "logical_input_bytes": 16256,
+        "logical_input_bytes_by_dtype": {
+          "float32": 2112,
+          "int8": 14144
+        },
+        "logical_output_bytes": 64,
+        "output_count": 1,
+        "outputs": [
+          {
+            "dtype": "float32",
+            "logical_bytes": 64,
+            "name": "result0",
+            "shape": [
+              1,
+              16
+            ]
+          }
+        ],
+        "physical_peak_memory_estimated": false
+      },
+      "original_metadata_declarations": {
+        "declarations_not_independently_authenticated": true,
+        "input_provenance": {
+          "accuracy_claim_supported": false,
+          "accuracy_claim_withheld_because": "the loader declares no input provenance (status 'undeclared'), so whether these inputs are real dataset samples is UNKNOWN -- an unknown may not be quoted as either",
+          "declared": {},
+          "grades": "compiler_correctness",
+          "loader_env": {},
+          "note": "This capsule grades COMPILER CORRECTNESS: whether the compiled program reproduces, on these exact inputs, the reference the same loader produced. It is not a statement about the model's accuracy on real data; only a capture whose inputs are real and attributed can support that.",
+          "paper_ready": "unknown",
+          "status": "undeclared",
+          "synthetic_inputs": "unknown",
+          "workload": ""
+        },
+        "source_reference": "microvit int8 \u2014 tile-sized vision+recurrent control net (overlapping patch-merge, pooled-reduction attention, depthwise MixFFN, pixel-shuffle/max-pool fusion, LSTM cell), composed across the systolic mesh and the host lane",
+        "source_role": "pytorch_model_slice"
+      },
+      "original_source_mutated": false,
+      "pretrained_model_claim": false,
+      "provenance": [
+        {
+          "bytes": 2873,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M2_microvit_gemmini/capsule.yaml",
+          "sha256": "4c3a7ab46de01fc11ec635b21da72cf6c1db8b90fb065b601e3376af81b33411"
+        },
+        {
+          "bytes": 12561,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M2_microvit_gemmini/capsule.pytorch.py",
+          "sha256": "e90ba07f548336bcaf9ed8158e3c02df2443a7c2a3d3b7a42bd3cf77da6298df"
+        },
+        {
+          "bytes": 373,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M2_microvit_gemmini/README.md",
+          "sha256": "56a6e765ce90d419e782eca576794f4cf4eeae8d1d13aba51b8dcd71b08d9ff1"
+        },
+        {
+          "bytes": 12347,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_prepare.py",
+          "sha256": "9b0f2a368390b49b66006aa192a32fe74a865c842068f02a39e4543db5ce2c14"
+        },
+        {
+          "bytes": 28168,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_gate_demo.py",
+          "sha256": "311decbbe171ae912bab8634b4ce288227582a41f1f222a68e23f2f2e7622cfa"
+        },
+        {
+          "bytes": 5882,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_mlp.py",
+          "sha256": "01ecc774f947b35e7418f569cf1e3358902f42a1fe9b35c4f9ce91d1603c70fd"
+        },
+        {
+          "bytes": 17668,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_native_demo.py",
+          "sha256": "06f05e3992b93736ad7b2cdab1d5c502867414d9873196f7e84939643445e776"
+        }
+      ],
+      "provenance_notes": [
+        "Existing complete capsule graph is unchanged; dimensions were not reduced for this campaign.",
+        "Source is a bounded model capsule, not an authenticated production pretrained checkpoint."
+      ],
+      "required_changed_selectors": [
+        "lower_quant_ext"
+      ],
+      "required_verified_selectors": [
+        "lower_quant_ext"
+      ],
+      "routes": [
+        "xdsl",
+        "textual"
+      ],
+      "source": {
+        "bytes": 126917,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M2_microvit_gemmini/capsule.interface.mlir",
+        "sha256": "b362a0976064ec1101c8cfd19ffd2a93c1d26b80d14b62c253e22f4e439d6049"
+      },
+      "source_QDQ_signatures": [
+        {
+          "count": 2,
+          "operation": "quant_ext.dequantize_per_tensor",
+          "scale_type": "tensor<f32>",
+          "zero_point_type": "tensor<i64>"
+        },
+        {
+          "count": 1,
+          "operation": "quant_ext.quantize_per_tensor",
+          "scale_type": "tensor<f32>",
+          "zero_point_type": "tensor<i64>"
+        }
+      ],
+      "source_QDQ_sites": 3,
+      "source_half_matmul_sites": 0,
+      "source_kind": "existing_model_capsule",
+      "source_operations": 818
+    },
+    {
+      "category": "existing_scaled_or_tile_sized_model_capsule",
+      "id": "M4_smolvla_denoise_gemmini",
+      "metadata": {
+        "bytes": 3431,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M4_smolvla_denoise_gemmini/capsule.yaml",
+        "sha256": "a67d87e9fdc5c0a04181968bae9e489499d0dc12efb6c92b5a1c43435b2f54f8"
+      },
+      "model_accuracy_claim": false,
+      "model_parameters": null,
+      "native_ABI_summary": {
+        "argument_count": 34,
+        "entry": "forward",
+        "input_bytes_include_all_runtime_weight_and_scalar_arguments": true,
+        "logical_input_bytes": 99172,
+        "logical_input_bytes_by_dtype": {
+          "bool": 12,
+          "float32": 47872,
+          "int64": 88,
+          "int8": 51200
+        },
+        "logical_output_bytes": 2048,
+        "output_count": 1,
+        "outputs": [
+          {
+            "dtype": "float32",
+            "logical_bytes": 2048,
+            "name": "result0",
+            "shape": [
+              1,
+              16,
+              32
+            ]
+          }
+        ],
+        "physical_peak_memory_estimated": false
+      },
+      "original_metadata_declarations": {
+        "declarations_not_independently_authenticated": true,
+        "input_provenance": {
+          "accuracy_claim_supported": false,
+          "accuracy_claim_withheld_because": "the loader declares no input provenance (status 'undeclared'), so whether these inputs are real dataset samples is UNKNOWN -- an unknown may not be quoted as either",
+          "declared": {},
+          "grades": "compiler_correctness",
+          "loader_env": {},
+          "note": "This capsule grades COMPILER CORRECTNESS: whether the compiled program reproduces, on these exact inputs, the reference the same loader produced. It is not a statement about the model's accuracy on real data; only a capture whose inputs are real and attributed can support that.",
+          "paper_ready": "unknown",
+          "status": "undeclared",
+          "synthetic_inputs": "unknown",
+          "workload": ""
+        },
+        "source_reference": "smolvla denoise step int8 \u2014 one flow-matching step of a vision-language-action policy (patch-embed conv, concatenated vision+language+state prefix, RoPE self-attention, SwiGLU, timestep-conditioned action expert cross-attending into the prefix, GELU FFN, action head), at the extents the cycle-accurate tier can afford; op inventory derived from the prov census of out/artifacts/recaptures/smolvla_denoise_step_fp32_app/model.mlir",
+        "source_role": "pytorch_model_slice"
+      },
+      "original_source_mutated": false,
+      "pretrained_model_claim": false,
+      "provenance": [
+        {
+          "bytes": 3431,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M4_smolvla_denoise_gemmini/capsule.yaml",
+          "sha256": "a67d87e9fdc5c0a04181968bae9e489499d0dc12efb6c92b5a1c43435b2f54f8"
+        },
+        {
+          "bytes": 14327,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M4_smolvla_denoise_gemmini/capsule.pytorch.py",
+          "sha256": "a134f4bd2127284a6f38d11d3b0cd3c69b00cae455386609c928cd39935aabc5"
+        },
+        {
+          "bytes": 4596,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M4_smolvla_denoise_gemmini/README.md",
+          "sha256": "7d8cbc797cf0def464dc09cc0ce28bb86971d78d2be5a18bf689028f718fd254"
+        },
+        {
+          "bytes": 12347,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_prepare.py",
+          "sha256": "9b0f2a368390b49b66006aa192a32fe74a865c842068f02a39e4543db5ce2c14"
+        },
+        {
+          "bytes": 28168,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_gate_demo.py",
+          "sha256": "311decbbe171ae912bab8634b4ce288227582a41f1f222a68e23f2f2e7622cfa"
+        },
+        {
+          "bytes": 5882,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_mlp.py",
+          "sha256": "01ecc774f947b35e7418f569cf1e3358902f42a1fe9b35c4f9ce91d1603c70fd"
+        },
+        {
+          "bytes": 17668,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_native_demo.py",
+          "sha256": "06f05e3992b93736ad7b2cdab1d5c502867414d9873196f7e84939643445e776"
+        }
+      ],
+      "provenance_notes": [
+        "Existing complete capsule graph is unchanged; dimensions were not reduced for this campaign.",
+        "Source is a bounded model capsule, not an authenticated production pretrained checkpoint.",
+        "README explicitly distinguishes this scaled denoise capsule from the real1.2GB SmolVLA capture."
+      ],
+      "required_changed_selectors": [
+        "lower_quant_ext"
+      ],
+      "required_verified_selectors": [
+        "lower_quant_ext"
+      ],
+      "routes": [
+        "xdsl",
+        "textual"
+      ],
+      "source": {
+        "bytes": 334018,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/M4_smolvla_denoise_gemmini/capsule.interface.mlir",
+        "sha256": "07c9a39aaf4a265873f36619c1f586cf582d8701a12cef571056fe5dbcb631f7"
+      },
+      "source_QDQ_signatures": [
+        {
+          "count": 48,
+          "operation": "quant_ext.dequantize_per_tensor",
+          "scale_type": "tensor<f32>",
+          "zero_point_type": "tensor<i64>"
+        },
+        {
+          "count": 20,
+          "operation": "quant_ext.quantize_per_tensor",
+          "scale_type": "tensor<f32>",
+          "zero_point_type": "tensor<i64>"
+        }
+      ],
+      "source_QDQ_sites": 68,
+      "source_half_matmul_sites": 0,
+      "source_kind": "existing_model_capsule",
+      "source_operations": 1688
+    },
+    {
+      "category": "newly_constructed_connected_runtime_weight_MLP",
+      "id": "MLP12_F16",
+      "metadata": null,
+      "model_accuracy_claim": false,
+      "model_parameters": {
+        "batch": 8,
+        "classes": 31,
+        "layers": 12,
+        "width": 256
+      },
+      "native_ABI_summary": {
+        "argument_count": 25,
+        "entry": "forward",
+        "input_bytes_include_all_runtime_weight_and_scalar_arguments": true,
+        "logical_input_bytes": 1467454,
+        "logical_input_bytes_by_dtype": {
+          "float16": 1467454
+        },
+        "logical_output_bytes": 496,
+        "output_count": 1,
+        "outputs": [
+          {
+            "dtype": "float16",
+            "logical_bytes": 496,
+            "name": "result0",
+            "shape": [
+              8,
+              31
+            ]
+          }
+        ],
+        "physical_peak_memory_estimated": false
+      },
+      "original_metadata_declarations": {},
+      "original_source_mutated": false,
+      "pretrained_model_claim": false,
+      "provenance": [
+        {
+          "bytes": 5882,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_mlp.py",
+          "sha256": "01ecc774f947b35e7418f569cf1e3358902f42a1fe9b35c4f9ce91d1603c70fd"
+        },
+        {
+          "bytes": 1045,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/current-inputs-v3/constructed-models/MLP12_F16/MODEL.json",
+          "sha256": "95f0048c16c277fc0873434c1c8089385dadaa0970717c4d241de3a2b3f18865"
+        },
+        {
+          "bytes": 12347,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_prepare.py",
+          "sha256": "9b0f2a368390b49b66006aa192a32fe74a865c842068f02a39e4543db5ce2c14"
+        },
+        {
+          "bytes": 28168,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_gate_demo.py",
+          "sha256": "311decbbe171ae912bab8634b4ce288227582a41f1f222a68e23f2f2e7622cfa"
+        },
+        {
+          "bytes": 5882,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_mlp.py",
+          "sha256": "01ecc774f947b35e7418f569cf1e3358902f42a1fe9b35c4f9ce91d1603c70fd"
+        },
+        {
+          "bytes": 17668,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_native_demo.py",
+          "sha256": "06f05e3992b93736ad7b2cdab1d5c502867414d9873196f7e84939643445e776"
+        }
+      ],
+      "provenance_notes": [
+        "New network definition, not pretrained or a framework recapture.",
+        "Twelve live f16 matmuls, positive-zero initializers, half bias/ReLU; selected draft f32-accumulation policy.",
+        "Independent ordered reference is a separate finite observation, not model accuracy or original-half equivalence."
+      ],
+      "required_changed_selectors": [
+        "bf16_f32acc_draft_contract"
+      ],
+      "required_verified_selectors": [
+        "bf16_f32acc_draft_contract"
+      ],
+      "routes": [
+        "xdsl",
+        "textual"
+      ],
+      "source": {
+        "bytes": 9287,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/current-inputs-v3/constructed-models/MLP12_F16/model.mlir",
+        "sha256": "e7df0bd7368ff7442a16c43c93179f2c7b2ee7ff37911f77f2635fcfe19051ab"
+      },
+      "source_QDQ_signatures": [],
+      "source_QDQ_sites": 0,
+      "source_half_matmul_sites": 12,
+      "source_kind": "explicit_model_definition",
+      "source_operations": 123
+    },
+    {
+      "category": "original_stored_ResNet50_224x224_PyTorch_slice",
+      "id": "SY_model_resnet50",
+      "metadata": {
+        "bytes": 3629,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/SY_model_resnet50/capsule.yaml",
+        "sha256": "bc5e0a5654be9f29acbc1bb5f2258c7ef4fdc421031ca7671e98e0847fc37a40"
+      },
+      "model_accuracy_claim": false,
+      "model_parameters": null,
+      "native_ABI_summary": {
+        "argument_count": 109,
+        "entry": "forward",
+        "input_bytes_include_all_runtime_weight_and_scalar_arguments": true,
+        "logical_input_bytes": 26215264,
+        "logical_input_bytes_by_dtype": {
+          "float32": 712352,
+          "int8": 25502912
+        },
+        "logical_output_bytes": 4000,
+        "output_count": 1,
+        "outputs": [
+          {
+            "dtype": "float32",
+            "logical_bytes": 4000,
+            "name": "result0",
+            "shape": [
+              1,
+              1000
+            ]
+          }
+        ],
+        "physical_peak_memory_estimated": false
+      },
+      "original_metadata_declarations": {
+        "declarations_not_independently_authenticated": true,
+        "input_provenance": {
+          "accuracy_claim_supported": false,
+          "accuracy_claim_withheld_because": "the inputs are a seeded SYNTHETIC stream, not real dataset samples; the reference is self-consistent with them, which proves the compiler and says nothing about accuracy",
+          "declared": {
+            "calibration_source": "measured_session_stream",
+            "checkpoint": "torchvision/resnet50/IMAGENET1K_V2",
+            "checkpoint_sha256": "8bea63dc89b0700f2acbc5b170ed0b4637daed4ab748949eefe50ebe95149ac0",
+            "full_checkpoint": true,
+            "input_sha256": "a2e53a0c019358234bee1b63350121b533fb43c34f43ae7a5ffae549fdf4fe5b",
+            "input_source": "synthetic_seed_20260830",
+            "paper_ready_requires_pretrained_and_attributed_real_inputs": true,
+            "preprocessing": "synthetic",
+            "synthetic_inputs": true
+          },
+          "grades": "compiler_correctness",
+          "loader_env": {
+            "M2M_RESNET_RANDOM": "1"
+          },
+          "note": "This capsule grades COMPILER CORRECTNESS: whether the compiled program reproduces, on these exact inputs, the reference the same loader produced. It is not a statement about the model's accuracy on real data; only a capture whose inputs are real and attributed can support that.",
+          "paper_ready": false,
+          "status": "declared",
+          "synthetic_inputs": true,
+          "workload": "resnet50_v1_5"
+        },
+        "source_reference": "synthesized for the roster axis: whole model 'resnet50' at int8, the highest-ranked precision this target's manifest admits for a contraction out of the declared preference ['int8', 'fp8_e4m3', 'mxfp8', 'fp16', 'bf16', 'fp32'], captured under this target's derived quantization recipe (static activation, tensor granularity), so the program contains the target's own arithmetic rather than a float matmul over dequantized weights. Accuracy in that format is not_established",
+        "source_role": "pytorch_model_slice"
+      },
+      "original_source_mutated": false,
+      "pretrained_model_claim": false,
+      "provenance": [
+        {
+          "bytes": 3629,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/SY_model_resnet50/capsule.yaml",
+          "sha256": "bc5e0a5654be9f29acbc1bb5f2258c7ef4fdc421031ca7671e98e0847fc37a40"
+        },
+        {
+          "bytes": 8796,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/SY_model_resnet50/capsule.pytorch.py",
+          "sha256": "96844f55e40ff25d0fd65bc17b508c8c7e257f67b6b8f8d2f00e7960ebcc9b27"
+        },
+        {
+          "bytes": 548,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/SY_model_resnet50/README.md",
+          "sha256": "9ea7314148c6c2d4b251299ca3cb0b1966ba97df0e9b6a6ba646076f7d4bff42"
+        },
+        {
+          "bytes": 12347,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_prepare.py",
+          "sha256": "9b0f2a368390b49b66006aa192a32fe74a865c842068f02a39e4543db5ce2c14"
+        },
+        {
+          "bytes": 28168,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_gate_demo.py",
+          "sha256": "311decbbe171ae912bab8634b4ce288227582a41f1f222a68e23f2f2e7622cfa"
+        },
+        {
+          "bytes": 5882,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_mlp.py",
+          "sha256": "01ecc774f947b35e7418f569cf1e3358902f42a1fe9b35c4f9ce91d1603c70fd"
+        },
+        {
+          "bytes": 17668,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_native_demo.py",
+          "sha256": "06f05e3992b93736ad7b2cdab1d5c502867414d9873196f7e84939643445e776"
+        }
+      ],
+      "provenance_notes": [
+        "Stored full-dimension224x224 source graph, retained unchanged.",
+        "Original metadata declares a torchvision checkpoint identifier/digest, but also M2M_RESNET_RANDOM=1 and seeded synthetic input provenance.",
+        "Checkpoint weights/training provenance are not loaded or authenticated here; no pretrained-model or accuracy claim."
+      ],
+      "required_changed_selectors": [
+        "lower_quant_ext"
+      ],
+      "required_verified_selectors": [
+        "lower_quant_ext"
+      ],
+      "routes": [
+        "xdsl",
+        "textual"
+      ],
+      "source": {
+        "bytes": 721756,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/SY_model_resnet50/capsule.interface.mlir",
+        "sha256": "07e4c434a1cd8cadc8fb667984c6fda42332e867466ef74a5771b3e8fed89d29"
+      },
+      "source_QDQ_signatures": [
+        {
+          "count": 141,
+          "operation": "quant_ext.dequantize_per_tensor",
+          "scale_type": "tensor<f32>",
+          "zero_point_type": "tensor<i64>"
+        },
+        {
+          "count": 71,
+          "operation": "quant_ext.quantize_per_tensor",
+          "scale_type": "tensor<f32>",
+          "zero_point_type": "tensor<i64>"
+        }
+      ],
+      "source_QDQ_sites": 212,
+      "source_half_matmul_sites": 0,
+      "source_kind": "existing_model_capsule",
+      "source_operations": 2574
+    },
+    {
+      "category": "original_stored_TinyLlama_PyTorch_model_slice",
+      "id": "SY_model_tiny_llama",
+      "metadata": {
+        "bytes": 3134,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/SY_model_tiny_llama/capsule.yaml",
+        "sha256": "fbbb5ad8f5c5fbd0f99226fd01ed41a6f8e72ba42be7d47c43c213fa226da9fb"
+      },
+      "model_accuracy_claim": false,
+      "model_parameters": null,
+      "native_ABI_summary": {
+        "argument_count": 203,
+        "entry": "forward",
+        "input_bytes_include_all_runtime_weight_and_scalar_arguments": true,
+        "logical_input_bytes": 1296933056,
+        "logical_input_bytes_by_dtype": {
+          "float32": 262512768,
+          "int64": 64,
+          "int8": 1034420224
+        },
+        "logical_output_bytes": 1024000,
+        "output_count": 1,
+        "outputs": [
+          {
+            "dtype": "float32",
+            "logical_bytes": 1024000,
+            "name": "result0",
+            "shape": [
+              1,
+              8,
+              32000
+            ]
+          }
+        ],
+        "physical_peak_memory_estimated": false
+      },
+      "original_metadata_declarations": {
+        "declarations_not_independently_authenticated": true,
+        "input_provenance": {
+          "accuracy_claim_supported": false,
+          "accuracy_claim_withheld_because": "the loader declares no input provenance (status 'undeclared'), so whether these inputs are real dataset samples is UNKNOWN -- an unknown may not be quoted as either",
+          "declared": {},
+          "grades": "compiler_correctness",
+          "loader_env": {},
+          "note": "This capsule grades COMPILER CORRECTNESS: whether the compiled program reproduces, on these exact inputs, the reference the same loader produced. It is not a statement about the model's accuracy on real data; only a capture whose inputs are real and attributed can support that.",
+          "paper_ready": "unknown",
+          "status": "undeclared",
+          "synthetic_inputs": "unknown",
+          "workload": "tiny_llama"
+        },
+        "source_reference": "synthesized for the roster axis: whole model 'tiny_llama' at int8, the highest-ranked precision this target's manifest admits for a contraction out of the declared preference ['int8', 'fp8_e4m3', 'mxfp8', 'fp16', 'bf16', 'fp32'], captured under this target's derived quantization recipe (static activation, tensor granularity), so the program contains the target's own arithmetic rather than a float matmul over dequantized weights. Accuracy in that format is not_established",
+        "source_role": "pytorch_model_slice"
+      },
+      "original_source_mutated": false,
+      "pretrained_model_claim": false,
+      "provenance": [
+        {
+          "bytes": 3134,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/SY_model_tiny_llama/capsule.yaml",
+          "sha256": "fbbb5ad8f5c5fbd0f99226fd01ed41a6f8e72ba42be7d47c43c213fa226da9fb"
+        },
+        {
+          "bytes": 3448,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/SY_model_tiny_llama/capsule.pytorch.py",
+          "sha256": "f114a651c2b3bf1c45720bfb3199a05d3dd947556490579c5ed41548860ee907"
+        },
+        {
+          "bytes": 544,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/SY_model_tiny_llama/README.md",
+          "sha256": "7bcfca84acf562276f85d049bb9bc0bef1dd5af63250be405be562131b8527da"
+        },
+        {
+          "bytes": 12347,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_prepare.py",
+          "sha256": "9b0f2a368390b49b66006aa192a32fe74a865c842068f02a39e4543db5ce2c14"
+        },
+        {
+          "bytes": 28168,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_gate_demo.py",
+          "sha256": "311decbbe171ae912bab8634b4ce288227582a41f1f222a68e23f2f2e7622cfa"
+        },
+        {
+          "bytes": 5882,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_mlp.py",
+          "sha256": "01ecc774f947b35e7418f569cf1e3358902f42a1fe9b35c4f9ce91d1603c70fd"
+        },
+        {
+          "bytes": 17668,
+          "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/tests/ir/larger_model_native_demo.py",
+          "sha256": "06f05e3992b93736ad7b2cdab1d5c502867414d9873196f7e84939643445e776"
+        }
+      ],
+      "provenance_notes": [
+        "Stored int8 roster capture, retained unchanged; distinct from the smaller consistent recapture.",
+        "Input provenance is undeclared; real-versus-synthetic data provenance is not established.",
+        "No checkpoint, pretrained-model or accuracy claim."
+      ],
+      "required_changed_selectors": [
+        "lower_quant_ext"
+      ],
+      "required_verified_selectors": [
+        "lower_quant_ext"
+      ],
+      "routes": [
+        "xdsl",
+        "textual"
+      ],
+      "source": {
+        "bytes": 2172344,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/merlin/contract/capsules/model/SY_model_tiny_llama/capsule.interface.mlir",
+        "sha256": "38bf9856d2768ce90cb53a7959289b7e395ea5533c556d7448d9f7bcc075c61d"
+      },
+      "source_QDQ_signatures": [
+        {
+          "count": 310,
+          "operation": "quant_ext.dequantize_per_tensor",
+          "scale_type": "tensor<f32>",
+          "zero_point_type": "tensor<i64>"
+        },
+        {
+          "count": 89,
+          "operation": "quant_ext.quantize_per_tensor",
+          "scale_type": "tensor<f32>",
+          "zero_point_type": "tensor<i64>"
+        }
+      ],
+      "source_QDQ_sites": 399,
+      "source_half_matmul_sites": 0,
+      "source_kind": "existing_model_capsule",
+      "source_operations": 10134
+    }
+  ],
+  "schema": "merlin.larger-model-demo.inputs.v1",
+  "scope": "Metadata only. No source admission, transformation proof, model accuracy or native correctness is granted by this inventory."
+}

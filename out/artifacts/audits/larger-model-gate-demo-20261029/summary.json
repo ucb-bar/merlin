@@ -1,0 +1,3930 @@
+{
+  "LLVM_proof": false,
+  "accepted_checks_by_selector": {
+    "bf16_f32acc_draft_contract": 2,
+    "cse": 14,
+    "lower_quant_ext": 12,
+    "prune_dead_pure_tensor_ops": 6
+  },
+  "campaign": {
+    "bytes": 13285,
+    "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/CAMPAIGN-RESULT.json",
+    "sha256": "ca30965c04d616dddc53a66938e8f0d4264319d26e28201dcbbf30e902ed1ecf"
+  },
+  "cases": [
+    {
+      "accepted_jobs": [
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0001-prune-dead-pure-tensor-ops",
+          "label": "prune_dead_pure_tensor_ops",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "compiler_qdq_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established; relative to the proposed Q/DQ source semantics; source specification approval is not established",
+          "job": "0002-lower-quant-ext",
+          "label": "lower_quant_ext",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0003-cse",
+          "label": "cse",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        }
+      ],
+      "case_report": {
+        "bytes": 10113,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/CASE-REPORT.json",
+        "sha256": "3234fcff1c9d1b62a3e34850b0ad6f11f694dcf9eeb052f7055c2d6c66590325"
+      },
+      "checked_matches_ordinary_llvm": true,
+      "compiler_report": {
+        "bytes": 176240,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/compile/DEMO-REPORT.json",
+        "sha256": "3ca883daf5d326a52f73eee8100c4b5a9b8dc6650c191dbe90222aeb6f2dadb1"
+      },
+      "compiler_status": "PASS",
+      "coverage": {
+        "boundaries": [
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "ce80b82adb53b26e783b4207dcac8de8b1c31826b4e1dfeddcb5e5499b87ac12",
+            "input_refs": [
+              {
+                "bytes": 994,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/request.json",
+                "sha256": "e7d9b9552bc4f308e65728f7573f03d41f63b5fbe8694b1aa34a9dfa5c50a3be"
+              },
+              {
+                "bytes": 249718,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/before.mlir",
+                "sha256": "765164914327f6a9a813db58f5e72f5fbb7a5ed5f2b760b2e040b0130243754c"
+              },
+              {
+                "bytes": 247787,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/after.mlir",
+                "sha256": "ce80b82adb53b26e783b4207dcac8de8b1c31826b4e1dfeddcb5e5499b87ac12"
+              }
+            ],
+            "job": "0001-prune-dead-pure-tensor-ops",
+            "label": "prune_dead_pure_tensor_ops",
+            "pass": "prune_dead_pure_tensor_ops",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "765164914327f6a9a813db58f5e72f5fbb7a5ed5f2b760b2e040b0130243754c",
+            "status": "verified"
+          },
+          {
+            "check": "compiler_qdq_refinement",
+            "final_sha256": "0128f4fa804f237d455517afd566287667a07ff3a42b75d47cfd3d31528e64ef",
+            "input_refs": [
+              {
+                "bytes": 956,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/compile/pass-validation/0002-lower-quant-ext/request.json",
+                "sha256": "3b4e1530a15625caaa25fbb8e1d71365f04670fb5eb554cf704b6118c1244c16"
+              },
+              {
+                "bytes": 247787,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/compile/pass-validation/0002-lower-quant-ext/before.mlir",
+                "sha256": "ce80b82adb53b26e783b4207dcac8de8b1c31826b4e1dfeddcb5e5499b87ac12"
+              },
+              {
+                "bytes": 259112,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/compile/pass-validation/0002-lower-quant-ext/after.mlir",
+                "sha256": "0128f4fa804f237d455517afd566287667a07ff3a42b75d47cfd3d31528e64ef"
+              }
+            ],
+            "job": "0002-lower-quant-ext",
+            "label": "lower_quant_ext",
+            "pass": "lower_quant_ext",
+            "profile": "proposed-qdq-typed-source-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "ce80b82adb53b26e783b4207dcac8de8b1c31826b4e1dfeddcb5e5499b87ac12",
+            "status": "verified"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "95a98f54ca638bdedd11decdc50dc9580ab56421d534ebb2c88481a46ebee84e",
+            "input_refs": [
+              {
+                "bytes": 902,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/compile/pass-validation/0003-cse/request.json",
+                "sha256": "48cd4b79d82d920dd106818f5674125440394c008ba43312ca7b60c20c12ca2b"
+              },
+              {
+                "bytes": 167318,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/compile/pass-validation/0003-cse/before.mlir",
+                "sha256": "08f808383ef2954e63d8ed1a79b55a8b9c7c0b13f0bbf8773fa7e37f793a7677"
+              },
+              {
+                "bytes": 155030,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/compile/pass-validation/0003-cse/after.mlir",
+                "sha256": "95a98f54ca638bdedd11decdc50dc9580ab56421d534ebb2c88481a46ebee84e"
+              }
+            ],
+            "job": "0003-cse",
+            "label": "cse",
+            "pass": "cse",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "08f808383ef2954e63d8ed1a79b55a8b9c7c0b13f0bbf8773fa7e37f793a7677",
+            "status": "verified"
+          }
+        ],
+        "claim_scope": "individual bounded pass boundaries; no whole-compiler or native-fidelity claim",
+        "compiler_completed": true,
+        "finalized": true,
+        "requested_passes": [
+          "bf16_f32acc_draft_contract",
+          "buffer_reuse",
+          "configuration_loop_hoisting",
+          "configuration_write_elision",
+          "cse",
+          "host_graph_fusion",
+          "lower_quant_ext",
+          "ordered_loop_segmentation",
+          "ordered_loop_unrolling",
+          "prune_dead_pure_tensor_ops"
+        ],
+        "schema": "merlin.compiler-coverage.v1",
+        "unchanged_boundaries": 0,
+        "unverified_boundaries": 0,
+        "verified_boundaries": 3
+      },
+      "elapsed_scope": "complete_case_walltime_not_kernel_latency",
+      "elapsed_seconds": 269.4815053490456,
+      "id": "small_llama_int8_consistent-xdsl",
+      "native": [
+        {
+          "baseline_seconds_observed": 0.007828650064766407,
+          "checked_outputs": [
+            {
+              "bytes": 8192,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 8320,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/native/20261029/checked/result0.npy",
+                "sha256": "85ed193e38542f29d256ea976c6e1be9f3bf8fb11a1bf4596e0c1d49455d94e0"
+              },
+              "sha256": "6b335fadbd30d35a5ba3eb04039c6ca97062108d26314b1251624cf91b03e945",
+              "shape": [
+                1,
+                8,
+                256
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.008100742008537054,
+          "comparison": {
+            "bytes": 39574,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/native/20261029/COMPARISON.json",
+            "sha256": "318d4d8ca2343b7edc29ad86a3376fd9803096ee369d52e585f2dcf2286c6a95"
+          },
+          "independent_reference": null,
+          "seed": 20261029,
+          "timing_is_performance_evidence": false
+        },
+        {
+          "baseline_seconds_observed": 0.008016531122848392,
+          "checked_outputs": [
+            {
+              "bytes": 8192,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 8320,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/native/20261030/checked/result0.npy",
+                "sha256": "f2531d19d4d0183bd88e6a6fad792d5b6e81475565463c073c6fde006d9dd359"
+              },
+              "sha256": "b535df323a2ed7baeb8660e6cad422fb226fc7ea0053bc0e17bbc113fff1c59c",
+              "shape": [
+                1,
+                8,
+                256
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.008169361855834723,
+          "comparison": {
+            "bytes": 39574,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/native/20261030/COMPARISON.json",
+            "sha256": "bebf8cad9d82d34c4ee5e1ce1a57e36a60096af5bb5594d035fcf4034e1b6b05"
+          },
+          "independent_reference": null,
+          "seed": 20261030,
+          "timing_is_performance_evidence": false
+        }
+      ],
+      "options": {
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "formal_transforms": {
+          "buffer_allocator": null,
+          "macc_f32acc": false,
+          "memory_source": false,
+          "tile_depth": 1,
+          "tile_size": null,
+          "unroll_depth": 1,
+          "unroll_factor": null
+        },
+        "index_bits": 64,
+        "targets": [],
+        "textual": false
+      },
+      "original_source": {
+        "bytes": 204511,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/case/compile/original-model.mlir",
+        "sha256": "0151af847ba81b2e12b8ee7f8a28891142594d2eb72a648077e815accafc2145"
+      },
+      "owned_process_cleanup": {
+        "complete": true,
+        "error": null,
+        "guardian_reaped": true,
+        "reaped_children": 1
+      },
+      "phase": "complete",
+      "process_result": {
+        "bytes": 791,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-xdsl/PROCESS-RESULT.json",
+        "sha256": "775e1f25ca3eeb9973f9baabe662d10b47d0c98f01917fd37def71f65d984bd5"
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "accepted_jobs": [
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "compiler_qdq_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established; relative to the proposed Q/DQ source semantics; source specification approval is not established",
+          "job": "0001-preprocess-text-textual-dequant-to-gener",
+          "label": "preprocess_text_textual.dequant_to_generic",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0002-cse",
+          "label": "cse",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        }
+      ],
+      "case_report": {
+        "bytes": 8648,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-textual/case/CASE-REPORT.json",
+        "sha256": "9576e85b8eca41fbd2ba6c3a36fe5c9d2aa7d5192a7b10208f93f39790b802f6"
+      },
+      "checked_matches_ordinary_llvm": true,
+      "compiler_report": {
+        "bytes": 170404,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-textual/case/compile/DEMO-REPORT.json",
+        "sha256": "ed391d1743b1be306749040c34a85a359d2b65f8cfe3860b15dcf529fe5dad3a"
+      },
+      "compiler_status": "PASS",
+      "coverage": {
+        "boundaries": [
+          {
+            "check": "compiler_qdq_refinement",
+            "final_sha256": "d172c49e36508f790e45c3e6121e96359cb68cb20c5f2e2e69cfd340f450ad26",
+            "input_refs": [
+              {
+                "bytes": 1067,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-textual/case/compile/pass-validation/0001-preprocess-text-textual-dequant-to-gener/request.json",
+                "sha256": "5d83c33b6397562c67b8a6b7f252385b2831eb5d0bca864dd771a936e3a5eb1e"
+              },
+              {
+                "bytes": 249718,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-textual/case/compile/pass-validation/0001-preprocess-text-textual-dequant-to-gener/before.mlir",
+                "sha256": "765164914327f6a9a813db58f5e72f5fbb7a5ed5f2b760b2e040b0130243754c"
+              },
+              {
+                "bytes": 260579,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-textual/case/compile/pass-validation/0001-preprocess-text-textual-dequant-to-gener/after.mlir",
+                "sha256": "d172c49e36508f790e45c3e6121e96359cb68cb20c5f2e2e69cfd340f450ad26"
+              }
+            ],
+            "job": "0001-preprocess-text-textual-dequant-to-gener",
+            "label": "preprocess_text_textual.dequant_to_generic",
+            "pass": "lower_quant_ext",
+            "profile": "proposed-qdq-typed-source-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "765164914327f6a9a813db58f5e72f5fbb7a5ed5f2b760b2e040b0130243754c",
+            "status": "verified"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "2013f9261b33dcab8fbd1be38732adcd068b8378e1e86496c2f66d5ba78e9a4f",
+            "input_refs": [
+              {
+                "bytes": 911,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-textual/case/compile/pass-validation/0002-cse/request.json",
+                "sha256": "fb9665b71fb21956a782d780fe66237a4f56c36391d340ac066f609b449d54cc"
+              },
+              {
+                "bytes": 165938,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-textual/case/compile/pass-validation/0002-cse/before.mlir",
+                "sha256": "aeb921039503334a189f5e4e0e9f55f80dcc5f7cbaf8f3eb51894b58e1a71fbd"
+              },
+              {
+                "bytes": 153650,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-textual/case/compile/pass-validation/0002-cse/after.mlir",
+                "sha256": "2013f9261b33dcab8fbd1be38732adcd068b8378e1e86496c2f66d5ba78e9a4f"
+              }
+            ],
+            "job": "0002-cse",
+            "label": "cse",
+            "pass": "cse",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "aeb921039503334a189f5e4e0e9f55f80dcc5f7cbaf8f3eb51894b58e1a71fbd",
+            "status": "verified"
+          }
+        ],
+        "claim_scope": "individual bounded pass boundaries; no whole-compiler or native-fidelity claim",
+        "compiler_completed": true,
+        "finalized": true,
+        "requested_passes": [
+          "bf16_f32acc_draft_contract",
+          "buffer_reuse",
+          "configuration_loop_hoisting",
+          "configuration_write_elision",
+          "cse",
+          "host_graph_fusion",
+          "lower_quant_ext",
+          "ordered_loop_segmentation",
+          "ordered_loop_unrolling",
+          "prune_dead_pure_tensor_ops"
+        ],
+        "schema": "merlin.compiler-coverage.v1",
+        "unchanged_boundaries": 0,
+        "unverified_boundaries": 0,
+        "verified_boundaries": 2
+      },
+      "elapsed_scope": "complete_case_walltime_not_kernel_latency",
+      "elapsed_seconds": 210.65865379502065,
+      "id": "small_llama_int8_consistent-textual",
+      "native": [
+        {
+          "baseline_seconds_observed": 0.00829183217138052,
+          "checked_outputs": [
+            {
+              "bytes": 8192,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 8320,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-textual/case/native/20261029/checked/result0.npy",
+                "sha256": "85ed193e38542f29d256ea976c6e1be9f3bf8fb11a1bf4596e0c1d49455d94e0"
+              },
+              "sha256": "6b335fadbd30d35a5ba3eb04039c6ca97062108d26314b1251624cf91b03e945",
+              "shape": [
+                1,
+                8,
+                256
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.01123463804833591,
+          "comparison": {
+            "bytes": 39629,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-textual/case/native/20261029/COMPARISON.json",
+            "sha256": "d648388bc5d1429dc77eda5c26b3bd323d2d8243ce44385812b7e0c9a46ec9db"
+          },
+          "independent_reference": null,
+          "seed": 20261029,
+          "timing_is_performance_evidence": false
+        },
+        {
+          "baseline_seconds_observed": 0.007799959974363446,
+          "checked_outputs": [
+            {
+              "bytes": 8192,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 8320,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-textual/case/native/20261030/checked/result0.npy",
+                "sha256": "f2531d19d4d0183bd88e6a6fad792d5b6e81475565463c073c6fde006d9dd359"
+              },
+              "sha256": "b535df323a2ed7baeb8660e6cad422fb226fc7ea0053bc0e17bbc113fff1c59c",
+              "shape": [
+                1,
+                8,
+                256
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.008241922128945589,
+          "comparison": {
+            "bytes": 39631,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-textual/case/native/20261030/COMPARISON.json",
+            "sha256": "b3373b6bb12ab012f668a49d61907743dcc3e2fdf498ad0403e1dddc7d5e6a13"
+          },
+          "independent_reference": null,
+          "seed": 20261030,
+          "timing_is_performance_evidence": false
+        }
+      ],
+      "options": {
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "formal_transforms": {
+          "buffer_allocator": null,
+          "macc_f32acc": false,
+          "memory_source": false,
+          "tile_depth": 1,
+          "tile_size": null,
+          "unroll_depth": 1,
+          "unroll_factor": null
+        },
+        "index_bits": 64,
+        "targets": [],
+        "textual": true
+      },
+      "original_source": {
+        "bytes": 204511,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-textual/case/compile/original-model.mlir",
+        "sha256": "0151af847ba81b2e12b8ee7f8a28891142594d2eb72a648077e815accafc2145"
+      },
+      "owned_process_cleanup": {
+        "complete": true,
+        "error": null,
+        "guardian_reaped": true,
+        "reaped_children": 1
+      },
+      "phase": "complete",
+      "process_result": {
+        "bytes": 800,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/small_llama_int8_consistent-textual/PROCESS-RESULT.json",
+        "sha256": "d7a0ff10c6635dfb859fd247d85b7e710a337892c8717513fc8d52c18d5742ea"
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "accepted_jobs": [
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0001-prune-dead-pure-tensor-ops",
+          "label": "prune_dead_pure_tensor_ops",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "compiler_qdq_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established; relative to the proposed Q/DQ source semantics; source specification approval is not established",
+          "job": "0002-lower-quant-ext",
+          "label": "lower_quant_ext",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0003-cse",
+          "label": "cse",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        }
+      ],
+      "case_report": {
+        "bytes": 10309,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/CASE-REPORT.json",
+        "sha256": "5ecff8db9c75ebd750a1f05dc78e579e423911d19deccac59884dbc90cc12573"
+      },
+      "checked_matches_ordinary_llvm": true,
+      "compiler_report": {
+        "bytes": 172103,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/compile/DEMO-REPORT.json",
+        "sha256": "730fba2270bd8d1477cf707922f5ff78f5a2f601b1f68ea46a838bd092a2c9ea"
+      },
+      "compiler_status": "PASS",
+      "coverage": {
+        "boundaries": [
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "6b4c8525f04e4e8062cbcc2589cd4c245629adb6a8aa28fdf240f40db92e998c",
+            "input_refs": [
+              {
+                "bytes": 979,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/request.json",
+                "sha256": "c88147a5a4af659e2c2f58c2fc4872e938365e26297550ef57550f636d8616fb"
+              },
+              {
+                "bytes": 294431,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/before.mlir",
+                "sha256": "1e54e3e7a93ff61cbd659b29acfaa14dde352ca5de99eb346d04a3dd2fdc86ec"
+              },
+              {
+                "bytes": 294198,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/after.mlir",
+                "sha256": "6b4c8525f04e4e8062cbcc2589cd4c245629adb6a8aa28fdf240f40db92e998c"
+              }
+            ],
+            "job": "0001-prune-dead-pure-tensor-ops",
+            "label": "prune_dead_pure_tensor_ops",
+            "pass": "prune_dead_pure_tensor_ops",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "1e54e3e7a93ff61cbd659b29acfaa14dde352ca5de99eb346d04a3dd2fdc86ec",
+            "status": "verified"
+          },
+          {
+            "check": "compiler_qdq_refinement",
+            "final_sha256": "531de0dc3d95c850d7eae82b8326f5bdd1ebf1221c7729af8b189281ac28b2d8",
+            "input_refs": [
+              {
+                "bytes": 941,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/compile/pass-validation/0002-lower-quant-ext/request.json",
+                "sha256": "cb1ff4fbac37464fb628e7cc8b549e3915d7294dcf8680af1e8d3c809cfb93dc"
+              },
+              {
+                "bytes": 294198,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/compile/pass-validation/0002-lower-quant-ext/before.mlir",
+                "sha256": "6b4c8525f04e4e8062cbcc2589cd4c245629adb6a8aa28fdf240f40db92e998c"
+              },
+              {
+                "bytes": 336022,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/compile/pass-validation/0002-lower-quant-ext/after.mlir",
+                "sha256": "531de0dc3d95c850d7eae82b8326f5bdd1ebf1221c7729af8b189281ac28b2d8"
+              }
+            ],
+            "job": "0002-lower-quant-ext",
+            "label": "lower_quant_ext",
+            "pass": "lower_quant_ext",
+            "profile": "proposed-qdq-typed-source-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "6b4c8525f04e4e8062cbcc2589cd4c245629adb6a8aa28fdf240f40db92e998c",
+            "status": "verified"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "1f608a80f649e2a76b81702f5a448dc0558d02f8a0f737f9376dc6645c977c76",
+            "input_refs": [
+              {
+                "bytes": 887,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/compile/pass-validation/0003-cse/request.json",
+                "sha256": "385d410e69fe658c02823389da178d696d340330ece9ff722ab13b2177465846"
+              },
+              {
+                "bytes": 202290,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/compile/pass-validation/0003-cse/before.mlir",
+                "sha256": "9b7249b4ba08624641e6aba0d43640ac0e4960f343f47922e803316464e67e05"
+              },
+              {
+                "bytes": 188938,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/compile/pass-validation/0003-cse/after.mlir",
+                "sha256": "1f608a80f649e2a76b81702f5a448dc0558d02f8a0f737f9376dc6645c977c76"
+              }
+            ],
+            "job": "0003-cse",
+            "label": "cse",
+            "pass": "cse",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "9b7249b4ba08624641e6aba0d43640ac0e4960f343f47922e803316464e67e05",
+            "status": "verified"
+          }
+        ],
+        "claim_scope": "individual bounded pass boundaries; no whole-compiler or native-fidelity claim",
+        "compiler_completed": true,
+        "finalized": true,
+        "requested_passes": [
+          "bf16_f32acc_draft_contract",
+          "buffer_reuse",
+          "configuration_loop_hoisting",
+          "configuration_write_elision",
+          "cse",
+          "host_graph_fusion",
+          "lower_quant_ext",
+          "ordered_loop_segmentation",
+          "ordered_loop_unrolling",
+          "prune_dead_pure_tensor_ops"
+        ],
+        "schema": "merlin.compiler-coverage.v1",
+        "unchanged_boundaries": 0,
+        "unverified_boundaries": 0,
+        "verified_boundaries": 3
+      },
+      "elapsed_scope": "complete_case_walltime_not_kernel_latency",
+      "elapsed_seconds": 276.886103376979,
+      "id": "M0_small_llama_gemmini-xdsl",
+      "native": [
+        {
+          "baseline_seconds_observed": 0.01273425598628819,
+          "checked_outputs": [
+            {
+              "bytes": 8192,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 8320,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/native/20261029/checked/result0.npy",
+                "sha256": "9c44745b0d5683d867b34cdce0085d79b325f819f09001a865ca5a1037bf4e20"
+              },
+              "sha256": "1eb346062495ee6a621e3e5ccfaeb60aca7fc70f281a27cedb4d7fb67ed2648a",
+              "shape": [
+                1,
+                8,
+                256
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.012616964988410473,
+          "comparison": {
+            "bytes": 24498,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/native/20261029/COMPARISON.json",
+            "sha256": "1f90f61989cf9f99f44d939f6ffd102f340c28c61b1cdb34747036cc211d9b40"
+          },
+          "independent_reference": null,
+          "seed": 20261029,
+          "timing_is_performance_evidence": false
+        },
+        {
+          "baseline_seconds_observed": 0.013115047011524439,
+          "checked_outputs": [
+            {
+              "bytes": 8192,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 8320,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/native/20261030/checked/result0.npy",
+                "sha256": "d34d170da134c93d5042027b39574b78d28956c88765362f82151bf37f92e6e8"
+              },
+              "sha256": "7831691179a8f949e9774be9410262d39deae332880776504771eac4ad60bfb2",
+              "shape": [
+                1,
+                8,
+                256
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.023920743027701974,
+          "comparison": {
+            "bytes": 24499,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/native/20261030/COMPARISON.json",
+            "sha256": "a2090e9779421d0de3b59523aed79abbee5eeaf78b3a1e39fce5be8b02168b2e"
+          },
+          "independent_reference": null,
+          "seed": 20261030,
+          "timing_is_performance_evidence": false
+        }
+      ],
+      "options": {
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "formal_transforms": {
+          "buffer_allocator": null,
+          "macc_f32acc": false,
+          "memory_source": false,
+          "tile_depth": 1,
+          "tile_size": null,
+          "unroll_depth": 1,
+          "unroll_factor": null
+        },
+        "index_bits": 64,
+        "targets": [],
+        "textual": false
+      },
+      "original_source": {
+        "bytes": 247785,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/case/compile/original-model.mlir",
+        "sha256": "5c5f72eb415e551a54de2484c61c0ac642aa1c3cd16cacb5d99aa7b7dacb8ef9"
+      },
+      "owned_process_cleanup": {
+        "complete": true,
+        "error": null,
+        "guardian_reaped": true,
+        "reaped_children": 1
+      },
+      "phase": "complete",
+      "process_result": {
+        "bytes": 775,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-xdsl/PROCESS-RESULT.json",
+        "sha256": "e5c67719a7b351ab7850e6f74eb04400e4d744232844916e6f73cb9104d7b570"
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "accepted_jobs": [
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "compiler_qdq_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established; relative to the proposed Q/DQ source semantics; source specification approval is not established",
+          "job": "0001-lower-quant-ext",
+          "label": "lower_quant_ext",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0002-cse",
+          "label": "cse",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        }
+      ],
+      "case_report": {
+        "bytes": 8732,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-textual/case/CASE-REPORT.json",
+        "sha256": "85e6fa2238ad11a0f55ba34a0c4673454055843d1132f7a780fa2fc9c893dbc8"
+      },
+      "checked_matches_ordinary_llvm": true,
+      "compiler_report": {
+        "bytes": 165846,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-textual/case/compile/DEMO-REPORT.json",
+        "sha256": "c3140dc5549dc268df8ff32a34cd1b5ad5d7df01880823405e412cf15cc66957"
+      },
+      "compiler_status": "PASS",
+      "coverage": {
+        "boundaries": [
+          {
+            "check": "compiler_qdq_refinement",
+            "final_sha256": "3fa3bb793bc5fff3bb49d234174f72da8571e02647484276be21ffe0d742c837",
+            "input_refs": [
+              {
+                "bytes": 950,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-textual/case/compile/pass-validation/0001-lower-quant-ext/request.json",
+                "sha256": "ef29e4af48e260fe26d82e8ea3176b5c58561a0d4066c29126cea050738a76b8"
+              },
+              {
+                "bytes": 294431,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-textual/case/compile/pass-validation/0001-lower-quant-ext/before.mlir",
+                "sha256": "1e54e3e7a93ff61cbd659b29acfaa14dde352ca5de99eb346d04a3dd2fdc86ec"
+              },
+              {
+                "bytes": 337646,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-textual/case/compile/pass-validation/0001-lower-quant-ext/after.mlir",
+                "sha256": "3fa3bb793bc5fff3bb49d234174f72da8571e02647484276be21ffe0d742c837"
+              }
+            ],
+            "job": "0001-lower-quant-ext",
+            "label": "lower_quant_ext",
+            "pass": "lower_quant_ext",
+            "profile": "proposed-qdq-typed-source-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "1e54e3e7a93ff61cbd659b29acfaa14dde352ca5de99eb346d04a3dd2fdc86ec",
+            "status": "verified"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "1f608a80f649e2a76b81702f5a448dc0558d02f8a0f737f9376dc6645c977c76",
+            "input_refs": [
+              {
+                "bytes": 896,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-textual/case/compile/pass-validation/0002-cse/request.json",
+                "sha256": "cb41fff7a6e61c4b62e9599b466f983c59e821809096025f9ffc6ec7b1baa68f"
+              },
+              {
+                "bytes": 202290,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-textual/case/compile/pass-validation/0002-cse/before.mlir",
+                "sha256": "9b7249b4ba08624641e6aba0d43640ac0e4960f343f47922e803316464e67e05"
+              },
+              {
+                "bytes": 188938,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-textual/case/compile/pass-validation/0002-cse/after.mlir",
+                "sha256": "1f608a80f649e2a76b81702f5a448dc0558d02f8a0f737f9376dc6645c977c76"
+              }
+            ],
+            "job": "0002-cse",
+            "label": "cse",
+            "pass": "cse",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "9b7249b4ba08624641e6aba0d43640ac0e4960f343f47922e803316464e67e05",
+            "status": "verified"
+          }
+        ],
+        "claim_scope": "individual bounded pass boundaries; no whole-compiler or native-fidelity claim",
+        "compiler_completed": true,
+        "finalized": true,
+        "requested_passes": [
+          "bf16_f32acc_draft_contract",
+          "buffer_reuse",
+          "configuration_loop_hoisting",
+          "configuration_write_elision",
+          "cse",
+          "host_graph_fusion",
+          "lower_quant_ext",
+          "ordered_loop_segmentation",
+          "ordered_loop_unrolling",
+          "prune_dead_pure_tensor_ops"
+        ],
+        "schema": "merlin.compiler-coverage.v1",
+        "unchanged_boundaries": 0,
+        "unverified_boundaries": 0,
+        "verified_boundaries": 2
+      },
+      "elapsed_scope": "complete_case_walltime_not_kernel_latency",
+      "elapsed_seconds": 200.1866301249247,
+      "id": "M0_small_llama_gemmini-textual",
+      "native": [
+        {
+          "baseline_seconds_observed": 0.012891227146610618,
+          "checked_outputs": [
+            {
+              "bytes": 8192,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 8320,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-textual/case/native/20261029/checked/result0.npy",
+                "sha256": "9c44745b0d5683d867b34cdce0085d79b325f819f09001a865ca5a1037bf4e20"
+              },
+              "sha256": "1eb346062495ee6a621e3e5ccfaeb60aca7fc70f281a27cedb4d7fb67ed2648a",
+              "shape": [
+                1,
+                8,
+                256
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.0133572390768677,
+          "comparison": {
+            "bytes": 24554,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-textual/case/native/20261029/COMPARISON.json",
+            "sha256": "8bad482a54299f4c768b1914de71511473092b3d8d1f82643731b1195cd8d7d0"
+          },
+          "independent_reference": null,
+          "seed": 20261029,
+          "timing_is_performance_evidence": false
+        },
+        {
+          "baseline_seconds_observed": 0.0130754669662565,
+          "checked_outputs": [
+            {
+              "bytes": 8192,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 8320,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-textual/case/native/20261030/checked/result0.npy",
+                "sha256": "d34d170da134c93d5042027b39574b78d28956c88765362f82151bf37f92e6e8"
+              },
+              "sha256": "7831691179a8f949e9774be9410262d39deae332880776504771eac4ad60bfb2",
+              "shape": [
+                1,
+                8,
+                256
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.012895556865260005,
+          "comparison": {
+            "bytes": 24554,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-textual/case/native/20261030/COMPARISON.json",
+            "sha256": "00cbee2326de7ede65472feb74bda9c603564ae8bc7cb8ac7084bf237642f97b"
+          },
+          "independent_reference": null,
+          "seed": 20261030,
+          "timing_is_performance_evidence": false
+        }
+      ],
+      "options": {
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "formal_transforms": {
+          "buffer_allocator": null,
+          "macc_f32acc": false,
+          "memory_source": false,
+          "tile_depth": 1,
+          "tile_size": null,
+          "unroll_depth": 1,
+          "unroll_factor": null
+        },
+        "index_bits": 64,
+        "targets": [],
+        "textual": true
+      },
+      "original_source": {
+        "bytes": 247785,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-textual/case/compile/original-model.mlir",
+        "sha256": "5c5f72eb415e551a54de2484c61c0ac642aa1c3cd16cacb5d99aa7b7dacb8ef9"
+      },
+      "owned_process_cleanup": {
+        "complete": true,
+        "error": null,
+        "guardian_reaped": true,
+        "reaped_children": 1
+      },
+      "phase": "complete",
+      "process_result": {
+        "bytes": 784,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M0_small_llama_gemmini-textual/PROCESS-RESULT.json",
+        "sha256": "71555331ebc471033d81ad866b3e15918c55e669d3566f81571e67a735460872"
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "accepted_jobs": [
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0001-prune-dead-pure-tensor-ops",
+          "label": "prune_dead_pure_tensor_ops",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "compiler_qdq_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established; relative to the proposed Q/DQ source semantics; source specification approval is not established",
+          "job": "0002-lower-quant-ext",
+          "label": "lower_quant_ext",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0003-cse",
+          "label": "cse",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        }
+      ],
+      "case_report": {
+        "bytes": 10213,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/CASE-REPORT.json",
+        "sha256": "1b05907d7a6b6a1f08c4b64fcc3b36d38a58846d25945b1048b33eacd3e44c3b"
+      },
+      "checked_matches_ordinary_llvm": true,
+      "compiler_report": {
+        "bytes": 170146,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/compile/DEMO-REPORT.json",
+        "sha256": "5b55724101e8ba1fcf4eafcc6adc55abd0910f2d02227cbaba37e659de3275af"
+      },
+      "compiler_status": "PASS",
+      "coverage": {
+        "boundaries": [
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "7534026df6e6712db9c37dfbf97442c08c600149a7a679a23051c1178b85ee32",
+            "input_refs": [
+              {
+                "bytes": 970,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/request.json",
+                "sha256": "b6912ce8c30e81b2ba6e8479ff74661c096e18f8f6683c183ffd7279f702c038"
+              },
+              {
+                "bytes": 157096,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/before.mlir",
+                "sha256": "9783595e27631c18fc5e6c7283411c142a1ff711d648c3ba893e5af1cf98dec2"
+              },
+              {
+                "bytes": 156979,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/after.mlir",
+                "sha256": "7534026df6e6712db9c37dfbf97442c08c600149a7a679a23051c1178b85ee32"
+              }
+            ],
+            "job": "0001-prune-dead-pure-tensor-ops",
+            "label": "prune_dead_pure_tensor_ops",
+            "pass": "prune_dead_pure_tensor_ops",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "9783595e27631c18fc5e6c7283411c142a1ff711d648c3ba893e5af1cf98dec2",
+            "status": "verified"
+          },
+          {
+            "check": "compiler_qdq_refinement",
+            "final_sha256": "1bd38f3e3226fce609ce7feb235c30166a22b77e18cfcf5f03a99b86ea6239d9",
+            "input_refs": [
+              {
+                "bytes": 932,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/compile/pass-validation/0002-lower-quant-ext/request.json",
+                "sha256": "d3d474be8262575fe308a75fea1fc05a8cf02d0090214da626c6172b2feb9c0d"
+              },
+              {
+                "bytes": 156979,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/compile/pass-validation/0002-lower-quant-ext/before.mlir",
+                "sha256": "7534026df6e6712db9c37dfbf97442c08c600149a7a679a23051c1178b85ee32"
+              },
+              {
+                "bytes": 160839,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/compile/pass-validation/0002-lower-quant-ext/after.mlir",
+                "sha256": "1bd38f3e3226fce609ce7feb235c30166a22b77e18cfcf5f03a99b86ea6239d9"
+              }
+            ],
+            "job": "0002-lower-quant-ext",
+            "label": "lower_quant_ext",
+            "pass": "lower_quant_ext",
+            "profile": "proposed-qdq-typed-source-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "7534026df6e6712db9c37dfbf97442c08c600149a7a679a23051c1178b85ee32",
+            "status": "verified"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "2369474896660b4610159b5ded50afa9abebb16fa2bb6a97ec56ae0cf0ef6ce2",
+            "input_refs": [
+              {
+                "bytes": 878,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/compile/pass-validation/0003-cse/request.json",
+                "sha256": "6057e51db891c1733baaf407dc330199366e48b902f2c0b173d5d03243230978"
+              },
+              {
+                "bytes": 118584,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/compile/pass-validation/0003-cse/before.mlir",
+                "sha256": "e10a5aba7d063e0fc3fcf1ad0462b7a73187d850cc13a1ebbbabf610dbac9091"
+              },
+              {
+                "bytes": 112094,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/compile/pass-validation/0003-cse/after.mlir",
+                "sha256": "2369474896660b4610159b5ded50afa9abebb16fa2bb6a97ec56ae0cf0ef6ce2"
+              }
+            ],
+            "job": "0003-cse",
+            "label": "cse",
+            "pass": "cse",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "e10a5aba7d063e0fc3fcf1ad0462b7a73187d850cc13a1ebbbabf610dbac9091",
+            "status": "verified"
+          }
+        ],
+        "claim_scope": "individual bounded pass boundaries; no whole-compiler or native-fidelity claim",
+        "compiler_completed": true,
+        "finalized": true,
+        "requested_passes": [
+          "bf16_f32acc_draft_contract",
+          "buffer_reuse",
+          "configuration_loop_hoisting",
+          "configuration_write_elision",
+          "cse",
+          "host_graph_fusion",
+          "lower_quant_ext",
+          "ordered_loop_segmentation",
+          "ordered_loop_unrolling",
+          "prune_dead_pure_tensor_ops"
+        ],
+        "schema": "merlin.compiler-coverage.v1",
+        "unchanged_boundaries": 0,
+        "unverified_boundaries": 0,
+        "verified_boundaries": 3
+      },
+      "elapsed_scope": "complete_case_walltime_not_kernel_latency",
+      "elapsed_seconds": 268.5572636970319,
+      "id": "M2_microvit_gemmini-xdsl",
+      "native": [
+        {
+          "baseline_seconds_observed": 0.0013863081112504005,
+          "checked_outputs": [
+            {
+              "bytes": 64,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 192,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/native/20261029/checked/result0.npy",
+                "sha256": "e2680c6125206dc7a42557cf55b76183418a28332e01f40dfdc6a70c7a8831f3"
+              },
+              "sha256": "194d05421dc9126fc02f42a002f817c01cc561688d343d2e6a450c1d778bcf12",
+              "shape": [
+                1,
+                16
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.0015141069889068604,
+          "comparison": {
+            "bytes": 23874,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/native/20261029/COMPARISON.json",
+            "sha256": "a517f8de48519c955f37c802e0e4a43bf16200856c5c269cc34b32c614fbb90b"
+          },
+          "independent_reference": null,
+          "seed": 20261029,
+          "timing_is_performance_evidence": false
+        },
+        {
+          "baseline_seconds_observed": 0.0015446178149431944,
+          "checked_outputs": [
+            {
+              "bytes": 64,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 192,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/native/20261030/checked/result0.npy",
+                "sha256": "1bd2c5eb67e15dbd0527a7320819af8c8c5d79a445b373b432cb23d66d9b4e9b"
+              },
+              "sha256": "a2fa5d775739868733e5d0b4feb94c54f99db4534b4e69ef9f5534c6d7482477",
+              "shape": [
+                1,
+                16
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.0013115869369357824,
+          "comparison": {
+            "bytes": 23874,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/native/20261030/COMPARISON.json",
+            "sha256": "cca8f66b1e12af87044381528f8ec6bf069b0da9dfa67673b2b63ab5e7a08c9e"
+          },
+          "independent_reference": null,
+          "seed": 20261030,
+          "timing_is_performance_evidence": false
+        }
+      ],
+      "options": {
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "formal_transforms": {
+          "buffer_allocator": null,
+          "macc_f32acc": false,
+          "memory_source": false,
+          "tile_depth": 1,
+          "tile_size": null,
+          "unroll_depth": 1,
+          "unroll_factor": null
+        },
+        "index_bits": 64,
+        "targets": [],
+        "textual": false
+      },
+      "original_source": {
+        "bytes": 126917,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/case/compile/original-model.mlir",
+        "sha256": "b362a0976064ec1101c8cfd19ffd2a93c1d26b80d14b62c253e22f4e439d6049"
+      },
+      "owned_process_cleanup": {
+        "complete": true,
+        "error": null,
+        "guardian_reaped": true,
+        "reaped_children": 1
+      },
+      "phase": "complete",
+      "process_result": {
+        "bytes": 767,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-xdsl/PROCESS-RESULT.json",
+        "sha256": "d1030d4e71157fc5fd2d56243ff643bad5abdef0e5c3a2776c1ef413b2540688"
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "accepted_jobs": [
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "compiler_qdq_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established; relative to the proposed Q/DQ source semantics; source specification approval is not established",
+          "job": "0001-lower-quant-ext",
+          "label": "lower_quant_ext",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0002-cse",
+          "label": "cse",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        }
+      ],
+      "case_report": {
+        "bytes": 8644,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-textual/case/CASE-REPORT.json",
+        "sha256": "e0fca44b0730b16439e00916eb755d3e259cb34209f11754017baf36caf76a88"
+      },
+      "checked_matches_ordinary_llvm": true,
+      "compiler_report": {
+        "bytes": 163925,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-textual/case/compile/DEMO-REPORT.json",
+        "sha256": "af050238d040864756fe0bdadb39908e6fe4ceddf38455e78d08de04c761ca34"
+      },
+      "compiler_status": "PASS",
+      "coverage": {
+        "boundaries": [
+          {
+            "check": "compiler_qdq_refinement",
+            "final_sha256": "35e4d09e64b33825aca0b0cd3b30b30605b6a9f3d338e327ee83afd582d52037",
+            "input_refs": [
+              {
+                "bytes": 941,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-textual/case/compile/pass-validation/0001-lower-quant-ext/request.json",
+                "sha256": "64c6f73ccf71c005b308fe394fae0f0444b2c57f93a98231ebb2cc9963b32f3b"
+              },
+              {
+                "bytes": 157096,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-textual/case/compile/pass-validation/0001-lower-quant-ext/before.mlir",
+                "sha256": "9783595e27631c18fc5e6c7283411c142a1ff711d648c3ba893e5af1cf98dec2"
+              },
+              {
+                "bytes": 162603,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-textual/case/compile/pass-validation/0001-lower-quant-ext/after.mlir",
+                "sha256": "35e4d09e64b33825aca0b0cd3b30b30605b6a9f3d338e327ee83afd582d52037"
+              }
+            ],
+            "job": "0001-lower-quant-ext",
+            "label": "lower_quant_ext",
+            "pass": "lower_quant_ext",
+            "profile": "proposed-qdq-typed-source-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "9783595e27631c18fc5e6c7283411c142a1ff711d648c3ba893e5af1cf98dec2",
+            "status": "verified"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "2369474896660b4610159b5ded50afa9abebb16fa2bb6a97ec56ae0cf0ef6ce2",
+            "input_refs": [
+              {
+                "bytes": 887,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-textual/case/compile/pass-validation/0002-cse/request.json",
+                "sha256": "6fd7890f4feb708a90321e59f879a01f8d5e81189f4646dc1da87aa018fbbdf6"
+              },
+              {
+                "bytes": 118584,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-textual/case/compile/pass-validation/0002-cse/before.mlir",
+                "sha256": "e10a5aba7d063e0fc3fcf1ad0462b7a73187d850cc13a1ebbbabf610dbac9091"
+              },
+              {
+                "bytes": 112094,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-textual/case/compile/pass-validation/0002-cse/after.mlir",
+                "sha256": "2369474896660b4610159b5ded50afa9abebb16fa2bb6a97ec56ae0cf0ef6ce2"
+              }
+            ],
+            "job": "0002-cse",
+            "label": "cse",
+            "pass": "cse",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "e10a5aba7d063e0fc3fcf1ad0462b7a73187d850cc13a1ebbbabf610dbac9091",
+            "status": "verified"
+          }
+        ],
+        "claim_scope": "individual bounded pass boundaries; no whole-compiler or native-fidelity claim",
+        "compiler_completed": true,
+        "finalized": true,
+        "requested_passes": [
+          "bf16_f32acc_draft_contract",
+          "buffer_reuse",
+          "configuration_loop_hoisting",
+          "configuration_write_elision",
+          "cse",
+          "host_graph_fusion",
+          "lower_quant_ext",
+          "ordered_loop_segmentation",
+          "ordered_loop_unrolling",
+          "prune_dead_pure_tensor_ops"
+        ],
+        "schema": "merlin.compiler-coverage.v1",
+        "unchanged_boundaries": 0,
+        "unverified_boundaries": 0,
+        "verified_boundaries": 2
+      },
+      "elapsed_scope": "complete_case_walltime_not_kernel_latency",
+      "elapsed_seconds": 189.47822168585844,
+      "id": "M2_microvit_gemmini-textual",
+      "native": [
+        {
+          "baseline_seconds_observed": 0.001425157068297267,
+          "checked_outputs": [
+            {
+              "bytes": 64,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 192,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-textual/case/native/20261029/checked/result0.npy",
+                "sha256": "e2680c6125206dc7a42557cf55b76183418a28332e01f40dfdc6a70c7a8831f3"
+              },
+              "sha256": "194d05421dc9126fc02f42a002f817c01cc561688d343d2e6a450c1d778bcf12",
+              "shape": [
+                1,
+                16
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.0014075469225645065,
+          "comparison": {
+            "bytes": 23930,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-textual/case/native/20261029/COMPARISON.json",
+            "sha256": "bfd7fab6bd406acf7e4e192e1e5dbac1739fc21c792a91983bcb43ca61cee032"
+          },
+          "independent_reference": null,
+          "seed": 20261029,
+          "timing_is_performance_evidence": false
+        },
+        {
+          "baseline_seconds_observed": 0.010548714082688093,
+          "checked_outputs": [
+            {
+              "bytes": 64,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 192,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-textual/case/native/20261030/checked/result0.npy",
+                "sha256": "1bd2c5eb67e15dbd0527a7320819af8c8c5d79a445b373b432cb23d66d9b4e9b"
+              },
+              "sha256": "a2fa5d775739868733e5d0b4feb94c54f99db4534b4e69ef9f5534c6d7482477",
+              "shape": [
+                1,
+                16
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.001541907899081707,
+          "comparison": {
+            "bytes": 23929,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-textual/case/native/20261030/COMPARISON.json",
+            "sha256": "6de54e29fc63f6a4af431c1f58eb7f96421314a83c8d62a428dd89b78df21bf1"
+          },
+          "independent_reference": null,
+          "seed": 20261030,
+          "timing_is_performance_evidence": false
+        }
+      ],
+      "options": {
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "formal_transforms": {
+          "buffer_allocator": null,
+          "macc_f32acc": false,
+          "memory_source": false,
+          "tile_depth": 1,
+          "tile_size": null,
+          "unroll_depth": 1,
+          "unroll_factor": null
+        },
+        "index_bits": 64,
+        "targets": [],
+        "textual": true
+      },
+      "original_source": {
+        "bytes": 126917,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-textual/case/compile/original-model.mlir",
+        "sha256": "b362a0976064ec1101c8cfd19ffd2a93c1d26b80d14b62c253e22f4e439d6049"
+      },
+      "owned_process_cleanup": {
+        "complete": true,
+        "error": null,
+        "guardian_reaped": true,
+        "reaped_children": 1
+      },
+      "phase": "complete",
+      "process_result": {
+        "bytes": 776,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M2_microvit_gemmini-textual/PROCESS-RESULT.json",
+        "sha256": "c3a2ba823d2e8484d1cd786fe0931b8e7c6d1781d3236b6125209a16e9924140"
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "accepted_jobs": [
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0001-prune-dead-pure-tensor-ops",
+          "label": "prune_dead_pure_tensor_ops",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "compiler_qdq_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established; relative to the proposed Q/DQ source semantics; source specification approval is not established",
+          "job": "0002-lower-quant-ext",
+          "label": "lower_quant_ext",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0003-cse",
+          "label": "cse",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        }
+      ],
+      "case_report": {
+        "bytes": 10392,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/CASE-REPORT.json",
+        "sha256": "a95aa03cabd131ffd3de5c5f635f4797e44ffc73e87cbba55384b40d05a09bfe"
+      },
+      "checked_matches_ordinary_llvm": true,
+      "compiler_report": {
+        "bytes": 175833,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/compile/DEMO-REPORT.json",
+        "sha256": "a151c5dbefd56725544dffc194360e6cd6a8daa50f779da3b6e8e1e949c7bbdb"
+      },
+      "compiler_status": "PASS",
+      "coverage": {
+        "boundaries": [
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "f8332b9be4153c6045edbed9f9942a2ffa478f5792c57b2ef890b1c04ab569bc",
+            "input_refs": [
+              {
+                "bytes": 991,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/request.json",
+                "sha256": "9407eef3d39b46827c4a4676d4b3fb15a7810020dc83328f82416e61701749f6"
+              },
+              {
+                "bytes": 395014,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/before.mlir",
+                "sha256": "93acf5c4742d443524f9f9a2ac7f9c978d8e2115ff514d056c3cdb7bb0a01bb0"
+              },
+              {
+                "bytes": 394776,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/after.mlir",
+                "sha256": "f8332b9be4153c6045edbed9f9942a2ffa478f5792c57b2ef890b1c04ab569bc"
+              }
+            ],
+            "job": "0001-prune-dead-pure-tensor-ops",
+            "label": "prune_dead_pure_tensor_ops",
+            "pass": "prune_dead_pure_tensor_ops",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "93acf5c4742d443524f9f9a2ac7f9c978d8e2115ff514d056c3cdb7bb0a01bb0",
+            "status": "verified"
+          },
+          {
+            "check": "compiler_qdq_refinement",
+            "final_sha256": "bfd7bab97302f11cf390ac50b9a8013a33ad4170bfbe71a8f8849065ad777bfd",
+            "input_refs": [
+              {
+                "bytes": 953,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/compile/pass-validation/0002-lower-quant-ext/request.json",
+                "sha256": "78fda0c2be3a434f8536d67df3f129b88f43261c02c0ebf408f0f2166bb17659"
+              },
+              {
+                "bytes": 394776,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/compile/pass-validation/0002-lower-quant-ext/before.mlir",
+                "sha256": "f8332b9be4153c6045edbed9f9942a2ffa478f5792c57b2ef890b1c04ab569bc"
+              },
+              {
+                "bytes": 473460,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/compile/pass-validation/0002-lower-quant-ext/after.mlir",
+                "sha256": "bfd7bab97302f11cf390ac50b9a8013a33ad4170bfbe71a8f8849065ad777bfd"
+              }
+            ],
+            "job": "0002-lower-quant-ext",
+            "label": "lower_quant_ext",
+            "pass": "lower_quant_ext",
+            "profile": "proposed-qdq-typed-source-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "f8332b9be4153c6045edbed9f9942a2ffa478f5792c57b2ef890b1c04ab569bc",
+            "status": "verified"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "8d4d13f9414be2a7fcbf4a86099cfacd6410252ca6501bb7e0a8a7864f79c2ed",
+            "input_refs": [
+              {
+                "bytes": 899,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/compile/pass-validation/0003-cse/request.json",
+                "sha256": "59ee98cf8e0dd189fce531e3ef396e1e0eb09b36e16db622f6f876acecccb584"
+              },
+              {
+                "bytes": 276997,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/compile/pass-validation/0003-cse/before.mlir",
+                "sha256": "9217864ab2dcdacd974aa41e54b732676a8e2a0c779a88a225182acf4411497e"
+              },
+              {
+                "bytes": 260214,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/compile/pass-validation/0003-cse/after.mlir",
+                "sha256": "8d4d13f9414be2a7fcbf4a86099cfacd6410252ca6501bb7e0a8a7864f79c2ed"
+              }
+            ],
+            "job": "0003-cse",
+            "label": "cse",
+            "pass": "cse",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "9217864ab2dcdacd974aa41e54b732676a8e2a0c779a88a225182acf4411497e",
+            "status": "verified"
+          }
+        ],
+        "claim_scope": "individual bounded pass boundaries; no whole-compiler or native-fidelity claim",
+        "compiler_completed": true,
+        "finalized": true,
+        "requested_passes": [
+          "bf16_f32acc_draft_contract",
+          "buffer_reuse",
+          "configuration_loop_hoisting",
+          "configuration_write_elision",
+          "cse",
+          "host_graph_fusion",
+          "lower_quant_ext",
+          "ordered_loop_segmentation",
+          "ordered_loop_unrolling",
+          "prune_dead_pure_tensor_ops"
+        ],
+        "schema": "merlin.compiler-coverage.v1",
+        "unchanged_boundaries": 0,
+        "unverified_boundaries": 0,
+        "verified_boundaries": 3
+      },
+      "elapsed_scope": "complete_case_walltime_not_kernel_latency",
+      "elapsed_seconds": 305.06658273679204,
+      "id": "M4_smolvla_denoise_gemmini-xdsl",
+      "native": [
+        {
+          "baseline_seconds_observed": 0.0021514510735869408,
+          "checked_outputs": [
+            {
+              "bytes": 2048,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 2176,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/native/20261029/checked/result0.npy",
+                "sha256": "f19c34aaf441590cb1214e0fb433619fdddea8672e0479ed45799a549399c21d"
+              },
+              "sha256": "bbd0aeee79065eb5d4c11545e608c1572abe45e780e64bc35d89bc51baadc556",
+              "shape": [
+                1,
+                16,
+                32
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.002222531009465456,
+          "comparison": {
+            "bytes": 30558,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/native/20261029/COMPARISON.json",
+            "sha256": "b2c600f27824aff0f87ba219e699736b5cc4fc3ea5f41becdc30961f54852570"
+          },
+          "independent_reference": null,
+          "seed": 20261029,
+          "timing_is_performance_evidence": false
+        },
+        {
+          "baseline_seconds_observed": 0.002191290957853198,
+          "checked_outputs": [
+            {
+              "bytes": 2048,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 2176,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/native/20261030/checked/result0.npy",
+                "sha256": "f1fc947bd9c4c5493a68a5a0b4b7af26529c8376a61bcb784c2f5a2b4203f0af"
+              },
+              "sha256": "c4223eb40c7dccb75e5b4d3abb9ec8b96f80976e667d71497d3037958bc4658b",
+              "shape": [
+                1,
+                16,
+                32
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.00255367299541831,
+          "comparison": {
+            "bytes": 30556,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/native/20261030/COMPARISON.json",
+            "sha256": "b523b072bd4208b2f8466c9fda149c3b79e59c02494aafbd77c3eec1a41d1853"
+          },
+          "independent_reference": null,
+          "seed": 20261030,
+          "timing_is_performance_evidence": false
+        }
+      ],
+      "options": {
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "formal_transforms": {
+          "buffer_allocator": null,
+          "macc_f32acc": false,
+          "memory_source": false,
+          "tile_depth": 1,
+          "tile_size": null,
+          "unroll_depth": 1,
+          "unroll_factor": null
+        },
+        "index_bits": 64,
+        "targets": [],
+        "textual": false
+      },
+      "original_source": {
+        "bytes": 334018,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/case/compile/original-model.mlir",
+        "sha256": "07c9a39aaf4a265873f36619c1f586cf582d8701a12cef571056fe5dbcb631f7"
+      },
+      "owned_process_cleanup": {
+        "complete": true,
+        "error": null,
+        "guardian_reaped": true,
+        "reaped_children": 1
+      },
+      "phase": "complete",
+      "process_result": {
+        "bytes": 789,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-xdsl/PROCESS-RESULT.json",
+        "sha256": "f18ff7bab4a63b4cb5307604a2d37e085a8e0d48b220dbdcba93826a20ed0a81"
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "accepted_jobs": [
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "compiler_qdq_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established; relative to the proposed Q/DQ source semantics; source specification approval is not established",
+          "job": "0001-lower-quant-ext",
+          "label": "lower_quant_ext",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0002-cse",
+          "label": "cse",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        }
+      ],
+      "case_report": {
+        "bytes": 8801,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-textual/case/CASE-REPORT.json",
+        "sha256": "a323bc0d203d9e236cd8d8334a4ddca7c09b819be7ab33d74e10b3c78a8842d4"
+      },
+      "checked_matches_ordinary_llvm": true,
+      "compiler_report": {
+        "bytes": 169529,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-textual/case/compile/DEMO-REPORT.json",
+        "sha256": "0492c8b20b92210b5f5e9fbe4f95e2d660faf547f4d27507513e8a88199b97d7"
+      },
+      "compiler_status": "PASS",
+      "coverage": {
+        "boundaries": [
+          {
+            "check": "compiler_qdq_refinement",
+            "final_sha256": "f61c37a0fd903007f94d1fa3b2b74f0c77b1c3caeccb8c0eb5de720d1b07d441",
+            "input_refs": [
+              {
+                "bytes": 962,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-textual/case/compile/pass-validation/0001-lower-quant-ext/request.json",
+                "sha256": "61ce8958b0d84823ef50752632773aed595e6fba6c05978f96e5f555545db6e2"
+              },
+              {
+                "bytes": 395014,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-textual/case/compile/pass-validation/0001-lower-quant-ext/before.mlir",
+                "sha256": "93acf5c4742d443524f9f9a2ac7f9c978d8e2115ff514d056c3cdb7bb0a01bb0"
+              },
+              {
+                "bytes": 475525,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-textual/case/compile/pass-validation/0001-lower-quant-ext/after.mlir",
+                "sha256": "f61c37a0fd903007f94d1fa3b2b74f0c77b1c3caeccb8c0eb5de720d1b07d441"
+              }
+            ],
+            "job": "0001-lower-quant-ext",
+            "label": "lower_quant_ext",
+            "pass": "lower_quant_ext",
+            "profile": "proposed-qdq-typed-source-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "93acf5c4742d443524f9f9a2ac7f9c978d8e2115ff514d056c3cdb7bb0a01bb0",
+            "status": "verified"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "8d4d13f9414be2a7fcbf4a86099cfacd6410252ca6501bb7e0a8a7864f79c2ed",
+            "input_refs": [
+              {
+                "bytes": 908,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-textual/case/compile/pass-validation/0002-cse/request.json",
+                "sha256": "f591ebbdab76732b692a69116e6cfa7889d11a74ee749e63038bcec7d677a083"
+              },
+              {
+                "bytes": 276997,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-textual/case/compile/pass-validation/0002-cse/before.mlir",
+                "sha256": "9217864ab2dcdacd974aa41e54b732676a8e2a0c779a88a225182acf4411497e"
+              },
+              {
+                "bytes": 260214,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-textual/case/compile/pass-validation/0002-cse/after.mlir",
+                "sha256": "8d4d13f9414be2a7fcbf4a86099cfacd6410252ca6501bb7e0a8a7864f79c2ed"
+              }
+            ],
+            "job": "0002-cse",
+            "label": "cse",
+            "pass": "cse",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "9217864ab2dcdacd974aa41e54b732676a8e2a0c779a88a225182acf4411497e",
+            "status": "verified"
+          }
+        ],
+        "claim_scope": "individual bounded pass boundaries; no whole-compiler or native-fidelity claim",
+        "compiler_completed": true,
+        "finalized": true,
+        "requested_passes": [
+          "bf16_f32acc_draft_contract",
+          "buffer_reuse",
+          "configuration_loop_hoisting",
+          "configuration_write_elision",
+          "cse",
+          "host_graph_fusion",
+          "lower_quant_ext",
+          "ordered_loop_segmentation",
+          "ordered_loop_unrolling",
+          "prune_dead_pure_tensor_ops"
+        ],
+        "schema": "merlin.compiler-coverage.v1",
+        "unchanged_boundaries": 0,
+        "unverified_boundaries": 0,
+        "verified_boundaries": 2
+      },
+      "elapsed_scope": "complete_case_walltime_not_kernel_latency",
+      "elapsed_seconds": 247.79859657213092,
+      "id": "M4_smolvla_denoise_gemmini-textual",
+      "native": [
+        {
+          "baseline_seconds_observed": 0.0022311320062726736,
+          "checked_outputs": [
+            {
+              "bytes": 2048,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 2176,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-textual/case/native/20261029/checked/result0.npy",
+                "sha256": "f19c34aaf441590cb1214e0fb433619fdddea8672e0479ed45799a549399c21d"
+              },
+              "sha256": "bbd0aeee79065eb5d4c11545e608c1572abe45e780e64bc35d89bc51baadc556",
+              "shape": [
+                1,
+                16,
+                32
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.0022767509799450636,
+          "comparison": {
+            "bytes": 30616,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-textual/case/native/20261029/COMPARISON.json",
+            "sha256": "2a584b66905085718197ff56edbfb2d055ee54fd79854fc2963ab396891bfcfc"
+          },
+          "independent_reference": null,
+          "seed": 20261029,
+          "timing_is_performance_evidence": false
+        },
+        {
+          "baseline_seconds_observed": 0.007221126928925514,
+          "checked_outputs": [
+            {
+              "bytes": 2048,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 2176,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-textual/case/native/20261030/checked/result0.npy",
+                "sha256": "f1fc947bd9c4c5493a68a5a0b4b7af26529c8376a61bcb784c2f5a2b4203f0af"
+              },
+              "sha256": "c4223eb40c7dccb75e5b4d3abb9ec8b96f80976e667d71497d3037958bc4658b",
+              "shape": [
+                1,
+                16,
+                32
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.008590464014559984,
+          "comparison": {
+            "bytes": 30614,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-textual/case/native/20261030/COMPARISON.json",
+            "sha256": "098b1bcf379d788b86cc07f95161851d34c1e7e34d630cf8333c9312abaa8971"
+          },
+          "independent_reference": null,
+          "seed": 20261030,
+          "timing_is_performance_evidence": false
+        }
+      ],
+      "options": {
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "formal_transforms": {
+          "buffer_allocator": null,
+          "macc_f32acc": false,
+          "memory_source": false,
+          "tile_depth": 1,
+          "tile_size": null,
+          "unroll_depth": 1,
+          "unroll_factor": null
+        },
+        "index_bits": 64,
+        "targets": [],
+        "textual": true
+      },
+      "original_source": {
+        "bytes": 334018,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-textual/case/compile/original-model.mlir",
+        "sha256": "07c9a39aaf4a265873f36619c1f586cf582d8701a12cef571056fe5dbcb631f7"
+      },
+      "owned_process_cleanup": {
+        "complete": true,
+        "error": null,
+        "guardian_reaped": true,
+        "reaped_children": 1
+      },
+      "phase": "complete",
+      "process_result": {
+        "bytes": 797,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/M4_smolvla_denoise_gemmini-textual/PROCESS-RESULT.json",
+        "sha256": "3c381d5ac939f2dac0917d6fc5298ce8b1dc24377671f28b1feaa7f5d69aa29d"
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "accepted_jobs": [
+        {
+          "check": "compiler_macc_contract",
+          "claim": "complete output equals draft f32-accumulation reference under SSA/call laws; strict initialized-operand qualification of every source contraction",
+          "job": "0001-bf16-f32acc-draft-contract",
+          "label": "bf16_f32acc_draft_contract",
+          "reason": "",
+          "theorems": [
+            "MerlinVerify.Check.Bf16F32AccExact.check_sound",
+            "MerlinVerify.Check.Bf16F32AccExact.defined_execution",
+            "MerlinVerify.Check.Bf16F32AccSites.check_sound",
+            "MerlinVerify.Check.Bf16F32AccSites.collectOps_coverage",
+            "MerlinVerify.Rules.Bf16F32AccNonvacuity.operand_domain_nonempty",
+            "MerlinVerify.Rules.Bf16F32AccTensor.accumulate_sound",
+            "MerlinVerify.Rules.Bf16F32AccTensor.truncate_sound",
+            "MerlinVerify.Rules.Bf16F32AccTensor.zero_fill_sound",
+            "MerlinVerify.Rules.Bf16F32AccContract.accumulate_cell",
+            "MerlinVerify.Rules.Bf16F32AccContract.contract_distinct",
+            "MerlinVerify.Rules.Bf16F32AccSite.accumulating_op_sound",
+            "MerlinVerify.Rules.Bf16F32AccSite.final_op_sound",
+            "MerlinVerify.Rules.Bf16F32AccFusion.fused_step",
+            "MerlinVerify.Rules.Bf16F32AccFusion.fused_step_on_image",
+            "MerlinVerify.Check.Bf16F32Acc.check_sound",
+            "MerlinVerify.Check.Bf16F32Acc.qualify_sound",
+            "MerlinVerify.Check.Bf16F32AccBoundary.check_sound",
+            "MerlinVerify.Check.Bf16F32AccOperands.pack_nodup",
+            "MerlinVerify.Check.Bf16F32AccOperands.same_sharing",
+            "MerlinVerify.Check.Bf16F32AccOperands.bind_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0002-prune-dead-pure-tensor-ops",
+          "label": "prune_dead_pure_tensor_ops",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0003-cse",
+          "label": "cse",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        }
+      ],
+      "case_report": {
+        "bytes": 11410,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/CASE-REPORT.json",
+        "sha256": "17fd131de28f5e4e8140d451b80ab2ac15f6d7303189feda9b56fba8bf207fb9"
+      },
+      "checked_matches_ordinary_llvm": true,
+      "compiler_report": {
+        "bytes": 411450,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/compile/DEMO-REPORT.json",
+        "sha256": "8891d642ef3f0dcea1131754088c83c044909de678055bfc96cd6a9fe638b6c3"
+      },
+      "compiler_status": "PASS",
+      "coverage": {
+        "boundaries": [
+          {
+            "check": "compiler_macc_contract",
+            "final_sha256": "e4fdb86429600450b6473e61d4743f59c9a2c8400a9e9db27ea5caa1f728a7c5",
+            "input_refs": [
+              {
+                "bytes": 945,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/compile/pass-validation/0001-bf16-f32acc-draft-contract/request.json",
+                "sha256": "40d883e2824d0db5f00931e3f1be1a7e83c7f21c11ebe4684ec71d0da55bcb64"
+              },
+              {
+                "bytes": 17756,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/compile/pass-validation/0001-bf16-f32acc-draft-contract/before.mlir",
+                "sha256": "ee9d5dfbfa67b4aabaa1be80103dba5d8d1f3e360c8f4f554c2addb9bbae0c69"
+              },
+              {
+                "bytes": 30831,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/compile/pass-validation/0001-bf16-f32acc-draft-contract/after.mlir",
+                "sha256": "e4fdb86429600450b6473e61d4743f59c9a2c8400a9e9db27ea5caa1f728a7c5"
+              }
+            ],
+            "job": "0001-bf16-f32acc-draft-contract",
+            "label": "bf16_f32acc_draft_contract",
+            "pass": "bf16_f32acc_draft_contract",
+            "profile": "draft-uniform-half-positive-zero-macc-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "ee9d5dfbfa67b4aabaa1be80103dba5d8d1f3e360c8f4f554c2addb9bbae0c69",
+            "status": "verified"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "96448f1d79a84875176c87b59ce7b39884f2173d8b5517a88e5106f20ff6ff04",
+            "input_refs": [
+              {
+                "bytes": 940,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/compile/pass-validation/0002-prune-dead-pure-tensor-ops/request.json",
+                "sha256": "25127e3b1bb3c1dbffc055dfee68d93e8b38f6419815766f4f92288483f78592"
+              },
+              {
+                "bytes": 30831,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/compile/pass-validation/0002-prune-dead-pure-tensor-ops/before.mlir",
+                "sha256": "e4fdb86429600450b6473e61d4743f59c9a2c8400a9e9db27ea5caa1f728a7c5"
+              },
+              {
+                "bytes": 30062,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/compile/pass-validation/0002-prune-dead-pure-tensor-ops/after.mlir",
+                "sha256": "96448f1d79a84875176c87b59ce7b39884f2173d8b5517a88e5106f20ff6ff04"
+              }
+            ],
+            "job": "0002-prune-dead-pure-tensor-ops",
+            "label": "prune_dead_pure_tensor_ops",
+            "pass": "prune_dead_pure_tensor_ops",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "e4fdb86429600450b6473e61d4743f59c9a2c8400a9e9db27ea5caa1f728a7c5",
+            "status": "verified"
+          },
+          {
+            "final_sha256": "96448f1d79a84875176c87b59ce7b39884f2173d8b5517a88e5106f20ff6ff04",
+            "pass": "lower_quant_ext",
+            "profile": "proposed-qdq-typed-source-index64-v1",
+            "proof_credit": false,
+            "source_sha256": "96448f1d79a84875176c87b59ce7b39884f2173d8b5517a88e5106f20ff6ff04",
+            "status": "unchanged"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "520f6b126e83eb7fd9669c8212c9628be6fd1b4282d027f6b50a5a90c1397344",
+            "input_refs": [
+              {
+                "bytes": 848,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/compile/pass-validation/0003-cse/request.json",
+                "sha256": "1cd6b5f104a950cb1c497741d5c5527ce8722f8b5f319eadd2836b185fb0a3ed"
+              },
+              {
+                "bytes": 27012,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/compile/pass-validation/0003-cse/before.mlir",
+                "sha256": "af6e689023af13c68004660c13249861701d344c4bc59a470ce1ba8713698a4a"
+              },
+              {
+                "bytes": 23038,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/compile/pass-validation/0003-cse/after.mlir",
+                "sha256": "520f6b126e83eb7fd9669c8212c9628be6fd1b4282d027f6b50a5a90c1397344"
+              }
+            ],
+            "job": "0003-cse",
+            "label": "cse",
+            "pass": "cse",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "af6e689023af13c68004660c13249861701d344c4bc59a470ce1ba8713698a4a",
+            "status": "verified"
+          }
+        ],
+        "claim_scope": "individual bounded pass boundaries; no whole-compiler or native-fidelity claim",
+        "compiler_completed": true,
+        "finalized": true,
+        "requested_passes": [
+          "bf16_f32acc_draft_contract",
+          "buffer_reuse",
+          "configuration_loop_hoisting",
+          "configuration_write_elision",
+          "cse",
+          "host_graph_fusion",
+          "lower_quant_ext",
+          "ordered_loop_segmentation",
+          "ordered_loop_unrolling",
+          "prune_dead_pure_tensor_ops"
+        ],
+        "schema": "merlin.compiler-coverage.v1",
+        "unchanged_boundaries": 1,
+        "unverified_boundaries": 0,
+        "verified_boundaries": 3
+      },
+      "elapsed_scope": "complete_case_walltime_not_kernel_latency",
+      "elapsed_seconds": 225.85526626883075,
+      "id": "MLP12_F16_xdsl",
+      "native": [
+        {
+          "baseline_seconds_observed": 0.13451710296794772,
+          "checked_outputs": [
+            {
+              "bytes": 496,
+              "dtype": "float16",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 624,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/native/20261029/checked/result0.npy",
+                "sha256": "7c939bfdf52835ae3e5091c1691a566d401b7228403f99ca6173b41450d32eb2"
+              },
+              "sha256": "919dc4b2a30d564ae231b72660abaaa18a5c6b26cc42876a986598216d3c5a75",
+              "shape": [
+                8,
+                31
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.1581369829364121,
+          "comparison": {
+            "bytes": 25616,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/native/20261029/COMPARISON.json",
+            "sha256": "bfce2efbc827a944fe62bba783083a1e3ea36d0f8d83532de49d29ab525d2fb5"
+          },
+          "independent_reference": {
+            "bytes": 9095,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/references/20261029/REFERENCE.json",
+            "sha256": "1b29d6ffc8cc114247cd8f6cbaab4e6324b93e95d8ce3c9ef18271d1bce9495d"
+          },
+          "seed": 20261029,
+          "timing_is_performance_evidence": false
+        },
+        {
+          "baseline_seconds_observed": 0.11563082714565098,
+          "checked_outputs": [
+            {
+              "bytes": 496,
+              "dtype": "float16",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 624,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/native/20261030/checked/result0.npy",
+                "sha256": "46a7d231dd2c5f5f7f7f101a5dcd65aa9d0c811d983c36ffe8a6f03b41b7838b"
+              },
+              "sha256": "675fec8f477f033cba730831979a5e739e0aefd74611bdd856ad5c6dcfaa9551",
+              "shape": [
+                8,
+                31
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.38255560398101807,
+          "comparison": {
+            "bytes": 25617,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/native/20261030/COMPARISON.json",
+            "sha256": "773c2da6e0f3c66a160320fdf51312703dc59631d43a133049f36bfb02b0f478"
+          },
+          "independent_reference": {
+            "bytes": 9095,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/references/20261030/REFERENCE.json",
+            "sha256": "69c849f62b84adb6abf3d473f72d58f43612370a83174cac6a8839c8a2758df0"
+          },
+          "seed": 20261030,
+          "timing_is_performance_evidence": false
+        }
+      ],
+      "options": {
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "formal_transforms": {
+          "buffer_allocator": null,
+          "macc_f32acc": true,
+          "memory_source": false,
+          "tile_depth": 1,
+          "tile_size": null,
+          "unroll_depth": 1,
+          "unroll_factor": null
+        },
+        "index_bits": 64,
+        "targets": [],
+        "textual": false
+      },
+      "original_source": {
+        "bytes": 9287,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/case/compile/original-model.mlir",
+        "sha256": "e7df0bd7368ff7442a16c43c93179f2c7b2ee7ff37911f77f2635fcfe19051ab"
+      },
+      "owned_process_cleanup": {
+        "complete": true,
+        "error": null,
+        "guardian_reaped": true,
+        "reaped_children": 1
+      },
+      "phase": "complete",
+      "process_result": {
+        "bytes": 738,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_xdsl/PROCESS-RESULT.json",
+        "sha256": "9391107456daa7e42af0098d2ac0ebca4e4de3c611551eabb52ae100da82f1be"
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "accepted_jobs": [
+        {
+          "check": "compiler_macc_contract",
+          "claim": "complete output equals draft f32-accumulation reference under SSA/call laws; strict initialized-operand qualification of every source contraction",
+          "job": "0001-bf16-f32acc-draft-contract",
+          "label": "bf16_f32acc_draft_contract",
+          "reason": "",
+          "theorems": [
+            "MerlinVerify.Check.Bf16F32AccExact.check_sound",
+            "MerlinVerify.Check.Bf16F32AccExact.defined_execution",
+            "MerlinVerify.Check.Bf16F32AccSites.check_sound",
+            "MerlinVerify.Check.Bf16F32AccSites.collectOps_coverage",
+            "MerlinVerify.Rules.Bf16F32AccNonvacuity.operand_domain_nonempty",
+            "MerlinVerify.Rules.Bf16F32AccTensor.accumulate_sound",
+            "MerlinVerify.Rules.Bf16F32AccTensor.truncate_sound",
+            "MerlinVerify.Rules.Bf16F32AccTensor.zero_fill_sound",
+            "MerlinVerify.Rules.Bf16F32AccContract.accumulate_cell",
+            "MerlinVerify.Rules.Bf16F32AccContract.contract_distinct",
+            "MerlinVerify.Rules.Bf16F32AccSite.accumulating_op_sound",
+            "MerlinVerify.Rules.Bf16F32AccSite.final_op_sound",
+            "MerlinVerify.Rules.Bf16F32AccFusion.fused_step",
+            "MerlinVerify.Rules.Bf16F32AccFusion.fused_step_on_image",
+            "MerlinVerify.Check.Bf16F32Acc.check_sound",
+            "MerlinVerify.Check.Bf16F32Acc.qualify_sound",
+            "MerlinVerify.Check.Bf16F32AccBoundary.check_sound",
+            "MerlinVerify.Check.Bf16F32AccOperands.pack_nodup",
+            "MerlinVerify.Check.Bf16F32AccOperands.same_sharing",
+            "MerlinVerify.Check.Bf16F32AccOperands.bind_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0002-cse",
+          "label": "cse",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        }
+      ],
+      "case_report": {
+        "bytes": 9527,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/CASE-REPORT.json",
+        "sha256": "7c683cdc4836717f73b692bff8bcc5e1bb1bbe9733add34c71988c4a034bcc80"
+      },
+      "checked_matches_ordinary_llvm": true,
+      "compiler_report": {
+        "bytes": 405026,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/compile/DEMO-REPORT.json",
+        "sha256": "231042b65ea7a1c99f17421f51d0186fbac286804fecb3665cb400efda2a3dd5"
+      },
+      "compiler_status": "PASS",
+      "coverage": {
+        "boundaries": [
+          {
+            "check": "compiler_macc_contract",
+            "final_sha256": "e4fdb86429600450b6473e61d4743f59c9a2c8400a9e9db27ea5caa1f728a7c5",
+            "input_refs": [
+              {
+                "bytes": 954,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/compile/pass-validation/0001-bf16-f32acc-draft-contract/request.json",
+                "sha256": "5f6558f0c92105bf8b6e8e8917f2dac7a9df53b6eff178100891631cc132f222"
+              },
+              {
+                "bytes": 17756,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/compile/pass-validation/0001-bf16-f32acc-draft-contract/before.mlir",
+                "sha256": "ee9d5dfbfa67b4aabaa1be80103dba5d8d1f3e360c8f4f554c2addb9bbae0c69"
+              },
+              {
+                "bytes": 30831,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/compile/pass-validation/0001-bf16-f32acc-draft-contract/after.mlir",
+                "sha256": "e4fdb86429600450b6473e61d4743f59c9a2c8400a9e9db27ea5caa1f728a7c5"
+              }
+            ],
+            "job": "0001-bf16-f32acc-draft-contract",
+            "label": "bf16_f32acc_draft_contract",
+            "pass": "bf16_f32acc_draft_contract",
+            "profile": "draft-uniform-half-positive-zero-macc-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "ee9d5dfbfa67b4aabaa1be80103dba5d8d1f3e360c8f4f554c2addb9bbae0c69",
+            "status": "verified"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "520f6b126e83eb7fd9669c8212c9628be6fd1b4282d027f6b50a5a90c1397344",
+            "input_refs": [
+              {
+                "bytes": 857,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/compile/pass-validation/0002-cse/request.json",
+                "sha256": "1f65cd1f7daf9a603e3f8c6418812bed42ed90e73964e0a0ccf39c6ee87fabf0"
+              },
+              {
+                "bytes": 27012,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/compile/pass-validation/0002-cse/before.mlir",
+                "sha256": "af6e689023af13c68004660c13249861701d344c4bc59a470ce1ba8713698a4a"
+              },
+              {
+                "bytes": 23038,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/compile/pass-validation/0002-cse/after.mlir",
+                "sha256": "520f6b126e83eb7fd9669c8212c9628be6fd1b4282d027f6b50a5a90c1397344"
+              }
+            ],
+            "job": "0002-cse",
+            "label": "cse",
+            "pass": "cse",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "af6e689023af13c68004660c13249861701d344c4bc59a470ce1ba8713698a4a",
+            "status": "verified"
+          }
+        ],
+        "claim_scope": "individual bounded pass boundaries; no whole-compiler or native-fidelity claim",
+        "compiler_completed": true,
+        "finalized": true,
+        "requested_passes": [
+          "bf16_f32acc_draft_contract",
+          "buffer_reuse",
+          "configuration_loop_hoisting",
+          "configuration_write_elision",
+          "cse",
+          "host_graph_fusion",
+          "lower_quant_ext",
+          "ordered_loop_segmentation",
+          "ordered_loop_unrolling",
+          "prune_dead_pure_tensor_ops"
+        ],
+        "schema": "merlin.compiler-coverage.v1",
+        "unchanged_boundaries": 0,
+        "unverified_boundaries": 0,
+        "verified_boundaries": 2
+      },
+      "elapsed_scope": "complete_case_walltime_not_kernel_latency",
+      "elapsed_seconds": 147.96915251784958,
+      "id": "MLP12_F16_textual",
+      "native": [
+        {
+          "baseline_seconds_observed": 0.19644689885899425,
+          "checked_outputs": [
+            {
+              "bytes": 496,
+              "dtype": "float16",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 624,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/native/20261029/checked/result0.npy",
+                "sha256": "7c939bfdf52835ae3e5091c1691a566d401b7228403f99ca6173b41450d32eb2"
+              },
+              "sha256": "919dc4b2a30d564ae231b72660abaaa18a5c6b26cc42876a986598216d3c5a75",
+              "shape": [
+                8,
+                31
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.11976220807991922,
+          "comparison": {
+            "bytes": 25674,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/native/20261029/COMPARISON.json",
+            "sha256": "ef45b49360e751172b202442d0f25dc0113120f8c473042d646cccb593a5f47c"
+          },
+          "independent_reference": {
+            "bytes": 9098,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/references/20261029/REFERENCE.json",
+            "sha256": "8b79374d7a6382b546bd6bc82d091b28b9416ba931208cc9cec35bed219e24e0"
+          },
+          "seed": 20261029,
+          "timing_is_performance_evidence": false
+        },
+        {
+          "baseline_seconds_observed": 0.15203648316673934,
+          "checked_outputs": [
+            {
+              "bytes": 496,
+              "dtype": "float16",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 624,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/native/20261030/checked/result0.npy",
+                "sha256": "46a7d231dd2c5f5f7f7f101a5dcd65aa9d0c811d983c36ffe8a6f03b41b7838b"
+              },
+              "sha256": "675fec8f477f033cba730831979a5e739e0aefd74611bdd856ad5c6dcfaa9551",
+              "shape": [
+                8,
+                31
+              ]
+            }
+          ],
+          "checked_seconds_observed": 0.22352913580834866,
+          "comparison": {
+            "bytes": 25674,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/native/20261030/COMPARISON.json",
+            "sha256": "8c1d349a4be11c19103a7a2e642f82ea08d2f263cb3dd73da6a3a0b1cc17e141"
+          },
+          "independent_reference": {
+            "bytes": 9098,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/references/20261030/REFERENCE.json",
+            "sha256": "71755f67816e4533ae5fc910a4aa0448c936f188d66cc7bdd2af5de3f01124b4"
+          },
+          "seed": 20261030,
+          "timing_is_performance_evidence": false
+        }
+      ],
+      "options": {
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "formal_transforms": {
+          "buffer_allocator": null,
+          "macc_f32acc": true,
+          "memory_source": false,
+          "tile_depth": 1,
+          "tile_size": null,
+          "unroll_depth": 1,
+          "unroll_factor": null
+        },
+        "index_bits": 64,
+        "targets": [],
+        "textual": true
+      },
+      "original_source": {
+        "bytes": 9287,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/case/compile/original-model.mlir",
+        "sha256": "e7df0bd7368ff7442a16c43c93179f2c7b2ee7ff37911f77f2635fcfe19051ab"
+      },
+      "owned_process_cleanup": {
+        "complete": true,
+        "error": null,
+        "guardian_reaped": true,
+        "reaped_children": 1
+      },
+      "phase": "complete",
+      "process_result": {
+        "bytes": 746,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/MLP12_F16_textual/PROCESS-RESULT.json",
+        "sha256": "1c33b9085d8de705ced0b6b894a11562b362aa960254fdad230babf10173fc6b"
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "accepted_jobs": [
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0001-prune-dead-pure-tensor-ops",
+          "label": "prune_dead_pure_tensor_ops",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "compiler_qdq_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established; relative to the proposed Q/DQ source semantics; source specification approval is not established",
+          "job": "0002-lower-quant-ext",
+          "label": "lower_quant_ext",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0003-cse",
+          "label": "cse",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        }
+      ],
+      "case_report": {
+        "bytes": 10183,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/CASE-REPORT.json",
+        "sha256": "b7203e4fb723420fa96049fcc5044e078cff7dec9dca39032959fd6e18be3630"
+      },
+      "checked_matches_ordinary_llvm": true,
+      "compiler_report": {
+        "bytes": 197733,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/compile/DEMO-REPORT.json",
+        "sha256": "6f3ddbbbdc0444359a278483ab8657b1684a176b7910d10623e3673194ed650c"
+      },
+      "compiler_status": "PASS",
+      "coverage": {
+        "boundaries": [
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "28b8ca95c5d634a3ce961085f1786bed85950d55cc9ee6f04284bc6a3198f2e2",
+            "input_refs": [
+              {
+                "bytes": 964,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/request.json",
+                "sha256": "4c59faa4f84faf86ebfd468e80fcd46b30adebbefea1a935cede522936c00901"
+              },
+              {
+                "bytes": 820215,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/before.mlir",
+                "sha256": "5c4fb22cff2858e307ee1febbd02282120a929c506e4b356e808faa9cae8e440"
+              },
+              {
+                "bytes": 819848,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/compile/pass-validation/0001-prune-dead-pure-tensor-ops/after.mlir",
+                "sha256": "28b8ca95c5d634a3ce961085f1786bed85950d55cc9ee6f04284bc6a3198f2e2"
+              }
+            ],
+            "job": "0001-prune-dead-pure-tensor-ops",
+            "label": "prune_dead_pure_tensor_ops",
+            "pass": "prune_dead_pure_tensor_ops",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "5c4fb22cff2858e307ee1febbd02282120a929c506e4b356e808faa9cae8e440",
+            "status": "verified"
+          },
+          {
+            "check": "compiler_qdq_refinement",
+            "final_sha256": "b69431cb33a5ffcc9f54cac16cc1d249064be808594bb95fe6e576cf0debcdc2",
+            "input_refs": [
+              {
+                "bytes": 926,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/compile/pass-validation/0002-lower-quant-ext/request.json",
+                "sha256": "a5150ea55a408890306fedba46cb141c4cd2ec26d42eb2eac4a67c2a61128585"
+              },
+              {
+                "bytes": 819848,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/compile/pass-validation/0002-lower-quant-ext/before.mlir",
+                "sha256": "28b8ca95c5d634a3ce961085f1786bed85950d55cc9ee6f04284bc6a3198f2e2"
+              },
+              {
+                "bytes": 1094018,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/compile/pass-validation/0002-lower-quant-ext/after.mlir",
+                "sha256": "b69431cb33a5ffcc9f54cac16cc1d249064be808594bb95fe6e576cf0debcdc2"
+              }
+            ],
+            "job": "0002-lower-quant-ext",
+            "label": "lower_quant_ext",
+            "pass": "lower_quant_ext",
+            "profile": "proposed-qdq-typed-source-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "28b8ca95c5d634a3ce961085f1786bed85950d55cc9ee6f04284bc6a3198f2e2",
+            "status": "verified"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "336b6c9fef8d73402e56a97feb19ab0b691b841952abcf0d3687b2fcc75528da",
+            "input_refs": [
+              {
+                "bytes": 872,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/compile/pass-validation/0003-cse/request.json",
+                "sha256": "559014f2d5d0e2d232393ce688ea34810fe322656ed26a15b8ddf80b818a9a9a"
+              },
+              {
+                "bytes": 580380,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/compile/pass-validation/0003-cse/before.mlir",
+                "sha256": "65f760efb5b84e0cbb8e5a6ae595935629ac511b93b7779147f67ec5eb44ec6c"
+              },
+              {
+                "bytes": 556998,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/compile/pass-validation/0003-cse/after.mlir",
+                "sha256": "336b6c9fef8d73402e56a97feb19ab0b691b841952abcf0d3687b2fcc75528da"
+              }
+            ],
+            "job": "0003-cse",
+            "label": "cse",
+            "pass": "cse",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "65f760efb5b84e0cbb8e5a6ae595935629ac511b93b7779147f67ec5eb44ec6c",
+            "status": "verified"
+          }
+        ],
+        "claim_scope": "individual bounded pass boundaries; no whole-compiler or native-fidelity claim",
+        "compiler_completed": true,
+        "finalized": true,
+        "requested_passes": [
+          "bf16_f32acc_draft_contract",
+          "buffer_reuse",
+          "configuration_loop_hoisting",
+          "configuration_write_elision",
+          "cse",
+          "host_graph_fusion",
+          "lower_quant_ext",
+          "ordered_loop_segmentation",
+          "ordered_loop_unrolling",
+          "prune_dead_pure_tensor_ops"
+        ],
+        "schema": "merlin.compiler-coverage.v1",
+        "unchanged_boundaries": 0,
+        "unverified_boundaries": 0,
+        "verified_boundaries": 3
+      },
+      "elapsed_scope": "complete_case_walltime_not_kernel_latency",
+      "elapsed_seconds": 394.5041860199999,
+      "id": "SY_model_resnet50-xdsl",
+      "native": [
+        {
+          "baseline_seconds_observed": 3.802395549835637,
+          "checked_outputs": [
+            {
+              "bytes": 4000,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 4128,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/native/20261029/checked/result0.npy",
+                "sha256": "331d51092f630568875925ff0741eb1d30682a03a454ffe34855be24c7f9144b"
+              },
+              "sha256": "3413623edf451f016f24aa938d27c7a9f343303e04bafbd842050a83abfc91b5",
+              "shape": [
+                1,
+                1000
+              ]
+            }
+          ],
+          "checked_seconds_observed": 3.9012774070724845,
+          "comparison": {
+            "bytes": 69897,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/native/20261029/COMPARISON.json",
+            "sha256": "f85147c3ad8bb14079f8a0ca15056f7375217601ccbff218485ae5cd6d516cdc"
+          },
+          "independent_reference": null,
+          "seed": 20261029,
+          "timing_is_performance_evidence": false
+        },
+        {
+          "baseline_seconds_observed": 4.077492963057011,
+          "checked_outputs": [
+            {
+              "bytes": 4000,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 4128,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/native/20261030/checked/result0.npy",
+                "sha256": "8957ccdc2a30ff3ed9aff0ac863b5199721e4c049a37a2c687d7227bbfbb165a"
+              },
+              "sha256": "29ba6a4c919deff9342f87e839f7c940de8e5c15162c638f3853daa087cc2299",
+              "shape": [
+                1,
+                1000
+              ]
+            }
+          ],
+          "checked_seconds_observed": 5.782081224955618,
+          "comparison": {
+            "bytes": 69896,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/native/20261030/COMPARISON.json",
+            "sha256": "d74e5d8ac54e076492a3acb02d5081aea1761244e478f4c9ecbb4c9e9fa95e42"
+          },
+          "independent_reference": null,
+          "seed": 20261030,
+          "timing_is_performance_evidence": false
+        }
+      ],
+      "options": {
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "formal_transforms": {
+          "buffer_allocator": null,
+          "macc_f32acc": false,
+          "memory_source": false,
+          "tile_depth": 1,
+          "tile_size": null,
+          "unroll_depth": 1,
+          "unroll_factor": null
+        },
+        "index_bits": 64,
+        "targets": [],
+        "textual": false
+      },
+      "original_source": {
+        "bytes": 721756,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/case/compile/original-model.mlir",
+        "sha256": "07e4c434a1cd8cadc8fb667984c6fda42332e867466ef74a5771b3e8fed89d29"
+      },
+      "owned_process_cleanup": {
+        "complete": true,
+        "error": null,
+        "guardian_reaped": true,
+        "reaped_children": 1
+      },
+      "phase": "complete",
+      "process_result": {
+        "bytes": 761,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-xdsl/PROCESS-RESULT.json",
+        "sha256": "d932b82547a45c341a916a6fe034893564f2b0b84f6710004db28d23dc564045"
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "accepted_jobs": [
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "compiler_qdq_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established; relative to the proposed Q/DQ source semantics; source specification approval is not established",
+          "job": "0001-lower-quant-ext",
+          "label": "lower_quant_ext",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0002-cse",
+          "label": "cse",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        }
+      ],
+      "case_report": {
+        "bytes": 8620,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-textual/case/CASE-REPORT.json",
+        "sha256": "47491ccc0f600284195b8072375e6220e6eb4ae8ae75dd542b3659aaa56e8845"
+      },
+      "checked_matches_ordinary_llvm": true,
+      "compiler_report": {
+        "bytes": 191536,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-textual/case/compile/DEMO-REPORT.json",
+        "sha256": "ed9303b212718ac6f02af71f2fa5f06974814289fa7fd09fe69dc8deb6b2dd85"
+      },
+      "compiler_status": "PASS",
+      "coverage": {
+        "boundaries": [
+          {
+            "check": "compiler_qdq_refinement",
+            "final_sha256": "73f4284340f22b2c6da6d74ba8b6cef1c97a663af21d182fe929d42c78a38050",
+            "input_refs": [
+              {
+                "bytes": 935,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-textual/case/compile/pass-validation/0001-lower-quant-ext/request.json",
+                "sha256": "d512d4c8f37798cb3a28f6e67354fa8bdd90b9a6f4f7f0df062838466e1e6d9e"
+              },
+              {
+                "bytes": 820215,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-textual/case/compile/pass-validation/0001-lower-quant-ext/before.mlir",
+                "sha256": "5c4fb22cff2858e307ee1febbd02282120a929c506e4b356e808faa9cae8e440"
+              },
+              {
+                "bytes": 1096656,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-textual/case/compile/pass-validation/0001-lower-quant-ext/after.mlir",
+                "sha256": "73f4284340f22b2c6da6d74ba8b6cef1c97a663af21d182fe929d42c78a38050"
+              }
+            ],
+            "job": "0001-lower-quant-ext",
+            "label": "lower_quant_ext",
+            "pass": "lower_quant_ext",
+            "profile": "proposed-qdq-typed-source-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "5c4fb22cff2858e307ee1febbd02282120a929c506e4b356e808faa9cae8e440",
+            "status": "verified"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "336b6c9fef8d73402e56a97feb19ab0b691b841952abcf0d3687b2fcc75528da",
+            "input_refs": [
+              {
+                "bytes": 881,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-textual/case/compile/pass-validation/0002-cse/request.json",
+                "sha256": "a26082befb5f45c6e30c1ed55403e69659b0b3e349990b18d980e325aa885790"
+              },
+              {
+                "bytes": 580380,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-textual/case/compile/pass-validation/0002-cse/before.mlir",
+                "sha256": "65f760efb5b84e0cbb8e5a6ae595935629ac511b93b7779147f67ec5eb44ec6c"
+              },
+              {
+                "bytes": 556998,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-textual/case/compile/pass-validation/0002-cse/after.mlir",
+                "sha256": "336b6c9fef8d73402e56a97feb19ab0b691b841952abcf0d3687b2fcc75528da"
+              }
+            ],
+            "job": "0002-cse",
+            "label": "cse",
+            "pass": "cse",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "65f760efb5b84e0cbb8e5a6ae595935629ac511b93b7779147f67ec5eb44ec6c",
+            "status": "verified"
+          }
+        ],
+        "claim_scope": "individual bounded pass boundaries; no whole-compiler or native-fidelity claim",
+        "compiler_completed": true,
+        "finalized": true,
+        "requested_passes": [
+          "bf16_f32acc_draft_contract",
+          "buffer_reuse",
+          "configuration_loop_hoisting",
+          "configuration_write_elision",
+          "cse",
+          "host_graph_fusion",
+          "lower_quant_ext",
+          "ordered_loop_segmentation",
+          "ordered_loop_unrolling",
+          "prune_dead_pure_tensor_ops"
+        ],
+        "schema": "merlin.compiler-coverage.v1",
+        "unchanged_boundaries": 0,
+        "unverified_boundaries": 0,
+        "verified_boundaries": 2
+      },
+      "elapsed_scope": "complete_case_walltime_not_kernel_latency",
+      "elapsed_seconds": 339.17582983290777,
+      "id": "SY_model_resnet50-textual",
+      "native": [
+        {
+          "baseline_seconds_observed": 3.811125436099246,
+          "checked_outputs": [
+            {
+              "bytes": 4000,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 4128,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-textual/case/native/20261029/checked/result0.npy",
+                "sha256": "331d51092f630568875925ff0741eb1d30682a03a454ffe34855be24c7f9144b"
+              },
+              "sha256": "3413623edf451f016f24aa938d27c7a9f343303e04bafbd842050a83abfc91b5",
+              "shape": [
+                1,
+                1000
+              ]
+            }
+          ],
+          "checked_seconds_observed": 3.762629827018827,
+          "comparison": {
+            "bytes": 69953,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-textual/case/native/20261029/COMPARISON.json",
+            "sha256": "8c0eb4e3dda57eb8e305d6ac79c519dae25f20720d06cb6d2d83c6d992382248"
+          },
+          "independent_reference": null,
+          "seed": 20261029,
+          "timing_is_performance_evidence": false
+        },
+        {
+          "baseline_seconds_observed": 4.156010662904009,
+          "checked_outputs": [
+            {
+              "bytes": 4000,
+              "dtype": "float32",
+              "name": "result0",
+              "retained_array": {
+                "bytes": 4128,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-textual/case/native/20261030/checked/result0.npy",
+                "sha256": "8957ccdc2a30ff3ed9aff0ac863b5199721e4c049a37a2c687d7227bbfbb165a"
+              },
+              "sha256": "29ba6a4c919deff9342f87e839f7c940de8e5c15162c638f3853daa087cc2299",
+              "shape": [
+                1,
+                1000
+              ]
+            }
+          ],
+          "checked_seconds_observed": 5.710354154929519,
+          "comparison": {
+            "bytes": 69953,
+            "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-textual/case/native/20261030/COMPARISON.json",
+            "sha256": "7e2d7d3a369eb87c1714429f93d59b74a863077b6df08a97bac81233b04659f8"
+          },
+          "independent_reference": null,
+          "seed": 20261030,
+          "timing_is_performance_evidence": false
+        }
+      ],
+      "options": {
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "formal_transforms": {
+          "buffer_allocator": null,
+          "macc_f32acc": false,
+          "memory_source": false,
+          "tile_depth": 1,
+          "tile_size": null,
+          "unroll_depth": 1,
+          "unroll_factor": null
+        },
+        "index_bits": 64,
+        "targets": [],
+        "textual": true
+      },
+      "original_source": {
+        "bytes": 721756,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-textual/case/compile/original-model.mlir",
+        "sha256": "07e4c434a1cd8cadc8fb667984c6fda42332e867466ef74a5771b3e8fed89d29"
+      },
+      "owned_process_cleanup": {
+        "complete": true,
+        "error": null,
+        "guardian_reaped": true,
+        "reaped_children": 1
+      },
+      "phase": "complete",
+      "process_result": {
+        "bytes": 770,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_resnet50-textual/PROCESS-RESULT.json",
+        "sha256": "2f810a520acb8aef0c80f71276bd4587487d77b40da4de8bdcccf91ee032bb46"
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "accepted_jobs": [
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "compiler_qdq_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established; relative to the proposed Q/DQ source semantics; source specification approval is not established",
+          "job": "0001-lower-quant-ext",
+          "label": "lower_quant_ext",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0002-cse",
+          "label": "cse",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        }
+      ],
+      "case_report": {
+        "bytes": 9506,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-xdsl/case/CASE-REPORT.json",
+        "sha256": "4c8c61a631e22b5d2e987c2532435a5d7327b2c146363e371f0234d04a1f98cc"
+      },
+      "checked_matches_ordinary_llvm": true,
+      "compiler_report": {
+        "bytes": 216500,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-xdsl/case/compile/DEMO-REPORT.json",
+        "sha256": "52c040a69090451bb3ca161bbbde4270510179431474e340759d0c896ddf46ca"
+      },
+      "compiler_status": "PASS",
+      "coverage": {
+        "boundaries": [
+          {
+            "final_sha256": "df3d8b9491f6f325657f198c870fe9d81be2409bf9a601a911740fa00e2ca1a6",
+            "pass": "prune_dead_pure_tensor_ops",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": false,
+            "source_sha256": "df3d8b9491f6f325657f198c870fe9d81be2409bf9a601a911740fa00e2ca1a6",
+            "status": "unchanged"
+          },
+          {
+            "check": "compiler_qdq_refinement",
+            "final_sha256": "99de49666ef9c182b47d3dc3f97071403a718022b9acd39254fa168fea104c7d",
+            "input_refs": [
+              {
+                "bytes": 932,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-xdsl/case/compile/pass-validation/0001-lower-quant-ext/request.json",
+                "sha256": "8adeb5ba8f47efb12637b167b20a926ef2a28d2161755bbaf3af53f8ff0e7c34"
+              },
+              {
+                "bytes": 2572112,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-xdsl/case/compile/pass-validation/0001-lower-quant-ext/before.mlir",
+                "sha256": "df3d8b9491f6f325657f198c870fe9d81be2409bf9a601a911740fa00e2ca1a6"
+              },
+              {
+                "bytes": 3006481,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-xdsl/case/compile/pass-validation/0001-lower-quant-ext/after.mlir",
+                "sha256": "99de49666ef9c182b47d3dc3f97071403a718022b9acd39254fa168fea104c7d"
+              }
+            ],
+            "job": "0001-lower-quant-ext",
+            "label": "lower_quant_ext",
+            "pass": "lower_quant_ext",
+            "profile": "proposed-qdq-typed-source-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "df3d8b9491f6f325657f198c870fe9d81be2409bf9a601a911740fa00e2ca1a6",
+            "status": "verified"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "bba92c90b10721bcb8584fa1cb978f97573036d2ff4f2621e9a7bb1c1e5a5f5c",
+            "input_refs": [
+              {
+                "bytes": 878,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-xdsl/case/compile/pass-validation/0002-cse/request.json",
+                "sha256": "baa805a8a2ccaaa8cd6866ab30ea982b3a79fb9733338577a7c5c6b2228d6a62"
+              },
+              {
+                "bytes": 1691690,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-xdsl/case/compile/pass-validation/0002-cse/before.mlir",
+                "sha256": "d564961639a6320456a6c47ff55b0bf09ebcba6e4335a4919a0f57b0de26c279"
+              },
+              {
+                "bytes": 1546308,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-xdsl/case/compile/pass-validation/0002-cse/after.mlir",
+                "sha256": "bba92c90b10721bcb8584fa1cb978f97573036d2ff4f2621e9a7bb1c1e5a5f5c"
+              }
+            ],
+            "job": "0002-cse",
+            "label": "cse",
+            "pass": "cse",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "d564961639a6320456a6c47ff55b0bf09ebcba6e4335a4919a0f57b0de26c279",
+            "status": "verified"
+          }
+        ],
+        "claim_scope": "individual bounded pass boundaries; no whole-compiler or native-fidelity claim",
+        "compiler_completed": true,
+        "finalized": true,
+        "requested_passes": [
+          "bf16_f32acc_draft_contract",
+          "buffer_reuse",
+          "configuration_loop_hoisting",
+          "configuration_write_elision",
+          "cse",
+          "host_graph_fusion",
+          "lower_quant_ext",
+          "ordered_loop_segmentation",
+          "ordered_loop_unrolling",
+          "prune_dead_pure_tensor_ops"
+        ],
+        "schema": "merlin.compiler-coverage.v1",
+        "unchanged_boundaries": 1,
+        "unverified_boundaries": 0,
+        "verified_boundaries": 2
+      },
+      "elapsed_scope": "complete_case_walltime_not_kernel_latency",
+      "elapsed_seconds": 930.3534344660584,
+      "id": "SY_model_tiny_llama-xdsl",
+      "native": [],
+      "options": {
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "formal_transforms": {
+          "buffer_allocator": null,
+          "macc_f32acc": false,
+          "memory_source": false,
+          "tile_depth": 1,
+          "tile_size": null,
+          "unroll_depth": 1,
+          "unroll_factor": null
+        },
+        "index_bits": 64,
+        "targets": [],
+        "textual": false
+      },
+      "original_source": {
+        "bytes": 2172344,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-xdsl/case/compile/original-model.mlir",
+        "sha256": "38bf9856d2768ce90cb53a7959289b7e395ea5533c556d7448d9f7bcc075c61d"
+      },
+      "owned_process_cleanup": {
+        "complete": true,
+        "error": null,
+        "guardian_reaped": true,
+        "reaped_children": 1
+      },
+      "phase": "finite_native_seed_20261029",
+      "process_result": {
+        "bytes": 804,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-xdsl/PROCESS-RESULT.json",
+        "sha256": "e56ee2fb587c6888485446a3e0c8dba655c88e2ba72eafe919cdd2e7e3574e72"
+      },
+      "reason": "Command '['/scratch/grammy/blast/merlin-cse-dce-gate-lean/compiler-venv/bin/python', '-c', 'from pathlib import Path; import sys; from merlin.llvmlower.codegen import build_host_shared; build_host_shared(Path(sys.argv[1]), Path(sys.argv[2]))', '/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-xdsl/case/compile/baseline/model.ll', '/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-xdsl/case/native/20261029/baseline/execution.so']' timed out after 300 seconds",
+      "status": "FAILED"
+    },
+    {
+      "accepted_jobs": [
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "compiler_qdq_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established; relative to the proposed Q/DQ source semantics; source specification approval is not established",
+          "job": "0001-lower-quant-ext",
+          "label": "lower_quant_ext",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "verified"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        },
+        {
+          "axioms": [
+            "propext",
+            "Classical.choice",
+            "Quot.sound"
+          ],
+          "check": "tensor_refinement",
+          "claim": "strict refinement on inputs of the declared types; definedness not established",
+          "job": "0002-cse",
+          "label": "cse",
+          "reason": "",
+          "strengthenings": {
+            "definedness": "abstracted",
+            "universal_boundary": "abstracted"
+          },
+          "theorems": [
+            "MerlinVerify.Check.TypedModule.check_sound",
+            "MerlinVerify.Check.supportCheck_sound"
+          ],
+          "verdict": "accepted"
+        }
+      ],
+      "case_report": {
+        "bytes": 9181,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-textual/case/CASE-REPORT.json",
+        "sha256": "7b1df310436c5f3ae98c8675098b688ae470dac5267b85cbe9e34a70cb1801e0"
+      },
+      "checked_matches_ordinary_llvm": true,
+      "compiler_report": {
+        "bytes": 216245,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-textual/case/compile/DEMO-REPORT.json",
+        "sha256": "944c6347a648e7bde0927863f2e57b2705165832532faab87f2052e1ce836cc2"
+      },
+      "compiler_status": "PASS",
+      "coverage": {
+        "boundaries": [
+          {
+            "check": "compiler_qdq_refinement",
+            "final_sha256": "30a0d64ff5d825dbbe001746076ebdc37ae4f089c9cb1ffd34ae5a367099e68a",
+            "input_refs": [
+              {
+                "bytes": 941,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-textual/case/compile/pass-validation/0001-lower-quant-ext/request.json",
+                "sha256": "046e5cfd513aa98ec0ed980832a52b67278b5b5f99d6b1b2d43bc2dbc10bf5ae"
+              },
+              {
+                "bytes": 2172344,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-textual/case/compile/pass-validation/0001-lower-quant-ext/before.mlir",
+                "sha256": "38bf9856d2768ce90cb53a7959289b7e395ea5533c556d7448d9f7bcc075c61d"
+              },
+              {
+                "bytes": 3017521,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-textual/case/compile/pass-validation/0001-lower-quant-ext/after.mlir",
+                "sha256": "30a0d64ff5d825dbbe001746076ebdc37ae4f089c9cb1ffd34ae5a367099e68a"
+              }
+            ],
+            "job": "0001-lower-quant-ext",
+            "label": "lower_quant_ext",
+            "pass": "lower_quant_ext",
+            "profile": "proposed-qdq-typed-source-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "38bf9856d2768ce90cb53a7959289b7e395ea5533c556d7448d9f7bcc075c61d",
+            "status": "verified"
+          },
+          {
+            "check": "tensor_refinement",
+            "final_sha256": "51b5a74b5615e26d022a36582c293782c0c38b08fc6c6868d6cf17cfa19d12fd",
+            "input_refs": [
+              {
+                "bytes": 887,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-textual/case/compile/pass-validation/0002-cse/request.json",
+                "sha256": "58590aea6fd4510ee4bf93343f00f3fe577f2ee44f69ea7b9548383e213f3b21"
+              },
+              {
+                "bytes": 1691690,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-textual/case/compile/pass-validation/0002-cse/before.mlir",
+                "sha256": "c98a1506699f7b4bf19dc1075a49bf139f47e52e93f5b4d983e4c29401742b14"
+              },
+              {
+                "bytes": 1546308,
+                "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-textual/case/compile/pass-validation/0002-cse/after.mlir",
+                "sha256": "51b5a74b5615e26d022a36582c293782c0c38b08fc6c6868d6cf17cfa19d12fd"
+              }
+            ],
+            "job": "0002-cse",
+            "label": "cse",
+            "pass": "cse",
+            "profile": "typed-tensor-rulebook-index64-v1",
+            "proof_credit": true,
+            "source_sha256": "c98a1506699f7b4bf19dc1075a49bf139f47e52e93f5b4d983e4c29401742b14",
+            "status": "verified"
+          }
+        ],
+        "claim_scope": "individual bounded pass boundaries; no whole-compiler or native-fidelity claim",
+        "compiler_completed": true,
+        "finalized": true,
+        "requested_passes": [
+          "bf16_f32acc_draft_contract",
+          "buffer_reuse",
+          "configuration_loop_hoisting",
+          "configuration_write_elision",
+          "cse",
+          "host_graph_fusion",
+          "lower_quant_ext",
+          "ordered_loop_segmentation",
+          "ordered_loop_unrolling",
+          "prune_dead_pure_tensor_ops"
+        ],
+        "schema": "merlin.compiler-coverage.v1",
+        "unchanged_boundaries": 0,
+        "unverified_boundaries": 0,
+        "verified_boundaries": 2
+      },
+      "elapsed_scope": "complete_case_walltime_not_kernel_latency",
+      "elapsed_seconds": 929.9507318339311,
+      "id": "SY_model_tiny_llama-textual",
+      "native": [],
+      "options": {
+        "data_layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        "formal_transforms": {
+          "buffer_allocator": null,
+          "macc_f32acc": false,
+          "memory_source": false,
+          "tile_depth": 1,
+          "tile_size": null,
+          "unroll_depth": 1,
+          "unroll_factor": null
+        },
+        "index_bits": 64,
+        "targets": [],
+        "textual": true
+      },
+      "original_source": {
+        "bytes": 2172344,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-textual/case/compile/original-model.mlir",
+        "sha256": "38bf9856d2768ce90cb53a7959289b7e395ea5533c556d7448d9f7bcc075c61d"
+      },
+      "owned_process_cleanup": {
+        "complete": true,
+        "error": null,
+        "guardian_reaped": true,
+        "reaped_children": 1
+      },
+      "phase": "finite_native_seed_20261029",
+      "process_result": {
+        "bytes": 813,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-textual/PROCESS-RESULT.json",
+        "sha256": "7e2bab68243199781b211c43f005e71a0af645157a25e8f035d895f06b5d42d8"
+      },
+      "reason": "Command '['/scratch/grammy/blast/merlin-cse-dce-gate-lean/compiler-venv/bin/python', '-c', 'from pathlib import Path; import sys; from merlin.llvmlower.codegen import build_host_shared; build_host_shared(Path(sys.argv[1]), Path(sys.argv[2]))', '/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-textual/case/compile/baseline/model.ll', '/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SY_model_tiny_llama-textual/case/native/20261029/baseline/execution.so']' timed out after 300 seconds",
+      "status": "FAILED"
+    }
+  ],
+  "coverage_by_selector": {
+    "bf16_f32acc_draft_contract": {
+      "not_observed_cases": 12,
+      "selected_cases": 14,
+      "verified": 2
+    },
+    "buffer_reuse": {
+      "not_observed_cases": 14,
+      "selected_cases": 14
+    },
+    "configuration_loop_hoisting": {
+      "not_observed_cases": 14,
+      "selected_cases": 14
+    },
+    "configuration_write_elision": {
+      "not_observed_cases": 14,
+      "selected_cases": 14
+    },
+    "cse": {
+      "selected_cases": 14,
+      "verified": 14
+    },
+    "host_graph_fusion": {
+      "not_observed_cases": 14,
+      "selected_cases": 14
+    },
+    "lower_quant_ext": {
+      "not_observed_cases": 1,
+      "selected_cases": 14,
+      "unchanged": 1,
+      "verified": 12
+    },
+    "ordered_loop_segmentation": {
+      "not_observed_cases": 14,
+      "selected_cases": 14
+    },
+    "ordered_loop_unrolling": {
+      "not_observed_cases": 14,
+      "selected_cases": 14
+    },
+    "prune_dead_pure_tensor_ops": {
+      "not_observed_cases": 7,
+      "selected_cases": 14,
+      "unchanged": 1,
+      "verified": 6
+    }
+  },
+  "cpus": [
+    28,
+    29,
+    30,
+    31
+  ],
+  "evidence_scope": "Retained test metadata, never live completion authority",
+  "final_source_cut_matches": true,
+  "jobs": 4,
+  "model_accuracy_claim": false,
+  "numeric_contracts": {
+    "macc": "draft_f32_accumulation",
+    "qdq": "proposed_model"
+  },
+  "remote_check": {
+    "bytes": 647,
+    "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/REMOTE-CHECK.json",
+    "sha256": "c55ca67582a1efde784056149ac2586403af582f2523be28216ec2f8f09ea7a0"
+  },
+  "retained_junit_cohorts": [
+    {
+      "artifact": {
+        "bytes": 6201,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/CONFIG-UNIT-ISOLATED-v1.xml",
+        "sha256": "92b30a18dca021debc5cd86fe1091062938d08014f6122afba7f0c8aecc7e309"
+      },
+      "declared_tests": 30,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 30,
+      "passed": 30,
+      "skipped": 0,
+      "suite_seconds": 3.755
+    },
+    {
+      "artifact": {
+        "bytes": 8707,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/CURRENT-DEMO-HOST-v1.xml",
+        "sha256": "f8335a1d802949060590a22eb588f743d405d552efc9645bb9a01959f1b40424"
+      },
+      "declared_tests": 53,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 53,
+      "passed": 53,
+      "skipped": 0,
+      "suite_seconds": 1.272
+    },
+    {
+      "artifact": {
+        "bytes": 9485,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/CURRENT-DEMO-HOST-v4.xml",
+        "sha256": "b9a47ed120767ef6fb2a4dd169be892608c2828507162b2551ff33be5aaf995d"
+      },
+      "declared_tests": 58,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 58,
+      "passed": 58,
+      "skipped": 0,
+      "suite_seconds": 2.023
+    },
+    {
+      "artifact": {
+        "bytes": 20436,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/CURRENT-LAYOUT-ACCESS-v1.xml",
+        "sha256": "15a6bd6b506b68328308a969a820d1207346cae99cd63c6ace464a834185a9d9"
+      },
+      "declared_tests": 113,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 113,
+      "passed": 111,
+      "skipped": 2,
+      "suite_seconds": 9.74
+    },
+    {
+      "artifact": {
+        "bytes": 3111,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/CURRENT-NATIVE-CAP-HOST-v2.xml",
+        "sha256": "0fe75cff2ad92b7223de87ef71a18054bac10bf42e813975171b35fb71cc0837"
+      },
+      "declared_tests": 18,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 18,
+      "passed": 18,
+      "skipped": 0,
+      "suite_seconds": 0.643
+    },
+    {
+      "artifact": {
+        "bytes": 44405,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/CURRENT-POLICY-HOST-v1.xml",
+        "sha256": "28dc46e13d0594a5d25bc3cb928ca7336bb91cb4e3fabe6b7616947645e82e26"
+      },
+      "declared_tests": 216,
+      "errors": 0,
+      "failed": 1,
+      "header_matches_children": true,
+      "observed_children": 216,
+      "passed": 215,
+      "skipped": 0,
+      "suite_seconds": 12.119
+    },
+    {
+      "artifact": {
+        "bytes": 40790,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/CURRENT-POLICY-HOST-v2.xml",
+        "sha256": "41061d43b6182cd496bfdf1c7cd67fee2ce5617eac991a431fcd2c2d38e50efe"
+      },
+      "declared_tests": 217,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 217,
+      "passed": 217,
+      "skipped": 0,
+      "suite_seconds": 13.918
+    },
+    {
+      "artifact": {
+        "bytes": 2637,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/HOST-v1.xml",
+        "sha256": "4d1dd2412265a479fdb00ae09fcc7062da5b0c6e6c1cec51eea8eee89111adbe"
+      },
+      "declared_tests": 14,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 14,
+      "passed": 14,
+      "skipped": 0,
+      "suite_seconds": 0.383
+    },
+    {
+      "artifact": {
+        "bytes": 3506,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/HOST-v2.xml",
+        "sha256": "a0aac0df8282f62a583d860d318056b1f62fbeb4082b288407a85897f4f05c77"
+      },
+      "declared_tests": 19,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 19,
+      "passed": 19,
+      "skipped": 0,
+      "suite_seconds": 0.379
+    },
+    {
+      "artifact": {
+        "bytes": 3662,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/HOST-v3.xml",
+        "sha256": "1e819806737dbe430680f3972522169b3c693e6cda6ced6807963c0ad31bdadf"
+      },
+      "declared_tests": 20,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 20,
+      "passed": 20,
+      "skipped": 0,
+      "suite_seconds": 0.647
+    },
+    {
+      "artifact": {
+        "bytes": 1665,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/NATIVE-HOST-v1.xml",
+        "sha256": "4ac1afb9db5b4f1f3bddfdc1743fa2cd036a715759640bb2a135df0f51e7bd8e"
+      },
+      "declared_tests": 9,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 9,
+      "passed": 9,
+      "skipped": 0,
+      "suite_seconds": 2.324
+    },
+    {
+      "artifact": {
+        "bytes": 1665,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/NATIVE-HOST-v2.xml",
+        "sha256": "36e5bc56c2522af989784704abb77a45bdcf53daa86aeb196529c0850e42389e"
+      },
+      "declared_tests": 9,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 9,
+      "passed": 9,
+      "skipped": 0,
+      "suite_seconds": 0.707
+    },
+    {
+      "artifact": {
+        "bytes": 2243,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-runner-host-v1/results.xml",
+        "sha256": "6cd9912960f188ce87681811ed8802abf4bcdea0b76540b73e6905cf55663b97"
+      },
+      "declared_tests": 14,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 14,
+      "passed": 14,
+      "skipped": 0,
+      "suite_seconds": 0.42
+    },
+    {
+      "artifact": {
+        "bytes": 2414,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-runner-host-v2/results.xml",
+        "sha256": "eb24c6b48e92e04174494f89583c403f0e792fb8842e5aab1b2df211190c8c04"
+      },
+      "declared_tests": 15,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 15,
+      "passed": 15,
+      "skipped": 0,
+      "suite_seconds": 0.438
+    },
+    {
+      "artifact": {
+        "bytes": 5285,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/native-array-budget-20261029/host-v1/results.xml",
+        "sha256": "e953f688bc38c00ec6a6c2a733f4cbbc3b01642e49fe16a5ab9e0f44dd7f0bb2"
+      },
+      "declared_tests": 33,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 33,
+      "passed": 33,
+      "skipped": 0,
+      "suite_seconds": 1.036
+    },
+    {
+      "artifact": {
+        "bytes": 4606,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/native-build-budget-v4/HOST-v1.xml",
+        "sha256": "5ca28506c610996f50f07a9598d7179d795f803f1dabb44967c68a6ce8826278"
+      },
+      "declared_tests": 20,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 20,
+      "passed": 20,
+      "skipped": 0,
+      "suite_seconds": 0.487
+    },
+    {
+      "artifact": {
+        "bytes": 8305,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/native-build-budget-v4/HOST-v2.xml",
+        "sha256": "e2ef902974625111daa74e2198e99b4999ee953fe6b031ae44b88438a4d1dcb5"
+      },
+      "declared_tests": 38,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 38,
+      "passed": 38,
+      "skipped": 0,
+      "suite_seconds": 0.652
+    },
+    {
+      "artifact": {
+        "bytes": 2349,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/native-v2-draft/host-v1/results.xml",
+        "sha256": "f949c919c519924c7bf8d234f9f0f68f30c04528b137f962c1e7deb302427602"
+      },
+      "declared_tests": 11,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 11,
+      "passed": 11,
+      "skipped": 0,
+      "suite_seconds": 0.089
+    },
+    {
+      "artifact": {
+        "bytes": 2349,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/native-v2-draft/host-v2/results.xml",
+        "sha256": "1bea9ccf03af2163e66ce832460cce19d93a2e7008a1f34393f63f0c027ca531"
+      },
+      "declared_tests": 11,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 11,
+      "passed": 11,
+      "skipped": 0,
+      "suite_seconds": 0.103
+    },
+    {
+      "artifact": {
+        "bytes": 6568,
+        "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/resource-policy-draft/HOST-v1.xml",
+        "sha256": "25a36c398772ab05ae545d5f93a267365a7db7a78dd50a8535c465e9ac2ade55"
+      },
+      "declared_tests": 26,
+      "errors": 0,
+      "failed": 0,
+      "header_matches_children": true,
+      "observed_children": 26,
+      "passed": 26,
+      "skipped": 0,
+      "suite_seconds": 0.563
+    }
+  ],
+  "schema": "merlin.larger-model-demo.summary.v1",
+  "seeds": [
+    20261029,
+    20261030
+  ],
+  "source_base": "fbe68e88846f109c792f7e2eb0aa43be99d858a1",
+  "source_bytes_include_uncommitted_reviewed_resource_policy": true,
+  "source_cut": {
+    "bytes": 19032,
+    "path": "/scratch/grammy/blast/merlin-lean-dce-cse/out/build/larger-model-gate-demo-20261029/campaign-v3/SOURCE-CUT.json",
+    "sha256": "da7bd3264c66f33ee294823e506a4c9b280aa408a447f0b170fef04e4aee66f8"
+  },
+  "source_framework_equivalence": false,
+  "status": "FAILED",
+  "tests_are_overlapping_no_grand_total": true,
+  "totals": {
+    "compared_output_elements": 23488,
+    "compiler_passed": 14,
+    "e2e_failed": 2,
+    "e2e_passed": 12,
+    "guarded_input_uploads": 2104,
+    "independent_reference_comparisons": 4,
+    "logical_input_arrays": 1052,
+    "native_calls": 48,
+    "native_scenarios": 24,
+    "normal_runtime_command_records": 144,
+    "retained_output_arrays": 48,
+    "unchanged_boundaries": 2,
+    "unverified_boundaries": 0,
+    "verified_boundaries": 34
+  },
+  "whole_model_formal_proof": false
+}
