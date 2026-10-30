@@ -1,5 +1,13 @@
 # Current compiler verification checkpoint — 2026-10-29
 
+An independent [frozen-gate audit handoff](out/artifacts/audits/frozen-followup-20261029/HANDOFF.md)
+records 207 distinct passing existing tests and a successful full Lean guard at
+`591687da8`. It also retains six admission-error counterexamples, nine injected
+incomplete-worker-result failures and a blocked UNROLL mutation whose verdict
+was classified as unavailable. Proposed fixes remain unapplied. The kernel/model
+campaign is unfinished. These results predate `b7626bbf4`, which expands `all`
+to ten checks; they do not qualify that newer default.
+
 The latest user policy keeps ordinary compiler transformations for original
 sources outside an explicit Lean profile and logs those boundaries as unverified
 at invocation completion. Admitted source boundaries still block on unsuccessful
