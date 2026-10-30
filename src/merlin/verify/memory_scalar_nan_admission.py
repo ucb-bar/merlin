@@ -17,12 +17,15 @@ MAX_DENSE_FLOAT_BYTES = 256 * 1024
 MAX_LOOP_DENSE_BYTES = 4 * 1024 * 1024
 
 
-def _parse_bounded(raw, *, maximum_bytes, memory, context=None):
+def _parse_bounded(raw, *, maximum_bytes, memory, context=None, maximum_dense_elements=None):
     """Limit actual dense literal storage before the parent repeats a splat.
 
     The local class is part of this function's frozen code constants. Ordinary
     tensor signatures are never inspected by these dense-attribute-only hooks.
     """
+    if maximum_dense_elements is not None and (type(maximum_dense_elements) is not int or maximum_dense_elements < 1):
+        raise ValueError("dense element budget must be a positive integer or None")
+
     from xdsl.context import Context
     from xdsl.dialects import arith, func, memref, scf
 
@@ -31,6 +34,7 @@ def _parse_bounded(raw, *, maximum_bytes, memory, context=None):
     class BoundedParser(DenseFloatParser):
         def __init__(self, *args, **kwargs):
             self.remaining_dense_bytes = maximum_bytes
+            self.remaining_dense_elements = maximum_dense_elements
             super().__init__(*args, **kwargs)
 
         def _charge_dense_type(self, shaped):
@@ -52,10 +56,16 @@ def _parse_bounded(raw, *, maximum_bytes, memory, context=None):
                 for extent in shape:
                     if extent > self.remaining_dense_bytes // width // count:
                         raise GateUnavailable("dense literal decoded-storage resource budget exceeded")
+                    if self.remaining_dense_elements is not None and extent > self.remaining_dense_elements // count:
+                        raise GateUnavailable("dense literal decoded-element resource budget exceeded")
                     count *= extent
             required = count * width
             if required > self.remaining_dense_bytes:
                 raise GateUnavailable("dense literal decoded-storage resource budget exceeded")
+            if self.remaining_dense_elements is not None:
+                if count > self.remaining_dense_elements:
+                    raise GateUnavailable("dense literal decoded-element resource budget exceeded")
+                self.remaining_dense_elements -= count
             self.remaining_dense_bytes -= required
 
         def _parse_dense_literal_type(self):

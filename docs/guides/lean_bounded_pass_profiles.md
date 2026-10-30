@@ -61,9 +61,13 @@ known grammar exclusion, binding the exact input and tool bytes before returning
 that decision. This lets ordinary xDSL preprocessing handle source forms outside
 the native reader's grammar. It does not classify any proposed target. Unexpected
 context/import/resource failures and failures during actual export or checking
-remain blocking. The source adapter bounds complete IR to 4MiB and 5000
-operations; parser dense-storage resource failures are not silently converted
-into model exclusions.
+remain blocking. The tensor/Q/DQ/MACC source adapter bounds complete raw IR to
+4MiB and 32,768 operations. Its dense-literal parser separately permits 64MiB of
+aggregate decoded storage and 8,388,608 aggregate elements, charged before splat
+expansion. These are finite host resource policies; the Lean relations are
+unchanged. Ordinary runtime tensor signatures consume no dense-literal budget.
+Parser resource failures remain blocking. The memory and loop profiles retain
+their existing 256KiB and 4MiB dense-storage policies.
 
 The retained LLM-context proofs use actual recaptured floating/integer model
 prefixes with an added selected SCF probe. The original captures had no selected

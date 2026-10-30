@@ -23,6 +23,10 @@ TENSOR = "typed-tensor-rulebook-index64-v1"
 QDQ = "proposed-qdq-typed-source-index64-v1"
 MACC = "draft-uniform-half-positive-zero-macc-index64-v1"
 MAX_SOURCE_BYTES = 4 * 1024 * 1024
+# Finite intake/work policies, independent of the parametric Lean theorems.
+MAX_SOURCE_OPERATIONS = 32768
+MAX_DENSE_DECODED_BYTES = 64 * 1024 * 1024
+MAX_DENSE_ELEMENTS = 8 * 1024 * 1024
 
 
 def _outside(profile, code, reason):
@@ -42,10 +46,20 @@ def admit_source(raw, *, pass_name, validation):
     if type(raw) is not str or len(raw.encode()) > MAX_SOURCE_BYTES:
         raise _outside(profile, "source-byte-bound", "complete original IR exceeds the declared 4MiB model bound")
     with IR_LOCK:
-        module = _parse_bounded(raw, maximum_bytes=MAX_SOURCE_BYTES, memory=False, context=make_context())
+        module = _parse_bounded(
+            raw,
+            maximum_bytes=MAX_DENSE_DECODED_BYTES,
+            maximum_dense_elements=MAX_DENSE_ELEMENTS,
+            memory=False,
+            context=make_context(),
+        )
     operations = tuple(module.walk())
-    if len(operations) > 5000:
-        raise _outside(profile, "source-syntax-bound", "source profile permits at most 5000 operations")
+    if len(operations) > MAX_SOURCE_OPERATIONS:
+        raise _outside(
+            profile,
+            "source-syntax-bound",
+            f"source profile permits at most {MAX_SOURCE_OPERATIONS} operations",
+        )
     if any(op.successors or any(len(region.blocks) > 1 for region in op.regions) for op in operations):
         raise _outside(profile, "single-block-regions", "successors and multi-block regions are outside the IR model")
     if pass_name == "bf16_f32acc_draft_contract":
