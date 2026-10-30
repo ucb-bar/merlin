@@ -233,6 +233,94 @@ def _require_builtin_result(name, detail):
         if source["status"] == "not_requested" and source.get("original_program_bound") is not False:
             raise GateRejected("Q/DQ source qualification was not requested")
         return
+    if name == "tensor_refinement":
+        from .gate_checks import THEOREMS
+        from .gate_errors import GateRejected
+
+        # The optional strengthenings stay optional, but a result may neither
+        # drop the per-function chains nor claim definedness it did not verify.
+        if (
+            type(detail) is not dict
+            or type(detail.get("theorems")) not in (list, tuple)
+            or tuple(detail["theorems"]) != THEOREMS
+            or type(detail.get("functions")) is not list
+            or any(type(function) is not str or not function for function in detail["functions"])
+            or len(set(detail["functions"])) != len(detail["functions"])
+            or type(detail.get("axioms")) is not list
+            or not set(detail["axioms"]) <= {"propext", "Classical.choice", "Quot.sound"}
+            or type(detail.get("receipt")) is not str
+            or not detail["receipt"]
+            or type(detail.get("chains")) is not dict
+            or set(detail["chains"]) != set(detail["functions"])
+            or any(type(path) is not str or not path for path in detail["chains"].values())
+            or type(detail.get("strengthenings")) is not dict
+            or set(detail["strengthenings"]) != {"universal_boundary", "definedness"}
+            or type(detail["strengthenings"]["universal_boundary"]) is not str
+            or not detail["strengthenings"]["universal_boundary"]
+            or detail["strengthenings"]["definedness"] not in ("verified", "abstracted")
+            or type(detail.get("established")) is not list
+            or set(detail["established"])
+            != {key for key, value in detail["strengthenings"].items() if value == "verified"}
+            or len(set(detail["established"])) != len(detail["established"])
+            or detail.get("claim")
+            != "strict refinement on inputs of the declared types; "
+            + (
+                "defined on typed, nonpoison inputs (no UB or poison)"
+                if "definedness" in detail["established"]
+                else "definedness not established"
+            )
+        ):
+            raise GateRejected("tensor handler did not establish complete typed refinement and source support")
+        return
+    if name == "compiler_loop_refinement":
+        from .compiler_loop_intake import TILE, UNROLL
+        from .gate_errors import GateRejected
+        from .loop_transform_gate import PREMISES, RELATION
+
+        if (
+            type(detail) is not dict
+            or detail.get("claim") != RELATION
+            or detail.get("premises") != PREMISES
+            or type(detail.get("receipt")) is not str
+            or not detail["receipt"]
+            or type(detail.get("axioms")) is not list
+            or not set(detail["axioms"]) <= {"propext", "Classical.choice", "Quot.sound"}
+            or type(detail.get("boundaries")) is not dict
+            or not detail["boundaries"]
+            or not set(detail["boundaries"]) <= {UNROLL, TILE}
+            or any(
+                root != "Merlin.GraphGateProfileAdjacent.complete" + ("2" if kind == UNROLL else "3")
+                for kind, root in detail["boundaries"].items()
+            )
+            or detail.get("native_fidelity") is not False
+            or detail.get("general_tiling") is not False
+        ):
+            raise GateRejected("loop handler did not establish complete modeled return/error/world preservation")
+        return
+    if name == "compiler_buffer_refinement":
+        from .buffer_reuse_intake import RELATION, ROOT
+        from .compiler_transforms import ALLOCATOR, BUFFER, TILE
+        from .gate_errors import GateRejected
+
+        chain = ("shape_view_normalization", BUFFER, TILE)
+        if (
+            type(detail) is not dict
+            or detail.get("claim") != RELATION
+            or detail.get("premises") != {"allocator": ALLOCATOR}
+            or detail.get("theorems") != [ROOT]
+            or type(detail.get("receipt")) is not str
+            or not detail["receipt"]
+            or type(detail.get("axioms")) is not list
+            or not set(detail["axioms"]) <= {"propext", "Classical.choice", "Quot.sound"}
+            or type(detail.get("covered_chain")) is not list
+            or not detail["covered_chain"]
+            or detail["covered_chain"] != [kind for kind in chain if kind in detail["covered_chain"]]
+            or detail.get("compiler_enforcement") is not True
+            or detail.get("native_allocator_fidelity") is not False
+            or detail.get("full_error_or_world_equivalence") is not False
+        ):
+            raise GateRejected("buffer handler did not establish complete conditional possible-success preservation")
+        return
     if name != "compiler_macc_contract":
         return
     from .compiler_macc import THEOREM

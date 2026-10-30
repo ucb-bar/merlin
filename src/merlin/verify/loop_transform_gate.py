@@ -29,6 +29,10 @@ from .loop_transform_intake import (
 )
 
 STD3 = {"propext", "Classical.choice", "Quot.sound"}
+RELATION = "all defined entries equal returned values/errors/terminal world"
+PREMISES = (
+    "trusted full-IR Python projection; common total pure primitives; local opaque result arity; explicit index model"
+)
 _LIVE = weakref.WeakKeyDictionary()
 
 
@@ -257,11 +261,8 @@ def check(prepared, *, lean, destination, timeout=120):
         "scope": "actual compiler loop boundary"
         if type(prepared) is PreparedCompilerLoop
         else "scoped direct loop consumer; not compiler-wide enforcement",
-        "relation": "all defined entries equal returned values/errors/terminal world",
-        "premises": (
-            "trusted full-IR Python projection; common total pure primitives; "
-            "local opaque result arity; explicit index model"
-        ),
+        "relation": RELATION,
+        "premises": PREMISES,
         "general_tiling": False,
         "native_fidelity": False,
         "human_approved": False,
