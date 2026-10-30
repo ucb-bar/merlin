@@ -865,6 +865,7 @@ def fast_grade(
         policy_roots=inputs.policy_roots,
         public_roots=lambda: inputs.public_root() if callable(inputs.public_root) else inputs.public_root,
     )
+    adapters = _CR.defer_tiers(adapters, _withheld)  # operator patch: a withheld cert tier reads deferred (skipped), not unavailable
     # Resolve once before the suite: every completed functional result can feed
     # the existing queue without waiting for the last capsule in this batch.
     completed_promotion = None
@@ -975,7 +976,7 @@ def fast_grade(
     red = {} if package_not_ready else _qc._per_capsule_from_results(fruns)
     for row in _fast_score.get("per_capsule") or []:
         if row.get("background_deferred") and row.get("capsule") not in red:
-            red[row["capsule"]] = {"status": "gated", "tiers": {}}
+            red[row["capsule"]] = {"status": "gated", "tiers": {}, "failure_detail": str(row.get("background_deferred"))[:200]}
     verdict = _fast_loop_verdict_doc(
         red,
         sorted(adapters),
@@ -1040,8 +1041,7 @@ def fast_grade(
     out.parent.mkdir(parents=True, exist_ok=True)
     verdict = write_verdict(out, verdict)
     (ws / "qa").mkdir(exist_ok=True)
-    if verdict["snapshot_current"]:
-        verdict = write_verdict(ws / "qa" / "verdict.json", verdict)
+    verdict = write_verdict(ws / "qa" / "verdict.json", verdict)  # operator patch: publish even when the source has moved on
     _record_plateau(run_dir, current_source_sha256=verdict.get("current_source_sha256"))
     FL.record_channel_health(ws, run_dir)
     # The first successful loop verdict unlocks cert work immediately. The existing

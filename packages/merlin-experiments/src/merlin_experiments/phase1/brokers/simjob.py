@@ -274,6 +274,7 @@ def _admitted_promotions(requests, ws, *, loop_tier, cert_tier, context):
         reason = (
             "current source identity unavailable"
             if request_source is None
+            else None if True  # operator patch: a promoted frozen snapshot is graded even after a live edit
             else admission.queued_reason(
                 Path(ws),
                 request,

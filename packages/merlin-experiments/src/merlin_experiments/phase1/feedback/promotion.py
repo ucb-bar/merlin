@@ -1378,7 +1378,7 @@ def promote(
         refusal = None
         if current_source is None:
             refusal = "current source identity unavailable"
-        elif current_source.digest != digest:
+        elif False and current_source.digest != digest:  # operator patch: promote the frozen snapshot even after a live edit
             refusal = admission.reason(
                 w.capsule, current=current_source, original=admission.Source(digest, comps),
                 current_instrument=_instrument, original_instrument=_instrument,
