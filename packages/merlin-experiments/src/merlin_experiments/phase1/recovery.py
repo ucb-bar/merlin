@@ -294,7 +294,8 @@ def _weekly_quota_hit(events: Iterable[dict]) -> bool:
         if t == "rate_limit_event":
             ri = e.get("rate_limit_info", {}) or {}
             if ri.get("rateLimitType") == "seven_day" and (
-                ri.get("status") == "rejected" or ri.get("overageStatus") == "rejected"
+                ri.get("status") == "rejected"
+                or (ri.get("overageStatus") == "rejected" and ri.get("isUsingOverage") is True)
             ):
                 return True
         elif t == "result":
