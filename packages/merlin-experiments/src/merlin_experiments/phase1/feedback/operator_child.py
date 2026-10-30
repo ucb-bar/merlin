@@ -167,7 +167,7 @@ def _prepared_child(document):
     with contextlib.ExitStack() as lifetime:
         with (
             _snapshot_read_admission(),
-            verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo, entry=entry),
+            verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo, entry=entry, guarded_exit=True),  # operator patch (diagnostic flow): skip the second full payload hash while the grade entry guard is live
         ):
             root = CHILD.model_child_temporary_root()  # Retain original import/owner verification.
             if root is None:
