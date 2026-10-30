@@ -18,7 +18,7 @@ def test_actual_pass_and_entry_capture_exactly_one_draft_job(tmp_path, fmt, monk
     monkeypatch.setattr(pass_validation, "source_admission", lambda *args, **kwargs: "capture-only-test")
     jobs = []
     validation = SimpleNamespace(
-        passes=frozenset({transforms.MACC}),
+        passes=pass_validation.DEFAULT_CHECKS,
         index_bits=64,
         tools=SimpleNamespace(sdk_bin="/test-unused-sdk", compiler_python="/test-unused-python"),
         gate=SimpleNamespace(_worker_path=[], _aliases={}, submit=lambda name, **job: jobs.append((name, job))),
@@ -84,21 +84,32 @@ def test_capture_includes_mutation_after_decorated_producer(tmp_path, monkeypatc
     assert '"arith.subf"' in final
 
 
-@pytest.mark.parametrize("fmt", ["bf16", "f16"])
-def test_macc_draft_compiler_gate_matches_actual_ungated_llvm(tmp_path, pass_gate_tools, fmt):
+@pytest.mark.parametrize(
+    "fmt,all_checks",
+    [("bf16", False), ("f16", False), ("bf16", True)],
+    ids=["bf16", "f16", "all"],
+)
+def test_macc_draft_compiler_gate_matches_actual_ungated_llvm(tmp_path, pass_gate_tools, fmt, all_checks):
     from merlin.llvmlower import lower
     from merlin.verify.speculative_gate import SpeculativeGate
 
     options = transforms.Options(macc_f32acc=True)
     baseline = lower.lower_model(matmul(fmt), tmp_path / "baseline", targets=(), formal_transforms=options)
     worker = SpeculativeGate(tmp_path / "gate", job_timeout=1200)
-    validation = pass_validation.PassValidation(worker, pass_gate_tools, frozenset({transforms.MACC}))
+    checks = pass_validation.DEFAULT_CHECKS if all_checks else frozenset({transforms.MACC})
+    validation = pass_validation.PassValidation(worker, pass_gate_tools, checks)
     checked = lower.lower_model(
         matmul(fmt), tmp_path / "checked", targets=(), formal_transforms=options, pass_validation=validation
     )
     assert checked.ll_path.read_bytes() == baseline.ll_path.read_bytes()
-    assert len(worker.verdicts) == 1 and worker.verdicts[0]["verdict"] == "accepted"
-    detail = worker.verdicts[0]["detail"]
+    assert worker.verdicts and all(row["verdict"] == "accepted" for row in worker.verdicts)
+    macc_rows = [row for row in worker.verdicts if row["label"] == transforms.MACC]
+    assert len(macc_rows) == 1
+    if all_checks:
+        assert validation.passes == frozenset(pass_validation.CHECKS)
+    else:
+        assert len(worker.verdicts) == 1
+    detail = macc_rows[0]["detail"]
     assert detail["claim_type"] == "draft_policy_conformance"
     assert detail["policy_reviewed"] is False and detail["numerical_policy_verdict"] == "abstracted"
     assert detail["original_source_equivalence"] is False
@@ -123,26 +134,29 @@ def test_corrupt_actual_macc_producer_stops_compiler(tmp_path, pass_gate_tools, 
     assert not tuple((tmp_path / "checked").glob("*.ll"))
 
 
-def test_all_excludes_draft_and_explicit_selection_preserves_it(tmp_path, pass_gate_tools, monkeypatch):
+def test_all_includes_draft_and_individual_selection_is_preserved(tmp_path, pass_gate_tools, monkeypatch):
     monkeypatch.setenv(pass_validation.ENV_SDK_BIN, str(pass_gate_tools.sdk_bin))
     monkeypatch.setenv(pass_validation.ENV_COMPILER_PYTHON, str(pass_gate_tools.compiler_python))
     monkeypatch.setenv(pass_validation.ENV_PASSES, "all")
     default = pass_validation.from_environment(tmp_path / "default")
-    assert transforms.MACC not in default.passes
+    assert default.passes == frozenset(pass_validation.CHECKS)
     assert {"cse", "ordered_loop_unrolling", "ordered_loop_segmentation", "buffer_reuse"} <= default.passes
     monkeypatch.setenv(pass_validation.ENV_PASSES, transforms.MACC)
     explicit = pass_validation.from_environment(tmp_path / "explicit")
     assert explicit.passes == frozenset({transforms.MACC})
+    default.gate.close()
+    explicit.gate.close()
 
 
-def test_cli_selects_macc_transform_separately_from_draft_validation(monkeypatch):
+@pytest.mark.parametrize("selection", ["all", transforms.MACC])
+def test_cli_selects_macc_transform_separately_from_draft_validation(monkeypatch, selection):
     from argparse import Namespace
 
     from merlin.compile.command import apply_pass_validation
 
     monkeypatch.delenv(transforms.ENV_MACC, raising=False)
     monkeypatch.delenv(pass_validation.ENV_PASSES, raising=False)
-    apply_pass_validation(Namespace(validate_passes=transforms.MACC, lean_sdk_bin=None))
+    apply_pass_validation(Namespace(validate_passes=selection, lean_sdk_bin=None))
     assert transforms.from_environment().macc_f32acc is False
     monkeypatch.setenv(transforms.ENV_MACC, "0")
     apply_pass_validation(Namespace(validate_passes=None, lean_sdk_bin=None, macc_f32acc=True))

@@ -228,17 +228,15 @@ records the qualified source points, executed checks, retained evidence and scop
 
 `feat/pass-verif-integration` retains the original DCE/CSE integration and the
 upstream pass-verification and independent-review histories. It registers ten
-selectors. `--validate-passes all` selects the five defaults:
-`prune_dead_pure_tensor_ops`, `cse`, `ordered_loop_unrolling`,
-`ordered_loop_segmentation` and `buffer_reuse`, while transformations themselves
-remain separately opt-in. Configuration-write elision, configuration hoisting
-and host graph fusion require their explicit selectors; see the stack guide.
+selectors. `--validate-passes all` selects all ten, including Q/DQ, draft MACC,
+configuration elision/hoisting and host graph fusion. Individual names still
+select a subset. Transformations themselves remain separately opt-in, and
+original ISA/effect inputs remain mandatory; see the stack guide.
 The explicit `lower_quant_ext` selector checks actual xDSL/textual Q/DQ
-lowering under the proposed source semantics and stays outside `all`.
+lowering under the proposed source semantics and is included in `all`.
 Optional original-source qualification is separate from specification approval;
 see [the Q/DQ gate guide](lean_qdq_gate.md).
-The separately registered `bf16_f32acc_draft_contract` check requires explicit
-selection and remains outside `all`. `--macc-f32acc` or
+The `bf16_f32acc_draft_contract` check is also included in `all`. `--macc-f32acc` or
 `Options(macc_f32acc=True)` selects its actual production transformation;
 the accepted claim is draft-reference conformance, with numerical approval
 still abstracted. See the stack guide for its interface and limits.

@@ -48,7 +48,8 @@ An earlier verified boundary gives no composed proof through an unverified suffi
 All ten selectors now have integrated source admission, actual-boundary workers
 and end coverage within the declared models. The generic UNROLL/TILE and
 configuration refreshes have retained fresh proofs/replay with independent
-review. Final default-all memory qualification passes untiled/tiled cases with
+review. At the earlier five-check cut, default-all memory qualification passed
+untiled/tiled cases with
 four accepted workers, stable source hashes and explicit two-verified/zero-
 unverified coverage per case. Its 24 native observations remain finite tests.
 The [handoff](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md)
@@ -71,7 +72,7 @@ hardware correspondence remain outside this endpoint.
 
 The additional `host_graph_fusion` interface strengthens the existing logical
 graph proof through actual emitted helpers and every public result. It is an
-explicit tenth selector outside `all`, covering one region of static pure integer
+additional selector included in `all`, covering one region of static pure integer
 pointwise stages on both compiler routes. Fresh source-bound proof, replay,
 canonical worker enforcement and failed-product quarantine are implemented.
 The next graph extensions are multiple fused regions with exact adjacent joins,
@@ -468,9 +469,9 @@ reads reject, and both changing and unchanged prefixes have the stated proofs.
 
 ## 4. Close Q/DQ source and lowering integration
 
-The current explicit gate proves refinement under the proposed Q/DQ model. It
-does not approve that model. Keep it explicit and outside `all` while its source
-specification is under review; see [the Q/DQ guide](../guides/lean_qdq_gate.md).
+The current gate proves refinement under the proposed Q/DQ model. It does not
+approve that model. It is included in `all`, while source-specification approval
+remains under review; see [the Q/DQ guide](../guides/lean_qdq_gate.md).
 
 Run the real original-PT2 `SourceCapture` route with the pinned interpreter,
 producer checkout, PyTorch wheel and dependency directory. Required checks are

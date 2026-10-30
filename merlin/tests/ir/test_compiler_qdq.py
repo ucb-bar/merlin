@@ -23,17 +23,31 @@ def program(kind):
     return PER_CHANNEL.replace("ZERO", "i32").replace("RANGE", "quant_min = -128 : i64, quant_max = 127 : i64")
 
 
-@pytest.mark.parametrize("kind", ["quantize", "tensor", "channel"])
-@pytest.mark.parametrize("textual", [False, True])
-def test_actual_compiler_qdq_gate_matches_ungated_llvm(tmp_path, pass_gate_tools, kind, textual):
+@pytest.mark.parametrize(
+    "kind,textual,all_checks",
+    [
+        pytest.param(kind, textual, False, id=f"{textual}-{kind}")
+        for textual in (False, True)
+        for kind in ("quantize", "tensor", "channel")
+    ]
+    + [pytest.param("quantize", False, True, id="all")],
+)
+def test_actual_compiler_qdq_gate_matches_ungated_llvm(tmp_path, pass_gate_tools, kind, textual, all_checks):
     raw = program(kind)
     baseline = lower.lower_model(raw, tmp_path / "baseline", targets=(), textual=textual)
     gate = SpeculativeGate(tmp_path / "gate", job_timeout=900)
-    validation = pass_validation.PassValidation(gate, pass_gate_tools, frozenset({qdq.SELECTOR}))
+    checks = pass_validation.DEFAULT_CHECKS if all_checks else frozenset({qdq.SELECTOR})
+    validation = pass_validation.PassValidation(gate, pass_gate_tools, checks)
     checked = lower.lower_model(raw, tmp_path / "checked", targets=(), textual=textual, pass_validation=validation)
     assert checked.ll_path.read_bytes() == baseline.ll_path.read_bytes()
-    assert len(gate.verdicts) == 1 and gate.verdicts[0]["verdict"] == "accepted"
-    detail = gate.verdicts[0]["detail"]
+    assert gate.verdicts and all(row["verdict"] == "accepted" for row in gate.verdicts)
+    qdq_rows = [row for row in gate.verdicts if row["check"] == qdq.CHECK]
+    assert len(qdq_rows) == 1
+    if all_checks:
+        assert validation.passes == frozenset(pass_validation.CHECKS)
+    else:
+        assert len(gate.verdicts) == 1
+    detail = qdq_rows[0]["detail"]
     assert detail["source_model_status"] == "proposed" and detail["source_spec_approved"] is False
     assert detail["source_correspondence"] == {"status": "not_requested", "original_program_bound": False}
     assert detail["native_fidelity"] is False and detail["framework_equivalence"] is False
@@ -97,8 +111,8 @@ def test_textual_and_nested_xdsl_capture_one_complete_actual_boundary(tmp_path, 
     assert jobs[0][1]["before"] == raw and jobs[0][1]["after"] == after
 
 
-def test_qdq_stays_outside_all():
-    assert qdq.SELECTOR in pass_validation.CHECKS and qdq.SELECTOR not in pass_validation.DEFAULT_CHECKS
+def test_qdq_is_selected_by_all():
+    assert qdq.SELECTOR in pass_validation.CHECKS and qdq.SELECTOR in pass_validation.DEFAULT_CHECKS
 
 
 def test_source_selection_requires_all_explicit_tools(monkeypatch, tmp_path):

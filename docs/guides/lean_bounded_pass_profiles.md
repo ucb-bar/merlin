@@ -20,7 +20,9 @@ code_refs:
 # Bounded compiler pass verification profiles
 
 Selecting verification applies a bounded model to each actual pass boundary.
-The original source and selected options determine eligibility. A known source
+`--validate-passes all` selects all ten registered checks; individual names
+select a subset. Check selection enables no transformations and approves no
+numerical/ISA contracts. The original source and selected options determine eligibility. A known source
 exclusion runs the ordinary compiler transformation and is listed as **unverified
 at the end**. It receives no proof credit. A supported source must pass its actual
 input/output check; a bad target, unsupported target, missing tool, timeout or

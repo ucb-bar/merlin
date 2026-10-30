@@ -62,16 +62,16 @@ for exact evidence. This additive proof changes no frozen interface or approval.
 
 The current implementation checkpoint is on `feat/pass-verif-integration`;
 see [status and next-owner tasks](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md)
-and [the compiler stack](../guides/lean_compiler_stack.md). Five scoped compiler
-checks are integrated by default. Configuration elision now has an additional
+and [the compiler stack](../guides/lean_compiler_stack.md). All ten scoped
+compiler checks are selected by `--validate-passes all`. Configuration elision now has an additional
 explicit compiler selector for original instruction-IR and straight-line Kernel
 consumers, while counted hoisting retains its separate instruction/effect API.
-Both require original selected ISA/effect premises. An additional explicitly selected MACC draft-contract
-check remains outside `all`. Scalar compiler intake now supports multiple
+Both require original selected ISA/effect premises. The MACC draft-contract
+check is also included in `all`, without numerical approval. Scalar compiler intake now supports multiple
 changed definitions and general argument/carry lists within its bounded domain;
 identity normalization/reuse have explicit proof routes. Current qualification
 and retained source cuts are recorded in the handoff.
-The explicit `lower_quant_ext` compiler gate also remains outside `all`.
+The `lower_quant_ext` compiler gate is also included in `all`.
 It checks actual xDSL/textual lowering under the proposed Q/DQ source model;
 optional original PT2/capture binding is a separate component. Neither acceptance
 approves the source specification. See [the Q/DQ gate guide](../guides/lean_qdq_gate.md).

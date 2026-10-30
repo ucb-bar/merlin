@@ -36,10 +36,10 @@ lowering. It leaves the generic gate's unrestricted definedness and source
 approval fields unchanged; concrete IEEE fidelity and more formats remain
 separate review/integration work.
 
-`lower_quant_ext` is an explicitly selected compiler check. It proves refinement
-of the actual Q/DQ lowering under Merlin's existing **proposed Q/DQ source
-semantics**. It is excluded from `--validate-passes all`, whose five checks are
-unchanged. Selecting this check does not approve the source specification.
+`lower_quant_ext` is selected by `--validate-passes all` or its individual name.
+It proves refinement of actual Q/DQ lowering under Merlin's existing **proposed
+Q/DQ source semantics**. Selecting this check does not approve the source
+specification. Optional pinned source capture remains separately requested.
 
 ```sh
 merlin-compile ... --validate-passes lower_quant_ext \

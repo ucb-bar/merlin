@@ -133,10 +133,9 @@ def parser(
     ap.add_argument(
         "--validate-passes",
         metavar="PASSES",
-        help="check selected DCE, CSE, ordered loop and private-buffer boundaries with Lean "
-        "('all' selects DCE/CSE/loop/buffer checks; "
-        "Q/DQ, draft MACC and ISA configuration checks require explicit selection); "
-        "failed checks stop the compile",
+        help="check compiler pass boundaries with Lean ('all' selects every registered check, "
+        "including Q/DQ, draft MACC, ISA configuration and host fusion); "
+        "transformations and original contracts are selected separately; failed checks stop the compile",
     )
     ap.add_argument("--lean-sdk-bin", metavar="DIR", help="Lean SDK bin directory for --validate-passes")
     ap.add_argument(

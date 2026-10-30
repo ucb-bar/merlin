@@ -44,8 +44,8 @@ not manufacture a function wrapper around delivered IR.
 
 The configuration stage of `compile_schedule` uses the same owned check on
 complete straight-line Kernel text before emission. Its original owner is
-forwarded through target scheduling and target emission. The selector stays
-outside `all` because the original ISA/effect selection is explicit. Caller
+forwarded through target scheduling and target emission. The selector is
+included in `all`; the original ISA/effect selection is still mandatory. Caller
 qualification labels remain premises, not independent hardware evidence. Default
 exported scheduling does not import verifier modules when validation is absent.
 See [the compiler stack](lean_compiler_stack.md) for the end-to-end interface.

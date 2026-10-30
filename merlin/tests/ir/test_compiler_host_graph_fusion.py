@@ -146,7 +146,7 @@ def test_explicit_selector_and_worker_result_require_actual_claim():
     from merlin.verify.gate_worker import _require_builtin_result
 
     assert gate.SELECTOR in pass_validation.CHECKS
-    assert gate.SELECTOR not in pass_validation.DEFAULT_CHECKS
+    assert gate.SELECTOR in pass_validation.DEFAULT_CHECKS
     with pytest.raises(GateRejected):
         _require_builtin_result(gate.CHECK, {"status": "checked", "compiler_enforcement": True})
 

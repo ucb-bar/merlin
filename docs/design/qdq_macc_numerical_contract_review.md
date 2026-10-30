@@ -24,7 +24,8 @@ reported unverified at invocation end; this supplies no numerical proof credit.
 Once admitted, an unsuccessful target proof or unavailable tool blocks delivery.
 The [bounded profile catalogue](../guides/lean_bounded_pass_profiles.md) records
 the accepted Q/DQ and uniform-half positive-zero MACC models. Q/DQ remains
-proposed-model and MACC remains draft. Broader initialized/mixed-format component
+proposed-model and MACC remains draft. Both checks are selected by `all`, which
+neither enables their transformations nor approves their contracts. Broader initialized/mixed-format component
 theorems and successful ordinary lowering do not approve either contract.
 
 ## Implemented additive results

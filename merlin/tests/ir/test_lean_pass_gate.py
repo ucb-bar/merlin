@@ -109,9 +109,10 @@ def test_all_registers_formal_gates_without_draft_numerical_policy(tmp_path, too
     assert len(validations) == 1
     validation = validations[0]
     assert validation.passes == pass_validation.DEFAULT_CHECKS
-    assert "bf16_f32acc_draft_contract" not in validation.passes
+    assert validation.passes == frozenset(pass_validation.CHECKS)
     assert {v["label"]: v["verdict"] for v in validation.gate.verdicts} == {
         "prune_dead_pure_tensor_ops": "accepted",
+        "lower_quant_ext": "accepted",
         "cse": "accepted",
     }
 

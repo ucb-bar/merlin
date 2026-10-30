@@ -7,7 +7,7 @@ proofs, unsupported targets, missing tools or custody failures. This supersedes
 the proposed skip/no-op policy. See the [bounded profile catalogue](docs/guides/lean_bounded_pass_profiles.md).
 End coverage is per boundary, finalized after worker join; it grants no proof of
 an unverified suffix or downstream LLVM/native behavior. All ten selectors are
-integrated within their declared profiles; five are selected by `all`. The
+integrated within their declared profiles; all ten are selected by `all`. The
 [stack guide](docs/guides/lean_compiler_stack.md) and
 [offline stack](out/artifacts/handoff/pass-verif-integration-20261028/merlin-lean-stack.html)
 show each location, interface, example and theorem relation. Completed gates are
@@ -21,7 +21,7 @@ configuration has a retained three-case/four-query refresh. The compiler matrix'
 actual host negative and three source-exclusion cases subsequently pass with
 independent artifact review. The latest source-policy cohort passes 37 host
 controls, followed by five actual source-admission cases with independent audit.
-The final default-all memory refresh passes both untiled/tiled cases: four fresh
+At the earlier five-check cut, the default-all memory refresh passed both untiled/tiled cases: four fresh
 accepted workers, 24 finite native observations and six untouched-entry checks.
 All 81 guarded source hashes remain unchanged; each case records two verified
 boundaries, zero unverified boundaries and an unchanged CSE with zero proof credit.
@@ -70,8 +70,9 @@ All six lowering receipts replay; all 235 pinned statements remain unchanged.
 
 Use **`feat/pass-verif-integration`**. Retained deeper-body loop proofs are
 committed in `ef46cc269`; explicit C64 wide-count hoisting is `91661f328`.
-Ten families have scoped compiler selectors. Five belong to `all`; proposed
-Q/DQ, draft MACC, ISA-specific configuration and host graph gates remain explicit.
+Ten families have scoped compiler selectors and all are selected by `all`.
+Q/DQ remains proposed-model, MACC remains draft and original ISA/effects remain
+mandatory. Earlier qualification records below retain their five-check source cuts.
 
 Default `all` now composes the actual private-memory route through later DCE
 and an authentic unchanged native CSE observation. Installed untiled and

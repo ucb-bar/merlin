@@ -13,17 +13,17 @@ code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, src/
 For the current `feat/pass-verif-integration` checkpoint, start with the
 [compiler stack and interfaces](lean_compiler_stack.md) and
 [integration handoff](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md).
-Five opt-in compiler checks cover DCE/CSE and scoped loop/private-buffer paths;
-configuration elision/hoisting retain explicit ISA/effect APIs. The
+The opt-in `all` selector covers all ten registered compiler checks;
+configuration elision/hoisting retain their original ISA/effect APIs. The
 [quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md)
 records inherited Q/DQ proofs and outstanding numerical review. W8A8 and
-bf16/f16 policy candidates are not enabled by the compiler's `all` selector.
+bf16/f16 policy admission is not granted by selecting compiler checks.
 The separate `bf16_f32acc_draft_contract` selector checks actual MACC boundaries
 without claiming numerical approval; `--macc-f32acc` selects the transformation.
 Current qualification and remaining limits are recorded in the checkpoint.
 The explicit `lower_quant_ext` selector adds actual Q/DQ lowering refinement
 under the proposed source model, with optional fresh original-capture binding.
-It stays outside `all`; see [the Q/DQ gate guide](lean_qdq_gate.md).
+It is included in `all`; see [the Q/DQ gate guide](lean_qdq_gate.md).
 
 The common substrate supplies executed xDSL transformations, an optional
 instruction dialect generator and an independent host Lean checking route.

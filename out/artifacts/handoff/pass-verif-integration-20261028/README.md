@@ -15,11 +15,35 @@ invocation makes only its individual bounded claims, not a preservation claim
 through unverified stages. Standalone proof/replay APIs remain strict.
 
 The bounded implementation is integrated on **`feat/pass-verif-integration`**.
-There are ten selectors, five in `all`; the proposed Q/DQ, draft MACC, host
-fusion and two selected-ISA configuration gates stay explicit. Transformation
-selection remains independent of verification selection. The [stack guide](../../../../docs/guides/lean_compiler_stack.md)
+`--validate-passes all` selects all ten registered checks, including proposed
+Q/DQ, draft MACC, host fusion and the two selected-ISA configuration gates.
+Individual names still select subsets. Transformations, original ISA/effect
+inputs and optional source captures remain separately selected; no approval
+flag changes. This supersedes the five-check policy in earlier qualification cuts. The [stack guide](../../../../docs/guides/lean_compiler_stack.md)
 and [offline stack](merlin-lean-stack.html) give every boundary's interface,
 example, proof relation and supported/excluded cases.
+
+All-ten selection qualification is retained under
+`out/build/pass-all-checks-20261029/`. The focused host cohort passes 25 cases.
+The first four actual compiler cases have three passes and one stale assertion:
+the environment-`all` tensor regression expected only DCE/CSE, while the newly
+selected Q/DQ proof also accepted. All seven actual proof workers accepted.
+The expected verdict list is corrected; a focused rerun of that environment
+case and the existing textual per-channel Q/DQ case is still running at this
+publication checkpoint. This is not a claim that the first four-case run was green.
+The passing new all-selected cases cover Q/DQ, draft MACC and explicit memory
+DCE with an unchanged source-excluded Q/DQ observation. Proposed/draft flags and
+original owner requirements remain unchanged. Independent protocol-only
+configuration probes additionally confirm exclusion coverage and missing-ISA
+refusal; no proof success is simulated by those probes.
+
+Test sources are in `merlin/tests/ir/`: `test_lean_compiler_gate_scope.py`,
+`test_lean_pass_gate.py`, `test_compiler_qdq.py`, `test_compiler_macc_wiring.py`
+and `test_memory_source_exclusion_compiler.py`. Detailed commands, JUnit XML,
+worker requests/verdicts and exact compiler artifacts are in the host-v1,
+compiler-v1 and compiler-v2 subdirectories of the all-checks evidence root.
+The benchmark campaign is a subsequent task; no benchmark kernel compilation
+or execution is included in this checkpoint.
 
 Completed implementation landmarks include `7ba2b8e6a` (generic loop math),
 `d6661c5b1` (portable projection), `2ba2fbce3` (source profiles), `39877dee3`
@@ -68,8 +92,8 @@ Qualification is separated by scope and exact source cut:
   bf16/f16 MACC recognizes +0 versus nonzero initialization. Their ten source
   decisions grant neither boundary-proof credit nor policy approval.
 - **Default `all` memory:** both final cases pass in 1238.92s: untiled extent
-  three and tile-size-32 extent-257 with a short tail. All five defaults remain
-  selected. Four fresh workers accept; each case records two verified boundaries,
+  three and tile-size-32 extent-257 with a short tail. These historical runs
+  selected the earlier five-check bundle. Four fresh workers accept; each case records two verified boundaries,
   zero unverified boundaries and one authentic unchanged CSE with zero job/credit.
   All 81 guarded source hashes remain unchanged across the run. The actual BUFFER
   final bytes join the following memory-DCE input exactly; baseline/checked LLVM
@@ -572,7 +596,7 @@ was changed. Documentation, artifact layout, local-path and staged source checks
 ## Start here
 
 - [Compiler stack: location, interface, example and claim](../../../../docs/guides/lean_compiler_stack.md)
-- [Interactive offline stack](merlin-lean-stack.html): five default checks, explicit draft MACC and two configuration APIs
+- [Interactive offline stack](merlin-lean-stack.html): all ten registered checks, with separate transformations and original contracts
 - [Machine-readable checkpoint and remaining test nodes](qualification.json)
 - [Quantization progress and review tasks](../quantization-lean-20261028/README.md)
 - [Assumption ledger](../../../../merlin/lean/LEDGER.md)

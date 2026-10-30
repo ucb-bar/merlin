@@ -58,7 +58,7 @@ missing and skip-only captures still refuse. Changed memory CSE runs normally
 with explicit unverified coverage and zero proof credit. Canonicalization and
 downstream lowering remain separate trusted boundaries.
 
-Installed default-`all` qualification passes both an untiled extent-three chain
+The recorded five-check default-`all` qualification passed an untiled extent-three chain
 and a tiled extent-257 chain with tile size 32 and a short tail. Each compiler
 run delivers a BUFFER proof followed by the memory-DCE proof; gated and ungated
 products match the true untransformed source in finite native comparisons.
@@ -75,7 +75,10 @@ above retains its historical source cut. The final bounded-policy refresh in
 `out/build/pass-bounded-models-20261029/final-qualification/memory-final-v2/`
 passes both untiled/tiled cases with four fresh workers, stable guarded sources
 and explicit verified/unverified/unchanged coverage assertions. The handoff
-records its finite native comparisons and independent artifact audit.
+records its finite native comparisons and independent artifact audit. Those
+runs used the earlier five-check bundle. With all ten selected, xDSL additionally
+records unchanged Q/DQ on unsupported memory signatures as unverified, with zero
+jobs or proof credit; the buffer/DCE proof relations are unchanged.
 The public private-buffer tile resource policy is now 2..65,536; actual signed
 index64 safety checks remain mandatory. This policy does not widen supported
 initializer types or allocator semantics.

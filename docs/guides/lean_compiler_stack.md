@@ -51,10 +51,11 @@ output IR, leaving only explicit semantic contracts for human review.
 
 Select transformations to change the compiler's output. Select validation to
 require a proof of their actual input/output boundaries. Both are opt-in.
-`--validate-passes all` selects DCE, CSE, loop and buffer checks. The explicit
-`bf16_f32acc_draft_contract`, proposed-model `lower_quant_ext` and ISA-specific
-`configuration_write_elision` / `configuration_loop_hoisting` checks stay outside `all`,
-as does the logical `host_graph_fusion` profile.
+`--validate-passes all` selects all ten registered checks: DCE, CSE, unrolling,
+tiling, buffer reuse, Q/DQ, draft MACC, configuration elision/hoisting and host
+fusion. Individual selectors remain available to restrict validation. This
+selection approves no numerical or effect contract: Q/DQ stays proposed-model,
+MACC stays draft, and configuration retains its original selected ISA/effects.
 Selecting checks does not enable transformations. The [bounded profile catalogue](lean_bounded_pass_profiles.md)
 defines original-source admission and exclusions for each family. An excluded
 source runs ordinary lowering and is logged as unverified at invocation end.
@@ -117,16 +118,16 @@ emitted `.ll` and executing native outputs provide finite regression evidence.
 
 | Registered check | Where it runs | Small example | Established relation |
 | --- | --- | --- | --- |
-| `host_graph_fusion` (explicit only) | Actual host dispatch emission before preprocessing, on either compiler route | Group three connected integer tensor stages while retaining a producer result used elsewhere | Complete ordered public-result equality under common typed total pure actions |
+| `host_graph_fusion` | Actual host dispatch emission before preprocessing, on either compiler route | Group three connected integer tensor stages while retaining a producer result used elsewhere | Complete ordered public-result equality under common typed total pure actions |
 | `prune_dead_pure_tensor_ops` | xDSL preprocessing, before native lowering | Erase an unused `tensor.empty` | Tensor-stage strict refinement on declared input types, with source support checked |
 | `cse` | The build runner's leading tensor CSE | Two identical pure expressions share one result | Same tensor-stage strict refinement |
 | `ordered_loop_unrolling` | Optional source SCF stage at `lower_model` entry | Two consecutive iterations become two ordered lanes | Same returned values, modeled errors and terminal world in the scalar/SCF interpretation |
 | `ordered_loop_segmentation` | Optional source SCF stage; also the final step of the private-buffer chain | Visit `0..10` as ordered groups of three, retaining the short last group | Scalar route: same return/error/world relation; memory route: the complete chain's successful-observation relation |
 | `buffer_reuse` | Optional source normalization→reuse chain, with optional initializer segmentation | Two initialized, nonoverlapping private lifetimes share storage | Same possible successful public observations, under the explicitly selected allocator model |
-| `bf16_f32acc_draft_contract` (explicit only) | Actual `lower_bf16_matmul_f32acc`, including its optional compiler-entry invocation | Extend half operands, accumulate in f32, truncate once | Conformance to the draft numerical reference; numerical approval remains abstracted |
-| `lower_quant_ext` (explicit only) | Actual xDSL Q/DQ pass or complete textual preprocessing | Expand Q/DQ into the specified ordered scalar operations | Strict typed refinement under the proposed Q/DQ source model; optional fresh original-source correspondence |
-| `configuration_loop_hoisting` (explicit only) | Actual selected `hoist_loop_configuration` before its ordinary Kernel consumer | Move an invariant total setter before a positive counted loop | Whole partial outcome equality, including failures and terminal state, under indexed instruction/frame premises |
-| `configuration_write_elision` (explicit only) | Original selected instruction IR or straight-line Kernel, before its ordinary consumer | Delete a repeated pure setter while retaining work and failure effects | Complete entry error/terminal-state preservation under the original ISA/effect model; no independent implementation approval |
+| `bf16_f32acc_draft_contract` | Actual `lower_bf16_matmul_f32acc`, including its optional compiler-entry invocation | Extend half operands, accumulate in f32, truncate once | Conformance to the draft numerical reference; numerical approval remains abstracted |
+| `lower_quant_ext` | Actual xDSL Q/DQ pass or complete textual preprocessing | Expand Q/DQ into the specified ordered scalar operations | Strict typed refinement under the proposed Q/DQ source model; optional fresh original-source correspondence |
+| `configuration_loop_hoisting` | Actual selected `hoist_loop_configuration` before its ordinary Kernel consumer | Move an invariant total setter before a positive counted loop | Whole partial outcome equality, including failures and terminal state, under indexed instruction/frame premises |
+| `configuration_write_elision` | Original selected instruction IR or straight-line Kernel, before its ordinary consumer | Delete a repeated pure setter while retaining work and failure effects | Complete entry error/terminal-state preservation under the original ISA/effect model; no independent implementation approval |
 
 These are separate relations. A buffer success proof does not establish the
 loop checker's error/world equality or finite-memory allocator behavior. No row
@@ -134,7 +135,7 @@ proves the downstream LLVM/object implementation or hardware execution.
 
 ## Logical host graph fusion
 
-Select `host_graph_fusion` through `PassValidation` or `MERLIN_VALIDATE_PASSES`.
+Select `all` or `host_graph_fusion` through `PassValidation` or `MERLIN_VALIDATE_PASSES`.
 The transformation remains selected separately through
 `lower_model(..., graph_optimizations=contract, pass_validation=validation)`.
 The contract's `fusion_groups` selects actual entry operation indices, including
@@ -497,8 +498,8 @@ arbitrary tensor MACC programs.
 
 ## Q/DQ expansion under the proposed source model
 
-Select `--validate-passes lower_quant_ext` to require a fresh proof of actual
-Q/DQ lowering. It remains outside `all`. For example, an injected quantizer
+Select `--validate-passes all` or `--validate-passes lower_quant_ext` to require
+a fresh proof of actual Q/DQ lowering. For example, an injected quantizer
 multiply-to-add bug must stop compilation before products return. This reuses
 the existing typed-module, source-support and chain-composition proofs.
 `source_spec_approved=false` distinguishes proof acceptance from source-model
@@ -518,11 +519,13 @@ and `MERLIN_LOOP_TILE_DEPTH`. Proof selection remains
 `MERLIN_VALIDATE_PASSES`; SDK and authoritative exporter selection remain
 `MERLIN_LEAN_SDK_BIN` and `MERLIN_COMPILER_PYTHON`.
 
-Use the check names appropriate to the input IR. `all` selects five checks and
+Use the check names appropriate to the input IR. `all` selects all ten checks and
 applies their original-source profiles. Its admitted explicit-memory route uses
 the separate same-mode memory DCE proof; authentic unchanged native CSE needs no
 job and earns zero proof credit. Changed memory CSE and other known source
-exclusions run ordinarily and are logged unverified. Once a source is admitted,
+exclusions run ordinarily and are logged unverified. With all ten checks,
+xDSL's unchanged Q/DQ stage on memory signatures outside its model is also
+reported unverified, with no job or proof credit. Once a source is admitted,
 failed or unsupported target checking still blocks delivery.
 
 The standalone loop and buffer APIs remain available for developer workflows.

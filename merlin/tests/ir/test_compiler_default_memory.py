@@ -45,7 +45,7 @@ def test_actual_default_all_memory_gate_keeps_DCE_proof_and_observed_CSE_identit
     )
     baseline = lower.lower_model(raw, tmp_path / "baseline", targets=(), formal_transforms=options)
     worker = SpeculativeGate(tmp_path / "worker", job_timeout=1800)
-    selected = pass_validation.PassValidation(worker, pass_gate_tools)  # Same five defaults, no subset rewrite.
+    selected = pass_validation.PassValidation(worker, pass_gate_tools)  # All registered checks, no subset rewrite.
     assert selected.passes == pass_validation.DEFAULT_CHECKS
     checked = lower.lower_model(
         raw, tmp_path / "checked", targets=(), formal_transforms=options, pass_validation=selected
@@ -54,7 +54,10 @@ def test_actual_default_all_memory_gate_keeps_DCE_proof_and_observed_CSE_identit
     assert len(worker.verdicts) == 2 and all(row["verdict"] == "accepted" for row in worker.verdicts)
     coverage = json.loads((worker.directory / "coverage.json").read_text())
     assert coverage["compiler_completed"] is True
-    assert coverage["verified_boundaries"] == 2 and coverage["unverified_boundaries"] == 0
+    assert coverage["verified_boundaries"] == 2 and coverage["unverified_boundaries"] == 1
+    excluded = [row for row in coverage["boundaries"] if row["status"] == "unverified"]
+    assert len(excluded) == 1 and excluded[0]["pass"] == "lower_quant_ext"
+    assert excluded[0]["source_sha256"] == excluded[0]["final_sha256"] and excluded[0]["proof_credit"] is False
     observed_cse = [row for row in coverage["boundaries"] if row["pass"] == "cse"]
     assert observed_cse and all(row["status"] == "unchanged" and row["proof_credit"] is False for row in observed_cse)
     verified = [row for row in coverage["boundaries"] if row["proof_credit"]]

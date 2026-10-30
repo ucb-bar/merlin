@@ -36,7 +36,7 @@ invariant configuration setter immediately before a positive counted loop.
 It does not install compiler-wide enforcement or establish native ISA fidelity.
 
 The current compiler also supplies the explicit selector
-`configuration_loop_hoisting`. It guards the actual public producer, joins the
+`configuration_loop_hoisting`, also selected by `all`. It guards the actual public producer, joins the
 original active or explicitly supplied validation, and holds the result before
 an ordinary Kernel consumer receives it:
 
