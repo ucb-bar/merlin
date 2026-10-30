@@ -9,6 +9,7 @@ Do not edit by hand — run the generator (it's `--check`ed by `check_structure.
   [Repository structure](reference/repo_structure.md).
 - **Running something?** [Getting started](guides/getting_started.md) →
   the [CLI reference](reference/cli.md) → the relevant guide below.
+- [Atlas source captures and fixed-input host builds](../examples/atlas/comparisons/README.md).
 - **Writing generated output?** See `CLAUDE.md` "Generated-output convention" and the
   `artifact-layout` skill (one root only: `out/`, with three subdirs `out/runs/`, `out/artifacts/`,
   `out/build/`).

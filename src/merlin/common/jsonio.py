@@ -69,9 +69,12 @@ def write_canonical_json(path: str | Path, value: Any) -> None:
     path.write_bytes(canonical_json(value) + b"\n")
 
 
-def write_pretty_json(path: str | Path, value: Any, *, mkdir: bool = False) -> None:
-    """Write ``value`` indented (2), key-sorted, newline-terminated, for files a human reads."""
+def write_pretty_json(
+    path: str | Path, value: Any, *, mkdir: bool = False,
+    sort_keys: bool = True, allow_nan: bool = True, indent: int | None = 2,
+) -> None:
+    """Write newline-terminated JSON, preserving explicit caller formatting and strictness."""
     path = Path(path)
     if mkdir:
         path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(value, indent=indent, sort_keys=sort_keys, allow_nan=allow_nan) + "\n", encoding="utf-8")

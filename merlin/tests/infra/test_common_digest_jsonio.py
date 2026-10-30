@@ -109,3 +109,16 @@ def test_writers(tmp_path):
     with pytest.raises(FileNotFoundError):
         write_pretty_json(tmp_path / "missing" / "e.json", {})
     write_pretty_json(tmp_path / "made" / "e.json", {}, mkdir=True)
+
+
+@pytest.mark.parametrize("options", [dict(indent=None, sort_keys=False), dict(indent=2, sort_keys=True, allow_nan=False)])
+def test_pretty_writer_preserves_explicit_wire_options(tmp_path, options):
+    value = {"z": [1, "é", None], "a": 2}
+    path = tmp_path / "wire.json"
+    write_pretty_json(path, value, **options)
+    assert path.read_bytes() == (json.dumps(value, **options) + "\n").encode("utf-8")
+
+
+def test_pretty_writer_can_refuse_nonfinite_numbers(tmp_path):
+    with pytest.raises(ValueError):
+        write_pretty_json(tmp_path / "finite.json", {"x": math.nan}, allow_nan=False)
