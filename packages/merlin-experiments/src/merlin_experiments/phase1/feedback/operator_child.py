@@ -266,6 +266,37 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
         "no_oracle": no_oracle,
         "observed_costs_s": costs,
     }
+    # MERLIN_GRADE_PROCS: the same document may run in a helper interpreter that reopened the
+    # same original owners and verifies custody itself. Scheduling, costs and publication order
+    # stay here; None (no pool, or any pool failure) keeps this process's original route.
+    from . import grade_pool
+
+    pooled = grade_pool.dispatch(document)
+    row, child_costs, spend = (
+        pooled if pooled is not None else run_document(document, adapters=adapters, selection=selection)
+    )
+    for tier, value in child_costs.items():
+        tier_policy.record_cost(target, tier, value)
+    if spend is not _NO_SPEND:
+        tier_policy.note_spend(target, spend)
+    return row
+
+
+#: A deferred child returns before any cost/spend bookkeeping (the original early return).
+_NO_SPEND = object()
+
+
+def run_document(document, *, adapters, selection):
+    """Prepare, launch and verify one fresh sealed child for ``document``; return (row, costs, spend).
+
+    Custody preparation and result verification run in the calling process under its own
+    snapshot admission. The caller applies the returned tier costs and spend.
+    """
+    from merlin.targetgen import capsule_runner as runner
+
+    capsule, target = document["capsule"], document["target"]
+    suite, dtype, runs_root = document["suite"], document["dtype"], document["runs_root"]
+    timeout, workers = document["timeout"], document["workers"]
     with _prepared_child(document) as (spec, output, environment, transport):
         command = [
             sys.executable,
@@ -303,7 +334,7 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
                 result_path = Path(runs_root) / "runs" / cfg.suite / capsule["name"] / "capsule_result.json"
                 result_path.parent.mkdir(parents=True, exist_ok=True)
                 _publish(result_path, row)
-                return row
+                return row, {}, _NO_SPEND
         except BaseException:
             runner._kill_tree(process.pid)
             process.wait(timeout=10)
@@ -316,9 +347,8 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
             row = transport.verify_result(json.loads(output.read_bytes()))
         if row.get("capsule") != capsule["name"] or adapter_selection(adapters, target=target) != selection:
             raise StageGateError("operator child result or selected oracle changed")
-        for tier, value in (row.pop("operator_child_costs_s", {}) or {}).items():
-            tier_policy.record_cost(target, tier, value)
-        tier_policy.note_spend(target, row.pop("operator_child_spend_s", None))
+        child_costs = dict(row.pop("operator_child_costs_s", {}) or {})
+        spend = row.pop("operator_child_spend_s", None)
         row["operator_grade_process"] = {"pid": process.pid, "workers": workers, "mode": "fresh_sealed_child"}
         cfg = runner._config_for_target(target, suite, dtype)
         result_path = Path(runs_root) / "runs" / cfg.suite / capsule["name"] / "capsule_result.json"
@@ -326,7 +356,7 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
         manifest["metadata"]["original_compiler_child"] = row["original_compiler_child"]
         _publish(result_path.parent / "run_manifest.yaml", manifest)
         _publish(result_path, row)
-        return row
+        return row, child_costs, spend
 
 
 def main(argv):

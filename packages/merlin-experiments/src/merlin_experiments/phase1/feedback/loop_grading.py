@@ -431,7 +431,10 @@ def grade(
         from merlin.targetgen.capsule_scheduling import timing_history
         from merlin_experiments.phase1.feedback import qa
 
-        with compiler_execution(inputs, candidate=cand, run_dir=run_dir), timing_history(_history_runs_roots(run_dir)):
+        from . import grade_pool
+
+        with (compiler_execution(inputs, candidate=cand, run_dir=run_dir), timing_history(_history_runs_roots(run_dir)),
+              grade_pool.scoped(inputs, candidate=cand, run_dir=run_dir)):
             verdict = (qa_runner or partial(qa.run, context=inputs.context))(
                 str(cand),
                 str(public_root),
@@ -934,11 +937,13 @@ def fast_grade(
     rolling = (joint_curriculum.admission(curriculum, timeout=timeout,
         remaining_s=joint_control.remaining(drain=True), history=history)
         if curriculum is not None else nullcontext(timeout))
+    from . import grade_pool
     from .completion_processing import CompletionProcessing
 
     try:
         with (rolling as case_timeout,
               compiler_execution(inputs, candidate=cand, run_dir=run_dir),
+              grade_pool.scoped(inputs, candidate=cand, run_dir=run_dir),
               timing_history(history),
               observe_supersession(background_guard.interrupt_reason),
               demote_when_stale(lambda: background_guard.newer_snapshot() is not None),
