@@ -93,13 +93,28 @@ def _run(command, cwd, env, directory, label, timeout):
     return process
 
 
-def require_query_success(process):
+RESOURCE_MARKERS = (
+    "maximum number of heartbeats",
+    "maximum recursion depth",
+    "(deterministic) timeout",
+    "out of memory",
+    "stack overflow",
+)
+
+
+def require_query_success(process, *, family="configuration", unsolved_goals=False):
+    """Classify a query process; only Lean refusing the generated proof is NotEstablished.
+
+    ``unsolved_goals`` admits generated obligations left open by symbolic proofs
+    as refusals. Such a refusal is not a theorem that the proposition is false,
+    and any other, mixed or resource diagnostic stays Unavailable.
+    """
     if process.returncode == 0:
         if process.stderr.strip():
-            raise Unavailable("configuration query unexpected stderr; first raw output retained")
+            raise Unavailable(family + " query unexpected stderr; first raw output retained")
         return
     if process.returncode != 1 or process.stderr.strip():
-        raise Unavailable("configuration query unexpected exit/stderr; first raw output retained")
+        raise Unavailable(family + " query unexpected exit/stderr; first raw output retained")
     lines = process.stdout.splitlines()
     headers = []
     for index, line in enumerate(lines):
@@ -113,19 +128,26 @@ def require_query_success(process):
                 or not fields[1].isdigit()
                 or not fields[2].isdigit()
             ):
-                raise Unavailable("unclassified configuration proof error header")
+                raise Unavailable("unclassified " + family + " proof error header")
             headers.append((index, payload[2:]))
         elif line.startswith("error"):
-            raise Unavailable("unclassified configuration proof error location")
+            raise Unavailable("unclassified " + family + " proof error location")
     if not headers:
-        raise Unavailable("unclassified configuration query failure; first raw output retained")
+        raise Unavailable("unclassified " + family + " query failure; first raw output retained")
+    unsolved = False
     for i, (index, head) in enumerate(headers):
         stop = headers[i + 1][0] if i + 1 < len(headers) else len(lines)
-        if head != "Tactic `decide` proved that the proposition" or not any(
+        if unsolved_goals and head == "unsolved goals":
+            unsolved = True
+        elif head != "Tactic `decide` proved that the proposition" or not any(
             line.strip() == "is false" for line in lines[index + 1 : stop]
         ):
-            raise Unavailable("configuration query unknown/mixed/resource diagnostic; first raw output retained")
-    raise NotEstablished("closed complete configuration obligation rejected")
+            raise Unavailable(family + " query unknown/mixed/resource diagnostic; first raw output retained")
+    if unsolved:
+        if any(marker in process.stdout.lower() for marker in RESOURCE_MARKERS):
+            raise Unavailable(family + " query unknown/mixed/resource diagnostic; first raw output retained")
+        raise NotEstablished(family + " query left generated obligations unsolved; Lean refused the proof")
+    raise NotEstablished("closed complete " + family + " obligation rejected")
 
 
 def _audit(audit, statements, candidate, modules, *, query_module=MODULE):

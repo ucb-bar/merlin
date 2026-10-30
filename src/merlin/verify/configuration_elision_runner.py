@@ -29,6 +29,7 @@ def prove(
     query_module=MODULE,
     source_plan=proof_sources,
     relation=RELATION,
+    require_success=require_query_success,
 ):
     """Return audited artifacts only; no live token or delivery authority."""
     validate(candidate)
@@ -80,7 +81,7 @@ def prove(
     validate(candidate)
     obj = library / (query_module + ".olean")
     process = _run([str(executable), "-j1", "-o", str(obj), str(query)], directory, env, directory, "query", timeout)
-    require_query_success(process)
+    require_success(process)
     validate(candidate)
     if any(path.is_symlink() for path in library.rglob("*")):
         raise Unavailable("configuration private proof objects must not be symlinks")

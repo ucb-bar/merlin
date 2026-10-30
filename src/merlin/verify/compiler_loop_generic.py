@@ -20,7 +20,7 @@ from . import configuration_elision_runner as runner
 from .compiler_loop_generic_intake import prepare_query
 from .compiler_loop_generic_profile import OutsideProfile
 from .configuration_elision_bridge import canonical, digest, file_ref
-from .configuration_elision_gate import NotEstablished, Unavailable, _exact
+from .configuration_elision_gate import NotEstablished, Unavailable, _exact, require_query_success
 from .gate_errors import GateRejected, GateUnavailable, GateUnsupported
 
 DOMAIN = "compiler-static-ordered-scf-generic-value-index64-v1"
@@ -227,6 +227,9 @@ def check_candidate(candidate, *, lean, destination, timeout=300):
         query_module=MODULE,
         source_plan=lambda: proof_sources(candidate.query),
         relation=RELATION,
+        # Symbolic generic obligations fail as unsolved goals, not closed
+        # `decide` refutations; they are refusals, never counterexamples.
+        require_success=lambda process: require_query_success(process, family="generic loop", unsolved_goals=True),
     )
     report.update(schema="merlin.compiler-generic-loop.checked.v1", domain=DOMAIN)
     path = Path(destination).resolve() / "REPORT.json"

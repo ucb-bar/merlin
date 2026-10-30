@@ -102,7 +102,7 @@ def test_supported_generic_tile_wrong_inner_bound_blocks_actual_worker(tmp_path,
     finally:
         worker.close()
     assert len(worker.verdicts) == 1
-    assert worker.verdicts[0]["verdict"] in {"not_established", "unavailable"}
+    assert worker.verdicts[0]["verdict"] == "not_established"
     proofs = list((tmp_path / "worker").glob("*/generic-loop-proof"))
     assert len(proofs) == 1
     proof = proofs[0]

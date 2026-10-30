@@ -107,6 +107,37 @@ def test_closed_false_is_distinct_from_mixed_unknown(tail):
     assert not gate._LIVE
 
 
+UNSOLVED = "Q.lean:140:20: error: unsolved goals\ncase ok.ok\ndata : List Value\n⊢ run [data[1]] = run [data[2]]\n"
+
+
+def test_unsolved_goals_are_refusals_only_for_an_opted_in_consumer():
+    process = subprocess.CompletedProcess([], 1, UNSOLVED + UNSOLVED, "")
+    with pytest.raises(gate.Unavailable, match="^configuration query unknown"):
+        gate.require_query_success(process)
+    with pytest.raises(gate.NotEstablished, match="^generic loop query left generated obligations unsolved"):
+        gate.require_query_success(process, family="generic loop", unsolved_goals=True)
+
+
+@pytest.mark.parametrize(
+    "returncode,stdout,stderr",
+    [
+        (1, UNSOLVED + "Q.lean:9:1: error: unknown identifier x\n", ""),
+        (1, UNSOLVED + "Q.lean:9:1: error: (deterministic) timeout at `whnf`, maximum number of heartbeats\n", ""),
+        (1, UNSOLVED + "Q.lean:9:1: error: maximum recursion depth has been reached\n", ""),
+        (1, UNSOLVED + "error: object file missing\n", ""),
+        (1, UNSOLVED + "  maximum recursion depth has been reached\n", ""),
+        (1, UNSOLVED, "stray stderr"),
+        (2, UNSOLVED, ""),
+        (1, "unsolved goals\n", ""),
+    ],
+)
+def test_unsolved_goals_mixed_with_tool_or_resource_failure_remain_unavailable(returncode, stdout, stderr):
+    with pytest.raises(gate.Unavailable):
+        gate.require_query_success(
+            subprocess.CompletedProcess([], returncode, stdout, stderr), family="generic loop", unsolved_goals=True
+        )
+
+
 @pytest.mark.parametrize("kind", ["timeout", "signal"])
 def test_first_process_failure_is_retained(tmp_path, monkeypatch, kind):
     def run(*args, **kwargs):
