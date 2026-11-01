@@ -25,6 +25,7 @@ its TinyLlama/SmolVLA model roster is not the new kernel roster.
 | [Generation](GENERATION.md) | Compiler flow and ownership |
 | [Performance audit](PERFORMANCE_AUDIT.md) | Hardware/resource and historical cycle analysis |
 | [Numerical diagnostics](NUMERICAL_DIAGNOSTICS.md) | Existing first-divergence tools |
+| [Ownership and attribution](OWNERSHIP.md) | Bringup by Nicolas Reed (PR #53, `gemmini/bringup`) and what the curated branches kept |
 
 The older overlapping setup/run pages now link to the single current handoff.
 Historical artifacts and reports remain unchanged. The prior long setup/run
