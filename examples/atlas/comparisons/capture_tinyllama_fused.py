@@ -71,14 +71,16 @@ def assemble_fp8(panels, read, m, width):
 
 class ProjectionWorkers:
     """Three isolated persistent model interpreters, with deterministic replies."""
-    def __init__(self, python, script, records):
+    def __init__(self, python, script, records, count=3):
+        if type(count) is not int or not 1 <= count <= 3:
+            raise ValueError('worker count must be one through three')
         records.append(identity(script))
         env = dict(os.environ)
         env.pop('PYTHONPATH', None)
         env.update(PYTHONDONTWRITEBYTECODE='1', NPU_MODEL_RTL_NATIVE_MXU0='0')
         self.workers = []
         try:
-            for _ in range(3):
+            for _ in range(count):
                 self.workers.append(subprocess.Popen([str(python), '-B', str(script)], stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE, text=True, bufsize=1, env=env))
         except BaseException:
@@ -246,7 +248,11 @@ class FusedProjectionCapture:
                                rescale=a_scale+b_scale, a_scale=a_scale, b_scale=b_scale, output_scale=down_scale,
                                A_fp8=a_desc, B_fp8=b_desc)
                 if operand is not None:
-                    compact = padded_words(np.ascontiguousarray(operand[:, lo:hi]), rows)
+                    compact = np.ascontiguousarray(operand[:, lo:hi])
+                    if compact.shape[0] == rows:
+                        compact = padded_words(compact, rows)
+                    elif compact.shape[0] != m:
+                        raise ValueError('epilogue operand physical rows differ')
                     request['operand_tiles'] = self.save_bytes(panel_stem + '-operand.bin',
                                                               self.layout.pack_bf16_tiles(compact))
                 requests.append(request)
