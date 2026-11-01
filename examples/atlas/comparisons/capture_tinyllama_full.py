@@ -223,6 +223,8 @@ def capture(args, projection_factory=None):
             records.append(identity(Path(__file__).with_name("capture_atlas_attention.py")))
             attention = AttentionCapture(out, attention_python, args.attention_worker_script, save, torch, records,
                                          model_root=getattr(args, 'attention_model_root', None))
+            if projection is not None and hasattr(projection, "attach_attention"):
+                projection.attach_attention(attention)
             def atlas_attention(module, query, key, value, attention_mask, scaling, dropout=0.0, **kwargs):
                 step = (counter - 1) // len(sites)
                 return attention.apply(step, module, query, key, value, attention_mask, scaling)

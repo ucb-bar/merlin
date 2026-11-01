@@ -146,6 +146,9 @@ class FusedCaptureTest(unittest.TestCase):
             for index, site in enumerate(owner.sites):
                 module = layer.get_submodule(site.removeprefix('model.layers.0.'))
                 def hook(module, inputs, output, site=site, index=index):
+                    if site.endswith('self_attn.o_proj'):
+                        words = raw_array(inputs[0][0], torch)
+                        owner.context['o_input_physical'] = np.concatenate((words, np.zeros((31, 64), np.uint16)))
                     return owner.linear(site, module, raw_array(inputs[0][0], torch), 0, index, mode[0])
                 handles.append(module.register_forward_hook(hook))
             marker = object()
@@ -202,6 +205,41 @@ class FusedCaptureTest(unittest.TestCase):
             path.write_text(json.dumps(dict(projection_kernels=[])))
             with self.assertRaisesRegex(ValueError, 'Source hash differs'):
                 down_scales(path, [])
+
+    def test_o_scale_validates_full_physical_input_and_replay_padding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            owner = FusedProjectionCapture.__new__(FusedProjectionCapture)
+            owner.out, owner.torch, owner.layout = Path(directory), torch, layout_module()
+            def save(relative, value):
+                path = owner.out/relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(value.tobytes())
+                return dict(file=relative, **array_identity(value), bytes=value.nbytes)
+            owner.save = save
+            logical = np.full((1, 64), 0x3f80, np.uint16)
+            physical = np.full((32, 64), 0x4280, np.uint16)
+            physical[:1] = logical
+            owner.context = dict(layer=0, entry=np.zeros((1, 64), np.uint16), o_input_physical=physical)
+            site = 'model.layers.0.self_attn.o_proj'
+            owner.weights = {site: (0, 0, [(0, 64, {}, 0)])}
+            owner.saved, owner.scales, owner.parameters, owner.calls, owner.records = {}, {}, {}, [], []
+            owner.workers = FakeWorkers(owner)
+            module = SimpleNamespace(out_features=64, weight=SimpleNamespace(_version=0, data_ptr=lambda: 0))
+            owner.linear(site, module, logical, 0, 3, 'capture')
+            self.assertEqual(owner.calls[0]['A_scale'], -2)
+            encoded = owner.layout.unpack_fp8_tiles(owner.read(owner.calls[0]['A_fp8']), 32, 64)
+            self.assertTrue(np.all(encoded[1:] == 0))
+            self.assertTrue(np.any(encoded[:1] != 0))
+            physical[31, 0] = 0x4300
+            with self.assertRaisesRegex(ValueError, 'predecessor or residual'):
+                owner.linear(site, module, logical, 0, 3, 'replay')
+            physical[31, 0] = 0x7fc0
+            with self.assertRaisesRegex(ValueError, 'finite'):
+                owner.linear(site, module, logical, 1, 3, 'capture')
+            self.assertEqual(len(owner.workers.batches), 1)
+            owner.context.pop('o_input_physical')
+            with self.assertRaisesRegex(ValueError, 'physical BF16'):
+                owner.linear(site, module, logical, 1, 3, 'capture')
 
     def test_three_workers_dispatch_all_panels_before_reading(self):
         events = []

@@ -128,6 +128,7 @@ class FusedProjectionCapture:
         self.scales = down_scales(args.scale_contract, records)
         records.append(identity(__file__))
         self.weights, self.saved, self.methods, self.context = {}, {}, [], None
+        self.attention_capture = None
         self.workers = ProjectionWorkers(args.projection_worker_python, args.projection_worker_script, records)
 
     def read(self, desc):
@@ -146,6 +147,25 @@ class FusedProjectionCapture:
 
     def begin_session(self, label):
         self.context = None
+
+    def attach_attention(self, attention):
+        self.attention_capture = attention
+
+    def physical_o_input(self, a, step, site, rows, m):
+        physical = self.context.get('o_input_physical')
+        attention = getattr(self, 'attention_capture', None)
+        if physical is None and attention is not None:
+            layer = int(site.split('.')[2])
+            matches = [item for item in attention.calls if item['step'] == step and item['layer'] == layer]
+            if len(matches) != 1:
+                raise ValueError('actual attention physical output is unavailable')
+            physical = self.layout.unpack_bf16_tiles(self.read(matches[0]['output_tiled']), m, a.shape[1])
+        if physical is None and rows == m:
+            physical = a
+        if (physical is None or physical.shape != (m, a.shape[1]) or physical.dtype != np.uint16
+                or not np.array_equal(physical[:rows], a)):
+            raise ValueError('actual o input physical BF16 words are required')
+        return physical
 
     def install(self):
         owner = self
@@ -188,6 +208,11 @@ class FusedProjectionCapture:
     def tensor(self, words):
         return self.torch.from_numpy(words.copy()).view(self.torch.bfloat16).unsqueeze(0)
 
+    def validate_launch(self, launch):
+        if (launch.get('model_commit') != MODEL_PIN or launch.get('numerics') != 'rtl'
+                or launch.get('accelerated') is not False or launch.get('native_dispatch_enabled') is not False):
+            raise ValueError('projection worker is not the original RTL reference')
+
     def linear(self, site, module, a, step, index, mode):
         rows, k = a.shape
         m = 128 if rows == 128 else 32
@@ -204,7 +229,9 @@ class FusedProjectionCapture:
                 raise ValueError('gate and up normalized predecessors differ')
         elif role == 6:
             operand = context['residual']
-        signature = (array_identity(a), None if operand is None else array_identity(operand))
+        physical = self.physical_o_input(a, step, site, rows, m) if role == 3 else None
+        signature = (array_identity(a), None if operand is None else array_identity(operand),
+                     None if physical is None else array_identity(physical))
         key = (step, site)
         if mode == 'replay':
             old, words, emitted = self.saved[key]
@@ -232,13 +259,17 @@ class FusedProjectionCapture:
             if role == 6:
                 a_scale, packed_a = context['down_scale'], context['down_fp8']
             else:
-                encoded, a_scale = encode(a)
-                if rows == 1:
+                encoded, a_scale = encode(a if physical is None else physical)
+                if physical is not None:
+                    encoded[rows:] = 0
+                elif rows == 1:
                     encoded = np.concatenate((encoded, np.zeros((31, k), np.uint8)))
                 packed_a = self.layout.pack_fp8_tiles(encoded)
             a_desc = self.save_bytes(stem + '-A-fp8.bin', packed_a)
             call = dict(step=step, site=site, site_index=index, A_bf16=self.save(stem + '-A.bin', a),
                         A_fp8=a_desc, A_scale=a_scale, panels=[])
+            if physical is not None:
+                call['A_physical_bf16'] = self.save(stem + '-A-physical.bin', physical)
             requests = []
             for panel, (lo, hi, b_desc, b_scale) in enumerate(pieces):
                 panel_stem = stem + f'-{panel:02d}'
@@ -262,10 +293,7 @@ class FusedProjectionCapture:
                 raise ValueError('incomplete projection panel replies')
             logical = []
             for panel, ((lo, hi, _, b_scale), launch) in enumerate(zip(pieces, results)):
-                if (launch.get('model_commit') != MODEL_PIN or launch.get('numerics') != 'rtl'
-                        or launch.get('accelerated') is not False
-                        or launch.get('native_dispatch_enabled') is not False):
-                    raise ValueError('projection worker is not the original RTL reference')
+                self.validate_launch(launch)
                 for source in launch['implementation_sources']:
                     if source not in self.records:
                         self.records.append(source)
@@ -318,6 +346,7 @@ def main():
         parser.add_argument('--' + name, required=True)
     for name in ('attention-worker-python', 'projection-worker-python'):
         parser.add_argument('--' + name, type=Path, required=True)
+    parser.add_argument('--attention-model-root', type=safe_path)
     parser.add_argument('--decode-count', type=int, default=2)
     parser.add_argument('--layer-count', type=int, default=22)
     parser.add_argument('--block-only', action='store_true')
