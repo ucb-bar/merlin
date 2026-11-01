@@ -22,13 +22,16 @@ def fixed_exponent(words):
 
 
 class AttentionCapture:
-    def __init__(self, root, python, script, save, torch, records):
+    def __init__(self, root, python, script, save, torch, records, *, model_root=None):
         self.root, self.save, self.torch, self.records = root, save, torch, records
         self.calls, self.saved, self.mode = [], {}, 'capture'
         records.append(identity(script))
         worker_env = dict(os.environ)
         worker_env.pop('PYTHONPATH', None)
-        self.worker = subprocess.Popen([str(python), '-B', str(script)], stdin=subprocess.PIPE,
+        command = [str(python), '-B', str(script)]
+        if model_root is not None:
+            command += ['--model-root', str(safe_path(model_root))]
+        self.worker = subprocess.Popen(command, stdin=subprocess.PIPE,
                                        stdout=subprocess.PIPE, text=True, bufsize=1, env=worker_env)
 
     def close(self):

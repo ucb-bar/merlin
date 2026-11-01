@@ -1,6 +1,9 @@
 """Focused full Tiny greedy feedback and physical operand controls."""
 import unittest
+from pathlib import Path
 import sys
+import tempfile
+from unittest import mock
 
 from merlin.common.paths import repo_root
 
@@ -9,9 +12,21 @@ sys.path.insert(0, str(repo_root() / "examples/atlas/comparisons"))
 import numpy as np
 
 from capture_tinyllama_full import SITES, greedy_token, padded_words
+from capture_atlas_attention import AttentionCapture
 
 
 class FullCaptureTest(unittest.TestCase):
+    def test_attention_worker_receives_explicit_model_checkout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            script = root / 'worker.py'
+            script.write_text('# worker fixture\n')
+            with mock.patch('capture_atlas_attention.subprocess.Popen') as launch:
+                AttentionCapture(root, '/python', script, None, None, [], model_root=root / 'model')
+            self.assertEqual(launch.call_args.args[0],
+                             ['/python', '-B', str(script), '--model-root', str(root / 'model')])
+            self.assertNotIn('PYTHONPATH', launch.call_args.kwargs['env'])
+
     def test_all_layers_and_head_in_original_order(self):
         self.assertEqual(len(SITES), 155)
         self.assertEqual(SITES[:2], ("model.layers.0.self_attn.q_proj", "model.layers.0.self_attn.k_proj"))

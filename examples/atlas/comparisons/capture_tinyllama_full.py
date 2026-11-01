@@ -221,7 +221,8 @@ def capture(args, projection_factory=None):
         if attention_python is not None:
             from capture_atlas_attention import AttentionCapture
             records.append(identity(Path(__file__).with_name("capture_atlas_attention.py")))
-            attention = AttentionCapture(out, attention_python, args.attention_worker_script, save, torch, records)
+            attention = AttentionCapture(out, attention_python, args.attention_worker_script, save, torch, records,
+                                         model_root=getattr(args, 'attention_model_root', None))
             def atlas_attention(module, query, key, value, attention_mask, scaling, dropout=0.0, **kwargs):
                 step = (counter - 1) // len(sites)
                 return attention.apply(step, module, query, key, value, attention_mask, scaling)
@@ -302,9 +303,15 @@ def main():
     parser.add_argument("--relocate", action="append", default=[])
     parser.add_argument("--attention-worker-python", type=Path)
     parser.add_argument("--attention-worker-script", type=safe_path)
+    parser.add_argument("--attention-model-root", type=safe_path,
+                        help="explicit pinned npu_model checkout passed to the delivered attention worker")
     args = parser.parse_args()
     if bool(args.attention_worker_python) != bool(args.attention_worker_script):
         parser.error("both attention worker arguments are required together")
+    if args.attention_worker_script and not args.attention_model_root:
+        parser.error("--attention-model-root is required for instruction capture")
+    if args.attention_model_root and not args.attention_worker_script:
+        parser.error("--attention-model-root requires an attention worker")
     capture(args)
 
 
