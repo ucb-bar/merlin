@@ -14,7 +14,7 @@
 
 static float bits_float(uint32_t bits) {
     float value;
-    memcpy(&value, &bits, sizeof(value));
+    __builtin_memcpy(&value, &bits, sizeof(value));
     return value;
 }
 

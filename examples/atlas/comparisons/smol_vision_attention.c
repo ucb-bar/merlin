@@ -59,12 +59,12 @@ static float vision_prior_exp(float value) {
     const double shift = 0x1.8p52;
     double rounded = vision_fma64(inverse_log, (double)value, shift);
     uint64_t bits;
-    memcpy(&bits, &rounded, sizeof(bits));
+    __builtin_memcpy(&bits, &rounded, sizeof(bits));
     rounded -= shift;
     double remainder = vision_fma64(inverse_log, (double)value, -rounded);
     uint64_t scale_bits = table[bits % 32] + (bits << 47);
     double scale;
-    memcpy(&scale, &scale_bits, sizeof(scale));
+    __builtin_memcpy(&scale, &scale_bits, sizeof(scale));
     double polynomial = vision_fma64(0x1.c6af84b912394p-20, remainder,
                                     0x1.ebfce50fac4f3p-13);
     double square = remainder * remainder;
@@ -82,7 +82,7 @@ static float vision_exp(float value) {
     /* log2(e) requires all23 fraction bits, unlike BF16 operands. */
     uint32_t log_bits = UINT32_C(0x3fb8aa3b);
     float log2e;
-    memcpy(&log2e, &log_bits, sizeof(log2e));
+    __builtin_memcpy(&log2e, &log_bits, sizeof(log2e));
     float source = value * log2e;
     int whole = (int)source;
     float floor_value = source == 0.0f ? source : (float)(whole - (source < (float)whole));
@@ -94,7 +94,7 @@ static float vision_exp(float value) {
     float encoded = fmaf(8388608.0f, source, 1065353216.0f);
     uint32_t bits = (uint32_t)(int32_t)encoded;
     float result;
-    memcpy(&result, &bits, sizeof(result));
+    __builtin_memcpy(&result, &bits, sizeof(result));
     return result;
 }
 

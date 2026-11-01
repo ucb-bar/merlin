@@ -33,7 +33,7 @@ int host_matrix_expand_bf16(const uint16_t *input, float *output, size_t count) 
         || !finite_input(input, count)) return -1;
     for (size_t i = 0; i < count; ++i) {
         uint32_t word = (uint32_t)input[i] << 16;
-        memcpy(output + i, &word, sizeof(word));
+        __builtin_memcpy(output + i, &word, sizeof(word));
     }
     return 0;
 }

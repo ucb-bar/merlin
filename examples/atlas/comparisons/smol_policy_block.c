@@ -24,8 +24,8 @@ static int float_views(const float *input, uint16_t *output, size_t count) {
         /* Atlas BF16 projection results promoted to FP32 are exact views. */
         uint32_t original, promoted;
         float value = bf16_to_float(word);
-        memcpy(&original, input + i, sizeof(original));
-        memcpy(&promoted, &value, sizeof(promoted));
+        __builtin_memcpy(&original, input + i, sizeof(original));
+        __builtin_memcpy(&promoted, &value, sizeof(promoted));
         if (original != promoted) return 1;
         output[i] = word;
     }

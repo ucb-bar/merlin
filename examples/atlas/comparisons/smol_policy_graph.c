@@ -45,8 +45,8 @@ static int failed(smol_policy_state *s) {
 
 static int same_float(float left, float right) {
     uint32_t a, b;
-    memcpy(&a, &left, sizeof(a));
-    memcpy(&b, &right, sizeof(b));
+    __builtin_memcpy(&a, &left, sizeof(a));
+    __builtin_memcpy(&b, &right, sizeof(b));
     return a == b;
 }
 
