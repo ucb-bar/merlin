@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from buffer_test_inputs import case_root
@@ -34,7 +35,14 @@ def test_complete_eight_module_and_declaration_inventory(candidate):
     sources = json.loads(candidate.sources_json)
     assert sum(row["path"].endswith("/buffer_reuse_emit.py") for row in sources) == 1
     assert sum(row["path"].endswith("/buffer_reuse_gate.py") for row in sources) == 1
-    assert len(gate._ordered_sources(candidate)) == 111
+    ordered = gate._ordered_sources(candidate)
+    # The transitive proof closure grows as profiles are added. The standalone
+    # auditor is bound separately; every query dependency is compiled once.
+    bound_lean = {row["path"] for row in sources if row["path"].endswith(".lean")}
+    auditor = str((Path(gate.__file__).parent / "lean/Merlin/GraphStateAudit.lean").resolve())
+    assert auditor in bound_lean
+    assert len(ordered) == len(bound_lean) - 1
+    assert {str(path.resolve()) for _, path in ordered} == bound_lean - {auditor}
     assert not candidate.describe()["authority"]
 
 

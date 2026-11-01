@@ -155,7 +155,9 @@ def test_cli_selects_macc_transform_separately_from_draft_validation(monkeypatch
     from merlin.compile.command import apply_pass_validation
 
     monkeypatch.delenv(transforms.ENV_MACC, raising=False)
-    monkeypatch.delenv(pass_validation.ENV_PASSES, raising=False)
+    # The CLI writes os.environ directly; record even an initially absent key
+    # so teardown restores it instead of enabling validation in later baselines.
+    monkeypatch.setenv(pass_validation.ENV_PASSES, "")
     apply_pass_validation(Namespace(validate_passes=selection, lean_sdk_bin=None))
     assert transforms.from_environment().macc_f32acc is False
     monkeypatch.setenv(transforms.ENV_MACC, "0")
