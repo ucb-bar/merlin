@@ -1,6 +1,6 @@
 # FireSim cycle gap, TVM memory mapping, and the next tuning campaign
 
-The [FASED sweep follow-up](FASED_SWEEPS.md) adds explicit latency-pipe timing and
+The [FASED sweep follow-up](FASED_SWEEPS.md) (deprecated; current runs use FireSim) adds explicit latency-pipe timing and
 compiler graph-choice search after this initial audit. Its new measurements and
 implementation status supersede this audit's historical "not run/not implemented"
 statements for those two features; cross-function SRAM residency remains absent.

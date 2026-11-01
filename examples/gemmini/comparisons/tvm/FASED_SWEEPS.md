@@ -1,5 +1,12 @@
 # FASED-memory operator and connected-workload tuning
 
+> **Deprecated (2026-11-01).** The FASED latency-pipe Verilator sweeps are no
+> longer maintained; current measurements run on FireSim, see
+> [FIRESIM_HANDOFF.md](FIRESIM_HANDOFF.md). The local variant build and the
+> `feat/verilator-fased-memory-model` branch were removed; its source stays
+> reachable as tag `archive/cited/verilator-fased-memory-model`. The results
+> below are historical.
+
 This follow-up uses the opt-in latency-pipe Verilator variant, not the stock
 magic-memory timing labels from `rtl-v1`. The simulator's verified control relink
 matches the previously qualified base. The memory policy comes from
