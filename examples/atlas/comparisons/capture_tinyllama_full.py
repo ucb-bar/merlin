@@ -40,7 +40,7 @@ def padded_words(words, rows):
     return np.concatenate((words, np.zeros((31, words.shape[1]), dtype=np.uint16)))
 
 
-def capture(args):
+def capture(args, projection_factory=None):
     import torch
     layer_count = getattr(args, "layer_count", 22)
     block_only = getattr(args, "block_only", False)
@@ -82,7 +82,7 @@ def capture(args):
     started = time.monotonic()
     handles, calls, parameters, saved, weights = [], [], {}, {}, {}
     mode, counter = "capture", 0
-    attention = None
+    attention, projection = None, None
     original_attention = modeling_llama.eager_attention_forward
 
     def save(relative, words):
@@ -106,6 +106,8 @@ def capture(args):
             a_id = array_identity(a)
             key = (step, site)
             counter += 1
+            if projection is not None:
+                return projection.linear(site, module, a, step, index, mode)
             if mode == "replay":
                 expected_a, words = saved[key]
                 if a_id != expected_a:
@@ -147,6 +149,8 @@ def capture(args):
         pass
 
     def session(label):
+        if projection is not None:
+            projection.begin_session(label)
         cache = cache_utils.DynamicCache(config=model.config)
         next_token, trace = None, []
         for step in range(args.decode_count + 1):
@@ -211,6 +215,9 @@ def capture(args):
         modules = {name: item for name, item in model.named_modules() if type(item) is torch.nn.Linear}
         if not set(sites).issubset(modules) or (not block_only and set(modules) != set(sites)):
             raise ValueError("selected model linear inventory changed")
+        if projection_factory is not None:
+            projection = projection_factory(args, out, save, torch, model, sites, records, calls, parameters)
+            projection.install()
         if attention_python is not None:
             from capture_atlas_attention import AttentionCapture
             records.append(identity(Path(__file__).with_name("capture_atlas_attention.py")))
@@ -240,6 +247,8 @@ def capture(args):
             raise ValueError("complete greedy target replay changed")
         while handles:
             handles.pop().remove()
+        if projection is not None:
+            projection.restore()
         modeling_llama.eager_attention_forward = original_attention
         if session("restored") != native_trace or native.state(model, torch) != initial:
             raise ValueError("native restoration or parameters changed")
@@ -255,20 +264,30 @@ def capture(args):
                       attention_calls=[] if attention is None else attention.calls,
                       atlas_instruction_execution=attention is not None,
                       source_bookends_verified=True, target_replay_exact=True, native_restored_exact=True)
+        if projection is not None:
+            report.update(projection.summary())
     except Exception as error:
         report["error"] = {"type": type(error).__name__, "message": str(error)}
         raise
     finally:
         modeling_llama.eager_attention_forward = original_attention
-        if attention is not None:
-            attention.close()
         while handles:
             handles.pop().remove()
-        torch.set_rng_state(rng)
-        np.random.set_state(nrng)
-        random.setstate(prng)
-        report["wall_seconds"] = time.monotonic() - started
-        (out / "receipt.json").write_text(json.dumps(report, indent=2) + "\n")
+        if projection is not None:
+            projection.restore()
+        try:
+            if attention is not None:
+                attention.close()
+        finally:
+            try:
+                if projection is not None:
+                    projection.close()
+            finally:
+                torch.set_rng_state(rng)
+                np.random.set_state(nrng)
+                random.setstate(prng)
+                report["wall_seconds"] = time.monotonic() - started
+                (out / "receipt.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
 
 
