@@ -10,7 +10,7 @@ The direct developer API validates the complete **original → normalized → re
 endpoints, checks twelve generated Lean modules against 111 project modules,
 audits the roots/imports/axioms, and permits a live consumer to receive only the
 checked final bytes. Saved reports cannot authorize delivery. See the
-[usage and exact domain](../../../../../../docs/guides/lean_buffer_reuse_gate.md).
+[usage and exact domain](../../../../../../docs/guides/lean_bounded_pass_profiles.md#private-buffer-reuse).
 
 ## Claim and assumptions
 

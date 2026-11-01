@@ -62,8 +62,8 @@ and trusted IR projection. Native/hardware fidelity, independent human contract
 approval, complete model coverage and adjacent-pass composition remain open.
 Neither the complete hoisting algorithm nor all graph transformations are claimed.
 
-- [Elision API guide](../../../../docs/guides/lean_configuration_elision_gate.md)
-- [Hoist API guide](../../../../docs/guides/lean_configuration_hoist_gate.md)
+- [Elision API guide](../../../../docs/guides/lean_bounded_pass_profiles.md#configuration-elision-and-hoisting)
+- [Hoist API guide](../../../../docs/guides/lean_bounded_pass_profiles.md#configuration-elision-and-hoisting)
 - [Elision qualification](../../verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/README.md)
 - [Hoist result and three stopped handoffs](../../verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/README.md)
 

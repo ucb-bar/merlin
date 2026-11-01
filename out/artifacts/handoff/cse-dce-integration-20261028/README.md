@@ -52,7 +52,7 @@ The original DCE/CSE-only qualification selected two compiler gates:
 `prune_dead_pure_tensor_ops` in xDSL preprocessing, and the pipeline's leading
 tensor `cse` in the actual compiler runner on both routes. Enable them with
 `merlin-compile ... --validate-passes prune_dead_pure_tensor_ops,cse --lean-sdk-bin <sdk>/bin`, or the
-environment/API described in the [gate guide](../../../../docs/guides/lean_pass_gate.md).
+environment/API described in the [gate guide](../../../../docs/guides/lean_bounded_pass_profiles.md).
 Validation is opt-in. Missing/stale tools and unsupported or rejected checks
 stop the requested validated compilation; unchanged boundaries need no check.
 

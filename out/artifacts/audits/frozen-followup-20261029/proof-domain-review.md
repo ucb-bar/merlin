@@ -6,6 +6,11 @@ projection, index-control roles, recursive configuration hoisting, source
 eligibility and coverage wording. All source references below refer to
 `591687da8` unless explicitly identified as the local cutoff harness.
 
+This is a historical review. The current compiler enables all ten integrated
+gates through `--validate-passes all`, including Q/DQ and MACC. Current activation
+and supported patterns are documented in the
+[stack guide](../../../../docs/guides/lean_compiler_stack.md).
+
 Bare `GraphState*.lean` filenames refer to
 `src/merlin/verify/lean/Merlin/`. Bare verifier Python filenames refer to
 `src/merlin/verify/`, and bare `test_*.py` filenames refer to
@@ -184,9 +189,10 @@ universal `Models`.
 
 ## Coverage and claim conclusions
 
-`DEFAULT_CHECKS` is still five. The new generic checker is an additional route
-for existing loop selectors, not an extra default family. Configuration,
-proposed Q/DQ, draft MACC and host fusion remain explicit selections.
+At the reviewed cut `591687da8`, `DEFAULT_CHECKS` contained five checks. The
+generic checker added a route for existing loop selectors. The later all-ten
+integration enables configuration, Q/DQ, MACC and host fusion in `all`; the old
+selection described by this review is superseded.
 
 The largest policy change is that known original-source exclusions now run
 ordinary transformations with final unverified coverage. Source-supported

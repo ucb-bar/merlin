@@ -57,7 +57,7 @@ lowering checks into compiler enforcement. It remains outside `all` and reports
 refinement under the proposed Q/DQ source model, with no source-spec approval.
 Optional `SourceCapture` reconstruction binds a retained original PT2 graph,
 the pinned producer/Torch payload and complete actual input IR before and after
-the Lean proof. See [the gate guide](../../../../docs/guides/lean_qdq_gate.md)
+the Lean proof. See [the gate guide](../../../../docs/guides/lean_bounded_pass_profiles.md#qdq-and-macc)
 for the distinction between source binding, lowering refinement and numerical
 approval. Current test/tool limits are recorded in the integration handoff.
 Earlier statements below about absent Q/DQ gate registration describe the

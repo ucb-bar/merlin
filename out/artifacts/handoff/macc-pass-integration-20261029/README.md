@@ -6,6 +6,13 @@ the teammate's Q/DQ integration through `b0f3f8f1d`. This handoff supersedes
 earlier statements that Q/DQ has no compiler selector. It does not approve any
 numerical policy or source specification.
 
+Current compiler status: `--validate-passes all` enables all ten integrated
+gates, including MACC, Q/DQ, both configuration gates and host fusion. Supported
+changing boundaries require accepted owned checks before delivery. The freshness
+fix and test counts below retain their named historical source cuts; the
+[stack guide](../../../../docs/guides/lean_compiler_stack.md) is the current
+interface reference.
+
 ## What was implemented
 
 The MACC gate could audit stale proof objects while binding newer proof sources.
@@ -20,7 +27,7 @@ requires **`MerlinVerify` plus both executables** to be current. It retains
 The [new regression](../../../../merlin/tests/ir/test_pass_gate_audit_freshness.py)
 builds real minimal Lean projects and checks current, stale-source and
 missing-object cases. The stale/missing cases fail on the old implementation
-and pass with the fix. The [gate guide](../../../../docs/guides/lean_pass_gate.md)
+and pass with the fix. The [gate guide](../../../../docs/guides/lean_bounded_pass_profiles.md)
 documents the complete-library prerequisite.
 
 The soundness check reproduced acceptance of an actual f16 boundary after adding
@@ -71,18 +78,20 @@ Transformation selection and validation selection remain separate.
 | Leading tensor `cse` | In `all`; actual native runner boundary | Same tensor refinement. This does not cover every downstream CSE invocation. |
 | Ordered loop unrolling | In `all`; optional source-SCF transformation | All defined entries preserve modeled returns/errors/terminal world. Current compiler profile accepts 0–16 inputs, 1–16 word carries and multiple changed definitions. Broader loop modes need proof bridges. |
 | Ordered loop segmentation | In `all`; source-SCF and private-buffer routes | Scalar route has return/error/world equality; memory route has the complete chain's successful-observation relation. These are different claims. |
-| Private buffer reuse | In `all`; normalization → reuse → segmentation chain | Equal possible successful public observations under `total_private_unobservable` allocation. Identity normalization and one-to-one reuse prefixes are supported. Untiled memory and broader allocator semantics remain separate. |
-| MACC: `bf16_f32acc_draft_contract` | Explicit-only; actual pass and optional compiler-entry invocation | Output equals a source-derived draft f32-accumulation reference, plus strict nonempty site qualification. Independent numerical-policy review remains pending. |
-| Q/DQ: `lower_quant_ext` | **Explicit-only, now integrated** on xDSL and textual routes | Typed refinement under the proposed Q/DQ model; optional fresh original-source binding. Source approval, framework equivalence and native fidelity remain separate. |
-| Configuration-write elision | Direct `prepare/check/deliver/replay` API; no registered compiler selector | Conditional complete-entry state/error equality. Needs a production caller that captures actual instruction-MLIR boundaries and consumes the live completion. |
-| Scoped configuration hoist | Direct API; no registered compiler selector | Conditional complete Kernel state/error equality for one supported positive counted-loop hoist. Needs production Kernel boundary wiring. |
+| Private buffer reuse | In `all`; normalization → reuse, with optional initializer segmentation | Equal possible successful public observations under `total_private_unobservable` allocation. Identity prefixes and untiled/tiled chains are supported; native allocator semantics remain separate. |
+| MACC: `bf16_f32acc_draft_contract` | In `all`; actual producer and compiler-entry invocation | Output equals the source-derived f32-accumulation reference, with strict nonempty site qualification. Numerical-policy review is separate from the enforced compiler gate. |
+| Q/DQ: `lower_quant_ext` | In `all`; actual xDSL and textual preprocessing | Typed refinement under the Q/DQ source model; optional fresh original-source binding. Source approval and framework/native fidelity are separate. |
+| Configuration-write elision | In `all`; original instruction-IR and straight-line Kernel consumers | Complete modeled state/error equality under the original selected ISA/effect facts; fresh live completion precedes delivery. |
+| Configuration hoist | In `all`; actual selected counted-Kernel producer and controlled C consumer | Complete modeled outcome equality for supported flat/nested positive counted loops, under the indexed instruction/effect premises. |
+| Host graph fusion | In `all`; actual emitted helper/call boundary on both routes | Ordered public-result equality under common typed total pure actions and successful logical allocation. |
 | Exact integer simplification, scalar redundancy elimination, scalar invariant motion | Larger source profiles exist; **public activation is held** | `lean_graph_pipeline_gate_profiles.public_check` refuses and `compiler_eligible` is false. Need reviewed provider/operational bridges and compiler wiring, not just selector registration. |
 | Other tensor/local rulebook rewrites | Rules/checkers and composition are not blanket pass registration | Identify a real production pass, prove its complete actual endpoints in the supported fragment, then wire a canonical owned worker. |
 | W8A8 numerical policy; upstream MLIR/LLVM/hardware | Separate work | No approval or end-to-end correctness follows from these compiler gates. |
 
-The five checks in `all` remain DCE, CSE, unrolling, segmentation and buffer
-reuse. Both MACC and Q/DQ require explicit selection. Merely enabling a check
-does not enable a transformation; unchanged stages submit no positive proof job.
+All ten registered checks are selected by `all`; MACC and Q/DQ need no additional
+gate-enable switch. Transformation options determine which rewrites run, and
+unchanged stages submit no positive proof job. Other standalone proof interfaces
+in the table are not additional registered pass selectors.
 
 MACC cites `MerlinVerify.Check.Bf16F32AccBoundary.check_sound`: output/reference
 denotation equality under `ParametricAlpha.Laws`, nonempty source-site coverage
@@ -90,18 +99,23 @@ and strict local qualification. Local qualification does not establish an
 initialized successful whole-program execution. Its numerical verdict remains
 `abstracted`, with `policy_reviewed=false` and no original-source equivalence.
 
-## What the next owner should do
+## Historical follow-up plan
+
+The tasks below were written at `ae144d959`. Configuration compiler integration
+and all-ten default selection have since been completed. They are retained as
+the planning history of this freshness fix, not as missing gate-enable work.
+Current interfaces and profile extensions are in the stack guide linked above.
 
 ### 1. Wire the two configuration APIs into their real compiler callers
 
 Use the existing APIs rather than replacing their proven model:
 
-- [Elision guide](../../../../docs/guides/lean_configuration_elision_gate.md),
+- [Elision guide](../../../../docs/guides/lean_bounded_pass_profiles.md#configuration-elision-and-hoisting),
   `configuration_elision_{intake,gate}.py`: capture complete actual instruction
   MLIR before/after redundant-write removal. Bind the original ISA/effect facts
   and software selection. The reference remains
   `4499eebb959c0f92cefd92cc6d80646ba66474ed`.
-- [Hoist guide](../../../../docs/guides/lean_configuration_hoist_gate.md),
+- [Hoist guide](../../../../docs/guides/lean_bounded_pass_profiles.md#configuration-elision-and-hoisting),
   `configuration_hoist_{intake,gate}.py`: capture complete actual Kernel text
   before/after the hoist. Preserve the detached
   `e0484f4886ae0780d0325cdfa998842b61bb647c` reference and its required source
@@ -149,7 +163,7 @@ full error/world or finite-capacity allocator equality.
 
 ### 4. Keep Q/DQ follow-up aligned with the newly merged implementation
 
-Read the [Q/DQ gate guide](../../../../docs/guides/lean_qdq_gate.md) and
+Read the [Q/DQ gate guide](../../../../docs/guides/lean_bounded_pass_profiles.md#qdq-and-macc) and
 [qualification handoff](../quantization-lean-qualification-20261029/README.md).
 The actual xDSL pass is observed; textual validation captures the complete outer
 preprocessing result, including wrapper edits. A dedicated label handles textual

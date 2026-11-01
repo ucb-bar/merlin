@@ -66,7 +66,7 @@ behavior, external effects, floating-point, reductions, dynamic or encoded
 layouts, recursive/external reachable calls and broader fusion patterns remain
 outside this result. It does not prove success/error equivalence for a failing
 allocator. The [ledger](../../../../merlin/lean/LEDGER.md) and
-[compiler guide](../../../../docs/guides/lean_compiler_stack.md#logical-host-graph-fusion)
+[compiler guide](../../../../docs/guides/lean_bounded_pass_profiles.md#host-graph-fusion)
 record the durable contract.
 
 ## Qualification

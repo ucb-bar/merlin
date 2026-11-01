@@ -48,7 +48,7 @@ not thirteen new independent cases or a new-host qualification.
 
 Start with [F's final status](F/FINAL_STATUS.json),
 [the publication index](PUBLICATION.json), and
-[the developer API guide](../../../../../../docs/guides/lean_configuration_elision_gate.md).
+[the developer API guide](../../../../../../docs/guides/lean_bounded_pass_profiles.md#configuration-elision-and-hoisting).
 The archives retain exact source/query/proof/process text and the old failed
 profiles. Compiled native objects and symlink attack fixtures remain in their
 original campaigns and are explicitly excluded by member manifests. Rebuild

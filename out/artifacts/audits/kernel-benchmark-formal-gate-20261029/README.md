@@ -91,7 +91,7 @@ small real C probe are also retained. Campaign v2 is the successful run.
 - [Immutable reference helper](../../../../merlin/tests/ir/kernel_benchmark_handoff_oracle.py)
 - [Portable contracts and complete array hashes](../../../../merlin/tests/data/kernel_benchmark_handoff_contracts.json)
 
-With the compiler/Lean tools configured as in the [gate guide](../../../../docs/guides/lean_pass_gate.md),
+With the compiler/Lean tools configured as in the [gate guide](../../../../docs/guides/lean_bounded_pass_profiles.md),
 use a fresh output directory and CPU IDs available on your host:
 
 ```sh

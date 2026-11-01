@@ -55,8 +55,10 @@ or all temporary copies. Q/DQ remains proposed-model; MACC remains draft.
 [README.md](README.md) and `summary.json` report the actual compiler workers,
 complete native outputs, original source cuts and scope. The frozen **14-route campaign-v3 is terminal: twelve native passes and two
 TinyLlama native-build timeouts** at the observer's 300-second outer deadline.
-All fourteen compiler phases passed on that recorded v3 source cut. A finite-budget two-case retry is being
-prepared; its outcome is not inferred from the successful formal checks. Host results above do not establish
+All fourteen compiler phases passed on that recorded v3 source cut. The finite-budget two-case retry is in progress. Four fresh Q/DQ/CSE checks
+passed, and the first-seed full output comparison independently passed on both
+routes. The second seed and terminal case results remain pending; their outcome
+is not inferred from the completed observations. Host results above do not establish
 that campaign's success.
 
 The preceding ten-route campaign retained successful compile/receipt audits but
@@ -91,7 +93,7 @@ pretrained-model accuracy or every possible transformation of the model.
 ## Reproduction
 
 Use the configured compiler/test Python, Lean SDK and selected Clang described
-in the [compiler gate guide](../../../../docs/guides/lean_pass_gate.md). Run from
+in the [compiler gate guide](../../../../docs/guides/lean_bounded_pass_profiles.md). Run from
 the repository root. The following are reproduction commands, not reconstructed
 historical argv; no additional tests were executed while writing this file.
 

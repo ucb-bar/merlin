@@ -4,7 +4,7 @@ kind: design
 status: draft
 owner: verification
 last_verified: 2026-10-29
-related: [merlin_lean_verification, verified_compiler_roadmap, lean_compiler_stack, lean_qdq_gate, lean_buffer_reuse_gate]
+related: [merlin_lean_verification, verified_compiler_roadmap, lean_compiler_stack, lean_bounded_pass_profiles]
 code_refs:
   - src/merlin/verify/pass_validation.py
   - src/merlin/verify/compiler_transforms.py
@@ -33,17 +33,16 @@ code_refs:
 
 # Completing Merlin pass proofs and compiler integration
 
-## Bounded integration endpoint — latest policy
+## Implemented compiler gates
 
-The current milestone is a real compiler gate for explicitly bounded source
-models, described in the [profile catalogue](../guides/lean_bounded_pass_profiles.md).
-Broader ranks, computed initializer prefixes and general loop bodies remain
-documented extensions rather than blockers to this endpoint. The producer still
-runs normally outside a proof profile; the final coverage log labels that actual
-boundary unverified with zero proof credit. This supersedes the earlier proposal
-to skip unsupported optimizations or stop compilation for every model exclusion.
-For admitted sources, target/proof/tool/resource/custody failures still block.
-An earlier verified boundary gives no composed proof through an unverified suffix.
+All ten compiler gates are integrated and enabled by `--validate-passes all`,
+including MACC and Q/DQ. Supported changing boundaries require accepted actual
+input/output checks before compiler products return. Target, proof, tool,
+resource and custody failures block delivery. The
+[profile catalogue](../guides/lean_bounded_pass_profiles.md) defines supported
+patterns, assumptions and coverage statuses; broader ranks, computed initializer
+prefixes and general loop bodies are profile extensions, not missing compiler
+gate integrations.
 
 All ten selectors now have integrated source admission, actual-boundary workers
 and end coverage within the declared models. The generic UNROLL/TILE and
@@ -80,7 +79,7 @@ broader indexing/reduction domains, and composition with earlier layout rewrites
 Each needs actual producer-boundary and mutation qualification. A concrete MLIR
 arithmetic bridge would strengthen the remaining primitive correspondence premise;
 the current common typed total pure-action interpretation remains explicit.
-See the [stack guide](../guides/lean_compiler_stack.md#logical-host-graph-fusion)
+See the [stack guide](../guides/lean_bounded_pass_profiles.md#host-graph-fusion)
 and [qualification handoff](../../out/artifacts/audits/host-graph-fusion-20261029/README.md).
 
 This document retains the broader completion design below; the latest bounded
@@ -188,15 +187,16 @@ developed. Approval of numerical policies remains independent of technical
 implementation and testing. No phase closes by changing a status field or
 adding a selector to `all`.
 
-## Engineering scope and effort
+## Historical engineering estimates
 
-Here upstream integration means Merlin's normal compiler and selected scheduling
-consumers. The transformation algorithms largely exist. Seven checks are already
-registered, including the two explicitly selected numerical checks; configuration
-elision and hoisting have separate proof APIs. Most remaining work concerns
-coverage, current-source intake and real consumer enforcement.
+The estimates below predate the all-ten integration. Their baseline had seven
+registered checks and separate configuration proof APIs. MACC, Q/DQ, both
+configuration gates and host fusion are now integrated in `all`; the
+[stack guide](../guides/lean_compiler_stack.md) is the current interface and
+coverage reference. Completed initial wiring in this historical table is not a
+remaining gate-enablement task.
 
-These are planning estimates from the current implementation, not measured
+These are retained planning estimates from that baseline, not measured
 completion times. One day means an experienced contributor's working day with
 Lean/Merlin familiarity. The broader target covers legal changing cases of the
 selected current producers under the compiler's index64 contract and the agreed
@@ -212,7 +212,7 @@ The first-delivery column is a subset of the broader estimate, not an extra
 charge. Broader row estimates exclude the shared foundation and final combined
 qualification below.
 
-| Pass | Current compiler status | Next contained delivery | Broader coverage effort | Main uncertainty |
+| Pass | Historical compiler baseline | Original next delivery estimate | Broader coverage estimate | Main uncertainty |
 | --- | --- | --- | --- | --- |
 | Tensor DCE | Integrated in `all` | Existing route; 1–3 days for domain/source-support closure | 1–3 days within the current modeled domain | Additional operation families found by the inventory |
 | Leading tensor CSE | Integrated in `all` | Existing route; 1–3 days for coverage and endpoint audit | 1–3 days within the current modeled domain | Complete context and source-support coverage |
@@ -471,7 +471,7 @@ reads reject, and both changing and unchanged prefixes have the stated proofs.
 
 The current gate proves refinement under the proposed Q/DQ model. It does not
 approve that model. It is included in `all`, while source-specification approval
-remains under review; see [the Q/DQ guide](../guides/lean_qdq_gate.md).
+remains under review; see [the Q/DQ guide](../guides/lean_bounded_pass_profiles.md#qdq-and-macc).
 
 Run the real original-PT2 `SourceCapture` route with the pinned interpreter,
 producer checkout, PyTorch wheel and dependency directory. Required checks are

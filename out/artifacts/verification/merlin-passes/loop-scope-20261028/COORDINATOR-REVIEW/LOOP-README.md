@@ -7,7 +7,7 @@ and terminal worlds for every projected defined entry under a common explicit
 interpretation. This is a conditional translation-validation result for accepted
 boundaries, not verification of every loop variant or compiler-wide enforcement.
 
-Start with the [usage guide](../../../../../../docs/guides/lean_loop_transform_gate.md)
+Start with the [usage guide](../../../../../../docs/guides/lean_bounded_pass_profiles.md#ordered-loops)
 and [worked actual IR example](../F-QUALIFICATION/PAPER-EXAMPLE-v2/README.md).
 `LOOP-REVIEW.json` binds the
 reviewed implementation and evidence; `LOOP-PUBLICATION.json` inventories the

@@ -1,5 +1,11 @@
 # Larger-model compiler gate demonstrations — 2026-10-29
 
+This report retains the named demonstration source cuts and their checkpoint
+status. The [current integration handoff](../../handoff/pass-verif-integration-20261028/README.md)
+records the later revalidation, including both completed native cases and native
+timeouts. Historical pending/retry notes below are not current gate-availability
+claims.
+
 All fourteen compiler phases passed on the recorded v3 source cut: **34 accepted changing
 boundary checks**, same-options ordinary/gated LLVM equality, and zero unverified
 observed boundaries. Twelve complete compiler-to-native cases pass; the two stored
@@ -17,6 +23,22 @@ uses the reviewed finite tensor intake policy described below. Exact working
 bytes, helpers, tools and inputs are pinned in the retained source cut; these
 records do not pretend the dirty run was a clean checkout of its base commit.
 Lean relations, `SPEC_LOCK`, producer algorithms and approval flags are unchanged.
+
+## Two-case retry progress
+
+The fresh retry at code checkpoint `7fad2c48c` has passed Q/DQ and CSE again on
+both stored TinyLlama routes. Its first seed (`20261029`) also passed both full
+ordinary/gated comparisons: **512,000 output elements** across the two routes,
+finite outputs, unchanged inputs and intact guards/descriptors. An independent
+review checked the actual output payloads, LLVM interfaces and runtime build
+records. The second seed (`20261030`) is still running; neither retry case is
+terminal yet. This is two completed native observations, rather than a claim
+that the fourteen-route two-seed matrix has passed.
+
+The v3 CSV/JSON below remain its original failed-attempt checkpoint. The final
+qualification matrix will retain both attempt cuts and the original timeouts.
+The first-seed audit is retained locally in
+`out/build/validator-alignment-20261029/larger-model-campaign-review-v1/TINY-RETRY-v4-FIRST-SEED-NATIVE-AUDIT.json`.
 
 ## Complete model inputs and actual gates
 
@@ -155,7 +177,7 @@ are not summed. Ruff and documentation checks pass. The structure check retains
 ## Reproduction
 
 Configure the compiler Python, Lean SDK and host tools as in the
-[gate guide](../../../../docs/guides/lean_pass_gate.md). Use fresh output directories
+[gate guide](../../../../docs/guides/lean_bounded_pass_profiles.md). Use fresh output directories
 and available CPU IDs:
 
 ```sh

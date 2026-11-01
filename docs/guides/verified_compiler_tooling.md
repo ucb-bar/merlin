@@ -23,7 +23,7 @@ without claiming numerical approval; `--macc-f32acc` selects the transformation.
 Current qualification and remaining limits are recorded in the checkpoint.
 The explicit `lower_quant_ext` selector adds actual Q/DQ lowering refinement
 under the proposed source model, with optional fresh original-capture binding.
-It is included in `all`; see [the Q/DQ gate guide](lean_qdq_gate.md).
+It is included in `all`; see [the Q/DQ gate guide](lean_bounded_pass_profiles.md#qdq-and-macc).
 
 The common substrate supplies executed xDSL transformations, an optional
 instruction dialect generator and an independent host Lean checking route.

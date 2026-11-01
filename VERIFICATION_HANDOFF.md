@@ -215,7 +215,7 @@ and framework/native fidelity unestablished.
 pairs and injected lowering failures that prevented product delivery. The
 optional original-PT2 source intake has host controls; its native qualification
 was explicitly deferred by the user until the pinned capture tools are available.
-The [Q/DQ guide](docs/guides/lean_qdq_gate.md) explains the three claims and
+The [Q/DQ guide](docs/guides/lean_bounded_pass_profiles.md#qdq-and-macc) explains the three claims and
 interfaces. See the [current handoff](out/artifacts/handoff/pass-verif-integration-20261028/README.md)
 for evidence, replay and retained attempts.
 
@@ -425,7 +425,7 @@ remain ahead of numerics; final implementation belongs on feat/pass-verification
 
 Scoped ordered unroll→1D segmentation is reviewed, integrated and qualified under
 its explicit model. Read [result and paper example](out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/LOOP-README.md)
-and [usage](docs/guides/lean_loop_transform_gate.md). Eight actual changed cases,
+and [usage](docs/guides/lean_bounded_pass_profiles.md#ordered-loops). Eight actual changed cases,
 15 valid mutations and12 unsupported cases/settings passed, with real delivery,
 fresh rebuild/separate-Python replay and binding controls. The merged primary
 also passed a fresh check/replay of the same example and56 focused tests.

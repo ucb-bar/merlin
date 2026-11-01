@@ -1,10 +1,17 @@
 # Supported Q/DQ lowering qualification — 2026-10-29
 
+Current compiler status: `lower_quant_ext` is an implemented compiler gate,
+enabled by `--validate-passes all` on both xDSL and textual routes. Supported
+changing Q/DQ boundaries require accepted checks before products return. The
+[current gate guide](../../../../docs/guides/lean_bounded_pass_profiles.md#qdq-and-macc) describes activation
+and supported patterns. The qualification runs below retain their historical
+source cuts.
+
 ## Verdict and source cut
 
 This work started on `feat/pass-verif-integration` at `4ef31ee8df695a3b8a0846ed6d21f37c9dc4c45e`; `feat/pass-verif-dce-cse` at `3ca03a23f64611dc9cefd91ebc2b5e4deeda844c` is an ancestor/reference. The source-binding implementation is committed at `1cef644ff`; its exact publication source hashes are in `source-bound-v4/source-cut.json`. No specification, `SPEC_LOCK`, software pin, gate registration, or approval flag changed. The built checker SHA-256 is `b590d08ed116f5bba7ccfa24ba5a42caf7c1d6e76147a08ad4a4c2d277c3c4a3`; `SPEC_LOCK` is `6cc97b6a0742795378cca76393642932b62cc9f8998693f3961f22a5bc44b23b`.
 
-**The supported tensor-stage lowering refinement is established relative to Merlin's proposed Q/DQ source model, on declared input types at 64-bit index width. Historical PyTorch capsules remain unbound. The implementation follow-up below supplies fresh, narrow source-correspondence checks; it does not approve the source specification or prove universal IEEE fidelity.** The compiler's `all` selection still contains only DCE, CSE, ordered unrolling, ordered segmentation, and private buffer reuse. `lower_quant_ext` is not an automatic compiler gate on this branch; the unchanged test expecting it to stop compilation remains a recorded failure.
+**The supported tensor-stage lowering refinement is established relative to Merlin's Q/DQ source model, on declared input types at 64-bit index width.** Historical PyTorch capsules remain unbound; the follow-up supplies fresh, narrow source-correspondence checks without claiming universal IEEE fidelity or source-specification approval. The original qualification cut preceded automatic Q/DQ compiler integration and recorded a failing gate test. That integration gap is now closed: `all` includes `lower_quant_ext`, and the original failed run remains historical evidence.
 
 ## Implementation follow-up: fresh capture source binding
 
@@ -118,7 +125,7 @@ Every strict claim uses `supportCheck_sound` to establish source support on the 
 
 The retained model capsule corpus has **230** per-tensor quantizers in **35** forms and **627** per-tensor dequantizers in **83** forms. The existing tests exercise each form after the production lowering, Q/DQ composition, nested quantizers, rank-zero and empty dimensions, both zero-point widths, and wrong multiply/rounding/reciprocal/clamp/subtract mutations. Per-channel coverage comes from the separate `small_llama_int8_consistent` fixture plus constructed geometry tests; the ten tracked model capsule interfaces contain no per-channel Q/DQ op. The pinned PyTorch CPU/NumPy/native-MLIR dequant oracle exercises 63 cases, 539 element results, and 49 folded compiler-body comparisons. Those are bounded tests, not a universal IEEE result.
 
-The initial seven-file run: **116 passed, 4 failed** (`pytest-contract.log`). Three stale regressions were corrected: DCE now preserves an unregistered dead quantizer until typed lowering; per-tensor dequantization ignores range metadata. The corrected five targeted cases passed (`pytest-regressions.log`). The final seven-file supported rerun: **120 passed, one explicitly deselected** (`pytest-supported.log`, 623.40 s). The deselected test is the unregistered automatic `lower_quant_ext` gate and its original failure remains in `pytest-contract.log`. No proof-tool skip occurred.
+The initial seven-file run: **116 passed, 4 failed** (`pytest-contract.log`). Three stale regressions were corrected: DCE now preserves an unregistered dead quantizer until typed lowering; per-tensor dequantization ignores range metadata. The corrected five targeted cases passed (`pytest-regressions.log`). The final seven-file supported rerun: **120 passed, one explicitly deselected** (`pytest-supported.log`, 623.40 s). At that historical cut, the deselected automatic `lower_quant_ext` gate was not yet registered; its original failure remains in `pytest-contract.log`. Current gate activation is described above. No proof-tool skip occurred.
 
 The first additional fuzz/definedness/layout batch had **46 passed, one failed** (`pytest-composition.log`): its old DCE test expected the production pass to erase an unregistered dequantizer. The corrected regression keeps that production refusal and separately proves A9 deletion of the modeled dead source op; its isolated rerun passed (`pytest-fuzz-regression-v2.log`). The failed first correction attempt (`pytest-fuzz-regression.log`) is retained: after lowering, this particular per-channel generic still is not DCE eligible because its `arith.extsi` lacks the pass's speculatability trait. This is a conservative production-pass scope limit, not a failed Q/DQ lowering proof.
 

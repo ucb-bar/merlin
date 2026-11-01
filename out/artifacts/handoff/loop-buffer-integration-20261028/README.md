@@ -45,11 +45,11 @@ The existing opt-in compiler selector remains **DCE and CSE only**. This merge
 does not register numerical policies or new loop/buffer compiler gates.
 The scoped loop and buffer checks are direct developer APIs:
 
-- [Loop gate](../../../../docs/guides/lean_loop_transform_gate.md): static
+- [Loop gate](../../../../docs/guides/lean_bounded_pass_profiles.md#ordered-loops): static
   index64 counted-loop unrolling followed by ordered one-dimensional
   segmentation, including a short final segment. Explicit common primitive and
   external-call premises; modeled return/error/terminal-world equality.
-- [Buffer gate](../../../../docs/guides/lean_buffer_reuse_gate.md): the actual
+- [Buffer gate](../../../../docs/guides/lean_bounded_pass_profiles.md#private-buffer-reuse): the actual
   original→normalized→reused→segmented chain, with checked private lifetimes and
   initialization. Equality of possible successful public/caller observations
   under total, private, unobservable allocation.

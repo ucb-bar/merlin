@@ -45,6 +45,14 @@ code_refs:
 
 # Lean verification of the Merlin compilation path outside the OOT
 
+All ten compiler gates are implemented and enabled by `--validate-passes all`.
+This includes Q/DQ lowering on both compiler routes and the bf16/f16 MACC
+f32-accumulation gate. Supported changing boundaries require accepted checks
+before products return. The Q/DQ source-model and MACC numerical-policy review
+fields describe their contracts; they do not disable compiler gating. The
+[stack guide](../guides/lean_compiler_stack.md) lists every gate and its supported
+patterns.
+
 The explicit `host_graph_fusion` gate now connects the existing logical graph
 observer theorem to actual emitted private helpers and the complete public
 entry. Its independent projector reads both boundary modules, expands actual
@@ -55,7 +63,7 @@ under common typed total pure tensor actions and successful unobservable logical
 allocation. Source projection, scalar-operation correspondence and ordinary call
 semantics remain trusted. Concrete arithmetic, physical storage, preceding layout
 rewrites and downstream native execution remain outside this theorem. See the
-[stack guide](../guides/lean_compiler_stack.md#logical-host-graph-fusion) for the
+[stack guide](../guides/lean_bounded_pass_profiles.md#host-graph-fusion) for the
 admitted profile and the
 [qualification handoff](../../out/artifacts/audits/host-graph-fusion-20261029/README.md)
 for exact evidence. This additive proof changes no frozen interface or approval.
@@ -74,7 +82,7 @@ and retained source cuts are recorded in the handoff.
 The `lower_quant_ext` compiler gate is also included in `all`.
 It checks actual xDSL/textual lowering under the proposed Q/DQ source model;
 optional original PT2/capture binding is a separate component. Neither acceptance
-approves the source specification. See [the Q/DQ gate guide](../guides/lean_qdq_gate.md).
+approves the source specification. See [the Q/DQ gate guide](../guides/lean_bounded_pass_profiles.md#qdq-and-macc).
 The [quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md)
 records inherited source Q/DQ proofs and the independent numerical review still
 required. MACC acceptance establishes candidate-reference conformance, with

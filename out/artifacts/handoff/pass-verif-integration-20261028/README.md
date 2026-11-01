@@ -1,6 +1,44 @@
 # Compiler pass verification checkpoint — 2026-10-29
 
-## Larger-model qualification follow-up
+## Latest revalidation — `7fad2c48c0`
+
+The compiler-gate documentation is consolidated into two guides:
+[overview/status](../../../../docs/guides/lean_compiler_stack.md) and
+[tutorial/supported profiles](../../../../docs/guides/lean_bounded_pass_profiles.md).
+All ten registered gates, including MACC and Q/DQ, are enabled by `all` for their
+supported boundaries. Numerical-policy review fields do not disable those checks.
+
+Fresh local validation on this source cut completed as follows:
+
+| Cohort | Result |
+| --- | --- |
+| Targeted unit/controller batches | 274 + 352 passed; two environment skips |
+| Full-size kernel campaign | 16 passed; no skips |
+| Compiler/SDK cases | 58 passed in the main batch; the remaining buffer case passed in a clean retry |
+| Q/DQ positive/corruption regressions | 3 passed |
+| Executed tutorial example | Actual Q/DQ gate accepted |
+| Complete-model compiler phases | 14 passed, with 34 accepted changing boundary checks |
+| Complete-model native cases | 12 passed; both TinyLlama routes exceeded the 1,800-second whole-case budget during native comparison |
+
+The native model campaign is **not fully green**. Both timed-out routes passed
+their compiler/proof phases; timeout cleanup completed and the final campaign
+source-cut check matched. No complete native TinyLlama comparison is claimed for
+this run. The two unit skips require unavailable bubblewrap or built release
+wheels, rather than missing Lean tools.
+
+Validation found and repaired two test-harness issues: a stale fixed proof-module
+count and a CLI test leaking validation into later baselines. The corrected unit
+batch passed, and two repeated CLI cases confirmed environment restoration.
+The buffer retry independently confirmed an ungated baseline and an accepted
+checked boundary. These repeated cases overlap the main cohorts.
+
+Docs, consolidated links, Ruff and whitespace checks pass. Production compiler,
+Lean sources and the assumption ledger are unchanged. Raw commands, JUnit,
+proof/native records and timeout diagnostics remain local under
+`out/build/revalidation-20261029-2119/`. These are targeted regressions, not a
+full-repository green claim.
+
+## Prior larger-model qualification follow-up
 
 The larger-model demonstration is tracked in its [dedicated report](../../audits/larger-model-gate-demo-20261029/README.md).
 It uses complete unchanged model inputs on both compiler routes and a separately
@@ -15,42 +53,48 @@ The fresh model campaign rechecks actual boundaries against that implementation
 and the recorded finite tensor resource-policy changes. On the recorded v3 cut,
 all fourteen compiler phases passed with 34 accepted changing checks. Twelve model/route cases also pass
 full native observation; the two stored TinyLlama cases hit the demo observer's
-300-second native-build deadline. Their finite-budget correction and fresh
-two-case retry remain explicit in the dedicated report. Earlier kernel and
+300-second native-build deadline. With the corrected finite observer deadline,
+both fresh TinyLlama routes have passed all compiler checks and their first-seed
+full native comparisons. Their second seed and terminal results remain pending
+and explicit in the dedicated report. Earlier kernel and
 model records retain their historical source cuts. See the dedicated report for
 terminal results and exact current input, compiler, receipt and native artifacts.
 
-## Current bounded-profile policy
+## Current compiler gate coverage
 
-Original sources outside a declared proof profile still run ordinary compiler
-lowering. Their actual boundaries are logged as **unverified at the end**, with
-reasons and zero proof credit. A source admitted to a selected profile must pass
-its actual target check; failed/unsupported targets, unavailable tools, resource
-failures and broken byte/owner binding remain blocking. The earlier proposed
-skip-optimization policy is superseded. See the [per-pass profile catalogue](../../../../docs/guides/lean_bounded_pass_profiles.md).
+All ten compiler gates are integrated on **`feat/pass-verif-integration`** and
+enabled by `--validate-passes all`: DCE, CSE, ordered unrolling and tiling, buffer
+reuse, Q/DQ lowering, bf16/f16 MACC, configuration elision and hoisting, and host
+fusion. Every supported changing boundary requires a fresh accepted owned check
+before compiler products return. Incorrect supported targets, unavailable tools,
+resource failures and broken byte/owner binding block delivery.
 
-The final coverage journal joins actual owned job/request/endpoint bytes to
-unique completed verdicts after the outer worker guard. A successful mixed
-invocation makes only its individual bounded claims, not a preservation claim
-through unverified stages. Standalone proof/replay APIs remain strict.
+Q/DQ is gated on both xDSL and textual preprocessing. MACC is gated at the actual
+`lower_bf16_matmul_f32acc` producer, including its compiler-entry invocation and
+existing calls inside validation. Neither gate needs a numerical-policy approval
+flag or optional original-source capture to run. Those stronger review/source
+claims are separate from the implemented compiler checks. Transform options
+choose which rewrites run; individual validation selectors restrict the gate set.
 
-The bounded implementation is integrated on **`feat/pass-verif-integration`**.
-`--validate-passes all` selects all ten registered checks, including proposed
-Q/DQ, draft MACC, host fusion and the two selected-ISA configuration gates.
-Individual names still select subsets. Transformations, original ISA/effect
-inputs and optional source captures remain separately selected; no approval
-flag changes. This supersedes the five-check policy in earlier qualification cuts. The [stack guide](../../../../docs/guides/lean_compiler_stack.md)
-and [offline stack](merlin-lean-stack.html) give every boundary's interface,
-example, proof relation and supported/excluded cases.
+The final coverage journal binds actual job/request/endpoint bytes to completed
+verdicts. The [profile catalogue](../../../../docs/guides/lean_bounded_pass_profiles.md)
+defines supported patterns, assumptions, resource bounds and per-boundary
+coverage statuses. These domain limits do not mean that an entire gate family
+is missing or disabled. Standalone proof/replay APIs also require fresh checks.
+
+This supersedes the five-check selection in earlier qualification cuts. The [stack guide](../../../../docs/guides/lean_compiler_stack.md)
+and [tutorial/profile catalogue](../../../../docs/guides/lean_bounded_pass_profiles.md)
+give every boundary's interface, example, proof relation and supported cases.
+The [offline stack](merlin-lean-stack.html) remains a historical snapshot.
 
 All-ten selection qualification is retained under
 `out/build/pass-all-checks-20261029/`. The focused host cohort passes 25 cases.
 The first four actual compiler cases have three passes and one stale assertion:
 the environment-`all` tensor regression expected only DCE/CSE, while the newly
 selected Q/DQ proof also accepted. All seven actual proof workers accepted.
-The expected verdict list is corrected; a focused rerun of that environment
-case and the existing textual per-channel Q/DQ case is still running at this
-publication checkpoint. This is not a claim that the first four-case run was green.
+The expected verdict list was corrected, and the environment case and existing
+textual per-channel Q/DQ case subsequently both passed (290.71s). The original
+four-case run retains its stale-assertion failure.
 The passing new all-selected cases cover Q/DQ, draft MACC and explicit memory
 DCE with an unchanged source-excluded Q/DQ observation. Proposed/draft flags and
 original owner requirements remain unchanged. Independent protocol-only
@@ -62,11 +106,7 @@ Test sources are in `merlin/tests/ir/`: `test_lean_compiler_gate_scope.py`,
 and `test_memory_source_exclusion_compiler.py`. Detailed commands, JUnit XML,
 worker requests/verdicts and exact compiler artifacts are in the host-v1,
 compiler-v1 and compiler-v2 subdirectories of the all-checks evidence root.
-The benchmark campaign is a subsequent task; no benchmark kernel compilation
-or execution is included in this checkpoint.
-
-The corrected all-ten environment/textual-QDQ repeat subsequently passes both
-cases (290.71s). The full-size benchmark campaign was run only after the all-ten
+The full-size benchmark campaign was run after the all-ten
 gate push: all 16 cases pass with eight concurrent workers, 106 unchanged input
 arrays and 81 exact output arrays. Seven changed boundaries receive accepted
 typed checks; nine cases have unchanged observations and zero rewrite credit.
@@ -517,7 +557,7 @@ by the user** until the pinned capture tools are available; its five host
 controls substitute the frontend and establish no native success claim.
 Earlier captures require fresh qualification after changed checker-source hashes.
 
-See [the Q/DQ guide](../../../../docs/guides/lean_qdq_gate.md),
+See [the Q/DQ guide](../../../../docs/guides/lean_bounded_pass_profiles.md#qdq-and-macc),
 [the nine-interface stack](../../../../docs/guides/lean_compiler_stack.md), and
 [qualification.json](qualification.json) for this follow-up's source manifest,
 logs, fresh replay and retained failed/interrupted attempt. The lock-only Lean

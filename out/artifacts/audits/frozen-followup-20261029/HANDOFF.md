@@ -96,7 +96,13 @@ Model sources are `merlin/contract/capsules/model/<name>/capsule.interface.mlir`
 
 [Proof-domain review](proof-domain-review.md) gives exact generic-loop restrictions, recursive configuration assumptions and source references. The main assumption ledger remains `merlin/lean/LEDGER.md` at the tested commit.
 
-At this commit, `DEFAULT_CHECKS` and `all` still select only five checks. Q/DQ, MACC, host fusion and both configuration checks require explicit selection. The new campaign tool explicitly selects all ten registered checks. Selection does not activate optional transformations or guarantee that a boundary occurs. Known source exclusions intentionally continue ordinary compilation with an unverified record; accepted compiler output is therefore not synonymous with fully verified output.
+At the historical audited cut `591687da8`, `DEFAULT_CHECKS` and `all` selected
+five checks; the audit campaign explicitly selected ten. This is not the current
+compiler setting: `all` now enables all ten integrated gates, including Q/DQ,
+MACC, host fusion and both configuration checks. See the
+[current stack guide](../../../../docs/guides/lean_compiler_stack.md) for activation
+and supported patterns. The retained results below still belong to their named
+source cuts.
 
 ## Earlier interrupted evidence
 
