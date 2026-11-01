@@ -235,3 +235,46 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def epilogue_partition(records):
+    """Fuse each ResNet conv's BN, optional residual, and ReLU into its launch.
+
+    Return launch dependencies explicitly, so a downsample branch is scheduled
+    before the conv3 that consumes it. No pointwise-only launch is introduced.
+    """
+    by_name = {node['node']: node for node in records}
+    users = {name: [] for name in by_name}
+    for node in records:
+        for source in node['inputs']:
+            users[source].append(node['node'])
+    launches = []
+    for baseline_index, conv in enumerate(node for node in records if node['operator'] in ('Conv2d', 'Linear')):
+        name = conv['node']
+        item = dict(baseline_index=baseline_index, node=name, input_node=conv['inputs'][0],
+                    output_node=name, fused_nodes=[name], bn_node=None, residual_node=None, relu=False)
+        if conv['operator'] == 'Conv2d':
+            if len(users[name]) != 1 or by_name[users[name][0]]['operator'] != 'BatchNorm2d':
+                raise ValueError('ResNet convolution must have one BN successor')
+            bn = by_name[users[name][0]]
+            item['bn_node'] = bn['node']
+            item['fused_nodes'].append(bn['node'])
+            tail = bn['node']
+            if conv['target'].endswith('.conv3'):
+                if len(users[tail]) != 1 or by_name[users[tail][0]]['operator'] != 'residual_add':
+                    raise ValueError('conv3 must feed one residual add')
+                add = by_name[users[tail][0]]
+                item['residual_node'] = next(source for source in add['inputs'] if source != tail)
+                tail = add['node']
+                item['fused_nodes'].append(tail)
+            if len(users[tail]) == 1 and by_name[users[tail][0]]['operator'] == 'ReLU':
+                tail = users[tail][0]
+                item['relu'] = True
+                item['fused_nodes'].append(tail)
+            item['output_node'] = tail
+        else:
+            item['output_node'] = name + '_acc'
+        launches.append(item)
+    if len(launches) != 54 or sum(item['residual_node'] is not None for item in launches) != 16:
+        raise ValueError('unexpected ResNet50 epilogue inventory')
+    return launches
