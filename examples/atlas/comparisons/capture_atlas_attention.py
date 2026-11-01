@@ -6,6 +6,7 @@ import math
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 import numpy as np
 from capture_tinyllama_native import array_identity, identity, safe_path
@@ -66,6 +67,8 @@ class AttentionCapture:
                           q_exponent=fixed_exponent(words[0]), k_exponent=fixed_exponent(words[1]),
                           v_exponent=fixed_exponent(words[2]), p_exponent=-8)
             request = dict(command='attention', root=str(self.root), out=str(self.root / stem), config=config, **descriptors)
+            print(json.dumps(dict(milestone='attention_start', step=step, layer=layer, rows=rows, keys=keys)),
+                  file=sys.stderr, flush=True)
             self.worker.stdin.write(json.dumps(request) + '\n')
             self.worker.stdin.flush()
             line = self.worker.stdout.readline()
@@ -75,6 +78,9 @@ class AttentionCapture:
             if answer['status'] != 'ok':
                 raise RuntimeError('attention worker failed: ' + answer.get('error', 'unknown'))
             record = answer['record']
+            print(json.dumps(dict(milestone='attention_complete', step=step, layer=layer,
+                  seconds=record['execution']['elapsed_seconds'], instructions=record['execution']['instructions'])),
+                  file=sys.stderr, flush=True)
             for source in record['implementation_sources']:
                 if source not in self.records:
                     self.records.append(source)

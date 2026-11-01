@@ -124,6 +124,7 @@ def capture(args):
             if (version, address) != (module.weight._version, module.weight.data_ptr()):
                 raise ValueError("cached parameter changed")
             encoded_a, a_scale = encode(a)
+            print(json.dumps(dict(milestone="projection_start", step=step, site=site)), flush=True)
             panels, result = [], []
             for panel, (lo, hi, b, b_scale) in enumerate(pieces):
                 words = oracle.rescale_bf16_array(oracle.ordered_matmul(encoded_a, b), a_scale + b_scale)
@@ -133,6 +134,8 @@ def capture(args):
                                "physical_mkn": [128 if rows == 128 else 32, module.in_features, hi-lo],
                                "A_scale": a_scale, "B_scale": b_scale, "rescale": a_scale + b_scale,
                                "expected_bf16": save(stem + "-expected.bin", padded_words(words, rows))})
+                print(json.dumps(dict(milestone="projection_panel", step=step, site=site, panel=panel,
+                                      columns=[lo, hi])), flush=True)
             words = np.concatenate(result, axis=1)
             saved[key] = (a_id, words)
             calls.append({"step": step, "site": site, "site_index": index,
