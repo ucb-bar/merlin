@@ -3,6 +3,9 @@
 #include "smol_vision_attention.h"
 #include "smol_host_bits.h"
 #include "smol_host_ops.h"
+#if defined(SMOL_FUSION_RUNTIME) && SMOL_FUSION_RUNTIME
+#include "smol_fusion.h"
+#endif
 #ifdef SMOL_ATTENTION_RUNTIME
 #include "smol_attention.h"
 #endif
@@ -79,10 +82,20 @@ int smol_vision_image_layer(const uint16_t *image, const smol_vision_parameters 
             || project(s, callback, context, layer, SMOL_VISION_O, w->attended, 1024, 768, w->projected, 768)
             || smol_host_residual_bf16(w->tokens, w->projected, w->normalized, 1024 * 768)) goto failed;
         for (size_t i = 0; i < 1024 * 768; ++i) w->tokens[i] = w->normalized[i];
+#if defined(SMOL_FUSION_RUNTIME) && SMOL_FUSION_RUNTIME
+        int gelu_completed;
+#endif
         if (smol_vision_layernorm_bf16(w->tokens, q->norm2_weight, q->norm2_bias, p->epsilon, w->normalized, 1024)
             || project(s, callback, context, layer, SMOL_VISION_FC1, w->normalized, 1024, 768, w->large, 3072)
+#if defined(SMOL_FUSION_RUNTIME) && SMOL_FUSION_RUNTIME
+            || (gelu_completed = smol_fusion_vision_gelu_completed(layer, w->large, 1024, 3072)) < 0
+            || (!gelu_completed && smol_vision_gelu_bf16(w->large, p->gelu, w->activated, 1024 * 3072))
+            || project(s, callback, context, layer, SMOL_VISION_FC2,
+                gelu_completed ? w->large : w->activated, 1024, 3072, w->projected, 768)
+#else
             || smol_vision_gelu_bf16(w->large, p->gelu, w->activated, 1024 * 3072)
             || project(s, callback, context, layer, SMOL_VISION_FC2, w->activated, 1024, 3072, w->projected, 768)
+#endif
             || smol_host_residual_bf16(w->tokens, w->projected, w->normalized, 1024 * 768)) goto failed;
         for (size_t i = 0; i < 1024 * 768; ++i) w->tokens[i] = w->normalized[i];
     }
@@ -91,6 +104,11 @@ int smol_vision_image_layer(const uint16_t *image, const smol_vision_parameters 
             || smol_vision_shuffle4(w->normalized, w->shuffle)
             || project(s, callback, context, 12, SMOL_VISION_CONNECTOR, w->shuffle, 64, 12288, w->output, 960)) goto failed;
         /* The source explicitly materializes sqrt960 in BF16 before image scaling. */
+#if defined(SMOL_FUSION_RUNTIME) && SMOL_FUSION_RUNTIME
+        int scale_completed = smol_fusion_vision_connector_scale_completed(12, w->output, 64, 960);
+        if (scale_completed < 0) goto failed;
+        if (!scale_completed)
+#endif
         for (size_t i = 0; i < 64 * 960; ++i)
             w->output[i] = float_to_bf16(bf16_to_float(w->output[i]) * 31.0f);
         if (s->projections != 74) goto failed;
