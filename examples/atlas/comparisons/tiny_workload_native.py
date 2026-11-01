@@ -27,7 +27,7 @@ def require(condition, message):
         raise ValueError(message)
 
 
-def prepare(historical, records, precision='bfloat16'):
+def prepare(historical, records, precision='bfloat16', relocation=None):
     import torch
     import transformers
     from transformers import AutoTokenizer, cache_utils
@@ -39,10 +39,13 @@ def prepare(historical, records, precision='bfloat16'):
     require(transformers.__version__ == '5.4.0', 'require original Transformers 5.4.0')
     old_id = identity(historical, HISTORICAL_SHA)
     records.append(old_id)
-    old = json.loads(Path(old_id['path']).read_text())
+    old = (json.loads(Path(old_id['path']).read_text()) if relocation is None else
+           relocation.read_json(old_id['path'], HISTORICAL_SHA)[0])
     q_record = next(r for r in old['source_records'] if Path(r['path']).name == 'manifest.json' and 'native-q-full-v1' in r[
         'path'])
-    q = json.loads(Path(identity(q_record['path'], q_record['sha256'])['path']).read_text())
+    q_id = identity(q_record['path'], q_record['sha256'])
+    q = (json.loads(Path(q_id['path']).read_text()) if relocation is None else
+         relocation.read_json(q_id['path'], q_id['sha256'])[0])
     records.append(q_record)
     source = q['source']
     checkpoint = safe_path(source['weights']['path']).parent

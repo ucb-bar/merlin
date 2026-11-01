@@ -42,14 +42,28 @@ def padded_words(words, rows):
 
 def capture(args):
     import torch
-    if type(args.decode_count) is not int or not 1 <= args.decode_count <= 32:
-        raise ValueError("decode count must be 1 through 32")
+    layer_count = getattr(args, "layer_count", 22)
+    block_only = getattr(args, "block_only", False)
+    attention_python = getattr(args, "attention_worker_python", None)
+    if type(args.decode_count) is not int or not 0 <= args.decode_count <= 32:
+        raise ValueError("decode count must be 0 through 32")
+    if type(layer_count) is not int or not 1 <= layer_count <= 22:
+        raise ValueError("layer count must be 1 through 22")
+    if block_only and args.decode_count:
+        raise ValueError("block-only capture requires prefill without decode")
+    if layer_count != 22 and not block_only:
+        raise ValueError("partial layers require an explicit block-only capture")
+    sites = tuple(f"model.layers.{layer}.{site}" for layer in range(layer_count) for site in native.PROJECTIONS)
+    if not block_only:
+        sites += ("lm_head",)
     out = safe_path(args.out)
     if out.exists():
         raise ValueError("fresh capture output required")
     records = []
     oracle = load_arithmetic(args.atlas_arithmetic, args.atlas_arithmetic_sha256, records)
-    model, tokens, _, torch, cache_utils, _, _ = native.prepare(args.historical, records)
+    from source_relocation import SourceRelocation
+    relocation = SourceRelocation(getattr(args, "relocate", ()))
+    model, tokens, _, torch, cache_utils, modeling_llama, _ = native.prepare(args.historical, records, relocation=relocation)
     records.extend(identity(Path(__file__).with_name(name)) for name in (
         "capture_tinyllama_full.py", "tiny_workload_native.py", "tiny_workload_full.py",
         "tiny_workload_inventory.py", "tiny_fp8_pack.py", "capture_tinyllama_native.py",
@@ -61,10 +75,15 @@ def capture(args):
     (out / "calls").mkdir()
     report = {"status": "failed", "atlas_instruction_execution": False,
               "timing_qualified": False, "quality_qualified": False,
-              "decode_count": args.decode_count, "source_records": records}
+              "decode_count": args.decode_count, "source_records": records, "layer_count": layer_count,
+              "block_only": block_only, "include_lm_head": not block_only,
+              "scope": "layer0-prefill" if block_only and layer_count == 1 else "full-model",
+              "source_relocation": relocation.report()}
     started = time.monotonic()
     handles, calls, parameters, saved, weights = [], [], {}, {}, {}
     mode, counter = "capture", 0
+    attention = None
+    original_attention = modeling_llama.eager_attention_forward
 
     def save(relative, words):
         data = np.ascontiguousarray(words)
@@ -75,9 +94,9 @@ def capture(args):
     def hook(site):
         def linear(module, inputs, output):
             nonlocal counter
-            step, index = divmod(counter, len(SITES))
+            step, index = divmod(counter, len(sites))
             rows = 128 if step == 0 else 1
-            if (step > args.decode_count or SITES[index] != site or len(inputs) != 1
+            if (step > args.decode_count or sites[index] != site or len(inputs) != 1
                     or module.bias is not None or inputs[0].dtype != torch.bfloat16
                     or output.dtype != torch.bfloat16 or module.weight.dtype != torch.bfloat16
                     or tuple(inputs[0].shape) != (1, rows, module.in_features)
@@ -121,22 +140,43 @@ def capture(args):
             return torch.from_numpy(words.copy()).view(torch.bfloat16).unsqueeze(0)
         return linear
 
+    class StopBlock(Exception):
+        pass
+
     def session(label):
         cache = cache_utils.DynamicCache(config=model.config)
         next_token, trace = None, []
         for step in range(args.decode_count + 1):
             ids = tokens[:, :128] if step == 0 else torch.tensor([[next_token]], dtype=tokens.dtype)
             previous = [(raw_array(layer.keys, torch), raw_array(layer.values, torch))
-                        for layer in cache.layers] if step else []
-            with torch.inference_mode():
-                result = model(input_ids=ids, past_key_values=cache, use_cache=True)
-            if result.past_key_values is not cache or len(cache.layers) != 22:
-                raise ValueError("full cache identity or layer count changed")
-            logits = result.logits[0, -1].float().numpy().copy()
-            next_token = greedy_token(logits)
-            row = {"step": step, "input_tokens": ids.tolist(), "next_token": next_token,
-                   "logits": array_identity(logits), "cache": []}
-            for layer, item in enumerate(cache.layers):
+                        for layer in cache.layers[:layer_count]] if step else []
+            boundary = {}
+            def stop(_module, _inputs, output):
+                value = output[0] if isinstance(output, tuple) else output
+                boundary["hidden"] = raw_array(value[0], torch)
+                raise StopBlock()
+            stop_handle = model.model.layers[layer_count - 1].register_forward_hook(stop) if block_only else None
+            try:
+                with torch.inference_mode():
+                    result = model(input_ids=ids, past_key_values=cache, use_cache=True)
+            except StopBlock:
+                if not block_only or "hidden" not in boundary:
+                    raise
+            finally:
+                if stop_handle is not None:
+                    stop_handle.remove()
+            row = {"step": step, "input_tokens": ids.tolist(), "cache": []}
+            if block_only:
+                row["hidden"] = array_identity(boundary["hidden"])
+                if label == "target":
+                    row["hidden_payload"] = save(f"calls/hidden-{step:02d}.bin", boundary["hidden"])
+            else:
+                if result.past_key_values is not cache or len(cache.layers) != 22:
+                    raise ValueError("full cache identity or layer count changed")
+                logits = result.logits[0, -1].float().numpy().copy()
+                next_token = greedy_token(logits)
+                row.update(next_token=next_token, logits=array_identity(logits))
+            for layer, item in enumerate(cache.layers[:layer_count]):
                 pair = (raw_array(item.keys, torch), raw_array(item.values, torch))
                 if any(v.shape != (1, 4, 128 + step, 64) for v in pair):
                     raise ValueError("cache length or geometry changed")
@@ -147,7 +187,7 @@ def capture(args):
                     if label == "target":
                         descriptor = save(f"calls/cache-{step:02d}-{layer:02d}-{field}.bin", value)
                     row["cache"].append({"layer": layer, "field": field, **descriptor})
-            if label == "target":
+            if label == "target" and not block_only:
                 row["logits_payload"] = save(f"calls/logits-{step:02d}.bin", logits)
             trace.append(row)
             print(json.dumps({"milestone": label, "step": step, "next_token": next_token}), flush=True)
@@ -166,41 +206,59 @@ def capture(args):
         host_parameters["prefill_tokens"] = save("parameters/prefill-tokens.bin", tokens[0, :128].numpy())
         native_trace = session("native")
         modules = {name: item for name, item in model.named_modules() if type(item) is torch.nn.Linear}
-        if set(modules) != set(SITES):
-            raise ValueError("full model linear inventory changed")
-        for site in SITES:
+        if not set(sites).issubset(modules) or (not block_only and set(modules) != set(sites)):
+            raise ValueError("selected model linear inventory changed")
+        if attention_python is not None:
+            from capture_atlas_attention import AttentionCapture
+            records.append(identity(Path(__file__).with_name("capture_atlas_attention.py")))
+            attention = AttentionCapture(out, attention_python, args.attention_worker_script, save, torch, records)
+            def atlas_attention(module, query, key, value, attention_mask, scaling, dropout=0.0, **kwargs):
+                step = (counter - 1) // len(sites)
+                return attention.apply(step, module, query, key, value, attention_mask, scaling)
+            modeling_llama.eager_attention_forward = atlas_attention
+        for site in sites:
             handles.append(modules[site].register_forward_hook(hook(site)))
         target_trace = session("target")
-        if counter != len(SITES) * (args.decode_count + 1):
+        if counter != len(sites) * (args.decode_count + 1):
             raise ValueError("incomplete target invocation ledger")
         mode, counter = "replay", 0
+        if attention is not None:
+            attention.mode = "replay"
         replay_trace = session("replay")
         # File descriptors occur only in the target trace; compare raw identities.
         normalized = json.loads(json.dumps(target_trace))
         for row in normalized:
             row.pop("logits_payload", None)
+            row.pop("hidden_payload", None)
             for entry in row["cache"]:
                 entry.pop("file", None)
                 entry.pop("bytes", None)
-        if replay_trace != normalized or counter != len(SITES) * (args.decode_count + 1):
+        if replay_trace != normalized or counter != len(sites) * (args.decode_count + 1):
             raise ValueError("complete greedy target replay changed")
         while handles:
             handles.pop().remove()
+        modeling_llama.eager_attention_forward = original_attention
         if session("restored") != native_trace or native.state(model, torch) != initial:
             raise ValueError("native restoration or parameters changed")
         if not torch.equal(rng, torch.get_rng_state()):
             raise ValueError("caller Torch RNG changed")
         for record in records:
             identity(record["path"], record["sha256"])
-        report.update(status="PASS_FULL_TINY_ARITHMETIC_CAPTURE_REPLAY", parameters=parameters,
+        report.update(status="PASS_TINY_ATTENTION_BLOCK_CAPTURE_REPLAY" if block_only else "PASS_FULL_TINY_ARITHMETIC_CAPTURE_REPLAY", parameters=parameters,
                       host_parameters=host_parameters, calls=calls,
                       native_trace=native_trace, target_trace=target_trace,
-                      greedy_feedback_actual=True, all22_cache_prefixes_exact=True,
+                      greedy_feedback_actual=not block_only, all22_cache_prefixes_exact=layer_count == 22,
+                      cache_prefixes_exact=True, projection_calls=len(calls),
+                      attention_calls=[] if attention is None else attention.calls,
+                      atlas_instruction_execution=attention is not None,
                       source_bookends_verified=True, target_replay_exact=True, native_restored_exact=True)
     except Exception as error:
         report["error"] = {"type": type(error).__name__, "message": str(error)}
         raise
     finally:
+        modeling_llama.eager_attention_forward = original_attention
+        if attention is not None:
+            attention.close()
         while handles:
             handles.pop().remove()
         torch.set_rng_state(rng)
@@ -217,7 +275,15 @@ def main():
         parser.add_argument("--" + name, type=safe_path, required=True)
     parser.add_argument("--atlas-arithmetic-sha256", required=True)
     parser.add_argument("--decode-count", type=int, default=2)
-    capture(parser.parse_args())
+    parser.add_argument("--layer-count", type=int, default=22)
+    parser.add_argument("--block-only", action="store_true")
+    parser.add_argument("--relocate", action="append", default=[])
+    parser.add_argument("--attention-worker-python", type=Path)
+    parser.add_argument("--attention-worker-script", type=safe_path)
+    args = parser.parse_args()
+    if bool(args.attention_worker_python) != bool(args.attention_worker_script):
+        parser.error("both attention worker arguments are required together")
+    capture(args)
 
 
 if __name__ == "__main__":
