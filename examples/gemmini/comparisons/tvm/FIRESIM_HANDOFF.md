@@ -9,10 +9,13 @@ paths in historical releases. Read [ARCHITECTURE.md](ARCHITECTURE.md) and
 
 ## Source, evidence and readiness
 
-Use TVM **2c0857ab88b18d4a090f2dd6e401e06266af1877** on
+Use TVM **fee495aca14dbb58e2dfbd5fe66e5417e9162ed4** on
 [`grammy117/tvm:gemmini/direct-intrinsics`](https://github.com/grammy117/tvm/tree/gemmini/direct-intrinsics)
-and Merlin builder commit `b632e4c97bcc5e1d05881db41aa5e22360740601` plus
-the documentation/evidence commit containing this handoff. The executable
+and Merlin builder commit `787a2f9ccc71951f8eea8f16b4d93317f8bc1ed4` plus
+the documentation/evidence commit containing this handoff. These are
+tree-identical to TVM `2c0857ab8` and Merlin `b632e4c97`, which receipts and
+older pages cite; only the commit identity was corrected on 2026-11-01, and the
+old commits stay reachable through the `archive/pre-identity-fix/*` tags. The executable
 schedule/intrinsic implementation is unchanged from `64bed0cb9`. The cleanup
 commit isolates historical graph lowering behind lazy compatibility imports.
 Its 41 backend tests and 64 subtests pass; 19 ONNX tests were unavailable because
