@@ -4,7 +4,9 @@
 #include "smol_host_bits.h"
 #include "smol_host_ops.h"
 #include "smol_host_rope.h"
+#ifdef SMOL_ATTENTION_RUNTIME
 #include "smol_attention.h"
+#endif
 #include <math.h>
 #include <string.h>
 
@@ -66,10 +68,14 @@ int smol_policy_block(const void *input, unsigned dtype, const int64_t *position
         if (project(s, callback, context, SMOL_V, SMOL_F32, w->cross_input, 177, 320, SMOL_F32, w->cross_value, 320)
             || float_views(w->cross_key, w->key, 177 * 320)
             || float_views(w->cross_value, w->value, 177 * 320)
-            || (smol_attention_enabled()
+            || (
+#ifdef SMOL_ATTENTION_RUNTIME
+                smol_attention_enabled()
                 ? smol_attention_dispatch(SMOL_ATTENTION_CROSS, w->rotary_query, w->key, w->value,
                     mask, rows, keys, 15, 5, w->attention)
-                : smol_policy_cross_attention_bf16(w->rotary_query, w->key, w->value, mask,
+                :
+#endif
+                smol_policy_cross_attention_bf16(w->rotary_query, w->key, w->value, mask,
                     w->scores, w->float_probabilities, w->workspace, w->attention))) goto failed;
     } else {
         if (project(s, callback, context, SMOL_K, SMOL_BF16, w->normalized, rows, width, SMOL_BF16, w->key, 320)
@@ -87,10 +93,14 @@ int smol_policy_block(const void *input, unsigned dtype, const int64_t *position
             memcpy(w->joined_key + 177 * 320, w->rotary_key, 50 * 320 * sizeof(uint16_t));
             memcpy(w->joined_value + 177 * 320, w->value, 50 * 320 * sizeof(uint16_t));
         }
-        if (smol_attention_enabled()
+        if (
+#ifdef SMOL_ATTENTION_RUNTIME
+            smol_attention_enabled()
             ? smol_attention_dispatch(p->kind + 1, w->rotary_query, w->joined_key, w->joined_value,
                 mask, rows, keys, 15, 5, w->attention)
-            : smol_host_attention_cpu16_bf16(w->rotary_query, w->joined_key, w->joined_value, mask,
+            :
+#endif
+            smol_host_attention_cpu16_bf16(w->rotary_query, w->joined_key, w->joined_value, mask,
                 rows, keys, 15, 5, 64, w->workspace, w->scores, w->bf16_probabilities, w->attention)) goto failed;
     }
     if (project(s, callback, context, SMOL_O, SMOL_BF16, w->attention, rows, 960, SMOL_BF16, w->projected, width)) goto failed;
