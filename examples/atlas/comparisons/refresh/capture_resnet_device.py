@@ -2,7 +2,8 @@
 """Capture ResNet50 fused device launches from exact staged RTL-model arenas.
 
 Frozen v1 tensors select compile-time scales only. Every v2 graph edge comes
-from the new device result, with host byte gathers, maxpool, average, and bias.
+from the new device result, with host byte gathers, average, and bias. The stem
+max pool is its own device launch and must equal the host byte maximum.
 """
 
 import argparse
@@ -257,6 +258,7 @@ def main():
     from atlas_epilogue import Epilogue, Step, TileInput
     from atlas_program import assembly, dma_load_bytes, legacy_epilogue_assembly
     from atlas_resnet_input import DirectInput, relocate_assembly
+    from atlas_resnet_pool import MaxPool
     from atlas_rtl_reference import RtlReference
     from atlas_tile_arithmetic import tensor_scale_exponent
     from npu_model.configs.numerics import RtlNumerics
@@ -380,12 +382,18 @@ def main():
         id='fc', h=1, w=1, channels=classes, padded_channels=classes, scale_exponent=0, dtype='f32_vector',
         storage_bytes=classes * 4
     )
-    pool_kernel, pool_stride, pool_padding = dimensions['pool_geometry']
+    if dimensions['pool_geometry'] != (3, 2, 1) or tensors[stem]['h'] * tensors[stem]['w'] != tensors[stem]['physical_rows']:
+        raise ValueError('device max pool requires 3x3 stride-two padding-one pooling of unpadded rows')
+    launches['maxpool'] = dict(
+        site='maxpool', kind='maxpool', input_tensor=stem, output_tensor='maxpool', m=pool_rows, k=0, n=pool_padded,
+        logical_m=pool_h * pool_w, logical_k=0, logical_n=pool_channels, kernel=3, stride=2, padding=1, a_offset=0,
+        a_bytes=0, weight_offset=0, b_scale_exponent=0, a_scale_exponent=tensors[stem]['scale_exponent'], output_offset=256,
+        output_bytes=tensors['maxpool']['storage_bytes'], output_dtype='fp8', output_layout='channels_last',
+        output_scale_exponent=tensors[stem]['scale_exponent'], dynamic_regions=[], arena_regions=[], _fusion=None,
+        _node=by_node['maxpool'], _position=position['maxpool']
+    )
     actions += [
-        dict(
-            op='maxpool', input=stem, output='maxpool', kernel=pool_kernel, stride=pool_stride, padding=pool_padding,
-            _deps=[stem], _output='maxpool', _position=position['maxpool']
-        ),
+        dict(op='launch', _key='maxpool', _deps=[stem], _output='maxpool', _position=position['maxpool']),
         dict(
             op='avgpool', input=by_node['avgpool']['inputs'][0], output='avgpool',
             _deps=[by_node['avgpool']['inputs'][0]], _output='avgpool', _position=position['avgpool']
@@ -431,16 +439,64 @@ def main():
     values = {}
     manifest = dict(schema='atlas.resnet50.device_fp8.launches.v2', launches=[])
     engine = None if args.prepare_only else RtlReference(model['arena_base'])
+
+    def finish_launch(launch, directory, initial, source, expected, stats):
+        program = input_to_program(io.StringIO(source))
+        raw_program = b''.join((word.to_bytes(4, 'little') for word in program.assemble()))
+        if len(raw_program) + 20 > 131072:
+            raise ValueError('patched program exceeds IMEM')
+        launch['source'] = write(directory / 'program.S', source.encode())
+        launch['program'] = write(directory / 'program.bin', raw_program)
+        launch['initial'] = write(directory / 'initial-dram.bin', bytes(initial))
+        launch['expected'] = str(out / directory / 'expected.bin')
+        launch['program_words'] = len(raw_program) // 4
+        if expected is not None:
+            write(directory / 'expected.bin', expected)
+            values[launch['output_tensor']] = expected
+            launch['reference'] = stats
+            print(json.dumps(dict(index=launch['index'], site=launch['site'], seconds=time.monotonic() - started, **stats)),
+                  flush=True)
+        manifest['launches'].append(dict(
+            name=launch['site'], source=str(directory / 'program.S'), program=str(directory / 'program.bin'),
+            input=str(directory / 'initial-dram.bin'), expected=str(directory / 'expected.bin'),
+            arena_base=model['arena_base'], output_offset=launch['output_offset'], requested_dma=launch['requested_dma']
+        ))
+        model['arena_bytes'] = max(model.get('arena_bytes', 0), len(initial))
+        public = {key: val for key, val in model.items()}
+        public['launches'] = [{key: val for key, val in item.items() if not key.startswith('_')} for item in model['launches']]
+        public['status'] = 'PREPARED_NOT_EXECUTED' if args.prepare_only else 'CAPTURING'
+        (out / 'model.json').write_text(json.dumps(public, indent=2) + '\n')
+
+    def capture_maxpool(launch, directory):
+        incoming = tensors[launch['input_tensor']]
+        initial = bytearray(bytes([0xA5]) * 256 + bytes([0xCD]) * launch['output_bytes'] + bytes([0x5A]) * 256)
+        initial.extend(bytes(-len(initial) % 64))
+        source_offset = len(initial)
+        initial.extend(bytes(incoming['storage_bytes']) if args.prepare_only else values[launch['input_tensor']])
+        initial.extend(bytes(-len(initial) % 64))
+        pool = MaxPool(source_offset, len(initial), launch['output_offset'], incoming['padded_channels'], incoming['h'],
+                       incoming['w'])
+        initial.extend(pool.constants())
+        launch['arena_regions'].append(dict(offset=pool.constants_offset,
+                                            path=write(directory / 'shift-matrices.bin', pool.constants())))
+        pool.validate(len(initial))
+        launch.update(input_mode='device_maxpool_fp8', input_source_offset=source_offset, max_pool=asdict(pool),
+                      geometry=[incoming['channels'], incoming['h'], incoming['w'], 3, 2, 1],
+                      input_scale_exponent=incoming['scale_exponent'], epilogue=None, arena_bytes=len(initial),
+                      requested_dma=dict(load_bytes=pool.dma_load_bytes, store_bytes=pool.dma_store_bytes))
+        source = pool.assembly(model['arena_base'])
+        expected = stats = None
+        if not args.prepare_only:
+            expected, stats = engine.run(source, bytes(initial), launch['output_offset'], launch['output_bytes'],
+                                         launch['requested_dma'])
+            if expected != maxpool(values[launch['input_tensor']], incoming, dimensions['pool_geometry']):
+                raise ValueError('device max pool differs from the host byte maximum')
+            stats['host_byte_maximum_equal'] = True
+        finish_launch(launch, directory, initial, source, expected, stats)
     started = time.monotonic()
     try:
         for action in actions:
             op = action['op']
-            if op == 'maxpool':
-                if not args.prepare_only:
-                    values[action['output']] = maxpool(
-                        values[action['input']], tensors[action['input']], dimensions['pool_geometry']
-                    )
-                continue
             if op == 'avgpool':
                 if not args.prepare_only:
                     desc = tensors[action['input']]
@@ -469,6 +525,9 @@ def main():
             index, m, k, n = (launch['index'], launch['m'], launch['k'], launch['n'])
             is_conv = node['operator'] == 'Conv2d'
             directory = Path(f'kernel-{index:02d}')
+            if launch.get('kind') == 'maxpool':
+                capture_maxpool(launch, directory)
+                continue
             weight_id = node['weight']['fp8_tiled']
             weights = read(weight_id['path'], weight_id['sha256'], args.plan)
             if len(weights) != k * n:
@@ -564,44 +623,17 @@ def main():
             source = (legacy_epilogue_assembly(m, k, n, launch['output_offset'], rescale, epilogue=e, direct_input=direct)
                       if e else assembly(m, k, n, launch['output_offset'], rescale, traffic_reuse=True, direct_input=direct))
             source = relocate_assembly(source, model['arena_base'], arena_bytes=len(initial))
-            program = input_to_program(io.StringIO(source))
-            raw_program = b''.join((word.to_bytes(4, 'little') for word in program.assemble()))
-            if len(raw_program) + 20 > 131072:
-                raise ValueError('patched program exceeds IMEM')
-            launch['source'] = write(directory / 'program.S', source.encode())
-            launch['program'] = write(directory / 'program.bin', raw_program)
-            launch['initial'] = write(directory / 'initial-dram.bin', bytes(initial))
-            launch['expected'] = str(out / directory / 'expected.bin')
             launch['requested_dma'] = dict(
                 load_bytes=dma_load_bytes(m, k, n, traffic_reuse=True, epilogue=e, direct_input=direct),
                 store_bytes=launch['output_bytes']
             )
-            launch['program_words'] = len(raw_program) // 4
+            expected = stats = None
             if not args.prepare_only:
                 expected, stats = engine.run(
                     source, bytes(initial), launch['output_offset'], launch['output_bytes'], launch['requested_dma'],
                     fp8_scale=launch['output_scale_exponent'] if is_conv else None
                 )
-                write(directory / 'expected.bin', expected)
-                values[launch['output_tensor']] = expected
-                launch['reference'] = stats
-                print(
-                    json.dumps(dict(index=index, site=launch['site'], seconds=time.monotonic() - started, **stats)),
-                    flush=True
-                )
-            manifest['launches'].append(dict(
-                name=launch['site'], source=str(directory / 'program.S'), program=str(directory / 'program.bin'),
-                input=str(directory / 'initial-dram.bin'), expected=str(directory / 'expected.bin'),
-                arena_base=model['arena_base'], output_offset=launch['output_offset'],
-                requested_dma=launch['requested_dma']
-            ))
-            model['arena_bytes'] = max(model.get('arena_bytes', 0), len(initial))
-            public = {key: val for key, val in model.items()}
-            public['launches'] = [{
-                key: val for key, val in item.items() if not key.startswith('_')
-            } for item in model['launches']]
-            public['status'] = 'PREPARED_NOT_EXECUTED' if args.prepare_only else 'CAPTURING'
-            (out / 'model.json').write_text(json.dumps(public, indent=2) + '\n')
+            finish_launch(launch, directory, initial, source, expected, stats)
         if not args.prepare_only:
             baseline = np.frombuffer(baseline_raw, np.float32)
             current = np.frombuffer(values['fc'], np.float32)
