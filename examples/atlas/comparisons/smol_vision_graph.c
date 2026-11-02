@@ -3,6 +3,7 @@
 #include "smol_vision_attention.h"
 #include "smol_host_bits.h"
 #include "smol_host_ops.h"
+#include "smol_attention.h"
 #include <math.h>
 
 int smol_vision_patch16(const uint16_t *image, uint16_t *matrix) {
@@ -65,7 +66,10 @@ int smol_vision_image_layer(const uint16_t *image, const smol_vision_parameters 
             || project(s, callback, context, layer, SMOL_VISION_Q, w->normalized, 1024, 768, w->query, 768)
             || project(s, callback, context, layer, SMOL_VISION_K, w->normalized, 1024, 768, w->key, 768)
             || project(s, callback, context, layer, SMOL_VISION_V, w->normalized, 1024, 768, w->value, 768)
-            || smol_vision_attention_cpu16_bf16(w->query, w->key, w->value, 1024, 1024, 12, w->attended)
+            || (smol_attention_enabled()
+                ? smol_attention_dispatch(SMOL_ATTENTION_VISION, w->query, w->key, w->value,
+                    NULL, 1024, 1024, 12, 12, w->attended)
+                : smol_vision_attention_cpu16_bf16(w->query, w->key, w->value, 1024, 1024, 12, w->attended))
             || project(s, callback, context, layer, SMOL_VISION_O, w->attended, 1024, 768, w->projected, 768)
             || smol_host_residual_bf16(w->tokens, w->projected, w->normalized, 1024 * 768)) goto failed;
         for (size_t i = 0; i < 1024 * 768; ++i) w->tokens[i] = w->normalized[i];
