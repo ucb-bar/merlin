@@ -3,7 +3,7 @@ title: Run Lean semantics differential tests
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-18
+last_verified: 2026-11-02
 related: [merlin_lean_verification, compiler_verification]
 code_refs:
   - merlin/lean/Differential.lean
@@ -134,6 +134,13 @@ check did not establish that claim. Chain replay checks the saved proof premises
 artifact bytes. A chain with refinement alone, without source definedness, does not exit 0.
 Supply multiple stage directories in execution order and `--handoff` when qualifying the exact
 recorded OOT handoff. Unsupported transformations remain explicit abstentions.
+
+Numerical-policy boundaries have their own subcommands. `w8a8-draft <stage>` checks a recorded W8A8
+quantization stage, and `w8a8-chain-draft <stages...> --work DIR` checks it followed by its
+downstream stages; `--scope captured|all` selects the source-derived policy reach. `bf16-f32acc
+<stages...> --work DIR` checks a `lower_bf16_matmul_f32acc` stage and the downstream refinement
+stages up to the next policy boundary. All three take `--checker-timeout`, and a timeout establishes
+no claim. The W8A8 checks remain draft and report `abstracted` pending independent policy review.
 
 `merlin-verify lean differential --help` describes a separate native comparison command. It
 takes a program, an explicit function, and JSON samples shaped `[sample][argument][element]`;
@@ -469,6 +476,11 @@ programs are independently type checked and exactly normalized before the C1 com
 suite checks strict source-defined chains at both index widths, zero extents, escaping tensors,
 stale bytes, and valid MLIR corruptions in each family. Native execution is compared with independent
 bit arithmetic and flattened tensor references, including the intermediate compacted program.
+The shared normalizer first recovers checked source quantizers from their six-operation expansion
+(`Check/QuantizeCollapse.lean`), then runs exact single-block CSE twice (`Check/ExactCse.lean`;
+merging an empty can make a fill of it a repeat), before constant hoisting, carrier aliases and
+dead `tensor.empty` removal. Its comparison falls back from the typed script to the same script
+after erasing dead or unused source operations (`TypedComparison.pruning`), then to identity returns.
 
 `test_lean_integer_idempotent.py` checks scalar `andi`, `ori`, signed/unsigned min and max with
 identical operands. Actual canonicalization removes these aliases inside parallel and reduction
@@ -683,6 +695,12 @@ Executing undefined native behavior cannot establish what poison or UB means.
 
 The host `FloatModel` lives in the test-only `Differential.lean` adapter, outside the verified
 namespace. It adds no axioms or changes to the soundness claims. It is not a proved IEEE instance.
+A request with a `contract` field selects a W8A8 candidate instead of the plain program
+comparison: `w8a8_byte_model` (f32 `minimumf`/`maximumf` byte model), `w8a8_dequant_width` (i32/i64
+zero points, per tensor or per channel), `w8a8_source_quantize`, `w8a8_source_contract` and
+`w8a8_source_program`. These evaluate candidates on finite samples without installing them in the
+frozen dispatch. The byte model returns plain sample outcomes; the others also report a candidate
+`scope` and `whole_pass_verified: false`.
 Unsupported operations, non-default rounding, fast-math, f16/bf16, and float-to-integer results
 wider than 32 bits are refused. Native memref copies with 32-bit descriptors are also refused
 because upstream CRunnerUtils uses 64-bit descriptor indices. Dynamic/encoded tensors, external
