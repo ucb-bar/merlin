@@ -1265,8 +1265,9 @@ recording is off. Passes call it at their existing rewrite points.
 - Verdicts flow through `record_verification(..., method=METHOD_LEAN)` into the shared log that
   `check_pass_obligations.py` reads.
 
-> **As implemented (2026-11-02).** There is no `certify.py` recorder: checkers propose their own
-> witnesses from the actual before/after pair and re-check them (`Check/Synth.lean`). The CLI is
+> **As implemented (2026-11-02).** There is no `certify.py` recorder. C1 synthesizes its own untrusted
+> script from the actual before/after pair and re-checks every step (`Check/Synth.lean`); the
+> compiler gates bind host projections of the actual IR instead. The CLI is
 > `merlin-verify lean {stage,typed-stage,support,definedness,chain,differential,w8a8-draft,`
 > `w8a8-chain-draft,bf16-f32acc}`; `chain` replays saved receipts against current bytes, and there is
 > no separate `check`, `replay` or `coverage` subcommand. Compiler-pass checks run through

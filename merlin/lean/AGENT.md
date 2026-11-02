@@ -31,12 +31,14 @@ Lean/BLAS) and set `MERLIN_LEAN_REQUIRED=1`, so a missing tool fails instead of 
 non-obvious inputs:
 
 - The configuration-elision and loop-transform unit tests compare against an original producer
-  checkout at `repo_root().parent / "merlin-graph-proof-intake"`: a sibling worktree at the pinned
-  proof-tooling commit. Without it they fail with an unavailable producer or
+  checkout at `repo_root().parent / "merlin-graph-proof-intake"`: a detached sibling worktree at
+  `4499eebb959c0f92cefd92cc6d80646ba66474ed` (the revision the qualification workers pin; reachable
+  from `origin/feat/megaphase`). Without it they fail with an unavailable producer or
   `No module named 'merlin.transforms'`.
-- `test_lean_checked.py` skips unless `MERLIN_LEAN_TOOLCHAIN` names a toolchain manifest. That
-  manifest must cover Merlin's Lean library as well as the SDK; an SDK-only manifest fails with
-  `unknown module prefix 'Merlin'`.
+- `test_lean_checked.py` skips unless `MERLIN_LEAN_TOOLCHAIN` names a toolchain manifest. An
+  SDK-only manifest fails with `unknown module prefix 'Merlin'`; the manifest also needs Merlin's
+  Lean library. `python -m merlin.verify.lean_cli prepare-toolchain` with that library as an extra
+  `--library-root` is the likely route, not yet confirmed.
 
 ## Layout
 
