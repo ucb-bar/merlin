@@ -56,6 +56,12 @@ unknown covered checks refuse acceptance. Independent numerical and hardware
 checks still apply. The [roadmap](verified_compiler_roadmap.md) lists the
 remaining models and pass groups.
 
+Inside Merlin's own compile, `merlin-compile --validate-passes` (or
+`MERLIN_VALIDATE_PASSES`) checks selected pass boundaries with Lean beside the
+compile and stops it when a check does not accept. Ten gates are registered in
+`merlin.verify.pass_validation.CHECKS`; their scope and limits are in the
+[compiler gate overview](../guides/lean_compiler_stack.md).
+
 Lean receipts distinguish `lean_kernel` from `lean_native_reflection`. Generated
 bit-vector obligations using `bv_decide` require the original toolchain's pinned
 SAT executable and explicit `allow_native_reflection` permission. Lean checks the
@@ -175,8 +181,9 @@ python -m pytest -q merlin/tests/ir/test_scalar_ir.py
 ```
 
 This pilot accepts only pure, single-block scalar integer functions with
-`arith.constant`, unflagged `arith.addi/subi/muli`, calls to defined functions
-and `func.return`. It rejects unknown operations, external calls, recursion,
+`arith.constant`, unflagged `arith.addi/subi/muli`, width conversions
+(`extsi`/`extui`/`trunci`), signed and unsigned `min`/`max`, `arith.cmpi`,
+`arith.select`, calls to defined functions and `func.return`. It rejects unknown operations, external calls, recursion,
 overflow flags, unmodeled attributes, floating point and effects. It covers
 one emitted transformation at one concrete signature, not all uses of
 `chunk_forward`, tensor/memref chunking, LLVM lowering, or the generated

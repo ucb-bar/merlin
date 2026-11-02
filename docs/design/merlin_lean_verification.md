@@ -503,7 +503,7 @@ the qualification suite also runs the checker under kernel reduction (`decide`) 
 | What | Where |
 |---|---|
 | Lean package `MerlinVerify` | `merlin/lean/` (with `AGENT.md`) |
-| C++ exporter | `merlin/lean/exporter/` |
+| Exporter | `src/merlin/verify/lean/mlir_export.py` (`torch_mlir` bindings, per the D9 amendment; no C++ exporter was built) |
 | Python glue | `src/merlin/verify/lean/` |
 | JSON schemas | `merlin/contract/schemas/` |
 | Python tests | `merlin/tests/ir/test_lean_*.py` |
@@ -1264,6 +1264,15 @@ recording is off. Passes call it at their existing rewrite points.
 - `merlin-verify lean replay <receipt>` re-checks stored bytes.
 - Verdicts flow through `record_verification(..., method=METHOD_LEAN)` into the shared log that
   `check_pass_obligations.py` reads.
+
+> **As implemented (2026-11-02).** There is no `certify.py` recorder: checkers propose their own
+> witnesses from the actual before/after pair and re-check them (`Check/Synth.lean`). The CLI is
+> `merlin-verify lean {stage,typed-stage,support,definedness,chain,differential,w8a8-draft,`
+> `w8a8-chain-draft,bf16-f32acc}`; `chain` replays saved receipts against current bytes, and there is
+> no separate `check`, `replay` or `coverage` subcommand. Compiler-pass checks run through
+> `merlin-compile --validate-passes` and `merlin.verify.pass_validation`. No `METHOD_LEAN` exists;
+> Lean results are receipts and speculative-gate verdicts, not entries in the shared verification log.
+> See `docs/guides/lean_compiler_stack.md` and `docs/guides/lean_differential_tests.md`.
 
 ### 8.4 Coverage matrix
 
