@@ -2,8 +2,10 @@
 """Capture ResNet50 fused device launches from exact staged RTL-model arenas.
 
 Frozen v1 tensors select compile-time scales only. Every v2 graph edge comes
-from the new device result, with host byte gathers, average, and bias. The stem
-max pool is its own device launch and must equal the host byte maximum.
+from the new device result, with the host stem byte gather, average, and bias.
+The stem max pool is its own device launch and must equal the host byte
+maximum. Every other convolution gathers producer FP8 rows on device; kxk
+convolutions order K as (ky, kx, channel) with the weights permuted to match.
 """
 
 import argparse
@@ -257,7 +259,7 @@ def main():
     sys.path[:0] = [str(args.atlas_tools), str(args.model_root)]
     from atlas_epilogue import Epilogue, Step, TileInput
     from atlas_program import assembly, dma_load_bytes, legacy_epilogue_assembly
-    from atlas_resnet_input import DirectInput, relocate_assembly
+    from atlas_resnet_input import DirectInput, kernel_major_weights, relocate_assembly
     from atlas_resnet_pool import MaxPool
     from atlas_rtl_reference import RtlReference
     from atlas_tile_arithmetic import tensor_scale_exponent
@@ -532,6 +534,12 @@ def main():
             weights = read(weight_id['path'], weight_id['sha256'], args.plan)
             if len(weights) != k * n:
                 raise ValueError('weight bytes differ from padded contraction')
+            incoming = tensors.get(launch['input_tensor'])
+            device_gather = is_conv and launch['input_tensor'] != 'input'
+            if device_gather and launch['kernel'] > 1:
+                if k != launch['logical_k'] or incoming['padded_channels'] != incoming['channels']:
+                    raise ValueError('kxk device gather requires unpadded channels and contraction')
+                weights = kernel_major_weights(weights, incoming['channels'], launch['kernel'], n)
             launch['weights'] = write(directory / 'weight.bin', weights)
             initial = bytearray(bytes(m * k) + weights + bytes([0xA5]) * 256
                                 + bytes([0xCD]) * launch['output_bytes'] + bytes([0x5A]) * 256)
@@ -552,7 +560,6 @@ def main():
                 for kind, vector in [('mul', coefficients[:n]), ('add', coefficients[n:])]:
                     offset = region(bf16_tiles(vector.expand(32, n).contiguous()), 'bn-' + kind + '.bin')
                     steps.append(Step(kind, TileInput(offset, 'channel')))
-            incoming = tensors.get(launch['input_tensor'])
             direct = None
             if launch['input_tensor'] == 'input':
                 launch['input_mode'] = 'stem_f32'
@@ -575,7 +582,7 @@ def main():
                     matrix = np.zeros((m, k), np.uint8)
                     matrix[0, :average_channels] = encoded
                     initial[:m * k] = tiled_fp8(matrix)
-            elif launch['kernel'] == 1:
+            else:
                 launch['input_mode'] = 'device_gather_fp8'
                 source = bytes(incoming['storage_bytes']) if args.prepare_only else values[launch['input_tensor']]
                 source_offset = region(source, 'source-placeholder.bin')
@@ -584,7 +591,7 @@ def main():
                 zero_offset = region(bytes(32), 'zero-line.bin')
                 direct = DirectInput(
                     source_offset, incoming['padded_channels'], incoming['h'], incoming['w'], launch['stride'],
-                    zero_offset
+                    zero_offset, launch['kernel'], launch['padding']
                 )
                 launch['direct_input'] = asdict(direct)
                 launch['input_source_offset'] = source_offset
@@ -593,15 +600,6 @@ def main():
                     launch['padding']
                 ]
                 launch['a_scale_exponent'] = incoming['scale_exponent']
-            else:
-                launch['input_mode'] = 'host_gather_fp8'
-                launch['geometry'] = [
-                    incoming['channels'], incoming['h'], incoming['w'], launch['kernel'], launch['stride'],
-                    launch['padding']
-                ]
-                launch['a_scale_exponent'] = incoming['scale_exponent']
-                if not args.prepare_only:
-                    initial[:m * k] = byte_gather(values[launch['input_tensor']], incoming, launch)
             launch['input_scale_exponent'] = launch['a_scale_exponent']
             if fused['residual_node']:
                 residual_desc = tensors[fused['residual_node']]
