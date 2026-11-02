@@ -255,7 +255,7 @@ def main():
     args.model_root = checked(args.model_root)
     sys.path[:0] = [str(args.atlas_tools), str(args.model_root)]
     from atlas_epilogue import Epilogue, Step, TileInput
-    from atlas_program import assembly, dma_load_bytes
+    from atlas_program import assembly, dma_load_bytes, legacy_epilogue_assembly
     from atlas_resnet_input import DirectInput, relocate_assembly
     from atlas_rtl_reference import RtlReference
     from atlas_tile_arithmetic import tensor_scale_exponent
@@ -559,10 +559,10 @@ def main():
             ) if is_conv else None
             launch['epilogue'] = asdict(e) if e else None
             launch['arena_bytes'] = len(initial)
-            source = assembly(
-                m, k, n, launch['output_offset'], launch['a_scale_exponent'] + launch['b_scale_exponent'],
-                traffic_reuse=True, epilogue=e, direct_input=direct
-            )
+            rescale = launch['a_scale_exponent'] + launch['b_scale_exponent']
+            # Fused hooks keep the archived x30/x31 scratch; the hook-free FC uses the ordinary recipe.
+            source = (legacy_epilogue_assembly(m, k, n, launch['output_offset'], rescale, epilogue=e, direct_input=direct)
+                      if e else assembly(m, k, n, launch['output_offset'], rescale, traffic_reuse=True, direct_input=direct))
             source = relocate_assembly(source, model['arena_base'], arena_bytes=len(initial))
             program = input_to_program(io.StringIO(source))
             raw_program = b''.join((word.to_bytes(4, 'little') for word in program.assemble()))
