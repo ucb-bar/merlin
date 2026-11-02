@@ -64,6 +64,24 @@ and working log: `docs/design/compiler_verification.md`.
 - `merlin.verify.replay` / `merlin.verify.replay_layers` — optional analysis-owned historical replay,
   under `packages/merlin-analysis/src/merlin/verify/`; install the analysis `replay` extra.
 
+## Compiler pass gates
+
+- `pass_validation.py` — `CHECKS` registers the ten compiler gates (`prune_dead_pure_tensor_ops`,
+  `cse`, `ordered_loop_unrolling`, `ordered_loop_segmentation`, `buffer_reuse`,
+  `bf16_f32acc_draft_contract`, `lower_quant_ext`, `configuration_write_elision`,
+  `configuration_loop_hoisting`, `host_graph_fusion`); `all` selects every one. Turned on by
+  `merlin-compile --validate-passes` or `MERLIN_VALIDATE_PASSES`, with `MERLIN_LEAN_SDK_BIN`,
+  `MERLIN_COMPILER_PYTHON` and `MERLIN_VALIDATE_WORKERS`. Selecting a check never enables its
+  transformation or approves its contract; keep `all` equal to the registry when adding a gate.
+- `speculative_gate.py` — runs each submitted before/after pair in an owned, niced worker beside the
+  compile. Only `accepted` passes; `unsupported`, `not_established` and `unavailable` stop the compile
+  with their evidence, and no worker outlives `close`.
+- Per-gate intake/emission/checking lives in `compiler_*`, `buffer_reuse_*`, `configuration_*`,
+  `loop_transform_*`, `host_graph_fusion_*`, `compiler_qdq*`/`compiler_macc*` and `lean_graph_*`,
+  with Lean sources under `lean/Merlin/` (see its `AGENT.md`) and `merlin/lean/`. The overview and
+  status of all ten gates is `docs/guides/lean_compiler_stack.md`; the tutorial and supported
+  profiles are `docs/guides/lean_bounded_pass_profiles.md`.
+
 ## Invariants
 
 - `compiler_transforms` captures the optional actual source-SCF and explicit

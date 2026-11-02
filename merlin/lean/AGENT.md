@@ -17,7 +17,26 @@ lake build
 ```
 
 Packages and build products go under `out/build/lean/` (`lakefile.toml`), per the repo's one-root
-output convention. Never commit anything from there.
+output convention. Never commit anything from there. `out/build/lean/packages` must be a real
+directory at the `lake-manifest.json` revisions; if Mathlib modules are missing, `lake exe cache get`
+restores them. `lake build --no-build MerlinVerify merlin-lean merlin-lean-audit` must report every
+target up to date before tests are meaningful.
+
+## Running the tests
+
+Configure the tools as in the
+[tutorial](../../docs/guides/lean_bounded_pass_profiles.md#configure-the-tools)
+(`MERLIN_COMPILER_PYTHON`, `MERLIN_LEAN_SDK_BIN`, `MERLIN_VALIDATE_WORKERS=1`, single-threaded
+Lean/BLAS) and set `MERLIN_LEAN_REQUIRED=1`, so a missing tool fails instead of skipping. Two
+non-obvious inputs:
+
+- The configuration-elision and loop-transform unit tests compare against an original producer
+  checkout at `repo_root().parent / "merlin-graph-proof-intake"`: a sibling worktree at the pinned
+  proof-tooling commit. Without it they fail with an unavailable producer or
+  `No module named 'merlin.transforms'`.
+- `test_lean_checked.py` skips unless `MERLIN_LEAN_TOOLCHAIN` names a toolchain manifest. That
+  manifest must cover Merlin's Lean library as well as the SDK; an SDK-only manifest fails with
+  `unknown module prefix 'Merlin'`.
 
 ## Layout
 
@@ -35,10 +54,18 @@ output convention. Never commit anything from there.
 | `MerlinVerify/Check/Rules*.lean`, `Check/Affine.lean` | per-family typing rules with safety proofs; affine bounds | WP-6 |
 | `MerlinVerify/Check/{Rulebook,Chain}.lean` | assembled rulebook, `supportCheck`, end-to-end `chain_refines` | WP-12 |
 | `MerlinVerify/Rules/<Family>.lean` | rewrite-rule families and their theorems | per family WP |
-| `MerlinVerify/Spec/` | reviewed specifications (policy, entry, annotations). Barrier-authored. | per spec WP, human review |
-| `MerlinVerify/Claims/` | reviewed claim files (empty: claim statements are pinned by the guard's `PINNED` list) | review only |
-| `MerlinVerify/Assumptions/` | the ONLY place an `axiom` may appear; each listed in the ledger | review only |
+| `MerlinVerify/Driver/` | composed drivers: W8A8 chain/bounded/IEEE/numerical, bf16 f32 accumulation, scalar square, source profile | per driver WP |
+| `MerlinVerify/Tests/` | `example`/`#guard` regression files for checkers and rules; part of the library build | per family WP |
+| `MerlinVerify/Spec/` | reviewed specifications (`Annotations`, `Dequant`, `Quantize`). Barrier-authored. | per spec WP, human review |
+| `MerlinVerify/Claims/` | reviewed claim files; not created yet (claim statements are pinned by the guard's `PINNED` list) | review only |
+| `MerlinVerify/Assumptions/` | the ONLY place an `axiom` may appear, each listed in the ledger; not created yet, still enforced by the guard and `Audit.lean` | review only |
+| `Main.lean`, `Audit.lean` | the `merlin-lean` checker and `merlin-lean-audit` executables (`lakefile.toml`) | lead |
+| `Differential.lean`, `W8A8*Main.lean` | drivers run with `lake env lean --run` by `src/merlin/verify/lean/{differential,*_policy}.py` | per driver WP |
 | `src/merlin/verify/lean/mlir_export.py` | authoritative exporter: the pipeline's MLIR (via `torch_mlir`) → `merlin.lean.ir.v1` | WP-2 |
+
+The compiler gates for loops, buffers, configuration writes and host fusion use a second source tree,
+`src/merlin/verify/lean/Merlin/` (see its `AGENT.md`). It has no Lake project: each gate compiles the
+exact source closure it binds with `lean -o` into a per-check library.
 
 **G0-frozen** files change only by an interface change request to the lead. Additive lemmas about
 frozen definitions go in a file you own, never in the frozen file.
