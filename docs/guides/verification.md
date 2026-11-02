@@ -3,7 +3,7 @@ title: Verify a compiler transformation
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-09
+last_verified: 2026-11-02
 related: [phase0_specification, model_lowering, simulator_selection]
 code_refs:
   - src/merlin/verify/receipts.py
@@ -139,8 +139,9 @@ merlin-verify qualify-scalar-receipt \
   --before /generated/before.mlir --after /generated/after.mlir
 ```
 
-This command uses a separate, narrow QF_BV model of integer constants, addition, subtraction,
-multiplication, defined calls, and returns. It binds the saved file bytes and proof query;
+This command uses a separate, narrow QF_BV model of single-block integer functions: constants,
+wrapping `addi`/`subi`/`muli`, width conversions (`extsi`, `extui`, `trunci`), signed and unsigned
+`min`/`max`, `cmpi`, `select`, defined calls, and returns. It binds the saved file bytes and proof query;
 `ScalarTransformReceipt.from_dict` and `qualify_scalar_receipt` re-run the check before trusting a
 stored verdict. Exit 0 is a proof within that model, 1 a counterexample, and 2 an abstention. The
 qualification command returns 0 only when the stored proof replays with the supplied exact bytes
