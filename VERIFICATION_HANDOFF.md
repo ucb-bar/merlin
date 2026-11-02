@@ -159,6 +159,12 @@ The [unpublished commit map](out/artifacts/handoff/pass-verif-integration-202610
 records a prepublication message-length correction with unchanged code trees,
 identities and dates.
 
+> **Note (2026-11-02).** Everything below this line is dated history kept for provenance. Sections
+> titled "Current", "Latest", "CURRENT" or "START HERE" describe the state on their own dates, and the
+> worker branches and resume instructions they name are no longer active. Work continues on
+> `feat/pass-verif-integration`; start from the checkpoint above and
+> [the stack guide](docs/guides/lean_compiler_stack.md).
+
 ---
 
 # Historical broader completion plan and loop generalization — 2026-10-29
