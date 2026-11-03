@@ -1,7 +1,9 @@
 """Fused graph replacement, emitted-byte assembly, and worker ordering controls."""
 import importlib.util
 import json
+import os
 from pathlib import Path
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -9,17 +11,23 @@ import unittest
 import numpy as np
 import torch
 
+from merlin.common.paths import repo_root
+
+sys.path.insert(0, str(repo_root() / "examples/atlas/comparisons"))
+
 from capture_tinyllama_fused import (FusedProjectionCapture, MODEL_PIN, ProjectionWorkers, assemble_fp8,
                                     down_scales)
-from capture_tinyllama_native import array_identity
+from capture_tinyllama_native import array_identity, safe_path
 from compare_tinyllama_attention import raw_array
-from merlin.common.paths import repo_root
 from tiny_fp8_pack import encode
 import tiny_workload_native as native
 
 
 def layout_module():
-    path = repo_root().parent / 'integration-atlas-mlir/tools/tiny_full/fusion_layout.py'
+    atlas_root = os.environ.get('ATLAS_MLIR_ROOT')
+    if not atlas_root:
+        raise unittest.SkipTest('Set ATLAS_MLIR_ROOT for the fused layout provider')
+    path = safe_path(Path(atlas_root) / 'tools/tiny_full/fusion_layout.py')
     spec = importlib.util.spec_from_file_location('test_fused_layout', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

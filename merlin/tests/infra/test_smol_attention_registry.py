@@ -3,10 +3,15 @@ import ctypes as ct
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
 import numpy as np
+
+from merlin.common.paths import repo_root
+
+sys.path.insert(0, str(repo_root() / "examples/atlas/comparisons"))
 
 
 class Parameters(ct.Structure):
@@ -58,7 +63,7 @@ AttentionCallback = ct.CFUNCTYPE(ct.c_int, ct.c_void_p, ct.c_uint, ct.c_void_p, 
 
 class AttentionRegistryTest(unittest.TestCase):
     def build(self, runtime=None):
-        here = Path(__file__).resolve().parent
+        here = repo_root() / "examples/atlas/comparisons"
         stems = ('smol_policy_block', 'smol_policy_ops', 'smol_host_ops', 'smol_host_rope',
                  'smol_host_attention', 'smol_host_softmax', 'smol_vision_graph',
                  'smol_vision_ops', 'smol_vision_attention')

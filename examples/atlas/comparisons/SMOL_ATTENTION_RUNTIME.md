@@ -10,7 +10,7 @@ Run the dependency-free graph build and CPU control, then the explicit runtime c
 
 ```sh
 PYTHONPATH=examples/atlas/comparisons python -m unittest test_smol_attention_registry -v
-PYTHONPATH=examples/atlas/comparisons ATLAS_MLIR_ROOT=/absolute/path/to/atlas-mlir python -m unittest test_smol_attention_registry -v
+ATLAS_MLIR_ROOT=/absolute/path/to/atlas-mlir python -m pytest merlin/tests/infra/test_smol_attention_registry.py -v
 ```
 
 These controls compile with strict warnings and reject unresolved shared-library symbols. They exercise CPU attention for all three policy kinds and a vision layer, successful registered callbacks for all four kinds, callback failure, and callback reset. They use finite zero tensors to isolate routing; the configured policy-block, policy-graph, and vision replay fixtures remain the checks against actual captured arithmetic and model weights.
