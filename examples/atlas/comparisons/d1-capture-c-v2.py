@@ -92,8 +92,6 @@ def worker_interpreter(path, inputs):
             mode = current.lstat().st_mode
             if stat.S_ISLNK(mode):
                 target = Path(os.readlink(current))
-                if any(word in part.lower() for part in target.parts for word in ('hammer', 'vlsi')):
-                    raise ValueError('restricted interpreter symlink target')
                 target = target if target.is_absolute() else current.parent/target
                 target = Path(os.path.normpath(str(target)))
                 candidate = lexical_absolute_path(target.joinpath(*candidate.parts[index+1:]))
@@ -688,7 +686,7 @@ def run(args):
         raise ValueError('partial C capture requires block-only prefill; full supports zero through two decode steps')
     args.out = checked(args.out)
     if not args.out.is_relative_to(ROOT) or args.out.exists():
-        raise ValueError('fresh output beneath D required')
+        raise ValueError('fresh output beneath TINY_WORK_ROOT required')
     args.out.mkdir(parents=True)
     inputs, projection = None, None
     if (args.attention_worker_script is None

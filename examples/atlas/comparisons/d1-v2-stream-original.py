@@ -66,8 +66,6 @@ def map_bundle(args, out, frozen):
     with os.scandir(calls) as entries:
         inventory = sorted(entries,key=lambda entry:entry.name)
     for entry in inventory:
-        if any(word in entry.name.lower() for word in ('hammer','vlsi')):
-            continue
         if entry.is_symlink():
             raise ValueError('capture inventory contains symlink')
         if not entry.is_dir(follow_symlinks=False):

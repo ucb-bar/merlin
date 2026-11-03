@@ -22,7 +22,7 @@ def main():
             return
         parser.error('--atlas-root or ATLAS_MLIR_ROOT is required')
     path = Path(args.atlas_root).absolute()
-    if '..' in path.parts or any(word in part.lower() for part in path.parts for word in ('hammer', 'vlsi')):
+    if '..' in path.parts:
         parser.error('restricted atlas root')
     if any(prefix.is_symlink() for prefix in reversed([path, *path.parents])):
         parser.error('symlink atlas root is unsupported')

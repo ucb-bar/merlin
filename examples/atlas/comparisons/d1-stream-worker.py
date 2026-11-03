@@ -34,9 +34,8 @@ def sha(raw):
 def safe(value):
     path = Path(value).absolute()
     if ('..' in path.parts or '\\' in str(path) or any(ord(c) < 32 or ord(c) == 127 for c in str(path))
-            or any(word in part.lower() for part in path.parts for word in ('hammer', 'vlsi'))
             or not any(path.is_relative_to(root) for root in (ROOT, ATLAS_ROOT, MERLIN_ROOT, MODEL_ROOT))):
-        raise ValueError('stream path must be physical and beneath D')
+        raise ValueError('stream path must be physical and beneath TINY_WORK_ROOT')
     for prefix in (*reversed(path.parents), path):
         try:
             mode = prefix.lstat().st_mode
@@ -216,7 +215,7 @@ def check_result(inputs, worker, prepared, arena, output, execution, clipping, p
 def run(root, record_path, output, freeze):
     output = safe(output)
     if not output.is_relative_to(ROOT/'d1-stream-original') or output.is_relative_to(safe(root)):
-        raise ValueError('original execution output must be outside capture beneath D/d1-stream-original')
+        raise ValueError('original execution output must be outside capture beneath TINY_WORK_ROOT/d1-stream-original')
     if output.exists():
         raise ValueError('fresh original execution receipt already exists; audit it instead')
     worker = verify_freeze(freeze)

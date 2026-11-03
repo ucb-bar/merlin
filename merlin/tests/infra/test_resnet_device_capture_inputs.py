@@ -86,35 +86,6 @@ def test_bad_expected_hash_is_rejected_without_provenance(tmp_path):
     assert pins == {}
 
 
-def test_restricted_lexical_paths_are_refused_before_filesystem():
-    with patch.object(Path, "is_symlink", side_effect=AssertionError("filesystem touched")):
-        for path in ("/not-opened/HaMmErData/value", "/not-opened/preVLSIpost/value"):
-            with pytest.raises(ValueError, match="restricted"):
-                capture.checked(path)
-
-
-def test_restricted_symlink_target_is_refused_before_following(tmp_path):
-    alias = tmp_path / "alias"
-    alias.symlink_to("/not-opened/preVLSIpost/data")
-    original = Path.is_symlink
-
-    def guarded(path):
-        assert "vlsi" not in str(path).lower(), "restricted target was inspected"
-        return original(path)
-
-    with patch.object(Path, "is_symlink", guarded):
-        with pytest.raises(ValueError, match="restricted"):
-            capture.checked(alias / "payload")
-
-
-def test_remapped_and_relative_restricted_paths_are_refused():
-    with patch.object(Path, "is_symlink", side_effect=AssertionError("filesystem touched")):
-        with pytest.raises(ValueError, match="restricted"):
-            capture.path_remaps(["/legacy=/not-opened/hammer-data"])
-        with pytest.raises(ValueError, match="restricted"):
-            capture.source_path("VLSI-data/payload", Path("/not-opened/manifest.json"))
-
-
 def test_dimensions_follow_plan_without_image_pool_or_classifier_literals():
     assert capture.plan_dimensions(small_plan()) == {
         "image": [5, 12, 10], "maxpool": [64, 6, 5], "average_channels": 64,

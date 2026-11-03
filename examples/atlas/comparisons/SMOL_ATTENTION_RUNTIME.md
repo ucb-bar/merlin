@@ -9,7 +9,7 @@ The atlas-mlir full-host builder supplies the opt-in macro and runtime dependenc
 Run the dependency-free graph build and CPU control, then the explicit runtime control, from a Merlin checkout:
 
 ```sh
-PYTHONPATH=examples/atlas/comparisons python -m unittest test_smol_attention_registry -v
+python -m pytest merlin/tests/infra/test_smol_attention_registry.py -v
 ATLAS_MLIR_ROOT=/absolute/path/to/atlas-mlir python -m pytest merlin/tests/infra/test_smol_attention_registry.py -v
 ```
 

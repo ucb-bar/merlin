@@ -65,6 +65,12 @@ python examples/atlas/comparisons/capture_tinyllama_full.py \
 All 22 decoder layers and the LM head use greedy feedback. Operands are FP32
 views of BF16 words; decode rows use positive-zero M32 padding and full K order.
 
+## Full-model and fused captures
+
+`capture_tinyllama_fused.py` captures fused projection boundaries, and `capture_atlas_attention.py` records exact staged attention operands and model replies. `refresh/capture_resnet_device.py` captures device patch gathers, max pooling, and fused convolution outputs from a graph plan.
+
+The full C graph capture entry is `d1-capture-c-v2.py`. Its projection worker and concurrent stream backfill drivers are in this directory. Set `ATLAS_ROOT`, `MERLIN_ROOT`, `ATLAS_NPU_MODEL_ROOT`, and `TINY_WORK_ROOT` to physical absolute paths, use one tensor thread per process, and use at most 16 workers, the validated concurrency limit. The full capture, export, qualification, and portable receipt workflow is documented in atlas-mlir `tools/tiny_full/REPRODUCING.md`. The driver requires external checksum-bound parameter and scale inputs, as listed by `--help`.
+
 ## SmolVLA policy capture and replay
 
 The dynamic-block receipt must bind the native full-query manifest and retained

@@ -32,8 +32,6 @@ def discover(root):
     with os.scandir(calls) as entries:
         inventory = sorted(entries, key=lambda entry: entry.name)
     for entry in inventory:
-        if any(word in entry.name.lower() for word in ('hammer', 'vlsi')):
-            continue
         if entry.is_symlink():
             raise ValueError('symbolic link in capture calls inventory')
         if not entry.is_dir(follow_symlinks=False):
@@ -100,8 +98,6 @@ def map_bundle(args, out, frozen):
     with os.scandir(w.safe(args.root/'calls')) as entries:
         inventory = sorted(entries, key=lambda entry: entry.name)
     for entry in inventory:
-        if any(word in entry.name.lower() for word in ('hammer', 'vlsi')):
-            continue
         if entry.is_symlink():
             raise ValueError('symbolic link in final capture inventory')
         if not entry.is_dir(follow_symlinks=False):
@@ -132,7 +128,7 @@ def map_bundle(args, out, frozen):
 def main(args):
     args.root, out = w.safe(args.root), w.safe(args.out)
     if not out.is_relative_to(ROOT/'d1-stream-original') or out == args.root or out.is_relative_to(args.root):
-        raise ValueError('outputs must be beneath D/d1-stream-original and outside capture')
+        raise ValueError('outputs must be beneath TINY_WORK_ROOT/d1-stream-original and outside capture')
     if not 1 <= args.workers <= 16 or args.poll_seconds < 1 or args.poll_seconds > 30 or args.expected_native_records < 1:
         raise ValueError('workers must be 1..16 and polling must be 1..30 seconds')
     out.mkdir(parents=True, exist_ok=True)

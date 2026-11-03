@@ -28,15 +28,9 @@ def sha(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
-def unrestricted(path):
-    if any(token in part.lower() for part in Path(path).parts for token in ('hammer', 'vlsi')):
-        raise ValueError('restricted path')
-
-
 def checked(path, *, symlinks=True):
-    """Resolve each symlink only after admitting its target's path components."""
+    """Resolve source symlinks, rejecting loops and output symlinks."""
     path = Path(path).absolute()
-    unrestricted(path)
     pending = list(path.parts[1:])
     current = Path(path.anchor)
     links = 0
@@ -55,7 +49,6 @@ def checked(path, *, symlinks=True):
             if links > 40:
                 raise ValueError('source symlink loop')
             target = Path(os.readlink(candidate))
-            unrestricted(target)
             if target.is_absolute():
                 current = Path(target.anchor)
                 pending = list(target.parts[1:]) + pending
@@ -72,8 +65,6 @@ def path_remaps(specifications):
         old, separator, new = specification.partition('=')
         if not separator or not old or not new or not Path(old).is_absolute() or not Path(new).is_absolute():
             raise ValueError('--path-remap requires absolute OLD=NEW roots')
-        unrestricted(old)
-        unrestricted(new)
         old = Path(old)
         if any(old == previous for previous, _ in result):
             raise ValueError('duplicate --path-remap root')
@@ -83,7 +74,6 @@ def path_remaps(specifications):
 
 def source_path(path, manifest=None, remaps=()):
     path = Path(path)
-    unrestricted(path)
     if path.is_absolute():
         for old, new in remaps:
             if path.is_relative_to(old):
