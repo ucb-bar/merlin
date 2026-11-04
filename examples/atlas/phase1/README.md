@@ -49,7 +49,7 @@ descriptor's retained `resources_root`.
 - `kernel_library/materialize.py`: the Radiance script with Atlas names. It does not
   turn these examples into a link-time dependency of submitted compilers.
 
-The pin is atlas-kernels `59a16fb` on [`feat/kernel-library`](https://github.com/ucb-bar/atlas-kernels/tree/feat/kernel-library), a pinned commit that is available once that branch is pushed. atlas-mlir pins the same commit as its `third_party/atlas-kernels` submodule. The two pins must agree. Set `MERLIN_ATLAS_MLIR` to an atlas-mlir checkout to check the requested selection commit against that checkout's `HEAD` gitlink at `third_party/atlas-kernels`; a missing gitlink or mismatched commit fails generation. Without `MERLIN_ATLAS_MLIR`, the pin comparison is reported as `not-checked`.
+The pin is atlas-kernels `ec01785` on [`feat/kernel-library`](https://github.com/ucb-bar/atlas-kernels/tree/feat/kernel-library), a pinned commit that is available once that branch is pushed. atlas-mlir pins the same commit as its `third_party/atlas-kernels` submodule. The two pins must agree. Set `MERLIN_ATLAS_MLIR` to an atlas-mlir checkout to check the requested selection commit against that checkout's `HEAD` gitlink at `third_party/atlas-kernels`; a missing gitlink or mismatched commit fails generation. Without `MERLIN_ATLAS_MLIR`, the pin comparison is reported as `not-checked`.
 
 When bumping either pin, update `SOURCE_COMMIT` in the generator, rerun it, update the selection digest in `merlin/tests/infra/test_atlas_kernel_library_example.py`, and bump the atlas-mlir submodule to the same commit.
 
@@ -62,7 +62,7 @@ To materialize the pinned library, from the repository root:
 `MERLIN_ATLAS_KERNELS` may name the checkout instead of `--checkout`. The default is
 `out/artifacts/targets/atlas/kernel_library_v1`, with the output root honoring
 `MERLIN_OUT_ROOT`; `--output` selects another destination. The export holds
-`Makefile`, `atlas_kernels_path.py`, `lib/`, and the nine `kernels/<family>/`
+`Makefile`, `atlas_kernels_path.py`, `lib/`, `kernels/common.mk`, and the nine `kernels/<family>/`
 directories, plus `selection.yaml`, `manifest.yaml`, and `README.md`. It omits
 `coverage/`, which holds op inventories of the held-out models. Reuse, refusal, and
 symlink rules are those of the Radiance script. This export alone is not

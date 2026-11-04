@@ -22,7 +22,7 @@ from merlin.common.paths import repo_root
 
 EXAMPLE = "examples/atlas/phase1/kernel_library"
 RADIANCE = "examples/radiance/phase1/kernel_library"
-PINNED = "59a16fb5c6495bb76fab7d821077218564942c5f"
+PINNED = "ec0178528d367ebc3367dfe34ed9876d462f95e9"
 
 
 def _load(path, name):
@@ -57,7 +57,7 @@ def _selection():
 def test_selection_bytes_and_pinned_semantics_preserved():
     module = load_materializer()
     payload = module.SELECTION.read_bytes()
-    assert hashlib.sha256(payload).hexdigest() == "c2ddcefdeedcbf5e3e3aaca1df4f9497154320b66af7ef85e2dc70c035552e33"
+    assert hashlib.sha256(payload).hexdigest() == "a31762a3f3db3c3bedfbf1e9283f3baf8fa7625304dae6c8154b6fecb1664185"
     selection = yaml.safe_load(payload)
     assert selection["source_commit"] == PINNED
     assert selection["package"] == "out/artifacts/targets/atlas/kernel_library_v1"
@@ -416,7 +416,15 @@ def test_local_checkout_exports_every_family(tmp_path):
     assert manifest["qualified_families"] == 9
     assert manifest["experimental_families"] == 0
     for family in _selection()["qualified_families"]:
-        assert (output / family / "kernel.yaml").is_file()
+        family_root = output / family
+        assert (family_root / "kernel.yaml").is_file()
+        recipe = subprocess.run(
+            ["make", "--no-print-directory", "-n", "-C", str(family_root), "gen"],
+            capture_output=True, text=True, check=True,
+        ).stdout
+        assert "lib/family_interface.py" in recipe
+        assert f'--family "{family_root.name}"' in recipe
+    assert (output / "kernels/common.mk").is_file()
     assert (output / "lib" / "golden").is_dir()
     assert not (output / "coverage").exists()
     assert module.materialize(checkout, output) == manifest

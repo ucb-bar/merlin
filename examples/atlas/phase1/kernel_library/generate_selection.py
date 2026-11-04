@@ -39,13 +39,13 @@ SELECTION = HERE.parent / "selection.yaml"
 
 # atlas-kernels feat/kernel-library head. Nicolas updates this pin, and reruns this generator, after
 # pushing atlas-kernels to GitHub; source_pr then becomes the pull-request URL.
-SOURCE_COMMIT = "59a16fb5c6495bb76fab7d821077218564942c5f"
+SOURCE_COMMIT = "ec0178528d367ebc3367dfe34ed9876d462f95e9"
 SOURCE_PR = "https://github.com/ucb-bar/atlas-kernels"
 PACKAGE = "out/artifacts/targets/atlas/kernel_library_v1"
 # Library-wide files a family needs to import and build on its own: the make targets, the import hook,
 # and lib/ (backend, golden arithmetic, standalone fallbacks). coverage/ is not exported: it holds the
 # held-out models' op inventories, which the selection rules do not need.
-SHARED_PATHS = ("Makefile", "atlas_kernels_path.py", "lib")
+SHARED_PATHS = ("Makefile", "atlas_kernels_path.py", "lib", "kernels/common.mk")
 
 MXU = ("systolic_array", "fp8_mxu", "bf16_accumulate")
 MULT32 = {"multiple_of": 32}
@@ -247,9 +247,12 @@ def _show(checkout: Path, commit: str, path: str) -> str:
     ).stdout
 
 
-def _tree(checkout: Path, commit: str, path: str) -> list[str]:
+def _tree(checkout: Path, commit: str, path: str, *, directories_only: bool = False) -> list[str]:
+    args = ["git", "-C", str(checkout), "ls-tree", "--name-only"]
+    if directories_only:
+        args.append("-d")
     out = subprocess.run(
-        ["git", "-C", str(checkout), "ls-tree", "--name-only", f"{commit}:{path}"],
+        [*args, f"{commit}:{path}"],
         check=True,
         capture_output=True,
         text=True,
@@ -333,7 +336,7 @@ def collect(checkout: Path, commit: str) -> dict:
     pin_check = check_atlas_mlir_pin(commit, Path(raw_mlir) if raw_mlir is not None else None)
     mapping = yaml.safe_load(_show(checkout, commit, "coverage/mapping.yaml"))
     order = list(mapping["kernels"])
-    directories = sorted(_tree(checkout, commit, "kernels"))
+    directories = sorted(_tree(checkout, commit, "kernels", directories_only=True))
     if sorted(order) != directories:
         raise SelectionSourceError(f"coverage kernels {sorted(order)} differ from kernels/ {directories}")
     if sorted(FAMILY_RULES) != directories:
