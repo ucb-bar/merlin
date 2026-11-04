@@ -53,7 +53,7 @@ Host graphs are hand-written C, including [tiny_block.c](tiny_block.c),
 [smol_vision_graph.c](smol_vision_graph.c), and
 [smol_policy_graph.c](smol_policy_graph.c). Capture does not generate these
 graphs. Follow the
-[model bring-up guide](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-performance/docs/bringing-up-a-model.md)
+[model bringup guide](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-performance/docs/bringing-up-a-model.md)
 for inventory, kernel mapping, compilation, exactness checks, and host execution.
 
 ## ResNet plan and reference
