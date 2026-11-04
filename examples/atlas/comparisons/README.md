@@ -47,13 +47,13 @@ query projection, while SmolVLA writes parameter and invocation tensors,
 
 These are model-specific adapters with external prerequisites, not checkpoint-to-host bootstrap commands. TinyLlama requires the pinned checkpoint, development corpus, tokenizer files, and frozen Transformers source. The corpus is not supplied by this repository, and a different text with the same token count fails authentication. SmolVLA requires a pre-existing dynamic-block receipt whose status is `passed_dynamic_block_model_and_retained_policy_continuation`, its authenticated source bookends, retained policy archive, weights, backbone configuration, exact native environment, and the compiled observation archive. A checkpoint plus raw dataset frame does not satisfy that receipt contract.
 
-For independent setup, use atlas-mlir's [input and environment contracts](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-docs/docs/bringing-up-a-model.md#inputs-and-environments) and [new model adapter contract](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-docs/docs/bringing-up-a-model.md#new-model-adapter-contract). Record a missing corpus, receipt, archive, or provider as an unmet prerequisite. For a new model, implement its input preparation, source authentication, op inventory, and real-value capture explicitly before mapping kernels; these scripts do not generate those adapters.
+For independent setup, use atlas-mlir's [input and environment contracts](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-performance/docs/bringing-up-a-model.md#inputs-and-environments) and [new model adapter contract](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-performance/docs/bringing-up-a-model.md#new-model-adapter-contract). Record a missing corpus, receipt, archive, or provider as an unmet prerequisite. For a new model, implement its input preparation, source authentication, op inventory, and real-value capture explicitly before mapping kernels; these scripts do not generate those adapters.
 
 Host graphs are hand-written C, including [tiny_block.c](tiny_block.c),
 [smol_vision_graph.c](smol_vision_graph.c), and
 [smol_policy_graph.c](smol_policy_graph.c). Capture does not generate these
 graphs. Follow the
-[model bring-up guide](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-docs/docs/bringing-up-a-model.md)
+[model bring-up guide](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-performance/docs/bringing-up-a-model.md)
 for inventory, kernel mapping, compilation, exactness checks, and host execution.
 
 ## ResNet plan and reference
@@ -121,7 +121,7 @@ python examples/atlas/comparisons/capture_smolvla_policy.py \
   --out "$SMOL_ATLAS"
 ```
 
-For the maintained instruction-backed C-graph route, follow atlas-mlir's [Smol attention capture runbook](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-docs/docs/smol_attention_capture.md#inputs). It uses an immutable compiled-observation FullBundle and baseline providers instead of loading a raw checkpoint. `tools/capture_smolvla_attention.py --prepare --execute` produces `run/manifest.json`, `run/replay.json`, `run/device-events.jsonl`, `run/phase-reference.json`, and provider identities. A complete capture covers 1,421 logical projection calls, 2,715 projection panels, and 200 attention launches. A limited phase run is incomplete, and reply reuse retains its narrower identity-bound scope. Capture outputs are references; the separate original-model admission and host execution gates remain required.
+For the maintained instruction-backed C-graph route, follow atlas-mlir's [Smol attention capture runbook](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-performance/docs/smol_attention_capture.md#inputs). It uses an immutable compiled-observation FullBundle and baseline providers instead of loading a raw checkpoint. `tools/capture_smolvla_attention.py --prepare --execute` produces `run/manifest.json`, `run/replay.json`, `run/device-events.jsonl`, `run/phase-reference.json`, and provider identities. A complete capture covers 1,421 logical projection calls, 2,715 projection panels, and 200 attention launches. A limited phase run is incomplete, and reply reuse retains its narrower identity-bound scope. Capture outputs are references; the separate original-model admission and host execution gates remain required.
 
 ## Fixed-input block ELF
 

@@ -54,10 +54,14 @@ atlas-kernels families and a script that prepares it as a generated artifact.
 - `kernel_library/materialize.py`: the Radiance script with Atlas names. It does not
   turn these examples into a link-time dependency of submitted compilers.
 
-The pin is atlas-kernels `e7bbf7c` on `feat/kernel-library`, which is not yet on
-GitHub. After pushing, update `SOURCE_COMMIT` and `SOURCE_PR` in the generator,
-rerun it, and update the selection digest in
-`merlin/tests/infra/test_atlas_kernel_library_example.py`.
+The pin is atlas-kernels `e7bbf7c` on
+[`feat/kernel-library`](https://github.com/ucb-bar/atlas-kernels/tree/feat/kernel-library),
+a pinned commit that is available once that branch is pushed. atlas-mlir pins the
+same commit as its `third_party/atlas-kernels` submodule. The two pins must agree,
+and nothing checks that yet: when bumping either, update `SOURCE_COMMIT` in the
+generator, rerun it, update the selection digest in
+`merlin/tests/infra/test_atlas_kernel_library_example.py`, and bump the atlas-mlir
+submodule to the same commit.
 
 To materialize the pinned library, from the repository root:
 
