@@ -115,6 +115,46 @@ def _tensor(spec):
     return tuple(shape), dtype, stride * (dtype.element_bits // 8)
 
 
+def _without_compiler_owned_intermediates(cb, owned, role_order, *, source_owned_mutables=None):
+    """The default roster of a buffer whose produced intermediates stay inside the kernel.
+
+    Without ``kernel_abi`` the contract's ``logical_kernel_abi.default`` rule passes only the logical
+    inputs (role input/weight/bias/scale, never produced) and the published results; an intermediate is
+    never a pointer, so the compiled entry owns its storage. This is accepted only when it is exactly
+    that rule: every intermediate is a command's ``dst``, carries no source bytes and is not a declared
+    result, no source-owned scratch grant is in force (that needs an explicit ABI), and the contract's
+    pointer order equals this renderer's role order. Anything else still refuses before rendering.
+    """
+    if source_owned_mutables:
+        raise ValueError("neutral source-owned scratch requires an explicit whole-program pointer ABI")
+    tensors = cb["tensors"]
+    produced = {
+        operand
+        for command in cb.get("commands") or ()
+        if type(command) is dict and type(command.get("operands")) is dict
+        for key, operand in command["operands"].items()
+        if key == "dst" and type(operand) is str
+    }
+    declared = cb.get("outputs")
+    for name in owned:
+        spec = tensors[name]
+        if name not in produced:
+            raise ValueError("neutral harness cannot infer ambiguous logical pointer roles")
+        if "data" in spec or "preload_b64" in spec:
+            raise ValueError("neutral compiler-owned intermediate cannot carry source bytes")
+        if type(declared) is list and name in declared:
+            raise ValueError("neutral harness intermediate is also a declared result")
+    from merlin.targetgen.contract.harness_render import HarnessRenderError, kernel_arg_order
+
+    try:
+        contract_order = kernel_arg_order(cb)
+    except (HarnessRenderError, KeyError, TypeError, ValueError, OSError) as error:
+        raise ValueError("neutral harness default roster has no contract pointer order") from error
+    if contract_order != list(role_order):
+        raise ValueError("neutral harness default roster differs from the contract pointer order")
+    return {name: spec for name, spec in tensors.items() if name not in set(owned)}
+
+
 def _roster(cb, *, source_owned_mutables=None):
     if type(cb) is not dict or type(cb.get("tensors")) is not dict or not cb["tensors"]:
         raise ValueError("neutral harness requires a complete logical tensor roster")
@@ -128,15 +168,21 @@ def _roster(cb, *, source_owned_mutables=None):
         _identifier(name)
     kernel = cb.get("kernel_abi")
     if "kernel_abi" not in cb:
-        reads, writes = [], []
+        reads, writes, owned = [], [], []
         for name, spec in tensors.items():
             role = spec.get("role") if type(spec) is dict else None
             if role in ("input", "weight", "bias", "scale"):
                 reads.append(name)
             elif role == "output":
                 writes.append(name)
+            elif role == "intermediate":
+                owned.append(name)
             else:
                 raise ValueError("neutral harness cannot infer ambiguous logical pointer roles")
+        if owned:
+            tensors = _without_compiler_owned_intermediates(
+                cb, owned, reads + writes, source_owned_mutables=source_owned_mutables
+            )
         kernel = {
             "kind": "whole_program",
             "args": [{"tensor": name, "access": "read"} for name in reads]
@@ -182,7 +228,7 @@ def _roster(cb, *, source_owned_mutables=None):
             or (role == "intermediate" and (name not in mutable or slots[name] == "read"))
         ):
             raise ValueError("neutral harness pointer access conflicts with its semantic role")
-    normalized = {**cb, "kernel_abi": kernel}
+    normalized = {**cb, "tensors": tensors, "kernel_abi": kernel}
     leaves = whole_program_entry_bindings(normalized)
     if leaves is not None and leaves != [
         name for name, access in slots.items() if access != "write" and name not in mutable

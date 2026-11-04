@@ -162,6 +162,23 @@ def test_an_emitted_program_is_audited_from_its_own_buffer_and_artifact() -> Non
     assert OC.host_compute_row("p", buffer, ".word 0x0000007b", "offloaded")["verdict"] == HA.UNKNOWN
 
 
+def test_a_silent_program_has_no_host_declaration_and_is_judged() -> None:
+    from merlin.targetgen import offload_census as OC
+
+    # Shape of fin-H1's programs: no commands, no lane_placement, a host loop doing the work.
+    buffer = {"tensors": {"x": {"shape": [32, 32], "dtype": "i32"}, "y": {"shape": [32, 32], "dtype": "i8"}},
+              "kernel_abi": {"kind": "whole_program", "args": [], "outputs": ["y"]}, "commands": []}
+    assert OC.program_row("p", buffer)["outcome"] == "silent"
+    host_loop = '"builtin.module"() ({' + _loop("entry", _ELEMENTS, _REQUANT) + "\n}) : () -> ()"
+    assert OC.host_compute_row("p", buffer, host_loop, "silent")["verdict"] == HA.HOST_COMPUTE
+    # Shape of fin-B2's full.default: no commands, the unit issued by tile-scale host code. Judged and clean.
+    issue = '"builtin.module"() ({' + _loop("entry", 4, _ISSUE) + "\n}) : () -> ()"
+    assert OC.host_compute_row("p", buffer, issue, "silent")["verdict"] == HA.CLEAN
+    # Unchanged: a program that SAID host or declined is still reported, not judged.
+    for declared in ("host_only", "declined"):
+        assert OC.host_compute_row("p", buffer, host_loop, declared)["verdict"] == HA.DECLARED_HOST
+
+
 @pytest.mark.parametrize("loaded_offset", [False, True])
 def test_pointer_setup_is_not_payload_compute_but_loaded_offsets_are(loaded_offset: bool) -> None:
     """Replay the census/grading seam for a narrow output with many device commands.

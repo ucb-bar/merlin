@@ -106,6 +106,19 @@ def test_a_target_that_spells_its_unit_lane_differently_is_not_read_as_all_host(
     assert r.host_regions == 0
 
 
+def test_a_device_lane_is_a_unit_lane_and_host_spellings_stay_host():
+    # fin-A2 / live-opus-yo-2 spelled their accelerator lane `device`; it was read as host, so a FILL or
+    # AFFINE_MAP program with commands was classed host_only and escaped the host-compute audit.
+    r = offload_report(_cb({}, (), [{"lane": "device", "family": "movement"}, {"lane": "host", "family": "x"}]))
+    assert r.unit_regions == 1 and r.host_regions == 1
+    # Unchanged: the spellings that were already unit lanes, and the ones that were host lanes.
+    for unit in ("on_mesh", "accelerator", "matrix_unit"):
+        assert offload_report(_cb({}, (), [{"lane": unit, "family": "x"}])).unit_regions == 1
+    for host in ("host", "scalar_rvv_lane", "", "H"):
+        r = offload_report(_cb({}, (), [{"lane": host, "family": "x"}]))
+        assert r.unit_regions == 0 and r.host_regions == 1
+
+
 def test_no_declared_contraction_reports_no_fraction_rather_than_zero():
     r = offload_report(_cb({}, (), [{"lane": "scalar_rvv_lane", "family": "layout"}]))
     assert r.contraction_offload_fraction is None, "0/0 is not 0%"

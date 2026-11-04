@@ -407,3 +407,117 @@ def test_owned_repeated_host_calls_poison_again_and_keep_every_history_byte(tmp_
     raw = struct.pack("<6q", *(value for row in inputs["X"] for value in row))
     assert observed.observed_count == 2
     assert observed.output_bytes == (("Y", (raw, raw[:40] + b"\xa5" * 8)),)
+
+
+def _select_scatter_chain():
+    """A raw-interface select_scatter: S reshaped to [1, 4], then inserted at row 1 of D."""
+    return {
+        "tensors": {
+            "D": {"shape": [2, 4], "dtype": "i8", "role": "input"},
+            "S": {"shape": [4], "dtype": "i8", "role": "input"},
+            "S1": {"shape": [1, 4], "dtype": "i8", "role": "intermediate"},
+            "Y0": {"shape": [2, 4], "dtype": "i8", "role": "output"},
+        },
+        "commands": [
+            {"opcode": "MOVEMENT", "operands": {"src": "S", "dst": "S1"}, "attributes": {"form": "reshape"}},
+            {"opcode": "FENCE", "operands": {}, "attributes": {}},
+            {"opcode": "INSERT_SLICE", "operands": {"dest": "D", "src": "S1", "dst": "Y0"},
+             "attributes": {"offsets": [1, 0], "strides": [1, 1], "output_dtype": "i8"}},
+        ],
+        "params": {},
+        "outputs": ["Y0"],
+    }, {"D": [[1, 2, 3, 4], [5, 6, 7, 8]], "S": [-1, -2, -3, -4]}
+
+
+def _gradient_chain():
+    """A raw-interface convolution backward: three results, four produced intermediates."""
+    i8, i32 = "i8", "i32"
+    return {
+        "tensors": {
+            "Xcol": {"shape": [16, 36], "dtype": i8, "role": "input"},
+            "dY": {"shape": [16, 16], "dtype": i8, "role": "input"},
+            "W": {"shape": [36, 16], "dtype": i8, "role": "weight"},
+            "xt": {"shape": [36, 16], "dtype": i8, "role": "intermediate"},
+            "grad_weight": {"shape": [36, 16], "dtype": i32, "role": "output"},
+            "dyt": {"shape": [16, 16], "dtype": i8, "role": "intermediate"},
+            "gic": {"shape": [36, 16], "dtype": i8, "role": "intermediate"},
+            "gic3": {"shape": [1, 36, 16], "dtype": i8, "role": "intermediate"},
+            "grad_input": {"shape": [1, 4, 4, 4], "dtype": i32, "role": "output"},
+            "grad_bias": {"shape": [1, 16], "dtype": i32, "role": "output"},
+        },
+        "commands": [
+            {"opcode": "MOVEMENT", "operands": {"src": "Xcol", "dst": "xt"}, "attributes": {"form": "permute"}},
+            {"opcode": "RES_PACK", "operands": {"src": "dY", "dst": "dY_res"}, "attributes": {}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "xt", "rhs": "dY_res", "dst": "acc_w"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc_w", "dst": "grad_weight"}, "attributes": {"output_dtype": i32}},
+            {"opcode": "MOVEMENT", "operands": {"src": "dY", "dst": "dyt"}, "attributes": {"form": "permute"}},
+            {"opcode": "RES_PACK", "operands": {"src": "dyt", "dst": "dyt_res"}, "attributes": {}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "W", "rhs": "dyt_res", "dst": "acc_i"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc_i", "dst": "gic"}, "attributes": {"output_dtype": i8}},
+            {"opcode": "MOVEMENT", "operands": {"src": "gic", "dst": "gic3"}, "attributes": {"form": "reshape"}},
+            {"opcode": "WINDOW_SUM", "operands": {"src": "gic3", "dst": "grad_input"}, "attributes": {}},
+            {"opcode": "WINDOW_SUM", "operands": {"src": "dY", "dst": "grad_bias"}, "attributes": {}},
+        ],
+        "params": {},
+        "outputs": ["grad_weight", "grad_input", "grad_bias"],
+    }
+
+
+def test_produced_intermediate_is_compiler_owned_under_the_contract_default_roster(contract):
+    from merlin.targetgen.contract.harness_render import kernel_arg_order
+
+    cb, inputs = _select_scatter_chain()
+    before = copy.deepcopy(cb)
+    normalized, slots = H._roster(cb)
+    # logical_kernel_abi.default: inputs in declaration order, then results; an intermediate is never a pointer.
+    assert list(slots) == kernel_arg_order(cb) == ["D", "S", "Y0"]
+    assert "S1" not in normalized["tensors"] and H.logical_output_names(cb) == ("Y0",)
+    source = H.render_harness(cb, target="synthetic", inputs=inputs, contract=contract)
+    assert "control_entry(tensor_0, tensor_1, tensor_2);" in source
+    assert "tensor_3" not in source  # no harness storage for the kernel's own intermediate
+    assert cb == before
+
+
+def test_multi_result_gradient_chain_keeps_the_contract_result_order(contract):
+    from merlin.targetgen.contract.harness_render import kernel_arg_order
+
+    cb = _gradient_chain()
+    _, slots = H._roster(cb)
+    expected = ["Xcol", "dY", "W", "grad_weight", "grad_input", "grad_bias"]
+    assert list(slots) == kernel_arg_order(cb) == expected
+    assert [slots[name] for name in expected] == ["read"] * 3 + ["write"] * 3
+    inputs = {name: [[0] * cb["tensors"][name]["shape"][1]] * cb["tensors"][name]["shape"][0] for name in expected[:3]}
+    source = H.render_harness(cb, target="synthetic", inputs=inputs, contract=contract)
+    assert "control_entry(tensor_0, tensor_1, tensor_2, tensor_3, tensor_4, tensor_5);" in source
+    assert "tensor_6" not in source
+
+
+def test_role_inference_agrees_with_the_contract_on_an_ordinary_roster(program):
+    from merlin.targetgen.contract.harness_render import kernel_arg_order
+
+    cb, _ = program
+    assert list(H._roster(cb)[1]) == kernel_arg_order(cb) == ["X", "Y"]
+
+
+@pytest.mark.parametrize(
+    "mutation", ["unproduced", "declared_result", "no_declared_outputs", "source_bytes", "scratch_grant", "order"]
+)
+def test_compiler_owned_intermediate_refuses_outside_the_exact_default_rule(contract, mutation):
+    cb, inputs = _select_scatter_chain()
+    kwargs = {}
+    if mutation == "unproduced":
+        cb["commands"] = [c for c in cb["commands"] if c["operands"].get("dst") != "S1"]
+    elif mutation == "declared_result":
+        cb["outputs"] = ["S1", "Y0"]
+    elif mutation == "no_declared_outputs":
+        cb.pop("outputs")  # the reference publishes the MOVEMENT dst S1: the two orders disagree
+    elif mutation == "source_bytes":
+        cb["tensors"]["S1"]["data"] = [[0, 0, 0, 0]]
+    elif mutation == "scratch_grant":
+        kwargs["source_owned_mutables"] = ("S1",)
+    else:
+        cb["tensors"] = {name: cb["tensors"][name] for name in ("Y0", "S1", "D", "S")}
+        cb["outputs"] = ["Y0"]
+        cb["commands"].append({"opcode": "COMMIT", "operands": {"src": "acc", "dst": "D"}})
+    with pytest.raises(ValueError):
+        H.render_harness(cb, target="synthetic", inputs=inputs, contract=contract, **kwargs)

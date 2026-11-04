@@ -109,8 +109,13 @@ class OffloadReport:
 
 def _unit_lanes(by_lane: Mapping[tuple[str, str], int]) -> frozenset[str]:
     """Lanes the program's own record calls accelerator lanes. Derived from the record, never named
-    here: a hardcoded spelling would make every other target read as 100% host."""
-    return frozenset(lane for (lane, _) in by_lane if "mesh" in lane or "accel" in lane or "unit" in lane)
+    here: a hardcoded spelling would make every other target read as 100% host. ``device`` is the
+    generic word for the accelerator side of a host/device split and is read the same way."""
+    return frozenset(lane for (lane, _) in by_lane if any(word in lane for word in _UNIT_LANE_WORDS))
+
+
+#: Substrings that make a declared lane an accelerator lane. Generic words only, never a target name.
+_UNIT_LANE_WORDS = ("mesh", "accel", "unit", "device")
 
 
 def _ints(value: Any, want: int | None = None) -> tuple[int, ...] | None:

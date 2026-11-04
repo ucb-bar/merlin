@@ -54,6 +54,24 @@ def test_work_on_a_unit_counts_and_its_placement_must_be_declared() -> None:
     assert bare["outcome"] == "offloaded" and not bare["placement_declared"]
 
 
+def test_a_device_lane_program_with_commands_is_offloaded_not_host_only() -> None:
+    # Shape of fin-A2's full.default: one FILL command, placement lane `device`.
+    fill = {"opcode": "FILL", "operands": {"dst": "C"}, "attributes": {"value_code": 3}}
+    row = OC.program_row("p", _buffer([fill], placement=[{"source_op_index": 0, "lane": "device"}]))
+    assert row["outcome"] == "offloaded" and row["placement_declared"]
+    # Unchanged: a program whose only declared lane is the host stays host_only, with or without commands.
+    fence = {"opcode": "FENCE", "operands": {}}
+    assert OC.program_row("p", _buffer([fence], placement=[{"lane": "host"}]))["outcome"] == "host_only"
+    assert OC.program_row("p", _buffer(placement=[{"lane": "host"}]))["outcome"] == "host_only"
+
+
+def test_a_declared_unit_placement_without_commands_is_not_read_as_host_only() -> None:
+    # Shape of the base-cover/var-* packages: no `commands`, placement lane `accelerator`, RoCC in the ELF.
+    # It was host_only (placement ignored when commands is empty) and so never host-compute judged.
+    row = OC.program_row("p", _buffer(placement=[{"lane": "accelerator", "family": "movement"}]))
+    assert row["outcome"] == "offloaded"
+
+
 def test_instruction_use_is_measured_against_the_derived_table_or_says_why_not(monkeypatch) -> None:
     from merlin.kernels.decode import rocc
 

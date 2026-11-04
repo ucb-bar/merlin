@@ -32,6 +32,10 @@ from .package_runtime import BackendDeclined, CertFailure
 
 SCHEMA = "offload_census_v1"
 
+#: Census outcomes whose program SAID it keeps its work off the unit; only these skip the host-compute
+#: judgment. ``silent`` is not one: it said nothing, and the exemption is for declarations.
+DECLARED_HOST_OUTCOMES = ("host_only", "declined")
+
 
 def _placed(buffer: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     params = buffer.get("params")
@@ -61,7 +65,7 @@ def program_row(name: str, buffer: Mapping[str, Any]) -> dict[str, Any]:
         row["reason"] = str(declined.get("reason") if isinstance(declined, Mapping) else declined)
     elif not commands and not placed:
         row["outcome"] = "silent"  # nothing emitted, nothing placed, nothing said
-    elif not commands:
+    elif not commands and not report.unit_regions:
         row["outcome"] = "host_only"  # a declared host-lane program
     elif report.host_regions and not report.unit_regions:
         row["outcome"] = "host_only"
@@ -107,9 +111,11 @@ def host_compute_row(
     """The host-compute audit of one emitted program (:mod:`merlin.verify.host_compute_audit`).
 
     A program that reached a unit is judged: its host code may issue commands, and may not do the
-    unit's arithmetic. One that declared itself host-only is reported and not judged. The audit
-    reads host LLVM; an artifact that is a device's own program (a target whose host and device
-    meet at addresses, not at a call) is not host code, and says so rather than passing.
+    unit's arithmetic. One that declared itself host-only (or declined) is reported and not judged.
+    A ``silent`` program declared nothing, so it has no host declaration to exempt it: it is judged
+    like a unit program. The audit reads host LLVM; an artifact that is a device's own program (a
+    target whose host and device meet at addresses, not at a call) is not host code, and says so
+    rather than passing.
     """
     from xdsl.context import Context
     from xdsl.dialects import builtin, func, llvm
@@ -132,7 +138,7 @@ def host_compute_row(
     if not functions:
         return {"program": name, "verdict": HA.UNKNOWN, "why": "the lowered artifact defines no function with a body"}
     elements, width = _payload_elements(buffer)
-    placement = HA.HOST if outcome in ("host_only", "declined", "silent") else "accelerator"
+    placement = HA.HOST if outcome in DECLARED_HOST_OUTCOMES else "accelerator"
     rows = [
         HA.audit_group(
             HA.GroupSite(group=0, placement=placement, symbol=symbol, elements=elements, element_bytes=width), function,
