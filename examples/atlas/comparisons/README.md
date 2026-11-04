@@ -1,7 +1,6 @@
 # Source captures and fixed-input host builds
 
-Capture native operands, export ResNet plans and references, and build
-fixed-input TinyLlama and SmolVLA host ELFs with an explicit Atlas provider.
+Capture native operands, export ResNet plans and references, and build fixed-input TinyLlama and SmolVLA host ELFs with an explicit Atlas provider.
 
 ## Inputs and environment
 
@@ -86,8 +85,7 @@ the image. References use pinned Atlas arithmetic/packing and Torch pooling.
 
 ## TinyLlama full capture
 
-Start with `capture_tinyllama_native.py --checkpoint ... --corpus ...
---full-query --out ...` for native Q operands. Input hashes are fixed in source.
+Use the [native TinyLlama recipe](#capturing-a-new-model) for native Q operands; input hashes are fixed in source.
 The historical session receipt also has a fixed digest and binds the native full-Q manifest, checkpoint, corpus, interpreter, Torch library, and frozen Transformers sources. `capture_tinyllama_full.py` does not consume the newly written `$TINY_NATIVE` directory directly and does not create that historical receipt. Without the authenticated receipt and its referenced providers, this full-capture command is blocked; generating a selective Q capture alone does not satisfy it.
 
 ```sh
@@ -135,13 +133,9 @@ Full contract regeneration remains **PENDING**. The original down-contract closu
 
 ## SmolVLA policy capture and replay
 
-The dynamic-block receipt must bind the native full-query manifest and retained
-policy inputs. Supply observations for fresh vision and ten denoising steps:
+The dynamic-block receipt must bind the native full-query manifest and retained policy inputs. Run the [native SmolVLA recipe](#capturing-a-new-model) with observations for fresh vision and ten denoising steps, then replay it on Atlas:
 
 ```sh
-python examples/atlas/comparisons/capture_smolvla_policy.py \
-  --source-receipt "$DYNAMIC_RECEIPT" --observation-input "$OBSERVATIONS" \
-  --out "$SMOL_NATIVE"
 python examples/atlas/comparisons/capture_smolvla_policy.py \
   --source-receipt "$DYNAMIC_RECEIPT" --observation-input "$OBSERVATIONS" \
   --native-capture "$SMOL_NATIVE/receipt.json" --atlas-tools "$ATLAS_TOOLS" \
