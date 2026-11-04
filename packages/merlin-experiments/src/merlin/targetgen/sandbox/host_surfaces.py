@@ -13,6 +13,7 @@ import stat
 from pathlib import Path
 
 from merlin.common.paths import repo_root
+from merlin.targetgen.sandbox.answer_free_views import answer_free_views
 from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface
 from merlin.targetgen.sandbox.bwrap import (
     _SNAPSHOT_COMPLETE,
@@ -60,8 +61,11 @@ def _final_answer_policy(
             else BW._frozen_answer_surfaces(ws, bundle, te, answers, repo.absolute(), capsules)
         )
     with timing.stage("package_policy.apply_masks"):
-        support = [surface for surface in [*answers, *frozen_support] if surface.origin == "backend"]
-        result = BW.apply_answer_masks(argv, [*selected_surfaces, *answers, *frozen_support, *frozen_answers, *private])
+        surfaces = [*selected_surfaces, *answers, *frozen_support, *frozen_answers, *private]
+        argv = answer_free_views(argv, surfaces, ws)
+        # coverage_gap names each backend surface inside the views the argv serves (their mirror twins).
+        support = [surface for surface in surfaces if surface.origin == "backend"]
+        result = BW.apply_answer_masks(argv, surfaces)
         if BW.coverage_gap(result, support):
             raise RuntimeError("selected support package remains exposed after final masking")
 
@@ -312,7 +316,7 @@ def host_input_surfaces(
             # A future file cannot be masked reliably while absent. Refuse a
             # composed live bind of its ancestor, including runtime aliases
             # added after the frozen bundle's own public grants.
-            for state, source, _destination in _mounts(argv):
+            for state, source, _destination in _mounts(argv, present_only=False):
                 if state != "expose":
                     continue
                 host_source = Path(source).absolute()

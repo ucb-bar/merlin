@@ -13,18 +13,19 @@ def surface(path, kind="file"):
     return AnswerSurface(label="test", path=Path(path), kind=kind, origin="test")
 
 
-def original_exposure(argv, path):
-    """Pre-index algorithm, retained as independent ordered-mount regression oracle."""
+def replayed_exposure(argv, path):
+    """Linear replay of bwrap's mount order, an independent oracle for the index.
+
+    Each operation stacks over its destination, so the last one on the path or an ancestor serves it.
+    """
     best = None
-    for index, (state, src, dest) in enumerate(BW._mounts(argv)):
+    for state, src, dest in BW._mounts(argv):
         base = Path(dest)
         if path == base or base in path.parents:
-            candidate = (len(dest), index, state, src, dest)
-            if best is None or candidate[:2] >= best[:2]:
-                best = candidate
-    if best is None or best[2] == "hide":
+            best = (state, src, dest)
+    if best is None or best[0] == "hide":
         return False
-    _, _, _, src, dest = best
+    _, src, dest = best
     mapped = Path(src) / path.relative_to(dest) if str(path) != dest else Path(src)
     try:
         return mapped.exists()
@@ -66,15 +67,15 @@ def test_appending_masks_parses_once_and_preserves_incremental_hide(tmp_path, mo
     assert len(calls) == 1
 
 
-def test_original_raw_destination_length_precedes_latest_normalized_alias(tmp_path):
+def test_latest_operation_wins_over_a_longer_spelling_of_the_same_destination(tmp_path):
     (tmp_path / "data").write_text("test")
-    # Path('/visible/.') normalizes to '/visible', but the historic selector
-    # compares raw destination string length before mount order. Preserve it.
+    # Path('/visible/.') names the same directory as '/visible'; bwrap stacks the
+    # later tmpfs over the earlier bind whatever the destination's spelling.
     argv = ["--ro-bind", str(tmp_path), "/visible/.", "--tmpfs", "/visible"]
-    assert original_exposure(argv, Path("/visible/data"))
-    assert BW.is_exposed(argv, Path("/visible/data"))
-    tied = ["--ro-bind", str(tmp_path), "/visible", "--tmpfs", "/visible"]
-    assert not BW.is_exposed(tied, Path("/visible/data"))
+    assert not replayed_exposure(argv, Path("/visible/data"))
+    assert not BW.is_exposed(argv, Path("/visible/data"))
+    tied = ["--tmpfs", "/visible", "--ro-bind", str(tmp_path), "/visible/."]
+    assert BW.is_exposed(tied, Path("/visible/data"))
 
 
 def test_snapshot_mapping_and_stat_state_are_not_cached_across_calls(tmp_path):
@@ -98,7 +99,7 @@ def test_mapped_permission_error_semantics_preserved(monkeypatch, exception, exp
     assert BW.is_exposed(["--ro-bind", "/actual", "/visible"], Path("/visible/x")) is exposed
 
 
-def test_ordered_and_aliased_mounts_match_old_algorithm(tmp_path):
+def test_ordered_and_aliased_mounts_match_linear_replay(tmp_path):
     (tmp_path / "data").write_text("test")
     (tmp_path / "child").mkdir()
     (tmp_path / "child" / "data").write_text("nested")
@@ -115,10 +116,10 @@ def test_ordered_and_aliased_mounts_match_old_algorithm(tmp_path):
             else:
                 argv += [randomizer.choice(["--tmpfs", "--dev", "--proc"]), destination]
         rows = [surface(path) for path in queries]
-        expected = [row for row in rows if original_exposure(argv, row.path)]
+        expected = [row for row in rows if replayed_exposure(argv, row.path)]
         assert BW.coverage_gap(argv, rows) == expected
         old_masked = list(argv)
         for row in rows:
-            if original_exposure(old_masked, row.path):
+            if replayed_exposure(old_masked, row.path):
                 old_masked += ["--ro-bind", "/dev/null", str(row.path)]
         assert BW.apply_answer_masks(argv, rows) == old_masked

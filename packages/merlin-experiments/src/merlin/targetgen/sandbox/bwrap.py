@@ -34,12 +34,15 @@ from merlin.targetgen.target_experiment import TargetExperiment
 from .mount_visibility import _DEVNULL as _DEVNULL
 from .mount_visibility import _EXPOSE_OPS as _EXPOSE_OPS
 from .mount_visibility import _HIDE_DEST_OPS as _HIDE_DEST_OPS
+from .mount_visibility import _CallPathResolution as _CallPathResolution
+from .mount_visibility import _mount_op_args, _shadowed
 from .mount_visibility import _mounts as _mounts
 from .mount_visibility import path_kind as path_kind
 from .mount_visibility import _MountVisibility as _MountVisibilityBase
 
 _SNAPSHOT_DIR = "bundle_inputs"
 _SNAPSHOT_COMPLETE = "snapshot.json"
+_VIEW_DIR = "bundle_views"
 
 
 def resolve_grant(rel: str, repo: Path | None = None) -> Path:
@@ -593,13 +596,13 @@ def _make_snapshot_writable(root: Path) -> None:
 
 
 def remove_bundle_snapshot(ws: Path) -> None:
-    """Remove a generated snapshot after restoring owner write permission."""
-    root = bundle_snapshot_root(ws)
-    if root.is_symlink():
-        raise RuntimeError(f"refusing to remove symlinked bundle snapshot: {root}")
-    if root.exists():
-        _make_snapshot_writable(root)
-        shutil.rmtree(root)
+    """Remove a generated snapshot and its answer-free views after restoring owner write permission."""
+    for root in (bundle_snapshot_root(ws), ws.parent / _VIEW_DIR):
+        if root.is_symlink():
+            raise RuntimeError(f"refusing to remove symlinked bundle snapshot: {root}")
+        if root.exists():
+            _make_snapshot_writable(root)
+            shutil.rmtree(root)
 
 
 def materialize_bundle_inputs(
@@ -1062,27 +1065,71 @@ def is_exposed(argv: list[str], path: Path) -> bool:
 
 
 def coverage_gap(argv: list[str], surfaces: list[AnswerSurface]) -> list[AnswerSurface]:
-    """The answer surfaces STILL reachable under ``argv`` — the drift/cheat guard. Empty == full mask."""
+    """The answer surfaces STILL reachable under ``argv`` — the drift/cheat guard. Empty == full mask.
+    Each surface is also checked inside every answer-free view the argv serves (``view_twins``)."""
+    from merlin.targetgen.sandbox.answer_free_views import view_twins
+
     mounts = _mounts(argv)  # one parse per batch, shared by the index and the bind projection
     visibility = _MountVisibility(argv, mounts)
+    surfaces = [*surfaces, *view_twins(mounts, surfaces)]
     return [s for s in _support_bind_surfaces(mounts, surfaces) if visibility.is_exposed(s.path)]
 
 
 def apply_answer_masks(argv: list[str], surfaces: list[AnswerSurface]) -> list[str]:
     """Append masks for every answer surface a bind would otherwise re-expose. A surface already hidden
     by deny-by-default is skipped (no redundant overlay, and no mount whose parent tmpfs would fail).
-    File surfaces are /dev/null-overlaid; dir surfaces are tmpfs'd. Masks go LAST so they win."""
+    File surfaces are /dev/null-overlaid; dir surfaces are tmpfs'd. Masks go LAST so they win.
+    Directories go first, outermost first, so nothing beneath a masked directory costs an overlay of
+    its own: bwrap caps the whole argument list at 9,000.
+
+    bwrap stacks a tmpfs over every earlier mount below it, so a directory mask would also erase an
+    explicit bind sourced inside a subtree a surface declares public -- the one bind the projection
+    exempts. Such binds below the tmpfs that still serve their destination, with every op already
+    placed inside them, are replayed in their original order after it; nothing else below the masked
+    directory is restored. Surfaces are also masked inside every answer-free view served (``view_twins``).
+    """
+    from merlin.targetgen.sandbox.answer_free_views import view_twins
+
     out = list(argv)
     mounts = _mounts(out)  # one parse per batch, shared by the index and the bind projection
     visibility = _MountVisibility(out, mounts)
-    for s in _support_bind_surfaces(mounts, surfaces):
+    surfaces = [*surfaces, *view_twins(mounts, surfaces)]
+    resolution = _CallPathResolution()
+    public = [
+        private / sub
+        for surface in surfaces
+        for private in {surface.path.absolute(), resolution.resolve(surface.path)}
+        for sub in surface.grantable
+        if sub
+    ]
+
+    def granted(source: str) -> bool:
+        spellings = {Path(source).absolute(), resolution.resolve(Path(source))}
+        return any(path == root or root in path.parents for path in spellings for root in public)
+
+    projected = _support_bind_surfaces(mounts, surfaces)
+    for s in sorted(projected, key=lambda s: (s.kind != "dir", len(s.path.parts) if s.kind == "dir" else 0)):
         if not visibility.is_exposed(s.path):
             continue
         if s.kind == "file":
             out += ["--ro-bind", _DEVNULL, str(s.path)]
-        else:
-            out += ["--tmpfs", str(s.path)]
+            visibility.append("hide", "", str(s.path))
+            continue
+        ops = _mount_op_args(out) if public else []
+        kept = [
+            Path(dest)
+            for index, (_, (state, src, dest)) in enumerate(ops)
+            if state == "expose"
+            and s.path in Path(dest).parents
+            and granted(src)
+            and not _shadowed(Path(dest), ops[index + 1 :])
+        ]
+        out += ["--tmpfs", str(s.path)]
         visibility.append("hide", "", str(s.path))
+        for args, op in ops:
+            if any(Path(op[2]) == root or root in Path(op[2]).parents for root in kept):
+                out += args
+                visibility.append(*op)
     return out
 
 
@@ -1124,46 +1171,6 @@ class _MountPathIndex:
         for length in range(len(parts), 0 if path.anchor else -1, -1):
             found.update(self.exact.get(parts[:length], ()))
         return found
-
-
-class _CallPathResolution:
-    """Resolve shared ancestors once in one stable mount-plan observation.
-
-    Nothing survives this call. Symlinks and unusual filesystem errors use the
-    ordinary resolver, including its loop checks. This does not memoize file
-    existence, kinds, mount visibility, or a completed sandbox policy.
-    """
-
-    def __init__(self):
-        self._resolved: dict[str, str] = {}
-
-    def _resolve(self, path: str) -> str:
-        cached = self._resolved.get(path)
-        if cached is not None:
-            return cached
-        parent, name = os.path.split(path)
-        if not name:
-            result = str(Path(path).resolve())
-        else:
-            resolved_parent = self._resolve(parent)
-            if name == "..":
-                result = os.path.dirname(resolved_parent)
-            else:
-                result = os.path.join(resolved_parent, name)
-                try:
-                    mode = os.lstat(result).st_mode
-                except OSError:
-                    result = str(Path(path).resolve())
-                else:
-                    if stat.S_ISLNK(mode):
-                        result = str(Path(path).resolve())
-        self._resolved[path] = result
-        return result
-
-    def resolve(self, path: Path) -> Path:
-        # Long declarations share ancestors. String keys avoid reconstructing
-        # and hashing Path component tuples at every recursive prefix lookup.
-        return Path(self._resolve(str(path.absolute())))
 
 
 def _resolved_bind_mounts(
@@ -1362,7 +1369,8 @@ def apply_final_answer_masks(
     Callers first compose their runtime/toolchain/provider binds and reassert their
     frozen bundle. This shared final policy examines that complete mount list:
     canonical-path masks alone cannot withhold a private input mounted under a
-    different name. No grants or snapshot authority are created here.
+    different name. No grants or snapshot authority are created here: a frozen grant holding
+    answer surfaces is re-served from a mirror of its own bytes without them (``answer_free_views``).
 
     ``capsules`` lets one execution scope reuse capsule metadata parsed from
     byte-identical files; every walk, listing and host-input scan stays fresh.

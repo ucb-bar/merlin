@@ -22,6 +22,7 @@ views even after original aliases or selected providers change.
 - `bwrap.py` — Deny-by-default argv assembly + the hermetic mount-table replay that PROVES no answer surface is reachable (coverage guard), without launching bwrap.
 - `claude_home.py` — The Claude CLI home an agent sandbox mounts: staged fresh for each launch, never the operator's.
 - `host_surfaces.py` — The answer surfaces host inputs create: private host files and every hardlink or bind alias that reaches them (`host_input_surfaces`, `private_file_surfaces`), masked last by `bwrap.apply_final_answer_masks`.
+- `answer_free_views.py` — Read-only hard-link mirrors that serve a frozen grant without its exposed answer surfaces, so the final mask pass needs no overlay per surface (`answer_free_views`, called by `bwrap.apply_final_answer_masks`).
 - `__init__.py` — `build_sandbox(descriptor, ws, bundle)` → a `Sandbox` facade (argv / env / wrap / coverage_gap); `resolve_kind` for family routing.
 - `build_dependencies.py` — One-call host-owned pure-build source grants, preserving the existing answer masks and exact worker/request/tool pins. Never an agent mount API.
 - `preflight.py` — Whether the sandbox can actually be BUILT on this host, as a named condition (ok / absent / inoperable / unknown) rather than a `which` hit.

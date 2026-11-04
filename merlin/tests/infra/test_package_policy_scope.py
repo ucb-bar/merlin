@@ -115,20 +115,21 @@ def parses(monkeypatch):
 
 
 def _call_prefix(owner: SimpleNamespace, call: Path) -> list[str]:
-    """The mount list one candidate call hands to the final masks: its own workspace, a runtime
-    tree bound under the repository, a broad installed-runtime ancestor (which also reaches the
-    frozen snapshot storage), and the owner's frozen public grants."""
+    """The mount list one candidate call hands to the final masks: its own workspace, a broad
+    installed-runtime ancestor (which also reaches the frozen snapshot storage), a runtime tree bound
+    under the repository after it (bwrap serves a path from the LAST mount on it or an ancestor, so
+    the deeper bind must follow the broad one to be seen), and the owner's frozen public grants."""
     call.mkdir(parents=True)
     return [
         "--bind",
         str(call),
         str(call),
         "--ro-bind",
+        str(owner.root),
+        str(owner.root),
+        "--ro-bind",
         str(owner.runtime),
         str(owner.repo / "runtime-view"),
-        "--ro-bind",
-        str(owner.root),
-        str(owner.root),
         *BW._bundle_mount_args(owner.workspace, owner.bundle, owner.repo),
     ]
 
@@ -169,7 +170,9 @@ def test_scoped_masks_equal_fresh_per_call_masks_on_actual_snapshots(owner, pars
             "hidden/holdout",
         ):
             assert not BW.is_exposed(scoped, frozen_root / relative)
-        assert BW.is_exposed(scoped, frozen_root / "isa/member/capsule.yaml")
+        # Public bytes are served at their grant destination; the raw snapshot path reached through a
+        # broad ancestor bind is covered by the view-storage tmpfs (answer_free_views).
+        assert BW.is_exposed(scoped, owner.repo / "merlin/contract/capsules/fixture/isa/member/capsule.yaml")
     # A fresh call parses at least the three frozen capsule documents (possibly again for
     # overlapping roots); the scope parses the twins' shared bytes and the holdout once total.
     assert fresh_parses >= 3

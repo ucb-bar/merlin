@@ -172,6 +172,7 @@ def paths(
         ("sandbox_mount_visibility", "merlin.targetgen.sandbox.mount_visibility"),
         ("capsule_diagnostics", "merlin.targetgen.capsule_diagnostics"),
         ("sandbox_host_surfaces", "merlin.targetgen.sandbox.host_surfaces"),
+        ("sandbox_answer_free_views", "merlin.targetgen.sandbox.answer_free_views"),
         ("sandbox_toolchain", "merlin.targetgen.sandbox.toolchain"),
         ("sandbox_claude_home", "merlin.targetgen.sandbox.claude_home"),
         ("source_discovery_helper", "merlin.common.source_membership"),
