@@ -19,6 +19,8 @@ for bounded compiler authoring and structural analysis, and
 for its separately qualified measurement protocol. They are different evidence
 schemas. Neither is a ready-to-run Atlas performance experiment.
 
+The [November 4 local check](../artifacts/workflow-inspection-2026-11-04.md) ran official Phase 2 inspect on both catalog templates; both exited 0 while retaining `kind: template` and `target: OPERATOR_TARGET`. The model-portfolio template resolved 4 input paths, and measured-claims resolved 9; placeholder resolution establishes neither availability nor admission. No frozen functional compiler, reviewed performance cohort, completed Atlas definition, or measurement execution was supplied. Phase 2 preflight and execution remain **PENDING**, as required by the [Radiance handoff](../../radiance/phase2/README.md) and the shared execution guide. Kernel timing or roofline reports do not satisfy this handoff.
+
 Copy a template into an authored input directory, keep `kind: template` until
 every declared input and budget is supplied, and set `target: atlas`.
 Use the descriptor and compiler identity from the frozen functional run.

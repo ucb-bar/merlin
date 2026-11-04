@@ -7,6 +7,8 @@ Resolve required semantics and source consistency, regenerate a fresh run, and
 complete independent coverage/numerical review before verified execution.
 The Phase 2 selection is distinct and must not replace the functional population.
 
+The [November 4 local check](../artifacts/workflow-inspection-2026-11-04.md) inspected the EL4 definition successfully, with 234 selected input paths. Its configuration preflight exited 2 with 11 errors: no reviewed Phase 0 release, absent timing evidence, retained bundle paths and corpus indirection that need renewal, missing compiler toolchain inputs, and no selected executable `plugin.backend`. The selected `atlas-support` provider is support metadata, not an evaluated compiler candidate; no functional compiler artifact or submission hash was established. Verified Phase 1 execution is **PENDING**. As in [Radiance Phase 1](../../radiance/phase1/README.md), library materialization supplies authoring input and does not replace functional admission.
+
 The [catalog definition](../experiment.yaml) selects **EL4 (RTL-informed Merlin)**
 with an explicit bundle identity, manifest and timing path. These
 retained inputs must be regenerated and reviewed for the selected corpus before

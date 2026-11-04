@@ -38,6 +38,10 @@ belong under configured artifact/run roots. Private holdouts remain host-only
 declared inputs, never public example content.
 Historical receipts retain their original bytes.
 
+The [November 4 entrypoint check](artifacts/workflow-inspection-2026-11-04.md) records the selected descriptor, support identity, and actual local results at Merlin `0a68cf0a`. Phase 0 inspect and configuration preflight completed with diagnostic evidence and absent synthesis; the diagnostic run then refused missing fresh derivation inputs. Phase 1 inspect completed, but preflight reported 11 errors. Both shared Phase 2 templates inspected as `OPERATOR_TARGET` placeholders. No generated or frozen functional compiler was selected, and the descriptor's RVV host compiler commit remains `UNKNOWN`.
+
+As in the [Radiance phase guides](../radiance/README.md), target inspection, diagnostic corpus generation, reviewed functional admission, and optimization are separate stages. Atlas uses Merlin's declared target and workflow entrypoints; a new reviewed Phase 0 release and qualified Phase 1/2 campaign are **PENDING**. The comparisons workflow remains separate model-specific bringup.
+
 Phase 2 starts from explicit functional evidence using the shared
 [measured-claims](../../experiments/definitions/measured-claims-template.yaml) or
 [model-portfolio](../../experiments/definitions/model-portfolio-template.yaml) template.
