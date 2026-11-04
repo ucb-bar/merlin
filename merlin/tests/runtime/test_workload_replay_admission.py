@@ -1,7 +1,6 @@
 """Untrusted child receipts cannot supply unchecked workload replacement data."""
 
 import ast
-import hashlib
 import importlib.util
 import json
 import os

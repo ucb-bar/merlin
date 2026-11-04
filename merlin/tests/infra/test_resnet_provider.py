@@ -2,7 +2,6 @@
 
 from merlin.common.digest import sha256_bytes
 
-import hashlib
 import importlib.util
 import sys
 import tempfile

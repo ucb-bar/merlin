@@ -1,5 +1,4 @@
 """Exhaustive finite-BF16 integer pack controls against the rational oracle."""
-from pathlib import Path
 import sys
 import numpy as np
 import pytest

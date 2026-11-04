@@ -3,11 +3,9 @@
 from merlin.common.digest import sha256_bytes
 import ast
 import copy
-import hashlib
 import json
 from pathlib import Path
 import stat
-import subprocess
 import sys
 import tempfile
 from types import SimpleNamespace

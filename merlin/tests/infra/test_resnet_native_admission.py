@@ -3,7 +3,6 @@
 from merlin.common.digest import sha256_bytes
 
 import builtins
-import hashlib
 import importlib.util
 from pathlib import Path
 import stat

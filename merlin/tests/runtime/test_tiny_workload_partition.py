@@ -1,6 +1,5 @@
 """Bound Tiny column shards and independently check BF16 tensor-scale choices."""
 from fractions import Fraction
-from pathlib import Path
 import sys
 import numpy as np
 import pytest
