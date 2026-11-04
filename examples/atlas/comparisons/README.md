@@ -20,6 +20,35 @@ for complete arguments. Inputs cannot contain symlinks or parent traversal.
 ResNet and native replay accept `--relocate /old=/new` rules; authentication
 precedes mapping, preserving payload hashes and versions.
 
+## Capturing a new model
+
+Capture records real native tensor values, shapes, dtypes, parameters, and
+reference outputs, together with source identities and input hashes. Pair this
+with a `torch.export` op and shape inventory when bringing up another model.
+The existing model-specific entry points are:
+
+```sh
+python examples/atlas/comparisons/capture_tinyllama_native.py \
+  --checkpoint "$CHECKPOINT" --corpus "$CORPUS" --full-query \
+  --out "$TINY_NATIVE"
+python examples/atlas/comparisons/capture_smolvla_policy.py \
+  --source-receipt "$DYNAMIC_RECEIPT" --observation-input "$OBSERVATIONS" \
+  --out "$SMOL_NATIVE"
+```
+
+TinyLlama writes `operands.npz` and `manifest.json` for the first decoder layer's
+query projection, while SmolVLA writes parameter and invocation tensors,
+`trajectory.npz`, and `receipt.json` for fresh vision and ten denoising steps.
+These scripts require their pinned model inputs; adapt the capture and its
+authentication checks for a new model.
+
+Host graphs are hand-written C, including [tiny_block.c](tiny_block.c),
+[smol_vision_graph.c](smol_vision_graph.c), and
+[smol_policy_graph.c](smol_policy_graph.c). Capture does not generate these
+graphs. Follow the
+[model bring-up guide](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-docs/docs/bringing-up-a-model.md)
+for inventory, kernel mapping, compilation, exactness checks, and host execution.
+
 ## ResNet plan and reference
 
 Start with `refresh/capture_resnet.py original`, supplying pinned `--receipt`,
