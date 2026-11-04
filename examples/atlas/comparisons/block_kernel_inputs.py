@@ -7,7 +7,7 @@ import zipfile
 
 import numpy as np
 
-from atlas_provider_files import PACKING_FILE, PACKING_FILES, TILE_FILE, packing_paths
+from atlas_provider_files import PACKING_FILE, PACKING_FILES, TILE_FILE, packing_paths, provider_path
 
 
 def admit_manifest(manifest, source, source_dtype):
@@ -23,7 +23,7 @@ def regenerate(build, recipe):
     sys.path.insert(0, str(args.atlas_tools))
     for name in names:
         module = importlib.import_module(name[:-3])
-        if build.pin(module.__file__) != build.pin(args.atlas_tools / name):
+        if build.pin(module.__file__) != build.pin(provider_path(args.atlas_tools, name)):
             raise ValueError("Provider helper imported from a different source: " + name)
     provider = importlib.import_module(PACKING_FILE[:-3])
     tile = importlib.import_module(TILE_FILE[:-3])

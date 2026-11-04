@@ -19,6 +19,7 @@ MODEL_ROOT = Path(os.environ['ATLAS_NPU_MODEL_ROOT']).absolute()
 TOOLS = ATLAS_ROOT / 'tools'
 sys.path[:0] = [str(TOOLS), str(TOOLS / 'host_iss')]
 import numpy as np
+import kernel_library  # noqa: E402,F401  (atlas-mlir: kernels live in third_party/atlas-kernels)
 from tiny_full.fusion import prepare_projection, unpack_bf16_tiles, unpack_fp8_tiles
 from atlas_attention_program import AttentionConfig, assembly, pack_tiles, stage, unpack_tiles
 

@@ -17,6 +17,7 @@ if not os.environ.get('SMOL_ATLAS_TOOLS'):
     raise unittest.SkipTest('Optional Atlas tools directory is not configured')
 TOOLS = Path(os.environ['SMOL_ATLAS_TOOLS'])
 sys.path.insert(0, str(TOOLS))
+import kernel_library  # noqa: E402,F401  (atlas-mlir: kernels live in third_party/atlas-kernels)
 from atlas_tile_arithmetic import mxu0_dot, rescale_bf16
 
 

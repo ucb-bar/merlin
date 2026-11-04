@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 from resnet_native import safe_path, file_identity
-from atlas_provider_files import PACKING_FILE, PACKING_FILES, packing_paths
+from atlas_provider_files import PACKING_FILE, PACKING_FILES, packing_paths, provider_path
 
 
 class Provider:
@@ -107,7 +107,7 @@ def load_packing(args):
 
     names = tuple(name[:-3] for name in PACKING_FILES)
     dependencies = [file_identity(path, safe_path) for path in packing_paths(args.atlas_tools)]
-    before = {name: file_identity(args.atlas_tools / (name + ".py"), safe_path) for name in names}
+    before = {name: file_identity(provider_path(args.atlas_tools, name + ".py"), safe_path) for name in names}
     for name in names[1:]:
         if name in sys.modules and safe_path(sys.modules[name].__file__) != safe_path(before[name]["path"]):
             raise ValueError("Target helper cached from a different provider: " + name)

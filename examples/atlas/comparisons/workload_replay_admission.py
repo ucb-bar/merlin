@@ -10,7 +10,7 @@ import numpy as np
 
 from capture_tinyllama_native import identity, safe_path, array_identity
 
-from atlas_provider_files import PRODUCER_FILE, PRODUCER_FILES, PRODUCER_ID
+from atlas_provider_files import PRODUCER_FILE, PRODUCER_FILES, PRODUCER_ID, provider_path
 
 
 def admit_executable(value):
@@ -52,7 +52,7 @@ def admit_executable(value):
 
 def producer_identities(producer, expected_producer_sha256):
     producer = safe_path(producer)
-    identities = {name: identity(producer.parent / name) for name in PRODUCER_FILES}
+    identities = {name: identity(provider_path(producer.parent, name)) for name in PRODUCER_FILES}
     if identities[PRODUCER_FILE]["sha256"] != expected_producer_sha256:
         raise ValueError("Producer executable differs from requested source epoch")
     return identities

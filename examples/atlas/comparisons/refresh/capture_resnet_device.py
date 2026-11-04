@@ -247,6 +247,7 @@ def main():
     args.atlas_tools = checked(args.atlas_tools)
     args.model_root = checked(args.model_root)
     sys.path[:0] = [str(args.atlas_tools), str(args.model_root)]
+    import kernel_library  # noqa: F401  (atlas-mlir: kernels live in third_party/atlas-kernels)
     from atlas_epilogue import Epilogue, Step, TileInput
     from atlas_program import assembly, dma_load_bytes, legacy_epilogue_assembly
     from atlas_resnet_input import DirectInput, kernel_major_weights, relocate_assembly

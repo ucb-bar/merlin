@@ -27,6 +27,7 @@ COMPARISONS = MERLIN_ROOT / 'examples/atlas/comparisons'
 sys.path[:0] = [str(COMPARISONS), str(MERLIN_ROOT / 'src'), str(TOOLS)]
 import numpy as np
 import torch
+import kernel_library  # noqa: E402,F401  (atlas-mlir: kernels live in third_party/atlas-kernels)
 from atlas_path_guard import checked, lexical_absolute_path
 from capture_tinyllama_fused import (FusedProjectionCapture, MODEL_PIN, ProjectionWorkers, SCALE_CONTRACT_SHA,
                                     assemble_fp8, down_scales, load_layout)

@@ -38,6 +38,22 @@ RUNTIME_FILES = {
 }
 
 
+KERNEL_LIBRARY = "third_party/atlas-kernels"
+
+
+def provider_path(tools, name):
+    """Return tools/name, or the provider's atlas-kernels file for a helper that moved there."""
+    path = tools / name
+    if path.exists():
+        return path
+    library = tools.parent / KERNEL_LIBRARY
+    matches = [candidate for pattern in ("lib/" + name, "lib/*/" + name, "kernels/*/" + name)
+               for candidate in sorted(library.glob(pattern)) if candidate.is_file()]
+    if len(matches) != 1:
+        raise ValueError("Provider helper is neither in tools/ nor uniquely in atlas-kernels: " + name)
+    return matches[0]
+
+
 def packing_paths(tools):
     """Include the header that the imported Python layout module actually reads."""
-    return (*(tools / name for name in PACKING_FILES), tools.parent / "runtime" / LAYOUT_HEADER)
+    return (*(provider_path(tools, name) for name in PACKING_FILES), tools.parent / "runtime" / LAYOUT_HEADER)

@@ -113,7 +113,7 @@ def test_current_atlas_receipt_updates_admitted_without_model(admission, child):
     root, code, receipt, _ = child
     for name in code:
         snapshot = root / "producer-sources" / name
-        snapshot.write_bytes(admission.safe_path(tools / name).read_bytes())
+        snapshot.write_bytes(admission.safe_path(admission.provider_path(tools, name)).read_bytes())
         code[name] = admission.identity(snapshot)
     pins = {name: record["sha256"] for name, record in code.items()}
     context = dict(before=pins, after=pins.copy(), m=32, k=32, n=32,
