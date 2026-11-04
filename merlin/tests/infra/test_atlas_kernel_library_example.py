@@ -22,7 +22,7 @@ from merlin.common.paths import repo_root
 
 EXAMPLE = "examples/atlas/phase1/kernel_library"
 RADIANCE = "examples/radiance/phase1/kernel_library"
-PINNED = "e4a589b217ee50d6fc872b97805e8325b22f836e"
+PINNED = "9f63c532d4aad8e1f6a178109edba042528ca33c"
 
 
 def _load(path, name):
@@ -57,7 +57,7 @@ def _selection():
 def test_selection_bytes_and_pinned_semantics_preserved():
     module = load_materializer()
     payload = module.SELECTION.read_bytes()
-    assert hashlib.sha256(payload).hexdigest() == "87cafd2b0828ca2e0302a43070d9ede3620296fdffb18636942f1bc642d400f7"
+    assert hashlib.sha256(payload).hexdigest() == "5238697eeb582c2ab9673f272700e28463551fbfbca8c7e296096b2920a3c641"
     selection = yaml.safe_load(payload)
     assert selection["source_commit"] == PINNED
     assert selection["package"] == "out/artifacts/targets/atlas/kernel_library_v1"

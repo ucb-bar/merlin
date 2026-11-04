@@ -39,7 +39,7 @@ SELECTION = HERE.parent / "selection.yaml"
 
 # atlas-kernels feat/kernel-library head. Nicolas updates this pin, and reruns this generator, after
 # pushing atlas-kernels to GitHub; source_pr then becomes the pull-request URL.
-SOURCE_COMMIT = "e4a589b217ee50d6fc872b97805e8325b22f836e"
+SOURCE_COMMIT = "9f63c532d4aad8e1f6a178109edba042528ca33c"
 SOURCE_PR = "https://github.com/ucb-bar/atlas-kernels"
 PACKAGE = "out/artifacts/targets/atlas/kernel_library_v1"
 # Library-wide files a family needs to import and build on its own: the make targets, the import hook,

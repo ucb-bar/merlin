@@ -54,7 +54,7 @@ atlas-kernels families and a script that prepares it as a generated artifact.
 - `kernel_library/materialize.py`: the Radiance script with Atlas names. It does not
   turn these examples into a link-time dependency of submitted compilers.
 
-The pin is atlas-kernels `e4a589b` on `feat/kernel-library`, which is not yet on
+The pin is atlas-kernels `9f63c53` on `feat/kernel-library`, which is not yet on
 GitHub. After pushing, update `SOURCE_COMMIT` and `SOURCE_PR` in the generator,
 rerun it, and update the selection digest in
 `merlin/tests/infra/test_atlas_kernel_library_example.py`.
