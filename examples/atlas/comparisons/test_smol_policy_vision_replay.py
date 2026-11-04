@@ -9,7 +9,6 @@ import hashlib
 import json
 import os
 import struct
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,6 +20,7 @@ import test_smol_policy_graph as graph
 import torch
 from source_relocation import SourceRelocation
 from source_relocation import physical_path as safe
+from smol_test_support import load_shared
 from smol_test_support import (
     State, VisionCallback as Callback, VisionFrame as Frame,
     VisionLayer as Layer, VisionParameters as Parameters,
@@ -118,26 +118,8 @@ class PolicyVisionReplayTest(unittest.TestCase):
             attention / "smol_host_bits.h",
         ]:
             read(path)
-        subprocess.run(
-            [
-                "/usr/bin/cc",
-                "-O2",
-                "-fPIC",
-                "-shared",
-                "-Wall",
-                "-Wextra",
-                "-Werror",
-                "-ffp-contract=off",
-                "-fno-fast-math",
-                "-I" + str(attention),
-                *map(str, sources),
-                "-lm",
-                "-o",
-                str(library),
-            ],
-            check=True,
-        )
-        owner = ct.CDLL(str(library))
+        owner = load_shared(library, sources,
+                            flags=["-Wall", "-Wextra", "-Werror", "-I" + str(attention)])
         function = owner.smol_vision_image
         function.argtypes = [
             ct.c_void_p,

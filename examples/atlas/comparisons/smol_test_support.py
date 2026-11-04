@@ -1,5 +1,6 @@
 """Fixture-independent ctypes declarations for Smol host test controls."""
 import ctypes as ct
+import subprocess
 
 
 FIELDS = ('normalized', 'query', 'key', 'value', 'rotary_query', 'rotary_key',
@@ -45,3 +46,10 @@ class VisionFrame(ct.Structure):
 
 VisionCallback = ct.CFUNCTYPE(ct.c_int, ct.c_void_p, ct.c_uint, ct.c_uint,
                              ct.c_void_p, ct.c_size_t, ct.c_size_t, ct.c_void_p, ct.c_size_t)
+
+
+def load_shared(output, sources, *, flags=(), compiler='/usr/bin/cc', math=True, mode=ct.DEFAULT_MODE, **options):
+    subprocess.run([compiler, '-O2', '-fPIC', '-shared', '-ffp-contract=off', '-fno-fast-math',
+                    *flags, *map(str, sources), *(['-lm'] if math else []), '-o', str(output)],
+                   check=True, **options)
+    return ct.CDLL(str(output), mode=mode)

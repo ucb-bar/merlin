@@ -2,7 +2,6 @@
 import ctypes as ct
 import os
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -15,7 +14,7 @@ sys.path.insert(0, str(repo_root() / "examples/atlas/comparisons"))
 
 
 from smol_test_support import (
-    Callback, FIELDS, Frame, Parameters, State,
+    Callback, FIELDS, Frame, Parameters, State, load_shared,
     VisionCallback, VisionFrame, VisionLayer, VisionParameters,
 )
 
@@ -34,12 +33,10 @@ class AttentionRegistryTest(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory(prefix='smol-registry-')
         self.addCleanup(temporary.cleanup)
         path = Path(temporary.name) / 'graph.so'
-        flags = [] if runtime is None else ['-DSMOL_ATTENTION_RUNTIME=1', '-I' + str(runtime),
-                                            str(runtime / 'smol_attention.c')]
-        subprocess.run(['/usr/bin/cc', '-O2', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
-                        '-Wl,-z,defs', '-ffp-contract=off', '-fno-fast-math', *flags,
-                        *[str(here / (stem + '.c')) for stem in stems], '-lm', '-o', str(path)], check=True)
-        return ct.CDLL(str(path))
+        flags = [] if runtime is None else ['-DSMOL_ATTENTION_RUNTIME=1', '-I' + str(runtime)]
+        sources = ([] if runtime is None else [runtime / 'smol_attention.c'])
+        sources += [here / (stem + '.c') for stem in stems]
+        return load_shared(path, sources, flags=['-Wall', '-Wextra', '-Werror', '-Wl,-z,defs', *flags])
 
     def policy(self, owner, kind, expected_code=0):
         arrays = []

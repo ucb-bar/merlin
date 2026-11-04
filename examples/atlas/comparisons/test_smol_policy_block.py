@@ -10,12 +10,12 @@ import json
 import os
 from pathlib import Path
 import struct
-import subprocess
 import tempfile
 import unittest
 
 import numpy as np
 from source_relocation import physical_path as safe
+from smol_test_support import load_shared
 from smol_test_support import Callback, FIELDS, Frame, Parameters, State
 
 
@@ -63,10 +63,8 @@ class PolicyBlockTest(unittest.TestCase):
         library = cls.temporary / 'block.so'
         stems = ('smol_policy_block', 'smol_policy_ops', 'smol_host_ops',
                  'smol_host_rope', 'smol_host_attention', 'smol_host_softmax')
-        subprocess.run(['/usr/bin/cc', '-O2', '-fPIC', '-shared', '-Wall', '-Wextra', '-Werror',
-                        '-ffp-contract=off', '-fno-fast-math', *[str(here / (s+'.c')) for s in stems],
-                        '-lm', '-o', str(library)], check=True)
-        cls.library = ct.CDLL(str(library))
+        cls.library = load_shared(library, [here / (s+'.c') for s in stems],
+                                  flags=['-Wall', '-Wextra', '-Werror'])
         cls.library.smol_policy_block.argtypes = [ct.c_void_p, ct.c_uint, ct.c_void_p,
             ct.c_void_p, ct.c_void_p, ct.c_void_p, ct.POINTER(Parameters), ct.POINTER(Frame),
             ct.POINTER(State), Callback, ct.c_void_p]

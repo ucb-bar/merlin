@@ -13,6 +13,7 @@ import numpy as np
 import torch
 
 from source_relocation import physical_path
+from smol_test_support import load_shared
 
 
 class VisionAttentionTest(unittest.TestCase):
@@ -29,11 +30,9 @@ class VisionAttentionTest(unittest.TestCase):
                         'void smol_test_prior_exp(const float *x, float *y, float *native, size_t count) {\n'
                         '  for (size_t i=0; i<count; ++i) { y[i]=vision_prior_exp(x[i]); native[i]=expf(x[i]); }\n'
                         '}\n')
-        subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-O2", "-fPIC", "-shared",
-                        "-fno-fast-math", "-ffp-contract=off", "-Wall", "-Wextra", "-Werror",
-                        "-I", str(root), str(shim), "-lm",
-                        "-o", str(cls.library)], check=True, timeout=90, capture_output=True)
-        cls.loaded = ctypes.CDLL(str(cls.library))
+        cls.loaded = load_shared(cls.library, [shim], compiler=os.environ.get("CC", "cc"),
+                                 flags=["-std=c11", "-Wall", "-Wextra", "-Werror", "-I", str(root)],
+                                 timeout=90, capture_output=True)
         cls.function = cls.loaded.smol_vision_attention_cpu16_bf16
         cls.pointer = ctypes.POINTER(ctypes.c_uint16)
         cls.function.argtypes = [cls.pointer, cls.pointer, cls.pointer,

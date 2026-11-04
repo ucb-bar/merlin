@@ -9,12 +9,12 @@ import json
 import math
 import os
 from pathlib import Path
-import subprocess
 
 import numpy as np
 import torch
 import unittest
 from source_relocation import physical_path as safe
+from smol_test_support import load_shared
 import test_smol_policy_block as block
 
 
@@ -78,10 +78,8 @@ class PolicyGraphTest(unittest.TestCase):
             self.assertEqual(list(table.shape), record['shape'])
             self.assertEqual(hashlib.sha256(table.tobytes()).hexdigest(), record['file']['sha256'])
             pins[str(safe(record['file']['path']))] = record['file']['sha256']
-        subprocess.run(['/usr/bin/cc', '-O2', '-fPIC', '-shared', '-Wall', '-Wextra', '-Werror',
-                        '-ffp-contract=off', '-fno-fast-math',
-                        *[str(here / (stem+'.c')) for stem in stems], '-lm', '-o', str(path)], check=True)
-        owner = ct.CDLL(str(path))
+        owner = load_shared(path, [here / (stem+'.c') for stem in stems],
+                            flags=['-Wall', '-Wextra', '-Werror'])
         prefix_fn, step_fn = owner.smol_policy_prefix, owner.smol_policy_step
         prefix_fn.argtypes = [ct.c_void_p]*5 + [ct.POINTER(Parameters), ct.POINTER(Frame), ct.POINTER(State), Callback, ct.c_void_p]
         step_fn.argtypes = [ct.c_void_p, ct.c_float, ct.c_void_p, ct.c_void_p,

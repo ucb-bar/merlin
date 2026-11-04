@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import subprocess
 import tempfile
 import unittest
 
@@ -12,6 +11,7 @@ import numpy as np
 import torch
 
 from source_relocation import physical_path as safe
+from smol_test_support import load_shared
 
 
 class PolicyOpsTest(unittest.TestCase):
@@ -22,9 +22,7 @@ class PolicyOpsTest(unittest.TestCase):
         cls.temporary = Path(tempfile.mkdtemp(prefix='policy-ops-'))
         here = Path(__file__).absolute().parent
         library = cls.temporary / 'policy.so'
-        subprocess.run(['/usr/bin/cc', '-O2', '-fPIC', '-shared', '-ffp-contract=off', '-fno-fast-math',
-                        str(here / 'smol_policy_ops.c'), '-lm', '-o', str(library)], check=True)
-        cls.library = ctypes.CDLL(str(library))
+        cls.library = load_shared(library, [here / 'smol_policy_ops.c'])
         cls.pointer = ctypes.POINTER(ctypes.c_float)
         cls.library.smol_policy_silu_f32.argtypes = [cls.pointer, cls.pointer, ctypes.c_size_t]
         cls.word_pointer = ctypes.POINTER(ctypes.c_uint16)

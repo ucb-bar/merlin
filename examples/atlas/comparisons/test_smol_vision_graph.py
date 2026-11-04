@@ -2,7 +2,6 @@
 import ctypes
 import os
 from pathlib import Path
-import subprocess
 import tempfile
 import unittest
 
@@ -10,6 +9,7 @@ import numpy as np
 import torch
 
 from source_relocation import physical_path as safe
+from smol_test_support import load_shared
 
 
 @unittest.skipUnless(os.environ.get('SMOL_ATTENTION_HEADERS'), 'Optional attention headers are not configured')
@@ -20,12 +20,10 @@ class VisionLayoutTest(unittest.TestCase):
         header = safe(os.environ['SMOL_ATTENTION_HEADERS'])
         temporary = Path(tempfile.mkdtemp(prefix='vision-layout-'))
         library = temporary / 'layout.so'
-        subprocess.run(['/usr/bin/cc', '-O2', '-fPIC', '-shared', '-ffp-contract=off',
-                        '-fno-fast-math', '-I'+str(header), str(here / 'smol_vision_graph.c'),
-                        '-o', str(library)], check=True)
         # Only the two dependency-free layout entry points execute. The graph's
         # numerical dependencies stay unresolved and cannot qualify graph parity.
-        cls.library = ctypes.CDLL(str(library), mode=os.RTLD_LAZY)
+        cls.library = load_shared(library, [here / 'smol_vision_graph.c'],
+                                  flags=['-I'+str(header)], math=False, mode=os.RTLD_LAZY)
         cls.pointer = ctypes.POINTER(ctypes.c_uint16)
         for name in ('smol_vision_patch16', 'smol_vision_shuffle4'):
             getattr(cls.library, name).argtypes = [cls.pointer, cls.pointer]

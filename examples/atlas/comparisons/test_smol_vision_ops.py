@@ -4,7 +4,6 @@ import json
 import os
 from pathlib import Path
 import struct
-import subprocess
 import tempfile
 import unittest
 
@@ -12,6 +11,7 @@ import numpy as np
 import torch
 
 from source_relocation import physical_path as safe
+from smol_test_support import load_shared
 
 
 @unittest.skipUnless(os.environ.get('SMOL_NATIVE_CAPTURE') and os.environ.get('SMOL_CHECKPOINT'),
@@ -24,9 +24,7 @@ class VisionOpsTest(unittest.TestCase):
         cls.temporary = Path(tempfile.mkdtemp(prefix='vision-ops-'))
         cls.library_path = cls.temporary / 'vision.so'
         here = Path(__file__).absolute().parent
-        subprocess.run(['/usr/bin/cc', '-O2', '-fPIC', '-shared', '-ffp-contract=off', '-fno-fast-math',
-                        str(here / 'smol_vision_ops.c'), '-lm', '-o', str(cls.library_path)], check=True)
-        cls.library = ctypes.CDLL(str(cls.library_path))
+        cls.library = load_shared(cls.library_path, [here / 'smol_vision_ops.c'])
         cls.pointer = ctypes.POINTER(ctypes.c_uint16)
         cls.library.smol_vision_gelu_bf16.argtypes = [cls.pointer, cls.pointer, cls.pointer, ctypes.c_size_t]
         cls.library.smol_vision_layernorm_bf16.argtypes = [cls.pointer, cls.pointer, cls.pointer,
