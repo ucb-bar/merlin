@@ -8,7 +8,6 @@ import ctypes as ct
 import hashlib
 import json
 import os
-import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,7 +19,7 @@ import test_smol_policy_graph as graph
 import torch
 from source_relocation import SourceRelocation
 from source_relocation import physical_path as safe
-from smol_test_support import load_shared
+from smol_test_support import load_shared, checkpoint_header, bf16_weight, operand_array
 from smol_test_support import (
     State, VisionCallback as Callback, VisionFrame as Frame,
     VisionLayer as Layer, VisionParameters as Parameters,
@@ -64,19 +63,13 @@ class PolicyVisionReplayTest(unittest.TestCase):
             digest = hashlib.file_digest(stream, "sha256").hexdigest()
         self.assertEqual(digest, receipt["source"]["weights"]["sha256"])
         pins[str(checkpoint)] = digest
-        with checkpoint.open("rb") as stream:
-            size = struct.unpack("<Q", stream.read(8))[0]
-            header = json.loads(stream.read(size))
+        header, data_start = checkpoint_header(checkpoint)
         arrays = []
 
         def weight(name):
             row = header["model.vlm_with_expert.vlm.model.vision_model." + name]
             self.assertEqual(row["dtype"], "BF16")
-            begin, end = row["data_offsets"]
-            with checkpoint.open("rb") as stream:
-                stream.seek(8 + size + begin)
-                raw = stream.read(end - begin)
-            value = np.frombuffer(raw, "<u2").copy().reshape(row["shape"])
+            value = bf16_weight(checkpoint, row, data_start)
             arrays.append(value)
             return value.ctypes.data
 
@@ -135,11 +128,8 @@ class PolicyVisionReplayTest(unittest.TestCase):
             prefix = archive["prefix_embeddings"].copy()
 
         def tensor(row):
-            path = Path(row["file"])
-            if path.is_absolute() or ".." in path.parts:
-                raise ValueError("Invalid reference member")
-            self.assertEqual(row["dtype"], "torch.bfloat16")
-            return np.frombuffer(read(root / path, row["sha256"]), "<u2").copy().reshape(row["shape"])
+            return operand_array(root, row, '<u2', self.assertEqual, read=read,
+                                 expected_dtype='torch.bfloat16')
 
         roles = ("patch_embedding", "q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2", "connector")
         checked_images = []

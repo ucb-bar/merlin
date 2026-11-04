@@ -1,6 +1,5 @@
 """Product FP32 policy host math against native operator output words."""
 import ctypes
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,7 +10,7 @@ import numpy as np
 import torch
 
 from source_relocation import physical_path as safe
-from smol_test_support import load_shared
+from smol_test_support import load_shared, operand_array
 
 
 class PolicyOpsTest(unittest.TestCase):
@@ -48,12 +47,8 @@ class PolicyOpsTest(unittest.TestCase):
             descriptor = next(row for row in receipt['calls'] if row['module'] == module)[field]
             if descriptor['dtype'] != 'torch.float32':
                 raise ValueError('Expected native FP32 policy boundary')
-            path = Path(descriptor['file'])
-            if path.is_absolute() or '..' in path.parts:
-                raise ValueError('Invalid captured operand path')
-            raw = safe(root / path).read_bytes()
-            self.assertEqual(hashlib.sha256(raw).hexdigest(), descriptor['sha256'])
-            return torch.from_numpy(np.frombuffer(raw, '<f4').copy().reshape(descriptor['shape']))
+            return torch.from_numpy(operand_array(root, descriptor, '<f4', self.assertEqual,
+                                                  invalid='Invalid captured operand path'))
         self.check(value('action_time_mlp_in', 'output'), value('action_time_mlp_out', 'input'))
 
     def test_silu_finite_interval_and_signed_zero_raw_exact(self):

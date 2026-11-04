@@ -3,7 +3,6 @@ import ctypes
 import json
 import os
 from pathlib import Path
-import struct
 import tempfile
 import unittest
 
@@ -11,7 +10,7 @@ import numpy as np
 import torch
 
 from source_relocation import physical_path as safe
-from smol_test_support import load_shared
+from smol_test_support import load_shared, checkpoint_header, bf16_weight, operand_array
 
 
 @unittest.skipUnless(os.environ.get('SMOL_NATIVE_CAPTURE') and os.environ.get('SMOL_CHECKPOINT'),
@@ -32,11 +31,7 @@ class VisionOpsTest(unittest.TestCase):
         cls.capture = safe(os.environ['SMOL_NATIVE_CAPTURE'])
         cls.receipt = json.loads(safe(cls.capture / 'receipt.json').read_bytes())
         cls.checkpoint = safe(os.environ['SMOL_CHECKPOINT'])
-        with cls.checkpoint.open('rb') as stream:
-            cls.header_size = struct.unpack('<Q', stream.read(8))[0]
-            if cls.header_size > 1024*1024:
-                raise ValueError('Oversized checkpoint header')
-            cls.header = json.loads(stream.read(cls.header_size))
+        cls.header, cls.data_start = checkpoint_header(cls.checkpoint, limit=1024*1024)
 
     @classmethod
     def ptr(cls, array):
@@ -46,22 +41,13 @@ class VisionOpsTest(unittest.TestCase):
         record = self.header['model.vlm_with_expert.vlm.model.vision_model.' + suffix]
         if record['dtype'] != 'BF16':
             raise ValueError('Expected BF16 vision parameter')
-        begin, end = record['data_offsets']
-        with self.checkpoint.open('rb') as stream:
-            stream.seek(8 + self.header_size + begin)
-            raw = stream.read(end-begin)
-        return torch.from_numpy(np.frombuffer(raw, '<u2').copy().reshape(record['shape'])).view(torch.bfloat16)
+        return torch.from_numpy(bf16_weight(self.checkpoint, record, self.data_start)).view(torch.bfloat16)
 
     def call(self, suffix, field):
         name = 'vlm_with_expert.vlm.model.vision_model.' + suffix
         item = next(row for row in self.receipt['calls'] if row['module'] == name)[field]
-        path = Path(item['file'])
-        if path.is_absolute() or '..' in path.parts:
-            raise ValueError('Invalid captured operand path')
-        import hashlib
-        raw = safe(self.capture / path).read_bytes()
-        self.assertEqual(hashlib.sha256(raw).hexdigest(), item['sha256'])
-        return torch.from_numpy(np.frombuffer(raw, '<u2').copy().reshape(item['shape'])).view(torch.bfloat16)
+        value = operand_array(self.capture, item, '<u2', self.assertEqual, invalid='Invalid captured operand path')
+        return torch.from_numpy(value).view(torch.bfloat16)
 
     def test_gelu_actual_fc_boundary_raw_exact(self):
         all_words = np.arange(65536, dtype=np.uint16)

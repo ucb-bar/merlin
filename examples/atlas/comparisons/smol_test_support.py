@@ -1,6 +1,13 @@
 """Fixture-independent ctypes declarations for Smol host test controls."""
 import ctypes as ct
+import hashlib
+import json
+from pathlib import Path
+import struct
 import subprocess
+
+import numpy as np
+from source_relocation import physical_path as safe
 
 
 FIELDS = ('normalized', 'query', 'key', 'value', 'rotary_query', 'rotary_key',
@@ -53,3 +60,31 @@ def load_shared(output, sources, *, flags=(), compiler='/usr/bin/cc', math=True,
                     *flags, *map(str, sources), *(['-lm'] if math else []), '-o', str(output)],
                    check=True, **options)
     return ct.CDLL(str(output), mode=mode)
+
+
+def checkpoint_header(checkpoint, *, limit=None):
+    with checkpoint.open('rb') as stream:
+        size = struct.unpack('<Q', stream.read(8))[0]
+        if limit is not None and size > limit:
+            raise ValueError('Oversized checkpoint header')
+        return json.loads(stream.read(size)), 8 + size
+
+
+def bf16_weight(checkpoint, row, data_start):
+    begin, end = row['data_offsets']
+    with checkpoint.open('rb') as stream:
+        stream.seek(data_start + begin)
+        raw = stream.read(end - begin)
+    return np.frombuffer(raw, '<u2').copy().reshape(row['shape'])
+
+
+def operand_array(root, row, dtype, check, *, read=None, expected_dtype=None, invalid='Invalid reference member'):
+    path = Path(row['file'])
+    if path.is_absolute() or '..' in path.parts:
+        raise ValueError(invalid)
+    if expected_dtype is not None:
+        check(row['dtype'], expected_dtype)
+    path = safe(root / path)
+    raw = path.read_bytes() if read is None else read(path, row['sha256'])
+    check(hashlib.sha256(raw).hexdigest(), row['sha256'])
+    return np.frombuffer(raw, dtype).copy().reshape(row['shape'])

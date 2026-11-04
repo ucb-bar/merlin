@@ -9,13 +9,12 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import struct
 import tempfile
 import unittest
 
 import numpy as np
 from source_relocation import physical_path as safe
-from smol_test_support import load_shared
+from smol_test_support import load_shared, checkpoint_header, bf16_weight, operand_array
 from smol_test_support import Callback, FIELDS, Frame, Parameters, State
 
 
@@ -44,10 +43,7 @@ class PolicyBlockTest(unittest.TestCase):
             digest = hashlib.file_digest(stream, 'sha256').hexdigest()
         if digest != expected:
             raise ValueError('Changed checkpoint')
-        with checkpoint.open('rb') as stream:
-            length = struct.unpack('<Q', stream.read(8))[0]
-            cls.header = json.loads(stream.read(length))
-            cls.data_start = 8 + length
+        cls.header, cls.data_start = checkpoint_header(checkpoint)
         cls.checkpoint = checkpoint
         contract = json.loads(safe(os.environ['SMOL_ROPE_CONTRACT']).read_bytes())
         cls.tables = []
@@ -72,20 +68,11 @@ class PolicyBlockTest(unittest.TestCase):
     def weight(self, module, suffix):
         row = self.header['model.' + module + '.' + suffix + '.weight']
         self.assertEqual(row['dtype'], 'BF16')
-        begin, end = row['data_offsets']
-        with self.checkpoint.open('rb') as stream:
-            stream.seek(self.data_start + begin)
-            raw = stream.read(end - begin)
-        return np.frombuffer(raw, BF).copy().reshape(row['shape'])
+        return bf16_weight(self.checkpoint, row, self.data_start)
 
     def tensor(self, row):
-        path = Path(row['file'])
-        if path.is_absolute() or '..' in path.parts:
-            raise ValueError('Invalid reference member')
-        raw = safe(self.root / path).read_bytes()
-        self.assertEqual(hashlib.sha256(raw).hexdigest(), row['sha256'])
         dtype = BF if row['dtype'] == 'torch.bfloat16' else F32
-        return np.frombuffer(raw, dtype).copy().reshape(row['shape'])
+        return operand_array(self.root, row, dtype, self.assertEqual)
 
     def run_block(self, module, kind, incoming, key_cache, value_cache, positions, mask):
         input_weight = self.weight(module, 'input_layernorm')
