@@ -1,7 +1,7 @@
 # Merlin support package
 
 This directory contains the target definition and, where present, reference support plugins.
-Select it explicitly with `MERLIN_TARGET_PATH=/path/to/this/repo/merlin-support`.
+Select it explicitly with `MERLIN_TARGET_PATH="$PWD/examples/atlas/support"` from the Merlin root.
 It is not an evaluated compiler candidate and this metadata grants no trust or certification.
 
 The files recorded in `provenance.json` are byte-identical migration snapshots. Existing contracts
@@ -20,14 +20,14 @@ checks do not qualify Torch, assembly, numerical outputs, simulators, or hardwar
 The historical candidate/schedule payload and its certificates remain unchanged outside this tree.
 Those certificates describe their original revisions, not the current branch with added support.
 Do not grade or publish this entire repository as a candidate: export the original candidate or
-schedule payload without `merlin-support/`. Existing recursive integrity checks intentionally
+schedule payload without `examples/atlas/support/`. Existing recursive integrity checks intentionally
 remain unchanged and may reject harness-importing support code inside a candidate tree.
 
 The upstream repository was empty. This branch adds support data only; it has no compiler candidate.
 The source contract explicitly retains datapath-grounding and RTL-certification limitations.
 
-Run the lightweight checks with an installed Merlin core:
+Run the lightweight checks from the Merlin root with an installed Merlin core:
 
 ```sh
-python -m pytest merlin-support/tests
+python -m pytest examples/atlas/support/tests
 ```
