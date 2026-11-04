@@ -49,10 +49,9 @@ These are model-specific adapters with external prerequisites, not checkpoint-to
 
 For independent setup, use atlas-mlir's [input and environment contracts](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-performance/docs/bringing-up-a-model.md#inputs-and-environments) and [new model adapter contract](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-performance/docs/bringing-up-a-model.md#new-model-adapter-contract). Record a missing corpus, receipt, archive, or provider as an unmet prerequisite. For a new model, implement its input preparation, source authentication, op inventory, and real-value capture explicitly before mapping kernels; these scripts do not generate those adapters.
 
-Host graphs are hand-written C, including [tiny_block.c](tiny_block.c),
-[smol_vision_graph.c](smol_vision_graph.c), and
-[smol_policy_graph.c](smol_policy_graph.c). Capture does not generate these
-graphs. Follow the
+Host graphs are hand-written C, including [tiny_block.c](tiny_block.c), [smol_vision_graph.c](smol_vision_graph.c), and [smol_policy_graph.c](smol_policy_graph.c). Capture does not generate these graphs. TinyLlama and SmolVLA reach the device through model-specific capture adapters and these hand-written host graphs, bypassing Merlin's semantic compiler and provider. The Merlin-intended semantic compilation route is Agustin's `feat/atlas-model-compilation` branch, currently proven on small shapes.
+
+Follow the
 [model bringup guide](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-performance/docs/bringing-up-a-model.md)
 for inventory, kernel mapping, compilation, exactness checks, and host execution.
 

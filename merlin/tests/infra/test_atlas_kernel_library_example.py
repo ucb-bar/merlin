@@ -1,8 +1,8 @@
 """Atlas kernel-library example: routing, synthetic artifact integrity, and selection schema.
 
 Mirrors test_radiance_kernel_library_example.py. Nothing here contacts a network or runs hardware. The
-two local-checkout tests run only when MERLIN_ATLAS_KERNELS names an atlas-kernels checkout that has the
-pinned commit; they export from it and regenerate selection.yaml from it.
+local-checkout tests skip only when MERLIN_ATLAS_KERNELS is absent. An explicitly configured checkout
+must contain the pinned commit; the tests export from it and regenerate selection.yaml from it.
 """
 
 import hashlib
@@ -57,7 +57,7 @@ def _selection():
 def test_selection_bytes_and_pinned_semantics_preserved():
     module = load_materializer()
     payload = module.SELECTION.read_bytes()
-    assert hashlib.sha256(payload).hexdigest() == "376fe8dba426afab3ca72a2772fe3ecd6ec4b83eea7628ba83c04827c0187a4d"
+    assert hashlib.sha256(payload).hexdigest() == "01c2660372af7bc068a46b38ee83cd90c5c24485b4a19f3cd706431bff265d35"
     selection = yaml.safe_load(payload)
     assert selection["source_commit"] == PINNED
     assert selection["package"] == "out/artifacts/targets/atlas/kernel_library_v1"
@@ -304,16 +304,107 @@ def test_export_symlinks_are_refused(synthetic_export, tmp_path, directory):
 
 
 def _local_checkout() -> Path:
-    raw = os.environ.get("MERLIN_ATLAS_KERNELS", "")
-    if not raw:
+    raw = os.environ.get("MERLIN_ATLAS_KERNELS")
+    if raw is None:
         pytest.skip("MERLIN_ATLAS_KERNELS is not set")
+    if not raw.strip():
+        pytest.fail("MERLIN_ATLAS_KERNELS is explicitly empty")
     checkout = Path(raw)
+    if not checkout.is_dir():
+        pytest.fail(f"MERLIN_ATLAS_KERNELS checkout does not exist: {checkout}")
     probe = subprocess.run(
         ["git", "-C", str(checkout), "cat-file", "-e", f"{PINNED}^{{commit}}"], capture_output=True, check=False
     )
     if probe.returncode:
-        pytest.skip(f"MERLIN_ATLAS_KERNELS does not contain {PINNED}")
+        pytest.fail(f"MERLIN_ATLAS_KERNELS checkout does not contain pinned commit {PINNED}: {checkout}")
     return checkout
+
+
+def test_local_checkout_skips_only_when_environment_is_absent(monkeypatch):
+    monkeypatch.delenv("MERLIN_ATLAS_KERNELS", raising=False)
+    with pytest.raises(pytest.skip.Exception, match="is not set"):
+        _local_checkout()
+
+
+@pytest.mark.parametrize("value", ["", " "])
+def test_local_checkout_rejects_explicit_empty_environment(monkeypatch, value):
+    monkeypatch.setenv("MERLIN_ATLAS_KERNELS", value)
+    with pytest.raises(pytest.fail.Exception, match="explicitly empty"):
+        _local_checkout()
+
+
+def test_local_checkout_rejects_missing_path(tmp_path, monkeypatch):
+    monkeypatch.setenv("MERLIN_ATLAS_KERNELS", str(tmp_path / "missing"))
+    with pytest.raises(pytest.fail.Exception, match="checkout does not exist"):
+        _local_checkout()
+
+
+def test_local_checkout_rejects_missing_pinned_commit(tmp_path, monkeypatch):
+    subprocess.run(["git", "-C", str(tmp_path), "init", "--quiet"], check=True)
+    monkeypatch.setenv("MERLIN_ATLAS_KERNELS", str(tmp_path))
+    with pytest.raises(pytest.fail.Exception, match=f"does not contain pinned commit {PINNED}"):
+        _local_checkout()
+
+
+@pytest.fixture
+def atlas_mlir_checkout(tmp_path):
+    """Build a real index and HEAD without needing the linked repository's objects."""
+    def create(gitlink_commit=None):
+        subprocess.run(["git", "-C", str(tmp_path), "init", "--quiet"], check=True)
+        if gitlink_commit is not None:
+            subprocess.run(
+                ["git", "-C", str(tmp_path), "update-index", "--add", "--cacheinfo",
+                 f"160000,{gitlink_commit},third_party/atlas-kernels"], check=True
+            )
+        subprocess.run(
+            ["git", "-C", str(tmp_path), "-c", "user.name=Nicolas Reed",
+             "-c", "user.email=reednicolas@berkeley.edu", "commit", "--quiet", "--allow-empty",
+             "--author=Nicolas Reed <reednicolas@berkeley.edu>",
+             "-m", "test(atlas): create pin fixture"], check=True
+        )
+        return tmp_path
+
+    return create
+
+
+def test_atlas_mlir_pin_matches_real_gitlink(atlas_mlir_checkout):
+    generator = load_generator()
+    checkout = atlas_mlir_checkout(PINNED)
+    assert generator.check_atlas_mlir_pin(PINNED, checkout) == {
+        "status": "checked", "source_commit": PINNED, "gitlink_commit": PINNED
+    }
+
+
+def test_atlas_mlir_pin_rejects_mismatched_gitlink(atlas_mlir_checkout):
+    generator = load_generator()
+    checkout = atlas_mlir_checkout("a" * 40)
+    with pytest.raises(generator.SelectionSourceError, match="atlas-mlir"):
+        generator.check_atlas_mlir_pin(PINNED, checkout)
+
+
+def test_atlas_mlir_pin_rejects_absent_gitlink(atlas_mlir_checkout):
+    generator = load_generator()
+    checkout = atlas_mlir_checkout()
+    with pytest.raises(generator.SelectionSourceError, match="atlas-mlir"):
+        generator.check_atlas_mlir_pin(PINNED, checkout)
+
+
+def test_atlas_mlir_pin_rejects_invalid_checkout(tmp_path):
+    generator = load_generator()
+    with pytest.raises(generator.SelectionSourceError, match="atlas-mlir"):
+        generator.check_atlas_mlir_pin(PINNED, tmp_path / "missing")
+
+
+def test_atlas_mlir_pin_reports_no_checkout():
+    assert load_generator().check_atlas_mlir_pin(PINNED, None) == {"status": "not-checked"}
+
+
+def test_collect_enforces_provided_atlas_mlir_pin(atlas_mlir_checkout, monkeypatch):
+    generator = load_generator()
+    checkout = atlas_mlir_checkout("a" * 40)
+    monkeypatch.setenv("MERLIN_ATLAS_MLIR", str(checkout))
+    with pytest.raises(generator.SelectionSourceError, match="differs from selection pin"):
+        generator.collect(checkout, PINNED)
 
 
 def test_local_checkout_exports_every_family(tmp_path):
@@ -352,6 +443,20 @@ def test_local_checkout_check_mode_reports_drift(tmp_path):
         ("projection_gemm", "shape", {"M": {"multiple_of": 32}, "K": {"multiple_of": 64}}, "variant"),
         ("rope", "dtypes", ["mxfp8"], "dtype mxfp8"),
         ("epilogue", "semantic_ops", ["silu"], "compound semantic ops"),
+        ("projection_gemm", "semantic_ops", ["nonsense"], "semantic_ops"),
+        ("projection_gemm", "requires_hardware", [], "requires_hardware"),
+        (
+            "resnet_pool", "shape",
+            {"kernel": {"eq": 2}, "stride": {"eq": 2}, "padding": {"eq": 1},
+             "channels": {"multiple_of": 32}, "height": {"min": 1}, "width": {"min": 1}},
+            "pool geometry",
+        ),
+        (
+            "resnet_pool", "shape",
+            {"kernel": {"eq": 3}, "stride": {"eq": 2}, "padding": {"eq": 1},
+             "channels": {"multiple_of": 7}, "height": {"min": 1}, "width": {"min": 1}},
+            "pool geometry",
+        ),
     ],
 )
 def test_local_checkout_refuses_rules_that_disagree_with_the_library(monkeypatch, family, field, value, message):

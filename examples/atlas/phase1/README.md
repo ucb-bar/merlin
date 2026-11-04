@@ -38,30 +38,18 @@ descriptor's retained `resources_root`.
 
 ## Kernel library
 
-`kernel_library/` is the Atlas counterpart of the Radiance
-[kernel library](../../radiance/phase1/README.md): a pinned public selection of
-atlas-kernels families and a script that prepares it as a generated artifact.
+`kernel_library/` is the Atlas counterpart of the Radiance [kernel library](../../radiance/phase1/README.md): a pinned selection and materialization example for atlas-kernels families. Selection is currently disabled, and no Atlas compile or runtime consumer uses this example.
 
 - `kernel_library/selection.yaml`: the nine atlas-kernels families mapped to
   semantic op, dtype, and shape rules, in the schema and field names of the Radiance
   `selection.yaml`. It is generated; do not edit it by hand.
-- `kernel_library/generate_selection.py`: regenerates `selection.yaml` from the
-  `kernels/*/kernel.yaml` manifests and the `coverage/` placement data at the pinned
-  commit. The per-family rules are written in the generator because the manifests
-  state shapes in prose; the generator refuses a rule that disagrees with a manifest,
-  a recorded projection variant, or a model op that the coverage data places on that
-  family.
+- `kernel_library/generate_selection.py`: regenerates `selection.yaml` from the `kernels/*/kernel.yaml` manifests and the `coverage/` placement data at the pinned commit. The per-family rules are written in the generator because the manifests state shapes in prose. Checks cover declared dtypes, mnemonic hardware features, recorded projection variant M/K/N, and placed Linear K/N. Reviewed semantic aliases and projection hardware requirements are checked separately. Pool checks require compatibility with the fixed geometry and at least one supported channel count; they do not validate every accepted pool shape. Placed M, Conv2d, attention, norm, and fusion shapes are not checked in full; these checks do not prove semantic correctness for every placed op.
 - `kernel_library/materialize.py`: the Radiance script with Atlas names. It does not
   turn these examples into a link-time dependency of submitted compilers.
 
-The pin is atlas-kernels `6123bef` on
-[`feat/kernel-library`](https://github.com/ucb-bar/atlas-kernels/tree/feat/kernel-library),
-a pinned commit that is available once that branch is pushed. atlas-mlir pins the
-same commit as its `third_party/atlas-kernels` submodule. The two pins must agree,
-and nothing checks that yet: when bumping either, update `SOURCE_COMMIT` in the
-generator, rerun it, update the selection digest in
-`merlin/tests/infra/test_atlas_kernel_library_example.py`, and bump the atlas-mlir
-submodule to the same commit.
+The pin is atlas-kernels `6123bef` on [`feat/kernel-library`](https://github.com/ucb-bar/atlas-kernels/tree/feat/kernel-library), a pinned commit that is available once that branch is pushed. atlas-mlir pins the same commit as its `third_party/atlas-kernels` submodule. The two pins must agree. Set `MERLIN_ATLAS_MLIR` to an atlas-mlir checkout to check the requested selection commit against that checkout's `HEAD` gitlink at `third_party/atlas-kernels`; a missing gitlink or mismatched commit fails generation. Without `MERLIN_ATLAS_MLIR`, the pin comparison is reported as `not-checked`.
+
+When bumping either pin, update `SOURCE_COMMIT` in the generator, rerun it, update the selection digest in `merlin/tests/infra/test_atlas_kernel_library_example.py`, and bump the atlas-mlir submodule to the same commit.
 
 To materialize the pinned library, from the repository root:
 
@@ -82,6 +70,12 @@ To regenerate or check the selection against a local checkout:
 
 ```sh
 .venv/bin/python examples/atlas/phase1/kernel_library/generate_selection.py --checkout /path/to/atlas-kernels --check
+```
+
+To exercise checkout-dependent tests in CI, provision an atlas-kernels checkout containing the pinned commit and export its path as `MERLIN_ATLAS_KERNELS` before running the command below. The current `pr-fast` workflow runs the infra suite but does not provision that checkout. These tests skip when the variable is absent and fail when it is explicitly set to an unusable checkout. Set `MERLIN_ATLAS_MLIR` as well to exercise the cross-repository pin comparison against a provisioned atlas-mlir checkout.
+
+```sh
+MERLIN_ATLAS_KERNELS=/path/to/atlas-kernels MERLIN_ATLAS_MLIR=/path/to/atlas-mlir .venv/bin/python -m pytest merlin/tests/infra/test_atlas_kernel_library_example.py -q
 ```
 
 Four families are stages fused into a `projection_gemm` launch rather than launches
