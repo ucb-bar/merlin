@@ -54,7 +54,7 @@ atlas-kernels families and a script that prepares it as a generated artifact.
 - `kernel_library/materialize.py`: the Radiance script with Atlas names. It does not
   turn these examples into a link-time dependency of submitted compilers.
 
-The pin is atlas-kernels `e7bbf7c` on
+The pin is atlas-kernels `6123bef` on
 [`feat/kernel-library`](https://github.com/ucb-bar/atlas-kernels/tree/feat/kernel-library),
 a pinned commit that is available once that branch is pushed. atlas-mlir pins the
 same commit as its `third_party/atlas-kernels` submodule. The two pins must agree,
