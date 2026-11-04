@@ -16,38 +16,13 @@ import unittest
 
 import numpy as np
 from source_relocation import physical_path as safe
+from smol_test_support import Callback, FIELDS, Frame, Parameters, State
 
 
 BF = np.dtype('<u2')
 F32 = np.dtype('<f4')
 ROLES = ('self_attn.q_proj', 'self_attn.k_proj', 'self_attn.v_proj',
          'self_attn.o_proj', 'mlp.gate_proj', 'mlp.up_proj', 'mlp.down_proj')
-FIELDS = ('normalized', 'query', 'key', 'value', 'rotary_query', 'rotary_key',
-          'joined_key', 'joined_value', 'attention', 'projected', 'residual',
-          'postnorm', 'gate', 'up', 'activated', 'down', 'output',
-          'bf16_probabilities', 'scores', 'float_probabilities', 'workspace',
-          'cross_input', 'cross_key', 'cross_value')
-
-
-class Parameters(ct.Structure):
-    _fields_ = [('kind', ct.c_uint), ('input_weight', ct.c_void_p), ('post_weight', ct.c_void_p),
-                ('input_epsilon', ct.c_float), ('post_epsilon', ct.c_float),
-                ('cosine', ct.c_void_p), ('sine', ct.c_void_p),
-                ('first_table_position', ct.c_int64), ('table_rows', ct.c_size_t)]
-
-
-class Frame(ct.Structure):
-    _fields_ = [(name, ct.c_void_p) for name in FIELDS]
-
-
-class State(ct.Structure):
-    _fields_ = [(name, ct.c_uint) for name in ('started', 'projections', 'complete', 'error')]
-
-
-Callback = ct.CFUNCTYPE(ct.c_int, ct.c_void_p, ct.c_uint, ct.c_uint, ct.c_void_p,
-                        ct.c_size_t, ct.c_size_t, ct.c_uint, ct.c_void_p, ct.c_size_t)
-
-
 @unittest.skipUnless(all(os.environ.get(name) for name in ('SMOL_REPLAY', 'SMOL_CHECKPOINT', 'SMOL_ROPE_CONTRACT')),
                      'Optional target-policy block fixtures are not configured')
 class PolicyBlockTest(unittest.TestCase):

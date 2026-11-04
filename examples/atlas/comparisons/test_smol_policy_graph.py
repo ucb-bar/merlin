@@ -58,7 +58,7 @@ class PolicyGraphTest(unittest.TestCase):
         stems = ('smol_policy_graph', 'smol_policy_block', 'smol_policy_ops', 'smol_host_ops',
                  'smol_host_controls', 'smol_host_rope', 'smol_host_attention', 'smol_host_softmax')
         sources = [here / (stem+'.c') for stem in stems]
-        sources += [here / (stem+'.h') for stem in stems] + [safe(__file__), safe(block.__file__), here / 'smol_host_bits.h']
+        sources += [here / (stem+'.h') for stem in stems] + [safe(__file__), safe(block.__file__), here / 'smol_test_support.py', here / 'smol_host_bits.h']
         pins = {str(p): hashlib.sha256(safe(p).read_bytes()).hexdigest() for p in sources}
         # Bind the fixture readers' admitted in-memory values to the same raw
         # files rehashed after the complete C traversal, before parameter reads.

@@ -21,49 +21,12 @@ import test_smol_policy_graph as graph
 import torch
 from source_relocation import SourceRelocation
 from source_relocation import physical_path as safe
-
-
-class Layer(ct.Structure):
-    _fields_ = [(name, ct.c_void_p) for name in ("norm1_weight", "norm1_bias", "norm2_weight", "norm2_bias")]
-
-
-class Parameters(ct.Structure):
-    _fields_ = [
-        ("position", ct.c_void_p),
-        ("layers", Layer * 12),
-        ("post_weight", ct.c_void_p),
-        ("post_bias", ct.c_void_p),
-        ("gelu", ct.c_void_p),
-        ("epsilon", ct.c_float),
-    ]
-
-
-FIELDS = (
-    "tokens",
-    "normalized",
-    "query",
-    "key",
-    "value",
-    "attended",
-    "projected",
-    "large",
-    "activated",
-    "shuffle",
-    "output",
+from smol_test_support import (
+    State, VisionCallback as Callback, VisionFrame as Frame,
+    VisionLayer as Layer, VisionParameters as Parameters,
 )
 
-
-class Frame(ct.Structure):
-    _fields_ = [(name, ct.c_void_p) for name in FIELDS]
-
-
-class State(ct.Structure):
-    _fields_ = [(name, ct.c_uint) for name in ("started", "projections", "complete", "error")]
-
-
-Callback = ct.CFUNCTYPE(
-    ct.c_int, ct.c_void_p, ct.c_uint, ct.c_uint, ct.c_void_p, ct.c_size_t, ct.c_size_t, ct.c_void_p, ct.c_size_t
-)
+FIELDS = tuple(name for name, _ in Frame._fields_)
 
 
 @unittest.skipUnless(
@@ -145,6 +108,7 @@ class PolicyVisionReplayTest(unittest.TestCase):
         sources.append(attention / "smol_vision_attention.c")
         for path in [
             safe(__file__),
+            here / "smol_test_support.py",
             *sources,
             *[
                 here / (stem + ".h")
@@ -317,6 +281,7 @@ class PolicyGraphReplayTest(graph.PolicyGraphTest):
             safe(__file__),
             safe(graph.__file__),
             safe(graph.block.__file__),
+            here / "smol_test_support.py",
             safe(torch.__file__),
         ]:
             pin(path)
