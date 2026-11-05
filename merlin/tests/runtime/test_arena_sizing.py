@@ -68,6 +68,7 @@ define void @forward(ptr %0) {
 }
 
 define internal void @forward..omp_par(ptr %0) {
+omp.par.entry:
   %c = call ptr @malloc(i64 300)
   br label %loop
 
@@ -83,7 +84,8 @@ out:
 
 def test_the_residue_counts_an_outlined_region_once_per_hart():
     """A buffer allocated inside an outlined parallel region exists once per hart at the same time, so a
-    multicore image's residue is not its single-core one."""
+    multicore image's residue is not its single-core one. The region's body opens with its own entry
+    label, as `mlir-translate` spells it; reading that as an empty unnamed block refused every 2-hart build."""
     one = zmem.heap_residue(RESIDUE, harts=1)
     two = zmem.heap_residue(RESIDUE, harts=2)
     assert one.bytes == 1000 + 300 + 20 and one.allocations == 3

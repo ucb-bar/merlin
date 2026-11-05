@@ -419,8 +419,8 @@ def _split_function(lines: list[str], symbol: str) -> tuple[int, int]:
 def _blocks_of(lines: list[str], start: int, end: int) -> list[_Block]:
     """Split a function body into basic blocks with their successors.
 
-    A block label is an unindented line whose text before the first ``:`` is the label name; the
-    entry block has none and is named ``%0entry`` (not a legal LLVM name, so it can never collide
+    A block label is an unindented line whose text before the first ``:`` is the label name; an
+    entry block without one is named ``%0entry`` (not a legal LLVM name, so it can never collide
     with a real one).
     """
     blocks = [_Block(label="%0entry")]
@@ -434,6 +434,10 @@ def _blocks_of(lines: list[str], start: int, end: int) -> list[_Block]:
         if not sep or not head:
             raise ArenaBindError(f"line {i} in the function body is neither indented nor a label: {line!r}")
         blocks.append(_Block(label="%" + head))
+    # A body that opens with a label names its own entry block -- `mlir-translate` spells an outlined
+    # OpenMP region that way (`omp.par.entry:`) -- so the unnamed one before it never existed.
+    if not blocks[0].insts and len(blocks) > 1:
+        blocks = blocks[1:]
     for blk in blocks:
         if not blk.insts:
             raise ArenaBindError(f"block {blk.label} is empty")
