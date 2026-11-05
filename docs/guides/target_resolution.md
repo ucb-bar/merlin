@@ -3,9 +3,9 @@ title: Selecting a target definition package
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-08
+last_verified: 2026-11-05
 related: [adding_a_target, generated_target_repos, targetgen, target_publishing]
-code_refs: [src/merlin/targetgen/target_registry.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/capability_manifests.py, build_tools/upstreams/target_support.json]
+code_refs: [src/merlin/targetgen/target_registry.py, src/merlin/targetgen/support_pins.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/capability_manifests.py, build_tools/upstreams/target_support.json]
 ---
 
 # Selecting a target definition package
@@ -122,13 +122,18 @@ repository and require independent hardware, minimal software and runtime issuan
 
 | `MERLIN_TARGET_PATH` | Support selected for target `T` |
 | -------------------- | ------------------------------- |
-| unset | the in-repo provider whose `provider.yaml` declares `target: T`, if any |
+| unset | the in-repo provider whose `provider.yaml` declares `target: T`, else the pinned support package for `T` fetched at its pin; a pinned `T` that is not fetched is an error naming its setup command |
 | `""` (set, empty) | none: executable support refuses, reference metadata still resolves |
 | any other value | exactly the listed entries; the in-repo default is not consulted |
 
 The default is keyed by each provider's **declared** target, never by its example directory name,
-and is computed by `target_registry.in_repo_support()` (`default_support_root(target)` for one
-target). Two examples declaring the same target raise `TargetCollisionError`; an invalid
+and is computed by `target_registry.default_support()` (`default_support_root(target)` for one
+target): the in-repo providers (`in_repo_support()`) plus the **pinned support packages**
+(`merlin.targetgen.support_pins`). A chip package is not tracked here: `build_tools/upstreams/target_support.json`
+pins it (`pinned_support`: target, repo, commit, tree, and one base every package layers on), and
+`merlin-target-fetch <target>` fetches exactly that commit into `out/build/generated/pinned/<target>@<sha12>/`,
+where the default finds it. A stale revision on that shelf is never selected, and a selected layer whose
+`extends.commit` is not the base pin is refused (see [`chip_packages.md`](chip_packages.md)). Two examples declaring the same target raise `TargetCollisionError`; an invalid
 `provider.yaml` raises instead of dropping out of the selection. An installed distribution has no
 checkout and therefore no default. A caller that hands the selection to a child or prepends an entry
 should use `target_registry.effective_target_path()`, which spells the default out, so an unset
@@ -144,8 +149,9 @@ export a value. Support-dependent tests require an explicitly selected external
 provider. From-scratch experiments separately qualify its independent derivation;
 selecting a provider is not experimental admission.
 
-The in-repo support trees remain experimenter-side. Every `examples/*/support` directory is an answer
-surface whatever is selected: agent sandboxes, bundle snapshots and clean rooms withhold it (only an
+The in-repo support trees and the fetched pinned packages remain experimenter-side. Every
+`examples/*/support` directory and every checkout under `out/build/generated/pinned/` is an answer surface
+whatever is selected: agent sandboxes, bundle snapshots and clean rooms withhold it (only an
 explicit grant of its `contracts/` sub-tree can reach inside, and no bundle declares one), and
 publication refuses a support provider as a candidate. Canonical and historical snapshot updates
 follow their different `SOURCE.yaml` identity rules above.

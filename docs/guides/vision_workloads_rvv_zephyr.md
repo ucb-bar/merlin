@@ -76,7 +76,7 @@ git -C "$MERLIN_ZEPHYR_SW" checkout dev
 git -C "$MERLIN_ZEPHYR_SW" submodule update
 ```
 
-Build with `--board chipyard_kodiak` (its facts are in `examples/kodiak/support/boards.yaml`) and at
+Build with `--board chipyard_kodiak` (its facts are in kodiak-mlir's `boards.yaml`, fetched at its pin by `examples/kodiak/run.sh setup`) and at
 most **2 harts for an RVV image**: only two cores carry a vector unit, and Merlin refuses an RVV image
 over the board's `vector_harts`. The third core is reachable only by a scalar image. Three facts about that board config matter,
 and two of them are traps:
@@ -92,7 +92,7 @@ and two of them are traps:
 the last thread — not a fixed tile size that would drop work.
 
 Running on the chip happens on the Kodiak rig, which loads images over Ethernet (UDP-TSI) through
-its FPGA; see [`examples/kodiak/support/RUNNING.md`](../../examples/kodiak/support/RUNNING.md). The rig
+its FPGA; see kodiak-mlir's `RUNNING.md` (in the fetched package: `$(merlin-target-fetch kodiak --root)/RUNNING.md`). The rig
 is shared, so check that it is idle before loading or resetting anything. Merlin builds and gates the
 images and packages them with `grade.py`; the console comes back through the usual
 `OUT`/`METRIC`/`DONE` protocol.
@@ -139,7 +139,7 @@ sub-8-bit weight path or weight streaming.
 Run it in this order; each stage has a different oracle.
 
 ```bash
-export MERLIN_BOARD_CATALOG=examples/board-catalog.yaml:examples/kodiak/support
+export MERLIN_BOARD_CATALOG=examples/board-catalog.yaml:$(merlin-target-fetch kodiak --root)
 merlin-compile --workload spectformer --dtype int8 --target rvv --run host  --verify --json
 merlin-compile --workload spectformer --dtype int8 --target rvv --run spike --board chipyard_kodiak \
                --verify --json

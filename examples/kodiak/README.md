@@ -5,12 +5,21 @@ host-assisted (HTIF) console served by its own loader. That combination is what 
 building one model three different ways for one chip, and proving each of them before anyone touches the
 board.
 
-Kodiak's support (the OPU, its boards, its RTL source) is the **Kodiak chip package**, vendored at
-[`support/`](support/) from `ucb-bar/kodiak-mlir`. It is a layer on the RVV base (`examples/rvv/support`,
-from `ucb-bar/rvv-mlir`): see [`docs/guides/chip_packages.md`](../../docs/guides/chip_packages.md). The
-boards (`chipyard_kodiak`, `kodiak_opu_2core`, `firesim_kodiak_opu`) are data in
-[`support/boards.yaml`](support/boards.yaml); the field meanings are on `Board` in
-`src/merlin/runtime/boards.py`.
+Kodiak's support (the OPU, its boards, its RTL source) is the **Kodiak chip package**,
+[`ucb-bar/kodiak-mlir`](https://github.com/ucb-bar/kodiak-mlir). Merlin does not copy it: it pins one commit
+of it (`build_tools/upstreams/target_support.json`, `pinned_support`), and `./run.sh setup` fetches exactly
+that commit into `out/build/generated/pinned/kodiak@<sha12>/`, where every stage finds it
+(`merlin-target-fetch kodiak --root` prints the path; below, `<kodiak-mlir>`). It is a layer on the single
+RVV base, `ucb-bar/rvv-mlir` at Merlin's base pin (tracked at `examples/rvv/support`): see
+[`docs/guides/chip_packages.md`](../../docs/guides/chip_packages.md). The boards (`chipyard_kodiak`,
+`kodiak_opu_2core`, `firesim_kodiak_opu`) are data in `<kodiak-mlir>/boards.yaml`; the field meanings are on
+`Board` in `src/merlin/runtime/boards.py`. Not fetched, every stage but `setup` stops and names `setup`.
+
+**Changing the package** (the OPU kernel, the overlay, the boards): commit in kodiak-mlir, publish the
+commit, then bump its one sha here (`python build_tools/scripts/vendor_support.py pin kodiak <sha>`) and
+re-run `./run.sh setup`. To try an unpublished change first, select your clone explicitly:
+`MERLIN_TARGET_PATH=/path/to/kodiak-mlir ./run.sh op gemm` (a clone made with `git clone
+--recurse-submodules` carries its rvv base at `base/rvv-mlir`, at the same pinned commit).
 
 ## Quick start on a new machine
 
@@ -37,7 +46,7 @@ Kodiak adds two things to the common setup:
 
 * the **OPU's RTL**: `$MERLIN_CHIPYARD/generators/saturn` must be saturn `ea373800` (pin
   `saturn_opu_int8`, branch `opu-int8` on the fork `miles-rusch-berkeley/saturn-vectors`) with
-  `support/firesim/01-saturn-OPUConfigs.patch` applied, which adds `KodiakOPUConfig`. The OPU's
+  `<kodiak-mlir>/firesim/01-saturn-OPUConfigs.patch` applied, which adds `KodiakOPUConfig`. The OPU's
   encodings and tile geometry are read from there. Setup verifies it and warns when it is another
   revision (every build then records which revision it read):
 
@@ -45,7 +54,7 @@ Kodiak adds two things to the common setup:
   cd $MERLIN_CHIPYARD/generators/saturn
   git remote add opu https://github.com/miles-rusch-berkeley/saturn-vectors.git
   git fetch opu opu-int8 && git checkout -B opu-int8 ea373800169ce7bbb9ca27ececf74101a7caf9d5
-  git apply <merlin>/examples/kodiak/support/firesim/01-saturn-OPUConfigs.patch
+  git apply "$(merlin-target-fetch kodiak --root)/firesim/01-saturn-OPUConfigs.patch"
   ```
 
 * the OPU's **spike model** (§2c), which setup builds into `out/build/spike-ext/kodiak/` and records as
@@ -73,8 +82,8 @@ The stages:
 ./run.sh firesim-collect <job-dir> [--job device=N --job control=N]
 ```
 
-Running on the chip itself (a shared rig: check it is idle first) is in
-[`support/RUNNING.md`](support/RUNNING.md). Running on FireSim, for the OPU's real datapath and cycles,
+Running on the chip itself (a shared rig: check it is idle first) is in the package's `RUNNING.md`
+(`<kodiak-mlir>/RUNNING.md`). Running on FireSim, for the OPU's real datapath and cycles,
 is [§6](#6-run-on-firesim--the-opus-real-datapath-and-cycles).
 
 ## 1. `probe` — ask the chip what it is, before uploading megabytes
@@ -156,7 +165,7 @@ not model timing, so its cycle counts mean nothing for the OPU and the sequencer
 around cannot appear in it. It also does not model the taped-out part's partial-N erratum, which belongs
 to a different RTL revision.
 
-`./run.sh setup` builds it from the vendored package (`support/spike/`) into
+`./run.sh setup` builds it from the fetched package (`<kodiak-mlir>/spike/`) into
 `out/build/spike-ext/kodiak/` (`libsaturn_opu_model.so` + `manifest.json`) and records
 `MERLIN_KODIAK_OPU_SPIKE_EXTLIB` in `.env`, so `op` runs three legs: `rvv`, `matrix` (the twin) and
 `matrix_on_spike` (the shipped ELF), and `build --opu`/`package --opu` and `merlin-compile --matrix-unit`
@@ -181,7 +190,7 @@ records in the repo's `.env`), or `--loader path/to/loader.py` with a `get_model
 `./run.sh build --opu --models <model>`. For a single image without packaging, from the repository root:
 
 ```bash
-MERLIN_BOARD_CATALOG=examples/board-catalog.yaml:examples/kodiak/support \
+MERLIN_BOARD_CATALOG=examples/board-catalog.yaml:"$(.venv/bin/merlin-target-fetch kodiak --root)" \
 .venv/bin/merlin-compile --workload <model> --dtype int8 --target rvv --board chipyard_kodiak --harts 2 \
   --matrix-unit saturn_opu --matrix-config KodiakOPUConfig --matrix-support-target kodiak \
   --run spike --verify
@@ -265,7 +274,7 @@ single-core Kodiak OPU numbers were measured (SpectFormer int8, see the end of t
 
 | | |
 |---|---|
-| board | `firesim_kodiak_opu` ([`support/boards.yaml`](support/boards.yaml)) |
+| board | `firesim_kodiak_opu` (`<kodiak-mlir>/boards.yaml`) |
 | design | **one** Shuttle core carrying Kodiak's Saturn vector unit with the OPU: VLEN 512 / DLEN 256 (a 64-lane int8 tile), 16 GiB of FireSim DRAM, HTIF console |
 | FireSim config | `FireSimKodiakOPU1CoreConfig`, U250, 15 MHz |
 | hwdb key | `alveo_u250_firesim_kodiak_opu_1core` — the board's `bitstream:` field, so the tooling never guesses it |
@@ -284,7 +293,7 @@ the firechip `FireSimKodiakOPU1CoreConfig` target. Two things matter more than t
 - the clock-gate model must be [`merlin/contract/rtl/eicg_passthrough.v`](../../merlin/contract/rtl/eicg_passthrough.v)
   (selected through `ClockGateModelFile`). With rocket-chip's stock `EICG_wrapper` the gated OPU array
   gets a second global clock net and hold never closes, at any frequency;
-- the configs are additions not yet upstream: the two patches and the FPGA clock-gate model are in [`support/firesim/`](support/firesim/README.md)
+- the configs are additions not yet upstream: the two patches and the FPGA clock-gate model are in `<kodiak-mlir>/firesim/` (its `README.md`)
   rather than re-deriving them.
 
 Register the result in `config_hwdb.yaml` under the **same key** (`alveo_u250_firesim_kodiak_opu_1core`):

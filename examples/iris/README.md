@@ -2,9 +2,16 @@
 
 Iris is chipyard `iris-cy`'s `IrisConfig`: two Shuttle tiles with Saturn vector units (VLEN 256 / DLEN 128)
 carrying the **VME/Xsfmm** matrix unit (harts 0–1), and one Rocket tile with a Saturn DMA vector unit
-(VLEN 256, no matrix unit; hart 2). Its support is the **Iris chip package**, vendored at
-[`support/`](support/) from `ucb-bar/iris-mlir`. It is a layer on the RVV base: see
-[`docs/guides/chip_packages.md`](../../docs/guides/chip_packages.md).
+(VLEN 256, no matrix unit; hart 2). Its support is the **Iris chip package**,
+[`ucb-bar/iris-mlir`](https://github.com/ucb-bar/iris-mlir), a layer on the single RVV base (`ucb-bar/rvv-mlir`
+at Merlin's base pin): see [`docs/guides/chip_packages.md`](../../docs/guides/chip_packages.md). Merlin does
+not copy it: it pins one commit (`build_tools/upstreams/target_support.json`, `pinned_support`), and
+`./run.sh setup` fetches exactly that commit into `out/build/generated/pinned/iris@<sha12>/`
+(`merlin-target-fetch iris --root` prints it; below, `<iris-mlir>`). Not fetched, every stage but `setup`
+stops and names `setup`. Changing the package is a commit in iris-mlir and one sha bumped here
+(`python build_tools/scripts/vendor_support.py pin iris <sha>`); to try an unpublished change, select your
+clone with `MERLIN_TARGET_PATH=/path/to/iris-mlir` (cloned with `--recurse-submodules`, it carries the same
+pinned rvv base at `base/rvv-mlir`).
 
 ```bash
 ./run.sh setup --llvm <llvm23-install> --chipyard <chipyard> --zephyr-sdk <zephyr-sdk-0.17.0>
@@ -20,9 +27,10 @@ carrying the **VME/Xsfmm** matrix unit (harts 0–1), and one Rocket tile with a
 
 ## Setup
 
-`./run.sh setup` does everything the Kodiak example's does (the common part, with sizes and times, is
-in [`docs/guides/chip_packages.md`](../../docs/guides/chip_packages.md#setting-up-a-machine)), and adds
-Iris's two pinned sources:
+`./run.sh setup` fetches iris-mlir at its pinned commit, does everything the Kodiak example's does (the
+common part, with sizes and times, is in
+[`docs/guides/chip_packages.md`](../../docs/guides/chip_packages.md#setting-up-a-machine)), and adds Iris's
+two pinned sources:
 
 | pin (`merlin/contract/hardware_pins.yaml`) | what | found at | size |
 |---|---|---|---|
@@ -50,7 +58,7 @@ records `MERLIN_SPIKE_ZVT`, `MERLIN_SPIKE_ZVT_SRC` and `MERLIN_CHIPYARD_IRIS` in
 
 ## Boards
 
-Board `iris_rtl` (in `support/boards.yaml`) describes the Verilator elaboration: three vector harts, of
+Board `iris_rtl` (in `<iris-mlir>/boards.yaml`) describes the Verilator elaboration: three vector harts, of
 which `matrix_hart_ids: [0, 1]` carry the VME unit; serial-TL DRAM at `0x80000000`. No Iris silicon or
 bitstream facts are described yet.
 
@@ -60,14 +68,14 @@ The RVV leg is the plain build, gated on spike at the board's VLEN. The VME leg 
 contraction that fills at least one tile (TE = 32) to the unit and produces, through
 `merlin.runtime.backends.matrix_image.build_matrix_pair`:
 
-* **the shipped image**, whose contractions call the VME kernel (`support/vme_kernel.py`, modeled on saturn
+* **the shipped image**, whose contractions call the VME kernel (`<iris-mlir>/vme_kernel.py`, modeled on saturn
   `vme`'s `vme_gemm.h` / `vme-fused-lm2-gemm-transpose`: 2x2 super-tile, `sf.vtzero.t`, a `kmax`-row
   `sf.mm.s.s` loop, `sf.vtmv.v.t` readout). Audited: the VME instructions (decoded from the words by
   their derived MATCH/MASK, not by mnemonic) must be present;
 * **the stand-in twin**: same lowering (checked by digest), scalar tile body, none of the VME
   instructions (audited), gated on stock spike: this checks routing, pack, descriptor ABI and epilogue;
 * **the shipped image on spike with Zvt**, when `$MERLIN_SPIKE_ZVT` points at a riscv-isa-sim built with
-  the Zvt extensions (pin `spike_zvt`; build recipe in `support/README.md`). This executes the unit's
+  the Zvt extensions (pin `spike_zvt`; build recipe in `<iris-mlir>/README.md`). This executes the unit's
   words under the Zvt draft's semantics; without it the leg reports `not_run` and why.
 
 Every VME encoding, the tile edge, the operand alignment and the reduction depth per instruction are

@@ -25,8 +25,8 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
 ## Invariants
 
 - Target plugin execution requires a selected support provider on `MERLIN_TARGET_PATH`
-  (unset, the checkout's vendored `examples/*/support` providers; see
-  `target_registry.in_repo_support`). Reference metadata and generated-package discovery alone
+  (unset, the checkout's vendored `examples/*/support` providers and the pinned support packages
+  fetched at their pins; see `target_registry.default_support`). Reference metadata and generated-package discovery alone
   never authorize backend, dialect, or oracle imports. Direct plugin loads and
   already-loaded ownership checks enforce the same selection.
 - Whole-model `MatrixRouting` requires separate support_target, unit and config.

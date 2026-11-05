@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-11-05
 related: [target_resolution, adding_a_target, zephyr, model2mlir]
-code_refs: [examples/lib/chip_setup.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, src/merlin/targetgen/rtl/matrix_isa.py, src/merlin/kernels/matrix_shim.py, src/merlin/compile_cli.py, src/merlin/compile/matrix_leg.py, src/merlin/targetgen/spike_extension.py, build_tools/scripts/vendor_support.py]
+code_refs: [examples/lib/chip_setup.py, src/merlin/targetgen/support_pins.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, build_tools/upstreams/target_support.json, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, src/merlin/targetgen/rtl/matrix_isa.py, src/merlin/kernels/matrix_shim.py, src/merlin/compile_cli.py, src/merlin/compile/matrix_leg.py, src/merlin/targetgen/spike_extension.py, build_tools/scripts/vendor_support.py]
 ---
 
 # Chip packages layered on a base target
@@ -15,18 +15,70 @@ unit, Iris is RVV plus a VME matrix unit. A **chip package** says only the "plus
 provider that `extends` a base provider and inherits everything else:
 
 ```
-rvv-mlir        base: RVV contract (vector unit, dtypes, requant)       examples/rvv/support
- ├── kodiak-mlir   + BME outer-product unit, + Kodiak boards             examples/kodiak/support
- └── iris-mlir     + VME/Xsfmm matrix unit, + Iris boards                examples/iris/support
+rvv-mlir        base: RVV contract (vector unit, dtypes, requant)       pinned; tracked copy at examples/rvv/support
+ ├── kodiak-mlir   + BME outer-product unit, + Kodiak boards             pinned; fetched by examples/kodiak/run.sh setup
+ └── iris-mlir     + VME/Xsfmm matrix unit, + Iris boards                pinned; fetched by examples/iris/run.sh setup
 ```
 
-Each package is its own repository; Merlin vendors a copy of each at `examples/<chip>/support` with
-an exact `SOURCE.yaml`, so a checkout works with no fetch.
+Each package is its own repository (`ucb-bar/<name>-mlir`). Merlin does not copy the chip packages: it
+**pins** each one and fetches it at exactly that commit. Kodiak and Iris are separate tapeouts and are
+never built together, but they share ONE rvv-mlir: everything chip-specific lives in the chip repository's
+overlay (`replace:`/`remove:` included), never in a fork of the base.
+
+## Pins: one record, fetched by commit
+
+`build_tools/upstreams/target_support.json` (`pinned_support`, schema
+`merlin.upstream_support_migration.v3`) records, for each chip package, `{target, repo, branch, commit,
+tree}`, and ONE base pin (`rvv`). `merlin.targetgen.support_pins` reads it; no code names a target.
+
+* **Fetch.** `merlin-target-fetch <target>`, or the chip example's `run.sh setup`, checks a package out
+  at exactly its pinned commit into `out/build/generated/pinned/<target>@<sha12>/`: `git init`, `fetch
+  --depth 1 origin <sha>` (a full fetch when a server refuses a commit want; the pinned commits are on
+  `handwritten-implementation`, not the default branch), a detached checkout, then the commit and its tree
+  are verified against the pin. Re-running it on a verified checkout does nothing and needs no network; a
+  dirty or divergent checkout is refused, never reset. A bump is a new directory, so the old revision is
+  never moved under a running build. `--url file:///...` fetches the same commit from a local clone (it
+  is still verified against the pin); `--root` prints the selected root.
+* **Single base.** A package's `provider.yaml` `extends.commit` must equal Merlin's base pin, or fetch,
+  selection (`target_registry.resolve`, whichever way the package was selected) and
+  `merlin-target-compose` refuse it: `kodiak-mlir composed against rvv@X; Merlin's base is rvv@Y:
+  recompose kodiak-mlir against Y and bump its pin`.
+* **Submodule base.** A chip repository may carry its base as a submodule at `base/rvv-mlir`, at the
+  commit its `extends.commit` names (the chip repo's own test keeps the two equal). The fetch brings it
+  in (`git submodule update --init --depth 1`) and refuses a gitlink that is not Merlin's base pin, so a
+  build has one base, never two. A standalone clone of a chip repository needs `git clone
+  --recurse-submodules`; inside Merlin the base is the same pinned rvv either way.
+* **The base itself.** The rvv base keeps its tracked copy at `examples/rvv/support` (its `SOURCE.yaml`
+  commit must equal the base pin; a test holds them together), because flows outside the chip examples
+  read the `rvv` support contract with `MERLIN_TARGET_PATH` unset (the measurement authority of the RVV
+  mining beam, for one). `merlin-target-fetch rvv` fetches the same commit, and the tracked tree equals
+  the pinned tree.
+* **Selection.** `MERLIN_TARGET_PATH` still wins. Unset, the default is every in-repo
+  `examples/*/support` plus each pinned package fetched at its pin, keyed by its `provider.yaml` target. A
+  pinned package that is not fetched is an error naming `examples/<chip>/run.sh setup`, never a silent
+  fallback to another copy. A stale revision on the shelf is never selected.
+* **Agent-private.** Fetched checkouts are support bytes like vendored ones: agent sandboxes, bundle
+  snapshots and clean rooms withhold everything on the pinned shelf (`target_registry.fetched_support_dirs`,
+  masked by `merlin.targetgen.sandbox.answer_surfaces`).
+
+### Editing a package
+
+Commit in `<chip>-mlir`, publish the commit, and bump its one sha in Merlin:
+
+```sh
+python build_tools/scripts/vendor_support.py pin kodiak <sha>   # fetches it, records commit + tree
+examples/kodiak/run.sh setup                                    # fetches the new pin
+```
+
+`pin` refuses a commit whose `extends.commit` is not the base pin. Moving the base is the one change that
+touches every package: re-vendor `examples/rvv/support` (`vendor_support.py vendor`, which moves the base
+pin with it), recompose each chip package against the new base, and bump each pin.
 
 ## Setting up a machine
 
 Each chip example sets a machine up with one command, `examples/<chip>/run.sh setup`
-(`examples/lib/chip_setup.py`, plus what that chip adds). It needs `uv` and `git`, is safe to re-run
+(`examples/lib/chip_setup.py`, plus what that chip adds), and the first thing it does is fetch the chip's
+support package at its pin (`--support <chip>`). It needs `uv` and `git`, is safe to re-run
 (every step is skipped when its result is already there and still right), writes only under `out/build/`
 and the repo's `.env`, and never modifies a checkout it did not create. It ends with a table of every
 prerequisite and, for anything still missing, the exact commands; it exits non-zero until nothing is
@@ -41,6 +93,7 @@ and `preflight` says when a missing path is one your shell exports. `unset` them
 | what | where | size, time |
 |---|---|---|
 | Merlin's venv (`uv sync`) | `.venv/` | ~150 MB, under a minute |
+| the chip's support package at its pinned commit, with its base (`--support`) | `out/build/generated/pinned/<chip>@<sha12>/` | a few MB, seconds |
 | model2MLIR, cloned at its pin (`model2mlir_capture`) unless `--m2m`/`MERLIN_M2M_DIR` names one | `out/build/ext/model2MLIR/` | ~50 MB |
 | capture venv: Python 3.12, PyTorch nightly (CPU), `torch-mlir==20260531.828` (the wheel matching the LLVM pin), model2MLIR's own libraries (xdsl, structlog, ...) at the versions its `uv.lock` records, torchao, timm; model2MLIR on its path by a `.pth`, so a shared or read-only checkout works | `out/build/venv/model2mlir/` | ~1.3 GB, 2-5 min |
 | Zephyr west workspace: `zephyr-chipyard-sw` (`dev`), its `zephyr_ws/zephyr` submodule, `west init --mf west-riscv.yml`, `west update` (skipped when `ZEPHYR_BASE` is set) | `out/build/ext/zephyr-chipyard-sw/` | ~2 GB, 5-10 min |
@@ -77,7 +130,8 @@ build records the revision it read.
 
 | file | |
 |---|---|
-| `provider.yaml` | `schema: merlin.provider.v2`, `extends: {target, repo, commit}`: the base and the exact revision this layer was composed against |
+| `provider.yaml` | `schema: merlin.provider.v2`, `extends: {target, repo, commit}`: the base and the exact revision this layer was composed against (Merlin's base pin) |
+| `base/rvv-mlir` | optional submodule: the base at `extends.commit`, so a standalone clone composes and tests on its own |
 | `contracts/overlay.yaml` | the delta to the base contract (the only contract file you edit) |
 | `contracts/target_contract.yaml` | the effective contract, **generated** by `merlin-target-compose` |
 | `contracts/composed.lock.yaml` | base revision, base contract digest, overlay digest, effective digest |
@@ -98,15 +152,16 @@ build records the revision it read.
   that declares it, so a layer declares its own;
 * `name` is always the layer's target.
 
-The base is found without fetching: on `MERLIN_TARGET_PATH`, in `out/build/generated/`, or vendored
-under `examples/*/support`. If `extends.commit` is set, the base's recorded revision must equal it (a
-vendored base's revision is its `SOURCE.yaml` commit; a clone's is its `HEAD`). `--check` recomputes
-without writing and exits 1 on drift, so a moved base or an edited overlay cannot reach a build
-unnoticed.
+The base is found without fetching: the layer's own checked-out submodule base first, then
+`MERLIN_TARGET_PATH` (unset: the in-repo and fetched pinned providers), `out/build/generated/`, or
+vendored under `examples/*/support`. If `extends.commit` is set, the base's recorded revision must equal it
+(a vendored base's revision is its `SOURCE.yaml` commit; a clone's or submodule's is its `HEAD`), and it
+must be Merlin's base pin. `--check` recomputes without writing and exits 1 on drift, so a moved base or
+an edited overlay cannot reach a build unnoticed.
 
 ```sh
-merlin-target-compose examples/kodiak/support --check
-merlin-target-fetch kodiak          # clones kodiak-mlir, then rvv-mlir at the commit it pins
+merlin-target-fetch kodiak          # kodiak-mlir at its pin (+ base submodule), and the rvv base pin
+merlin-target-compose "$(merlin-target-fetch kodiak --root)" --check
 ```
 
 ## Boards travel with the chip
@@ -115,24 +170,30 @@ merlin-target-fetch kodiak          # clones kodiak-mlir, then rvv-mlir at the c
 root, meaning its `boards.yaml`:
 
 ```sh
-export MERLIN_BOARD_CATALOG=examples/board-catalog.yaml:examples/kodiak/support
+export MERLIN_BOARD_CATALOG=examples/board-catalog.yaml:$(merlin-target-fetch kodiak --root)
 ```
+
+The chip examples' `run.sh` do this for you (`ex_select_support`), and stop with the setup command when
+the package is not fetched.
 
 A board declared by two selected catalogs is refused, not resolved by order.
 
 ## Adding a chip
 
-1. Create `<chip>-mlir` with `provider.yaml` (`extends: rvv`, pinned commit), `contracts/overlay.yaml`
-   (`rtl_source`, extra `compute_units`, `matrix_contract`, `plugin`, measurement substrates), and
-   `boards.yaml` with facts read from the chip's own config, never guessed.
+1. Create `<chip>-mlir` with `provider.yaml` (`extends: rvv`, `commit:` Merlin's base pin),
+   `contracts/overlay.yaml` (`rtl_source`, extra `compute_units`, `matrix_contract`, `plugin`, measurement
+   substrates), and `boards.yaml` with facts read from the chip's own config, never guessed. Optionally add
+   the base as a submodule at `base/rvv-mlir`, at the same commit.
 2. `merlin-target-compose .` and commit the generated contract and lock.
 3. Pin every hardware revision the package reads in `merlin/contract/hardware_pins.yaml`.
-4. Vendor it: `python build_tools/scripts/vendor_support.py --repo ../<chip>-mlir --example <chip> --url <repo url>`.
-   This copies the provider root at one commit byte-for-byte and records the tree in `SOURCE.yaml` and
-   `build_tools/upstreams/target_support.json`; `merlin/tests/infra/test_example_support.py` recomputes it.
+4. Publish the commit and pin it: add `{target, repo, branch, commit, tree, extends, example}` under
+   `pinned_support.packages` in `build_tools/upstreams/target_support.json` (later moves:
+   `vendor_support.py pin`), and give the example a `run.sh` whose `setup` passes `--support <chip>`.
+   `merlin/tests/infra/test_support_pins.py` checks the record; a host that has fetched the package also
+   runs the package's own suite against this checkout.
 
-When the base moves, re-run `merlin-target-compose` in each layer, bump `extends.commit`, and
-re-vendor. The `--check` in each layer's tests fails until that is done.
+When the base moves, re-run `merlin-target-compose` in each layer, bump `extends.commit`, and bump each
+pin. Until then, every layer over the old base is refused with the command above.
 
 ## A matrix unit in a chip package
 

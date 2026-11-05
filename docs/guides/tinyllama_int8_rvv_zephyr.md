@@ -273,7 +273,7 @@ merlin-compile --workload tiny_llama --dtype int8 --target rvv --run spike --boa
 ```
 
 Every Zephyr route needs a board from a selected catalog
-(`MERLIN_BOARD_CATALOG=examples/board-catalog.yaml`, plus `:examples/kodiak/support` for the Kodiak
+(`MERLIN_BOARD_CATALOG=examples/board-catalog.yaml`, plus `:$(merlin-target-fetch kodiak --root)` for the Kodiak
 boards); without one the run is reported `not_run`.
 
 This lowers the bundle through the package's schedule with the **integer** datapath
