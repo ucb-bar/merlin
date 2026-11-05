@@ -234,23 +234,58 @@ def _coerce(key: str, value: Any, ftype: str, where: str) -> Any:
     raise BoardRegistryError(f"{where}: Board field type {ftype!r} has no registry spelling")
 
 
+#: A support provider ships its boards beside its contract, at ``<provider root>/boards.yaml``.
+PROVIDER_BOARDS_FILE = "boards.yaml"
+
+
+def catalog_paths(selection: str | Path) -> list[Path]:
+    """The catalog files a selection names, in order.
+
+    ``selection`` is one path or an ``os.pathsep``-separated list. Each entry is a catalog YAML file or a
+    support-provider root, which stands for its ``boards.yaml`` -- so a chip package that ships its own
+    boards is selected exactly like its support (``MERLIN_BOARD_CATALOG=<provider root>``). Nothing is
+    discovered: an entry that names neither raises.
+    """
+    entries = [selection] if isinstance(selection, Path) else [e for e in str(selection).split(os.pathsep) if e]
+    out: list[Path] = []
+    for entry in entries:
+        p = Path(entry).expanduser().resolve()
+        if p.is_dir():
+            p = p / PROVIDER_BOARDS_FILE
+        if not p.is_file():
+            raise BoardRegistryError(f"no board catalog at {p}; check {BOARD_CATALOG_ENV}")
+        out.append(p)
+    if not out:
+        raise BoardRegistryError(f"no board catalog selected; set {BOARD_CATALOG_ENV} to a target-owned YAML file")
+    return out
+
+
 def load_boards(path: str | Path | None = None) -> dict[str, Board]:
     """Read the board registry into ``{name: Board}``.
 
     Fails closed: a missing file, an unknown field, a value of the wrong type or outside its vocabulary,
     or a missing required hardware or port fact raises :class:`BoardRegistryError` naming the
     board and the field. The caller passes ``path`` or selects an OOT catalog with
-    ``MERLIN_BOARD_CATALOG``. Merlin never guesses a board or loads example target
-    facts implicitly.
+    ``MERLIN_BOARD_CATALOG``; either may list several catalogs (see :func:`catalog_paths`), and a
+    board declared by two of them is refused rather than resolved by order. Merlin never guesses a
+    board or loads example target facts implicitly.
     """
-    import yaml
-
     selected = path if path is not None else os.environ.get(BOARD_CATALOG_ENV)
     if not selected:
         raise BoardRegistryError(f"no board catalog selected; set {BOARD_CATALOG_ENV} to a target-owned YAML file")
-    p = Path(selected).expanduser().resolve()
-    if not p.is_file():
-        raise BoardRegistryError(f"no board catalog at {p}; check {BOARD_CATALOG_ENV}")
+    out: dict[str, Board] = {}
+    origin: dict[str, Path] = {}
+    for p in catalog_paths(selected):
+        for name, brd in _load_catalog(p).items():
+            if name in out:
+                raise BoardRegistryError(f"board {name!r} is declared by both {origin[name]} and {p}")
+            out[name], origin[name] = brd, p
+    return out
+
+
+def _load_catalog(p: Path) -> dict[str, Board]:
+    import yaml
+
     raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
     if not isinstance(raw, dict) or not isinstance(raw.get("boards"), dict):
         raise BoardRegistryError(f"{p}: expected a mapping with a `boards:` mapping of name -> facts")

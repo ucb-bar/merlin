@@ -78,6 +78,41 @@ def test_catalog_selection_is_explicit(monkeypatch):
         boards.load_boards()
 
 
+_MINIMAL_ENTRY = (
+    "    dram_bytes: 256 MiB\n    dram_base: 0x80000000\n    harts: 1\n    vector_harts: 1\n"
+    "    console: htif\n    flow: baremetal\n    code_reserve: 1 MiB\n"
+)
+
+
+def _catalog(path: Path, *names: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = "".join(f"  {n}:\n{_MINIMAL_ENTRY}" for n in names)
+    path.write_text(f"schema_version: 1\nboards:\n{body}", encoding="utf-8")
+    return path
+
+
+def test_a_chip_package_ships_its_boards_beside_its_support(tmp_path):
+    """A provider root stands for its boards.yaml, and several catalogs compose without guessing."""
+    shared = _catalog(tmp_path / "shared.yaml", "board_a")
+    chip = tmp_path / "chip-support"
+    _catalog(chip / boards.PROVIDER_BOARDS_FILE, "board_b")
+    found = boards.load_boards(os.pathsep.join([str(shared), str(chip)]))
+    assert sorted(found) == ["board_a", "board_b"]
+
+
+def test_a_board_declared_twice_is_refused_not_resolved_by_order(tmp_path):
+    first = _catalog(tmp_path / "a.yaml", "board_a")
+    second = _catalog(tmp_path / "b.yaml", "board_a")
+    with pytest.raises(boards.BoardRegistryError, match="declared by both"):
+        boards.load_boards(os.pathsep.join([str(first), str(second)]))
+
+
+def test_a_provider_root_without_boards_is_not_silently_empty(tmp_path):
+    (tmp_path / "support").mkdir()
+    with pytest.raises(boards.BoardRegistryError, match="no board catalog at"):
+        boards.load_boards(str(tmp_path / "support"))
+
+
 def test_zephyr_image_build_does_not_require_spike(monkeypatch, tmp_path):
     zephyr = tmp_path / "zephyr"
     sdk = tmp_path / "sdk"
