@@ -8,6 +8,7 @@ related: [artifact_evaluation, reproducibility, ../reference/panel_tile_loads]
 code_refs:
   - build_tools/scripts/recompute_paper_results.py
   - build_tools/scripts/restore_reference_archive.py
+  - build_tools/scripts/verify_core_aten_artifact.py
   - experiments/reference-data/paper-studies/registry.json
   - experiments/reference-data/paper-studies/supplemental-archive.json
 ---
@@ -126,7 +127,50 @@ medians from each cell's saved samples and retains all four same-image boot
 contrasts. Its measured subset has eleven of fifteen cases per pair. Four boots
 are hardware repeats, not additional independent author replicates.
 
+## Check the separate operator-coverage supplement
+
+The November operator-coverage evaluation is a separate cohort from the
+construction requirements and the 89-case performance panel. Its supplement
+contains a source archive, `source-manifest.json` and saved result tables. Extract
+the archive into a new directory and verify that directory without running any
+archived program:
+
+```sh
+python3 build_tools/scripts/verify_core_aten_artifact.py \
+  --root /absolute/path/to/coverage-source \
+  --manifest /absolute/path/to/coverage-supplement/source-manifest.json
+```
+
+The verifier checks complete file membership and hashes, the operator catalog,
+per-case numerical/host-compute/trace verdicts, retired accelerator instruction
+counts, and each operator's mapping to graded corpus tests. It recomputes the
+support counts from these records rather than trusting the summary text.
+Ungraded probes remain ungraded, and failed expected refusals and unavailable
+model checks remain separate from successful tests.
+
+The retained cohort contains 193 overloads, with 57 selected device forms and
+136 host cases. Its final candidate records 57 device-form passes and no supported
+host cases. The native corpus records 318 of 321 core tests passing and all 111
+scalability tests passing. The two other core tests violate required refusals, and
+the third is a model check that was not run. Sixty-two probes credited in the
+operator map are explicitly outside the graded corpus.
+
+These are saved functional-check outcomes on selected integer and specification
+forms. Several forms narrow the canonical PyTorch call's layout, dimensions,
+output width or numerical model. They do not establish arbitrary operator
+support, floating-point equivalence, a formal proof or fresh hardware correctness.
+Repeating execution also needs the recorded prepared grader/corpus, simulator,
+functional extension and toolchains. Remote executable locators in a CSV are
+not retained executable bytes.
+
 ## Limits retained from the original evidence
+
+The scheduling milestone supplement retains the matching control and treatment
+ELFs recovered from their original author checks. Both hashes, LLVM files and
+build records match the frozen-cell records. This establishes the retained
+executable identity for the modeled-improvement milestone, without modifying the
+original frozen-cell directories. It does not supply the missing runtime-host
+image/domain observations for the separate physical collection.
 
 The single-source CCA comparison is not a matched ablation. CCA-on also receives
 additional operator notes and a newer export. Family geometric means describe
