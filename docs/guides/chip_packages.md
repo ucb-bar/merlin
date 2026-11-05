@@ -3,9 +3,9 @@ title: Chip packages layered on a base target
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-11-04
+last_verified: 2026-11-05
 related: [target_resolution, adding_a_target, zephyr, model2mlir]
-code_refs: [src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, src/merlin/targetgen/rtl/matrix_isa.py, src/merlin/kernels/matrix_shim.py, src/merlin/compile_cli.py, build_tools/scripts/vendor_support.py]
+code_refs: [examples/lib/chip_setup.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, src/merlin/targetgen/rtl/matrix_isa.py, src/merlin/kernels/matrix_shim.py, src/merlin/compile_cli.py, build_tools/scripts/vendor_support.py]
 ---
 
 # Chip packages layered on a base target
@@ -22,6 +22,53 @@ rvv-mlir        base: RVV contract (vector unit, dtypes, requant)       examples
 
 Each package is its own repository; Merlin vendors a copy of each at `examples/<chip>/support` with
 an exact `SOURCE.yaml`, so a checkout works with no fetch.
+
+## Setting up a machine
+
+Each chip example sets a machine up with one command, `examples/<chip>/run.sh setup`
+(`examples/lib/chip_setup.py`, plus what that chip adds). It needs `uv` and `git`, is safe to re-run
+(every step is skipped when its result is already there and still right), writes only under `out/build/`
+and the repo's `.env`, and never modifies a checkout it did not create. It ends with a table of every
+prerequisite and, for anything still missing, the exact commands; it exits non-zero until nothing is
+left. Paths can be passed as flags or exported; whatever is found and right is recorded in `.env`
+(the process environment still wins), and `run.sh` loads `.env`, so no later shell needs exports.
+
+**Done by setup** (cheap; downloads and builds of minutes):
+
+| what | where | size, time |
+|---|---|---|
+| Merlin's venv (`uv sync`) | `.venv/` | ~150 MB, under a minute |
+| model2MLIR, cloned at its pin (`model2mlir_capture`) unless `--m2m`/`MERLIN_M2M_DIR` names one | `out/build/ext/model2MLIR/` | ~50 MB |
+| capture venv: Python 3.12, PyTorch nightly (CPU), `torch-mlir==20260531.828` (the wheel matching the LLVM pin), torchao, timm; model2MLIR on its path by a `.pth`, so a shared or read-only checkout works | `out/build/venv/model2mlir/` | ~1.3 GB, 2-5 min |
+| Zephyr west workspace: `zephyr-chipyard-sw` (`dev`), its `zephyr_ws/zephyr` submodule, `west init --mf west-riscv.yml`, `west update` (skipped when `ZEPHYR_BASE` is set) | `out/build/ext/zephyr-chipyard-sw/` | ~2 GB, 5-10 min |
+| a chip's spike model of its unit, when its package declares one (Kodiak's OPU) | `out/build/spike-ext/<chip>/` | seconds |
+| a simulator built from a verified pinned source (Iris's riscv-isa-sim with Zvt) | `out/build/<pin>/` | ~0.3 GB, ~2 min on 32 cores |
+
+`--no-fetch` prints the clone and west commands instead of running them.
+
+**Found and verified, never installed** (large, or the location is yours to choose):
+
+| what | flag / variable | how to get it | size, time |
+|---|---|---|---|
+| LLVM/MLIR 23 (`clang-23`, `mlir-translate`) at llvm-project `a47bddcc` | `--llvm` / `MERLIN_MLIR_INSTALL` or `MERLIN_CLANG` | [`llvm_toolchain.md`](llvm_toolchain.md), two-target recipe | ~13 GB, tens of minutes on many cores, hours on a laptop |
+| chipyard with riscv-tools (spike, `riscv64-unknown-elf-gcc`, cmake, ninja) | `--chipyard` / `MERLIN_CHIPYARD` | `git clone https://github.com/ucb-bar/chipyard.git && ./build-setup.sh riscv-tools` | ~15 GB, about an hour |
+| Zephyr SDK 0.17.0 (riscv64 toolchain) | `--zephyr-sdk` / `ZEPHYR_SDK_INSTALL_DIR` | printed by setup (minimal SDK + `setup.sh -t riscv64-zephyr-elf`) | ~1 GB, minutes |
+| the chip's pinned hardware checkouts | per pin (`root_env` in `merlin/contract/hardware_pins.yaml`) | printed by setup, derived from the pin | see the chip's README |
+
+A **pinned checkout** a chip reads its facts from (`--checkout-pin <pin>` in its `run.sh`) is looked for
+at the pin's `root_env`, else at `out/build/ext/<pin>/`, and verified by content with
+`merlin.common.provenance.verify`: the commit, the branch when the pin names one, the required paths, and
+every pin nested in it (`nested_in`: the gitlink the superproject records and the submodule's HEAD).
+Verified, it is recorded in `.env`. On another revision, setup prints the drift and the commands that
+would move it (it never moves it). Absent, it prints the clone commands, generated from the pin
+(`repo_canonical`, `branch`, `commit`, the nested pins' paths) and aimed at `out/build/ext/<pin>/`, where
+the next run finds it. A simulator is built (`--build-spike <pin>=<VAR>`) only from a verified source,
+out of tree into `out/build/<pin>/`, with a `merlin-build.json` recording the commit, the source digest
+and the binary's sha256; it is rebuilt only when one of those changes.
+
+A pin inside a prerequisite you configured (`--verify-pin`, e.g. Kodiak's `saturn_opu_int8` inside
+`$MERLIN_CHIPYARD`) is verified and reported as a warning when it drifts: the flow still runs, and every
+build records the revision it read.
 
 ## What a chip package contains
 

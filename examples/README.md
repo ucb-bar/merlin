@@ -229,7 +229,9 @@ export MERLIN_MLIR_TRANSLATE=/path/to/bin/mlir-translate
 
 # 5. Zephyr — a WEST WORKSPACE, not a bare clone. The bare clone has no zephyr_ws/zephyr in it:
 git clone -b dev https://github.com/ucb-bar/zephyr-chipyard-sw.git
-cd zephyr-chipyard-sw && west init -l . && west update       # populates zephyr_ws/
+cd zephyr-chipyard-sw && git submodule update --init zephyr_ws/zephyr
+west init -l --mf west-riscv.yml zephyr_ws/zephyr && (cd zephyr_ws && west update)   # populates zephyr_ws/
+#    (the chip examples' `run.sh setup` does this step for you, into out/build/ext/)
 export ZEPHYR_BASE=$PWD/zephyr_ws/zephyr
 
 # 6. the Zephyr SDK (0.17.0 is what this is exercised against)
@@ -252,8 +254,9 @@ Two honest caveats about a from-scratch machine:
   matching SDK. If `preflight` says the tree and SDK are fine but `build` still fails, the build's own
   error is the authority, not this list. Step 3 is the *slowest* — building LLVM 23 is tens of minutes on
   a many-core host and about 13 GB of disk — but it is unattended and only happens once.
-- `_sdk_dir()`'s built-in default is a path on one developer's machine. If you have not set
-  `ZEPHYR_SDK_INSTALL_DIR`, `preflight` may show a Zephyr SDK that only exists here. Set it explicitly.
+- Nothing here has a default that points at a particular machine: an unset `ZEPHYR_BASE`,
+  `ZEPHYR_SDK_INSTALL_DIR` or `MERLIN_CHIPYARD` is reported as missing, never guessed. The chip examples'
+  `run.sh setup` finds, verifies and records all of them (see `docs/guides/chip_packages.md`).
 
 ## Inputs, and how to get each one
 

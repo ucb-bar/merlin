@@ -16,16 +16,43 @@ boards (`chipyard_kodiak`, `kodiak_opu_2core`, `firesim_kodiak_opu`) are data in
 
 ```bash
 git clone https://github.com/ucb-bar/merlin.git && cd merlin/examples/kodiak
-./run.sh setup                    # Merlin venv + the model capture environment + .env;
-                                  # prints the exact commands for anything still missing
-./run.sh setup --llvm <llvm23> --chipyard <chipyard> --zephyr-sw <ws> --zephyr-sdk <sdk>
-./run.sh op gemm                  # one 64x64x64 GEMM: RVV vs RVV+OPU, both gated on spike (~1 min)
+# the three things too big to install for you (setup prints how to get any it cannot find):
+./run.sh setup --llvm <llvm23-install> --chipyard <chipyard> --zephyr-sdk <zephyr-sdk-0.17.0>
+./run.sh preflight                # every stage should say [ok ]
+./run.sh op gemm                  # one 64x64x64 GEMM: RVV vs RVV+OPU, gated on spike (~1 min)
 ./run.sh op gemm 96 80 200        # M N K: partial tiles, odd K
 ./run.sh op conv2d 16 64 16 3     # CIN COUT HW K (im2col + matmul)
 ./run.sh op my_op/loader.py       # your own one-operator model (see examples/workloads/gemm/loader.py)
 ```
 
-`op` prints the status of both images, how much of the work went to the OPU, why anything did not, and
+`setup` needs `uv` and `git`, and is safe to re-run: each step is skipped when its result is already
+there. Exporting the paths instead of passing flags works too (`MERLIN_MLIR_INSTALL` or `MERLIN_CLANG`,
+`MERLIN_CHIPYARD`, `ZEPHYR_SDK_INSTALL_DIR`, and `ZEPHYR_BASE` if you already have a Zephyr workspace);
+setup records whatever it finds in the repo's `.env`, so later shells need nothing exported. What it does
+by itself, and what it only finds and verifies, with sizes and times, is in
+[`docs/guides/chip_packages.md`](../../docs/guides/chip_packages.md#setting-up-a-machine). It ends with a
+list of whatever is still missing, with the exact commands, and exits non-zero until that list is empty.
+
+Kodiak adds two things to the common setup:
+
+* the **OPU's RTL**: `$MERLIN_CHIPYARD/generators/saturn` must be saturn `ea373800` (pin
+  `saturn_opu_int8`, branch `opu-int8` on the fork `miles-rusch-berkeley/saturn-vectors`) with
+  `support/firesim/01-saturn-OPUConfigs.patch` applied, which adds `KodiakOPUConfig`. The OPU's
+  encodings and tile geometry are read from there. Setup verifies it and warns when it is another
+  revision (every build then records which revision it read):
+
+  ```bash
+  cd $MERLIN_CHIPYARD/generators/saturn
+  git remote add opu https://github.com/miles-rusch-berkeley/saturn-vectors.git
+  git fetch opu opu-int8 && git checkout -B opu-int8 ea373800169ce7bbb9ca27ececf74101a7caf9d5
+  git apply <merlin>/examples/kodiak/support/firesim/01-saturn-OPUConfigs.patch
+  ```
+
+* the OPU's **spike model** (§2c), which setup builds into `out/build/spike-ext/kodiak/` and records as
+  `MERLIN_KODIAK_OPU_SPIKE_EXTLIB`, so `op` also runs the shipped OPU image on spike.
+
+`op` prints the status of each image (`rvv`, `matrix` = the OPU image's stand-in twin, `matrix_on_spike` =
+the shipped OPU image on the spike model), how much of the work went to the OPU, why anything did not, and
 where the ELFs are (`out/artifacts/probes/chipyard_kodiak/<op>/`: `matrix.elf` for the chip,
 `matrix_twin.elf` is what spike ran, `rvv.elf` is the baseline). It is the fastest loop for working on the
 OPU kernel itself: edit the kernel, rerun `op`.
@@ -33,7 +60,7 @@ OPU kernel itself: edit the kernel, rerun `op`.
 The stages:
 
 ```bash
-./run.sh setup                    # see above
+./run.sh setup [--llvm P] [--chipyard D] [--zephyr-sw D] [--zephyr-sdk D] [--m2m D] [--no-fetch]
 ./run.sh preflight
 ./run.sh probe
 ./run.sh op <gemm|conv2d|encoder_block|loader.py> [dims] [--harts 2]
@@ -125,11 +152,14 @@ not model timing, so its cycle counts mean nothing for the OPU and the sequencer
 around cannot appear in it. It also does not model the taped-out part's partial-N erratum, which belongs
 to a different RTL revision.
 
+`./run.sh setup` builds it from the vendored package (`support/spike/`) into
+`out/build/spike-ext/kodiak/` (`libsaturn_opu_model.so` + `manifest.json`) and records
+`MERLIN_KODIAK_OPU_SPIKE_EXTLIB` in `.env`, so `op` runs three legs: `rvv`, `matrix` (the twin) and
+`matrix_on_spike` (the shipped ELF). It is rebuilt only when the package's declared inputs change. To
+build it by hand, or from another kodiak-mlir checkout selected with `MERLIN_TARGET_PATH`:
+
 ```bash
-export MERLIN_TARGET_PATH=<kodiak-mlir checkout with spike/>   # until the vendored support/ carries it
 ./run.sh spike-model                  # -> out/build/spike-ext/kodiak/libsaturn_opu_model.so + manifest.json
-export MERLIN_KODIAK_OPU_SPIKE_EXTLIB=$PWD/../../out/build/spike-ext/kodiak/libsaturn_opu_model.so
-./run.sh op gemm 96 80 200            # now three legs: rvv, matrix (twin), matrix_on_spike (shipped ELF)
 ```
 
 The model is loaded only as the package's contract declares it (`runner.spike_extension`: extension
