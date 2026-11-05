@@ -103,3 +103,13 @@ def test_a_console_without_a_digest_still_parses():
     """Older images predate HASH; reading one must not become an error."""
     res = zm._parse_console("OUT 2 0 1065353216\nDONE\n", 0)
     assert "out_hash" not in res
+
+
+@pytest.mark.parametrize("iters", [1, 4])
+def test_no_console_write_inside_the_timed_window(iters):
+    """A printk between the two mcycle reads is free on spike but blocks on FireSim's UART: a
+    0.8M-cycle OPU kernel and a 0.95M-cycle RVV kernel both timed ~17.04M cycles (jobs 3852/3853)."""
+    src = zm._main_c(0, iters=iters, warmup=1)
+    start, end = _at(src, "uint64_t c0 = rd_mcycle();"), _at(src, "uint64_t c1 = rd_mcycle();")
+    assert "printk(" not in src[start:end].replace('printk("FAIL', "")
+    assert _at(src, "METRIC iter_cycles") > end

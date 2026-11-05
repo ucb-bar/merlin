@@ -1829,6 +1829,7 @@ static void merlin_worker(void *a, void *b, void *c) {{
 #endif
   }}
   merlin_reset_session();
+  static uint64_t merlin_iter_cyc[MERLIN_ITERS]; /* printed after c1: printk blocks on a FireSim UART */
 {dbg.pre_run}  uint64_t c0 = rd_mcycle();
   for (int it = 0; it < MERLIN_ITERS; it++) {{
     uint64_t i0 = rd_mcycle();
@@ -1842,11 +1843,10 @@ static void merlin_worker(void *a, void *b, void *c) {{
       printk("FAIL state ABI mismatch during timed session\n"); k_sem_give(&merlin_done); return;
     }}
 #endif
-    uint64_t i1 = rd_mcycle();
-    printk("METRIC iter_cycles %d %llu\\n", it, (unsigned long long)(i1 - i0));
+    merlin_iter_cyc[it] = rd_mcycle() - i0;
   }}
   uint64_t c1 = rd_mcycle();
-{dbg.post_run}
+{dbg.post_run}  for (int it = 0; it < MERLIN_ITERS; it++) printk("METRIC iter_cycles %d %llu\\n", it, (unsigned long long)merlin_iter_cyc[it]);
   /* CHEAPEST DECISIVE EVIDENCE FIRST — the console is the scarce resource on a long run.
    *
    * A whole-model FireSim console moves single-digit BYTES PER SECOND, so what is printed and in
