@@ -1,0 +1,143 @@
+# Where Iris's matrix unit's facts are READ FROM -- the entry points of the derivation, as data.
+#
+# Every value the compiler needs about the unit (instruction encodings, tile edge, operand alignment,
+# reduction depth per instruction, the matrix configurations it accepts) is derived from the unit's own
+# RTL at build time. A derivation has to start somewhere, though: it has to know that the unit's
+# instructions are the Seq `opuInsns`, that a decode key's `F6(...)` keys funct6, that the host core
+# declares its configuration instructions as BitPats in `MatrixInstructions`. Those names are the
+# ADDRESSES of the facts, and they live here so that a second unit is a new block, not a new code path.
+#
+# WHAT IS NOT HERE: no encodings, no tile edges, no alignments, no kmax. Those are read out of the sources
+# named below (merlin.targetgen.rtl.matrix_isa) and a value that cannot be read fails closed. The one
+# block of values below, `operand_layout`, is positions inside REGISTER operands (Zvt draft operand
+# formats), each with the source that states it; the shipped image's run on the zvt simulator exercises
+# every one of them.
+#
+# The revisions these paths are read at are declared in Merlin's merlin/contract/hardware_pins.yaml and
+# named by `pin` (saturn_vme, rocket_chip_iris; chipyard_iris for the config; spike_zvt for the simulator).
+version: 1
+
+units:
+
+  saturn_vme:
+    description: >-
+      The VME/Xsfmm matrix unit of saturn `vme` on Iris's two Shuttle tiles: TEW=32 tiles (four of them),
+      sf.mm.* int8 x int8 -> int32 outer-product accumulation over up to kmax reduction rows per
+      instruction, tiles zeroed with sf.vtzero.t and read row by row with sf.vtmv.v.t, configured by the
+      host core's sf.msetmtype / sf.msettn / sf.msettm / sf.msettk.
+    pin: saturn_vme
+    root_env: MERLIN_CHIPYARD_IRIS
+    path: generators/saturn
+
+    # The unit's own Chisel sources, relative to `path`.
+    sources:
+      consts: src/main/scala/common/Consts.scala
+      instructions: src/main/scala/insns/Instructions.scala
+      params: src/main/scala/common/Parameters.scala
+      # A SECOND, independent statement of the same encodings, by the unit's author. A disagreement on any
+      # bit both state refuses to emit. Bits the RTL decoder ignores but an .insn must spell (the vm bit)
+      # are taken from here and recorded as such.
+      crosscheck_header: benchmarks/common/vme.h
+
+    # The configuration instructions are decoded by the HOST CORE, not by the vector unit: rocket-chip's
+    # Matrix.scala declares them as 32-bit BitPats and holds the kmax table.
+    core:
+      pin: rocket_chip_iris
+      path: generators/rocket-chip
+      source: src/main/scala/rocket/Matrix.scala
+      container: MatrixInstructions
+      instructions: [SF_MSETMTYPE, SF_VSETTN, SF_VSETTM, SF_VSETTK]
+      config_object: MatrixConfig
+      kmax_def: kmax
+
+    declarations:
+      insn_seq: opuInsns                 # the Seq naming which instructions the unit implements
+      consts_container: HasVectorConsts
+      funct6_enum: OPMFunct6
+      opcode_name: opcVector             # major opcode of an instruction with no opcode flag set
+      opcode_flags:                      # a props flag that selects another major opcode
+        OPVE: opcVectorE
+      decode_fields:                     # decode-key prop -> RISC-V instruction field it keys
+        F6: funct6
+        F3: funct3
+        RS1: rs1
+        RS2: rs2
+      vtype_fields: [SEW]                # decode-key props that test vtype, not the instruction word
+      form_funct3:
+        VV: OPMVV
+        VX: OPMVX
+      matrix_types: opuMatrixTypes       # Seq of (SEW, TWIDEN) the unit accepts
+      params_object: VectorParams        # where a vector unit's params objects are declared
+      enable_flag: useOpu                # the params flag that puts the unit on a vector unit
+      # derived name -> the vme.h macro or function whose .insn states the same instruction
+      crosscheck_pairs:
+        SF_MM_INT: VME_MM_S_U
+        SF_MM_FP8: VME_MM_E4_E4
+        SF_VTMV_V_T: VME_VTMV_V_T
+        SF_VTMV_T_V: VME_VTMV_T_V
+        SF_VTZERO_T: VME_VTZERO
+        SF_VTDISCARD: VME_VTDISCARD
+        SF_MSETMTYPE: vme_msetmtype_raw
+        SF_VSETTN: vme_vsettn
+        SF_VSETTM: vme_vsettm
+        SF_VSETTK: vme_vsettk
+
+    # Where the elaborated configurations are declared. IrisConfig instantiates TWO vector units (Rocket's
+    # DMA unit and the Shuttle tiles' unit); the geometry is read from the one whose params enable the
+    # matrix unit (`enable_flag`), never from the first one found.
+    configs:
+      host_config_scala:                 # relative to root_env (the chipyard checkout)
+        - generators/chipyard/src/main/scala/config/IrisConfigs.scala
+      mixin_scala:                       # relative to `path`
+        - src/main/scala/shuttle/Configs.scala
+        - src/main/scala/rocket/Configs.scala
+
+    # Which instruction plays which role in the kernel (a fact about the kernel, so stated).
+    kernel_roles:
+      matmul: SF_MM_INT
+      zero: SF_VTZERO_T
+      readout: SF_VTMV_V_T
+      release: SF_VTDISCARD
+      set_type: SF_MSETMTYPE
+      set_n: SF_VSETTN
+      set_m: SF_VSETTM
+      set_k: SF_VSETTK
+
+    # Positions inside REGISTER operands (the Zvt draft's operand formats), with where each is stated.
+    operand_layout:
+      mtype_widen_lsb: 0      # sf.msetmtype rs1[1:0] = widen code: Matrix.scala MatrixConfig.msetmtypeNewType
+      vtype_sew_lsb: 3        # sf.msetmtype rs2 = vsew<<3 | altfmt<<8: Matrix.scala (and the RVV vtype layout)
+      vtype_altfmt_bit: 8     # altfmt = B operand signed: Matrix.scala; saturn OuterProductSequencer signed_t
+      tile_rd_shift: 3        # sf.mm / sf.vtzero.t tile index in rd[4:3]: saturn Instructions.scala; vme.h VME_MT
+      a_signed_rd_bit: 0      # sf.mm A operand signed in rd[0] (insn bit 7): saturn Instructions.scala; vme.h VME_MTB
+      tss_tile_lsb: 27        # tile subset specifier: vme.h header comment and vme_tss
+      tss_tile_scale: 4       # TEW=32: tile index t is tile specifier 4*t (vme.h vme_tss)
+      tss_pattern_lsb: 24
+      tss_row_pattern: 0      # VME_TSS_ROW
+      mstatus_ms_lsb: 29      # mstatus.MS, matrix state: riscv-isa-sim encoding.h MSTATUS_MS (0x60000000),
+      mstatus_ms_width: 2     # set by saturn benchmarks/common/crt.S. Iris's rocket-chip mstatus has no MS
+                              # field (bits 23-30 read zero), so the write is ignored on the RTL.
+
+    # The functional simulator that implements the unit: upstream riscv-isa-sim with Zvt. Its binary is
+    # found through `binary_env` and its source checkout (the pin, and a THIRD cross-check of the
+    # encodings: its riscv-opcodes table) through `source_env`. Absent, the shipped image is not run; it is
+    # never run on a simulator without the unit.
+    simulator:
+      pin: spike_zvt
+      binary_env: MERLIN_SPIKE_ZVT
+      source_env: MERLIN_SPIKE_ZVT_SRC
+      opcode_table: riscv/encoding.h
+      opcode_pairs:
+        SF_MM_INT: VTMMS_TVV
+        SF_MM_FP8: VTFMM_TVV
+        SF_VTMV_V_T: VTMV_V_T
+        SF_VTMV_T_V: VTMV_T_V
+        SF_VTZERO_T: VTZERO
+        SF_VTDISCARD: VTDISCARD
+        SF_MSETMTYPE: MSETMTYPE
+        SF_VSETTN: MSETTN
+        SF_VSETTM: MSETTM
+        SF_VSETTK: MSETTK
+      # spike's ISA-string names for the unit at this configuration's tile edge (saturn benchmarks/Makefile
+      # RISCV_SIM, minus the FP8 matmul the int8 kernel does not use).
+      isa_extensions: ["zvt{tile_edge}t", "zvt8e", "zvti8i32mm"]

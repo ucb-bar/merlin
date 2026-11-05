@@ -7,22 +7,22 @@ schema: merlin.vendored_support.v1
 target: iris
 provider_id: iris-support
 path: support
-file_count: 10
+file_count: 15
 vendored: '2026-11-04'
 source:
   repository: https://github.com/ucb-bar/iris-mlir.git
   published: false
-  commit: cb88e1c8f52b16c6130765d60bb612f715589b98
-  commit_date: '2026-11-04T17:42:59-08:00'
+  commit: 8447703ae5805271911e8ef232d8fd1aa7b6947d
+  commit_date: '2026-11-04T19:14:34-08:00'
   provider_root: .
-  tree: 27f1247bde9251a23c14b734ec93e64da4be61f0
-vendored_tree: 27f1247bde9251a23c14b734ec93e64da4be61f0
+  tree: 48e9f0deef16c905a83e79a1f6ae2ff46d033a37
+vendored_tree: 48e9f0deef16c905a83e79a1f6ae2ff46d033a37
 normalized: []
 pinned:
   manifest: build_tools/upstreams/target_support.json
-  companion_commit: cb88e1c8f52b16c6130765d60bb612f715589b98
+  companion_commit: 8447703ae5805271911e8ef232d8fd1aa7b6947d
   relation: same_commit
-  provider_tree: 27f1247bde9251a23c14b734ec93e64da4be61f0
+  provider_tree: 48e9f0deef16c905a83e79a1f6ae2ff46d033a37
   identical_to_source: true
 records:
   file_provenance: support/provenance.json

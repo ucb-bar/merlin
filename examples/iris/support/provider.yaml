@@ -1,4 +1,4 @@
-# Iris support: the rvv base plus Iris's own configuration. The VME matrix unit is not added yet.
+# Iris support: the rvv base plus Iris's own configuration, boards and its VME matrix unit.
 schema: merlin.provider.v2
 id: iris-support
 target: iris

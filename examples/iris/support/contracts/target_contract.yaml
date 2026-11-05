@@ -63,11 +63,33 @@ compute_units:
   requant:
     ref: merlin.llvmlower.passes_quant_int
   scaling: per_channel
+- name: vme
+  kind: spatial
+  dtypes:
+  - int8
+  ops:
+  - matmul
+  scaling: none
+  requant:
+    ref: none
+  exposure: command_buffer
+  accumulate:
+  - in: int8
+    weight: int8
+    acc: i32
+  semantic_capabilities:
+  - family: contraction
+    dtypes:
+    - int8
+  notes: 'Unit saturn_vme in contracts/matrix_units.yaml (pin saturn_vme): Xsfmm/Zvt TEW=32 tiles, four
+    per core; sf.mm.s.s accumulates up to kmax reduction rows of int8 x int8 into int32 per instruction;
+    tile edge VLEN/8 (32 on Iris). Geometry is RTL-derived from the vector unit whose params enable it.'
 endpoint_kind: upstream_target
 family: cpu_vector
 features:
 - vector_unit
 - multicore
+- matrix_unit
 hardware_promises:
 - ieee_float
 - widening_integer_accumulate
@@ -82,6 +104,8 @@ measurement:
   speed_of_light: rvv_lane_peak
   notes:
   - No Iris silicon or FPGA bitstream is described here yet; wall-clock numbers come from RTL simulation.
+  - A VME image's spike run (MERLIN_SPIKE_ZVT, pin spike_zvt) is a functional check of the shipped words
+    under the Zvt draft's semantics; its counts are not Iris cycles.
 memory_model:
   resident: false
 name: iris
@@ -130,9 +154,13 @@ status: prototype
 unmapped_observations: []
 version: '0.1'
 provenance: 'Iris (chipyard iris-cy IrisConfig): three vector-capable harts at VLEN=256 (two Shuttle+Saturn
-  with the VME unit, one Rocket+Saturn DMA). RVV datapaths inherited from rvv; the VME matrix unit is
-  not modeled yet.'
+  with the VME unit, one Rocket+Saturn DMA). RVV datapaths inherited from rvv; the VME matrix unit of
+  saturn vme (pin saturn_vme) with the host core''s configuration instructions (pin rocket_chip_iris),
+  encodings derived from the RTL named in contracts/matrix_units.yaml.'
 rtl_source:
   ext_root: chipyard
   config: IrisConfig
   generator: saturn
+matrix_contract: contracts/matrix_units.yaml
+plugin:
+  matrix_lowering: matrix_lowering.py

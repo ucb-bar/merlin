@@ -2,16 +2,15 @@
 # `merlin-target-compose .` writes the effective contracts/target_contract.yaml; never edit that file.
 #
 # Source of the facts: ucb-bar/chipyard@iris-cy b4542fa,
-# generators/chipyard/src/main/scala/config/IrisConfigs.scala (pins chipyard_iris, saturn_vme in Merlin's
-# merlin/contract/hardware_pins.yaml):
+# generators/chipyard/src/main/scala/config/IrisConfigs.scala (pins chipyard_iris, saturn_vme,
+# rocket_chip_iris in Merlin's merlin/contract/hardware_pins.yaml):
 #   * harts 0-1: Shuttle tiles, Saturn vector unit vLen=256 dLen=128 with VectorParams.opuMxParams (the
 #     VME/Xsfmm matrix unit, incl. MX/FP8), 128 KiB TCM each;
-#   * hart 2: Rocket with a Saturn DMA vector unit, vLen=256 dLen=256;
+#   * hart 2: Rocket with a Saturn DMA vector unit, vLen=256 dLen=256, no matrix unit;
 #   * 512 KiB inclusive L2, 128 KiB SBUS scratchpad at 0x580000000, serial-TL DRAM at 0x80000000.
 #
-# NOT YET HERE: the VME matrix unit. Its encodings (sf.mm.s.s, sf.vtzero.t, sf.vtmv.v.t, vsettnt/m/k)
-# differ from Kodiak's BME OPU and must be derived from saturn `vme` (benchmarks/common/vme.h as the
-# cross-check), not copied. Until then Iris compiles as plain RVV on all three harts.
+# The VME unit's encodings, tile edge, alignment and reduction depth are DERIVED from the RTL the
+# contract in contracts/matrix_units.yaml names (merlin.targetgen.rtl.matrix_isa), never stated here.
 
 remove:
   - provenance
@@ -21,7 +20,9 @@ replace:
 
 provenance: >-
   Iris (chipyard iris-cy IrisConfig): three vector-capable harts at VLEN=256 (two Shuttle+Saturn with the
-  VME unit, one Rocket+Saturn DMA). RVV datapaths inherited from rvv; the VME matrix unit is not modeled yet.
+  VME unit, one Rocket+Saturn DMA). RVV datapaths inherited from rvv; the VME matrix unit of saturn vme
+  (pin saturn_vme) with the host core's configuration instructions (pin rocket_chip_iris), encodings
+  derived from the RTL named in contracts/matrix_units.yaml.
 
 rtl_source:
   ext_root: chipyard
@@ -30,6 +31,32 @@ rtl_source:
 
 features:
   - multicore
+  - matrix_unit
+
+# The VME unit: driven by raw `.insn` words on the vector opcodes (OP-V, OP-VE), configured by the host
+# core's sf.msett* instructions. Present on harts 0-1 only (boards.yaml matrix_hart_ids).
+compute_units:
+  - name: vme
+    kind: spatial
+    dtypes: [int8]
+    ops: [matmul]
+    scaling: none
+    requant: {ref: none}
+    exposure: command_buffer
+    accumulate:
+      - {in: int8, weight: int8, acc: i32}
+    semantic_capabilities:
+      - {family: contraction, dtypes: [int8]}
+    notes: >-
+      Unit saturn_vme in contracts/matrix_units.yaml (pin saturn_vme): Xsfmm/Zvt TEW=32 tiles, four per
+      core; sf.mm.s.s accumulates up to kmax reduction rows of int8 x int8 into int32 per instruction; tile
+      edge VLEN/8 (32 on Iris). Geometry is RTL-derived from the vector unit whose params enable it.
+
+matrix_contract: contracts/matrix_units.yaml
+
+# Executable support owned by THIS package: the whole-model route's contraction rewrite + VME kernel.
+plugin:
+  matrix_lowering: matrix_lowering.py
 
 measurement:
   cycles_from: spike
@@ -40,6 +67,8 @@ measurement:
   speed_of_light: rvv_lane_peak
   notes:
     - No Iris silicon or FPGA bitstream is described here yet; wall-clock numbers come from RTL simulation.
+    - A VME image's spike run (MERLIN_SPIKE_ZVT, pin spike_zvt) is a functional check of the shipped words
+      under the Zvt draft's semantics; its counts are not Iris cycles.
 
 runtime_promises:
   - metrics

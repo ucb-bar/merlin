@@ -23,7 +23,11 @@ def test_identity_layering_and_contract():
     assert contract["name"] == provider.target
     assert validate_schema(contract, "target_contract") == []
     assert validate(contract.get("plugin"), root=ROOT) == []
-    assert "matrix_contract" not in contract, "the VME unit is not modeled yet; do not claim one"
+    assert contract["matrix_contract"] == "contracts/matrix_units.yaml"
+    assert (ROOT / contract["matrix_contract"]).is_file()
+    assert contract["plugin"]["matrix_lowering"] == "matrix_lowering.py"
+    assert "matrix_unit" in contract["features"]
+    assert any(u["name"] == "vme" for u in contract["compute_units"])
 
 
 def test_effective_contract_is_fresh_against_the_pinned_base():
@@ -36,6 +40,15 @@ def test_boards_describe_irisconfig():
     rtl = boards.load_boards(str(ROOT))["iris_rtl"]
     assert (rtl.harts, rtl.vector_harts, rtl.vlen) == (3, 3, 256)
     assert (rtl.dram_base, rtl.dram_bytes) == (0x80000000, 4 << 30)
+    # The Rocket DMA hart has a vector unit and no matrix unit.
+    assert rtl.matrix_harts == (0, 1)
+    rtl.check_matrix_image(2)
+    try:
+        rtl.check_matrix_image(3)
+    except boards.BoardRegistryError:
+        pass
+    else:
+        raise AssertionError("a 3-hart matrix image would reach the hart without the unit")
 
 
 def test_files_match_recorded_content_hashes():

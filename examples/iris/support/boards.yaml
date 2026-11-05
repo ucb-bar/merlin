@@ -20,6 +20,9 @@ boards:
     zephyr_link_limit_bytes: 1900 MiB
     harts: 3
     vector_harts: 3
+    # Only the Shuttle tiles' vector units carry the VME unit (their params are VectorParams.opuMxParams;
+    # the Rocket DMA unit's dmaParams leave useOpu false), so a matrix image runs on harts 0-1 only.
+    matrix_hart_ids: [0, 1]
     vlen: 256
     console: htif
     flow: zephyr
@@ -32,4 +35,4 @@ boards:
     rtl_sim_config: IrisConfig
     notes: >-
       RTL simulation of IrisConfig: 2 Shuttle+Saturn(VME) harts and 1 Rocket+Saturn(DMA) hart, all
-      VLEN=256. Matrix routing is not available until the VME unit is added to this package.
+      VLEN=256. RVV images may use all three harts; VME-routed images at most harts 0-1.

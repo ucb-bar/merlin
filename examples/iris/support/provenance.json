@@ -6,7 +6,7 @@
     "base_ref": "iris-cy",
     "base_commit": "b4542fa",
     "root_role": "support",
-    "note": "Facts transcribed from generators/chipyard/src/main/scala/config/IrisConfigs.scala; saturn submodule at the vme branch 536774b."
+    "note": "Facts transcribed from generators/chipyard/src/main/scala/config/IrisConfigs.scala; saturn submodule at the vme branch 536774b; rocket-chip at fc745a8 (Matrix.scala). VME encodings are derived at build time, not transcribed."
   },
   "qualification": {
     "level": "metadata_schema_checked_snapshot",
@@ -20,7 +20,31 @@
       "path": "boards.yaml",
       "source": "chipyard@iris-cy b4542fa: IrisConfigs.scala",
       "change": "board facts read from the config",
-      "sha256": "d21677c26433d1ae5f35991638c948f2d2bf3e9e3477e756e2901ac4a0712365"
+      "sha256": "4da1b7d5951f8b3d5b641df4827802226cac18ede24e6acd1cfab66ad71a83b3"
+    },
+    {
+      "path": "contracts/matrix_units.yaml",
+      "source": "saturn@vme 536774b, rocket-chip@fc745a8, riscv-isa-sim@f90d5af",
+      "change": "derivation entry points (declaration names) and register-operand layouts with their sources",
+      "sha256": "fe5f040ec447f1a439b90b6a889c8cd93389fc0baf539e9df26afa8a7fdf06ad"
+    },
+    {
+      "path": "vme_kernel.py",
+      "source": "saturn@vme 536774b benchmarks/common/vme_gemm.h, vme-fused-lm2-gemm-transpose",
+      "change": "int8 GEMM microkernel emitter modeled on the reference kernels; words from the derived table",
+      "sha256": "7fa03e05eec8bcd4e9289b1a71c7fc5320b9f1676061624279538cb7a2f9cd27"
+    },
+    {
+      "path": "vme_shim.py",
+      "source": "this package",
+      "change": "unit contract reader, geometry, kernel spec, build and simulator declaration",
+      "sha256": "e356679a102aec5eb628607a2436eb1eb21f6e6a83f81f7e14833cd447b268dd"
+    },
+    {
+      "path": "matrix_lowering.py",
+      "source": "this package",
+      "change": "plugin adapter for merlin's MatrixRouting",
+      "sha256": "e81d262e6ea6740e2a7aad55afa1792d68e30c404aa774d3812de59271215584"
     }
   ],
   "generated": {
