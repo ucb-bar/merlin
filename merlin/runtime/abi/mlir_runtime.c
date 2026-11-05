@@ -9,6 +9,12 @@
 #include <stdint.h>
 #include <string.h>
 
+/* erff/expf/tanhf/logf under the `portable-transcendentals` numeric policy: the lowered model calls
+ * merlin_erff & co. instead of the C library, so the host build and every device image evaluate the
+ * same function bit for bit (see portable_math.h, merlin.llvmlower.portable_math). */
+#define MERLIN_PORTABLE_MATH_IMPLEMENTATION
+#include "portable_math.h"
+
 /* math.rsqrt lowers (via convert-math-to-libm) to rsqrtf/rsqrt, which are NOT in
  * standard libm/newlib. Provide them (reciprocal sqrt). */
 float rsqrtf(float x) { return 1.0f / sqrtf(x); }

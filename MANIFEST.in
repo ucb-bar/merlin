@@ -60,6 +60,8 @@ include merlin/prompts/pass_slot_v1.md
 include merlin/prompts/rvv_mining_v1.md
 include merlin/prompts/rvv_tuning_v1.md
 include merlin/runtime/abi/mlir_runtime.c
+include merlin/runtime/abi/portable_math.h
+include merlin/runtime/abi/portable_math_tables.h
 include merlin/runtime/c/hal_baremetal_spike.c
 include merlin/runtime/c/hal_linux.c
 include merlin/runtime/c/libomp_pthread.c
