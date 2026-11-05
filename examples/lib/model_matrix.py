@@ -124,7 +124,7 @@ def summarize(cell: dict) -> dict:
         row["twin_cycles"] = m.get("twin_spike_cycles")
         row["identity"] = m.get("twin_output_identity")
         on = cell.get("on_unit_model") or {}
-        row["on_unit_model"] = {
+        row["shipped"] = {
             "status": on.get("status"),
             "reason": on.get("reason") or on.get("error"),
             "gate": _verdict_terms(on.get("verify") or {}),
@@ -138,7 +138,7 @@ def summarize(cell: dict) -> dict:
         if on.get("status") != "verified":
             why = on.get("reason") or on.get("error") or ""
             if on.get("status") == "run_mismatch":
-                why = f"bit_exact_vs_twin={on.get('bit_exact_vs_twin')}; {_why(row['on_unit_model']['gate'])}"
+                why = f"bit_exact_vs_twin={on.get('bit_exact_vs_twin')}; {_why(row['shipped']['gate'])}"
             problems.append(f"shipped image on the unit model: {on.get('status')} {str(why)[:300]}".rstrip())
     cell.update(row)
     cell["problems"] = problems
@@ -179,7 +179,7 @@ def harts_identity(cells: list[dict]) -> None:
             same = output_identity.same_output(base.get("identity"), c.get("identity"))
             if c["leg"] == "matrix":
                 shipped = output_identity.same_output(
-                    (base.get("on_unit_model") or {}).get("identity"), (c.get("on_unit_model") or {}).get("identity")
+                    (base.get("shipped") or {}).get("identity"), (c.get("shipped") or {}).get("identity")
                 )
                 same = None if None in (same, shipped) else (same and shipped)
             c["identical_to"] = {"harts": base["harts"], "bit_identical": same}

@@ -111,6 +111,19 @@ def test_every_hart_count_must_reproduce_the_smallest_bit_for_bit(mm):
     assert cells[1]["identical_to"]["bit_identical"] is False and cells[1]["status"] == "FAIL"
 
 
+def test_a_kept_cell_reads_back_to_the_same_verdict(mm):
+    """Cells are written to disk and summarized again on every later run; summarizing must not overwrite
+    the raw record it reads (a first version replaced the shipped image's record with its own summary, so
+    every reloaded matrix cell lost its output digest and the hart-identity check went unknown)."""
+    import json
+
+    cells = [mm.summarize(_matrix(h, _ident([1], 1), _ident([1], 1))) for h in (1, 2)]
+    again = [mm.summarize(json.loads(json.dumps(c))) for c in cells]
+    mm.harts_identity(again)
+    assert [c["status"] for c in again] == ["PASS", "PASS"]
+    assert again[1]["identical_to"]["bit_identical"] is True
+
+
 def test_identity_that_cannot_be_told_is_not_reported_as_identical(mm):
     cells = [mm.summarize(_rvv(1, {"out_hash": None})), mm.summarize(_rvv(2, {"out_hash": None}))]
     mm.harts_identity(cells)
