@@ -325,3 +325,43 @@ def test_gguf_capture_uses_framework_python_not_compiler(tmp_path, monkeypatch):
     assert result.root == tmp_path / "bundle"
     assert calls[0][:2] == [str(capture), "-c"]
     assert "m2m.frontends.gguf" in calls[0][2]
+
+
+def _workload(checkout: Path, name: str, venv: str | None) -> None:
+    directory = checkout / "workloads" / name
+    directory.mkdir(parents=True)
+    if venv is not None:
+        (directory / "capture.toml").write_text(f'venv = "{venv}"\n')
+
+
+def test_a_roster_capture_uses_the_workloads_declared_venv_when_it_exists(tmp_path, monkeypatch):
+    from merlin.compile.bundles import _capture_python
+
+    checkout = tmp_path / "m2m"
+    _workload(checkout, "w", ".venv")
+    declared = _python(checkout / "workloads" / "w" / ".venv")
+    monkeypatch.setenv("MERLIN_M2M_PYTHON", str(_python(tmp_path / "shared")))
+    assert _capture_python(checkout, "w") == declared
+
+
+def test_a_roster_capture_falls_to_the_configured_capture_venv_not_the_compiler(tmp_path, monkeypatch):
+    """A capture.toml ``venv`` is a path on the machine that wrote it; on any other machine it is absent.
+    The configured capture interpreter (what `run.sh setup` records) captures then -- never merlin's own,
+    which has no torch and died on ``import torch`` naming no setting."""
+    from merlin.compile.bundles import _capture_python
+
+    checkout = tmp_path / "m2m"
+    _workload(checkout, "w", "/elsewhere/.venv")
+    shared = _python(tmp_path / "shared")
+    monkeypatch.setenv("MERLIN_M2M_PYTHON", str(shared))
+    assert _capture_python(checkout, "w") == shared
+
+
+def test_a_roster_capture_with_no_capture_interpreter_names_the_settings(tmp_path):
+    from merlin.compile.bundles import _capture_python
+
+    checkout = tmp_path / "m2m"
+    _workload(checkout, "w", ".venv")
+    with pytest.raises(RuntimeError, match="MERLIN_M2M_PYTHON") as err:
+        _capture_python(checkout, "w")
+    assert "capture.toml names" in str(err.value)

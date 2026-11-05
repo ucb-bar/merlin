@@ -144,7 +144,10 @@ def _ensure_bundle(workload: str, dtype: str, *, auto_capture: bool) -> Path:
             f"[merlin-compile] bundle {bundle} missing and MERLIN_M2M_DIR unset/invalid — "
             f"cannot auto-capture. Set MERLIN_M2M_DIR in .env or pre-capture the bundle."
         )
-    py = _capture_python(Path(m2m), workload)
+    try:
+        py = _capture_python(Path(m2m), workload)
+    except RuntimeError as exc:
+        raise SystemExit(f"[merlin-compile] {exc}") from None
     print(
         f"[merlin-compile] bundle absent → auto-capturing {workload} ({dtype}) via {worker.name} in {py}…", flush=True
     )

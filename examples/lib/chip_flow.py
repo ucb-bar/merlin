@@ -84,8 +84,12 @@ def capture(name: str, loader: Path | None, *, env: dict | None = None) -> Path:
     else:
         from merlin.compile.bundles import _capture_python
 
+        try:
+            capture_py = _capture_python(Path(m2m), name)
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from None
         cmd = [
-            _capture_python(Path(m2m), name),
+            capture_py,
             Path(m2m) / "workloads" / "capture_consistent.py",
             name,
             "int8",

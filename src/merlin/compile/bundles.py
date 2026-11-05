@@ -7,7 +7,6 @@ actually carries -- which, not the bundle's name, decides the scalar datapath.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 
@@ -55,11 +54,20 @@ def _capture_python(m2m_dir: Path, workload: str) -> Path:
     """The interpreter to capture ``workload`` with: its own venv when its capture.toml names one.
 
     A workload's upstream stack is pinned per model (model2MLIR's `capture.toml [venv]`), so the
-    capture must not run under merlin's interpreter just because that is what is executing.
-    Falls back to model2MLIR's own venv, then to this interpreter, and never fails here — the
-    caller surfaces a capture failure with the worker's output attached.
+    capture must not run under merlin's interpreter just because that is what is executing. A declared
+    venv that exists on this machine wins. Otherwise the configured shared capture interpreter
+    (``MERLIN_M2M_PYTHON``, else ``MERLIN_M2M_VENV``, else the checkout's ``.venv``: the one a chip
+    example's ``run.sh setup`` builds and records). A ``venv`` key is a path on the machine that wrote
+    it (often relative to a workload directory nobody has populated), so on any other machine it is
+    absent and the shared interpreter is the only one that can capture.
+
+    Never merlin's own interpreter: it has no PyTorch, so the capture would die on ``import torch``
+    with nothing saying which setting was missing. Raises instead, naming them.
     """
+    from merlin.integrations.model2mlir import capture_python_path
+
     toml = m2m_dir / "workloads" / workload / "capture.toml"
+    declared = None
     if toml.is_file():
         try:
             import tomllib
@@ -72,10 +80,18 @@ def _capture_python(m2m_dir: Path, workload: str) -> Path:
             cand = Path(venv)
             if not cand.is_absolute():
                 cand = m2m_dir / "workloads" / workload / venv
-            if (cand / "bin" / "python").is_file():
-                return cand / "bin" / "python"
-    fallback = m2m_dir / ".venv" / "bin" / "python"
-    return fallback if fallback.is_file() else Path(sys.executable)
+            declared = cand / "bin" / "python"
+            if declared.is_file():
+                return declared
+    shared = capture_python_path(checkout=m2m_dir)
+    if shared.is_file():
+        return shared
+    raise RuntimeError(
+        f"no interpreter can capture {workload}: "
+        + (f"its capture.toml names {declared}, which does not exist, and " if declared else "")
+        + f"the shared capture interpreter {shared} does not exist. Configure MERLIN_M2M_PYTHON or "
+        "MERLIN_M2M_VENV (a chip example's `run.sh setup` builds one and records it in .env)"
+    )
 
 
 #: MLIR tensor element-type spelling for each ``--dtype`` token, used to read a bundle's ACTUAL IR dtype
