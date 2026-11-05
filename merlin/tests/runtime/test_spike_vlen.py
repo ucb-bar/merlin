@@ -51,10 +51,74 @@ def test_a_vlen_that_is_not_a_power_of_two_at_least_128_is_rejected(bad):
         zm.spike_isa(bad)
 
 
-def test_build_and_run_records_the_vlen_it_used():
-    """A result that does not say which VLEN it exercised can be misread as another one."""
-    import inspect
+class _Built(Exception):
+    """Raised by the stubbed -march composer: the build got as far as choosing its vector length."""
 
-    src = inspect.getsource(zm.build_and_run)
-    assert '"vlen": vlen' in src, "build_and_run must record the vlen in its result"
-    assert "vlen=vlen" in src, "build_and_run must pass vlen to BOTH the build and the run"
+
+def _stub_until_march(monkeypatch, board_vlen):
+    from types import SimpleNamespace
+
+    from merlin.llvmlower import weight_prepack
+
+    seen = {}
+    monkeypatch.setattr(
+        "merlin.runtime.boards.board",
+        lambda name, **kw: SimpleNamespace(
+            name=name, vlen=kw.get("vlen", board_vlen), flow="zephyr",
+            zephyr_default_ram_bytes=1 << 28, zephyr_link_limit_bytes=1 << 30,
+        ),
+    )  # fmt: skip
+    monkeypatch.setattr(zm, "build_available", lambda: True)
+    monkeypatch.setattr(weight_prepack, "prepare_build_bundle", lambda model_dir, work, features: model_dir)
+
+    def march(cflags, vlen):
+        seen["vlen"] = vlen
+        raise _Built
+
+    monkeypatch.setattr(zm, "march_with_vlen", march)
+    return seen
+
+
+@pytest.mark.parametrize("board_vlen", [256, 512])
+def test_an_image_is_compiled_for_the_boards_vlen_when_none_is_given(tmp_path, monkeypatch, board_vlen):
+    """The -march of a board image states the board's width, not the V minimum.
+
+    The board default used to be applied AFTER the -march was composed, so `merlin-compile --board X`
+    built vector code for 128 while its Kconfig said X's width, and the simulator (given no width) ran
+    it at 128 too: a 512-bit board's image was graded at a width the board does not have, and was not
+    the image `make_delivery.py` (which passes the width explicitly) ships.
+    """
+    seen = _stub_until_march(monkeypatch, board_vlen)
+    with pytest.raises(_Built):
+        zm.build_app(tmp_path, tmp_path / "w", board="wide_board", backend="rvv")
+    assert seen["vlen"] == board_vlen
+
+
+def test_an_explicit_vlen_still_wins_over_the_boards(tmp_path, monkeypatch):
+    seen = _stub_until_march(monkeypatch, 512)
+    with pytest.raises(_Built):
+        zm.build_app(tmp_path, tmp_path / "w", board="wide_board", backend="rvv", vlen=256)
+    assert seen["vlen"] == 256
+
+
+def test_build_and_run_simulates_at_the_width_the_build_reports(tmp_path, monkeypatch):
+    """A result that does not say which VLEN it exercised can be misread as another one, and the run must
+    use the width the BUILD chose (the board's when the caller gave none), or build and run disagree on
+    vlenb -- which corrupts every scalable spill slot rather than merely slowing it down."""
+    from types import SimpleNamespace
+
+    seen = {}
+    monkeypatch.setattr(
+        zm, "build_app", lambda *a, **kw: {"elf": "x.elf", "app_dir": "app", "ram_bytes": 1 << 20, "vlen": 512}
+    )
+    monkeypatch.setattr(
+        "merlin.runtime.boards.board", lambda name, **kw: SimpleNamespace(simulator="spike", dram_base=0x80000000)
+    )
+
+    def spike(elf, **kw):
+        seen.update(kw)
+        return {"prefix": None}
+
+    monkeypatch.setattr(zm, "run_on_spike", spike)
+    res = zm.build_and_run(tmp_path, tmp_path / "w", board="wide_board")
+    assert seen["vlen"] == 512 and res["vlen"] == 512

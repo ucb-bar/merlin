@@ -210,6 +210,7 @@ def certify_rvv(
                 harts=harts,
                 mem_bytes=build["ram_bytes"],
                 timeout=timeout,
+                vlen=build.get("vlen"),  # the width the image was built for
             )
             gate = zm._gate(run["prefix"], refs) if refs else {"ok": None}
             rec["correctness"] = {

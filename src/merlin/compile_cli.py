@@ -675,7 +675,11 @@ def compile_rvv(
                 harts=max(2, harts),
                 mem_bytes=b["ram_bytes"],
                 timeout=timeout,
+                # The width the image was BUILT for (the board's): without it spike runs the V minimum
+                # of 128, so a 512-bit board's image was graded at a width the board does not have.
+                vlen=b.get("vlen"),
             )
+            out["spike_vlen"] = b.get("vlen")
             if refs:
                 res.update(zm._gate(res["prefix"], refs))
         out["status"] = "ran"

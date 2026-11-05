@@ -2474,7 +2474,10 @@ def build_app(
     # than it attaches vector units to, and those extra cores are otherwise unreachable.
     if iters < 1:
         raise ZephyrModelError(f"iters must be >= 1, got {iters}")
-    # A VLEN the build assumes must match the one it will run on -- see march_with_vlen.
+    # `vlen` given wins over the board's. Resolved BEFORE the -march, or the image is built for 128 (and run there).
+    if vlen is None and brd.vlen is not None:
+        vlen = brd.vlen
+    # A VLEN the build assumes must match the one it will run on -- see march_with_vlen (and `vlen` below).
     cflags = (
         march_with_vlen(cflags_override or _cflags(backend), vlen)
         if backend == "rvv"
@@ -2491,10 +2494,7 @@ def build_app(
     #    quantized / bf16 / over-rank / bool-cast models lower correctly — without these
     #    the whole-model path only handles already-clean LLMs) -> LLVM IR -> object.
     # Board facts as DATA (runtime.boards): the console options, the vector-state width, the DT RAM
-    # label and the DRAM ceiling all come from the descriptor instead of being assumed. `vlen` given
-    # explicitly wins over the board's, so a caller can sweep it.
-    if vlen is None and brd.vlen is not None:
-        vlen = brd.vlen  # build for the board's real vector length by default
+    # label and the DRAM ceiling all come from the descriptor instead of being assumed.
     # A vector model may only fan out over harts that HAVE a vector unit. A heterogeneous SoC is normal
     # -- three cores brought up, a vector unit on two of them -- and the difference is invisible in the
     # device tree, which lists identical cpu@N nodes. Fanning out too far does not fail cleanly: the
@@ -2934,6 +2934,7 @@ def build_app(
         "ram_region_bytes": ram_region_bytes,
         "weights_base": weights_base,
         "build_hash": build_hash,
+        "vlen": vlen if backend == "rvv" else None,  # what the image was built for: simulate at it
         "quantization_policy": quantization_policy,
         **info,
     }
@@ -3513,9 +3514,8 @@ def build_and_run(
         # to discover that the console beside their ELF names another binary.
         "build_hash": b.get("build_hash", ""),
         "quantization_policy": b.get("quantization_policy"),
-        # the vector length the build AND the run agreed on (None = spike's
-        # default 128); recorded so a result cannot be read as another VLEN's
-        "vlen": vlen,
+        # the vector length the build resolved AND the run used (None = spike's 128), so it cannot be misread
+        "vlen": b.get("vlen", vlen),
     }
     from ..boards import board as _board_desc
 
@@ -3527,7 +3527,7 @@ def build_and_run(
         harts=harts,
         mem_bytes=b["ram_bytes"],
         timeout=timeout,
-        vlen=vlen,
+        vlen=result["vlen"],
     )
     result.update(run)
     refs = references if references is not None else reference
