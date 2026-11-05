@@ -23,6 +23,7 @@ from merlin.kernels.shapes import zero_initialised as zero_initialised
 
 __all__ = [
     "ContractionRewrite",
+    "NotRouted",
     "Routed",
     "load_sidecar",
     "rewrite_contractions",
@@ -71,6 +72,24 @@ class Routed:
 
 
 @dataclass(frozen=True)
+class NotRouted:
+    """One contraction left on the host, and why."""
+
+    op: str
+    parallel: tuple[int, ...]
+    reduction: tuple[int, ...]
+    why: str
+    fqn: str = ""
+
+    @property
+    def macs(self) -> int:
+        out = 1
+        for extent in (*self.parallel, *self.reduction):
+            out *= int(extent)
+        return out
+
+
+@dataclass(frozen=True)
 class ContractionRewrite:
     """What the rewrite did. ``signatures`` is what the C side must define."""
 
@@ -79,6 +98,10 @@ class ContractionRewrite:
     #: signature actually called. The arity is what tells the C emitter which entry shape to generate.
     signatures: dict[str, tuple[int, ...]] = field(default_factory=dict)
     skipped: tuple[tuple[str, str], ...] = ()  # (what, why)
+    #: Every observed contraction that was NOT routed, with the reason: illegal for this ABI (dtype,
+    #: layout, accumulator) or declined by the selector (e.g. smaller than one tile). This is what tells a
+    #: user up front how much of a model the unit will see; it is a report, not an error.
+    not_routed: tuple[NotRouted, ...] = ()
     #: The tile edge the decision was made against, when the caller supplied it. Without it the
     #: sidecar cannot say whether a routed contraction fills a tile, so the field is recorded as
     #: UNKNOWN rather than assumed — an unrecorded rule is exactly what this class exists to prevent.
@@ -109,6 +132,14 @@ class ContractionRewrite:
             ],
             "signatures": {k: list(v) for k, v in self.signatures.items()},
             "skipped": [{"what": w, "why": y} for w, y in self.skipped],
+            "not_routed": [
+                {"op": r.op, "parallel": list(r.parallel), "k": list(r.reduction), "why": r.why, "fqn": r.fqn}
+                for r in self.not_routed
+            ],
+            "macs": {
+                "routed": sum(r.batch * r.m * r.n * r.k for r in self.routed),
+                "not_routed": sum(r.macs for r in self.not_routed),
+            },
             "routing_rule": {
                 "tile_edge": self.tile_edge if self.tile_edge is not None else "UNKNOWN",
                 "fills_default_tile_rule": (None if self.tile_edge is None else not sub),
@@ -142,8 +173,6 @@ def routable_contractions(
     This does not widen the rewrite ABI: ``rewrite_contractions`` always selects
     the signed-int8/int32 candidate set.
     """
-    from ..kernels.shapes import observe_contractions
-
     want = tuple(dtypes) if dtypes else INT8_DTYPES
     if device is not None:
         from merlin.system.offload import device_dtype_triples
@@ -155,19 +184,61 @@ def routable_contractions(
     else:
         accepted = {want}
 
-    out: list[tuple[Any, Any]] = []
+    return [(op, shape) for op, shape, why in _census(module, accepted) if why is None]
+
+
+def _census(module, accepted: set[tuple[str, ...]]) -> list[tuple[Any, Any, str | None]]:
+    """Every observed contraction with ``None`` (legal for this ABI) or the reason it is not."""
+    from ..kernels.shapes import observe_contractions
+
+    out: list[tuple[Any, Any, str | None]] = []
     for op, shape in observe_contractions(module):
-        want_parallel = ROUTABLE_OPS.get(shape.op)
-        if want_parallel is None:
-            continue
-        if tuple(shape.dtypes) not in accepted:
-            continue
-        if len(shape.parallel) != want_parallel or len(shape.reduction) != 1:
-            continue
-        if not zero_initialised(op):
-            continue
-        out.append((op, shape))
+        out.append((op, shape, _refusal(op, shape, accepted)))
     return out
+
+
+def _refusal(op, shape, accepted: set[tuple[str, ...]]) -> str | None:
+    want_parallel = ROUTABLE_OPS.get(shape.op)
+    if want_parallel is None:
+        return f"{shape.op} is not a routable contraction class"
+    if tuple(shape.dtypes) not in accepted:
+        return f"dtypes {tuple(shape.dtypes)} are not one of {sorted(accepted)}"
+    if len(shape.parallel) != want_parallel or len(shape.reduction) != 1:
+        return f"rank: {len(shape.parallel)} parallel / {len(shape.reduction)} reduction dims"
+    if not zero_initialised(op):
+        return "accumulator is not provably zero-initialised"
+    return _layout_refusal(op, shape)
+
+
+def _layout_refusal(op, shape) -> str | None:
+    """None when the operands are exactly A(batch.., M, K) . B(batch.., K, N) -> C(batch.., M, N).
+
+    The callee is typed from the shape key in that layout, so a contraction whose B is stored (N, K) --
+    a transposed weight, legal linalg -- would otherwise be handed to it as if it were (K, N): a type
+    error when N != K, and a silently wrong answer when N == K. Checked from the operand TYPES and, when
+    the op carries them, the indexing MAPS; unreadable maps on a generic fail closed.
+    """
+    from ..kernels.shapes import _dim_position, _shaped, indexing_maps
+
+    *batch, m, n = (int(d) for d in shape.parallel)
+    k = int(shape.reduction[0])
+    shaped = [s for s in (_shaped(v) for v in op.operands) if s is not None]
+    if len(shaped) < 2:
+        return "operand types are not readable"
+    if list(shaped[0][0]) != [*batch, m, k] or list(shaped[1][0]) != [*batch, k, n]:
+        return f"operand layout {list(shaped[0][0])} x {list(shaped[1][0])} is not A(M,K) x B(K,N)"
+    maps = indexing_maps(op)
+    if maps is None:
+        if shape.op in ROUTABLE_OPS and getattr(op, "name", "") == shape.op:
+            return None  # a named op without explicit maps has the default (row-major) layout
+        return "indexing maps are not readable"
+    nb = len(batch)
+    dims = list(range(nb))
+    expected = ([*dims, nb, nb + 2], [*dims, nb + 2, nb + 1], [*dims, nb, nb + 1])
+    got = [[_dim_position(r) for r in results] for results in maps[:3]]
+    if got != [list(e) for e in expected]:
+        return f"indexing maps {got} are not A(m,k) x B(k,n) -> C(m,n) (a transposed operand)"
+    return None
 
 
 def _signature_key(shape) -> tuple[int, ...]:
@@ -200,12 +271,25 @@ def rewrite_contractions(
     if select is None:
         return ContractionRewrite(skipped=(("all", "no selector supplied, so nothing is routed"),), tile_edge=tile_edge)
 
-    candidates = routable_contractions(module)
+    census = _census(module, {INT8_DTYPES})
+    candidates = [(op, sh) for op, sh, why in census if why is None]
     chosen = [(op, sh) for op, sh in candidates if select(sh)]
+    chosen_ids = {id(op) for op, _sh in chosen}
+    not_routed = tuple(
+        NotRouted(
+            op=sh.op,
+            parallel=tuple(int(d) for d in sh.parallel),
+            reduction=tuple(int(d) for d in sh.reduction),
+            why=why or _declined(sh, tile_edge),
+            fqn=_fqn(op),
+        )
+        for op, sh, why in census
+        if id(op) not in chosen_ids
+    )
     skipped: list[tuple[str, str]] = []
     if not chosen:
         skipped.append(("all", f"{len(candidates)} routable contraction(s), none selected"))
-        return ContractionRewrite(skipped=tuple(skipped), tile_edge=tile_edge)
+        return ContractionRewrite(skipped=tuple(skipped), not_routed=not_routed, tile_edge=tile_edge)
 
     # One symbol per distinct signature: MLIR function types are monomorphic, so a 256x196/K=768
     # contraction and a 196x1024/K=256 one cannot share a callee.
@@ -233,11 +317,9 @@ def rewrite_contractions(
         op.detach()
         op.erase()
 
-        fqn = ""
-        prov = getattr(op, "attributes", {}).get("prov.fqn") if hasattr(op, "attributes") else None
-        if isinstance(prov, StringAttr):
-            fqn = prov.data
-        routed.append(Routed(symbol=sym, parallel=tuple(shape.parallel), reduction=tuple(shape.reduction), fqn=fqn))
+        routed.append(
+            Routed(symbol=sym, parallel=tuple(shape.parallel), reduction=tuple(shape.reduction), fqn=_fqn(op))
+        )
 
     # Declarations go at the END of the module body. The board backends anchor theirs "before the first
     # func.func" with a regex over the printed text; appending to the module's own op list needs no
@@ -261,8 +343,26 @@ def rewrite_contractions(
         body.add_op(decl)
 
     return ContractionRewrite(
-        routed=tuple(routed), signatures={s: k for k, s in symbols.items()}, skipped=tuple(skipped), tile_edge=tile_edge
+        routed=tuple(routed),
+        signatures={s: k for k, s in symbols.items()},
+        skipped=tuple(skipped),
+        not_routed=not_routed,
+        tile_edge=tile_edge,
     )
+
+
+def _fqn(op) -> str:
+    from xdsl.dialects.builtin import StringAttr
+
+    prov = getattr(op, "attributes", {}).get("prov.fqn") if hasattr(op, "attributes") else None
+    return prov.data if isinstance(prov, StringAttr) else ""
+
+
+def _declined(shape, tile_edge: int | None) -> str:
+    m, n = int(shape.parallel[-2]), int(shape.parallel[-1])
+    if tile_edge is not None and min(m, n) < int(tile_edge):
+        return f"declined by the selector: min(M={m}, N={n}) < tile edge {int(tile_edge)}"
+    return "declined by the selector"
 
 
 #: This path's positional callee access policy, passed to shared declaration repair.

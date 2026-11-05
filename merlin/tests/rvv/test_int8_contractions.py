@@ -105,6 +105,46 @@ class TestItIsInertWithoutADecision:
         assert len(PO.routable_contractions(mod)) == before == 1
 
 
+#: The same contraction with B stored TRANSPOSED (N, K) and N == K, so the extents alone look exactly like
+#: the canonical form: legal linalg, and a silently wrong answer if handed to an (M,K)x(K,N) callee.
+_INT8_MM_BT = (
+    _INT8_MM.replace("tensor<32x16xi8>", "tensor<32x32xi8>")
+    .replace("tensor<64x16xi32>", "tensor<64x32xi32>")
+    .replace("affine_map<(d0, d1, d2) -> (d2, d1)>", "affine_map<(d0, d1, d2) -> (d1, d2)>")
+)
+
+
+class TestOperandLayout:
+    def test_the_canonical_form_is_still_routable(self):
+        square = _INT8_MM.replace("tensor<32x16xi8>", "tensor<32x32xi8>")
+        square = square.replace("tensor<64x16xi32>", "tensor<64x32xi32>")
+        assert len(PO.routable_contractions(_module(square))) == 1
+
+    def test_a_transposed_rhs_is_refused_even_when_the_extents_match(self):
+        mod = _module(_INT8_MM_BT)
+        assert PO.routable_contractions(mod) == []
+        got = PO.rewrite_contractions(mod, symbol_prefix=SYMBOL_PREFIX, select=_ALL)
+        assert got.count == 0
+        (reason,) = [r.why for r in got.not_routed]
+        assert "transposed" in reason
+
+    def test_every_contraction_left_behind_says_why(self):
+        mod = _module(_INT8_MM)
+        choose = PO.tile_filling_selector(32)
+        got = PO.rewrite_contractions(mod, symbol_prefix=SYMBOL_PREFIX, select=choose, tile_edge=32)
+        assert got.count == 0
+        (left,) = got.not_routed
+        assert (left.parallel, left.reduction) == ((64, 16), (32,))
+        assert "min(M=64, N=16) < tile edge 32" in left.why
+        report = got.to_dict()
+        assert report["macs"] == {"routed": 0, "not_routed": 64 * 16 * 32}
+        assert report["not_routed"][0]["why"] == left.why
+
+    def test_a_float_contraction_is_reported_with_its_dtypes(self):
+        got = PO.rewrite_contractions(_module(_F32_MM), symbol_prefix=SYMBOL_PREFIX, select=_ALL)
+        assert [r.why.startswith("dtypes") for r in got.not_routed] == [True]
+
+
 class TestWhatItRefuses:
     def test_a_float_contraction_is_not_a_candidate(self):
         # Extents alone cannot answer legality on a unit that computes int8 and not fp32.
