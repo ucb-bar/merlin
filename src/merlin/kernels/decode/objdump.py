@@ -41,17 +41,30 @@ def word_of(hexcode: str, *, width_bits: int) -> int | None:
         return None
 
 
+def _llvm_tool(name: str) -> str | None:
+    """``name`` from the SAME LLVM install the compile uses: the checkout's own, then beside the selected
+    clang (``MERLIN_CLANG``), then ``MERLIN_MLIR_INSTALL``, then PATH. A GNU binutils tool of the same
+    role does not take LLVM's flags (``--triple``), so it is only the last resort of the callers below."""
+    local = _LLVM_OBJDUMP.parent / name
+    if local.is_file():
+        return str(local)
+    try:
+        from merlin.llvmlower.toolchain import clang, llvm_install
+
+        for directory in (clang().parent, llvm_install() / "bin"):
+            if (directory / name).is_file():
+                return str(directory / name)
+    except Exception:  # noqa: BLE001 -- an unconfigured toolchain falls through to PATH
+        pass
+    return shutil.which(name)
+
+
 def objdump_bin() -> str:
-    if _LLVM_OBJDUMP.is_file():
-        return str(_LLVM_OBJDUMP)
-    return shutil.which("llvm-objdump") or shutil.which("riscv64-unknown-elf-objdump") or "objdump"
+    return _llvm_tool("llvm-objdump") or shutil.which("riscv64-unknown-elf-objdump") or "objdump"
 
 
 def nm_bin() -> str:
-    _nm = _LLVM_OBJDUMP.parent / "llvm-nm" if _LLVM_OBJDUMP.is_file() else None
-    if _nm is not None and _nm.is_file():
-        return str(_nm)
-    return shutil.which("llvm-nm") or shutil.which("riscv64-unknown-elf-nm") or "nm"
+    return _llvm_tool("llvm-nm") or shutil.which("riscv64-unknown-elf-nm") or "nm"
 
 
 def undefined_symbols(obj_path: str | Path) -> tuple[str, ...] | None:

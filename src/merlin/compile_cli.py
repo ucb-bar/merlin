@@ -828,7 +828,8 @@ def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, 
         "pack, descriptor ABI and epilogue are checked; the unit's datapath is certified on its RTL"
     )
     if refs:
-        g = zm._gate(res["prefix"], refs)
+        # The whole output, as the RVV route grades it -- not the console prefix.
+        g = zm._gate(res["output"] if res.get("output") is not None else res["prefix"], refs)
         out["verify"] = {"gate_ok": bool(g.get("ok")), "of": "stand-in twin", **g}
         out["status"] = "verified" if g.get("ok") else "run_mismatch"
     return out
