@@ -406,3 +406,25 @@ def test_the_gate_fails_on_a_reintroduced_unbacked_narrowing(tmp_path, monkeypat
 
     contract.write_text(_doc(entry, ("Derived by merlin.targetgen.eligibility.is_eligible.",)))
     assert gate.main(["--no-ratchet"]) == 0
+
+
+def test_a_layer_does_not_owe_the_claims_it_inherits(tmp_path, monkeypatch):
+    """A layered provider's generated contract repeats its base's claims; they are the base's debt."""
+    from merlin.common.yaml import write_yaml
+    from merlin.targetgen import capability_backing as CB
+
+    claim = "semantic_capabilities_unknown:\n- family: movement\n  reason: undecided\n"
+    base, layer = tmp_path / "base", tmp_path / "layer"
+    (base / "contracts").mkdir(parents=True)
+    (base / "contracts" / "target_contract.yaml").write_text("name: base_isa\n" + claim)
+    (layer / "contracts").mkdir(parents=True)
+    (layer / "contracts" / "target_contract.yaml").write_text(
+        "name: chip_a\n" + claim + "- family: reduction\n  reason: undecided\n"
+    )
+    write_yaml(layer / "provider.yaml", {"schema": "merlin.provider.v2", "id": "chip_a-support", "target": "chip_a",
+                                         "role": "support", "extends": {"target": "base_isa"}})
+    write_yaml(layer / "contracts" / "overlay.yaml", {})
+    monkeypatch.setattr(CB, "_target_base", lambda t: {"base_isa": base, "chip_a": layer}.get(t))
+    monkeypatch.setattr(CB, "_pin_read_paths", lambda t: {})
+    assert {c.key for c in CB.claims("base_isa")} == {"undetermined:movement"}
+    assert {c.key for c in CB.claims("chip_a")} == {"undetermined:reduction"}  # only what the layer adds

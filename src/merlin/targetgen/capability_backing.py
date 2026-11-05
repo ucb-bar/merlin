@@ -564,7 +564,12 @@ def claims_in_document(
 
 
 def claims(target: str) -> tuple[Claim, ...]:
-    """Every gated narrowing claim ``target`` declares, across every contract document it ships."""
+    """Every gated narrowing claim ``target`` declares, across every contract document it ships.
+
+    A LAYERED provider (``provider.yaml`` ``extends``) has a generated effective contract that repeats its
+    base's claims verbatim. Those are the base's claims, audited -- and owed -- under the base target, so
+    they are not counted again here; only what the layer adds is the layer's.
+    """
     repo = _repo_root()
     base = _target_base(target)
     pins = _pin_read_paths(target)
@@ -572,7 +577,24 @@ def claims(target: str) -> tuple[Claim, ...]:
     for path, text in contract_documents(target):
         rel = str(path.relative_to(repo)) if str(path).startswith(str(repo)) else str(path)
         out.extend(claims_in_document(text, target=target, source=rel, repo=repo, base=base, pins=pins))
-    return tuple(out)
+    inherited = _inherited_claim_keys(target, base)
+    return tuple(c for c in out if c.key not in inherited)
+
+
+def _inherited_claim_keys(target: str, base: Path | None, _seen: frozenset[str] = frozenset()) -> set[str]:
+    """Claim keys ``target`` inherits from the provider it extends (and that one's bases), else empty."""
+    if base is None or target in _seen:
+        return set()
+    from .providers import ProviderError, read_provider
+
+    try:
+        provider = read_provider(base, materialized=False)
+    except ProviderError:
+        return set()
+    if provider is None or provider.extends is None:
+        return set()
+    parent = provider.extends.target
+    return {c.key for c in claims(parent)} | _inherited_claim_keys(parent, _target_base(parent), _seen | {target})
 
 
 # ---------------------------------------------------------------------------------------------------
