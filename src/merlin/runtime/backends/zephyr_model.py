@@ -2313,6 +2313,11 @@ def build_app(
     from ...llvmlower.weight_prepack import prepare_build_bundle
 
     model_dir = prepare_build_bundle(model_dir, work, features)
+    # Weights stored as int8 + scale when `prequantize-weights` is selected: the blob carries what the
+    # datapath computes with, a quarter of the f32 bytes (weight_prequant).
+    from ...llvmlower.weight_prequant import prepare_build_bundle as _prequantized
+
+    model_dir = _prequantized(model_dir, work, features)
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
     # NOTE scalar multicore IS supported (see the lowering call below): the scalar path cannot use the
     # forall-under-the-RVV-schedule route, so it parallelizes at the linalg loop level instead. This is

@@ -702,6 +702,42 @@ def prequantized_bundle(src: Path | str, *, cache_root: Path | str | None = None
         raise
 
 
+def prepare_build_bundle(src: Path | str, work: Path | str, features: frozenset[str] | None) -> Path:
+    """The bundle a build lowers AND links its weights blob from: the rewritten one when selected.
+
+    Both consumers must see the same bundle -- the prepared IR reads i8 where the blob holds i8 -- which
+    is why this is a bundle rewrite applied before either, as ``weight_prepack.prepare_build_bundle`` is.
+    Selected by the feature or by the optional pass ``prequantize-weights``; refused, never silently
+    skipped, when the plan cannot prove every candidate (the caller asked for it by name).
+    """
+    from .impr_features import normalize
+    from .optional_passes import selected_features
+
+    ensure_registered()
+    src = Path(src).resolve()
+    if FEATURE not in normalize(selected_features(features) or ()):
+        return src
+    destination, effect = prequantized_bundle(src)
+    work = Path(work)
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "weight_prequantization.json").write_text(
+        json.dumps(
+            {
+                "schema": "merlin.bundle-preparation.v1",
+                "feature": FEATURE,
+                "source_bundle": str(src),
+                "prepared_bundle": str(destination),
+                "effect": effect,
+                "consumers": ["model_lowering", "runtime_abi_and_weights"],
+            },
+            sort_keys=True,
+            indent=2,
+        )
+        + "\n"
+    )
+    return destination
+
+
 def _feature():
     from .impr_features import ImprFeature
 

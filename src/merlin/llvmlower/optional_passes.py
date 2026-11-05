@@ -139,6 +139,20 @@ REGISTRY: tuple[OptionalPass, ...] = (
         switch="MERLIN_STATIC_ARENA",
     ),
     OptionalPass(
+        name="prequantize-weights",
+        summary="store constant contraction weights as int8 + per-channel scale in the weights blob",
+        changes=(
+            "each f32 parameter whose sole reader is a contraction the W8A8 datapath quantizes per "
+            "output channel at run time is quantized once at build time with the same formula and stored "
+            "as int8 plus an f32 scale; the run-time scale search and quantization of that weight go away. "
+            "Refused, never partially applied, when any candidate cannot be proven to have that one reader"
+        ),
+        exactness=EXACT,
+        default="off",
+        stage="lowering",
+        feature="prequantize_constant_weights",
+    ),
+    OptionalPass(
         name="layer-norm-chunked-sums",
         summary="sum each LayerNorm row in contiguous 32-element chunks, then sum the chunks",
         changes=(
