@@ -7,3 +7,6 @@ the assembly adapter callables. Moving these files must not change their bytes o
 silently run external assemblers, simulators or hardware during path validation.
 Generated compilers, capsules, releases and certification records remain artifacts;
 private holdouts and goldens must never be added here.
+Kernel-library selection and materialization live in `kernel_library/`; regenerate
+`selection.yaml` with its generator, and keep generated exports at an explicit
+artifact destination.

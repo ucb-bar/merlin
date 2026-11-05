@@ -11,6 +11,7 @@ target `atlas`; provider identity and hardware configuration are separate inputs
 - [Phase 1 guide](phase1/README.md): supplied compiler-authoring inputs and functional experiment requirements.
 - [Phase 2 handoff](phase2/README.md): select frozen compiler evidence and the existing optimization templates.
 - [Whole-model entrypoints](whole-model/README.md): capture/lowering inspection and separate deployment prerequisites.
+- Model bringup ([PR #55](https://github.com/ucb-bar/merlin/pull/55)): the TinyLlama and SmolVLA [captures and hand-written host graphs](comparisons/README.md), the [currently disabled atlas-kernels selection and materialization example](phase1/README.md#kernel-library), the [atlas-kernels](https://github.com/ucb-bar/atlas-kernels/tree/feat/kernel-library) library itself, and atlas-mlir's [bringup guide](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-performance/docs/bringing-up-a-model.md).
 - [Artifact navigation](artifacts/README.md): raw CIRCT facts, actual consumer views, coverage and capsule lineage.
 
 [Target setup](target/README.md) describes support selection (the vendored [`support/`](support/README.md)
@@ -36,6 +37,10 @@ before verified Phase 1 execution. New capsules, compiler payloads and receipts
 belong under configured artifact/run roots. Private holdouts remain host-only
 declared inputs, never public example content.
 Historical receipts retain their original bytes.
+
+The [November 4 entrypoint check](artifacts/workflow-inspection-2026-11-04.md) records the selected descriptor, support identity, and actual local results at Merlin `0a68cf0a`. Phase 0 inspect and configuration preflight completed with diagnostic evidence and absent synthesis; the diagnostic run then refused missing fresh derivation inputs. Phase 1 inspect completed, but preflight reported 11 errors. Both shared Phase 2 templates inspected as `OPERATOR_TARGET` placeholders. No generated or frozen functional compiler was selected, and the descriptor's RVV host compiler commit remains `UNKNOWN`.
+
+As in the [Radiance phase guides](../radiance/README.md), target inspection, diagnostic corpus generation, reviewed functional admission, and optimization are separate stages. Atlas uses Merlin's declared target and workflow entrypoints; a new reviewed Phase 0 release and qualified Phase 1/2 campaign are **PENDING**. The comparisons workflow remains separate model-specific bringup.
 
 Phase 2 starts from explicit functional evidence using the shared
 [measured-claims](../../experiments/definitions/measured-claims-template.yaml) or

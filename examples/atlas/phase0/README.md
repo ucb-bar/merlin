@@ -5,6 +5,8 @@ Phase 0 has no agent: selected input bytes and pinned tools determine extraction
 requirements and candidate capsules. Unknown semantics remain explicit blockers.
 Phase 1 develops the functional compiler; Phase 2 uses a separate performance cohort.
 
+The [November 4 local check](../artifacts/workflow-inspection-2026-11-04.md) used `experiment inspect atlas-functional --phase 0` and the corresponding `preflight`: both exited 0, with 140 selected input files, `engine_readiness: not_executed`, diagnostic evidence, and absent synthesis. The official diagnostic run exited 1 because derived-only generation requires fresh digest-bound conformance and synthesis inputs from `corpus derive`. Configuration readiness did not establish a generated corpus. Corpus preparation and inspection did not produce a release; derivation, independent review, and sealing remain **PENDING**.
+
 ## 1. Select the inputs
 
 | Input | Responsibility |
@@ -96,9 +98,14 @@ independent comparator and is not a substitute for Merlin-generated signatures
 and verifiers. Keep the ledger and generated compiler outside this example
 directory.
 
-The current descriptor selects `EE290SimConfig` in the pinned
-`bringup-chipyard` source. Earlier `AtlasRocketConfig` receipts remain
-historical evidence and must not be relabeled for this SoC configuration.
+The current descriptor selects `EE290SimConfig` in `bringup-chipyard` source
+revision `426a862f97f98938660772bd8a5d8f41316d15c3`, with
+`generators/atlas-npu` gitlink `0079c0541111197741a231c002e3843fa6f545b2`.
+Create a selected source bundle and Phase 0 run with that exact elaboration
+and simulator identity. Earlier `AtlasRocketConfig`, standalone-core, or
+other-configuration receipts remain historical evidence and must not be
+relabeled for this SoC configuration.
+
 For the selected campaign, use the generic
 [`rtl.elaboration` receipt](../../../docs/guides/phase0_specification.md#bind-the-selected-configuration-to-its-elaborated-source)
 to bind the exact `EE290SimConfig` invocation to fresh FIRRTL, then supply

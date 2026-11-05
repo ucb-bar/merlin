@@ -5,6 +5,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from merlin.common.paths import repo_root
 
@@ -23,7 +24,19 @@ def setup_example(tmp_path, monkeypatch):
     (hardware / "npu-model/npu_model").mkdir(parents=True)
     monkeypatch.setattr(module, "_resolve_atlas_npu", lambda cli: hardware)
     monkeypatch.setattr(module, "_sha", lambda path: "synthetic")
-    monkeypatch.setattr(module, "_CHIPYARD_ATLAS_DEFAULT", tmp_path / "missing")
+    monkeypatch.setattr(module, "_BRINGUP_CHIPYARD_DEFAULT", tmp_path / "missing")
+    descriptor = tmp_path / "examples/atlas/target/descriptor.yaml"
+    descriptor.parent.mkdir(parents=True)
+    selection = {"source_revision": "a" * 40, "gitlinks": {"vendor/device": "b" * 40}}
+    descriptor.write_text(yaml.safe_dump({"rtl": {"elaboration": selection}}))
+    from merlin.targetgen.rtl import declared_revision
+
+    def verify_selection(root, revision, gitlinks):
+        assert root == tmp_path / "missing"
+        assert revision == selection["source_revision"]
+        assert gitlinks == tuple(sorted(selection["gitlinks"].items()))
+
+    monkeypatch.setattr(declared_revision, "verify_declared_revision", verify_selection)
     monkeypatch.setitem(
         sys.modules, "merlin.targetgen.rtl.mlc_bridge", SimpleNamespace(arc_available=lambda target: True)
     )

@@ -7,6 +7,8 @@ Resolve required semantics and source consistency, regenerate a fresh run, and
 complete independent coverage/numerical review before verified execution.
 The Phase 2 selection is distinct and must not replace the functional population.
 
+The [November 4 local check](../artifacts/workflow-inspection-2026-11-04.md) inspected the EL4 definition successfully, with 234 selected input paths. Its configuration preflight exited 2 with 11 errors: no reviewed Phase 0 release, absent timing evidence, retained bundle paths and corpus indirection that need renewal, missing compiler toolchain inputs, and no selected executable `plugin.backend`. The selected `atlas-support` provider is support metadata, not an evaluated compiler candidate; no functional compiler artifact or submission hash was established. Verified Phase 1 execution is **PENDING**. As in [Radiance Phase 1](../../radiance/phase1/README.md), library materialization supplies authoring input and does not replace functional admission.
+
 The [catalog definition](../experiment.yaml) selects **EL4 (RTL-informed Merlin)**
 with an explicit bundle identity, manifest and timing path. These
 retained inputs must be regenerated and reviewed for the selected corpus before
@@ -35,3 +37,79 @@ by the shared renderer. Prepare and review a fresh release through the
 verified execution. Generate new bundles for these paths; historical bundles and
 receipts retain their original bytes. Other harness resources still use the
 descriptor's retained `resources_root`.
+
+## Kernel library
+
+`kernel_library/` is the Atlas counterpart of the Radiance [kernel library](../../radiance/phase1/README.md): a pinned selection and materialization example for atlas-kernels families. Selection is currently disabled, and no Atlas compile or runtime consumer uses this example.
+
+- `kernel_library/selection.yaml`: the nine atlas-kernels families mapped to
+  semantic op, dtype, and shape rules, in the schema and field names of the Radiance
+  `selection.yaml`. It is generated; do not edit it by hand.
+- `kernel_library/generate_selection.py`: regenerates `selection.yaml` from the `kernels/*/kernel.yaml` manifests and the `coverage/` placement data at the pinned commit. The per-family rules are written in the generator because the manifests state shapes in prose. Checks cover declared dtypes, mnemonic hardware features, recorded projection variant M/K/N, and placed Linear K/N. Reviewed semantic aliases and projection hardware requirements are checked separately. Pool checks require compatibility with the fixed geometry and at least one supported channel count; they do not validate every accepted pool shape. Placed M, Conv2d, attention, norm, and fusion shapes are not checked in full; these checks do not prove semantic correctness for every placed op.
+- `kernel_library/materialize.py`: the Radiance script with Atlas names. It does not
+  turn these examples into a link-time dependency of submitted compilers.
+
+The pin is atlas-kernels `ec01785` on [`feat/kernel-library`](https://github.com/ucb-bar/atlas-kernels/tree/feat/kernel-library), a pinned commit that is available once that branch is pushed. atlas-mlir pins the same commit as its `third_party/atlas-kernels` submodule. The two pins must agree. Set `MERLIN_ATLAS_MLIR` to an atlas-mlir checkout to check the requested selection commit against that checkout's `HEAD` gitlink at `third_party/atlas-kernels`; a missing gitlink or mismatched commit fails generation. Without `MERLIN_ATLAS_MLIR`, the pin comparison is reported as `not-checked`.
+
+When bumping either pin, update `SOURCE_COMMIT` in the generator, rerun it, update the selection digest in `merlin/tests/infra/test_atlas_kernel_library_example.py`, and bump the atlas-mlir submodule to the same commit.
+
+To materialize the pinned library, from the repository root:
+
+```sh
+.venv/bin/python examples/atlas/phase1/kernel_library/materialize.py --checkout /path/to/atlas-kernels
+```
+
+`MERLIN_ATLAS_KERNELS` may name the checkout instead of `--checkout`. The default is
+`out/artifacts/targets/atlas/kernel_library_v1`, with the output root honoring
+`MERLIN_OUT_ROOT`; `--output` selects another destination. The export holds
+`Makefile`, `atlas_kernels_path.py`, `lib/`, `kernels/common.mk`, and the nine `kernels/<family>/`
+directories, plus `selection.yaml`, `manifest.yaml`, and `README.md`. It omits
+`coverage/`, which holds op inventories of the held-out models. Reuse, refusal, and
+symlink rules are those of the Radiance script. This export alone is not
+certification.
+
+To regenerate or check the selection against a local checkout:
+
+```sh
+.venv/bin/python examples/atlas/phase1/kernel_library/generate_selection.py --checkout /path/to/atlas-kernels --check
+```
+
+To exercise checkout-dependent tests in CI, provision an atlas-kernels checkout containing the pinned commit and export its path as `MERLIN_ATLAS_KERNELS` before running the command below. The current `pr-fast` workflow runs the infra suite but does not provision that checkout. These tests skip when the variable is absent and fail when it is explicitly set to an unusable checkout. Set `MERLIN_ATLAS_MLIR` as well to exercise the cross-repository pin comparison against a provisioned atlas-mlir checkout.
+
+```sh
+MERLIN_ATLAS_KERNELS=/path/to/atlas-kernels MERLIN_ATLAS_MLIR=/path/to/atlas-mlir .venv/bin/python -m pytest merlin/tests/infra/test_atlas_kernel_library_example.py -q
+```
+
+Four families are stages fused into a `projection_gemm` launch rather than launches
+of their own: `epilogue`, `rne_add`, `rope`, and `resnet_patch_gather`. The schema
+has no field for that, so they are selected through compound semantic ops
+(`matmul_silu`, `matmul_add`, `matmul_rope`, `conv2d_im2col_matmul`, and so on), as
+the Radiance `rope_qkv_fused` family is selected by `matmul_rope`, and each rule's
+comment repeats the manifest's stage. The schema also cannot express set or
+divisibility constraints (RoPE and RMSNorm rows of 32 or 128, GQA head ratios,
+power-of-two channels); the rule comments name each case. Within
+`projection_gemm`, the library itself picks a traffic-reuse recipe for an exact
+MxKxN, so the selection names the family, not the recipe.
+
+The library is not enabled by default. The [target descriptor](../target/descriptor.yaml)
+declares no information treatments, and the experiment holds TinyLlama, SmolVLA, and
+ResNet50 out as validation models, while these kernels were written for exactly
+those models. Enabling it is the experiment owner's decision. By analogy with the
+Radiance descriptor, it would take a `hardware_pins` entry named `atlas_kernels`
+in `merlin/contract/hardware_pins.yaml` (commit, `root_env: MERLIN_ATLAS_KERNELS`)
+and a third information treatment in the descriptor:
+
+```yaml
+information_sets:
+  hwbringup_kernellibrary_v0:
+    condition: kernel-library
+    allowed:
+      - path: out/artifacts/targets/atlas/kernel_library_v1/
+        as: atlas-kernels
+        mode: ro
+        note: exact pinned atlas-kernels snapshot for schedule and compiler-rule mining
+    source_pins: [atlas_kernels]
+```
+
+Whether that treatment can coexist with the held-out roster, or must wait for
+models outside it, is an open question.
