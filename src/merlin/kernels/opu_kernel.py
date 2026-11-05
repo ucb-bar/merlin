@@ -72,6 +72,12 @@ class KernelSpec:
     #: Defaults ON: the hazard below is present in the unit's shipped RTL, so the single-register
     #: form emits a kernel that is wrong on this hardware. None opts out, for A/B testing only.
     row_vreg_alt: int | None = 6
+    #: Deepest reduction the partial-N tail padding covers (its scratch is ``pad_k_max * tile`` bytes of
+    #: .bss). A call deeper than this skips the padding, and the unpadded tail is the path the taped-out
+    #: unit computes WRONG, so a whole-model build sets it to the deepest K it actually routes (see the
+    #: support provider's ``build_object``) rather than trusting this default, which is only sized for the
+    #: certification corpus and the models measured so far.
+    pad_k_max: int = 9216
     #: Operand and accumulator element widths in bits. Not target facts — they are what an int8 kernel
     #: accumulating in int32 *is*, and the ratio between them is load-bearing (see :attr:`acc_lmul`).
     operand_bits: int = 8
@@ -166,11 +172,11 @@ def emit_microkernel(encodings: Mapping[str, Any], spec: KernelSpec, *, derivati
             ]
         )
 
-    # Bound for the partial-N tail scratch below. It is a CAP, not an assumption: the emitted guard falls
-    # back to the direct (unpadded) call when k exceeds it, so a deeper contraction still compiles and runs
-    # -- it just does not get the tail workaround. 9216 covers the deepest reduction we lower today
-    # (Gemma's ffn down, k=9216) at 9216*64 = 576 KiB of .bss, which fits the 512 MB part comfortably.
-    pad_k_max = 9216
+    # Bound for the partial-N tail scratch below (see KernelSpec.pad_k_max). The emitted guard falls back
+    # to the direct (unpadded) call when k exceeds it, so callers size it to the deepest routed K.
+    pad_k_max = int(spec.pad_k_max)
+    if pad_k_max < 1:
+        raise ValueError(f"pad_k_max={spec.pad_k_max} must be a positive reduction depth")
 
     fused = _fused(spec.row_vreg)
     fused_alt = _fused(spec.row_vreg_alt) if spec.row_vreg_alt is not None else None

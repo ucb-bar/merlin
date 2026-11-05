@@ -437,3 +437,14 @@ class TestTilingIsNumericallyExact:
         fn(out.ctypes.data, lhs.ctypes.data, rhs.ctypes.data, bias.ctypes.data, m, n, k)
         assert (out == np.broadcast_to(bias, (m, n))).all(), out
         assert (out == OC.reference(lhs, rhs, bias)).all()
+
+
+
+def test_the_partial_n_padding_bound_follows_the_spec():
+    """A build that routes a reduction deeper than the default sizes the padding scratch to cover it."""
+    from dataclasses import replace
+
+    text = emit_microkernel(_TABLE, replace(_SPEC, pad_k_max=16384))
+    assert "k > 16384" in text and "[16384 * MERLIN_OPU_TILE_CAP]" in text
+    with pytest.raises(ValueError, match="pad_k_max"):
+        emit_microkernel(_TABLE, replace(_SPEC, pad_k_max=0))
