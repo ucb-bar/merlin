@@ -135,10 +135,35 @@ class TestOperandLayout:
         assert got.count == 0
         (left,) = got.not_routed
         assert (left.parallel, left.reduction) == ((64, 16), (32,))
-        assert "min(M=64, N=16) < tile edge 32" in left.why
+        assert left.why == "smaller than one tile (32): min(M=64, N=16)"
         report = got.to_dict()
         assert report["macs"] == {"routed": 0, "not_routed": 64 * 16 * 32}
         assert report["not_routed"][0]["why"] == left.why
+
+    def test_the_routing_report_groups_reasons_by_what_to_change(self, tmp_path):
+        """`not_routed_by_reason` is the first thing a new model's author reads. It once grouped every
+        tile decline as "declined by the selector", which does not say the contraction was too small."""
+        import json
+        from types import SimpleNamespace
+
+        from merlin.runtime.backends import matrix_image
+        from merlin.runtime.backends import zephyr_model as zm
+
+        left = [
+            {"why": "smaller than one tile (64): min(M=256, N=49)"},
+            {"why": "smaller than one tile (64): min(M=1024, N=16)"},
+            {"why": "indexing maps x are not A(m,k) x B(k,n) -> C(m,n) (a transposed operand)"},
+        ]
+        provider = SimpleNamespace(SIDECAR_NAME="routing.json")
+        (tmp_path / "routing.json").write_text(json.dumps({"routed": [], "not_routed": left}))
+        routing = SimpleNamespace(provider=lambda: provider, support_target="t", unit="u", config="c")
+        orig = zm.load_matrix_signatures
+        zm.load_matrix_signatures = lambda *a, **k: None
+        try:
+            got = matrix_image.routing_report(tmp_path, routing)
+        finally:
+            zm.load_matrix_signatures = orig
+        assert got["not_routed_by_reason"] == {"smaller than one tile (64)": 2, left[2]["why"]: 1}
 
     def test_a_float_contraction_is_reported_with_its_dtypes(self):
         got = PO.rewrite_contractions(_module(_F32_MM), symbol_prefix=SYMBOL_PREFIX, select=_ALL)

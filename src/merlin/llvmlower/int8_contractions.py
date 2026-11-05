@@ -358,10 +358,14 @@ def _fqn(op) -> str:
     return prov.data if isinstance(prov, StringAttr) else ""
 
 
+#: Reasons that read ``<class>: <this op's numbers>``; a report groups them by the class alone.
+GROUPED_REASONS = ("smaller than one tile", "declined by the selector")
+
+
 def _declined(shape, tile_edge: int | None) -> str:
     m, n = int(shape.parallel[-2]), int(shape.parallel[-1])
     if tile_edge is not None and min(m, n) < int(tile_edge):
-        return f"declined by the selector: min(M={m}, N={n}) < tile edge {int(tile_edge)}"
+        return f"smaller than one tile ({int(tile_edge)}): min(M={m}, N={n})"
     return "declined by the selector"
 
 

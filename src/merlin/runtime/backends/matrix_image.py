@@ -75,10 +75,14 @@ def routing_report(build_dir: Path, routing: zm.MatrixRouting) -> dict[str, Any]
     routed_macs = sum(macs(r) for r in routed)
     left = got.get("not_routed") or []
     left_macs = int((got.get("macs") or {}).get("not_routed") or 0)
+    from merlin.llvmlower.int8_contractions import GROUPED_REASONS
+
     reasons: dict[str, int] = {}
     for item in left:
         why = str(item.get("why") or "unknown")
-        key = why.split(":")[0] if why.startswith("declined by the selector") else why
+        # Grouped by the reason's class, which keeps the tile edge ("smaller than one tile (64)"): the
+        # class alone, "declined by the selector", told a reader nothing about what to change.
+        key = why.partition(":")[0] if why.startswith(GROUPED_REASONS) else why
         reasons[key] = reasons.get(key, 0) + 1
     widest = max(routed, key=macs, default=None)
     total = routed_macs + left_macs
