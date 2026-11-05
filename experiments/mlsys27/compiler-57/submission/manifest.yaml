@@ -1,0 +1,23 @@
+artifact_type: mlir_oot_target_backend
+target: gemmini
+package_id: agent_gemmini
+language: python
+authoring:
+  mode: agent_generated_from_rtl_facts
+  generated_by_agent: true
+integrity_exempt: false
+entrypoints:
+  tool: compile.py
+commands:
+  parse:
+    argv: [python3, '{tool}', --verify-diagnostics, '{input_mlir}']
+  lower_interface_to_target:
+    argv: [python3, '{tool}', --convert-iface-to-gemmini, '{input_mlir}']
+  emit_command_buffer:
+    argv: [python3, '{tool}', --convert-iface-to-gemmini, '--emit-command-buffer={output_json}', '{input_mlir}']
+  lower_target_to_llvm:
+    argv: [python3, '{tool}', --convert-iface-to-gemmini, --emit-target-artifact, '{input_mlir}']
+  emit_analysis_bundle:
+    argv: [python3, '{tool}', --convert-iface-to-gemmini, '--emit-command-buffer={output_json}', --emit-target-artifact, '{input_mlir}']
+numerics:
+  approximations: []

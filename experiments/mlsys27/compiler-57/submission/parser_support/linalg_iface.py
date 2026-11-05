@@ -1,0 +1,1067 @@
+"""``linalg-on-tensors`` interface grammar: a structural reader for the *second* frozen input
+format the experiment ABI hands an out-of-tree backend package.
+
+Two input grammars ship over the same ``capsule.interface.mlir`` slot:
+
+- ``merlin_iface`` v0.1 (see :mod:`.interface_emit`) — a tiny residency command list
+  (``merlin_iface.tensor/matmul/commit``). Matmul-family only.
+- ``linalg-on-tensors`` (this module) — a ``func.func @forward`` whose body is standard MLIR
+  ``linalg``/``tensor``/``math`` ops, tagged with ``prov.op``/``prov.family`` provenance. This is
+  what model-slice capsules carry for the op classes that have no residency mnemonic
+  (softmax, rmsnorm, layernorm, gelu, rope, elementwise …) plus matmul expressed as
+  ``linalg.matmul``/``linalg.generic``.
+
+This reader is the front-door **parse** for that grammar: it returns a structural inventory of the
+workload (entry signature + one record per payload op, with provenance, operand/result shapes and
+dtypes, matmul extents, and — for ``linalg.generic``/``reduce`` — the inner arithmetic op names that
+name the elementwise/reduction semantics). Generic/map/reduce records also carry parsed indexing
+maps, iterator types, a typed scalar SSA DAG, side-effect evidence, and source provenance. It is the
+exact analogue of
+:func:`.interface_emit.parse_interface_mlir`: a **reader**, not a lowering. A backend package walks
+this inventory and authors its own lowering to the target command buffer.
+
+Design constraints (mirror the contract surface rules):
+- Target-agnostic: the grammar is fixed by the contract, identical for every accelerator. No target
+  semantics, no target-name literals.
+- Structural, NOT textual: parse the real IR with xDSL (``linalg``/``tensor``/``math`` dialects) and
+  read fields off the typed ops. No regex, and no textual pre-normalization: where xDSL's own custom
+  syntax is wrong we fix the PARSER, never the input text (see the multi-result ``linalg.generic``
+  shim below, which xDSL 0.68 prints but cannot read back).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+LEVEL = "linalg-on-tensors"
+
+# linalg named ops whose semantics are a matmul-family contraction (M,K)x(K,N)->(M,N), possibly
+# batched. A contraction may ALSO arrive as a `linalg.generic` with a reduction iterator — in that
+# case the record's ``prov_family == "contraction"`` still marks it, and ``reduction_dims`` is set.
+_MATMUL_KINDS = ("linalg.matmul", "linalg.batch_matmul", "linalg.quantized_matmul",
+                 "linalg.matmul_transpose_a", "linalg.matmul_transpose_b")
+
+
+def make_linalg_context():
+    """A permissive xDSL context that loads exactly the dialects the linalg-on-tensors grammar uses.
+
+    ``allow_unregistered=True`` tolerates the ``prov.*`` attribute namespace the capsules carry.
+    """
+    from xdsl.context import Context
+    from xdsl.dialects.arith import Arith
+    from xdsl.dialects.builtin import Builtin
+    from xdsl.dialects.cf import Cf
+    from xdsl.dialects.func import Func
+    from xdsl.dialects.math import Math
+    from xdsl.dialects.scf import Scf
+
+    # Teach the parser the fp8 element types (and let them satisfy arith/math's float constraints)
+    # BEFORE any parse, exactly as `xdsl_dialects._common.make_context` and `frontends.linalg_mlir`
+    # do. This is the THIRD context builder in the tree, and reader parity is the whole point: an
+    # ordinary `arith.truncf %x : f32 to f8E4M3FN` requantize -- the bf16 -> fp8 pack a whole class of
+    # narrow-datapath capsules is written around -- loads through the other two readers and fails
+    # `type expected` here, so the capsule reads as malformed rather than as unregistered.
+    from .fp8 import register_fp8_float_constraints, register_fp8_types
+
+    register_fp8_types()
+    register_fp8_float_constraints()
+
+    ctx = Context(allow_unregistered=True)
+    for d in (Builtin, Func, Arith, _linalg_dialect(), _tensor_dialect(), Scf, Math, Cf):
+        ctx.load_dialect(d)
+    return ctx
+
+
+def is_linalg_on_tensors(text: str) -> bool:
+    """Cheap discriminator: does this interface MLIR carry the linalg-on-tensors provenance level?
+
+    Lets a package's ``parse`` route between the two grammars without committing to a full parse.
+    """
+    return f'prov.level = "{LEVEL}"' in text
+
+
+# --------------------------------------------------------------------------- structural field reads
+
+
+def _shape(t) -> list[int]:
+    from xdsl.dialects.builtin import TensorType
+
+    return [int(d) for d in t.get_shape()] if isinstance(t, TensorType) else []
+
+
+def _dtype(t) -> str:
+    from xdsl.dialects.builtin import TensorType
+
+    return str(t.element_type) if isinstance(t, TensorType) else str(t)
+
+
+def _op_name(op) -> str:
+    """The parsed mnemonic, including xDSL's generic unregistered-op wrapper."""
+    from xdsl.dialects.builtin import StringAttr
+
+    if op.name == "builtin.unregistered":
+        original = op.attributes.get("op_name__")
+        if isinstance(original, StringAttr):
+            return original.data
+    return op.name
+
+
+def _prov(op) -> dict[str, str]:
+    from xdsl.dialects.builtin import StringAttr
+
+    out: dict[str, str] = {}
+    for table in (op.attributes, getattr(op, "properties", {}) or {}):
+        for key, val in table.items():
+            if key.startswith("prov.") and isinstance(val, StringAttr):
+                out[key[len("prov.") :]] = val.data
+    return out
+
+
+def _scalar_const(value) -> int | float | None:
+    """The compile-time scalar constant behind ``value`` when it is an ``arith.constant`` or a
+    ``tensor.splat`` of one (e.g. a per-tensor scale ``x * 4.0`` splats a constant), else None.
+    Lets a lowering bake the scalar into the kernel instead of treating it as a runtime operand."""
+    owner = getattr(value, "owner", None)
+    name = getattr(owner, "name", "")
+    if name == "tensor.splat" and owner.operands:
+        owner = getattr(owner.operands[0], "owner", None)
+        name = getattr(owner, "name", "")
+    if name == "arith.constant":
+        attrs = {**owner.attributes, **(getattr(owner, "properties", {}) or {})}
+        v = attrs.get("value")
+        data = getattr(getattr(v, "value", None), "data", None)
+        if data is not None:
+            if type(data) is int:
+                return data
+            try:
+                return float(data)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _ins_outs(op) -> tuple[list, list]:
+    """The linalg operand split (ins= data operands, outs= init/destination operands).
+
+    Named + generic linalg ops expose ``.inputs``/``.outputs``; anything else falls back to all
+    operands as inputs and none as outputs.
+    """
+    ins = list(getattr(op, "inputs", []) or [])
+    outs = list(getattr(op, "outputs", []) or [])
+    if _op_name(op) == "linalg.reduce" and not ins and not outs:
+        return [op.input], [op.init]
+    if _op_name(op) == "linalg.map" and not ins and not outs and op.operands:
+        return list(op.operands[:-1]), [op.operands[-1]]
+    if not ins and not outs:
+        ins = list(op.operands)
+    return ins, outs
+
+
+def _destination_only_tensor(op) -> bool:
+    """A tensor producer is initialization only when every use is an outs slot."""
+    from xdsl.dialects.builtin import TensorType
+
+    if not op.results or any(not isinstance(value.type, TensorType) for value in op.results):
+        return False
+    for value in op.results:
+        for use in value.uses:
+            ins, outs = _ins_outs(use.operation)
+            if value in ins or value not in outs:
+                return False
+    return True
+
+
+def _initialization_only(op) -> bool:
+    from xdsl.dialects.builtin import TensorType
+
+    if op.name == "tensor.empty":
+        return True
+    if op.name not in ("arith.constant", "tensor.splat", "linalg.fill"):
+        return False
+    # Scalar constants retain exact operand/capture values in the existing
+    # records. Observable tensor values need a distinct payload/result owner.
+    if op.name == "arith.constant" and not any(isinstance(value.type, TensorType) for value in op.results):
+        return True
+    return _destination_only_tensor(op)
+
+
+def _body_op_names(op) -> list[str]:
+    """Inner arithmetic op names of a ``linalg.generic``/``reduce``/``map`` body (``arith.addf``,
+    ``arith.maximumf``, ``math.exp`` …), in order, minus the terminator. These NAME the elementwise
+    / reduction semantics that the op family alone does not (add vs mul vs sub vs div; max vs sum;
+    exp/rsqrt/tanh/sin/cos)."""
+    names: list[str] = []
+    for region in getattr(op, "regions", []) or []:
+        for block in region.blocks:
+            for inner in block.ops:
+                if _op_name(inner) in ("linalg.yield", "func.return"):
+                    continue
+                names.append(_op_name(inner))
+    return names
+
+
+def _semantic_attributes(op) -> dict[str, str]:
+    """Canonical MLIR attributes that can affect an operation's result.
+
+    ``prov.*`` is reported separately, while operand segment sizes encode the IRDL
+    storage layout rather than mathematical behavior. Attribute values come from
+    parsed xDSL objects, never from slicing source text.
+    """
+    attrs = {**op.attributes, **(getattr(op, "properties", {}) or {})}
+    return {
+        key: str(value)
+        for key, value in sorted(attrs.items())
+        if not key.startswith("prov.") and key not in ("operandSegmentSizes", "op_name__")
+    }
+
+
+def _iterator_types(op, ins: list) -> list[str]:
+    """Explicit iterator types, or the well-defined iterators of reduce/map."""
+    attrs = {**op.attributes, **(getattr(op, "properties", {}) or {})}
+    explicit = attrs.get("iterator_types")
+    if explicit is not None:
+        out: list[str] = []
+        for it in explicit:
+            data = getattr(it, "data", it)
+            out.append(data.value if hasattr(data, "value") else data if isinstance(data, str) else str(it))
+        return out
+    if _op_name(op) == "linalg.map" and ins:
+        return ["parallel"] * len(_shape(ins[0].type))
+    if _op_name(op) == "linalg.reduce" and ins:
+        rank = len(_shape(ins[0].type))
+        reduction = set(_reduction_dims(op))
+        return ["reduction" if i in reduction else "parallel" for i in range(rank)]
+    return []
+
+
+def _indexing_maps(op, ins: list, outs: list) -> list[str] | None:
+    """Exact maps in linalg operand order, including defined named-op maps."""
+    from xdsl.dialects.builtin import AffineMapAttr
+    from xdsl.ir.affine import AffineDimExpr, AffineMap
+
+    attrs = {**op.attributes, **(getattr(op, "properties", {}) or {})}
+    maps = attrs.get("indexing_maps")
+    if maps is not None:
+        return [str(affine_map) for affine_map in maps]
+
+    opname = _op_name(op)
+    if opname not in ("linalg.reduce", "linalg.map") or not ins:
+        return None
+    rank = len(_shape(ins[0].type))
+    if opname == "linalg.map" and any(len(_shape(value.type)) != rank for value in (*ins, *outs)):
+        return None
+    reduced = set(_reduction_dims(op)) if opname == "linalg.reduce" else set()
+    if any(dim < 0 or dim >= rank for dim in reduced):
+        return None
+
+    def affine(dimensions: tuple[int, ...]) -> str:
+        return str(AffineMapAttr(AffineMap(rank, 0, tuple(AffineDimExpr(i) for i in dimensions))))
+
+    identity = tuple(range(rank))
+    output = tuple(i for i in identity if i not in reduced)
+    return [affine(identity) for _ in ins] + [affine(output) for _ in outs]
+
+
+def _effects(op) -> list[str] | None:
+    """Known xDSL memory effects; ``None`` means the interface cannot establish them."""
+    from xdsl.traits import get_effects
+
+    effects = get_effects(op)
+    if effects is None:
+        return None
+    return sorted({effect.kind.name.lower() for effect in effects})
+
+
+def _scalar_body(op, operand_rec) -> dict[str, Any] | None:
+    """Typed SSA DAG for a linalg scalar region, including ordered yield edges.
+
+    Body argument ``arg:i`` corresponds to linalg input/output scalar operand i.
+    An operation result is ``op:i:k`` (operation index, result index). These IDs
+    remain stable across textual SSA renaming and disambiguate multi-result ops.
+    """
+    regions = list(getattr(op, "regions", []) or [])
+    if not regions:
+        return None
+    if len(regions) != 1 or len(regions[0].blocks) != 1:
+        raise ValueError(f"{_op_name(op)} scalar body requires exactly one region and one block")
+    block = regions[0].blocks[0]
+    args = list(block.args)
+    inner_ops = list(block.ops)
+    if not inner_ops or _op_name(inner_ops[-1]) not in ("linalg.yield", "tensor.yield"):
+        raise ValueError(f"{_op_name(op)} scalar body has no linalg.yield terminator")
+    operations = inner_ops[:-1]
+    result_owner = {value: (i, k) for i, inner in enumerate(operations) for k, value in enumerate(inner.results)}
+    captures: list[dict[str, Any]] = []
+    capture_index: dict[Any, int] = {}
+
+    def ref(value) -> str:
+        if value in args:
+            return f"arg:{args.index(value)}"
+        if value in result_owner:
+            i, k = result_owner[value]
+            return f"op:{i}:{k}"
+        if value not in capture_index:
+            capture_index[value] = len(captures)
+            captures.append(operand_rec(value))
+        return f"capture:{capture_index[value]}"
+
+    body_ops = [
+        {
+            "op": _op_name(inner),
+            "operands": [ref(value) for value in inner.operands],
+            "results": [str(value.type) for value in inner.results],
+            "attributes": _semantic_attributes(inner),
+            "effects": _effects(inner),
+            "regions": len(inner.regions),
+        }
+        for inner in operations
+    ]
+    known = [item["effects"] for item in body_ops]
+    effects = (
+        None
+        if any(item is None or op_rec["regions"] for item, op_rec in zip(known, body_ops))
+        else sorted({kind for item in known for kind in item})
+    )
+    return {
+        "arguments": [str(value.type) for value in args],
+        "captures": captures,
+        "operations": body_ops,
+        "yields": [ref(value) for value in inner_ops[-1].operands],
+        "effects": effects,
+    }
+
+
+def _reduction_dims(op) -> list[int]:
+    """The reduction iterator positions of a linalg op (empty for pure-parallel elementwise).
+
+    Read structurally from ``iterator_types`` when present; ``linalg.reduce`` carries explicit
+    ``dimensions``.
+    """
+    from xdsl.dialects.builtin import ArrayAttr, IntegerAttr
+
+    attrs = {**op.attributes, **(getattr(op, "properties", {}) or {})}
+    dims = attrs.get("dimensions")
+    if dims is not None and hasattr(dims, "get_values"):  # DenseArrayBase (linalg.reduce dimensions)
+        return [int(v) for v in dims.get_values()]
+    if isinstance(dims, (list, tuple)):
+        return [int(d.value.data) if isinstance(d, IntegerAttr) else int(d) for d in dims]
+    if isinstance(dims, ArrayAttr):
+        return [int(d.value.data) if isinstance(d, IntegerAttr) else int(d) for d in dims.data]
+    its = attrs.get("iterator_types")
+    out: list[int] = []
+    if isinstance(its, ArrayAttr):
+        for i, it in enumerate(its.data):
+            s = it.data.data if hasattr(it, "data") and hasattr(it.data, "data") else str(it)
+            if "reduction" in str(s):
+                out.append(i)
+    return out
+
+
+def _matmul_extents(ins: list, outs: list, *, transpose_a: bool = False,
+                    transpose_b: bool = False) -> dict[str, int]:
+    """(M,K,N) for a 2-input contraction, derived from operand shapes. Batched forms prepend batch
+    dims; take the trailing 2 of each. Returns {} when the shapes are not a clean contraction."""
+    if len(ins) < 2:
+        return {}
+    a, b = _shape(ins[0].type), _shape(ins[1].type)
+    if len(a) < 2 or len(b) < 2:
+        return {}
+    m, k = a[-2], a[-1]
+    if transpose_a:
+        k, m = a[-2], a[-1]
+    n, k2 = b[-2], b[-1]
+    if not transpose_b:
+        k2, n = b[-2], b[-1]
+    ext = {"m": int(m), "k": int(k), "n": int(n)}
+    if len(a) >= 3 or len(b) >= 3:
+        ext["batch"] = int(a[0] if len(a) >= 3 else b[0])
+    if k2 != k:  # e.g. transpose_b (K,N) stored as (N,K); surface both so the lowering can adapt
+        ext["k_rhs"] = int(k2)
+    return ext
+
+
+# --------------------------------------------------------------------------- multi-result generic
+
+# xDSL 0.68 ships a ``linalg.generic`` custom syntax that does not ROUND-TRIP: its printer emits the
+# multi-result result list parenthesized (``-> (T0, T1)``, see ``GenericOp.print``), but its parser
+# reads the arrow with ``parse_attribute``, and a leading ``(`` starts an MLIR *function type*
+# ``(...) -> ...`` — so the parser consumes the result list and then demands an ``->`` that is not
+# there. Two consequences, both of which this shim removes:
+#
+#   1. every multi-result ``linalg.generic`` is unparseable — which is every arg-reduce
+#      (``aten.min.dim`` / ``argmin`` / ``argmax`` lowers to a generic yielding (value, index)),
+#      on every target and at every dtype;
+#   2. the failure is reported at the token where the parse DESYNCHRONISED, i.e. the FOLLOWING op —
+#      so the traceback blames an innocent neighbour (a ``tensor.expand_shape``, typically) and the
+#      real cause is invisible.
+#
+# The shim is a subclass, so ``isinstance(op, GenericOp)`` and the ``HasParent(GenericOp)`` trait on
+# ``linalg.index`` (which arg-reduce bodies use to materialise the index) keep holding.
+
+_LINALG_DIALECT = None
+
+
+def _multi_result_generic_op():
+    """A ``linalg.generic`` whose ``parse`` accepts the parenthesized multi-result arrow.
+
+    Everything before the arrow is parsed exactly as upstream does; only the result-type list is
+    read structurally in both spellings (``-> T``, ``-> (T0, T1, ...)``, ``-> ()``).
+    """
+    from typing import cast
+
+    from xdsl.dialects.builtin import ArrayAttr, StringAttr
+    from xdsl.dialects.linalg.ops import GenericOp, IteratorType, IteratorTypeAttr
+    from xdsl.ir import Attribute
+
+    class MultiResultGenericOp(GenericOp):
+        @classmethod
+        def parse(cls, parser):
+            attrs_start_pos = parser.pos
+            attrs = parser.parse_optional_attr_dict()
+            attrs_end_pos = parser.pos
+
+            if "indexing_maps" not in attrs:
+                parser.raise_error("Expected indexing_maps for linalg.generic", attrs_start_pos, attrs_end_pos)
+            indexing_maps = attrs.pop("indexing_maps")
+            assert isinstance(indexing_maps, ArrayAttr)
+
+            if "iterator_types" not in attrs:
+                parser.raise_error("Expected iterator_types for linalg.generic", attrs_start_pos, attrs_end_pos)
+            parsed_iterator_types = attrs.pop("iterator_types")
+            assert isinstance(parsed_iterator_types, ArrayAttr)
+            parsed_iterator_types = cast(ArrayAttr[Attribute], parsed_iterator_types)
+            iterator_types: list = []
+            for iterator_type in parsed_iterator_types:
+                if isinstance(iterator_type, IteratorTypeAttr):
+                    iterator_types.append(iterator_type)
+                elif isinstance(iterator_type, StringAttr):
+                    iterator_types.append(IteratorTypeAttr(IteratorType(iterator_type.data)))
+                else:
+                    parser.raise_error(f"Unknown iterator type {iterator_type}", attrs_start_pos, attrs_end_pos)
+
+            doc = attrs.pop("doc", None)
+            library_call = attrs.pop("library_call", None)
+
+            pos = parser.pos
+            if parser.parse_optional_characters("ins"):
+                parser.parse_punctuation("(")
+                unresolved_ins = parser.parse_comma_separated_list(
+                    parser.Delimiter.NONE, parser.parse_unresolved_operand
+                )
+                parser.parse_punctuation(":")
+                ins_types = parser.parse_comma_separated_list(parser.Delimiter.NONE, parser.parse_type)
+                parser.parse_punctuation(")")
+                ins = parser.resolve_operands(unresolved_ins, ins_types, pos)
+            else:
+                ins = ()
+
+            pos = parser.pos
+            if parser.parse_optional_characters("outs"):
+                parser.parse_punctuation("(")
+                unresolved_outs = parser.parse_comma_separated_list(
+                    parser.Delimiter.NONE, parser.parse_unresolved_operand
+                )
+                parser.parse_punctuation(":")
+                outs_types = parser.parse_comma_separated_list(parser.Delimiter.NONE, parser.parse_type)
+                parser.parse_punctuation(")")
+                outs = parser.resolve_operands(unresolved_outs, outs_types, pos)
+            else:
+                outs = ()
+
+            if parser.parse_optional_keyword("attrs"):
+                parser.parse_punctuation("=")
+                extra_attrs = parser.expect(parser.parse_optional_attr_dict, "expect extra attributes")
+            else:
+                extra_attrs = {}
+
+            body = parser.parse_region()
+
+            # THE FIX. Upstream reads this with ``parse_attribute``, which mis-reads the
+            # parenthesized (multi-result) spelling as the operand half of a function type.
+            res_types = _parse_result_arrow(parser)
+
+            generic = cls(ins, outs, body, indexing_maps, iterator_types, res_types, doc, library_call)
+            generic.attributes |= extra_attrs
+            return generic
+
+    return MultiResultGenericOp
+
+
+def _parse_result_arrow(parser) -> list:
+    """The trailing ``-> ...`` result-type list of a linalg op, in every spelling MLIR prints.
+
+    ``-> T`` (one result), ``-> (T0, T1, ...)`` (what ``GenericOp.print`` emits for more than one),
+    ``-> ()`` (explicitly none), and no arrow at all (none). Parenthesization is a printing choice,
+    not a semantic one, so both bare and parenthesized lists are accepted at any arity.
+    """
+    if not parser.parse_optional_punctuation("->"):
+        return []
+    if parser.parse_optional_punctuation("("):
+        if parser.parse_optional_punctuation(")"):
+            return []
+        res_types = parser.parse_comma_separated_list(parser.Delimiter.NONE, parser.parse_type)
+        parser.parse_punctuation(")")
+        return res_types
+    return parser.parse_comma_separated_list(parser.Delimiter.NONE, parser.parse_type)
+
+
+def _named_transpose_op(transpose: str):
+    """The standard named transpose-A/B contractions missing from this xDSL.
+
+    Keep the normal named-operation grammar and IRDL operand segmentation.
+    The scalar region widens operands before multiplication, as the named
+    operation specifies; multiplying in the input width would truncate i8
+    products before their i32 accumulation.
+    """
+    from xdsl.builder import Builder
+    from xdsl.dialects import arith
+    from typing import ClassVar
+    from xdsl.dialects.builtin import AffineMapAttr, AnyFloat, ArrayAttr, IntegerType, TensorType
+    from xdsl.dialects.linalg.ops import IteratorTypeAttr, NamedOperation, YieldOp
+    from xdsl.ir.affine import AffineMap
+    from xdsl.irdl import irdl_op_definition, prop_def
+
+    if transpose not in ("a", "b"):
+        raise ValueError("named matmul transpose must select operand a or b")
+    left_map = AffineMap.from_callable(lambda i, j, k: (k, i) if transpose == "a" else (i, k))
+    right_map = AffineMap.from_callable(lambda i, j, k: (j, k) if transpose == "b" else (k, j))
+
+    @irdl_op_definition
+    class MatmulTransposeOp(NamedOperation):
+        name = "linalg.matmul_transpose_" + transpose
+        PRINT_ATTRS_IN_FRONT: ClassVar[bool] = True
+        indexing_maps = prop_def(
+            ArrayAttr[AffineMapAttr],
+            default_value=ArrayAttr([
+                AffineMapAttr(left_map),
+                AffineMapAttr(right_map),
+                AffineMapAttr(AffineMap.from_callable(lambda i, j, k: (i, j))),
+            ]),
+        )
+        iterator_types = prop_def(
+            ArrayAttr,
+            default_value=ArrayAttr([
+                IteratorTypeAttr.parallel(), IteratorTypeAttr.parallel(),
+                IteratorTypeAttr.reduction(),
+            ]),
+        )
+
+        def __init__(self, inputs, outputs=(), res=None, attributes=None):
+            if res is None:
+                res = [value.type for value in outputs if isinstance(value.type, TensorType)]
+            super().__init__(inputs, outputs, result_types=res, attributes=attributes,
+                             hidden_region=self.get_hidden_region(inputs, outputs))
+
+        @classmethod
+        def get_hidden_region(cls, inputs, outputs, unsigned=False):
+            types = cls.body_arg_types((*inputs, *outputs))
+            if len(inputs) != 2 or len(outputs) != 1 or len(types) != 3:
+                raise ValueError(cls.name + " requires two inputs and one output")
+            accumulator = types[2]
+
+            def cast(value):
+                source = value.type
+                if source == accumulator:
+                    return value
+                if isinstance(source, IntegerType) and isinstance(accumulator, IntegerType):
+                    if source.width.data < accumulator.width.data:
+                        return (arith.ExtUIOp if unsigned else arith.ExtSIOp)(value, accumulator).result
+                    return arith.TruncIOp(value, accumulator).result
+                if isinstance(source, AnyFloat) and isinstance(accumulator, AnyFloat):
+                    operation = arith.ExtFOp if source.bitwidth < accumulator.bitwidth else arith.TruncFOp
+                    return operation(value, accumulator).result
+                if isinstance(source, IntegerType) and isinstance(accumulator, AnyFloat):
+                    return (arith.UIToFPOp if unsigned else arith.SIToFPOp)(value, accumulator).result
+                if isinstance(source, AnyFloat) and isinstance(accumulator, IntegerType):
+                    return (arith.FPToUIOp if unsigned else arith.FPToSIOp)(value, accumulator).result
+                raise ValueError(cls.name + " operands need scalar numeric casts")
+
+            @Builder.implicit_region(types)
+            def body(args):
+                left, right = cast(args[0]), cast(args[1])
+                floating = isinstance(accumulator, AnyFloat)
+                multiply = (arith.MulfOp if floating else arith.MuliOp)(left, right)
+                add = (arith.AddfOp if floating else arith.AddiOp)(multiply, args[2])
+                YieldOp(add)
+
+            return body
+
+        @classmethod
+        def parse(cls, parser):
+            operation = super().parse(parser)
+            cast = operation.attributes.get("cast", operation.properties.get("cast"))
+            if str(cast) == "#linalg.type_fn<cast_unsigned>":
+                operation.detach_region(0)
+                operation.add_region(cls.get_hidden_region(operation.inputs, operation.outputs, True))
+            return operation
+
+        def get_iterator_types(self):
+            return self.iterator_types
+
+        def get_default_indexing_maps(self):
+            return tuple(value.data for value in self.indexing_maps)
+
+        def get_indexing_maps(self):
+            return self.indexing_maps
+
+    return MatmulTransposeOp
+
+
+def _linalg_dialect():
+    """The ``linalg`` dialect with the round-trippable ``linalg.generic`` substituted in."""
+    global _LINALG_DIALECT
+    if _LINALG_DIALECT is None:
+        from xdsl.dialects.linalg import Linalg
+        from xdsl.dialects.linalg.ops import GenericOp
+        from xdsl.ir import Dialect
+
+        fixed = _multi_result_generic_op()
+        _LINALG_DIALECT = Dialect(
+            Linalg.name,
+            [fixed if op is GenericOp else op for op in Linalg.operations]
+            + [_named_transpose_op("a"), _named_transpose_op("b")],
+            list(Linalg.attributes),
+        )
+    return _LINALG_DIALECT
+
+
+_TENSOR_DIALECT = None
+
+
+def _tensor_dialect():
+    """Add typed static slice custom syntax missing from this xDSL release.
+
+    Generic operation syntax still uses the original IRDL operand/property
+    definitions. Dynamic operands are deliberately diagnosed by this static
+    custom parser rather than interpreted as guessed constants.
+    """
+    global _TENSOR_DIALECT
+    if _TENSOR_DIALECT is None:
+        from xdsl.dialects.builtin import DenseArrayBase, TensorType, i64
+        from xdsl.dialects.tensor import ExtractSliceOp, InsertSliceOp, Tensor
+        from xdsl.ir import Dialect
+
+        def static_parameters(parser):
+            return parser.parse_comma_separated_list(parser.Delimiter.SQUARE, parser.parse_integer)
+
+        class StaticExtractSliceOp(ExtractSliceOp):
+            @classmethod
+            def parse(cls, parser):
+                source = parser.parse_unresolved_operand()
+                offsets = static_parameters(parser)
+                sizes = static_parameters(parser)
+                strides = static_parameters(parser)
+                attributes = parser.parse_optional_attr_dict()
+                parser.parse_punctuation(':')
+                source_type = parser.parse_type()
+                parser.parse_keyword('to')
+                result_type = parser.parse_type()
+                if not isinstance(source_type, TensorType) or not isinstance(result_type, TensorType):
+                    parser.raise_error('extract_slice requires ranked tensor types')
+                return cls.build(
+                    operands=[parser.resolve_operand(source, source_type), [], [], []],
+                    result_types=[result_type], attributes=attributes,
+                    properties={'static_offsets':DenseArrayBase.from_list(i64, offsets),
+                                'static_sizes':DenseArrayBase.from_list(i64, sizes),
+                                'static_strides':DenseArrayBase.from_list(i64, strides)})
+
+        class StaticInsertSliceOp(InsertSliceOp):
+            @classmethod
+            def parse(cls, parser):
+                source = parser.parse_unresolved_operand()
+                parser.parse_keyword('into')
+                destination = parser.parse_unresolved_operand()
+                offsets = static_parameters(parser)
+                sizes = static_parameters(parser)
+                strides = static_parameters(parser)
+                attributes = parser.parse_optional_attr_dict()
+                parser.parse_punctuation(':')
+                source_type = parser.parse_type()
+                parser.parse_keyword('into')
+                destination_type = parser.parse_type()
+                if not isinstance(source_type, TensorType) or not isinstance(destination_type, TensorType):
+                    parser.raise_error('insert_slice requires ranked tensor types')
+                return cls.build(
+                    operands=[parser.resolve_operand(source, source_type),
+                              parser.resolve_operand(destination, destination_type), [], [], []],
+                    result_types=[destination_type], attributes=attributes,
+                    properties={'static_offsets':DenseArrayBase.from_list(i64, offsets),
+                                'static_sizes':DenseArrayBase.from_list(i64, sizes),
+                                'static_strides':DenseArrayBase.from_list(i64, strides)})
+
+        replacements = {ExtractSliceOp:StaticExtractSliceOp, InsertSliceOp:StaticInsertSliceOp}
+        _TENSOR_DIALECT = Dialect(Tensor.name,
+                                 [replacements.get(op, op) for op in Tensor.operations],
+                                 list(Tensor.attributes))
+    return _TENSOR_DIALECT
+
+
+# --------------------------------------------------------------------------- fail-closed diagnostic
+
+
+class LinalgParseError(ValueError):
+    """A ``linalg-on-tensors`` interface this reader could not parse, NAMED AT THE OP.
+
+    An MLIR custom parser reports the token at which it desynchronised, which for an op whose custom
+    syntax it cannot read is the op AFTER the culprit. Reporting that token verbatim blames an
+    innocent neighbour and sends the reader hunting the wrong construct. This error therefore names
+    both: ``op`` (the op the parse actually stopped inside — the reported line, or the nearest
+    preceding op when the reported line cannot own the failure) and ``reported_op``/``line``.
+    """
+
+    def __init__(self, *, op: str, reported_op: str, line: int, column: int, detail: str, window: str):
+        self.op = op
+        self.reported_op = reported_op
+        self.line = line
+        self.column = column
+        self.detail = detail
+        self.window = window
+        blame = (
+            f"{op!r}"
+            if op == reported_op
+            else f"{op!r} -- the parse desynchronised and stopped at the START of the following "
+            f"{reported_op!r}, which is where an unreadable custom syntax SURFACES, not "
+            f"where it originates"
+        )
+        super().__init__(
+            f"cannot parse linalg-on-tensors interface at line {line}, col {column}: "
+            f"unsupported or malformed op {blame} -- {detail}\n{window}"
+        )
+
+
+def _op_mnemonic(line: str) -> tuple[str, int]:
+    """The op mnemonic of one MLIR line and the 0-based column it starts at, read structurally
+    (``split``/``partition``, no regex).
+
+    An op line is either ``%r0, %r1 = <mnemonic> ...`` (SSA result binding first) or a bare
+    ``<mnemonic> ...``. Returns ``("", -1)`` for a line that owns no op (blank, block label, closing
+    brace, or a continuation of a multi-line construct).
+    """
+    stripped = line.strip()
+    if not stripped or stripped[0] in "^}])" or stripped.startswith("//"):
+        return ("", -1)
+    if stripped.startswith("%"):
+        # `%r0, %r1 = <mnemonic> ...` — step over the SSA result binding.
+        head, sep, after = line.partition(" = ")
+        if not sep:
+            return ("", -1)
+        col = len(head) + len(sep) + (len(after) - len(after.lstrip()))
+        rest = after.lstrip()
+    else:
+        col = len(line) - len(line.lstrip())
+        rest = stripped
+    parts = rest.split()
+    if not parts:
+        return ("", -1)
+    token = parts[0].strip('{(,:"')
+    # An op mnemonic is `dialect.op` or a bare builtin keyword (`return`). Anything still carrying
+    # syntax after stripping is a continuation line, not an op.
+    if not token or not all(c.isalnum() or c in "._" for c in token):
+        return ("", -1)
+    return (token, col)
+
+
+def _line_depths(lines: list[str]) -> list[int]:
+    """Brace nesting depth at the START of each line, counted structurally.
+
+    Needed to walk BACK to the op that owns a desynchronised parse: the ops inside a
+    ``linalg.generic`` region (``linalg.index``, ``arith.select``, ``linalg.yield`` …) sit one level
+    deeper than the generic itself, so a naive line-wise walk back blames the region body instead of
+    the op whose syntax actually failed. Braces inside double-quoted strings are not nesting.
+    """
+    depths: list[int] = []
+    depth = 0
+    for line in lines:
+        depths.append(depth)
+        in_string = False
+        escaped = False
+        for ch in line:
+            if escaped:
+                escaped = False
+                continue
+            if ch == "\\" and in_string:
+                escaped = True
+            elif ch == '"':
+                in_string = not in_string
+            elif not in_string and ch == "{":
+                depth += 1
+            elif not in_string and ch == "}":
+                depth -= 1
+    return depths
+
+
+def _underlying_reason(exc) -> str:
+    """The human reason from an xDSL parse failure, without its echoed source context.
+
+    ``ParseError`` renders as a location line, the offending source line, a caret run, and THEN the
+    reason -- so the first line is the least informative part and the last is the whole point
+    (``Expected indexing_maps for linalg.generic``). We print our own, correctly attributed window,
+    so keep the reason and drop the echo.
+    """
+    lines = [ln.strip() for ln in str(exc).splitlines() if ln.strip()]
+    reason = ""
+    for ln in reversed(lines):
+        if set(ln) != {"^"}:  # skip the caret run
+            reason = ln
+            break
+    return f"{type(exc).__name__}: {reason}" if reason else type(exc).__name__
+
+
+def _parse_diagnostic(text: str, exc) -> LinalgParseError:
+    """Turn an xDSL parse failure into a diagnostic that names the op, not the next line.
+
+    The offset comes from the exception's own ``span`` (structural), never from its message text.
+    """
+    offset = getattr(getattr(exc, "span", None), "start", None)
+    if not isinstance(offset, int):
+        offset = 0
+    lines = text.splitlines()
+    line_no = text.count("\n", 0, offset) + 1
+    line_start = text.rfind("\n", 0, offset) + 1
+    column = offset - line_start + 1
+
+    idx = min(max(line_no - 1, 0), max(len(lines) - 1, 0))
+    reported_op, mnemonic_col = _op_mnemonic(lines[idx]) if lines else ("", -1)
+
+    # WHICH op is actually to blame. Two failure shapes land here and they need opposite answers:
+    #
+    #  * the parser stopped INSIDE an op it was reading (a malformed field, a missing required
+    #    attribute). The position is then PAST that op's mnemonic, and the reported op is the
+    #    culprit.
+    #  * the parser DESYNCHRONISED on an op whose custom syntax it could not read: it consumed the
+    #    op, failed to consume the tail, and stopped at the very START of the NEXT op. The position
+    #    is then at or before that next op's mnemonic, and the culprit is the op BEFORE it.
+    #
+    # Distinguishing them is the whole point: reporting the desync position verbatim is what made a
+    # multi-result `linalg.generic` look like a broken `tensor.expand_shape`.
+    desynced = reported_op != "" and column - 1 <= mnemonic_col
+    culprit = reported_op or "<unknown>"
+    if desynced or not reported_op:
+        # Walk back at the SAME nesting depth: an op's own region body is deeper, and blaming a
+        # `linalg.yield` inside the generic is as wrong as blaming the op after it.
+        depths = _line_depths(lines)
+        here = depths[idx] if idx < len(depths) else 0
+        for back in range(idx - 1, -1, -1):
+            prev, _ = _op_mnemonic(lines[back])
+            if prev and depths[back] == here:
+                culprit = prev
+                break
+
+    window = "\n".join(f"  {n + 1:>6} | {lines[n]}" for n in range(max(idx - 2, 0), min(idx + 1, len(lines))))
+    return LinalgParseError(
+        op=culprit or "<unknown>",
+        reported_op=reported_op or "<unknown>",
+        line=line_no,
+        column=column,
+        detail=_underlying_reason(exc),
+        window=window,
+    )
+
+
+# --------------------------------------------------------------------------- parse
+
+
+def parse_linalg_mlir(text: str, *, ctx=None) -> dict[str, Any]:
+    """Parse ``linalg-on-tensors`` interface MLIR into a structural workload inventory.
+
+    Returns::
+
+        {
+            "level": "linalg-on-tensors",
+            "entry": "forward",
+            "args": [{"index": 0, "shape": [16, 16], "dtype": "bf16"}, ...],  # @forward operands
+            "results": [{"shape": [16, 16], "dtype": "bf16"}, ...],  # @forward results
+            "returns": [{"source": ("op", 0), "result_index": 0, ...}],  # actual ordered values
+            "ops": [  # payload ops, in order
+                {
+                    "id": 0,
+                    "kind": "linalg.matmul",
+                    "op": "matmul",
+                    "family": "contraction",
+                    "prov": {...},
+                    "ins": [{"source": ("arg", 0), "shape": [16, 16], "dtype": "bf16"}, ...],
+                    "outs": [{"source": ("op", -1) | ("init", "fill"), "shape": [...], "dtype": "..."}],
+                    "results": [{"shape": [...], "dtype": "..."}],
+                    "extents": {"m": 16, "k": 16, "n": 16},
+                    "body_ops": [],
+                    "reduction_dims": [],
+                },
+                ...,
+            ],
+        }
+
+    ``source`` is the structural dataflow edge for each operand: ``("arg", i)`` a ``@forward`` operand,
+    ``("op", j)`` the result of payload op ``j``, ``("init", kind)`` a ``tensor.empty``/``linalg.fill``
+    destination, or ``("const", None)`` an ``arith.constant``. This is the DAG a backend lowers.
+    An ``("op", j)`` edge additionally carries ``result_index``: WHICH of op ``j``'s results it reads.
+    Multi-result ops are real (an arg-reduce ``linalg.generic`` yields value AND index together), and
+    for them the op id alone does not identify the value.
+
+    ``scalar_body`` exposes body arguments, captures from the enclosing function, ordered
+    operations and exact yield edges. ``effects=None`` means purity was not established by xDSL.
+    ``returns=None`` means this reader did not establish a single-block return join.
+    """
+    from xdsl.ir import BlockArgument
+
+    import threading
+    IR_LOCK = threading.Lock()
+    from xdsl.parser import Parser
+
+    with IR_LOCK:
+        try:
+            module = Parser(ctx or make_linalg_context(), text).parse_module()
+        except LinalgParseError:
+            raise
+        except Exception as exc:  # xDSL ParseError and friends: re-raise NAMED AT THE OP
+            raise _parse_diagnostic(text, exc) from exc
+
+    fns = [op for op in module.walk() if op.name == "func.func"]
+    definitions = [op for op in fns if op.body.blocks]
+    if not definitions:
+        raise ValueError("linalg-on-tensors interface has no func.func definition with a body")
+    forward = [op for op in definitions if _fn_name(op) == "forward"]
+    if len(forward) > 1 or (not forward and len(definitions) > 1):
+        raise ValueError("linalg-on-tensors interface has no unique @forward definition")
+    fn = forward[0] if forward else definitions[0]
+    entry = _fn_name(fn)
+    block = fn.body.blocks[0]
+    func_args = list(block.args)
+
+    # The payload ops we surface are the DIRECT children of the @forward entry block (never the
+    # arithmetic ops nested inside a linalg.generic/reduce region body — those are captured per op in
+    # ``body_ops``, and walking them as top-level ops would double-count e.g. a softmax's inner
+    # ``math.exp``). Observable tensor constants, splats and fills are payloads;
+    # scalar constants and destination-only tensor initializers keep their representation.
+    payload = [
+        op for op in block.ops if op.name not in ("func.return", "linalg.yield") and not _initialization_only(op)
+    ]
+
+    # Map every SSA result value -> (payload-op id, WHICH RESULT of it) for dataflow edges. The
+    # result position is load-bearing for a multi-result op: an arg-reduce generic yields (value,
+    # index) from ONE op, so ``("op", j)`` alone cannot say which of the two a consumer reads — and
+    # confusing an argmin's value with its index is a silent numerical wrong answer, not a crash.
+    result_owner: dict[Any, tuple[int, int]] = {}
+    for i, op in enumerate(payload):
+        for k, res in enumerate(op.results):
+            result_owner[res] = (i, k)
+
+    def _source(value):
+        if isinstance(value, BlockArgument):
+            return ("arg", func_args.index(value)) if value in func_args else ("arg", None)
+        owner = value.owner
+        oname = _op_name(owner) if owner is not None else ""
+        if value in result_owner:
+            return ("op", result_owner[value][0])
+        if oname in ("tensor.empty", "linalg.fill", "tensor.splat"):
+            return ("init", oname.split(".")[-1])
+        if oname == "arith.constant":
+            return ("const", None)
+        return ("other", oname)
+
+    def _operand_rec(value):
+        rec = {"source": _source(value), "shape": _shape(value.type), "dtype": _dtype(value.type)}
+        if value in result_owner:
+            # WHICH result of the producing op this edge reads. 0 for the single-result ops that are
+            # the overwhelming majority; the disambiguator for a multi-result producer.
+            rec["result_index"] = result_owner[value][1]
+        cv = _scalar_const(value)
+        if cv is not None:
+            rec["const_value"] = cv
+        owner = getattr(value, "owner", None)
+        if getattr(owner, "name", "") == "linalg.fill" and owner.operands:
+            initial = _scalar_const(owner.operands[0])
+            if initial is not None:
+                rec["init_value"] = initial
+        return rec
+
+    ops_out: list[dict[str, Any]] = []
+    for i, op in enumerate(payload):
+        ins, outs = _ins_outs(op)
+        prov = _prov(op)
+        loc = str(op.location)
+        opname = _op_name(op)
+        rec: dict[str, Any] = {
+            "id": i,
+            "kind": opname,
+            "operation": opname,
+            "op": prov.get("op", opname.split(".")[-1]),
+            "family": prov.get("family", ""),
+            "prov": prov,
+            "source_provenance": {
+                "entry": entry,
+                "payload_index": i,
+                "tags": prov,
+                "location": None if loc == "loc(unknown)" else loc,
+            },
+            "ins": [_operand_rec(v) for v in ins],
+            "outs": [_operand_rec(v) for v in outs],
+            "results": [{"shape": _shape(r.type), "dtype": _dtype(r.type)} for r in op.results],
+            "attributes": _semantic_attributes(op),
+            "indexing_maps": _indexing_maps(op, ins, outs),
+            "indexing_maps_explicit": "indexing_maps" in op.attributes or "indexing_maps" in op.properties,
+            "iterator_types": _iterator_types(op, ins),
+            "scalar_body": _scalar_body(op, _operand_rec)
+            if opname in ("linalg.generic", "linalg.reduce", "linalg.map", "tensor.pad",
+                           "linalg.matmul_transpose_a", "linalg.matmul_transpose_b")
+            else None,
+            "body_ops": _body_op_names(op),
+            "reduction_dims": _reduction_dims(op),
+        }
+        ext = {}
+        if opname in _MATMUL_KINDS or prov.get("family") == "contraction":
+            ext = _matmul_extents(ins, outs, transpose_a=opname == "linalg.matmul_transpose_a",
+                                  transpose_b=opname == "linalg.matmul_transpose_b")
+        if ext:
+            rec["extents"] = ext
+        ops_out.append(rec)
+
+    result_types = _fn_result_types(fn)
+    terminator = block.ops.last
+    returns = None
+    if len(fn.body.blocks) == 1 and terminator is not None and _op_name(terminator) == "func.return":
+        if len(terminator.operands) != len(result_types) or any(
+            value.type != expected for value, expected in zip(terminator.operands, result_types, strict=True)
+        ):
+            raise ValueError("entry func.return differs from its complete ordered result signature")
+        returns = [_operand_rec(value) for value in terminator.operands]
+    return {
+        "level": LEVEL,
+        "entry": entry,
+        "args": [{"index": i, "shape": _shape(a.type), "dtype": _dtype(a.type)} for i, a in enumerate(func_args)],
+        "results": [{"shape": _shape(t), "dtype": _dtype(t)} for t in result_types],
+        "returns": returns,
+        "ops": ops_out,
+    }
+
+
+def _fn_name(fn) -> str:
+    from xdsl.dialects.builtin import StringAttr
+
+    for table in (getattr(fn, "properties", {}) or {}, fn.attributes):
+        v = table.get("sym_name")
+        if isinstance(v, StringAttr):
+            return v.data
+    return "forward"
+
+
+def _fn_result_types(fn) -> list:
+    """The @forward result types, read from the function type."""
+    ft = None
+    for table in (getattr(fn, "properties", {}) or {}, fn.attributes):
+        if "function_type" in table:
+            ft = table["function_type"]
+            break
+    if ft is not None and hasattr(ft, "outputs"):
+        return list(ft.outputs.data)
+    # fallback: the terminator's operand types
+    block = fn.body.blocks[0]
+    term = block.ops.last
+    return [o.type for o in term.operands] if term is not None else []
+
+
+def matmul_records(parsed: dict[str, Any]) -> list[dict[str, Any]]:
+    """Convenience view: just the contraction (matmul-family) op records, with extents.
+
+    A package that only lowers the matmul family (reusing the residency command path) filters here.
+    """
+    return [o for o in parsed.get("ops", []) if o["kind"] in _MATMUL_KINDS or o.get("family") == "contraction"]
