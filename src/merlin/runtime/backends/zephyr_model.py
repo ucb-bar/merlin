@@ -317,11 +317,8 @@ class _MemoryPlan:
 
 
 def _memory_plan(brd: Any, weights_bytes: int, linked_region: int, override: int | None = None) -> _MemoryPlan:
-    """Choose an in-DRAM layout using only the selected board's memory facts.
-
-    A missing external-weights layout is a refusal, not a guess at another board's
-    16 GiB map. The returned spike span covers every byte of the emitted ELF.
-    """
+    """Choose an in-DRAM layout from the selected board's memory facts only: a missing external-weights layout is
+    refused, never guessed. The spike span covers the whole ELF; a region over the DRAM is refused with sizes."""
     default = brd.zephyr_default_ram_bytes
     limit = brd.zephyr_link_limit_bytes
     if default is None or limit is None:
@@ -338,7 +335,9 @@ def _memory_plan(brd: Any, weights_bytes: int, linked_region: int, override: int
         raise ZephyrModelError(f"{brd.name}: computed region is smaller than the port's default RAM region")
     if linked_region <= limit:
         if linked_region > brd.dram_bytes or linked_region > 0xFFFFFFFF:
-            raise ZephyrModelError(f"{brd.name}: linked region exceeds physical DRAM")
+            need, w, has = linked_region >> 20, weights_bytes >> 20, brd.dram_bytes >> 20
+            raise ZephyrModelError(f"{brd.name}: linked region exceeds physical DRAM: the image needs {need} MiB ({w} "
+                                   f"MiB of weights, the rest code and arena), the board has {has} MiB")  # fmt: skip
         return _MemoryPlan(False, linked_region, linked_region)
     low = brd.zephyr_external_ram_bytes
     tail = brd.zephyr_external_tail_reserve_bytes

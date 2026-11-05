@@ -189,6 +189,17 @@ def test_large_model_without_board_layout_fails_before_linking():
         zm._memory_plan(brd, 0, 0, override=3 << 30)
 
 
+def test_a_model_larger_than_the_boards_dram_says_how_much_larger():
+    """The refusal is the first thing a newcomer with a new model sees; it has to carry both sizes."""
+    mib = 1 << 20
+    brd = _fixture_board(
+        "small_dram", dram_bytes=512 * mib,
+        zephyr_default_ram_bytes=256 * mib, zephyr_link_limit_bytes=1900 * mib,
+    )
+    with pytest.raises(zm.ZephyrModelError, match=r"needs 624 MiB \(92 MiB of weights.*the board has 512 MiB"):
+        zm._memory_plan(brd, 92 * mib, 624 * mib)
+
+
 def test_external_weights_cannot_overlap_reserved_dram_tail():
     gib = 1 << 30
     brd = _fixture_board(
