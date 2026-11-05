@@ -1,71 +1,64 @@
-# Atlas MLIR: Qwen kernel results
+# Atlas MLIR: pretrained Qwen bringup
 
-**Measured November 4, 2026.** Five manually written PyTorch subgraphs matching
-DeepSeek-R1-Distill-Qwen-1.5B dimensions now compile through torch-mlir, Merlin and Atlas
-and execute successfully on the NPU simulator. Scheduling reduces cycles by
-**7–15%**. The current memory system limits performance; numerical precision
-and allocation scalability remain the main blockers to larger model sections.
+The workflow now starts from the actual **DeepSeek-R1-Distill-Qwen-1.5B
+checkpoint**. A 32-token prefill plus two greedy decode steps through all 28
+layers exports to **6,176 ATen operations, 591 projection calls and 84 attention
+calls**. This supplies model-derived shapes and invocation counts.
+
+## Completed
+
+- The exported full session matches eager FP32 PyTorch exactly.
+- Five PyTorch regions—first-layer norm, attention, MLP, gate projection and
+  down projection—are extracted from that graph and independently reproduce
+  their captured outputs exactly. Original source nodes and parameters are retained.
+- Four distinct projection-launch variants execute on `npu_model`, match
+  independent target-arithmetic goldens, and pass Atlas machine-stream and
+  timing verification. `atlas-emit` reproduces the assembler's words.
+- Gate and down panels also pass those checks with actual pretrained weights
+  and captured model activations, beyond the synthetic model-shape benchmark.
 
 ## Performance
 
-Results use the simulator's default VCS-derived memory curve.
+Output panels contain 128 columns and keep the full source K reduction.
+Both prefill and single-row decode execute 32 physical rows.
 
-| Kernel | Unscheduled cycles | Scheduled cycles | Cycle reduction | Roofline efficiency* |
-| --- | ---: | ---: | ---: | ---: |
-| Attention | 18,866 | 16,127 | 14.5% | 94.4% |
-| SwiGLU partition | 8,833 | 7,691 | 12.9% | 89.9% |
-| Projection K=128 | 8,324 | 7,717 | 7.3% | 89.6% |
-| Projection K=256 | 15,060 | 13,727 | 8.9% | 90.8% |
-| Projection K=512 | 28,532 | 25,745 | 9.8% | 91.5% |
+| Projection panel | Simulator cycles | Launches in the selected session |
+| --- | ---: | ---: |
+| 32×1536×128 | 358,100 | 17,673 |
+| 32×8960×128 | 2,056,340 | 1,008 |
 
-*Roofline efficiency is resource-lower-bound cycles divided by measured cycles;
-it measures throughput relative to that bound, rather than peak compute utilization.*
+The 591 logical projection calls become **18,681 physical panels**, totaling
+**8.401 billion simulator cycles** under this unfused, cold-launch policy.
+That is a projection-only estimate: unsupported kernels, host work, launch
+overhead and full graph integration are excluded. It is not model latency.
+No Qwen-specific traffic-reuse recipe is currently selected.
 
-All five are **DRAM-bound**, with only 19–30 matrix FLOP per transferred byte.
-With work and traffic unchanged, the optimistic remaining cycle reduction is
-approximately **6–10%**. Larger gains require reducing transfers or increasing
-data reuse. These comparisons include boundary-DMA changes; scheduling alone
-still saves 13.5% for attention and 11.4% for SwiGLU against a boundary-only baseline.
+On two actual first-layer panels, relative L2 error against captured FP32
+outputs is **4.40% for gate** and **8.62% for down**. Both remain bit-exact to
+the selected target arithmetic. These spot checks do not establish full-model
+quantized accuracy or error propagation through a session.
 
-A hypothetical faster-memory test exposes additional limits: SwiGLU's largest
-resource charge becomes the VPU, and K=512's becomes VMEM-to-register loads.
-Bound efficiency falls to 28–38%, exposing latency/dependency and overlap costs
-that need further attribution.
+## Existing problems and priorities
 
-## Existing problems
+1. **Operator coverage:** attention needs 128-channel heads; the existing
+   generator supports 64. RMSNorm needs width 1536 and epsilon 1e-6; its current
+   standalone generator supports width 2048 with a different epsilon. These
+   variants remain explicitly unsupported.
+2. **Missing graph work:** QKV biases, SiLU/gating, residuals, RoPE, embedding,
+   masks and cache/layout operations remain unmapped in this Qwen placement.
+3. **Automatic lowering:** real batched projections emit `linalg.batch_matmul`,
+   which the current normalizer cannot parse. Raw Linalg is retained. The
+   successful programs above use library schedules with compiler verification
+   and encoding, rather than Merlin-generated schedules.
+4. **Scheduling and precision:** prioritize streaming allocation and reusable
+   Qwen schedules, decode-aware execution, and calibration/error budgets on
+   actual activations. Full K=8960 execution demonstrates that long reductions
+   are feasible on the simulator despite earlier compiler allocation timeouts.
 
-- **FP8 accuracy:** bounded signed SwiGLU inputs produce an all-zero output
-  and 100% relative error. The gated intermediate is too small for the selected
-  unit-scale BF16→FP8 policy and is flushed away. Emitted code matches that
-  policy; the precision choice is unsuitable for these inputs.
-- **Projection accuracy:** relative error against float32 grows from 1.3% at
-  K=128 to 9.2% at K=512 on the positive panel. Quantization and accumulation
-  error still need separate attribution.
-- **Allocation scalability:** the full K=1536 projection times out during
-  allocation, including a 300-second attempt. K=128/256/512 compile in roughly
-  0.27/1.06/4.37 seconds.
-- **Frontend coverage:** full-width RMSNorm/QKV and residual MLP capture
-  successfully but fail target lowering. Broader nonlinear-domain qualification,
-  RoPE and causal-mask lowering also remain necessary for full-model support.
+No full-model Atlas ELF, board execution, perplexity or token-throughput result
+is claimed. Raw tensors, checkpoints and images stay local; results are committed
+as Markdown. Qwen work is on `feat/qwen-kernels`; packaging and CI remain separate.
 
-## Recommended priorities
-
-1. Add activation-aware scaling, scale compensation and higher precision fallbacks.
-2. Use streaming schedules with bounded live tiles for long reductions.
-3. Keep data resident across kernels/windows and reuse K/V across query heads.
-4. Expand Qwen operator coverage and test pretrained activation distributions.
-
-## Validation and scope
-
-All 30 roofline runs passed exact virtual-reference output and memory-guard
-checks, with zero runtime errors. Packaging fixes, a two-command demo and CI
-checks are on the separate `feat/pip-package` branch; installed wheels passed Python 3.10/3.12 checks, and all
-149 CTest entries passed. Hosted CI execution is pending.
-
-These are **simulator measurements with synthetic tensors**. Attention covers
-one head's 32-token unmasked window with all 128 head channels; SwiGLU is a
-32-channel partition. Full-model accuracy, token throughput and hardware
-performance remain unmeasured.
-
-Details: [compilation and accuracy](qwen-results.md),
-[roofline analysis](qwen-roofline.md).
+Details: [bringup report](qwen-model-bringup.md),
+[complete MODEL-BENCH table](../full_model/MODEL-BENCH.md),
+[reproduction](../full_model/README.md).

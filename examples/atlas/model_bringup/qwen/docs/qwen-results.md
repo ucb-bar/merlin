@@ -1,5 +1,9 @@
 # Qwen compilation and Atlas compiler findings
 
+This is the historical manually authored microbenchmark report. The newer
+[pretrained-model bringup](qwen-model-bringup.md) captures the actual model and
+derives its regions and launch inventory from the exported graph.
+
 Measured locally on 2026-11-04, starting from `feat/pip-package` at
 `a92d173`. This report accompanies the package, capture, and benchmark changes
 in this checkout. Measurements below are **NPU simulator cycles**, not RTL,

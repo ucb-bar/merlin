@@ -1,5 +1,9 @@
 # Qwen kernel campaign
 
+For the actual pretrained-model export, graph-derived PyTorch regions and
+model-shape library benchmark, use [full_model/README.md](full_model/README.md).
+The workflow below is the earlier manually authored microbenchmark campaign.
+
 These are ordinary PyTorch subgraphs of
 `deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B`, the Qwen2 model in
 [Radiance PR #1](https://github.com/ucb-bar/radiance-kernels/pull/1).
