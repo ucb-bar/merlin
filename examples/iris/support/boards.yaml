@@ -1,0 +1,35 @@
+# Iris boards. Merlin's board schema (merlin.runtime.boards.Board); select with
+#   MERLIN_BOARD_CATALOG=<this repo>
+#
+# Facts from ucb-bar/chipyard@iris-cy b4542fa, generators/chipyard/src/main/scala/config/IrisConfigs.scala.
+# Only the RTL-simulation elaboration is described: no Iris silicon or bitstream facts are known here, and a
+# board is never declared on a guess.
+schema_version: 1
+
+boards:
+  # IrisConfig as Verilator elaborates it. Tile ids: the two Shuttle tiles are harts 0-1 (each a Saturn
+  # vLen=256/dLen=128 with the VME unit), the Rocket tile is hart 2 (Saturn DMA vector unit,
+  # vLen=256/dLen=256), so all three harts carry V at the same VLEN. DRAM is the serial-TL manager's RAM
+  # (ManagerRAMParams address 0x80000000, size 0x100000000). The in-sim TSI link loads the image.
+  iris_rtl:
+    zephyr_board: chipyard_riscv64
+    dt_cpu_nodes: 8
+    dram_bytes: 4 GiB
+    dram_base: 0x80000000
+    zephyr_default_ram_bytes: 256 MiB
+    zephyr_link_limit_bytes: 1900 MiB
+    harts: 3
+    vector_harts: 3
+    vlen: 256
+    console: htif
+    flow: zephyr
+    loader: uart_tsi
+    loader_baud: 921600
+    ram_label: ram0
+    fpu_sharing: false
+    zephyr_vector_ext: true
+    target: iris
+    rtl_sim_config: IrisConfig
+    notes: >-
+      RTL simulation of IrisConfig: 2 Shuttle+Saturn(VME) harts and 1 Rocket+Saturn(DMA) hart, all
+      VLEN=256. Matrix routing is not available until the VME unit is added to this package.

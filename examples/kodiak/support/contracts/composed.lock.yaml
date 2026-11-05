@@ -1,0 +1,18 @@
+schema: merlin.provider_compose.v1
+target: kodiak
+provider_id: kodiak-support
+base:
+  target: rvv
+  provider_id: rvv-support
+  revision: a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5
+  pinned: a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5
+  repo: https://github.com/ucb-bar/rvv-mlir.git
+  contract_sha256: b08117fecc0eef967ce639ab55314d2b8a163dd1733603f11133f452dd8ec4a4
+  not_inherited:
+  - plugin
+overlay:
+  path: contracts/overlay.yaml
+  sha256: 50535e37634c43af6a6f7e6471c9b46cddfb58ad14da49d3cc1127f9941f7593
+effective:
+  path: contracts/target_contract.yaml
+  sha256: 2547dad97d9ff29f3234d47d344774b28ccef197b4e24871ddfe43a766856b6a

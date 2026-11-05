@@ -2,35 +2,27 @@
 # listed under `normalized`. The vendored directory's git tree id is vendored_tree; putting each
 # normalized file's companion_blob back reproduces source.tree. merlin/tests/infra/test_example_support.py
 # recomputes both, and the file count, from the committed bytes. Do not edit support/ in place: a change
-# is a new vendoring with its own source commit, recorded here.
+# is a new vendoring with its own source commit, recorded here (build_tools/scripts/vendor_support.py).
 schema: merlin.vendored_support.v1
 target: rvv
 provider_id: rvv-support
 path: support
-file_count: 6
-vendored: 2026-10-07
+file_count: 7
+vendored: '2026-11-04'
 source:
-  repository: "https://github.com/ucb-bar/rvv-mlir.git"
-  published: false  # the commit is on no remote branch; this copy is its only tracked home
-  commit: d6863380d43f61dcc22ebe498c0f6b9341018e29
-  commit_date: "2026-09-21T21:19:57-07:00"
-  provider_root: "merlin-support"
-  tree: cdfed452de48491da2f09a772b251b8b827e8bda
-vendored_tree: 0e857f223910460294bd028998534883ca81238a
-normalized:
-  - path: provenance.json
-    companion_blob: 885671cddaccc5ce03fc4756ca483628239a1987
-    date: 2026-10-08
-    change: >-
-      Each files[].source named the copied file by an absolute path on the vendoring host. It
-      is now relative to the Merlin checkout whose output directory generated it (the record's
-      source_revision is null for generated files); path, source_revision and sha256 are
-      unchanged, so each entry still names the same file and the same bytes.
+  repository: https://github.com/ucb-bar/rvv-mlir.git
+  published: false
+  commit: a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5
+  commit_date: '2026-11-04T16:05:53-08:00'
+  provider_root: .
+  tree: b1f9a45658bff26382519b6f2dcaa040dc8674ac
+vendored_tree: b1f9a45658bff26382519b6f2dcaa040dc8674ac
+normalized: []
 pinned:
   manifest: build_tools/upstreams/target_support.json
-  companion_commit: d6863380d43f61dcc22ebe498c0f6b9341018e29
+  companion_commit: a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5
   relation: same_commit
-  provider_tree: cdfed452de48491da2f09a772b251b8b827e8bda
+  provider_tree: b1f9a45658bff26382519b6f2dcaa040dc8674ac
   identical_to_source: true
 records:
   file_provenance: support/provenance.json

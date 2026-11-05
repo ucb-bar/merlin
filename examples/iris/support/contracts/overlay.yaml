@@ -1,0 +1,49 @@
+# Iris's delta on top of the rvv base contract. Everything not stated here is inherited from rvv.
+# `merlin-target-compose .` writes the effective contracts/target_contract.yaml; never edit that file.
+#
+# Source of the facts: ucb-bar/chipyard@iris-cy b4542fa,
+# generators/chipyard/src/main/scala/config/IrisConfigs.scala (pins chipyard_iris, saturn_vme in Merlin's
+# merlin/contract/hardware_pins.yaml):
+#   * harts 0-1: Shuttle tiles, Saturn vector unit vLen=256 dLen=128 with VectorParams.opuMxParams (the
+#     VME/Xsfmm matrix unit, incl. MX/FP8), 128 KiB TCM each;
+#   * hart 2: Rocket with a Saturn DMA vector unit, vLen=256 dLen=256;
+#   * 512 KiB inclusive L2, 128 KiB SBUS scratchpad at 0x580000000, serial-TL DRAM at 0x80000000.
+#
+# NOT YET HERE: the VME matrix unit. Its encodings (sf.mm.s.s, sf.vtzero.t, sf.vtmv.v.t, vsettnt/m/k)
+# differ from Kodiak's BME OPU and must be derived from saturn `vme` (benchmarks/common/vme.h as the
+# cross-check), not copied. Until then Iris compiles as plain RVV on all three harts.
+
+remove:
+  - provenance
+  - runner
+replace:
+  - measurement
+
+provenance: >-
+  Iris (chipyard iris-cy IrisConfig): three vector-capable harts at VLEN=256 (two Shuttle+Saturn with the
+  VME unit, one Rocket+Saturn DMA). RVV datapaths inherited from rvv; the VME matrix unit is not modeled yet.
+
+rtl_source:
+  ext_root: chipyard
+  config: IrisConfig
+  generator: saturn
+
+features:
+  - multicore
+
+measurement:
+  cycles_from: spike
+  cycles_tier: functional
+  wall_from: iris_rtl
+  wall_tier: rtl
+  citable_tier: rtl
+  speed_of_light: rvv_lane_peak
+  notes:
+    - No Iris silicon or FPGA bitstream is described here yet; wall-clock numbers come from RTL simulation.
+
+runtime_promises:
+  - metrics
+  - multicore_barrier
+
+hardware_promises:
+  - per_hart_mcycle

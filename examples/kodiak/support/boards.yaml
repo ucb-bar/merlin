@@ -1,0 +1,136 @@
+# Kodiak boards: the silicon, and the two elaborations of the Kodiak+OPU design that exist.
+#
+# Merlin's board schema (merlin.runtime.boards.Board). Select with
+#   MERLIN_BOARD_CATALOG=<this repo>        (a provider root stands for its boards.yaml)
+# alongside any other catalog, separated by ':'. A board declared by two selected catalogs is refused.
+#
+# Facts come from the chip and its own repos, not assumed; where the board's files and the chip
+# disagree, the chip wins and the entry says so. Moved verbatim from Merlin's examples/board-catalog.yaml.
+schema_version: 1
+
+boards:
+  # `boards/chipyard/kodiak/` on the `kodiak` branch of ucb-bar/zephyr-chipyard-sw. Its DTS declares
+  # `&ram0` as 256 MB and `CONFIG_MP_MAX_NUM_CPUS=2`, but the silicon has 512 MB and 3 working
+  # Saturn-vector cores, so those are what we build for (merlin emits the `&ram0` overlay). Console is HTIF (`CONFIG_UART_HTIF=y`, the SiFive UART driver is off) and
+  # `zephyr,console = &htif`. Its defconfig sets `CONFIG_FPU_SHARING=y`, which we deliberately override
+  # -- see the `Board` class doc.
+  #
+  # VLEN=512 is CONFIRMED by the chip's owner (2026-08-05), which retires the earlier inference: the DTS
+  # says `riscv,isa = "rv64gc"` with no `v` at all, and the samples' CONFIG_RISCV_VECTOR_MAX_LEN only
+  # sizes Zephyr's save area, so nothing in the repo stated the real width. Building for 128 on a 512-bit
+  # unit is the documented K1 trap (a fixed-width kernel lands at a lower LMUL and leaves three quarters
+  # of the datapath idle), so the fact matters even though our vector code is scalable.
+  chipyard_kodiak:
+    dt_cpu_nodes: 8
+    dram_bytes: 512 MiB
+    dram_base: 0x80000000
+    zephyr_default_ram_bytes: 256 MiB
+    zephyr_link_limit_bytes: 1900 MiB
+    harts: 3
+    vector_harts: 2
+    vlen: 512
+    console: htif
+    flow: zephyr
+    ram_label: ram0
+    # These two flags used to read `fpu_sharing: true, zephyr_vector_ext: false`, on the reasoning that
+    # this board's Zephyr lacks RISCV_V_KERNEL_ONLY and routes isr.S's
+    # `z_riscv_vstate_save`/`_restore` through fpu.c/fpu.S, which only compile under FPU_SHARING -- so V
+    # without FPU_SHARING would not link. That was true of the submodule the `kodiak` BRANCH pins
+    # (5a06eb0d) and false of the tree we actually build: ZEPHYR_BASE resolves to the `dev` pin
+    # (852bb170), two commits later, which includes "riscv: decouple V/F save-restore + add
+    # RISCV_V_KERNEL_ONLY (Saturn fork)". There, arch/riscv/core/CMakeLists.txt compiles v.c under
+    # CONFIG_RISCV_ISA_EXT_V *independently of* CONFIG_FPU_SHARING, and says so in a comment.
+    #
+    # Carrying the stale pair cost a delivery round. Without RISCV_ISA_EXT_V no thread's mstatus carries
+    # VS, so the OpenMP master loses vector state the moment pool creation switches it out; with
+    # FPU_SHARING=y the resulting V illegal-instruction trap is mis-routed into the FP retry path and the
+    # image hangs with no fault printed. Single-hart passed, every multi-hart image failed. The chip's own
+    # known-working RVV+SMP sample (origin/kodiak:samples/q8_gemm_minmax, which ships a ref-out) uses
+    # RISCV_ISA_EXT_V=y, RISCV_VECTOR_MAX_LEN=512, FPU_SHARING=n -- the settings below, and the only place
+    # in that repo the real VLEN is written down.
+    fpu_sharing: false
+    zephyr_vector_ext: true
+    tick_hz: 100
+    # The loader line this board's own scripts/run_experiments.py uses. pyuartsi sends PROGBITS sections,
+    # not MemSiz, and 57600 is 16x slower than the 921600 our old fixed 92 KB/s assumed -- two errors in
+    # opposite directions that between them made every upload estimate we shipped wrong, including the
+    # one that had whisper looking like a hang rather than an unfinished load.
+    loader: pyuartsi
+    loader_baud: 57600
+    notes: >-
+      Kodiak tapeout. DTS says ram0=256MB and MP_MAX_NUM_CPUS=2; the chip has 512MB and 3 working cores,
+      2 of them vector. Vector config matches the chip's own q8_gemm_minmax sample: Zephyr-managed V
+      state, no FPU_SHARING.
+
+  # The SAME Zephyr port, describing a DIFFERENT elaborated SoC: the two-core configuration that puts a
+  # matrix unit on BOTH cores. It is its own descriptor rather than an override of the one above because
+  # three of the facts differ and each has its own failure mode -- the core count (an image that starts a
+  # CPU the design does not have hangs in z_smp_init with nothing printed), the DRAM (that configuration
+  # declares four times as much, and a region larger than the design has dies before main), and which
+  # harts carry vectors (here all of them, where the tapeout chip has one scalar core). `zephyr_board`
+  # keeps the port: the Zephyr side is unchanged, so the image is built against the same board files,
+  # and only the facts we pass it move.
+  #
+  # It is deliberately NOT called a chip. No bitstream of this configuration exists -- it does not route
+  # on the U250 -- so nothing built for it has been executed on hardware of this shape, and the delivery
+  # README has to say so rather than inheriting the confidence of the one-core builds.
+  kodiak_opu_2core:
+    zephyr_board: chipyard_kodiak
+    dt_cpu_nodes: 8
+    dram_bytes: 4 GiB
+    dram_base: 0x80000000
+    zephyr_default_ram_bytes: 256 MiB
+    zephyr_link_limit_bytes: 1900 MiB
+    harts: 2
+    vector_harts: 2
+    vlen: 512
+    console: htif
+    flow: zephyr
+    ram_label: ram0
+    fpu_sharing: false
+    zephyr_vector_ext: true
+    tick_hz: 100
+    loader: pyuartsi
+    loader_baud: 57600
+    notes: >-
+      Two-core Kodiak configuration with a matrix unit on each core: 2 vector-capable harts, 4 GB of DRAM
+      at 0x80000000, vLen=512 (so the unit's logical tile edge is VLMAX at SEW=8, i.e. 64 -- the same
+      edge as the one-core configuration). Built against the chipyard_kodiak Zephyr port, whose facts
+      (HTIF console, Zephyr-managed vector state, no FPU_SHARING, pyuartsi loader) this configuration
+      shares. No bitstream of it exists.
+
+  # The FireSim elaboration of Kodiak+OPU that actually has a bitstream: ONE Shuttle core.
+  #
+  # Its own descriptor rather than a reuse of firesim_dual_saturn (16 GB, 2 harts, vLen 256) because two
+  # facts differ and each is load-bearing. The DRAM is FireSim's, not Kodiak's: WithFireSimDesignTweaks
+  # carries WithExtMemSize(16 GiB), which OVERRIDES the 4 GB the Kodiak base declares -- so an image built
+  # against the 512 MB tapeout descriptor or the 256 MB chipyard_riscv64 DTS is refused by the region
+  # check for a part that in fact has 16 GiB. And the hart count is ONE: the two-core KodiakOPUConfig does
+  # not route on the U250 (86.36% LUT, 23,531 unroutable signals), so every FireSim measurement of this
+  # design is single-core, and asking Zephyr to start a second CPU the elaboration lacks hangs in
+  # z_smp_init with nothing printed. Multicore for this unit is reachable on the taped-out part, which has
+  # two vector harts AND the outer-product unit -- not here.
+  firesim_kodiak_opu:
+    zephyr_board: chipyard_riscv64
+    dt_cpu_nodes: 8
+    dram_bytes: 16 GiB
+    dram_base: 0x80000000
+    zephyr_default_ram_bytes: 256 MiB
+    zephyr_link_limit_bytes: 1900 MiB
+    zephyr_external_ram_bytes: 1 GiB
+    zephyr_external_tail_reserve_bytes: 256 MiB
+    harts: 1
+    vector_harts: 1
+    vlen: 512
+    console: htif
+    flow: zephyr
+    loader: uart_tsi
+    loader_baud: 921600
+    ram_label: ram0
+    fpu_sharing: false
+    zephyr_vector_ext: true
+    bitstream: alveo_u250_firesim_kodiak_opu_1core
+    notes: >-
+      FireSim alveo_u250_firesim_kodiak_opu_1core: single Shuttle core with the outer-product unit,
+      vLen=512/dLen=256 (logical tile edge = VLMAX at SEW=8 = 64), 16 GiB of FireSim DRAM rather than
+      Kodiak's own 4 GB. Host-assisted HTIF console, serviced by the FireSim driver.

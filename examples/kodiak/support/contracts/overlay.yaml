@@ -1,0 +1,69 @@
+# Kodiak's delta on top of the rvv base contract. Everything not stated here is inherited from rvv
+# (vector unit, dtypes, int8 W8A8 requant, semantic capabilities). `merlin-target-compose .` writes the
+# effective contracts/target_contract.yaml; never edit that file by hand.
+
+# The base describes the SpacemiT K1 it was measured on; none of that is true of Kodiak.
+remove:
+  - provenance
+  - runner
+replace:
+  - measurement
+
+provenance: >-
+  Kodiak tapeout: Saturn vector units (VLEN=512, confirmed on silicon by vlen_probe) on 2 of 3 harts,
+  plus the int8 outer-product matrix unit (OPU) of saturn opu-int8 (pin saturn_opu_int8). RVV datapaths
+  inherited from rvv; OPU encodings derived from the RTL named in contracts/matrix_units.yaml.
+
+# WHERE the elaborated RTL is: chipyard's TestHarness config for the OPU variant of Kodiak. Facts
+# (geometry, encodings) are derived from it, never written here.
+rtl_source:
+  ext_root: chipyard
+  config: KodiakOPUConfig
+  generator: saturn
+
+features:
+  - multicore
+  - matrix_unit
+
+# The OPU: driven by raw `.insn` (a command buffer of vector-opcode instructions), NOT by RoCC.
+compute_units:
+  - name: opu
+    kind: spatial
+    dtypes: [int8]
+    ops: [matmul]
+    scaling: none
+    requant: {ref: none}
+    exposure: command_buffer
+    accumulate:
+      - {in: int8, weight: int8, acc: i32}
+    semantic_capabilities:
+      - {family: contraction, dtypes: [int8]}
+    notes: >-
+      Unit saturn_opu in contracts/matrix_units.yaml (pin saturn_opu_int8): four instructions in
+      reserved even funct6 slots of the vector opcode, int8 inputs accumulating in int32, a tile whose
+      edge is VLMAX at e8/m1 (64 on Kodiak). Tile geometry is RTL-derived, not restated here.
+
+matrix_contract: contracts/matrix_units.yaml
+
+# Executable support owned by THIS package: the whole-model route's contraction rewrite + OPU shim.
+plugin:
+  matrix_lowering: matrix_lowering.py
+
+measurement:
+  cycles_from: spike
+  cycles_tier: functional
+  wall_from: chipyard_kodiak
+  wall_tier: silicon
+  citable_tier: rtl
+  speed_of_light: rvv_lane_peak
+  notes:
+    - Whole-model wall cycles on the Kodiak rig are dominated by the rig's host memory path; compare
+      RVV vs OPU on the same rig, same day, and report the OPU-region cycles alongside the total.
+    - An OPU cycle count is only citable on a checkout whose saturn_opu_int8 pin verifies.
+
+runtime_promises:
+  - metrics
+  - multicore_barrier
+
+hardware_promises:
+  - per_hart_mcycle

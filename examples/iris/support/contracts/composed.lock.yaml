@@ -1,0 +1,18 @@
+schema: merlin.provider_compose.v1
+target: iris
+provider_id: iris-support
+base:
+  target: rvv
+  provider_id: rvv-support
+  revision: a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5
+  pinned: a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5
+  repo: https://github.com/ucb-bar/rvv-mlir.git
+  contract_sha256: b08117fecc0eef967ce639ab55314d2b8a163dd1733603f11133f452dd8ec4a4
+  not_inherited:
+  - plugin
+overlay:
+  path: contracts/overlay.yaml
+  sha256: 6394cf4ece3bf74adbbe3b7e8d74073e9cae73d4e5b3b388ec122d7c16def223
+effective:
+  path: contracts/target_contract.yaml
+  sha256: b874e609b14399f1182be1c192c177c52bc150b23c461906e0997585be9b6186

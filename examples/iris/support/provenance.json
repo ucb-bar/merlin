@@ -1,0 +1,29 @@
+{
+  "schema": "merlin.support_migration.v1",
+  "target": "iris",
+  "upstream": {
+    "url": "https://github.com/ucb-bar/chipyard.git",
+    "base_ref": "iris-cy",
+    "base_commit": "b4542fa",
+    "root_role": "support",
+    "note": "Facts transcribed from generators/chipyard/src/main/scala/config/IrisConfigs.scala; saturn submodule at the vme branch 536774b."
+  },
+  "qualification": {
+    "level": "metadata_schema_checked_snapshot",
+    "schema_valid": true,
+    "schema_diagnostics": [],
+    "hardware_executed": false,
+    "candidate_certification": false
+  },
+  "files": [
+    {
+      "path": "boards.yaml",
+      "source": "chipyard@iris-cy b4542fa: IrisConfigs.scala",
+      "change": "board facts read from the config",
+      "sha256": "d21677c26433d1ae5f35991638c948f2d2bf3e9e3477e756e2901ac4a0712365"
+    }
+  ],
+  "generated": {
+    "contracts/target_contract.yaml": "merlin-target-compose; inputs and digests in contracts/composed.lock.yaml"
+  }
+}

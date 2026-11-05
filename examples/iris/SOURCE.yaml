@@ -1,0 +1,29 @@
+# Provenance of support/: a copy of one companion provider root, byte-identical except the files
+# listed under `normalized`. The vendored directory's git tree id is vendored_tree; putting each
+# normalized file's companion_blob back reproduces source.tree. merlin/tests/infra/test_example_support.py
+# recomputes both, and the file count, from the committed bytes. Do not edit support/ in place: a change
+# is a new vendoring with its own source commit, recorded here (build_tools/scripts/vendor_support.py).
+schema: merlin.vendored_support.v1
+target: iris
+provider_id: iris-support
+path: support
+file_count: 10
+vendored: '2026-11-04'
+source:
+  repository: https://github.com/ucb-bar/iris-mlir.git
+  published: false
+  commit: 9487b0c34797a61dbf5b92a70e2d43e3321ee3f7
+  commit_date: '2026-11-04T16:09:57-08:00'
+  provider_root: .
+  tree: eaae51618c94b4dc7cb17f50b1ccff7466931174
+vendored_tree: eaae51618c94b4dc7cb17f50b1ccff7466931174
+normalized: []
+pinned:
+  manifest: build_tools/upstreams/target_support.json
+  companion_commit: 9487b0c34797a61dbf5b92a70e2d43e3321ee3f7
+  relation: same_commit
+  provider_tree: eaae51618c94b4dc7cb17f50b1ccff7466931174
+  identical_to_source: true
+records:
+  file_provenance: support/provenance.json
+  migrations: []

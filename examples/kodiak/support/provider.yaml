@@ -1,0 +1,9 @@
+# Kodiak support: the rvv base plus the Kodiak tapeout's Saturn outer-product unit (OPU).
+schema: merlin.provider.v2
+id: kodiak-support
+target: kodiak
+role: support
+extends:
+  target: rvv
+  repo: https://github.com/ucb-bar/rvv-mlir.git
+  commit: a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5
