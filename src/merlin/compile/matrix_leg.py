@@ -14,15 +14,18 @@ from pathlib import Path
 
 def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, iters, warmup, timeout, matrix) -> dict:
     """The matrix-unit leg of ``compile_rvv``: shipped image + stand-in twin, the twin gated on spike."""
+    from merlin.kernels import matrix_kernels
     from merlin.llvmlower.impr_features import OPU_MATMUL_NAME
     from merlin.runtime.backends import output_identity
     from merlin.runtime.backends import zephyr_model as zm
     from merlin.runtime.backends.matrix_image import ROUTING_REPORT, NothingRouted, build_matrix_pair
     from merlin.runtime.boards import board as _board_desc
 
-    unit, config, support = matrix
+    unit, config, support, *rest = matrix
+    kernel_spec = rest[0] if rest else None
     brd = _board_desc(board)
-    routing = zm.MatrixRouting(unit=unit, config=config, support_target=support)
+    routing = zm.MatrixRouting(unit=unit, config=config, support_target=support, kernel=kernel_spec)
+    kernel = matrix_kernels.for_routing(routing)  # a bad name or a missing file fails here, before any build
     cpus = zm.image_cpus(brd, harts)
 
     def _pair(fs):
@@ -77,6 +80,8 @@ def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, 
                 "unit": unit,
                 "config": config,
                 "support_target": support,
+                # The kernel every routed call ran, with its file's sha256 (merlin.kernels.matrix_kernels).
+                "kernel": kernel.record(),
                 "lowering_digest": pair.lowering_digest,
                 "unit_instruction_counts": pair.unit_instruction_counts,
                 "routing_report": str(pair.ship_dir / ROUTING_REPORT),
@@ -216,7 +221,8 @@ def _run_shipped_on_device_simulator(pair, routing, brd, *, cpus: int, timeout: 
 def _compare_with_twin(got: dict, res: dict, twin: dict) -> bool:
     """Record whether the shipped image's output equals the twin's to the bit (prefix and whole-tensor hash).
 
-    One lowering, two tile bodies, so any difference is the kernel or the unit's datapath (or its model).
+    One lowering, two tile bodies: the generated kernel's scalar body, or for a hand-written kernel Merlin's
+    reference loop (merlin.kernels.matrix_kernels). Any difference is the kernel or the unit's datapath.
     """
     import numpy as np
 

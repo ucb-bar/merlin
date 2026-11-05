@@ -808,6 +808,7 @@ class MatrixRouting:
     unit: str  # a unit declared by that provider
     config: str  # the elaborated hardware configuration
     select: Callable[[Any], bool] | None = None
+    kernel: str | None = None  # merlin.kernels.matrix_kernels: a registered name or a C file; None, the default
 
     def __post_init__(self) -> None:
         for name, value in self.identity().items():
@@ -2673,11 +2674,10 @@ def build_app(
                 f"{len(matrix_sigs)} matrix-unit signature(s) were routed but no `matrix=` routing is "
                 "available to build them against; the image would not link"
             )
-        # A routed contraction is an opaque `call` by the time the parallel transform schedule runs, so
-        # that schedule -- which matches `linalg.matmul`/`linalg.batch_matmul` -- cannot split it. On a
-        # chip with a matrix unit per core, the ONLY place the other units can be reached from is inside
-        # the kernel's own tile loop, so a multi-hart image compiles that loop with OpenMP. A serial
-        # object on such a chip is not an error and not a wrong answer: it uses one unit, silently.
+        # A routed contraction is an opaque `call` the parallel transform schedule cannot split, so with a unit per
+        # core only the kernel's own tile loop reaches the others: multi-hart images compile it with OpenMP.
+        from ...kernels.matrix_kernels import build_kwargs as kernel_kwargs  # a hand-written kernel, if selected
+
         matrix_build = matrix.provider().build_object(
             matrix_sigs,
             work / "matrix",
@@ -2687,11 +2687,12 @@ def build_app(
             cflags=["--target=riscv64-unknown-elf", *cflags],
             scalar_tile=matrix_scalar_tile,
             parallel_tiles=n_harts > 1,
+            **kernel_kwargs(matrix, matrix_sigs),
         )
         matrix_objs = [matrix_build.object_path]
         print(
             f"[matrix] linked {len(matrix_sigs)} entry point(s) for {matrix.unit} "
-            f"({matrix.config}, tile edge {matrix_build.tile_edge}, "
+            f"({matrix.config}, kernel {matrix.kernel or 'package default'}, tile edge {matrix_build.tile_edge}, "
             f"{'SCALAR STAND-IN' if matrix_build.scalar_tile else 'device instructions'}, "
             f"{matrix_build.scratch_bytes} B pack scratch, "
             f"tile loop {

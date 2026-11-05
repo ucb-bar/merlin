@@ -68,6 +68,11 @@ def main(argv: list[str] | None = None) -> int:
     # descriptor is the authority on this, so the default is the value that is safe on a 1-hart board
     # and the flag is there for boards that have more.
     ap.add_argument("--harts", type=int, default=1)
+    ap.add_argument(
+        "--matrix-kernel",
+        default=None,
+        help="the device leg's matrix kernel: a name in the package's kernels/kernels.yaml or a C file path",
+    )
     ap.add_argument("--vlen", type=int, default=512)
     ap.add_argument("--arena-mb", type=int, default=0, help="0 = derive from the model's activation peak (see below)")
     ap.add_argument(
@@ -115,7 +120,11 @@ def main(argv: list[str] | None = None) -> int:
     routed = a.leg == "device"
     feats = {PEROP_BLOCK_NAME} | ({OPU_MATMUL_NAME} if routed else set())
     kw = (
-        dict(matrix=zm.MatrixRouting(unit=a.unit, config=a.config, support_target=a.matrix_support_target))
+        dict(
+            matrix=zm.MatrixRouting(
+                unit=a.unit, config=a.config, support_target=a.matrix_support_target, kernel=a.matrix_kernel
+            )
+        )
         if routed
         else {}
     )
@@ -174,6 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         "unit": a.unit,
         "config": a.config,
         "support_target": a.matrix_support_target,
+        "matrix_kernel": (b.get("matrix_build") or {}).get("kernel") if routed else None,
         "unit_instruction_counts": counts,
     }
     (out / "leg.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")

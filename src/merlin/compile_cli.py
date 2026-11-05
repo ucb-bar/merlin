@@ -277,11 +277,12 @@ def compile_rvv(
     device: Any | None = None,
     selected_host_dts_required: bool = False,
     expected_board_target: str | None = None,
-    matrix: tuple[str, str, str] | None = None,
+    matrix: tuple[str, ...] | None = None,
 ) -> dict:
     """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden).
 
-    ``matrix=(unit, config, support_target)`` also routes large int8 contractions to that matrix unit:
+    ``matrix=(unit, config, support_target[, kernel])`` also routes large int8 contractions to that matrix unit
+    (``kernel``: a name or path selecting the matrix kernel, see ``merlin.kernels.matrix_kernels``):
     the shipped image cannot run on any functional simulator, so its scalar stand-in twin (same lowering)
     is what runs and is graded, and the result names both ELFs and the routing report.
 
@@ -1352,7 +1353,9 @@ def _workflow(a, run: str) -> dict:
             iters=a.iters,
             warmup=a.warmup,
             board=a.board,
-            matrix=((a.matrix_unit, a.matrix_config, a.matrix_support_target) if a.matrix_unit else None),
+            matrix=(
+                (a.matrix_unit, a.matrix_config, a.matrix_support_target, a.matrix_kernel) if a.matrix_unit else None
+            ),
         )
     else:
         return compile_oot(

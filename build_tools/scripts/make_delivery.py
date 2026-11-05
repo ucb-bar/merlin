@@ -891,6 +891,14 @@ def _matrix_facts(matrix_build: dict | None) -> dict:
         out["unit_source_digest"] = prov["source_digest"]
     if matrix_build.get("gaps"):
         out["shim_gaps"] = list(matrix_build["gaps"])
+    kernel = matrix_build.get("kernel")
+    if isinstance(kernel, dict):
+        # Which kernel the routed calls run and the sha256 of its bytes; the file NAME, not our path.
+        out["kernel"] = {
+            k: (Path(v).name if k == "file" and v else v)
+            for k, v in kernel.items()
+            if k in ("name", "generated", "file", "function", "sha256", "origin", "twin")
+        }
     return out
 
 
@@ -907,6 +915,7 @@ def build_matrix(
     unit: str,
     config: str,
     support_target: str,
+    kernel: str | None = None,
     simulate: bool = True,
 ):
     """Build an image that routes contractions to a MATRIX EXTENSION, and gate it honestly.
@@ -937,7 +946,7 @@ def build_matrix(
     if (bundle / "golden_w8a8.npy").is_file():
         refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
     cpus = zm.image_cpus(brd, harts)
-    routing = zm.MatrixRouting(unit=unit, config=config, support_target=support_target)
+    routing = zm.MatrixRouting(unit=unit, config=config, support_target=support_target, kernel=kernel)
     # The shipped image, its stand-in twin and the diagnostic build, with the checks that make the pair
     # meaningful (same lowering; the shipped and diagnostic images carry the unit's instructions and the
     # twin carries none) -- one implementation shared with `merlin-compile --matrix-unit`.
@@ -1086,6 +1095,12 @@ def main(argv=None) -> int:
         "--matrix-config",
         default=None,
         help="the elaborated hardware configuration to derive the tile geometry from. Required by --matrix-harts.",
+    )
+    ap.add_argument(
+        "--matrix-kernel",
+        default=None,
+        help="the matrix kernel the routed contractions call: a name the support package registers in "
+        "kernels/kernels.yaml or a path to a C file (default: the package's default kernel)",
     )
     ap.add_argument(
         "--rvv-package",
@@ -1365,6 +1380,7 @@ def main(argv=None) -> int:
                     unit=a.matrix_unit,
                     config=a.matrix_config,
                     support_target=a.matrix_support_target,
+                    kernel=a.matrix_kernel,
                     simulate=False,
                 )
                 print(
@@ -1402,6 +1418,7 @@ def main(argv=None) -> int:
                 unit=a.matrix_unit,
                 config=a.matrix_config,
                 support_target=a.matrix_support_target,
+                kernel=a.matrix_kernel,
             )
         elif brd.flow == boards.FLOW_BAREMETAL:
             out = build_baremetal(bundle, brd, work=work, timeout=a.timeout, sdk_dir=a.sdk_dir)

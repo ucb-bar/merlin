@@ -983,6 +983,7 @@ def build(
         )
 
     matrix_build = None
+    from ...kernels.matrix_kernels import build_kwargs as kernel_kwargs
     from .zephyr_model import load_matrix_signatures
 
     matrix_sigs = load_matrix_signatures(work, matrix)
@@ -1000,6 +1001,7 @@ def build(
             cc=clang,
             cflags=[CLANG_TARGET, *clang_cflags],
             scalar_tile=matrix_scalar_tile,
+            **kernel_kwargs(matrix, matrix_sigs),
         )
         supplemental_objects.append(matrix_build.object_path)
         print(

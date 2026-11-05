@@ -75,6 +75,17 @@ def _lowering_digest(build_dir: Path) -> str:
     return h.hexdigest()[:16]
 
 
+def _selected_kernel(routing: Any):
+    """The routing's matrix kernel (``merlin.kernels.matrix_kernels.for_routing``): its name, file, sha256."""
+    from merlin.kernels.matrix_kernels import for_routing
+
+    return for_routing(routing)
+
+
+def _kernel_record(routing: Any) -> dict[str, Any]:
+    return _selected_kernel(routing).record()
+
+
 def routing_report(build_dir: Path, routing: zm.MatrixRouting) -> dict[str, Any]:
     """What THIS build routed and what it left on the vector unit, read from the rewrite's own sidecar.
 
@@ -109,6 +120,9 @@ def routing_report(build_dir: Path, routing: zm.MatrixRouting) -> dict[str, Any]
         "support_target": routing.support_target,
         "unit": routing.unit,
         "config": routing.config,
+        # Which kernel every routed call runs, and the sha256 of its file (a hand-written one), so a report
+        # read later says which bytes computed the routed contractions.
+        "kernel": _kernel_record(routing),
         "tile_edge": (got.get("routing_rule") or {}).get("tile_edge"),
         "routed_contractions": int(got.get("count") or len(routed)),
         "distinct_signatures": len(got.get("signatures") or {}),
@@ -162,6 +176,9 @@ def build_matrix_pair(
     from merlin.targetgen import unit_pins
 
     unit_pins.require(routing.support_target, routing.unit)
+    # The kernel is resolved (its file read and hashed) before anything is built, so a typo in a kernel name
+    # or a missing file costs a second rather than a whole-model lowering.
+    kernel = _selected_kernel(routing)
     provider = routing.provider()
     encodings = provider.derive_encodings(provider.load_contract(routing.unit)).encodings
 
@@ -199,6 +216,12 @@ def build_matrix_pair(
         raise RuntimeError(
             f"the shipped image contains NONE of {routing.unit}'s instructions, though the routing report "
             f"says {report.get('routed_contractions')} contraction(s) were routed"
+            + (
+                ""
+                if kernel.generated
+                else f": the selected kernel {kernel.name!r} ({kernel.entry.file}) issues none of the unit's "
+                "instructions, so it would compute on the host core and prove nothing about the unit"
+            )
         )
     twin = build(stand_in=True, dbg=False, where=twin_where)
     digest, twin_digest = _lowering_digest(ship_dir), _lowering_digest(work / twin_where)

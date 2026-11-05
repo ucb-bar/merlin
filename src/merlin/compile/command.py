@@ -105,6 +105,12 @@ def parser(
         help="the support provider (on MERLIN_TARGET_PATH or vendored) that owns the matrix_lowering plugin",
     )
     ap.add_argument(
+        "--matrix-kernel",
+        help="the matrix kernel every routed contraction calls: a name the support package registers in "
+        "kernels/kernels.yaml, or a path to a C file (file.c or file.c:function). Default: the package's "
+        "default kernel. A hand-written kernel's stand-in twin is Merlin's scalar reference",
+    )
+    ap.add_argument(
         "--corpus-descriptor",
         type=Path,
         help="explicit OOT corpus descriptor; prefer a released descriptor (this CLI does not verify its seal)",
@@ -211,6 +217,11 @@ def validate(ap: argparse.ArgumentParser, a: argparse.Namespace) -> None:
             ap.error("matrix routing applies to --target rvv --dtype int8")
         if a.run not in ("spike", "zephyr") or a.board is None:
             ap.error("matrix routing builds a Zephyr image and gates its twin: use --run spike|zephyr --board")
+    elif a.matrix_kernel:
+        ap.error(
+            "--matrix-kernel selects the kernel of a matrix route: give --matrix-unit/--matrix-config/"
+            "--matrix-support-target too"
+        )
     if a.model_preflight and (a.target == "rvv" or not a.capture_bundle or not a.deployment_dtype):
         ap.error("--model-preflight requires an OOT --target, --capture-bundle, and --deployment-dtype")
     if not (a.model_preflight or a.model_build) and not a.workload:
