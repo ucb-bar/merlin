@@ -59,6 +59,11 @@ class Board:
     #: WHICH harts are vector-capable, when they are not the first `vector_harts` of them. A count
     #: alone assumes 0..N-1. None = the count's default.
     vector_hart_ids: tuple[int, ...] | None = None
+    #: WHICH harts carry the matrix unit an image may route contractions to, when that is not every
+    #: vector-capable hart. A heterogeneous SoC can put a vector unit on a hart whose vector unit has no
+    #: matrix unit (a DMA-style vector core beside matrix-equipped ones); a matrix image fanned out onto
+    #: it takes an illegal instruction in the tile loop. None = every hart a vector image may use.
+    matrix_hart_ids: tuple[int, ...] | None = None
     vlen: int | None = None  # hardware vector length in bits; None = unknown, assume the V minimum
     ram_label: str | None = None  # required for Zephyr; DT memory label to override
     fpu_sharing: bool | None = None
@@ -140,6 +145,28 @@ class Board:
         if self.vector_hart_ids is not None:
             return tuple(self.vector_hart_ids)
         return tuple(range(self.n_vector_harts))
+
+    @property
+    def matrix_harts(self) -> tuple[int, ...]:
+        """The harts that carry the matrix unit: declared, else every hart a vector image may use."""
+        if self.matrix_hart_ids is not None:
+            return tuple(self.matrix_hart_ids)
+        return self.hart_ids_for("rvv")
+
+    def check_matrix_image(self, n_harts: int) -> None:
+        """Refuse a matrix image whose ``n_harts`` workers would include a hart without the unit.
+
+        A vector image over ``n_harts`` runs on the first ``n_harts`` of :meth:`hart_ids_for`; every one
+        of those must carry the matrix unit, since the tile loop is split across all of them.
+        """
+        used = self.hart_ids_for("rvv")[: int(n_harts)]
+        missing = [h for h in used if h not in self.matrix_harts]
+        if missing:
+            raise BoardRegistryError(
+                f"{self.name}: a matrix image over {n_harts} hart(s) would run on hart(s) {missing}, which "
+                f"carry no matrix unit (matrix harts: {list(self.matrix_harts)}); the tile loop would trap "
+                f"there. Build {len(self.matrix_harts)} hart(s) or fewer."
+            )
 
     @property
     def vector_max_len(self) -> int:
@@ -343,6 +370,15 @@ def _load_catalog(p: Path) -> dict[str, Board]:
             and kwargs.get("vector_hart_ids") is None
         ):
             raise BoardRegistryError(f"{where}: declare vector_harts or vector_hart_ids for a Zephyr board")
+        if kwargs.get("matrix_hart_ids") is not None:
+            ids = kwargs["matrix_hart_ids"]
+            vec = kwargs.get("vector_hart_ids")
+            vec = tuple(vec) if vec is not None else tuple(range(kwargs.get("vector_harts") or kwargs["harts"]))
+            stray = [h for h in ids if h not in vec]
+            if not ids or len(set(ids)) != len(ids) or stray:
+                raise BoardRegistryError(
+                    f"{where}: matrix_hart_ids must be distinct vector-capable harts {list(vec)}; got {list(ids)}"
+                )
         if kwargs.get("host_dts_sha256") is not None and (
             len(kwargs["host_dts_sha256"]) != 64
             or any(letter not in "0123456789abcdef" for letter in kwargs["host_dts_sha256"])

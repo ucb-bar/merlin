@@ -124,8 +124,15 @@ def build_matrix_pair(
     """Build the shipped image, its stand-in twin and (optionally) the diagnostic build, and check them.
 
     Raises ``RuntimeError`` when the twin is not the same lowering, when the shipped (or diagnostic)
-    image carries none of the unit's instructions, or when the twin carries any.
+    image carries none of the unit's instructions, or when the twin carries any; ``BoardRegistryError``
+    when ``harts`` would reach a hart the board does not list among its ``matrix_harts``.
     """
+    # A routed image splits its tile loop over every worker, so each must sit on a hart that HAS the unit
+    # (a heterogeneous SoC can give a hart a vector unit and no matrix unit). Refused before any build;
+    # the twin too, since it exists only to gate an image that could ship.
+    from ..boards import board as _board
+
+    _board(board).check_matrix_image(harts)
     provider = routing.provider()
     encodings = provider.derive_encodings(provider.load_contract(routing.unit)).encodings
 
