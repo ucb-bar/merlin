@@ -837,6 +837,11 @@ def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, 
                 "routed_contractions": pair.report.get("routed_contractions"),
                 "opu_mac_share": pair.report.get("opu_mac_share"),
                 "not_routed_by_reason": pair.report.get("not_routed_by_reason"),
+                # What a caller needs to run either image itself on the same simulated machine -- e.g. the
+                # shipped one on spike with the unit's own functional model (examples/lib/chip_flow.py).
+                "spike_harts": cpus,
+                "ship_ram_bytes": pair.ship.get("ram_bytes"),
+                "twin_ram_bytes": pair.twin.get("ram_bytes"),
             },
         }
     )
