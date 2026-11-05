@@ -2542,7 +2542,7 @@ def build_app(
             from ...llvmlower import op_profile as _op_profile
 
             try:
-                text, prof_table = _op_profile.instrument(Path(prepared).read_text(), structural=True)
+                text, prof_table = _op_profile.instrument_file(Path(prepared), Path(work), structural=True)
                 prepared = Path(work) / "model_prof.mlir"
                 Path(prepared).write_text(text)
                 _op_profile.write_table(prof_table, Path(work) / "op_profile_table.json")

@@ -289,6 +289,31 @@ def find_function_ops(mlir_text: str, symbol: str = "forward") -> tuple[int, int
     return start, ret_line, ops
 
 
+def instrument_file(path: Path, work: Path, *, structural: bool = False) -> tuple[str, list[dict]]:
+    """:func:`instrument` on a module file, whichever form MLIR printed it in.
+
+    A prepared module that went through the MLIR printer is in custom form, and xDSL has no custom format
+    for some of its ops (``tensor.insert_slice``, which every padded convolution produces). The structural
+    parse then refused and the debug image lost its op names for the whole model. Re-print in generic form
+    (:mod:`.generic_form`, the same interpreter that printed it) and instrument that instead; a module that
+    parses directly takes exactly the path it took before.
+    """
+    from xdsl.utils.exceptions import ParseError
+
+    from .generic_form import GenericFormError, to_generic_form
+
+    try:
+        return instrument(Path(path).read_text(), structural=structural)
+    except OpProfileError as first:
+        if not isinstance(first.__cause__, ParseError):
+            raise
+        try:
+            generic = to_generic_form(path, work)
+        except GenericFormError as exc:
+            raise OpProfileError(f"{first}; and the generic-form re-print failed: {exc}") from exc
+        return instrument(generic.read_text(), structural=structural)
+
+
 def instrument(
     mlir_text: str,
     functions: "Sequence[str]" = ("forward",),

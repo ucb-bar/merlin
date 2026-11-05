@@ -773,7 +773,7 @@ def build(
             # table would then resolve PROF lines to the wrong names.
             from ...llvmlower import op_profile as _op_profile
 
-            text, prof_table = _op_profile.instrument(Path(prepared_path).read_text(), structural=True)
+            text, prof_table = _op_profile.instrument_file(Path(prepared_path), Path(work), structural=True)
             prepared_path = work / "model_prof.mlir"
             Path(prepared_path).write_text(text)
             _op_profile.write_table(prof_table, work / "op_profile_table.json")

@@ -251,3 +251,58 @@ def test_ordinary_generic_model_build_profiles_and_executes_on_rv64gc(tmp_path):
     assert set(measurements) == {0, 1}
     assert all(hits == 1 for ticks, hits in measurements.values())
     assert ran["metrics"]["prof_marks"] == 3
+
+
+#: A padded convolution's input pad, as the MLIR printer writes it: xDSL has no custom format for it.
+PADDED_CUSTOM = """module {
+  func.func @forward(%arg0: tensor<1x3x4x4xf32>) -> tensor<1x3x6x6xf32> {
+    %cst = arith.constant dense<0.000000e+00> : tensor<1x3x6x6xf32>
+    %s = tensor.insert_slice %arg0 into %cst[0, 0, 1, 1] [1, 3, 4, 4] [1, 1, 1, 1] : tensor<1x3x4x4xf32> into tensor<1x3x6x6xf32>
+    return %s : tensor<1x3x6x6xf32>
+  }
+}
+"""  # noqa: E501
+PADDED_GENERIC = """"builtin.module"() ({
+  "func.func"() <{function_type = (tensor<1x3x4x4xf32>) -> tensor<1x3x6x6xf32>, sym_name = "forward"}> ({
+  ^bb0(%arg0: tensor<1x3x4x4xf32>):
+    %0 = "arith.constant"() <{value = dense<0.000000e+00> : tensor<1x3x6x6xf32>}> : () -> tensor<1x3x6x6xf32>
+    %1 = "tensor.insert_slice"(%arg0, %0) <{operandSegmentSizes = array<i32: 1, 1, 0, 0, 0>, static_offsets = array<i64: 0, 0, 1, 1>, static_sizes = array<i64: 1, 3, 4, 4>, static_strides = array<i64: 1, 1, 1, 1>}> : (tensor<1x3x4x4xf32>, tensor<1x3x6x6xf32>) -> tensor<1x3x6x6xf32>
+    "func.return"(%1) : (tensor<1x3x6x6xf32>) -> ()
+  }) : () -> ()
+}) : () -> ()
+"""  # noqa: E501
+
+
+def test_a_module_in_custom_form_xdsl_cannot_read_is_instrumented_through_its_generic_form(tmp_path, monkeypatch):
+    """Every padded convolution reaches the profiler as a custom-form tensor.insert_slice; the debug image of
+    a CNN used to lose its op names for the whole model."""
+    from merlin.llvmlower import generic_form
+
+    src = tmp_path / "prepared.mlir"
+    src.write_text(PADDED_CUSTOM)
+    with pytest.raises(op_profile.OpProfileError, match="cannot parse"):
+        op_profile.instrument(PADDED_CUSTOM, structural=True)
+
+    def reprint(path, work):
+        out = tmp_path / "prepared.generic.mlir"
+        out.write_text(PADDED_GENERIC)
+        return out
+
+    monkeypatch.setattr(generic_form, "to_generic_form", reprint)
+    text, table = op_profile.instrument_file(src, tmp_path, structural=True)
+    assert [row["mlir_op"] for row in table] == ["arith.constant", "tensor.insert_slice"]
+    assert "merlin_prof_mark" in text
+
+
+def test_a_failed_generic_reprint_is_still_reported_as_unprofilable(tmp_path, monkeypatch):
+    from merlin.llvmlower import generic_form
+
+    src = tmp_path / "prepared.mlir"
+    src.write_text(PADDED_CUSTOM)
+
+    def refuse(path, work):
+        raise generic_form.GenericFormError("no MLIR-capable interpreter")
+
+    monkeypatch.setattr(generic_form, "to_generic_form", refuse)
+    with pytest.raises(op_profile.OpProfileError, match="generic-form re-print failed: no MLIR-capable"):
+        op_profile.instrument_file(src, tmp_path, structural=True)
