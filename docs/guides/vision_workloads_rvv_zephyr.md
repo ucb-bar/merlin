@@ -3,7 +3,7 @@ title: Vision, audio and control workloads on Kodiak — multicore RVV under Zep
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-08-04
+last_verified: 2026-11-04
 related: [tinyllama_int8_rvv_zephyr, model2mlir, rvv_e2e, zephyr, compilation_strategies]
 code_refs:
   - src/merlin/compile_cli.py
@@ -20,8 +20,9 @@ code_refs:
 
 # Vision, audio and control workloads on Kodiak
 
-The destination for this guide is the **Kodiak test chip** — a `chipyard` SoC with **3 working
-Saturn-vector cores** and a bounded DRAM budget. [TinyLlama int8 on multicore
+The destination for this guide is the **Kodiak test chip** — a `chipyard` SoC with **3 working cores,
+2 of them with Saturn vector units** (VLEN=512, measured on silicon by `vlen_probe`), an int8
+outer-product unit (see [`examples/kodiak`](../../examples/kodiak/README.md)), and 512 MB of DRAM. [TinyLlama int8 on multicore
 RVV](tinyllama_int8_rvv_zephyr.md) walks the same pipeline for a decoder-only LLM on spike, FireSim
 and the K1; this guide covers the four **non-transformer-only** workloads and what it takes to fit
 and run them on a real tapeout.
@@ -65,15 +66,19 @@ recurrence with no new backend code.
 Kodiak is a `chipyard*` board, so **no compiler or runtime change is needed to target it** — `board`
 is already a parameter, the generated CPU overlay derives from the hart count, and a region larger
 than the 256 MB default is emitted as a `&ram0` overlay. Board support (`chipyard_kodiak`) lives on
-the `kodiak` branch of [`ucb-bar/zephyr-chipyard-sw`](https://github.com/ucb-bar/zephyr-chipyard-sw),
-whose bumped `zephyr_ws/zephyr` adds `boards/chipyard/kodiak/`:
+the `dev` branch of [`ucb-bar/zephyr-chipyard-sw`](https://github.com/ucb-bar/zephyr-chipyard-sw). Its
+`zephyr_ws/zephyr` has `boards/chipyard/kodiak/` and, unlike the `kodiak` branch's pin,
+`RISCV_V_KERNEL_ONLY`, which is what lets Zephyr manage vector state without putting `v` in the global
+`-march`:
 
 ```bash
-git -C "$MERLIN_ZEPHYR_SW" checkout kodiak
+git -C "$MERLIN_ZEPHYR_SW" checkout dev
 git -C "$MERLIN_ZEPHYR_SW" submodule update
 ```
 
-Build with `board="chipyard_kodiak"` and `n_harts=3`. Three facts about that board config matter,
+Build with `--board chipyard_kodiak` (its facts are in `examples/kodiak/support/boards.yaml`) and at
+most **2 harts for an RVV image**: only two cores carry a vector unit, and Merlin refuses an RVV image
+over the board's `vector_harts`. The third core is reachable only by a scalar image. Three facts about that board config matter,
 and two of them are traps:
 
 | board setting | value | consequence |
@@ -86,15 +91,15 @@ and two of them are traps:
 `tile_using_forall ... num_threads`, so MLIR emits a `ceil(dim/3)` tile with an `affine.min` bound on
 the last thread — not a fixed tile size that would drop work.
 
-Running on the chip uses the UART loader from that branch (`pyuartsi --elf <elf>` against the board's
-USB serial device), with its reset script and `scripts/record_power.py` sampling in parallel — which
-is what makes **energy per inference** measurable on Kodiak rather than only cycles. The USB devices
-are attached to the Kodiak host, so the runner executes there (same shape as the K1 route) and parses
-the usual `OUT`/`METRIC`/`DONE` protocol.
+Running on the chip happens on the Kodiak rig, which loads images over Ethernet (UDP-TSI) through
+its FPGA; see [`examples/kodiak/support/RUNNING.md`](../../examples/kodiak/support/RUNNING.md). The rig
+is shared, so check that it is idle before loading or resetting anything. Merlin builds and gates the
+images and packages them with `grade.py`; the console comes back through the usual
+`OUT`/`METRIC`/`DONE` protocol.
 
 One `march` note: the certified package compiles with plain `-march=rv64gcv`, i.e. **VLEN=128**,
-which matches spike's default. Saturn on Kodiak is VLEN=256, where the same fixed-width vectors halve
-their LMUL. That should be a deliberate `_zvl256b` choice rather than an accident — see the K1 VLEN
+which matches spike's default. Saturn on Kodiak is VLEN=512, where the same fixed-width vectors use a
+quarter of the register. That should be a deliberate `_zvl256b` choice rather than an accident — see the K1 VLEN
 note in the TinyLlama guide.
 
 ## What fits in Kodiak's DRAM
@@ -134,10 +139,12 @@ sub-8-bit weight path or weight streaming.
 Run it in this order; each stage has a different oracle.
 
 ```bash
+export MERLIN_BOARD_CATALOG=examples/board-catalog.yaml:examples/kodiak/support
 merlin-compile --workload spectformer --dtype int8 --target rvv --run host  --verify --json
-merlin-compile --workload spectformer --dtype int8 --target rvv --run spike --verify --json
-merlin-compile --workload spectformer --dtype int8 --target rvv --run spike --harts 3 \
-               --iters 20 --warmup 3 --verify --json
+merlin-compile --workload spectformer --dtype int8 --target rvv --run spike --board chipyard_kodiak \
+               --verify --json
+merlin-compile --workload spectformer --dtype int8 --target rvv --run spike --board chipyard_kodiak \
+               --harts 2 --iters 20 --warmup 3 --verify --json
 ```
 
 A missing bundle is captured automatically, in the workload's own venv (resolved from its

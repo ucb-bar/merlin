@@ -24,6 +24,7 @@ Core console-scripts are installed with `pip install -e .` from the repo root. O
 | `merlin-semantic-facts` | `merlin.targetgen.rtl.semantic_facts:main` |
 | `merlin-storage` | `merlin.common.storage_cli:main` |
 | `merlin-surface` | `merlin.kernels.cli_surface:main` |
+| `merlin-target-compose` | `merlin.targetgen.provider_compose:main` |
 | `merlin-target-fetch` | `merlin.targetgen.oot_fetch:main` |
 | `merlin-target-publish` | `merlin.targetgen.publish:main` |
 | `merlin-target-tools` | `merlin.targetgen.tool_cli:main` |

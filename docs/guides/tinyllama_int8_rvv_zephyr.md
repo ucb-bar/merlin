@@ -3,7 +3,7 @@ title: TinyLlama int8 on multicore RVV under Zephyr — end to end
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-09-29
+last_verified: 2026-11-04
 related: [getting_started, rvv_e2e, zephyr, model2mlir, reproducibility, compilation_strategies, vision_workloads_rvv_zephyr]
 code_refs:
   - src/merlin/compile_cli.py
@@ -269,8 +269,12 @@ both are computing the same thing.
 ## 4. Compile and verify on spike (correctness)
 
 ```bash
-merlin-compile --workload tiny_llama --dtype int8 --target rvv --run spike --verify --json
+merlin-compile --workload tiny_llama --dtype int8 --target rvv --run spike --board spike_riscv64 --verify --json
 ```
+
+Every Zephyr route needs a board from a selected catalog
+(`MERLIN_BOARD_CATALOG=examples/board-catalog.yaml`, plus `:examples/kodiak/support` for the Kodiak
+boards); without one the run is reported `not_run`.
 
 This lowers the bundle through the package's schedule with the **integer** datapath
 (`llvmlower/quant_passes.py`: i8×i8→i32 `vwmacc` plus integer softmax/norm), builds a Zephyr image,
@@ -296,7 +300,7 @@ either optimistic or pessimistic depending on which you pick.
 ```bash
 # on spike (deterministic, so drift there is real churn rather than noise)
 merlin-compile --workload tiny_llama --dtype int8 --target rvv \
-               --run spike --iters 20 --warmup 3 --verify --json
+               --run spike --board spike_riscv64 --iters 20 --warmup 3 --verify --json
 
 # on the board — the one you want while developing an application
 merlin-compile --workload tiny_llama --dtype int8 --target rvv \
@@ -351,7 +355,7 @@ quietly fell back to the weaker tier — the exact failure described at the top 
 
 ```bash
 merlin-compile --workload tiny_llama --dtype int8 --target rvv \
-               --run spike --harts 4 --iters 20 --warmup 3 --verify --json
+               --run spike --board spike_riscv64 --harts 4 --iters 20 --warmup 3 --verify --json
 ```
 
 `--harts N` changes both halves of the stack:

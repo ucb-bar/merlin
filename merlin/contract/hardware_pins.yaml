@@ -94,7 +94,7 @@ pins:
       corpus found: the accumulate's LHS read-intent (rvs1_mask) is cleared every iteration while the RHS
       is gated on row_idx_tail, so a younger write to the left operand is not blocked for the final
       subtile. Our kernel works around it by rotating the left-operand register; see
-      docs/design/incremental_target_evolution_opu.md 8c.2.
+      KernelSpec.row_vreg_alt in src/merlin/kernels/opu_kernel.py.
 
   saturn_tapeout:
     description: >-
