@@ -6,6 +6,15 @@ The caller owns selection, symbol naming, sidecar naming and kernel implementati
 this module neither selects hardware nor generates a target kernel. No selector
 means no mutation. Nonzero or unknown initial accumulators are refused.
 
+A contraction in any other layout -- a transposed operand, several batch, free or
+reduced dims, a windowed (convolution) input -- is read as a GEMM by
+:mod:`contraction_normal_form` and rewritten into the callee's layout with explicit
+transposes, collapses and an im2col gather, so every kernel implementing the ABI
+takes it unchanged. A selector with ``layouts = False`` keeps the historical
+canonical-only legality. A selector with a ``decide(shape, layout_elements=)`` method
+(:class:`matrix_route_cost.CostModelSelector`) returns a priced decision, including
+whether to swap the operands' roles; that decision is recorded per contraction.
+
 File rewriting records the exact called signatures and repairs printer-dropped
 bufferization access attributes before writing the prepared module. Kernel builders
 consume that same sidecar rather than reconstructing the set of required symbols.
@@ -51,6 +60,14 @@ class Routed:
     parallel: tuple[int, ...]
     reduction: tuple[int, ...]
     fqn: str = ""
+    #: Where in the model it sits (``conv`` / ``attention`` / ``linear`` ...), from provenance; report only.
+    site: str = ""
+    #: ``as_is`` (C = A.B) or ``swapped`` (C^T = B^T.A^T): the extents above are the KERNEL's either way.
+    orientation: str = "as_is"
+    #: Data movement added to reach the kernel layout (``transpose_b``, ``im2col_a``, ...); empty = none.
+    steps: tuple[str, ...] = ()
+    #: The selector's priced decision, when it gave one (see :mod:`matrix_route_cost`).
+    decision: dict | None = None
 
     @property
     def batch(self) -> int:
@@ -80,6 +97,8 @@ class NotRouted:
     reduction: tuple[int, ...]
     why: str
     fqn: str = ""
+    site: str = ""
+    decision: dict | None = None
 
     @property
     def macs(self) -> int:
@@ -106,6 +125,9 @@ class ContractionRewrite:
     #: sidecar cannot say whether a routed contraction fills a tile, so the field is recorded as
     #: UNKNOWN rather than assumed — an unrecorded rule is exactly what this class exists to prevent.
     tile_edge: int | None = None
+    #: The selector's own account of its rule (``describe()``), when it has one: the policy name and
+    #: the geometry its estimates were derived from. ``None`` for a plain ``shape -> bool`` selector.
+    policy: dict | None = None
 
     @property
     def count(self) -> int:
@@ -123,17 +145,46 @@ class ContractionRewrite:
         e = int(self.tile_edge)
         return tuple(r for r in self.routed if min(r.m, r.n) < e)
 
+    def unexplained_sub_tile(self) -> tuple[Routed, ...]:
+        """Sub-tile routes that carry NO recorded decision: the ones a build log must warn about.
+
+        A priced decision (see :mod:`matrix_route_cost`) is the explanation the warning exists to force:
+        it states the padding, the utilisation and the estimate that justified the route.
+        """
+        return tuple(r for r in self.sub_tile() if not r.decision)
+
     def to_dict(self) -> dict[str, Any]:
         sub = self.sub_tile()
         return {
             "count": self.count,
             "routed": [
-                {"symbol": r.symbol, "b": r.batch, "m": r.m, "n": r.n, "k": r.k, "fqn": r.fqn} for r in self.routed
+                {
+                    "symbol": r.symbol,
+                    "b": r.batch,
+                    "m": r.m,
+                    "n": r.n,
+                    "k": r.k,
+                    "fqn": r.fqn,
+                    "site": r.site,
+                    "orientation": r.orientation,
+                    "steps": list(r.steps),
+                    **({"decision": r.decision} if r.decision else {}),
+                }
+                for r in self.routed
             ],
             "signatures": {k: list(v) for k, v in self.signatures.items()},
             "skipped": [{"what": w, "why": y} for w, y in self.skipped],
             "not_routed": [
-                {"op": r.op, "parallel": list(r.parallel), "k": list(r.reduction), "why": r.why, "fqn": r.fqn}
+                {
+                    "op": r.op,
+                    "parallel": list(r.parallel),
+                    "k": list(r.reduction),
+                    "why": r.why,
+                    "fqn": r.fqn,
+                    "site": r.site,
+                    "macs": r.macs,
+                    **({"decision": r.decision} if r.decision else {}),
+                }
                 for r in self.not_routed
             ],
             "macs": {
@@ -142,8 +193,10 @@ class ContractionRewrite:
             },
             "routing_rule": {
                 "tile_edge": self.tile_edge if self.tile_edge is not None else "UNKNOWN",
+                "policy": self.policy if self.policy is not None else "selector without a description",
                 "fills_default_tile_rule": (None if self.tile_edge is None else not sub),
                 "sub_tile_routed": len(sub),
+                "sub_tile_unexplained": len(self.unexplained_sub_tile()),
                 "sub_tile_dims": sorted(
                     {
                         d
@@ -184,17 +237,100 @@ def routable_contractions(
     else:
         accepted = {want}
 
-    return [(op, shape) for op, shape, why in _census(module, accepted) if why is None]
+    return [(e.op, e.shape) for e in _census(module, accepted) if e.why is None]
 
 
-def _census(module, accepted: set[tuple[str, ...]]) -> list[tuple[Any, Any, str | None]]:
-    """Every observed contraction with ``None`` (legal for this ABI) or the reason it is not."""
+@dataclass(frozen=True)
+class _Entry:
+    """One contraction in the census: the kernel's view of it (when legal) or the reason it has none."""
+
+    op: Any
+    shape: Any  # the kernel view (as_is) when legal; otherwise the extents the op reads, for the report
+    why: str | None
+    nf: Any = None  # its contraction_normal_form.NormalForm, when it has one
+    site: str = ""
+
+
+def _census(module, accepted: set[tuple[str, ...]], *, layouts: bool = True) -> list[_Entry]:
+    """Every contraction, in program order, with ``why=None`` (legal for this ABI) or the reason it is not.
+
+    "Every" is the observer's named and canonical-generic contractions PLUS any multiply-accumulate
+    generic it does not classify (a transposed left operand, two batch dims, a windowed input): those
+    used to be absent from the report altogether, so their MACs were missing from the denominator too.
+    """
     from ..kernels.shapes import observe_contractions
 
-    out: list[tuple[Any, Any, str | None]] = []
-    for op, shape in observe_contractions(module):
-        out.append((op, shape, _refusal(op, shape, accepted)))
+    observed = {id(op): shape for op, shape in observe_contractions(module)}
+    out: list[_Entry] = []
+    for op in module.walk():
+        if id(op) in observed or _is_mac_generic(op):
+            out.append(_entry(op, observed.get(id(op)), accepted, layouts))
     return out
+
+
+def _is_mac_generic(op) -> bool:
+    """A two-input ``linalg.generic`` with a reduction iterator and a multiply-add body."""
+    from ..kernels.shapes import _iterator_types
+
+    if getattr(op, "name", "") != "linalg.generic" or len(getattr(op, "operands", ())) != 3:
+        return False
+    its = _iterator_types(op) or []
+    if not any("reduction" in it for it in its) or not op.regions or not op.regions[0].blocks:
+        return False
+    names = {o.name for o in op.regions[0].blocks[0].ops}
+    return {"arith.muli", "arith.addi"} <= names or {"arith.mulf", "arith.addf"} <= names
+
+
+def _entry(op, shape, accepted: set[tuple[str, ...]], layouts: bool) -> _Entry:
+    from . import contraction_normal_form as cnf
+
+    site = cnf.site_of(op)
+    report_shape = shape if shape is not None else _extent_shape(op)
+    dtypes = tuple(shape.dtypes) if shape is not None and shape.dtypes else tuple(report_shape.dtypes)
+    if dtypes not in accepted:
+        return _Entry(op, report_shape, f"dtypes {dtypes} are not one of {sorted(accepted)}", site=site)
+    if not zero_initialised(op):
+        return _Entry(op, report_shape, "accumulator is not provably zero-initialised", site=site)
+    if dtypes != INT8_DTYPES:
+        # Another datapath enumerating candidates: the normal form emits int8 only, so the
+        # canonical-layout legality is the whole of it.
+        why = _refusal(op, shape, accepted) if shape is not None else "not a canonical matmul or batch_matmul"
+        return _Entry(op, report_shape, why, site=site)
+    nf = cnf.analyze(op)
+    if isinstance(nf, str):
+        return _Entry(op, report_shape, nf, site=site)
+    if nf.steps(cnf.AS_IS) and not layouts:
+        why = (_refusal(op, shape, accepted) if shape is not None else None) or (
+            f"needs layout steps {list(nf.steps(cnf.AS_IS))}, which this selector does not apply"
+        )
+        return _Entry(op, report_shape, why, nf, site)
+    return _Entry(op, nf.shape(cnf.AS_IS), None, nf, site)
+
+
+def _extent_shape(op):
+    """``ContractionShape`` of an op the observer does not classify: its output extents, and the extents
+    of its reduction dims where an operand projects them (so the report can count its MACs)."""
+    from ..kernels.microkernel import ContractionShape
+    from ..kernels.shapes import _shaped
+    from .contraction_normal_form import _dim_of, _iterators, _maps
+
+    shaped = [_shaped(v) for v in op.operands]
+    out = shaped[-1][0] if shaped and shaped[-1] else [1]
+    dtypes = tuple(s[1] for s in shaped) if all(shaped) else ()
+    maps, its = _maps(op), _iterators(op)
+    red: list[int] = []
+    if maps is not None and its is not None:
+        for d, it in enumerate(its):
+            if it != "reduction":
+                continue
+            for (shape, _dt), exprs in zip([s for s in shaped if s], maps):
+                hit = [axis for axis, e in enumerate(exprs) if _dim_of(e) == d]
+                if hit:
+                    red.append(int(shape[hit[0]]))
+                    break
+    return ContractionShape(
+        op=getattr(op, "name", "?"), parallel=tuple(int(x) for x in out), reduction=tuple(red), dtypes=dtypes
+    )
 
 
 def _refusal(op, shape, accepted: set[tuple[str, ...]]) -> str | None:
@@ -260,65 +396,99 @@ def rewrite_contractions(
 ) -> ContractionRewrite:
     """Replace each selected int8 contraction with a call to the caller-provided kernel.
 
-    Mutates ``module`` in place and returns what it did. ``select`` receives the
-    :class:`~merlin.kernels.microkernel.ContractionShape` and returns whether that contraction should
-    move; ``None`` moves nothing, so the pass is inert unless a decision has been made elsewhere.
+    Mutates ``module`` in place and returns what it did. ``select`` receives the kernel's view of each
+    legal contraction as a :class:`~merlin.kernels.microkernel.ContractionShape` and returns whether it
+    should move; ``None`` moves nothing, so the pass is inert unless a decision has been made elsewhere.
+
+    A selector may also carry ``decide(shape, layout_elements=)`` returning a priced decision with an
+    orientation (:class:`matrix_route_cost.RouteDecision`) -- then that decision, and not ``__call__``, is
+    what routes, and it is recorded -- ``layouts = False`` to keep the canonical-only legality, and
+    ``describe()`` for the sidecar's ``routing_rule.policy``.
     """
     from xdsl.dialects import func
     from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, StringAttr
     from xdsl.ir import Block, Region
 
+    from . import contraction_normal_form as cnf
+
     if select is None:
         return ContractionRewrite(skipped=(("all", "no selector supplied, so nothing is routed"),), tile_edge=tile_edge)
 
-    census = _census(module, {INT8_DTYPES})
-    candidates = [(op, sh) for op, sh, why in census if why is None]
-    chosen = [(op, sh) for op, sh in candidates if select(sh)]
-    chosen_ids = {id(op) for op, _sh in chosen}
+    layouts = bool(getattr(select, "layouts", True))
+    decide = getattr(select, "decide", None)
+    describe = getattr(select, "describe", None)
+    policy = describe() if callable(describe) else None
+    census = _census(module, {INT8_DTYPES}, layouts=layouts)
+    candidates = [e for e in census if e.why is None]
+    chosen: list[tuple[_Entry, str, dict | None]] = []
+    declined: dict[int, tuple[str, dict]] = {}
+    for e in candidates:
+        if callable(decide):
+            offer = {cnf.AS_IS: e.nf.layout_elements(cnf.AS_IS)}
+            if layouts:
+                offer[cnf.SWAPPED] = e.nf.layout_elements(cnf.SWAPPED)
+            d = decide(e.shape, layout_elements=offer)
+            if d.route:
+                chosen.append((e, d.orientation, d.to_dict()))
+            else:
+                declined[id(e.op)] = (d.reason, d.to_dict())
+        elif select(e.shape):
+            chosen.append((e, cnf.AS_IS, None))
+    chosen_ids = {id(e.op) for e, _o, _d in chosen}
     not_routed = tuple(
         NotRouted(
-            op=sh.op,
-            parallel=tuple(int(d) for d in sh.parallel),
-            reduction=tuple(int(d) for d in sh.reduction),
-            why=why or _declined(sh, tile_edge),
-            fqn=_fqn(op),
+            op=e.shape.op,
+            parallel=tuple(int(d) for d in e.shape.parallel),
+            reduction=tuple(int(d) for d in e.shape.reduction),
+            why=e.why or declined.get(id(e.op), (None,))[0] or _declined(e.shape, tile_edge),
+            fqn=_fqn(e.op),
+            site=e.site,
+            decision=declined.get(id(e.op), (None, None))[1],
         )
-        for op, sh, why in census
-        if id(op) not in chosen_ids
+        for e in census
+        if id(e.op) not in chosen_ids
     )
     skipped: list[tuple[str, str]] = []
     if not chosen:
         skipped.append(("all", f"{len(candidates)} routable contraction(s), none selected"))
-        return ContractionRewrite(skipped=tuple(skipped), not_routed=not_routed, tile_edge=tile_edge)
+        return ContractionRewrite(skipped=tuple(skipped), not_routed=not_routed, tile_edge=tile_edge, policy=policy)
 
     # One symbol per distinct signature: MLIR function types are monomorphic, so a 256x196/K=768
     # contraction and a 196x1024/K=256 one cannot share a callee.
     symbols: dict[tuple[int, ...], str] = {}
     routed: list[Routed] = []
 
-    for op, shape in chosen:
+    for e, orientation, decision in chosen:
+        op, shape = e.op, e.nf.shape(orientation)
         key = _signature_key(shape)
         sym = symbols.get(key)
         if sym is None:
             sym = f"{symbol_prefix}_{len(symbols)}"
             symbols[key] = sym
+        fqn, steps = _fqn(op), e.nf.steps(orientation)
 
-        operands = list(op.operands)
-        if len(operands) != 3 or len(op.results) != 1:
-            # A contraction whose operand count is not (lhs, rhs, out-init) is not the shape this
-            # callee promises; skip it rather than emit a call with the wrong arity.
-            skipped.append((sym, f"expected 3 operands and 1 result, got {len(operands)} and {len(op.results)}"))
-            continue
-
-        call = func.CallOp(sym, operands, [op.results[0].type])
-        op.results[0].replace_all_uses_with(call.results[0])
-        parent = op.parent
-        parent.insert_op_before(call, op)
-        op.detach()
-        op.erase()
+        if steps:
+            # Not in the kernel's layout: transposes / collapses / an im2col gather around the call.
+            cnf.emit(e.nf, orientation, lambda a, b, c, t, _s=sym: func.CallOp(_s, [a, b, c], [t]))
+        else:
+            call = func.CallOp(sym, list(op.operands), [op.results[0].type])
+            op.results[0].replace_all_uses_with(call.results[0])
+            parent = op.parent
+            parent.insert_op_before(call, op)
+            op.detach()
+            op.erase()
 
         routed.append(
-            Routed(symbol=sym, parallel=tuple(shape.parallel), reduction=tuple(shape.reduction), fqn=_fqn(op))
+            Routed(
+                symbol=sym,
+                parallel=tuple(shape.parallel),
+                reduction=tuple(shape.reduction),
+                fqn=fqn,
+                site=e.site,
+                orientation=orientation,
+                steps=tuple(steps),
+                decision=decision,
+            )
         )
 
     # Declarations go at the END of the module body. The board backends anchor theirs "before the first
@@ -348,6 +518,7 @@ def rewrite_contractions(
         skipped=tuple(skipped),
         not_routed=not_routed,
         tile_edge=tile_edge,
+        policy=policy,
     )
 
 
@@ -359,7 +530,7 @@ def _fqn(op) -> str:
 
 
 #: Reasons that read ``<class>: <this op's numbers>``; a report groups them by the class alone.
-GROUPED_REASONS = ("smaller than one tile", "declined by the selector")
+GROUPED_REASONS = ("smaller than one tile", "declined by the selector", "cost model")
 
 
 def _declined(shape, tile_edge: int | None) -> str:

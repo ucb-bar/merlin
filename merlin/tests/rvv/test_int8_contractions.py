@@ -81,6 +81,18 @@ _F32_MM = (
 _ALL = lambda _s: True  # noqa: E731
 
 
+class _CanonicalOnly:
+    """Routes everything legal, but applies no layout step (the historical legality)."""
+
+    layouts = False
+
+    def __call__(self, _shape) -> bool:
+        return True
+
+
+_CANONICAL_ONLY = _CanonicalOnly()
+
+
 def _module(text: str):
     return parse_mlir_text(text)
 
@@ -120,13 +132,21 @@ class TestOperandLayout:
         square = square.replace("tensor<64x16xi32>", "tensor<64x32xi32>")
         assert len(PO.routable_contractions(_module(square))) == 1
 
-    def test_a_transposed_rhs_is_refused_even_when_the_extents_match(self):
+    def test_a_transposed_rhs_is_refused_by_the_canonical_only_policy(self):
         mod = _module(_INT8_MM_BT)
-        assert PO.routable_contractions(mod) == []
-        got = PO.rewrite_contractions(mod, symbol_prefix=SYMBOL_PREFIX, select=_ALL)
+        got = PO.rewrite_contractions(mod, symbol_prefix=SYMBOL_PREFIX, select=_CANONICAL_ONLY)
         assert got.count == 0
         (reason,) = [r.why for r in got.not_routed]
         assert "transposed" in reason
+
+    def test_a_transposed_rhs_is_routed_through_an_explicit_transpose(self):
+        # Even when N == K, so the extents alone look canonical: the callee must get B as (K, N).
+        mod = _module(_INT8_MM_BT)
+        (only,) = PO.routable_contractions(mod)
+        got = PO.rewrite_contractions(mod, symbol_prefix=SYMBOL_PREFIX, select=_ALL)
+        assert got.count == 1 and got.routed[0].steps == ("transpose_b",)
+        text = str(mod)
+        assert "linalg.transpose" in text and "func.call @" + SYMBOL_PREFIX + "_0" in text
 
     def test_every_contraction_left_behind_says_why(self):
         mod = _module(_INT8_MM)
