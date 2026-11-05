@@ -178,6 +178,21 @@ def test_the_installed_workload_names_the_boot_binary(flow, tmp_path):
     assert host["workload_installed"] and host["bootbinary"] == "zephyr0-zephyr.elf"
 
 
+def test_a_staged_binary_the_daemon_does_not_own_is_refused(flow, tmp_path, monkeypatch):
+    deploy, queue = tmp_path / "deploy", tmp_path / "queue"
+    queue.mkdir()
+    (queue / "daemon.pid").write_text("1\n")
+    assert flow.staging_refusal(deploy, "mine", "boot.elf", queue) is None  # absent: the daemon creates it
+    dst = deploy / "workloads" / "mine" / "boot.elf"
+    dst.parent.mkdir(parents=True)
+    dst.write_bytes(b"old")
+    assert flow.staging_refusal(deploy, "mine", "boot.elf", queue) is None  # same owner as the daemon
+    owners = {str(queue / "daemon.pid"): 1001, str(dst): 1000}
+    monkeypatch.setattr(flow, "_owner_uid", lambda p: owners[str(p)])
+    why = flow.staging_refusal(deploy, "mine", "boot.elf", queue)
+    assert why and "Operation not permitted" in why and "uid 1000" in why
+
+
 def test_submit_refuses_without_a_configured_queue(flow, tmp_path):
     bundle, _ = _bundle(tmp_path)
     job = _plan(flow, tmp_path, bundle)

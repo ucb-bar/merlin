@@ -102,6 +102,33 @@ def host_config() -> dict[str, Any]:
     }
 
 
+def _owner_uid(path: Path) -> int:
+    return Path(path).stat().st_uid
+
+
+def staging_refusal(deploy: Path, workload: str, bootbinary: str, queue_root: Path) -> str | None:
+    """Why the queue could not stage this workload's boot binary, or None.
+
+    The daemon stages with ``shutil.copy2``: it writes the bytes and then sets the destination's times and
+    mode, which only the file's OWNER may do. A destination that exists and belongs to anyone but the
+    daemon's user (the owner of ``daemon.pid``) is therefore overwritten and then fails the job with
+    ``Operation not permitted`` -- group write does not help. Refused here, before the queue touches it.
+    """
+    pid = Path(queue_root) / "daemon.pid"
+    dst = Path(deploy) / "workloads" / workload / bootbinary
+    if not pid.is_file() or not dst.exists():
+        return None
+    daemon_uid, owner = _owner_uid(pid), _owner_uid(dst)
+    if owner == daemon_uid:
+        return None
+    return (
+        f"{dst} exists and is owned by uid {owner}, not by the queue daemon's uid {daemon_uid}: the daemon would "
+        f"overwrite it and then fail staging with 'Operation not permitted' (copy2 sets times/mode, which only "
+        f"the owner may do). Use a workload whose staged directory the daemon creates itself "
+        f"(MERLIN_FIRESIM_WORKLOAD), or have the file's owner remove it."
+    )
+
+
 def _board(name: str):
     from merlin.runtime.boards import board
 
@@ -318,6 +345,9 @@ def submit(job_dir: Path, *, priority: int = 5, project: str = "merlin-examples"
             f"workload {manifest['workload']!r} is not installed in {host['deploy']}/workloads -- "
             f"install {job_dir}/firesim/workload/{manifest['workload']}.json first"
         )
+    refused = staging_refusal(host["deploy"], manifest["workload"], manifest["bootbinary"], host["queue_root"])
+    if refused:
+        raise SystemExit(f"cannot submit: {refused}")
     queue_host = fc.QueueHost(
         queue_executable=host["client"], queue_state_root=host["queue_root"], chipyard=host["chipyard"]
     )
