@@ -89,11 +89,20 @@ def _target_workflow_roots() -> tuple[str, ...]:
     base = ROOT / EXAMPLES
     if not base.is_dir():
         return ()
-    return tuple(
+    workflows = tuple(
         directory.relative_to(ROOT).as_posix()
         for directory in sorted(base.iterdir())
         if directory.is_dir() and ((directory / "target").is_dir() or (directory / "experiment.yaml").is_file())
     )
+    # A VENDORED chip package's executable support (examples/<chip>/support, recorded by the example's
+    # SOURCE.yaml) is the code a build actually runs: `MatrixRouting` loads its matrix_lowering plugin,
+    # which calls the generic core it was written against. Its tests stay excluded (EXCLUDED_PARTS).
+    packages = tuple(
+        (directory / "support").relative_to(ROOT).as_posix()
+        for directory in sorted(base.iterdir())
+        if (directory / "SOURCE.yaml").is_file() and (directory / "support" / "provider.yaml").is_file()
+    )
+    return workflows + packages
 
 
 EXCLUDED_PARTS = ("_data", "__pycache__", "tests", "_qa_ws")
