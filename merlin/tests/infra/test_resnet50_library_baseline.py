@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -159,6 +160,43 @@ def test_queue_cwd_launcher_forces_firesim_to_use_the_daemon_selected_deploy_dir
     assert "default_simulation_dir:" in text
     assert 'simulation_dir="$job_root/simulation"' in text
     assert 'export PATH="$launcher_dir:$PATH"' in text
+
+
+def test_queue_cwd_launcher_runs_a_writable_deploy_dir_without_a_shadow_tree(tmp_path):
+    # A daemon that can write the submitter's deploy/ runs FireSim from it directly, with no
+    # overlay. The launcher must then run that checkout's own manager and must not build its
+    # shadow tree at $(cwd)/.., which would nest a chipyard/ inside the real sims/firesim.
+    launcher = BASELINE.QUEUE_CWD_LAUNCHER
+    firesim_root = tmp_path / "chipyard/sims/firesim"
+    deploy = firesim_root / "deploy"
+    deploy.mkdir(parents=True)
+    record = tmp_path / "record.txt"
+    manager = deploy / "firesim"
+    manager.write_text(
+        f'#!/bin/bash\nprintf "%s\\n" "$(pwd -P)" "$PATH" "$*" > {record}\n',
+        encoding="utf-8",
+    )
+    manager.chmod(0o755)
+    yaml = tmp_path / "config_runtime.yaml"
+    yaml.write_text("  default_simulation_dir: /queue/jobs/1/simulation\n", encoding="utf-8")
+    env = {"PATH": f"{launcher.parent}:/usr/bin:/bin"}
+    result = subprocess.run(
+        ["bash", str(launcher), "-c", str(yaml), "infrasetup"],
+        cwd=deploy,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    cwd, path, args = record.read_text(encoding="utf-8").splitlines()
+    assert cwd == str(deploy.resolve())
+    assert str(launcher.parent) not in path.split(":")
+    assert path.split(":") == ["/usr/bin", "/bin"]
+    assert args == f"-c {yaml} infrasetup"
+    assert not (firesim_root / "chipyard").exists()
+    assert not (firesim_root / "simulation").exists()
+    assert yaml.read_text(encoding="utf-8") == "  default_simulation_dir: /queue/jobs/1/simulation\n"
 
 
 def test_queue_make_launcher_fails_closed_around_the_exact_prebuilt_driver():

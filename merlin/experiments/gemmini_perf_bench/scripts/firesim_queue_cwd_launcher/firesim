@@ -10,6 +10,27 @@ if [[ ! -x ./firesim ]]; then
   exit 126
 fi
 firesim_real=$(readlink -f ./firesim)
+# The overlay below exists only when the daemon cannot write the submitter's
+# deploy/. When it can, the queue runs FireSim from that real deploy/ (its
+# ./firesim is the checkout's own file, not an overlay symlink), and building a
+# shadow tree at $(pwd)/.. would nest it inside the checkout itself and break
+# the second invocation of the job. Behave exactly like a same-user run:
+# drop this launcher directory from PATH (so the make companion is not seen)
+# and run the checkout's own manager.
+if [[ "$firesim_real" == "$(pwd -P)/firesim" ]]; then
+  stripped_path=""
+  old_ifs=$IFS
+  IFS=:
+  for directory in $PATH; do
+    if [[ -n "$directory" && "$(cd "$directory" 2>/dev/null && pwd -P || true)" == "$launcher_dir" ]]; then
+      continue
+    fi
+    stripped_path=${stripped_path:+$stripped_path:}$directory
+  done
+  IFS=$old_ifs
+  export PATH="$stripped_path"
+  exec "$firesim_real" "$@"
+fi
 firesim_root=$(dirname "$(dirname "$firesim_real")")
 chipyard_root=$(dirname "$(dirname "$firesim_root")")
 overlay_dir=$(pwd -P)
