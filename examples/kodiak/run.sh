@@ -15,6 +15,8 @@
 #                                 both gated on spike, with the routing report             (no board)
 #                                 --board firesim_kodiak_opu: built for FireSim, and one FireSim job
 #                                 per image is printed (--submit runs them on the shared FPGA)
+#   ./run.sh spike-model          build the OPU's spike functional model from the selected Kodiak
+#                                 package (needs its spike/ dir) into out/build/spike-ext/  (no board)
 #   ./run.sh build                build + gate ONE small model at 1 and 2 harts          (no board)
 #   ./run.sh package              assemble a full delivery package + zip                 (no board)
 #   ./run.sh grade <console.txt> [model]  score a console log a board owner sent back
@@ -166,6 +168,23 @@ firesim-collect)
   ex_run "$PY" "$EX_LIB_DIR/firesim_flow.py" collect "$@"
   ;;
 
+spike-model)
+  # The OPU's functional model for spike is OWNED by the Kodiak package (its spike/ directory): the
+  # instruction words and geometry are generated from the RTL at build time. Merlin only loads it when the
+  # selected package's contract declares it (runner.spike_extension: name, extlib_env, sha256).
+  PKG="$("$PY" -c 'import sys; from merlin.targetgen.target_registry import resolve; print(resolve(sys.argv[1]).base)' "$MATRIX_SUPPORT")"
+  if [ ! -f "$PKG/spike/build.py" ]; then
+    echo "the selected Kodiak package ($PKG) has no spike/ model; select one that does with" >&2
+    echo "MERLIN_TARGET_PATH=<kodiak-mlir checkout>" >&2
+    exit 1
+  fi
+  ex_say "build the OPU spike model from $PKG"
+  ex_run "$PY" "$PKG/spike/build.py" --out "$REPO_ROOT/out/build/spike-ext/kodiak"
+  ex_note "export MERLIN_KODIAK_OPU_SPIKE_EXTLIB=$REPO_ROOT/out/build/spike-ext/kodiak/libsaturn_opu_model.so"
+  ex_note "then \`op\` also runs the SHIPPED OPU image on spike (leg matrix_on_spike). The .so's sha256 must"
+  ex_note "equal the one the package declares; a rebuild with other bytes is refused, not loaded."
+  ;;
+
 build|package)
   ex_preflight "$BOARD" --require package
   if [ "$FULL" = "1" ]; then
@@ -218,7 +237,7 @@ grade)
   ;;
 
 *)
-  sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,42p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac

@@ -115,6 +115,30 @@ Every OPU build writes `routing_report.json` next to the image:
 `MERLIN_CHIPYARD` must point at a chipyard whose `generators/saturn` carries the OPU: the encodings
 and the tile geometry are derived from it.
 
+## 2c. Running the shipped OPU image on spike
+
+Stock spike has no OPU. The Kodiak package can carry a **functional model** of it as a spike extension
+(`spike/` in kodiak-mlir: a C++ `--extlib` plus `build.py`, which generates the instruction words and the
+geometry from the same RTL derivation the kernel uses, so nothing in it is typed by hand). It
+transliterates the unit's sequencer, array and VRF wiring, so it computes what the RTL computes. It does
+not model timing, so its cycle counts mean nothing for the OPU and the sequencer hazard the kernel works
+around cannot appear in it. It also does not model the taped-out part's partial-N erratum, which belongs
+to a different RTL revision.
+
+```bash
+export MERLIN_TARGET_PATH=<kodiak-mlir checkout with spike/>   # until the vendored support/ carries it
+./run.sh spike-model                  # -> out/build/spike-ext/kodiak/libsaturn_opu_model.so + manifest.json
+export MERLIN_KODIAK_OPU_SPIKE_EXTLIB=$PWD/../../out/build/spike-ext/kodiak/libsaturn_opu_model.so
+./run.sh op gemm 96 80 200            # now three legs: rvv, matrix (twin), matrix_on_spike (shipped ELF)
+```
+
+The model is loaded only as the package's contract declares it (`runner.spike_extension`: extension
+name, `extlib_env`, sha256; see `merlin.targetgen.spike_extension`). A missing file or different bytes
+fails the `matrix_on_spike` leg rather than running something else. That includes a rebuild with another
+compiler or against another spike, which must be re-declared. A package that declares no model skips
+the leg and says so. The leg grades the shipped image against the W8A8 golden and requires it to match
+the twin's output bit for bit.
+
 **Bring your own model.** `./run.sh capture <model>` writes `recaptures/<model>_int8_full` and its
 W8A8 golden. Use a model2MLIR roster name, or `--loader path/to/loader.py` with a
 `get_model_and_inputs()` (see `docs/guides/model2mlir.md`). Then

@@ -8,8 +8,10 @@
     chip_flow.py op <gemm|conv2d|encoder_block|path/to/loader.py> [dims ...] --board B [--harts N]
                  [--matrix-unit U --matrix-config C --matrix-support-target T] [--firesim-submit]
         Capture the operator (once per shape), build it for the board as plain RVV and -- with the
-        matrix flags -- routed to the matrix unit, gate both on spike, and print one summary. For a
-        board that names a FireSim `bitstream`, also plan one FireSim job per image (firesim_flow.py)
+        matrix flags -- routed to the matrix unit, gate both on spike, and print one summary. When the
+        support target declares a spike model of its unit (``runner.spike_extension``), a third leg,
+        ``matrix_on_spike``, runs the SHIPPED matrix image on it and compares it bit for bit with the twin.
+        For a board that names a FireSim `bitstream`, also plan one FireSim job per image (firesim_flow.py)
         and print its submission; --firesim-submit runs them and grades the result.
 
 The board, the matrix unit and its configuration are arguments: a chip example passes its own. Nothing
@@ -137,6 +139,72 @@ def _compile(name: str, args, matrix: bool) -> dict:
         return {"status": "error", "error": "merlin-compile produced no JSON result"}
 
 
+def _references(name: str) -> dict:
+    """The tiers merlin-compile grades an int8 image against: the W8A8 golden and the fp32 one."""
+    import numpy as np
+
+    bundle = bundle_dir(name)
+    refs = {"fp32": np.load(bundle / "golden.npy")}
+    if (bundle / "golden_w8a8.npy").is_file():
+        refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
+    return refs
+
+
+def matrix_on_spike(name: str, args, matrix: dict) -> dict:
+    """Third leg: the SHIPPED matrix image (the one with the unit's instructions) on spike, executed by the
+    unit's own functional model, graded against the W8A8 golden and compared bit for bit with the twin.
+
+    The model is whatever the support target DECLARES under ``runner.spike_extension`` (its name, where the
+    operator put it, and its sha256), resolved by ``merlin.targetgen.spike_extension``: a missing or
+    different ``.so`` raises rather than running something else. A target that declares none is skipped,
+    and says so -- plain spike would take an illegal instruction on the first unit opcode.
+    """
+    from merlin.runtime.backends import spike as spike_backend
+    from merlin.runtime.backends import zephyr_model as zm
+    from merlin.runtime.boards import board as board_desc
+    from merlin.targetgen import spike_extension as SE
+
+    target = args.matrix_support_target
+    m = matrix.get("matrix") or {}
+    ship, twin = matrix.get("binary"), matrix.get("twin_binary")
+    if not ship or not twin or not m.get("ship_ram_bytes"):
+        return {"status": "skipped", "reason": "no shipped matrix image to run"}
+    try:
+        if SE.declared_extension(target) is None:
+            return {
+                "status": "skipped",
+                "reason": f"{target} declares no runner.spike_extension, so spike has no model of the unit",
+            }
+        # Declared: the defaults below are never used, resolve() either returns the declared bytes or raises.
+        ext = SE.resolve(target, default_library_dir=spike_backend.spike_path().parent, default_extension_name="")
+    except SE.SpikeExtensionError as exc:
+        return {"status": "error", "error": str(exc)}
+
+    brd = board_desc(args.board)
+    run = dict(dram_base=brd.dram_base, harts=m["spike_harts"], vlen=brd.vlen, timeout=3600)
+    res = zm.run_on_spike(ship, mem_bytes=m["ship_ram_bytes"], extension=ext, **run)
+    out = {
+        "binary": ship,
+        "extension": {"name": ext.extension_name, "extlib": str(ext.extlib), "sha256": ext.sha256},
+        "spike_cycles": res.get("metrics", {}).get("cycles"),
+    }
+    if res.get("prefix") is None or not len(res["prefix"]):
+        return {**out, "status": "run_failed", "error": res.get("console", "")[-1500:]}
+    g = zm._gate(res["prefix"], _references(name))
+    # The twin is the same lowering with a scalar tile body, so on a correct model the two must agree to
+    # the bit -- on the dumped prefix AND on the whole-tensor hash. Re-run here because merlin-compile
+    # keeps only the twin's verdict, not its output.
+    t = zm.run_on_spike(twin, mem_bytes=m["twin_ram_bytes"], **run)
+    same_prefix = t.get("prefix") is not None and bool((t["prefix"] == res["prefix"]).all())
+    hashes = (res.get("out_hash"), t.get("out_hash"))
+    same_hash = None if None in hashes else hashes[0] == hashes[1]
+    out["verify"] = {"gate_ok": bool(g.get("ok")), "of": "shipped image on the unit model", **g}
+    out["bit_exact_vs_twin"] = same_prefix and same_hash is not False
+    out["twin_compare"] = {"prefix_equal": same_prefix, "out_hash_equal": same_hash, "elements": len(res["prefix"])}
+    out["status"] = "verified" if (g.get("ok") and out["bit_exact_vs_twin"]) else "run_mismatch"
+    return out
+
+
 def op(args) -> int:
     if args.op in OPS:
         keys, defaults = OPS[args.op]
@@ -156,13 +224,19 @@ def op(args) -> int:
     results = {"rvv": _compile(name, args, matrix=False)}
     if args.matrix_unit:
         results["matrix"] = _compile(name, args, matrix=True)
+        results["matrix_on_spike"] = matrix_on_spike(name, args, results["matrix"])
     print(f"\n== {name} on {args.board}, {args.harts} hart(s)")
     for leg, res in results.items():
         verdict = res.get("status")
         ver = res.get("verify") or {}
-        line = f"  {leg:6} {verdict:13} w8a8_cos={ver.get('w8a8_cos', 'n/a')}"
+        line = f"  {leg:15} {verdict:13} w8a8_cos={ver.get('w8a8_cos', 'n/a')}"
         if leg == "rvv":
             line += f"  cycles={res.get('cycles')}"
+        elif leg == "matrix_on_spike":
+            if res.get("reason"):
+                line += f"  ({res['reason']})"
+            else:
+                line += f"  bit_exact_vs_twin={res.get('bit_exact_vs_twin')}  spike_cycles={res.get('spike_cycles')}"
         else:
             m = res.get("matrix") or {}
             line += (
@@ -176,14 +250,21 @@ def op(args) -> int:
     if m:
         print(f"  not routed: {m.get('not_routed_by_reason') or 'nothing'}")
         print(f"  shipped ELF (has the unit's instructions): {results['matrix'].get('binary')}")
-        print(f"  stand-in twin (what spike ran):            {results['matrix'].get('twin_binary')}")
+        print(f"  stand-in twin (scalar tile body):          {results['matrix'].get('twin_binary')}")
         print(f"  routing report: {m.get('routing_report')}")
-        print("  spike cannot execute the unit: the twin checks routing, pack, ABI and epilogue; run the")
-        print("  shipped ELF on the chip or FireSim for the unit's datapath and cycles.")
+        ext = (results.get("matrix_on_spike") or {}).get("extension")
+        if ext:
+            print(f"  the shipped ELF also ran on spike with the unit's functional model {ext['name']!r}")
+            print(f"  ({ext['extlib']}, sha256 {ext['sha256'][:16]}...): its numbers, not its cycles.")
+        else:
+            print("  spike has no model of the unit here, so only the twin ran: it checks routing, pack, ABI")
+            print("  and epilogue. Build and declare the unit's spike model (the chip example's README), or run")
+            print("  the shipped ELF on the chip or FireSim for the unit's datapath and cycles.")
     print(f"  RVV ELF: {results['rvv'].get('binary')}")
     kept = _keep(name, args, results)
     print(f"  kept in: {kept}")
-    ok = all(r.get("status") == "verified" for r in results.values())
+    # A leg skipped for lack of a declared model is reported, not failed; a leg that ran must verify.
+    ok = all(r.get("status") in ("verified", "skipped") for r in results.values())
     if ok and _firesim_board(args.board):
         return _firesim(kept, name, args, results)
     if _firesim_board(args.board):
