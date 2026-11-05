@@ -11,10 +11,13 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
-ROOT = Path(__file__).resolve().parents[5]
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from source_roots import MERLIN_ROOT as ROOT, bootstrap_compiler, observed_revision
 HERE = Path(__file__).resolve().parent
 KERNELS = "80c5f27d4bcded9c1ca7618a17ffcdbae2be7a39"
+HISTORICAL_KERNELS = "80c5f27d4bcded9c1ca7618a17ffcdbae2be7a39"
 MODEL = "47b8599d8ffbe5ddd96059ffe2b5be2427a410f5"
 
 
@@ -122,7 +125,7 @@ def main():
     parser.add_argument("-o", "--out", type=Path, default=ROOT / "out/qwen-full-model")
     parser.add_argument("--prefill", type=int, default=32)
     parser.add_argument("--decode-steps", type=int, default=2)
-    parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument("--workers", type=int, choices=range(1, 9), default=1)
     parser.add_argument("--job-timeout", type=int, default=1800)
     parser.add_argument("--plan-only", action="store_true")
     parser.add_argument("--skip-real-capture", action="store_true")
@@ -130,7 +133,8 @@ def main():
     parser.add_argument("--model-python", type=Path)
     parser.add_argument("--library-root", type=Path)
     parser.add_argument("--model-root", type=Path)
-    parser.add_argument("--atlas-bin", type=Path, default=ROOT / "build/bin")
+    parser.add_argument("--atlas-bin", type=Path)
+    parser.add_argument("--atlas-mlir-root", type=Path)
     args = parser.parse_args()
     args.deps, args.checkpoint, args.out = (
         p.resolve() for p in (args.deps, args.checkpoint, args.out)
@@ -138,12 +142,17 @@ def main():
     if args.setup:
         setup(args)
         return
+    compiler_root = bootstrap_compiler(args.atlas_mlir_root)
+    from atlas_mlir.toolchain import bin_dir
+    args.atlas_bin = (args.atlas_bin or bin_dir()).resolve()
     capture = (args.capture_python or args.deps / "capture/bin/python").absolute()
     model = (args.model_python or args.deps / "model/bin/python").absolute()
-    library = (args.library_root or args.deps / "atlas-kernels").resolve()
-    model_root = (args.model_root or args.deps / "npu-model").resolve()
-    verify_checkout(library, KERNELS)
-    verify_checkout(model_root, MODEL)
+    library = Path(args.library_root or os.environ.get("ATLAS_KERNELS_ROOT") or args.deps / "atlas-kernels").resolve()
+    model_root = Path(args.model_root or os.environ.get("NPU_MODEL_ROOT") or args.deps / "npu-model").resolve()
+    if not (args.library_root or os.environ.get("ATLAS_KERNELS_ROOT")):
+        verify_checkout(library, KERNELS)
+    if not (args.model_root or os.environ.get("NPU_MODEL_ROOT")):
+        verify_checkout(model_root, MODEL)
     if args.prefill < 1 or args.decode_steps < 0 or args.workers < 1:
         raise SystemExit(
             "Prefill/workers must be positive and decode steps nonnegative"
@@ -229,7 +238,7 @@ def main():
             "--atlas-mlir-bin",
             args.atlas_bin.resolve(),
             "--min-tier",
-            "stream-verified",
+            "verified",
             "--workers",
             args.workers,
             "--job-timeout",
@@ -268,8 +277,14 @@ def main():
             env=env,
         )
     record = dict(
-        kernels_revision=KERNELS,
-        model_revision=MODEL,
+        kernels_revision=observed_revision(library),
+        kernels_root=str(library),
+        historical_kernels_revision=HISTORICAL_KERNELS,
+        model_revision=observed_revision(model_root),
+        model_root=str(model_root),
+        historical_model_revision=MODEL,
+        compiler_revision=observed_revision(Path(os.environ.get("ATLAS_MLIR_ROOT", compiler_root))),
+        compiler_support_root=str(compiler_root),
         mapping_sha256=hashlib.sha256((HERE / "mapping.yaml").read_bytes()).hexdigest(),
         compiler_sha256={
             name: hashlib.sha256((args.atlas_bin / name).read_bytes()).hexdigest()

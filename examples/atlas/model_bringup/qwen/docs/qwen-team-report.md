@@ -1,15 +1,14 @@
 # Atlas MLIR: pretrained Qwen bringup
 
-The workflow now starts from the actual **DeepSeek-R1-Distill-Qwen-1.5B
-checkpoint**. A 32-token prefill plus two greedy decode steps through all 28
-layers exports to **6,176 ATen operations, 591 projection calls and 84 attention
-calls**. This supplies model-derived shapes and invocation counts.
+Integration note (2026-11-05): This is historical evidence replayed from `5884524e3cf85027e08734526c1e3dbf0a093686`; its original measurements and unsupported-variant observations have not been rerun by this port. Current D128 attention and width-1536 RMSNorm support, explicit Qwen epsilon, local source selection, and validation status are described in the [Qwen integration README](../README.md).
+
+The workflow now starts from the actual **DeepSeek-R1-Distill-Qwen-1.5B checkpoint**. A 32-token prefill plus two greedy decode steps through all 28 layers exports to **6,176 ATen operations, 591 projection calls and 84 attention calls**. This supplies model-derived shapes and invocation counts.
 
 ## Completed
 
 - The exported full session matches eager FP32 PyTorch exactly.
-- Five PyTorch regions—first-layer norm, attention, MLP, gate projection and
-  down projection—are extracted from that graph and independently reproduce
+- Five PyTorch regions (first-layer norm, attention, MLP, gate projection, and
+  down projection) are extracted from that graph and independently reproduce
   their captured outputs exactly. Original source nodes and parameters are retained.
 - Four distinct projection-launch variants execute on `npu_model`, match
   independent target-arithmetic goldens, and pass Atlas machine-stream and
@@ -19,24 +18,16 @@ calls**. This supplies model-derived shapes and invocation counts.
 
 ## Performance
 
-Output panels contain 128 columns and keep the full source K reduction.
-Both prefill and single-row decode execute 32 physical rows.
+Output panels contain 128 columns and keep the full source K reduction. Both prefill and single-row decode execute 32 physical rows.
 
 | Projection panel | Simulator cycles | Launches in the selected session |
 | --- | ---: | ---: |
 | 32×1536×128 | 358,100 | 17,673 |
 | 32×8960×128 | 2,056,340 | 1,008 |
 
-The 591 logical projection calls become **18,681 physical panels**, totaling
-**8.401 billion simulator cycles** under this unfused, cold-launch policy.
-That is a projection-only estimate: unsupported kernels, host work, launch
-overhead and full graph integration are excluded. It is not model latency.
-No Qwen-specific traffic-reuse recipe is currently selected.
+The 591 logical projection calls become **18,681 physical panels**, totaling **8.401 billion simulator cycles** under this unfused, cold-launch policy. That is a projection-only estimate: unsupported kernels, host work, launch overhead and full graph integration are excluded. It is not model latency. No Qwen-specific traffic-reuse recipe is currently selected.
 
-On two actual first-layer panels, relative L2 error against captured FP32
-outputs is **4.40% for gate** and **8.62% for down**. Both remain bit-exact to
-the selected target arithmetic. These spot checks do not establish full-model
-quantized accuracy or error propagation through a session.
+On two actual first-layer panels, relative L2 error against captured FP32 outputs is **4.40% for gate** and **8.62% for down**. Both remain bit-exact to the selected target arithmetic. These spot checks do not establish full-model quantized accuracy or error propagation through a session.
 
 ## Existing problems and priorities
 
@@ -55,10 +46,6 @@ quantized accuracy or error propagation through a session.
    actual activations. Full K=8960 execution demonstrates that long reductions
    are feasible on the simulator despite earlier compiler allocation timeouts.
 
-No full-model Atlas ELF, board execution, perplexity or token-throughput result
-is claimed. Raw tensors, checkpoints and images stay local; results are committed
-as Markdown. Qwen work is on `feat/qwen-kernels`; packaging and CI remain separate.
+No full-model Atlas ELF, board execution, perplexity or token-throughput result is claimed. Raw tensors, checkpoints and images stay local; results are committed as Markdown. Qwen work is on `feat/qwen-kernels`; packaging and CI remain separate.
 
-Details: [bringup report](qwen-model-bringup.md),
-[complete MODEL-BENCH table](../full_model/MODEL-BENCH.md),
-[reproduction](../full_model/README.md).
+Details: [bringup report](qwen-model-bringup.md), [complete MODEL-BENCH table](../full_model/MODEL-BENCH.md), [reproduction](../full_model/README.md).

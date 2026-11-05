@@ -6,17 +6,17 @@ import sys
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[5]
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @unittest.skipUnless(
-    importlib.util.find_spec("torch") and importlib.util.find_spec("torch_mlir"),
-    "requires the capture extra",
+    importlib.util.find_spec("torch"),
+    "requires torch",
 )
 class QwenCaptureTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        sys.path.insert(0, str(ROOT / "examples/atlas/model_bringup/qwen"))
+        sys.path.insert(0, str(ROOT))
         import torch
         import kernels
 
@@ -25,7 +25,7 @@ class QwenCaptureTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        sys.path.remove(str(ROOT / "examples/atlas/model_bringup/qwen"))
+        sys.path.remove(str(ROOT))
 
     def test_attention_decomposition_preserves_all_128_channels(self):
         t = self.torch
@@ -44,13 +44,16 @@ class QwenCaptureTest(unittest.TestCase):
         expected = (t.nn.functional.silu(x @ g.T) * (x @ u.T)) @ d.T
         t.testing.assert_close(self.kernels.SwiGLUTile()(x, g, u, d), expected)
 
+    @unittest.skipUnless(importlib.util.find_spec("torch_mlir"), "requires the capture extra: torch_mlir")
     def test_fresh_attention_and_sigmoid_capture_normalizes(self):
+        from source_roots import bootstrap_compiler
+        bootstrap_compiler()
         from atlas_mlir.capture import capture, load
         from atlas_mlir.normalize import normalize_linalg
 
         with tempfile.TemporaryDirectory() as tmp:
             # The loader contains a dataclass; loading must register its module.
-            model, inputs = load(ROOT / "examples/atlas/model_bringup/qwen/kernels.py")
+            model, inputs = load(ROOT / "kernels.py")
             attention = capture(model, inputs, Path(tmp) / "attention")
             source = attention.linalg.read_text()
             self.assertEqual(source.count("linalg.matmul"), 8)
@@ -65,7 +68,10 @@ class QwenCaptureTest(unittest.TestCase):
             self.assertIn("arith.negf", swiglu.linalg.read_text())
             self.assertTrue((swiglu.linalg.parent / "raw-linalg.mlir").exists())
 
+    @unittest.skipUnless(importlib.util.find_spec("torch_mlir"), "requires the capture extra: torch_mlir")
     def test_live_argmax_indices_are_preserved(self):
+        from source_roots import bootstrap_compiler
+        bootstrap_compiler()
         from atlas_mlir.capture import capture
 
         t = self.torch

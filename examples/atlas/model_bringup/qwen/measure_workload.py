@@ -14,8 +14,9 @@ import numpy as np
 import torch
 from safetensors.numpy import load_file
 
-ROOT = Path(__file__).resolve().parents[4]
-sys.path[:0] = [str(ROOT / "tools"), str(ROOT / "python")]
+from source_roots import MERLIN_ROOT as ROOT, QWEN_ROOT, bootstrap_compiler
+
+COMPILER_ROOT = bootstrap_compiler()
 
 
 def model_instruction(row, inventory, isa):
@@ -99,7 +100,7 @@ def main():
         RuntimeInputs(tiles),
     )
     golden = load_file(str(root / "golden.safetensors"))
-    inventory = json.loads((ROOT / "docs/selected-variant-inventory.json").read_text())
+    inventory = json.loads((COMPILER_ROOT / "docs/selected-variant-inventory.json").read_text())
     bins = Path(os.environ["ATLAS_OOT_BIN_DIR"])
     reports = []
     for name, pipeline in [

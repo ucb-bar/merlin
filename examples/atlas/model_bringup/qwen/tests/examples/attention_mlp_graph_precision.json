@@ -1,0 +1,9 @@
+{
+  "schema": "atlas.diagnostic_graph_precision.v1",
+  "target_identity": "atlas-rtl-0079c0541111197741a231c002e3843fa6f545b2:movement-mxu01-vpu-pack-tile-v21",
+  "input_conversion": "f32-to-e4m3-rne-finite-v1",
+  "output_conversion": "bf16-to-f32-exact-v1",
+  "constant_conversion": "f32-to-bf16-rne-v1",
+  "interlayer_pack": "scaled-e8m0-exact-normal-v1",
+  "pack_scale_code": 127
+}

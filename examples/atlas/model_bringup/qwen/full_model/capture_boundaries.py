@@ -7,6 +7,7 @@ MLIR are written only to the ignored output directory.
 
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -18,7 +19,8 @@ from safetensors.torch import save_file
 
 from loader import get_model_and_inputs
 
-ROOT = Path(__file__).resolve().parents[5]
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from source_roots import bootstrap_compiler
 
 
 def cut(graph, prefix, step=0):
@@ -60,10 +62,21 @@ def cut(graph, prefix, step=0):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--loader", type=Path, help="Optional local model loader exporting get_model_and_inputs")
+    parser.add_argument("--skip-linalg", action="store_true", help="Retain PyTorch graph cuts without torch-mlir capture")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=False)
-    torch.set_num_threads(8)
-    model, inputs = get_model_and_inputs()
+    torch.set_num_threads(1)
+    load_model = get_model_and_inputs
+    if args.loader:
+        loader_path = args.loader.resolve()
+        sys.path.insert(0, str(loader_path.parent))
+        spec = importlib.util.spec_from_file_location("qwen_capture_loader", loader_path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        load_model = module.get_model_and_inputs
+    model, inputs = load_model()
     program = torch.export.export(model, inputs, strict=False)
     definitions = {
         "first_layer_norm": "decoder.model.layers.0.input_layernorm",
@@ -168,13 +181,17 @@ def main():
         )
         # Linalg capture is diagnostic: a refusal is retained, never replaced
         # by a hand-written implementation of the region.
-        sys.path.insert(0, str(ROOT / "python"))
-        from atlas_mlir.capture import capture
-
         try:
-            captured = capture(kernel, arguments, dest / "capture")
-            row["linalg"] = str(captured.linalg.relative_to(args.out))
-            row["capture_status"] = "captured"
+            if args.skip_linalg:
+                row["capture_status"] = "skipped"
+                row["capture_skip_reason"] = "--skip-linalg requested; Linalg capture PENDING"
+            else:
+                bootstrap_compiler()
+                from atlas_mlir.capture import capture
+
+                captured = capture(kernel, arguments, dest / "capture")
+                row["linalg"] = str(captured.linalg.relative_to(args.out))
+                row["capture_status"] = "captured"
         except Exception as error:
             row.update(
                 capture_status="refused",

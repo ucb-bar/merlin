@@ -14,7 +14,8 @@ import sys
 
 import torch
 
-from measure_workload import model_instruction
+from measure_workload import model_instruction, COMPILER_ROOT
+from source_roots import MERLIN_ROOT as ROOT
 from atlas_virtual_evaluator import (
     RuntimeInputs,
     _tile_bytes,
@@ -29,7 +30,6 @@ from npu_model.simulation import Simulation
 from npu_model.software.program import InstantiableProgram
 from npu_speed_of_light import roofline
 
-ROOT = Path(__file__).resolve().parents[4]
 
 
 def analyze(work, variant, memory, inventory):
@@ -143,7 +143,7 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     if (args.out / "roofline.json").exists():
         raise SystemExit("choose a fresh output directory")
-    inventory = json.loads((ROOT / "docs/selected-variant-inventory.json").read_text())
+    inventory = json.loads((COMPILER_ROOT / "docs/selected-variant-inventory.json").read_text())
     model_root = Path(roofline.__file__).resolve().parents[1]
     provenance = dict(
         model_root=str(model_root),

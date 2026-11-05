@@ -9,8 +9,9 @@ import time
 
 from safetensors.numpy import load_file
 
-ROOT = Path(__file__).resolve().parents[4]
-sys.path.insert(0, str(ROOT / "python"))
+from source_roots import MERLIN_ROOT as ROOT, QWEN_ROOT, bootstrap_compiler, observed_revision
+
+COMPILER_ROOT = bootstrap_compiler()
 from atlas_mlir_native.binding import AtlasNativeBinding, diagnostic_mxu0_f32_profile
 from atlas_mlir_native.graph_precision import lower_diagnostic_graph
 from atlas_mlir_native.graph_abi import prepare_graph_inputs
@@ -28,9 +29,6 @@ from merlin.semantic_compiler.target_binding import (
 from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
 from merlin.semantic_compiler.precision_transform import build_diagnostic_matmul_tile
 
-MERLIN_REVISION = "85db5fb4e6eeb0ffe24c5a9938da8da8f255701d"
-
-
 def write(path, value):
     path.write_text(json.dumps(value, indent=2) + "\n")
 
@@ -42,7 +40,7 @@ def main():
     args = parser.parse_args()
     root = args.out.resolve()
     policy = json.loads(
-        (ROOT / "examples/atlas/model_bringup/qwen/tests/examples/attention_mlp_graph_precision.json").read_text()
+        (QWEN_ROOT / "tests/examples/attention_mlp_graph_precision.json").read_text()
     )
     policy["interlayer_pack"] = "scaled-e8m0-rtl-rne-v1"
     snapshot_dir = root / "snapshot"
@@ -54,7 +52,7 @@ def main():
             destination=snapshot_dir,
             crate=packaged_egg_bridge_path(),
             cargo_target_dir=root / "cargo",
-            source_revision=MERLIN_REVISION,
+            source_revision=observed_revision(ROOT) or "installed-merlin",
         )
     )
     rows = []
@@ -104,7 +102,7 @@ def main():
                 request,
                 fixed_inputs=fixed,
                 fixed_outputs=outputs,
-                target_source=ROOT,
+                target_source=COMPILER_ROOT,
                 destination=dest / "native",
                 limits=SearchLimits(
                     candidate_nodes=256,

@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 import unittest
 
-ROOT = Path(__file__).resolve().parents[5]
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @unittest.skipUnless(
@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[5]
 class ModelExtractionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        sys.path.insert(0, str(ROOT / "examples/atlas/model_bringup/qwen/full_model"))
+        sys.path.insert(0, str(ROOT / "full_model"))
         import torch
         from capture_boundaries import cut
 
@@ -23,7 +23,7 @@ class ModelExtractionTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        sys.path.remove(str(ROOT / "examples/atlas/model_bringup/qwen/full_model"))
+        sys.path.remove(str(ROOT / "full_model"))
 
     def exported(self):
         torch = self.torch

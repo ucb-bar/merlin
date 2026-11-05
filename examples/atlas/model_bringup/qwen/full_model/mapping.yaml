@@ -3,8 +3,8 @@
 schema: atlas.coverage.mapping.v1
 kernels:
   projection_gemm: FP8 projection with ordered BF16 accumulation
-  rmsnorm: Candidate RMSNorm family; current generator rejects Qwen width 1536
-  attention: Candidate attention family; current generator rejects Qwen d=128
+  rmsnorm: Reusable streamed RMSNorm family with explicit Qwen epsilon
+  attention: Reusable wide attention family with GQA support
 builds: {}
 bench:
   qwen:
@@ -23,11 +23,11 @@ rules:
       cite: [atlas-kernels:kernels/projection_gemm/reference.py]
     - match: {module: ['*.input_layernorm', '*.post_attention_layernorm', '*.model.norm']}
       where: atlas:rmsnorm
-      launch: {family: rmsnorm, per: {op: aten.rsqrt.default}, width: 1536}
+      launch: {family: rmsnorm, per: {op: aten.rsqrt.default}, width: 1536, eps: 1.0e-6}
       note: >-
         Whole RMSNorm composition, one launch per rsqrt. Qwen uses width 1536
-        and epsilon 1e-6; the current generator supports width 2048 and has a
-        different epsilon. This must remain no-variant pending qualification.
+        and epsilon 1e-6, carried through launch identity and the library generator
+        and reference. Numerical qualification remains a separate gate.
       cite: [atlas-kernels:kernels/rmsnorm/gen.py]
     - match:
         module: '*.self_attn'
@@ -42,6 +42,7 @@ rules:
         output_fp8: false
       note: >-
         QK/softmax/PV core with export-derived rows/keys/heads and the actual
-        128-channel head. Current d=64 generator rejects it. RoPE, masking glue,
-        casts, cache updates and QKV bias are not claimed by this rule.
+        128-channel head. Reuse the wide library generator with GQA support.
+        RoPE, masking glue, casts, cache updates, and QKV bias are not
+        claimed by this rule; cached-decode semantics require qualification.
       cite: [atlas-kernels:kernels/attention/kernel.yaml]

@@ -1,32 +1,19 @@
 # Pretrained Qwen model bringup
 
-This follows the kernel-library coverage workflow: export a real model session,
-map its operations to candidate kernel families, run every distinct launch at
-its model-derived shape, and report unsupported work. It is separate from the
-older hand-written 32×32 microbenchmarks in the parent directory.
+This follows the kernel-library coverage workflow: export a real model session, map its operations to candidate kernel families, run every distinct launch at its model-derived shape, and report unsupported work. It is separate from the older hand-written 32×32 microbenchmarks in the parent directory.
 
 ## Run
 
-With `uv`, Git, and built `build/bin/atlas-opt` / `atlas-emit`:
+Use a compiler wheel or `--atlas-mlir-root` / `ATLAS_MLIR_ROOT` / a sibling compiler checkout, plus built `atlas-opt` and `atlas-emit` selected by `--atlas-bin` or `ATLAS_OOT_BIN_DIR`. The optional setup action also needs `uv` and Git:
 
 ```sh
 python3 examples/atlas/model_bringup/qwen/full_model/run.py --setup
 python3 examples/atlas/model_bringup/qwen/full_model/run.py
 ```
 
-Setup prepares isolated CPU capture/model environments, checks out pinned kernel
-and simulator sources, downloads the pretrained checkpoint (about 3.6 GB), and
-checks the complete weights SHA-256. The default session is a 32-token prefill
-plus two greedy decode steps through all 28 layers. The checkpoint's BF16
-parameters are promoted exactly to FP32 for the reference computation; attention
-uses the eager implementation from Transformers 4.44.0.
+Setup prepares isolated CPU capture/model environments, checks out pinned kernel and simulator sources, downloads the pretrained checkpoint (about 3.6 GB), and checks the complete weights SHA-256. The default session is a 32-token prefill plus two greedy decode steps through all 28 layers. The checkpoint's BF16 parameters are promoted exactly to FP32 for the reference computation; attention uses the eager implementation from Transformers 4.44.0.
 
-The second command requires a fresh `out/qwen-full-model`; use `-o DIR` for a new
-run. Defaults, including 128-column output panels, are explicit in `mapping.yaml`.
-Every panel keeps the full source reduction width. `--plan-only` skips execution
-and real-value capture. `--skip-real-capture` runs the inventory/bench alone.
-Existing environments/checkouts can be selected with `--capture-python`,
-`--model-python`, `--library-root`, `--model-root`, and `--checkpoint`.
+The second command requires a fresh `out/qwen-full-model`; use `-o DIR` for a new run. Defaults, including 128-column output panels, are explicit in `mapping.yaml`. Every panel keeps the full source reduction width. `--plan-only` skips execution and real-value capture. `--skip-real-capture` runs the inventory/bench alone. Existing environments/checkouts can be selected with `--capture-python`, `--model-python`, `--library-root`, `--model-root`, and `--checkpoint`. `ATLAS_KERNELS_ROOT` and `NPU_MODEL_ROOT` are source-root alternatives. Supplied local source roots need not match historical pins; `run.json` records their observed revisions, historical pins, and tool hashes. The default worker count is 1; explicit counts from 1 through 8 are accepted.
 
 ## What is checked
 
@@ -38,7 +25,7 @@ Existing environments/checkouts can be selected with `--capture-python`,
 3. The library's `build_table.py` applies the explicit placement policy. Missing
    bias, nonlinear, residual, layout and cache operations remain unmapped.
 4. `bench_model.py` measures the resulting launches on seeded synthetic data.
-   It requires at least machine-stream verification, equal assembler/emitter
+   It requires the library verified tier, equal assembler/emitter
    words, independent arithmetic goldens where available, and equal functional
    and cycle-model outputs. These schedules come from the kernel library, not
    Merlin's semantic compiler. Missing variants remain failures of coverage.
@@ -53,7 +40,7 @@ Existing environments/checkouts can be selected with `--capture-python`,
    compiler gate, target-arithmetic golden, and simulator. Error is measured
    against the saved full-model FP32 region outputs.
 
-## Pinned inputs
+## Historical pinned inputs
 
 | Component | Revision |
 | --- | --- |
@@ -61,21 +48,16 @@ Existing environments/checkouts can be selected with `--capture-python`,
 | `ucb-bar/atlas-kernels` | `80c5f27d4bcded9c1ca7618a17ffcdbae2be7a39` |
 | `ucb-ee194-tapeout/npu_model` | `47b8599d8ffbe5ddd96059ffe2b5be2427a410f5` |
 
-The capture stack is Python 3.12, CPU Torch 2.10.0, Transformers 4.44.0 and
-torch-mlir 20261001. Device simulation uses Python 3.14 and CPU Torch 2.11.0.
-Tool binaries, checkpoint files, inputs, source graphs and generated programs
-are hashed in the local artifacts.
+The capture stack is Python 3.12, CPU Torch 2.10.0, Transformers 4.44.0 and torch-mlir 20261001. Device simulation uses Python 3.14 and CPU Torch 2.11.0. Tool binaries, checkpoint files, inputs, source graphs and generated programs are hashed in the local artifacts.
 
 ## Results and limits
 
-Read [MODEL-BENCH.md](MODEL-BENCH.md) for the measured library launches and
-[the model bringup report](../docs/qwen-model-bringup.md) for extraction,
-real-value qualification, current blockers and recommended work.
+Read [MODEL-BENCH.md](MODEL-BENCH.md) for the measured library launches and [the model bringup report](../docs/qwen-model-bringup.md) for extraction, real-value qualification, current blockers and recommended work.
 
-This establishes real-model coverage and validated graph extraction. The
-projection benchmark is an unfused candidate placement, and real-value checks
-cover two projection panels. It does not establish a complete quantized model,
-generated host dispatch, model ELF, hardware execution, perplexity, or throughput.
-All datasets, checkpoints, tensor captures, programs and images remain under
-ignored local output directories. Only source code, mapping policy and Markdown
-reports are tracked; this branch contains no CI changes.
+This establishes real-model coverage and validated graph extraction. The projection benchmark is an unfused candidate placement, and real-value checks cover two projection panels. It does not establish a complete quantized model, generated host dispatch, model ELF, hardware execution, perplexity, or throughput. All datasets, checkpoints, tensor captures, programs, and images remain under ignored local output directories. Source code, mapping policy, regression tests, and Markdown reports are tracked.
+
+## Current integration
+
+The imported reports describe the historical kernel pin above. The current library supports D128 attention and width-1536 RMSNorm with explicit epsilon. The mapping requests Qwen epsilon `1.0e-6` and retains causal masking and export-derived GQA dimensions. New numerical qualification is reported separately from the historical evidence.
+
+`capture_boundaries.py --skip-linalg` retains graph extraction and exact eager-versus-export checks when torch-mlir is unavailable. `--loader PATH` selects a local module exporting `get_model_and_inputs`; the default remains the pinned pretrained loader without a random-initialization fallback. Capture reports mark skipped Linalg diagnostics explicitly.

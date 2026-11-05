@@ -1,11 +1,10 @@
 # qwen kernel bench at model shapes
 
+Integration note (2026-11-05): This is historical evidence replayed from `5884524e3cf85027e08734526c1e3dbf0a093686`; its original measurements and unsupported-variant observations have not been rerun by this port. Current D128 attention and width-1536 RMSNorm support, explicit Qwen epsilon, local source selection, and validation status are described in the [Qwen integration README](../README.md).
+
 Regenerate: `python3 examples/atlas/model_bringup/qwen/full_model/run.py -o out/qwen-full-model-new`
 
-This report uses the pretrained-model export inventory. Kernel-library schedules
-are hand-written; the Atlas compiler checks and encodes them. Real captured
-operand qualification and graph-extraction checks are summarized in
-[the model bringup report](../docs/qwen-model-bringup.md).
+This report uses the pretrained-model export inventory. Kernel-library schedules are hand-written; the Atlas compiler checks and encodes them. Real captured operand qualification and graph-extraction checks are summarized in [the model bringup report](../docs/qwen-model-bringup.md).
 
 Input: `coverage/coverage.json` (SHA-256 `9a1925c685953050e571c649d1024bbd89f90026858048efd744ea5b9f6e1275`), coverage status INCOMPLETE. The coverage derives 9 distinct launches; 4 executed on npu_model `47b8599d8ffbe5ddd96059ffe2b5be2427a410f5` with numerics="rtl" on seeded synthetic inputs at the model's shape (2 worker processes; 182 job-seconds in all, longest job 62 s).
 

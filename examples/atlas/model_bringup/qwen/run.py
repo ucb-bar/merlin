@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parents[4]
+from source_roots import MERLIN_ROOT as ROOT, bootstrap_compiler, observed_revision
 HERE = Path(__file__).resolve().parent
 MERLIN = "85db5fb4e6eeb0ffe24c5a9938da8da8f255701d"
 MODEL = "337e9f249f938a1dff007ddf8a763e5cd4b3aa2b"
@@ -110,13 +110,17 @@ def main():
     parser.add_argument("--model-python", type=Path)
     parser.add_argument("--merlin-root", type=Path)
     parser.add_argument("--model-root", type=Path)
+    parser.add_argument("--atlas-mlir-root", type=Path)
+    parser.add_argument("--atlas-bin", type=Path)
     args = parser.parse_args()
     if args.setup:
         setup(args.deps.resolve())
         print("Qwen dependencies ready; run this command again without --setup.")
         return
-    sys.path.insert(0, str(ROOT / "python"))
+    compiler_root = bootstrap_compiler(args.atlas_mlir_root)
     from atlas_mlir.toolchain import bin_dir, ToolchainError
+    if args.atlas_bin:
+        os.environ["ATLAS_OOT_BIN_DIR"] = str(args.atlas_bin.resolve())
 
     try:
         bins = bin_dir()
@@ -144,31 +148,24 @@ def main():
     for path in interpreters.values():
         if not path.is_file():
             raise SystemExit(f"{path} is missing; run with --setup first")
-    merlin_root = (args.merlin_root or args.deps / "merlin").resolve()
-    model_root = (args.model_root or args.deps / "npu-model").resolve()
-    for directory, revision in ((merlin_root, MERLIN), (model_root, MODEL)):
-        actual = subprocess.check_output(
-            ["git", "-C", str(directory), "rev-parse", "HEAD"], text=True
-        ).strip()
-        if actual != revision or subprocess.check_output(
-            ["git", "-C", str(directory), "status", "--porcelain", "--untracked-files=no"]
-        ):
-            raise SystemExit(f"{directory} must be clean at {revision}")
+    merlin_root = (args.merlin_root or ROOT).resolve()
+    model_root = Path(args.model_root or os.environ.get("NPU_MODEL_ROOT") or args.deps / "npu-model").resolve()
+    for directory, required in ((merlin_root, "src/merlin"), (model_root, "npu_model/simulation.py")):
+        if not (directory / required).exists():
+            raise SystemExit(f"Missing source {directory / required}; provide the matching local root")
     if args.out.exists() and any(args.out.iterdir()):
         raise SystemExit(f"{args.out} must be empty; use -o for a new campaign")
     args.out.mkdir(parents=True, exist_ok=True)
     args.out = args.out.resolve()
     provenance = dict(
-        merlin_revision=MERLIN,
-        model_revision=MODEL,
-        atlas_revision=subprocess.check_output(
-            ["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True
-        ).strip(),
-        atlas_dirty=bool(
-            subprocess.check_output(
-                ["git", "-C", str(ROOT), "status", "--porcelain"], text=True
-            )
-        ),
+        merlin_revision=observed_revision(merlin_root),
+        merlin_root=str(merlin_root),
+        model_revision=observed_revision(model_root),
+        model_root=str(model_root),
+        historical_merlin_revision=MERLIN,
+        historical_model_revision=MODEL,
+        atlas_revision=observed_revision(Path(os.environ.get("ATLAS_MLIR_ROOT", compiler_root))),
+        atlas_support_root=str(compiler_root),
         atlas_bin_dir=env["ATLAS_OOT_BIN_DIR"],
         atlas_tool_sha256={
             name: hashlib.sha256((bins / name).read_bytes()).hexdigest()
@@ -204,7 +201,7 @@ def main():
     )
     run(
         [interpreters["merlin"], HERE / "compile_workloads.py", "--out", args.out],
-        env=dict(env, PYTHONPATH=str(merlin_root / "src")),
+        env=dict(env, PYTHONPATH=os.pathsep.join(filter(None, (str(merlin_root / "src"), env.get("PYTHONPATH"))))),
     )
     for row in json.loads((args.out / "compilation.json").read_text()):
         if row["status"] == "compiled":
@@ -215,7 +212,7 @@ def main():
                     "--out",
                     args.out / row["name"],
                 ],
-                env=dict(env, PYTHONPATH=str(model_root)),
+                env=dict(env, PYTHONPATH=os.pathsep.join(filter(None, (str(model_root), env.get("PYTHONPATH"))))),
             )
     rows = json.loads((args.out / "compilation.json").read_text())
     completed = [r["name"] for r in rows if r["status"] == "compiled"]

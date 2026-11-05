@@ -172,7 +172,7 @@ merlin = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["merlin/tests"]
+testpaths = ["merlin/tests", "examples/atlas/model_bringup/qwen/tests"]
 markers = [
     "slow: long-running tests (heavy builds/sims); deselect with -m 'not slow'",
     "integration: end-to-end tests spanning multiple subsystems or external tools",

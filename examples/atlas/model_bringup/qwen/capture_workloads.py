@@ -8,8 +8,9 @@ import sys
 import torch
 from safetensors.numpy import save_file
 
-ROOT = Path(__file__).resolve().parents[4]
-sys.path.insert(0, str(ROOT / "python"))
+from source_roots import MERLIN_ROOT as ROOT, QWEN_ROOT, bootstrap_compiler
+
+COMPILER_ROOT = bootstrap_compiler()
 from atlas_mlir.capture import capture
 from kernels import (
     CONFIG,
