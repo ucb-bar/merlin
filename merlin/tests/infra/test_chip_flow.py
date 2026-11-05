@@ -1,4 +1,4 @@
-"""The chip examples' shared setup and single-operator helpers (examples/lib), without native work."""
+"""The chip examples' single-operator helpers (examples/lib/chip_flow.py), without native work."""
 
 from __future__ import annotations
 
@@ -113,31 +113,3 @@ def test_the_shipped_image_runs_on_the_declared_model_and_must_match_the_twin(tm
     outputs["twin.elf"] = np.arange(4.0) + 1  # one wrong element anywhere is a mismatch, cos notwithstanding
     got = flow.matrix_on_spike("op_x", _args(), _matrix_result(tmp_path))
     assert got["status"] == "run_mismatch" and not got["bit_exact_vs_twin"]
-
-
-def test_setup_names_each_missing_prerequisite_with_its_fix(tmp_path, monkeypatch):
-    setup = _load("chip_setup")
-    for key in ("MERLIN_CLANG", "MERLIN_CHIPYARD", "ZEPHYR_BASE", "ZEPHYR_SDK_INSTALL_DIR"):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setattr(setup, "REPO", tmp_path)  # no checkout-local LLVM install
-    steps = setup.missing_steps({})
-    assert len(steps) == 4
-    assert "llvm_toolchain.md" in steps[0] and "OuterProductUnit" not in steps[0]
-    assert "ea373800169ce7bbb9ca27ececf74101a7caf9d5" in steps[1]
-    assert "west update" in steps[2] and "zephyr-sdk-0.17.0" in steps[3]
-
-
-def test_setup_writes_only_the_keys_it_was_given(tmp_path):
-    setup = _load("chip_setup")
-    env = tmp_path / ".env"
-    env.write_text("# mine\nKEEP=1\nMERLIN_CHIPYARD=/old\n")
-    setup._upsert_env(env, {"MERLIN_CHIPYARD": "/new", "ZEPHYR_BASE": "/z"})
-    assert env.read_text() == "# mine\nKEEP=1\nMERLIN_CHIPYARD=/new\nZEPHYR_BASE=/z\n"
-
-
-def test_the_pinned_torch_mlir_is_documented_against_the_llvm_pin():
-    setup = _load("chip_setup")
-    guide = (repo_root() / "docs/guides/llvm_toolchain.md").read_text()
-    assert "a47bddccec30" in guide  # the pin TORCH_MLIR is chosen against
-    assert setup.TORCH_MLIR.startswith("torch-mlir==")
-    assert Path(setup.__file__).read_text().count("a47bddcc") >= 1

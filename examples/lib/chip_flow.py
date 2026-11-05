@@ -225,6 +225,10 @@ def op(args) -> int:
     if args.matrix_unit:
         results["matrix"] = _compile(name, args, matrix=True)
         results["matrix_on_spike"] = matrix_on_spike(name, args, results["matrix"])
+        sim = (results["matrix"].get("matrix") or {}).get("shipped_on_simulator") or {}
+        if results["matrix_on_spike"].get("status") == "skipped" and sim.get("status") not in (None, "not_declared"):
+            # The package runs its shipped image on its own simulator instead (reported below).
+            results["matrix_on_spike"]["reason"] = "no spike extension; the package's own simulator ran it (below)"
     print(f"\n== {name} on {args.board}, {args.harts} hart(s)")
     for leg, res in results.items():
         verdict = res.get("status")

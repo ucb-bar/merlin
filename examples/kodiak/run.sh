@@ -6,7 +6,8 @@
 # this machine can do. See README.md for the provenance of every input.
 #
 #   ./run.sh setup [--llvm P] [--chipyard D] [--zephyr-sw D] [--zephyr-sdk D] [--m2m D]
-#                                 one-step machine setup: model capture env + .env; prints what is left
+#                                 one-step machine setup: capture venv, Zephyr workspace, OPU spike
+#                                 model, .env; verifies the rest and prints how to get what is missing
 #   ./run.sh preflight            what this machine can run, and what would fix the rest
 #   ./run.sh probe                build vlen_probe.elf and self-check it on spike        (no board)
 #   ./run.sh capture <model> [--loader loader.py]
@@ -78,14 +79,10 @@ cd "$REPO_ROOT"
 
 case "$STAGE" in
 setup)
-  # Merlin's own venv first (everything else runs in it), then the capture environment and .env.
-  if [ ! -x "$REPO_ROOT/.venv/bin/python" ]; then
-    ex_run uv sync --extra dev --extra xdsl --extra targetgen
-    PY="$REPO_ROOT/.venv/bin/python"
-  fi
+  # The common prerequisites, plus Kodiak's: the OPU's RTL in $MERLIN_CHIPYARD/generators/saturn (pin
+  # saturn_opu_int8, verified and reported) and the package's spike model of the OPU (built here).
   shift
-  ex_run "$PY" "$EX_LIB_DIR/chip_setup.py" "$@" || true
-  ex_preflight "$BOARD"
+  ex_setup "$BOARD" --verify-pin saturn_opu_int8 --spike-model "$MATRIX_SUPPORT" "$@"
   ;;
 
 preflight)
@@ -237,7 +234,7 @@ grade)
   ;;
 
 *)
-  sed -n '2,42p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,39p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac

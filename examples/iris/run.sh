@@ -3,7 +3,9 @@
 # board. RVV on all three harts; int8 contractions routed to the VME matrix unit on harts 0-1.
 #
 #   ./run.sh setup [--llvm P] [--chipyard D] [--zephyr-sw D] [--zephyr-sdk D] [--m2m D]
-#                                 one-step machine setup: model capture env + .env; prints what is left
+#                                 one-step machine setup: capture venv, Zephyr workspace, the pinned
+#                                 chipyard iris-cy and Zvt spike checkouts (verified), the Zvt spike
+#                                 build, .env; prints how to get whatever is missing
 #   ./run.sh preflight            what this machine can run, and what would fix the rest
 #   ./run.sh capture <model> [--loader loader.py]
 #                                 capture any model to an int8 bundle + its W8A8 golden
@@ -45,13 +47,13 @@ cd "$REPO_ROOT"
 
 case "$STAGE" in
 setup)
-  if [ ! -x "$REPO_ROOT/.venv/bin/python" ]; then
-    ex_run uv sync --extra dev --extra xdsl --extra targetgen
-    PY="$REPO_ROOT/.venv/bin/python"
-  fi
+  # The common prerequisites, plus Iris's: the chipyard iris-cy checkout the VME facts are derived from
+  # (pin chipyard_iris, with saturn_vme and rocket_chip_iris nested in it) and riscv-isa-sim with Zvt (pin
+  # spike_zvt). Each is found through its variable (MERLIN_CHIPYARD_IRIS, MERLIN_SPIKE_ZVT_SRC) or under
+  # out/build/ext/<pin>/, verified by content, or the commands to fetch it are printed. The Zvt spike is
+  # then built from the verified source into out/build/spike_zvt/ and recorded as MERLIN_SPIKE_ZVT.
   shift
-  ex_run "$PY" "$EX_LIB_DIR/chip_setup.py" "$@" || true
-  ex_preflight "$BOARD"
+  ex_setup "$BOARD" --checkout-pin chipyard_iris --checkout-pin spike_zvt --build-spike spike_zvt=MERLIN_SPIKE_ZVT "$@"
   ;;
 preflight)
   ex_preflight "$BOARD"
@@ -85,7 +87,7 @@ op)
       ${MATRIX_ARGS[@]+"${MATRIX_ARGS[@]}"}
   ;;
 *)
-  sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac
