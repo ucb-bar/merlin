@@ -41,6 +41,15 @@ hold, and each one THROWS AWAY real debt on purpose:
 A symbol in a module the module-level ledger already holds is not repeated: that debt is recorded
 once, at the coarser granularity, and paying it off resolves both.
 
+PINNED SUPPORT PACKAGES ARE PRODUCTION CALLERS TOO. A chip package (``build_tools/upstreams/
+target_support.json``, ``pinned_support``) is not tracked here; its executable support (a
+``matrix_lowering`` plugin, a spike model build) is code a build actually runs, and it calls the generic
+core it was written against. What it references is recorded beside its pin as ``core_references``
+(``<module>`` and ``<module>::<name>``, computed by :func:`package_core_references` from the pinned
+commit's production files and checked against the fetched package by
+``merlin/tests/infra/test_support_pins.py``), so the gate reads the same answer on every host whether or
+not the package is fetched.
+
 Known debt lives in two ledgers beside this file -- ``unwired_ratchet.txt`` (one repo-relative module
 path per line) and ``unwired_symbols_ratchet.txt`` (``<path>::<name>``), both keyed by the stable
 policy path so a relocated file keeps its identity. Both may only shrink (``check_ratchets_shrink.py``
@@ -94,9 +103,10 @@ def _target_workflow_roots() -> tuple[str, ...]:
         for directory in sorted(base.iterdir())
         if directory.is_dir() and ((directory / "target").is_dir() or (directory / "experiment.yaml").is_file())
     )
-    # A VENDORED chip package's executable support (examples/<chip>/support, recorded by the example's
+    # A VENDORED support package's executable support (examples/<x>/support, recorded by the example's
     # SOURCE.yaml) is the code a build actually runs: `MatrixRouting` loads its matrix_lowering plugin,
-    # which calls the generic core it was written against. Its tests stay excluded (EXCLUDED_PARTS).
+    # which calls the generic core it was written against. Its tests stay excluded (EXCLUDED_PARTS). A
+    # PINNED package's references are read from its record instead (`_pinned_references`).
     packages = tuple(
         (directory / "support").relative_to(ROOT).as_posix()
         for directory in sorted(base.iterdir())
@@ -106,6 +116,61 @@ def _target_workflow_roots() -> tuple[str, ...]:
 
 
 EXCLUDED_PARTS = ("_data", "__pycache__", "tests", "_qa_ws")
+#: The support-pin manifest whose packages' recorded core references count as production use.
+PIN_MANIFEST = ROOT / "build_tools" / "upstreams" / "target_support.json"
+#: A pinned package's own copy of its base (a submodule) is that base's code, not the package's.
+PACKAGE_EXCLUDED_PARTS = (*EXCLUDED_PARTS, "base", ".git")
+
+
+def package_core_references(root: Path, *, core: str = "merlin") -> list[str]:
+    """``<module>`` and ``<module>::<name>`` for every reference ``root``'s production code makes into
+    the ``core`` package: its imports, the names it imports, and the attributes it reads off an
+    imported core module. Tests and a carried base submodule are left out."""
+    found: set[str] = set()
+    for path in sorted(Path(root).rglob("*.py")):
+        if any(part in PACKAGE_EXCLUDED_PARTS for part in path.relative_to(root).parts[:-1]):
+            continue
+        tree = _tree(path)
+        if tree is None:
+            continue
+        bound: dict[str, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == core or alias.name.startswith(core + "."):
+                        found.add(alias.name)
+                        if alias.asname:
+                            bound[alias.asname] = alias.name
+            elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+                if node.module == core or node.module.startswith(core + "."):
+                    found.add(node.module)
+                    for alias in node.names:
+                        found.add(f"{node.module}::{alias.name}")
+                        bound[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in bound:
+                found.add(f"{bound[node.value.id]}::{node.attr}")
+    return sorted(found)
+
+
+def _pinned_references() -> tuple[set[str], set[str]]:
+    """``(modules, names)`` the pinned support packages are recorded to reference."""
+    import json
+
+    try:
+        block = json.loads(PIN_MANIFEST.read_text(encoding="utf-8")).get("pinned_support") or {}
+    except (OSError, ValueError):
+        return set(), set()
+    modules: set[str] = set()
+    names: set[str] = set()
+    for package in block.get("packages") or []:
+        for reference in package.get("core_references") or []:
+            module, sep, name = reference.partition("::")
+            modules.add(module)
+            if sep:
+                modules.add(f"{module}.{name}")  # ``from pkg import module`` imports a module
+                names.add(name)
+    return modules, names
 
 
 def _python_files(relative_root: str) -> list[Path]:
@@ -301,6 +366,9 @@ def unwired() -> list[str]:
             for name in _imports(path):
                 if name in imported_by and candidates[name] != path.resolve():
                     imported_by[name].add(path)
+    pinned_modules, _ = _pinned_references()
+    for name in pinned_modules & set(imported_by):
+        imported_by[name].add(PIN_MANIFEST)
     scripts = _console_script_modules() | _generated_prompt_module_commands(imported_by, candidates)
     return sorted(
         str(candidates[name].relative_to(ROOT))
@@ -525,7 +593,7 @@ def unwired_symbols(known_unwired_modules: set[str] | None = None) -> list[str]:
     test_references = _referenced_among(_test_files(), candidates)
     # Every name production code could be using, ANYWHERE -- including the defining module itself. A
     # public helper called only by its own module's wired entry point is reached; it is not debt.
-    used = _console_script_symbols()
+    used = _console_script_symbols() | _pinned_references()[1]
     production = (path for root in (*PRODUCTION, *_target_workflow_roots()) for path in _python_files(root))
     used |= _referenced_among(production, test_references - used)
     # A definition a prefix dispatcher reaches in its own module is used, by that module only.

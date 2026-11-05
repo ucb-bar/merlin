@@ -44,6 +44,7 @@ def selected(tmp_path):
         "common.yaml",
         "targetgen.providers",
         "targetgen.target_registry",
+        "targetgen.support_pins",
         "targetgen.rtl.facts",
     ):
         write(source, "src/merlin/" + name.replace(".", "/") + ".py", module_source_path("merlin." + name).read_text())

@@ -20,9 +20,15 @@ Merge rules (base ⊕ overlay, overlay wins):
   that declares it, and a layer that wants a base's executable support declares its own plugin;
 * ``name`` is always the layer's own target.
 
-Resolution of the base never fetches: it looks at the ``MERLIN_TARGET_PATH`` selection, the generated
-home (``out/build/generated/``), then the checkout's vendored ``examples/*/support``. Use
+Resolution of the base never fetches: it looks first at the layer's own submodules (a chip package
+carries its base as one, e.g. at ``base/<base>-mlir``), then the ``MERLIN_TARGET_PATH`` selection (unset:
+the vendored ``examples/*/support`` and the pinned packages fetched at their pins), the generated home
+(``out/build/generated/``), then the checkout's vendored ``examples/*/support``. Use
 ``merlin-target-fetch`` (which follows ``extends`` chains) to bring an absent base in first.
+
+Single base: when the checkout pins a base (:mod:`merlin.targetgen.support_pins`), a layer over that
+target must declare ``extends.commit`` equal to the pin, and the base it is composed from must be at that
+revision; anything else is refused with the command that fixes it.
 """
 
 from __future__ import annotations
@@ -199,12 +205,39 @@ def _candidate_roots() -> list[Path]:
     return roots
 
 
+def layer_bases(root: str | Path) -> list[Path]:
+    """The checked-out submodules a layer carries (its own copy of its base), as base candidates.
+
+    A submodule that is not checked out contributes nothing; whichever copy is found, its revision is
+    still checked against ``extends.commit`` and the checkout's base pin.
+    """
+    root = Path(root).resolve()
+    if not (root / ".gitmodules").is_file():
+        return []
+    from .oot_fetch import FetchError, submodules
+
+    try:
+        paths = submodules(root)
+    except FetchError:
+        return []
+    return [root / path for path in sorted(paths) if (root / path / "provider.yaml").is_file()]
+
+
+def _check_single_base(provider: Provider) -> None:
+    from .support_pins import PinError, check_single_base
+
+    try:
+        check_single_base(provider)
+    except PinError as exc:
+        raise ComposeError(f"{provider.root}: {exc}") from exc
+
+
 def resolve_base(provider: Provider, *, search: Sequence[Path] | None = None) -> Provider:
     """The support provider ``provider`` extends, found without fetching."""
     if provider.extends is None:
         raise ComposeError(f"{provider.root}: provider does not extend another")
     want = provider.extends.target
-    entries = list(search) if search is not None else _candidate_roots()
+    entries = list(search) if search is not None else [*layer_bases(provider.root), *_candidate_roots()]
     me = provider.root.resolve()
     for entry in entries:
         entry = Path(entry)
@@ -282,6 +315,7 @@ class Composition:
 def composition(root: str | Path, *, search: Sequence[Path] | None = None) -> Composition:
     """Compute (without writing) the effective contract of the layered provider at ``root``."""
     provider = _layered(root)
+    _check_single_base(provider)
     base = resolve_base(provider, search=search)
     if base.contract_path is None:
         raise ComposeError(f"{base.root}: base provider has no contract")
@@ -376,9 +410,9 @@ def main(argv: list[str] | None = None) -> int:
         help="search this provider root (or shelf) for the base first; repeatable",
     )
     args = ap.parse_args(argv)
-    search = [*args.base, *_candidate_roots()] if args.base else None
     stale = 0
     for root in args.roots:
+        search = [*args.base, *layer_bases(root), *_candidate_roots()] if args.base else None
         try:
             fresh, comp = materialize(root, check=args.check, search=search)
         except ProviderError as exc:

@@ -11,6 +11,14 @@ A layered package (``provider.yaml`` with ``extends``, see :mod:`merlin.targetge
 fetched together with its base: :func:`fetch_chain` follows ``extends`` and checks each base out at the
 exact commit the layer pins, into the base's own generated-target home.
 
+A target PINNED in the checkout's support manifest (:mod:`merlin.targetgen.support_pins`) is fetched by
+COMMIT, never by branch: :func:`fetch_pinned` initializes ``<generated home>/pinned/<target>@<sha12>/``,
+fetches exactly the pinned commit (``--depth 1``, falling back to a full fetch when a server refuses a
+commit want), checks it out detached, verifies the commit and its tree against the record, and brings in
+the package's submodules (a chip package carries its base as one), each verified against Merlin's single
+base pin. Re-running it on a verified checkout does nothing and needs no network; a dirty or divergent
+checkout is refused, never reset.
+
 Each champion experiment is a *branch* of the target's repo (the default branch is the target base,
 carrying the reference backend + contract; a champion branch forks from it and adds a codegen
 payload). ``--champion <branch>`` selects one.
@@ -150,6 +158,207 @@ def fetch(
     return dest
 
 
+# ── pinned packages: fetch by commit ─────────────────────────────────────────────────────────────
+
+
+def _git_ok(args: list[str], *, cwd: Path) -> bool:
+    try:
+        _run_git(args, cwd=cwd)
+        return True
+    except FetchError:
+        return False
+
+
+def _file_transport(url: str) -> list[str]:
+    """Git refuses the file transport for submodules unless asked; a local URL is a deliberate choice."""
+    return ["-c", "protocol.file.allow=always"] if url.startswith(("file://", "/")) else []
+
+
+def _head(dest: Path) -> str:
+    """The checked-out commit, or "" for a repository with none yet."""
+    args = ["rev-parse", "--verify", "-q", "HEAD^{commit}"]
+    return _run_git(args, cwd=dest) if _git_ok(args, cwd=dest) else ""
+
+
+def _verify_checkout(dest: Path, commit: str, tree: str | None, *, what: str) -> None:
+    head = _head(dest)
+    if head != commit:
+        raise FetchError(f"{what}: {dest} has {head or 'nothing'} checked out, not the pinned {commit}")
+    if tree is not None:
+        actual = _run_git(["rev-parse", "--verify", f"{commit}^{{tree}}"], cwd=dest)
+        if actual != tree:
+            raise FetchError(f"{what}: commit {commit} carries tree {actual}, but the pin records {tree}")
+    if _run_git(["status", "--porcelain", "--untracked-files=all"], cwd=dest):
+        raise FetchError(f"{what}: {dest} differs from its commit; preserve those changes and remove it")
+
+
+def fetch_commit(url: str, commit: str, dest: Path, *, tree: str | None = None, what: str = "fetch") -> Path:
+    """Check out exactly ``commit`` of ``url`` at ``dest``: idempotent, verified, never destructive.
+
+    A fresh ``dest`` is initialized and only that commit is fetched (``--depth 1``; a server that
+    refuses a commit want gets one full fetch instead). An existing checkout already at the commit and
+    clean is verified and left alone (no network). One with local changes, or whose HEAD is not a
+    commit this function fetched, is refused rather than moved.
+    """
+    dest = Path(dest)
+    if dest.exists() and not (dest / ".git").exists() and any(dest.iterdir()):
+        raise FetchError(f"{what}: {dest} exists and is not a fetched checkout; remove it or choose another")
+    if (dest / ".git").exists():
+        if _run_git(["status", "--porcelain", "--untracked-files=all"], cwd=dest):
+            raise FetchError(f"{what}: {dest} has local changes; preserve them and remove it before fetching")
+        head = _head(dest)
+        if head == commit:
+            _verify_checkout(dest, commit, tree, what=what)
+            return dest
+        known = _run_git(["for-each-ref", "--format=%(objectname)", _FETCHED_REF], cwd=dest).splitlines()
+        if head and head not in known:
+            raise FetchError(f"{what}: {dest} is at {head}, which it was not fetched at; remove it and re-fetch")
+        if _run_git(["remote", "get-url", "origin"], cwd=dest) != url:
+            raise FetchError(f"{what}: {dest} fetches from another origin than {url}; remove it and re-fetch")
+    else:
+        dest.mkdir(parents=True, exist_ok=True)
+        _run_git(["init", "-q"], cwd=dest)
+        _run_git(["remote", "add", "origin", url], cwd=dest)
+    try:
+        _run_git(["fetch", "-q", "--depth", "1", "origin", commit], cwd=dest)
+    except FetchError:
+        # A server that does not serve arbitrary commit wants: fetch its refs, then require the commit.
+        _run_git(["fetch", "-q", "origin", "+refs/heads/*:refs/remotes/origin/*", "+refs/tags/*:refs/tags/*"], cwd=dest)
+    if not _git_ok(["cat-file", "-e", f"{commit}^{{commit}}"], cwd=dest):
+        raise FetchError(f"{what}: {url} does not have commit {commit}")
+    _run_git(["checkout", "--detach", "--no-overwrite-ignore", "-q", commit], cwd=dest)
+    _run_git(["update-ref", _FETCHED_REF, commit], cwd=dest)
+    _verify_checkout(dest, commit, tree, what=what)
+    return dest
+
+
+def submodules(root: Path) -> dict[str, tuple[str, str]]:
+    """``{path: (name, gitlink commit)}`` for every submodule ``root``'s HEAD records."""
+    if not (root / ".gitmodules").is_file():
+        return {}
+    listing = _run_git(["config", "--file", ".gitmodules", "--list"], cwd=root).splitlines()
+    names: dict[str, str] = {}
+    for line in listing:
+        key, _, value = line.partition("=")
+        head, dot, field = key.rpartition(".")
+        prefix, _, name = head.partition(".")
+        if dot and prefix == "submodule" and field == "path" and name:
+            names[value] = name
+    out: dict[str, tuple[str, str]] = {}
+    for path, name in names.items():
+        meta, _, listed = _run_git(["ls-tree", "HEAD", "--", path], cwd=root).partition("\t")
+        fields = meta.split()
+        if len(fields) == 3 and fields[1] == "commit" and listed == path:
+            out[path] = (name, fields[2])
+    return out
+
+
+def _declares(root: Path, target: str) -> bool:
+    from .providers import ProviderError, read_provider
+
+    if not (root / "provider.yaml").is_file() and not (root / "contracts" / "target_contract.yaml").is_file():
+        return False
+    try:
+        found = read_provider(root, materialized=False)
+    except ProviderError:
+        return False
+    return found is not None and found.target == target
+
+
+def fetch_submodules(root: Path, pins, *, base_url: str | None = None, what: str = "fetch") -> list[Path]:
+    """Bring in ``root``'s submodules at the commits it records, each verified.
+
+    A submodule that is a support provider for the pinned base target must be recorded at Merlin's base
+    pin (and carry its tree): one base per build, never two. Its URL may be redirected (``base_url``,
+    else the base target's ``MERLIN_TARGET_REPO_<TARGET>``) to fetch the same commit from a mirror.
+    """
+    from .support_pins import single_base_message
+
+    base = pins.base
+    fetched: list[Path] = []
+    for path, (name, gitlink) in sorted(submodules(root).items()):
+        sub = root / path
+
+        def refuse_other_base(at: str, path: str = path) -> None:
+            if base is not None and at != base.commit:
+                raise FetchError(
+                    single_base_message(what.partition("@")[0], base.target, at, base.commit)
+                    + f" (its submodule {path} records {at})"
+                )
+
+        if base is not None and _declares(sub, base.target):
+            refuse_other_base(gitlink)  # an already checked-out base at another revision: refuse early
+        url = base_url or (os.environ.get(_env_key_for(base.target)) if base is not None else None)
+        _run_git(["submodule", "init", "--", path], cwd=root)
+        if url:
+            _run_git(["config", f"submodule.{name}.url", url], cwd=root)
+        configured = _run_git(["config", f"submodule.{name}.url"], cwd=root)
+        transport = _file_transport(configured)
+        try:
+            _run_git([*transport, "submodule", "update", "--depth", "1", "--", path], cwd=root)
+        except FetchError:
+            _run_git([*transport, "submodule", "update", "--", path], cwd=root)
+        if _head(sub) != gitlink:
+            raise FetchError(f"{what}: submodule {path} is at {_head(sub)}, not the recorded {gitlink}")
+        if base is not None and _declares(sub, base.target):
+            refuse_other_base(gitlink)
+            _verify_checkout(sub, base.commit, base.tree, what=f"{what} submodule {path}")
+        fetched.append(sub)
+    if _run_git(["status", "--porcelain", "--untracked-files=all"], cwd=root):
+        raise FetchError(f"{what}: {root} differs from its commit after the submodule update")
+    return fetched
+
+
+def fetch_pinned(
+    target: str,
+    *,
+    url: str | None = None,
+    base_url: str | None = None,
+    dest: Path | None = None,
+    pins=None,
+    with_base: bool = True,
+) -> list[Path]:
+    """Fetch a pinned target at exactly its pinned commit; returns the roots (the package first).
+
+    ``url`` overrides where the commit is fetched from (a mirror, a local ``file://`` clone); the
+    commit and tree are verified either way. A package is refused unless its ``provider.yaml``
+    ``extends.commit`` equals Merlin's base pin. Its submodules are fetched and verified; with
+    ``with_base``, the base pin is also made available (a tracked in-repo copy at the pin counts).
+    """
+    from .providers import ProviderError, read_provider
+    from .support_pins import PinError, available_root, check_single_base, load_pins, pinned_root
+
+    pins = pins if pins is not None else load_pins()
+    pin = pins.get(target)
+    if pin is None:
+        raise FetchError(f"{target!r} is not pinned in {pins.source or 'any support manifest'}")
+    what = f"{pin.repo_name}@{pin.short}"
+    source = url or os.environ.get(_env_key_for(target)) or pin.repo
+    root = fetch_commit(source, pin.commit, Path(dest) if dest else pinned_root(pin), tree=pin.tree, what=what)
+    try:
+        provider = read_provider(root, materialized=False)
+    except ProviderError as exc:
+        raise FetchError(f"{what}: {exc}") from exc
+    if provider is None or provider.target != target:
+        raise FetchError(f"{what}: {root} does not declare a support provider for {target!r}")
+    if pin.extends is not None and (provider.extends is None or provider.extends.target != pin.extends):
+        raise FetchError(f"{what}: the pin says it extends {pin.extends!r}; its provider.yaml does not")
+    try:
+        check_single_base(provider, pins)
+    except PinError as exc:
+        raise FetchError(str(exc)) from exc
+    roots = [root, *fetch_submodules(root, pins, base_url=base_url, what=what)]
+    if with_base and pin.extends is not None and pins.base is not None:
+        try:
+            present = available_root(pins.base)
+        except PinError as exc:
+            raise FetchError(str(exc)) from exc
+        if present is None:
+            present = fetch_pinned(pins.base.target, url=base_url, pins=pins, with_base=False)[0]
+        roots.append(present)
+    return roots
+
+
 def _pin_commit(dest: Path, commit: str) -> None:
     """Move a fetched checkout to ``commit`` (detached), fetching just that commit if it is absent."""
     if _run_git(["rev-parse", "HEAD"], cwd=dest) == commit:
@@ -203,7 +412,10 @@ def fetch_chain(
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="merlin-target-fetch",
-        description="Fetch a published <target>-mlir OOT repo into out/build/generated/<target>/.",
+        description=(
+            "Fetch a published <target>-mlir OOT repo into out/build/generated/<target>/; a target pinned in "
+            "the support manifest is fetched at exactly its pinned commit into out/build/generated/pinned/."
+        ),
     )
     ap.add_argument("target", help="target name (its repo is <target>-mlir by convention)")
     ap.add_argument("--champion", help="branch/tag to check out (default: the repo's default branch)")
@@ -213,10 +425,47 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-update", action="store_true", help="do not re-fetch an existing clone")
     ap.add_argument("--print-url", action="store_true", help="print the resolved URL and exit")
     ap.add_argument("--no-base", action="store_true", help="do not follow provider.yaml extends to fetch bases")
+    ap.add_argument("--base-url", help="pinned targets: fetch the base (and base submodules) from this URL")
+    ap.add_argument(
+        "--root",
+        action="store_true",
+        help="print the target's selected support root (fetching nothing); fail, naming the setup command, if absent",
+    )
     args = ap.parse_args(argv)
 
+    from .support_pins import PinError, load_pins
+
+    if args.root:
+        from .plugins import PluginError, resolve_support
+
+        try:
+            print(resolve_support(args.target).base)
+        except (PluginError, PinError, FileNotFoundError) as exc:
+            print(f"merlin-target-fetch: {exc}", file=sys.stderr)
+            return 1
+        return 0
+    try:
+        pins = load_pins()
+    except PinError as exc:
+        print(f"merlin-target-fetch: {exc}", file=sys.stderr)
+        return 1
+    pin = pins.get(args.target)
     if args.print_url:
-        print(args.url or repo_url(args.target))
+        print(args.url or (pin.repo if pin else repo_url(args.target)))
+        return 0
+    if pin is not None:
+        if args.champion or args.depth != 1 or args.no_update:
+            print("merlin-target-fetch: a pinned target is fetched at its pinned commit only", file=sys.stderr)
+            return 2
+        try:
+            roots = fetch_pinned(
+                args.target, url=args.url, base_url=args.base_url, dest=args.dest, pins=pins, with_base=not args.no_base
+            )
+        except (FetchError, PinError, FileNotFoundError) as exc:
+            print(f"merlin-target-fetch: {exc}", file=sys.stderr)
+            return 1
+        for root in roots:
+            print(root)
         return 0
     kwargs = dict(champion=args.champion, dest=args.dest, url=args.url, depth=args.depth, update=not args.no_update)
     try:

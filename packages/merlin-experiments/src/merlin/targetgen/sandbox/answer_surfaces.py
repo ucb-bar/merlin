@@ -442,6 +442,10 @@ def _support_package_dirs() -> list[Path]:
     # and a support directory is private whether or not it declares a provider.
     roots.update(target_registry.in_repo_support().values())
     roots.update(target_registry.vendored_support_dirs())
+    # A pinned support package fetched into the checkout's out/ tree is the same kind of bytes, so it
+    # is withheld the same way: every checkout on the pinned shelf (any revision, selected or stale,
+    # its submodules -- a chip package's copy of its base -- included, since they sit inside it).
+    roots.update(target_registry.fetched_support_dirs())
     return sorted(roots)
 
 

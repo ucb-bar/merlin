@@ -153,6 +153,7 @@ def paths(
         ("sandbox_toolchain", "merlin.targetgen.sandbox.toolchain"),
         ("source_discovery_helper", "merlin.common.source_membership"),
         ("provider_selection", "merlin.targetgen.target_registry"),
+        ("provider_pins", "merlin.targetgen.support_pins"),
         ("provider_identity", "merlin.targetgen.providers"),
         ("provider_plugins", "merlin.targetgen.plugins"),
         ("provider_loaded_ownership", "merlin.runtime.backends.base"),

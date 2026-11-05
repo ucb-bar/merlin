@@ -322,18 +322,22 @@ def resolve_support(target: str):
 
     root = target_registry.explicit_targets().get(target)
     if root is None:
+        try:
+            target_registry.require_fetched(target)
+        except FileNotFoundError as exc:
+            raise PluginError(str(exc)) from exc
         vendored = target_registry.default_support_root(target)
         if vendored is not None:
-            # Only reachable with the variable SET: unset, the vendored provider is the selection.
+            # Only reachable with the variable SET: unset, the default provider is the selection.
             raise PluginError(
                 f"{target}: executable support requires explicit MERLIN_TARGET_PATH selection, and the "
-                f"value set here does not list this target's vendored provider {vendored}; an explicit "
+                f"value set here does not list this target's default provider {vendored}; an explicit "
                 "value replaces the default, so unset the variable or add that path"
             )
         raise PluginError(
             f"{target}: executable support requires explicit MERLIN_TARGET_PATH selection "
             f"(or, with it unset, an in-repo examples/*/{target_registry.IN_REPO_SUPPORT_DIR} provider "
-            "declaring this target)"
+            "or a pinned support package fetched with merlin-target-fetch, declaring this target)"
         )
     selected = target_registry.resolve(target)
     if selected.base.resolve() != root.resolve():

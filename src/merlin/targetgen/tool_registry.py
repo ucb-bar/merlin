@@ -168,6 +168,8 @@ TOOLS: dict[str, ToolSpec] = {
             f"{_PY}targetgen/corpora.py",
             f"{_PY}targetgen/providers.py",
             f"{_PY}targetgen/target_registry.py",
+            # Selection checks a layered provider against the checkout's single base pin.
+            f"{_PY}targetgen/support_pins.py",
             # ``interface_emit`` needs these only for a pooled COMMIT, which is why import-only smoke
             # missed them. They are pure command-buffer shape helpers; the oracle-bearing runtime
             # reference/simulator modules remain explicitly denied.

@@ -46,8 +46,11 @@ from .rtl.facts import rtl_facts_path
 #      user's separately-cloned ``<target>-mlir`` repo. ``os.pathsep``-separated, left-to-right; each
 #      entry is either a package root (has ``contracts/target_contract.yaml``) or a dir OF such roots.
 #      UNSET, it defaults to the checkout's vendored support providers (``examples/*/support``, keyed
-#      by each provider's declared target; see :func:`in_repo_support`). Set to the EMPTY string, it
-#      selects nothing, which is how a caller asks for no executable support at all.
+#      by each provider's declared target; see :func:`in_repo_support`) plus every pinned support
+#      package fetched at its pin (:mod:`merlin.targetgen.support_pins`; see :func:`default_support`).
+#      A pinned target that is not fetched is an error naming its setup command, never a fallthrough
+#      to the locations below. Set to the EMPTY string, it selects nothing, which is how a caller asks
+#      for no executable support at all.
 #   2. physical-checkout ``examples/<name>/target/`` first, then legacy
 #      ``merlin/targets/<name>/`` compatibility links. MERLIN_TARGETS_DIR replaces this search.
 #   3. ``out/build/generated/<name>/``  — the FRESHLY-GENERATED OOT home (``write_oot_target`` /
@@ -258,20 +261,60 @@ def vendored_support_dirs() -> tuple[Path, ...]:
     return tuple(sorted(path.resolve() for path in found if path.is_dir()))
 
 
+def fetched_support_dirs() -> tuple[Path, ...]:
+    """Every fetched pinned support checkout (``<generated home>/pinned/*``), whatever its revision.
+
+    Like :func:`vendored_support_dirs`, this is what must be WITHHELD, which is wider than what is
+    selected: a stale revision left on the shelf is still target support bytes.
+    """
+    from .support_pins import fetched_dirs
+
+    return fetched_dirs()
+
+
+def default_support() -> dict[str, Path]:
+    """What ``MERLIN_TARGET_PATH`` selects when unset: ``{declared target: provider root}``.
+
+    The checkout's vendored providers (:func:`in_repo_support`), then each pinned support package that
+    is fetched at its pin. A pinned target with a vendored copy is provided by that copy, which must
+    record the pinned commit; two different revisions of one target are never both selected.
+    """
+    from .support_pins import default_selection
+
+    found = dict(in_repo_support())
+    for name, root in default_selection().roots.items():
+        if name in found and found[name] != root:
+            raise TargetCollisionError(f"{name!r} is both vendored at {found[name]} and fetched at {root}")
+        found[name] = root
+    return found
+
+
 def default_support_root(target: str) -> Path | None:
-    """The in-repo support provider ``MERLIN_TARGET_PATH`` defaults to for ``target``, if one exists."""
-    return in_repo_support().get(target)
+    """The support provider ``MERLIN_TARGET_PATH`` defaults to for ``target``, if one exists."""
+    return default_support().get(target)
+
+
+def require_fetched(name: str) -> None:
+    """With ``MERLIN_TARGET_PATH`` unset, a pinned target that is not fetched is an error, not a
+    reason to fall through to a reference, a stale clone or a legacy generated location."""
+    if os.environ.get(_ENV_TARGET_PATH) is not None:
+        return
+    from .support_pins import default_selection, not_fetched
+
+    pin = default_selection().missing.get(name)
+    if pin is not None:
+        raise not_fetched(pin)
 
 
 def _env_target_roots() -> list[Path]:
     """The ``MERLIN_TARGET_PATH`` search entries, in declared (left-to-right) order.
 
-    Unset, the entries are the in-repo support providers (one per declared target). An explicit
-    value, including the empty string, replaces that default entirely.
+    Unset, the entries are the default support (:func:`default_support`, one per declared target).
+    An explicit value, including the empty string, replaces that default entirely.
     """
     raw = os.environ.get(_ENV_TARGET_PATH)
     if raw is None:
-        return list(in_repo_support().values())
+        return list(default_support().values())
     return [Path(e) for e in raw.split(os.pathsep) if e]
 
 
@@ -332,7 +375,8 @@ def explicit_targets() -> dict[str, Path]:
     Use this inventory to authorize executable plugins. Reference definitions and freshly
     generated directories remain inspectable metadata, not permission to execute code. With the
     variable unset, the selection is the checkout's reviewed in-repo support (:func:`in_repo_support`),
-    which is tracked source, not a discovered artifact.
+    which is tracked source, plus the support packages fetched at the commits the checkout pins
+    (:mod:`merlin.targetgen.support_pins`) -- reviewed revisions, not discovered artifacts.
     """
     return _discover(_env_target_roots())
 
@@ -346,9 +390,14 @@ def external_targets() -> dict[str, Path]:
 
 
 def _resolve_external(name: str, root: Path) -> TargetInfo:
+    from .support_pins import check_single_base
+
     provider = read_provider(root)
     if provider is None or provider.role != ProviderRole.SUPPORT or provider.contract_path is None:
         raise ValueError(f"{root}: not a target support provider")
+    # One base per build: a selected layer composed against another revision of the pinned base is
+    # refused here, whichever way it was selected.
+    check_single_base(provider)
     contracts = root / "contracts"
     return TargetInfo(
         name=name,
@@ -451,6 +500,7 @@ def _resolve(name: str, *, allow_alias: bool) -> TargetInfo:
     env = _discover(_env_target_roots())
     if name in env:
         return _resolve_external(name, env[name])
+    require_fetched(name)
     # 2. curated in-tree reference
     base = reference_targets().get(name)
     if base is not None:
