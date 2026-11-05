@@ -40,7 +40,9 @@ fi
 # The repo's .env (written by `run.sh setup`) into this shell's environment, for every key the
 # environment does not already set: the process environment wins, exactly as merlin.common.paths.env
 # resolves it. Tools that read only os.environ (a chip package's own scripts, a spike extension's
-# variable) then see the same configuration as the library does.
+# variable) then see the same configuration as the library does. The keys taken from .env are listed in
+# MERLIN_DOTENV_KEYS, so a later reload (after setup rewrote .env) refreshes them, and setup and preflight
+# can tell a value from .env from one the user's shell exports.
 ex_load_dotenv() {
   local file="$REPO_ROOT/.env" line key value
   [ -f "$file" ] || return 0
@@ -51,9 +53,15 @@ ex_load_dotenv() {
     key="${key// /}"
     value="${value#"${value%%[![:space:]]*}"}"; value="${value%"${value##*[![:space:]]}"}"
     case "$value" in \"*\"|\'*\') value="${value:1:${#value}-2}" ;; esac
-    case "$key" in ''|*[!A-Za-z0-9_]*|[0-9]*) continue ;; esac
-    if [ -z "${!key+x}" ]; then export "$key=$value"; fi
+    case "$key" in ''|*[!A-Za-z0-9_]*|[0-9]*|MERLIN_DOTENV_KEYS) continue ;; esac
+    case " ${MERLIN_DOTENV_KEYS:-} " in
+      *" $key "*) export "$key=$value" ;;
+      *) if [ -z "${!key+x}" ]; then
+           export "$key=$value"; MERLIN_DOTENV_KEYS="${MERLIN_DOTENV_KEYS:+$MERLIN_DOTENV_KEYS }$key"
+         fi ;;
+    esac
   done < "$file"
+  export MERLIN_DOTENV_KEYS="${MERLIN_DOTENV_KEYS:-}"
 }
 ex_load_dotenv
 

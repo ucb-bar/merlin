@@ -12,9 +12,10 @@ the common prerequisites (``--support`` / ``--verify-pin`` / ``--checkout-pin`` 
 It sorts the prerequisites by what they cost:
 
 * **Done here, automatically** (minutes, a few GB at most): the model2MLIR capture environment (a Python
-  3.12 venv under ``out/build/venv/`` with PyTorch nightly CPU and the torch-mlir wheel that matches
-  Merlin's LLVM pin, see ``TORCH_MLIR``), a model2MLIR checkout at its pinned revision when none is
-  configured, the chip's support package at the exact commit Merlin pins (``--support``, see
+  3.12 venv under ``out/build/venv/`` with an exact PyTorch CPU release, ``CAPTURE_TORCH``, and the
+  torch-mlir wheel that matches Merlin's LLVM pin, ``TORCH_MLIR``), model2MLIR at its pinned revision
+  (cloned when none is configured, and moved onto the pin when it is setup's own clean clone), the chip's
+  support package at the exact commit Merlin pins (``--support``, see
   ``merlin.targetgen.support_pins``; its base comes from the same single base pin), the Zephyr west
   workspace, a chip package's spike model of its unit, and a simulator built
   from a VERIFIED source checkout. Each step is skipped when its result is already there and still right.
@@ -47,7 +48,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-TORCH_NIGHTLY = "https://download.pytorch.org/whl/nightly/cpu"
+#: PyTorch's CPU index. It keeps every release; its nightly index keeps about two months, so a capture venv
+#: built from a nightly cannot be rebuilt the same way a few weeks later.
+TORCH_INDEX = "https://download.pytorch.org/whl/cpu"
+#: The capture venv's torch stack, at exact releases from :data:`TORCH_INDEX`. torch-mlir's dev wheel links
+#: no libtorch (its FX importer runs on torch's public export API), so it works across torch releases; this
+#: pair was checked by capturing the one-op GEMM with it and with the nightly setup used to install
+#: (2.16.0.dev20261105): model.mlir and every other bundle file identical but for paths. Setup checks the pair
+#: again on every venv it builds (:func:`capture_smoke`). Move them together, and re-check.
+CAPTURE_TORCH = ("torch==2.14.1", "torchvision==0.29.1", "torchao==0.18.0")
 TORCH_MLIR_WHEELS = "https://github.com/llvm/torch-mlir-release/releases/expanded_assets/dev-wheels"
 #: The newest torch-mlir dev wheel at or before Merlin's LLVM pin (llvm-project a47bddcc, 2026-06-03; see
 #: docs/guides/llvm_toolchain.md). Lowering prints LLVM-dialect MLIR in-process with this wheel and the
@@ -59,11 +68,14 @@ TORCH_MLIR = "torch-mlir==20260531.828"
 #: calls their APIs directly, and its ``>=`` floors do not keep them from moving under it. An unpinned
 #: ``xdsl`` resolved to 0.74, which no longer has ``Printer.print``, and every capture that printed its
 #: module died in model2MLIR with an AttributeError.
-CAPTURE_LOCKED_DEPS = ("xdsl", "structlog", "numpy", "PyYAML", "ml_dtypes", "safetensors")
-#: The quantization and model libraries the shipped loaders import. They are built against torch's own
-#: version, and torch here is the nightly that matches the torch-mlir wheel, not the torch model2MLIR's
-#: lock was resolved with, so these follow the installed torch rather than the lock.
-CAPTURE_TORCH_DEPS = ("torchao", "timm")
+CAPTURE_LOCKED_DEPS = ("xdsl", "structlog", "numpy", "PyYAML", "ml_dtypes", "safetensors", "timm")
+#: The version of each :data:`CAPTURE_LOCKED_DEPS` entry that model2MLIR's lock does not record (they are
+#: not its dependencies, or only optional ones), so the venv is the same on every machine.
+CAPTURE_UNLOCKED_PINS = {"ml_dtypes": "0.6.0", "timm": "1.0.31"}
+#: Written into the capture venv: what was installed, and the result of the compatibility check.
+CAPTURE_RECORD = "merlin-capture-env.json"
+#: What the capture item records in .env: the model2MLIR checkout (both spellings), its venv, its python.
+CAPTURE_KEYS = ("MERLIN_M2M_DIR", "MERLIN_MODEL2MLIR", "MERLIN_M2M_VENV", "MERLIN_M2M_PYTHON")
 #: The software pin model2MLIR captures are verified against (merlin/contract/software_pins.yaml).
 M2M_PIN = "model2mlir_capture"
 ZEPHYR_SW_URL = "https://github.com/ucb-bar/zephyr-chipyard-sw.git"
@@ -86,6 +98,8 @@ ADOPTED = (
     "MERLIN_M2M_VENV",
 )
 
+#: How .env.example spells "set this to your path"; a .env copied from it carries these.
+PLACEHOLDER = "/path/to/"
 #: ``warn``: usable, but a result built with it is about another revision than the pin (reported, and
 #: recorded by every build that reads it); the others that are not ok/built leave something to do.
 OK, BUILT, WARN, MISSING, DRIFT, BLOCKED = "ok", "built", "warn", "missing", "drift", "blocked"
@@ -190,7 +204,7 @@ def fetch_commands(pin, nested: list, dest: Path) -> list[str]:
     """
     if not pin.repo_canonical:
         return [f"# {pin.name}: the registry names no repository; see merlin/contract/hardware_pins.yaml"]
-    cmds = [f"git clone {pin.repo_canonical} {dest}"]
+    cmds = [f"git clone {pin.repo_observed or pin.repo_canonical} {dest}"]
     if pin.branch:
         cmds.append(f"git -C {dest} checkout -B {pin.branch} {pin.commit}")
     else:
@@ -283,35 +297,52 @@ def checkout_item(
     )
 
 
-def verify_pin_item(name: str, settings: dict[str, str], *, pins_path: Path | None = None) -> Item:
+def verify_pin_item(
+    name: str, settings: dict[str, str], *, reads: tuple[str, ...] = (), pins_path: Path | None = None
+) -> Item:
     """Verify a pin whose checkout lives inside a prerequisite configured elsewhere (e.g. a submodule of
-    the chipyard in MERLIN_CHIPYARD). Drift is a WARNING, not a blocker: the flow still derives from that
-    checkout and every build records the revision it read, so the drift travels with the result. Never
-    repaired here: the containing checkout is the user's."""
-    from merlin.common import provenance as PROV
+    the chipyard in MERLIN_CHIPYARD), by what a build would READ from it (``reads``, plus the pin's
+    required paths; :func:`merlin.common.provenance.materiality`).
+
+    Another commit or branch whose read bytes are all the pin's is a WARNING: results are right, and every
+    build records the revision it read. A read byte that differs (or a required file missing) is DRIFT,
+    and blocks: the builds that derive from the checkout refuse it (``merlin.targetgen.unit_pins``) unless
+    ``MERLIN_ALLOW_OFF_PIN`` names the pin. Never repaired here: the containing checkout is the user's."""
+    from merlin.common import pin_drift as D
+    from merlin.targetgen import unit_pins
 
     pin = _pins(pins_path)[name]
+    label = f"{name} (${pin.root_env}/{pin.path})"
     root = settings.get(pin.root_env) or os.environ.get(pin.root_env)
     if not root:
-        return Item(
-            name=f"{name} (${pin.root_env}/{pin.path})", state=BLOCKED, detail=f"${pin.root_env} is not configured"
-        )
+        return Item(name=label, state=BLOCKED, detail=f"${pin.root_env} is not configured")
     checkout = Path(root) / pin.path if pin.path not in ("", ".") else Path(root)
     with _env_set({pin.root_env: root}):
-        ver = PROV.verify(name, checkout=checkout, **({"path": pins_path} if pins_path else {}))
-    if ver.ok:
-        return Item(name=f"{name} (${pin.root_env}/{pin.path})", state=OK, detail=f"{checkout} at {pin.commit[:12]}")
-    problems = [*ver.drift, *ver.missing_paths, *ver.forbidden_present]
-    where = f"{pin.repo_canonical}" + (f", branch {pin.branch}" if pin.branch else "")
+        m = D.materiality(name, checkout=checkout, reads=reads, **({"path": pins_path} if pins_path else {}))
+        fix = unit_pins.fix_commands(name, pins_path) if m.material else []
+    if m.verdict == D.DRIFT_NONE:
+        return Item(name=label, state=OK, detail=f"{checkout} at {pin.commit[:12]}")
+    seen = m.verification.observed
+    head = f"{checkout} is at {seen.commit[:12]}, not the pin's {pin.commit[:12]}"
+    if not m.material:
+        return Item(
+            name=label,
+            state=WARN,
+            detail=f"{head}; every file a build reads from it is the pin's, so results are right and record it",
+            fix=["to make it the pinned revision too, see the chip example's README"],
+        )
+    allowed = D.allowed_off_pin(name)
     return Item(
-        name=f"{name} (${pin.root_env}/{pin.path})",
-        state=DRIFT if ver.missing_paths or ver.forbidden_present else WARN,
-        detail=f"{checkout} is not the pinned revision (results built here will say so):\n      "
-        + "\n      ".join(problems),
+        name=label,
+        state=WARN if allowed else DRIFT,
+        detail=f"{head}, and a file a build reads differs (builds that use it "
+        + ("proceed: you allowed it in $MERLIN_ALLOW_OFF_PIN" if allowed else "REFUSE it")
+        + "):\n      "
+        + "\n      ".join(m.reasons),
         fix=[
-            f"to build against the pin, put {checkout} at {pin.commit} ({where});",
-            "the chip example's README says how"
-            + (f". Note: {pin.repo_observed_note}" if pin.repo_observed_note else ""),
+            "put it on the pin (the chip example's README has the exact steps):",
+            *(f"  {c}" for c in fix),
+            f"or accept it knowingly (each build records the drift): {D.ALLOW_OFF_PIN_ENV}={name} in .env",
         ],
     )
 
@@ -514,9 +545,8 @@ def _lock_name(name: str) -> str:
 
 
 def capture_deps(m2m: Path) -> list[str]:
-    """The capture venv's dependency specs: each of :data:`CAPTURE_LOCKED_DEPS` at the version
-    ``m2m/uv.lock`` records (unpinned when the lock has no entry, or there is no lock), then
-    :data:`CAPTURE_TORCH_DEPS`, which follow the installed torch."""
+    """The capture venv's library specs, each exact: :data:`CAPTURE_LOCKED_DEPS` at the version
+    ``m2m/uv.lock`` records, else at :data:`CAPTURE_UNLOCKED_PINS` (unpinned only when neither names it)."""
     import tomllib
 
     locked: dict[str, str] = {}
@@ -527,39 +557,119 @@ def capture_deps(m2m: Path) -> list[str]:
         except (OSError, tomllib.TOMLDecodeError):
             packages = []
         locked = {_lock_name(p["name"]): str(p["version"]) for p in packages if "name" in p and "version" in p}
-    specs = [f"{d}=={locked[_lock_name(d)]}" if _lock_name(d) in locked else d for d in CAPTURE_LOCKED_DEPS]
-    return specs + list(CAPTURE_TORCH_DEPS)
+    out = []
+    for d in CAPTURE_LOCKED_DEPS:
+        version = locked.get(_lock_name(d)) or CAPTURE_UNLOCKED_PINS.get(d)
+        out.append(f"{d}=={version}" if version else d)
+    return out
 
 
-def _capture_env_ok(py: Path, m2m: Path) -> bool:
-    """The venv imports torch, the pinned torch-mlir and this model2MLIR, and carries every locked
-    dependency at its locked version, so a venv built before a dependency moved is repaired on re-run."""
+def capture_pins(m2m: Path) -> dict[str, str]:
+    """Every exact version the capture venv must carry: the torch stack, torch-mlir and the libraries."""
+    specs = [*CAPTURE_TORCH, TORCH_MLIR, *capture_deps(m2m)]
+    return dict(s.split("==", 1) for s in specs if "==" in s)
+
+
+#: Run INSIDE the capture venv: installed versions (local tags such as ``+cpu`` dropped), whether this
+#: model2MLIR is the one on the path, and whether torch-mlir imports a tiny exported module with this torch.
+_CAPTURE_PROBE = """
+import importlib.metadata as md, json, sys
+names, m2m = json.loads(sys.argv[1]), sys.argv[2]
+out = {"versions": {}, "m2m_on_path": False, "smoke": {"ok": False, "detail": ""}}
+for n in names:
+    try:
+        out["versions"][n] = md.version(n).split("+")[0]
+    except md.PackageNotFoundError:
+        out["versions"][n] = None
+try:
+    import m2m.capture, torch
+    from torch_mlir import fx
+    out["m2m_on_path"] = m2m.__path__[0].startswith(sys.argv[2])
+    mod = fx.export_and_import(torch.nn.Linear(4, 3), torch.ones(2, 4), output_type="linalg-on-tensors")
+    text = str(mod)
+    out["smoke"] = {"ok": "linalg" in text, "detail": f"Linear(4,3) -> {len(text)} chars of linalg-on-tensors"}
+except Exception as exc:
+    out["smoke"]["detail"] = f"{type(exc).__name__}: {exc}"[:600]
+print(json.dumps(out))
+"""
+
+
+def capture_probe(py: Path, m2m: Path) -> dict | None:
+    """What the capture venv at ``py`` carries and whether it can capture (:data:`_CAPTURE_PROBE`)."""
     if not py.is_file():
-        return False
-    pinned = dict(d.split("==", 1) for d in capture_deps(m2m) if "==" in d)
-    probe = (
-        "import importlib.metadata as md, sys, torch, torch_mlir, torchao, m2m.capture; "
-        f"pinned = {pinned!r}; "
-        f"sys.exit(0 if 'torch-mlir==' + md.version('torch-mlir') == {TORCH_MLIR!r} "
-        f"and m2m.__path__[0].startswith({str(m2m)!r}) "
-        "and all(md.version(k) == v for k, v in pinned.items()) else 1)"
-    )
-    return subprocess.run([str(py), "-c", probe], capture_output=True).returncode == 0
+        return None
+    got = subprocess.run([str(py), "-c", _CAPTURE_PROBE, json.dumps(sorted(capture_pins(m2m))), str(m2m)],
+                         capture_output=True, text=True)  # fmt: skip
+    try:
+        return json.loads(got.stdout.strip().splitlines()[-1])
+    except (IndexError, ValueError):
+        return {"versions": {}, "m2m_on_path": False, "smoke": {"ok": False, "detail": got.stderr[-600:]}}
+
+
+def capture_problems(probe: dict | None, m2m: Path) -> list[str]:
+    """Why the probed venv is not the capture venv setup builds (empty when it is): a version off its pin,
+    another model2MLIR on its path, or the torch / torch-mlir pair failing to import a module."""
+    if probe is None:
+        return ["no venv"]
+    have = probe.get("versions") or {}
+    out = [f"{n} is {have.get(n)}, not {v}" for n, v in sorted(capture_pins(m2m).items()) if have.get(n) != v]
+    if not probe.get("m2m_on_path"):
+        out.append(f"{m2m} is not the model2MLIR on its path")
+    if not (probe.get("smoke") or {}).get("ok"):
+        out.append(f"torch-mlir cannot import an exported module: {(probe.get('smoke') or {}).get('detail')}")
+    return out
+
+
+def _git_out(repo: Path, *args: str) -> str | None:
+    got = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    return got.stdout.strip() if got.returncode == 0 else None
+
+
+def m2m_movable(m2m: Path, *, owned: bool) -> str:
+    """Why setup must NOT move the model2MLIR checkout at ``m2m`` onto the pin; empty when it may.
+
+    Only a clone setup made (``owned``: its own location under out/build/ext) with no uncommitted change to
+    a tracked file and no commit that exists nowhere upstream. Anything else may be somebody's work."""
+    if not owned:
+        return "it is not the clone setup made (it was named by --m2m or MERLIN_M2M_DIR)"
+    status = _git_out(m2m, "status", "--porcelain", "--untracked-files=no")
+    if status is None:
+        return "it is not a readable git checkout"
+    if status:
+        return f"it has uncommitted changes ({len(status.splitlines())} file(s))"
+    if not _git_out(m2m, "branch", "-r", "--contains", "HEAD"):
+        return "its HEAD is on no remote branch (local commits)"
+    return ""
+
+
+def advance_m2m(m2m: Path, commit: str, url: str) -> None:
+    """Move a clone setup owns to ``commit``: fetch it if absent, then a detached checkout."""
+    if _git_out(m2m, "cat-file", "-e", f"{commit}^{{commit}}") is None:
+        try:
+            _run(["git", "-C", m2m, "fetch", url, commit])
+        except subprocess.CalledProcessError:
+            _run(["git", "-C", m2m, "fetch", url])  # a server that refuses a commit want
+    _run(["git", "-C", m2m, "checkout", "--detach", commit])
 
 
 def capture_item(settings: dict[str, str], m2m_arg: Path | None, *, fetch: bool) -> Item:
-    """model2MLIR (at its pinned revision when we fetch it) and the venv captures and lowering run in.
+    """model2MLIR at its pin, and the venv captures and lowering run in.
 
+    The checkout is ``--m2m``, else ``MERLIN_M2M_DIR``, else setup's own clone at out/build/ext/model2MLIR.
+    ``ok`` only when it is at the pinned commit (captures from another revision are refused by the chip
+    flow): setup moves its own clean clone onto the pin, and for any other checkout prints the commands.
     The venv lives under out/build/, not inside the checkout, and model2MLIR is put on its path with a
     .pth file rather than an editable install, so a shared or read-only checkout works unchanged.
     """
     from merlin.common import provenance as PROV
 
-    pin = PROV.load_pins(PROV.software_pins_path())[M2M_PIN]
-    m2m = (m2m_arg or Path(settings.get("MERLIN_M2M_DIR") or _build_dir() / "ext" / "model2MLIR")).resolve()
+    pins_path = PROV.software_pins_path()
+    pin = PROV.load_pins(pins_path)[M2M_PIN]
+    own = (_build_dir() / "ext" / "model2MLIR").resolve()
+    m2m = (m2m_arg or Path(settings.get("MERLIN_M2M_DIR") or own)).resolve()
     venv = Path(settings.get("MERLIN_M2M_VENV") or _build_dir() / "venv" / "model2mlir")
     py = venv / "bin" / "python"
-    name = "model2MLIR + capture venv (torch nightly, " + TORCH_MLIR + ")"
+    name = f"model2MLIR @{pin.commit[:12]} + capture venv"
     clone = [["git", "clone", pin.repo_canonical, m2m], ["git", "-C", m2m, "checkout", "--detach", pin.commit]]
     if not (m2m / "pyproject.toml").is_file():
         if not fetch:
@@ -567,35 +677,65 @@ def capture_item(settings: dict[str, str], m2m_arg: Path | None, *, fetch: bool)
                         fix=[" ".join(map(str, c)) for c in clone], cost="~50 MB")  # fmt: skip
         for cmd in clone:
             _run(cmd)
-    notes = ""
-    ver = PROV.verify(M2M_PIN, checkout=m2m, path=PROV.software_pins_path())
+    ver = PROV.verify(M2M_PIN, checkout=m2m, path=pins_path)
     if not ver.ok:
-        why = ver.drift[0] if ver.drift else "drift"
-        notes = f"\n      note: {m2m} is not the pinned capture revision {pin.commit[:12]} ({why})"
-    keep = {
-        "MERLIN_M2M_DIR": str(m2m),
-        "MERLIN_MODEL2MLIR": str(m2m),
-        "MERLIN_M2M_VENV": str(venv),
-        "MERLIN_M2M_PYTHON": str(py),
-    }
-    if _capture_env_ok(py, m2m):
-        return Item(name=name, state=OK, detail=f"{venv}{notes}", settings=keep)
+        why = m2m_movable(m2m, owned=m2m == own)
+        if not why and fetch:
+            print(f"{m2m} is off the capture pin ({ver.drift[0]}); it is setup's own clean clone: moving it")
+            try:
+                advance_m2m(m2m, pin.commit, pin.repo_canonical)
+            except subprocess.CalledProcessError as exc:
+                why = f"moving it failed ({exc})"
+            ver = PROV.verify(M2M_PIN, checkout=m2m, path=pins_path)
+        elif not why:
+            why = "--no-fetch"
+        if not ver.ok:
+            fix = [
+                f"git -C {m2m} fetch {pin.repo_canonical} {pin.commit}",
+                f"git -C {m2m} checkout --detach {pin.commit}",
+            ]
+            if m2m != own:
+                fix += ["or let setup use (and move) its own clone: unset MERLIN_M2M_DIR MERLIN_MODEL2MLIR"]
+            return Item(
+                name=name,
+                state=DRIFT,
+                detail=f"{m2m} is not the pinned capture revision ({ver.drift[0]}); setup did not move it: "
+                f"{why}. Captures refuse it",
+                fix=fix,
+            )
+    keep = dict(zip(CAPTURE_KEYS, (str(m2m), str(m2m), str(venv), str(py))))
+
+    def write_record(probe: dict | None) -> None:
+        if not venv.is_dir():
+            return
+        record = {"pins": capture_pins(m2m), "model2mlir": {"path": str(m2m), "commit": pin.commit}, **(probe or {})}
+        (venv / CAPTURE_RECORD).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+
+    probe = capture_probe(py, m2m)
+    if not capture_problems(probe, m2m):
+        write_record(probe)
+        return Item(name=name, state=OK, detail=f"{venv} (installed versions in {CAPTURE_RECORD})", settings=keep)
     if shutil.which("uv") is None:
         return Item(name=name, state=MISSING, detail="uv is not on PATH",
                     fix=["curl -LsSf https://astral.sh/uv/install.sh | sh"])  # fmt: skip
     env = {**os.environ, "VIRTUAL_ENV": str(venv)}
     if not py.is_file():
         _run(["uv", "venv", "--python", "3.12", venv])
-    _run(["uv", "pip", "install", "--pre", "torch", "torchvision", "--index-url", TORCH_NIGHTLY], env=env)
+    _run(["uv", "pip", "install", *CAPTURE_TORCH, "--index-url", TORCH_INDEX], env=env)
     _run(["uv", "pip", "install", "--pre", "--no-deps", TORCH_MLIR, "-f", TORCH_MLIR_WHEELS], env=env)
-    _run(["uv", "pip", "install", *capture_deps(m2m)], env=env)
+    # The torch stack again, so resolving the libraries can never move it (it is already satisfied).
+    _run(["uv", "pip", "install", *capture_deps(m2m), *CAPTURE_TORCH, "--index-url", "https://pypi.org/simple",
+          "--extra-index-url", TORCH_INDEX, "--index-strategy", "unsafe-best-match"], env=env)  # fmt: skip
     (_site_packages(py) / "merlin-model2mlir.pth").write_text(str(m2m) + "\n", encoding="utf-8")
-    if not _capture_env_ok(py, m2m):
-        return Item(name=name, state=MISSING, detail=f"{venv} was built but cannot import torch/torch_mlir/m2m",
-                    fix=[f"{py} -c 'import torch, torch_mlir, torchao, m2m.capture'   # to see why"])  # fmt: skip
+    probe = capture_probe(py, m2m)
+    problems = capture_problems(probe, m2m)
     freeze = subprocess.run(["uv", "pip", "freeze"], env=env, capture_output=True, text=True).stdout
     (venv / "merlin-capture-freeze.txt").write_text(freeze, encoding="utf-8")
-    return Item(name=name, state=BUILT, detail=f"{venv} (versions in merlin-capture-freeze.txt){notes}", settings=keep)
+    write_record(probe)
+    if problems:
+        return Item(name=name, state=MISSING, detail=f"{venv} was built but is not usable: " + "; ".join(problems),
+                    fix=[f"{py} -c 'import torch, torch_mlir, torchao, m2m.capture'   # to see why"])  # fmt: skip
+    return Item(name=name, state=BUILT, detail=f"{venv} (installed versions in {CAPTURE_RECORD})", settings=keep)
 
 
 # ------------------------------------------------------------------------------- support package
@@ -690,9 +830,11 @@ def spike_model_item(target: str, settings: dict[str, str], chipyard: Item) -> I
 
 
 def adopt(current: dict[str, str], args) -> dict[str, str]:
-    """Settings from .env, overridden by the process environment, overridden by flags."""
-    settings = {k: v for k, v in current.items() if v}
-    settings |= {k: os.environ[k] for k in ADOPTED if os.environ.get(k)}
+    """Settings from .env, overridden by the process environment, overridden by flags. A ``/path/to/...``
+    value (.env.example's placeholder, in a .env copied from it) is not a setting."""
+    settings = {k: v for k, v in current.items() if v and not v.startswith(PLACEHOLDER)}
+    exported = shell_exports(os.environ)
+    settings |= {k: exported[k] for k in ADOPTED if exported.get(k)}
     if args.llvm:
         prefix = args.llvm.resolve()
         settings |= {
@@ -708,6 +850,37 @@ def adopt(current: dict[str, str], args) -> dict[str, str]:
     if args.zephyr_sdk:
         settings["ZEPHYR_SDK_INSTALL_DIR"] = str(args.zephyr_sdk.resolve())
     return settings
+
+
+def _recorded(items: list[Item]) -> dict[str, str]:
+    return {k: v for i in items if i.done for k, v in i.settings.items()}
+
+
+def unit_pin_items(
+    explicit: list[str], supports: dict[str, Item], checkouts: dict[str, Item], settings: dict[str, str]
+) -> list[Item]:
+    """One :func:`verify_pin_item` per pin a fetched support package's matrix units read (with the files
+    they read), plus each ``--verify-pin``. A pin whose checkout ``--checkout-pin`` already verified, or
+    one nested in such a checkout, is covered there and not repeated."""
+    from merlin.targetgen import unit_pins
+
+    reads: dict[str, tuple[str, ...]] = {p: () for p in explicit}
+    failed: list[Item] = []
+    with _env_set({k: v for k, v in settings.items() if k.startswith(("MERLIN_", "ZEPHYR_"))}):
+        for target, item in supports.items():
+            if not item.done:
+                continue
+            try:
+                found = unit_pins.unit_pins(target)
+            except Exception as exc:  # noqa: BLE001 -- reported, never hidden
+                why = f"{type(exc).__name__}: {exc}"
+                failed.append(Item(name=f"{target} matrix unit pins", state=DRIFT, detail=why))
+                continue
+            for up in found:
+                reads[up.pin] = tuple(dict.fromkeys([*reads.get(up.pin, ()), *up.reads]))
+    pins = _pins()
+    covered = set(checkouts) | {p for p in reads if p in pins and pins[p].nested_in in checkouts}
+    return failed + [verify_pin_item(p, settings, reads=r) for p, r in reads.items() if p not in covered]
 
 
 def report(items: list[Item]) -> int:
@@ -761,7 +934,6 @@ def main(argv: list[str] | None = None) -> int:
     from merlin.common import provenance as PROV
 
     items = [llvm_item(settings), chipyard := chipyard_item(settings)]
-    items += [verify_pin_item(p, settings) for p in args.verify_pin]
     items += [zephyr_item(settings, fetch=fetch), sdk_item(settings)]
     if not args.skip_capture_env:
         items.append(capture_item(settings, args.m2m, fetch=fetch))
@@ -775,7 +947,7 @@ def main(argv: list[str] | None = None) -> int:
     checkouts: dict[str, Item] = {}
     for name in args.checkout_pin:
         pin = PROV.pin(name)
-        configured = settings.get(pin.root_env) or os.environ.get(pin.root_env) or current.get(pin.root_env)
+        configured = shell_exports(os.environ).get(pin.root_env) or settings.get(pin.root_env)
         checkouts[name] = checkout_item(
             name,
             Path(configured) if configured else None,
@@ -787,6 +959,7 @@ def main(argv: list[str] | None = None) -> int:
         if not sep or pin_name not in checkouts:
             raise SystemExit(f"--build-spike {spec}: expected PIN=ENV with PIN also given to --checkout-pin")
         items.append(build_spike(pin_name, env_name, checkouts[pin_name], prefix=_build_dir() / pin_name))
+    items += unit_pin_items(args.verify_pin, supports, checkouts, settings | _recorded(items))
 
     record = {k: v for i in items if i.done for k, v in i.settings.items()}
     if record:
@@ -806,8 +979,16 @@ def main(argv: list[str] | None = None) -> int:
 def shadowed_settings(record: dict[str, str], environ) -> list[tuple[str, str, str]]:
     """``(key, exported, recorded)`` for each recorded setting the process environment overrides with a
     different value. ``run.sh`` and ``merlin.common.paths.env`` both let the environment win over .env, so a
-    stale export (a workspace that has since moved) silently replaces the path setup just verified."""
+    stale export (a workspace that has since moved) silently replaces the path setup just verified. A value
+    ``run.sh`` itself loaded from .env (listed in ``MERLIN_DOTENV_KEYS``) is not an export, and is reloaded."""
+    environ = shell_exports(environ)
     return [(k, environ[k], v) for k, v in sorted(record.items()) if environ.get(k) and environ[k] != v]
+
+
+def shell_exports(environ) -> dict[str, str]:
+    """The process environment without what ``run.sh`` loaded from .env (``MERLIN_DOTENV_KEYS``)."""
+    loaded = set((environ.get("MERLIN_DOTENV_KEYS") or "").split())
+    return {k: v for k, v in environ.items() if k not in loaded}
 
 
 if __name__ == "__main__":

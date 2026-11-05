@@ -168,7 +168,8 @@ def test_a_configured_location_that_does_not_exist_is_reported_as_such(chipyard_
 
 def test_a_pin_without_a_branch_is_checked_out_detached():
     setup = _load()
-    pin = SimpleNamespace(name="p", repo_canonical="https://example.invalid/p.git", branch=None, commit="a" * 40)
+    pin = SimpleNamespace(name="p", repo_canonical="https://example.invalid/p.git", repo_observed="", branch=None,
+                          commit="a" * 40)  # fmt: skip
     assert setup.fetch_commands(pin, [], Path("/d"))[1] == f"git -C /d checkout --detach {'a' * 40}"
 
 
@@ -319,23 +320,40 @@ def test_each_chip_setup_asks_for_its_own_prerequisites(chip, flags):
 
 def test_capture_libraries_are_installed_at_the_versions_model2mlir_locks(tmp_path):
     """model2MLIR calls xDSL's API directly; an unpinned xdsl resolved to a release without ``Printer.print``
-    and every capture died in model2MLIR. The checkout's own uv.lock decides the version."""
+    and every capture died in model2MLIR. The checkout's own uv.lock decides the version, and a library the
+    lock does not record is pinned by setup itself, so the venv is the same on every machine."""
     setup = _load()
     (tmp_path / "uv.lock").write_text(
-        'version = 1\n[[package]]\nname = "xdsl"\nversion = "0.65.0"\n'
-        '[[package]]\nname = "pyyaml"\nversion = "6.0.3"\n'
-        '[[package]]\nname = "torchao"\nversion = "0.17.0"\n'
+        'version = 1\n[[package]]\nname = "xdsl"\nversion = "0.65.0"\n[[package]]\nname = "pyyaml"\nversion = "6.0.3"\n'
     )
     deps = setup.capture_deps(tmp_path)
     assert "xdsl==0.65.0" in deps and "PyYAML==6.0.3" in deps  # lock names are normalized (PEP 503)
-    assert "structlog" in deps  # not in this lock: left to the resolver rather than guessed
-    # built against torch, which here is the nightly matching torch-mlir, not the torch the lock resolved
-    assert "torchao" in deps and not any(d.startswith("torchao==") for d in deps)
+    assert "structlog" in deps  # in neither the lock nor setup's own table: left to the resolver
+    assert f"timm=={setup.CAPTURE_UNLOCKED_PINS['timm']}" in deps
 
 
-def test_capture_libraries_are_unpinned_without_a_lock(tmp_path):
+def test_the_capture_torch_stack_is_exact_and_from_an_index_that_keeps_it(tmp_path):
+    """An unpinned nightly gave every machine a different torch, and the nightly index drops a build after
+    about two months, so no capture venv could be rebuilt. Every torch package is an exact release."""
     setup = _load()
-    assert setup.capture_deps(tmp_path) == [*setup.CAPTURE_LOCKED_DEPS, *setup.CAPTURE_TORCH_DEPS]
+    assert setup.TORCH_INDEX.endswith("/whl/cpu") and "nightly" not in setup.TORCH_INDEX
+    names = [s.split("==")[0] for s in setup.CAPTURE_TORCH]
+    assert names == ["torch", "torchvision", "torchao"] and all("==" in s for s in setup.CAPTURE_TORCH)
+    pins = setup.capture_pins(tmp_path)
+    assert pins["torch-mlir"] == setup.TORCH_MLIR.split("==")[1]
+    assert pins["torch"] == setup.CAPTURE_TORCH[0].split("==")[1]
+
+
+def test_a_capture_venv_off_its_pins_or_failing_the_import_check_is_rebuilt(tmp_path):
+    setup = _load()
+    pins = setup.capture_pins(tmp_path)
+    good = {"versions": dict(pins), "m2m_on_path": True, "smoke": {"ok": True, "detail": "ok"}}
+    assert setup.capture_problems(good, tmp_path) == []
+    nightly = {**good, "versions": {**pins, "torch": "2.16.0.dev20261105"}}
+    assert setup.capture_problems(nightly, tmp_path) == [f"torch is 2.16.0.dev20261105, not {pins['torch']}"]
+    broken = {**good, "smoke": {"ok": False, "detail": "AttributeError: x"}}
+    assert "AttributeError: x" in setup.capture_problems(broken, tmp_path)[0]
+    assert setup.capture_problems(None, tmp_path) == ["no venv"]
 
 
 def test_an_exported_value_that_shadows_a_recorded_setting_is_named():
@@ -367,3 +385,203 @@ def test_preflight_names_an_exported_path_that_does_not_exist(monkeypatch):
     assert "exported" in hint and "/gone/zephyr" in hint and "unset ZEPHYR_BASE" in hint
     monkeypatch.delenv("ZEPHYR_BASE")
     assert flight._fix_hint("ZEPHYR_BASE", Path("/x")).startswith("set ZEPHYR_BASE")
+
+
+# ------------------------------------------------------------------ model2MLIR moved onto its pin
+
+
+@pytest.fixture()
+def m2m_like(tmp_path, monkeypatch):
+    """An upstream model2MLIR with an old and a pinned commit, setup's own clone of it at the old one, and
+    a software-pin registry naming the new one. The capture venv is reported as already right."""
+    from merlin.common import provenance as PROV
+
+    upstream = tmp_path / "upstream"
+    old = _repo(upstream, {"pyproject.toml": "[project]\nname='m2m'\n", "m2m/fuse_qdq.py": "old\n"})
+    (upstream / "m2m/fuse_qdq.py").write_text("fixed\n")
+    _git(upstream, "commit", "-qam", "keep definitions before uses")
+    new = _git(upstream, "rev-parse", "HEAD")
+    registry = _registry(tmp_path / "software_pins.yaml", {"model2mlir_capture": {
+        "commit": new, "repo_canonical": str(upstream), "root_env": "MERLIN_M2M_DIR",
+        "requires_paths": ["m2m/fuse_qdq.py"], "content_check": True}})  # fmt: skip
+    setup = _load()
+    build = tmp_path / "out_build"
+    own = build / "ext" / "model2MLIR"
+    own.parent.mkdir(parents=True)
+    _git(tmp_path, "clone", "-q", str(upstream), str(own))
+    _git(own, "checkout", "-q", "--detach", old)
+    monkeypatch.setattr(setup, "_build_dir", lambda: build)
+    monkeypatch.setattr(PROV, "software_pins_path", lambda: registry)
+    monkeypatch.setattr(setup, "capture_probe", lambda py, m2m: {})
+    monkeypatch.setattr(setup, "capture_problems", lambda probe, m2m: [])
+    return SimpleNamespace(setup=setup, own=own, old=old, new=new, upstream=upstream, tmp=tmp_path)
+
+
+def test_setup_moves_its_own_clean_model2mlir_clone_onto_the_pin(m2m_like):
+    """An existing clone was never moved when the pin moved, so captures kept running 8893a37, whose int8
+    Linear captures are not in SSA order. A clean clone setup made is setup's to move."""
+    s = m2m_like
+    item = s.setup.capture_item({}, None, fetch=True)
+    assert item.state == s.setup.OK, item.detail
+    assert _git(s.own, "rev-parse", "HEAD") == s.new
+    assert item.settings["MERLIN_M2M_DIR"] == str(s.own.resolve())
+
+
+@pytest.mark.parametrize("how", ["dirty", "user_owned", "local_commit"])
+def test_setup_never_moves_a_model2mlir_checkout_that_may_be_someones_work(m2m_like, how):
+    s = m2m_like
+    m2m = s.own
+    if how == "dirty":
+        (m2m / "m2m/fuse_qdq.py").write_text("my edit\n")
+    elif how == "user_owned":
+        m2m = s.tmp / "mine"
+        _git(s.tmp, "clone", "-q", str(s.upstream), str(m2m))
+        _git(m2m, "checkout", "-q", "--detach", s.old)
+    else:
+        (m2m / "notes.txt").write_text("x\n")
+        _git(m2m, "add", "notes.txt")
+        _git(m2m, "commit", "-qm", "local work")
+    head = _git(m2m, "rev-parse", "HEAD")
+    item = s.setup.capture_item({}, m2m if how == "user_owned" else None, fetch=True)
+    assert item.state == s.setup.DRIFT and not item.done  # never "ok" off the pinned commit
+    assert _git(m2m, "rev-parse", "HEAD") == head
+    assert f"git -C {m2m.resolve()} checkout --detach {s.new}" in item.fix
+    want = {"dirty": "uncommitted", "user_owned": "not the clone setup made", "local_commit": "no remote"}[how]
+    assert want in item.detail
+
+
+def test_a_capture_refuses_model2mlir_off_its_pin_unless_allowed(m2m_like, monkeypatch):
+    from merlin.integrations import model2mlir as M
+
+    with pytest.raises(M.CapturePinError, match=f"checkout --detach {m2m_like.new}"):
+        M.require_capture_pin(m2m_like.own)
+    monkeypatch.setenv("MERLIN_ALLOW_OFF_PIN", "some_pin, model2mlir_capture")
+    assert M.require_capture_pin(m2m_like.own)["ok"] is False  # proceeds, and the record says so
+
+
+# ------------------------------------------------------------- which drift blocks, which is recorded
+
+
+@pytest.fixture()
+def unit_like(tmp_path, monkeypatch):
+    """A unit checkout whose pinned commit is followed by one that changes no file a build reads, and a
+    registry pinning the first, with a declared local edit to the config file."""
+    unit = tmp_path / "chip" / "gen" / "unit"
+    pinned = _repo(unit, {"Consts.scala": "OPMACC 0x2c\n", "Configs.scala": "class Cfg\n", "README": "a\n"})
+    (unit / "README").write_text("b\n")
+    _git(unit, "commit", "-qam", "docs")
+    import hashlib
+
+    edit = "class Cfg // reviewed\n"
+    registry = _registry(tmp_path / "pins.yaml", {"demo_unit": {
+        "commit": pinned, "repo_canonical": "https://example.invalid/unit.git", "root_env": "MERLIN_DEMO_CHIP",
+        "path": "gen/unit", "requires_paths": ["Consts.scala"],
+        "local_edits": {"Configs.scala": hashlib.sha256(edit.encode()).hexdigest()}}})  # fmt: skip
+    monkeypatch.setenv("MERLIN_DEMO_CHIP", str(tmp_path / "chip"))
+    monkeypatch.delenv("MERLIN_ALLOW_OFF_PIN", raising=False)
+    return SimpleNamespace(unit=unit, registry=registry, edit=edit, tmp=tmp_path)
+
+
+def test_another_commit_that_reads_the_same_bytes_is_only_unrecorded(unit_like):
+    from merlin.common import pin_drift as D
+
+    m = D.materiality("demo_unit", reads=["Consts.scala", "Configs.scala"], path=unit_like.registry)
+    assert m.verdict == D.DRIFT_UNRECORDED and not m.material, m.reasons
+    (unit_like.unit / "Configs.scala").write_text(unit_like.edit)  # the declared, reviewed edit
+    m = D.materiality("demo_unit", reads=["Consts.scala", "Configs.scala"], path=unit_like.registry)
+    assert m.verdict == D.DRIFT_UNRECORDED, m.reasons
+
+
+def test_a_changed_byte_a_build_reads_is_material(unit_like):
+    from merlin.common import pin_drift as D
+
+    (unit_like.unit / "Consts.scala").write_text("OPMACC 0x2e\n")  # an encoding moved
+    m = D.materiality("demo_unit", reads=["Configs.scala"], path=unit_like.registry)  # required paths too
+    assert m.material and any(r.startswith("Consts.scala: off_pin") for r in m.reasons)
+    (unit_like.unit / "Consts.scala").write_text("OPMACC 0x2c\n")
+    (unit_like.unit / "Configs.scala").write_text("class Cfg // unreviewed\n")
+    assert D.materiality("demo_unit", reads=["Configs.scala"], path=unit_like.registry).material
+
+
+def test_setup_warns_on_unrecorded_drift_and_blocks_on_material_drift(unit_like, monkeypatch):
+    setup = _load()
+    settings = {"MERLIN_DEMO_CHIP": str(unit_like.tmp / "chip")}
+    warn = setup.verify_pin_item("demo_unit", settings, reads=("Configs.scala",), pins_path=unit_like.registry)
+    assert warn.state == setup.WARN and warn.done
+    (unit_like.unit / "Consts.scala").write_text("OPMACC 0x2e\n")
+    block = setup.verify_pin_item("demo_unit", settings, reads=("Configs.scala",), pins_path=unit_like.registry)
+    assert block.state == setup.DRIFT and not block.done and "REFUSE" in block.detail
+    assert any("checkout --detach" in line for line in block.fix)
+    assert any("MERLIN_ALLOW_OFF_PIN=demo_unit" in line for line in block.fix)
+    monkeypatch.setenv("MERLIN_ALLOW_OFF_PIN", "demo_unit")
+    allowed = setup.verify_pin_item("demo_unit", settings, reads=("Configs.scala",), pins_path=unit_like.registry)
+    assert allowed.state == setup.WARN and "you allowed it" in allowed.detail
+
+
+def test_a_unit_contract_names_every_pin_its_derivation_reads():
+    from merlin.targetgen.unit_pins import UnitPin, unit_pins_from_contract
+
+    contract = {"units": {"u": {
+        "pin": "p_unit", "sources": {"consts": "a.scala", "header": "b.h"},
+        "configs": {"config_scala": ["c.scala"], "host_config_scala": ["soc/c.scala"], "mixin_scala": ["m.scala"]},
+        "core": {"pin": "p_core", "source": "core.scala", "container": "X"}}}}  # fmt: skip
+    got = unit_pins_from_contract(contract, "u")
+    assert got == [UnitPin("p_unit", ("a.scala", "b.h", "c.scala", "m.scala")), UnitPin("p_core", ("core.scala",))]
+    assert unit_pins_from_contract(contract, "other") == []
+
+
+# --------------------------------------------------------------------- where each setting comes from
+
+
+def test_preflight_names_where_each_setting_comes_from():
+    flight = _load("preflight")
+    dotenv = {"A": "/recorded", "B": "/recorded", "C": "/c"}
+    environ = {"A": "/recorded", "B": "/stale", "D": "/d", "MERLIN_DOTENV_KEYS": "A"}
+    assert flight.setting_source("A", environ, dotenv) == ("/recorded", ".env")
+    expected = ("/stale", "exported in this shell, OVERRIDING .env's /recorded")
+    assert flight.setting_source("B", environ, dotenv) == expected
+    assert flight.setting_source("C", environ, dotenv) == ("/c", ".env")
+    assert flight.setting_source("D", environ, dotenv) == ("/d", "exported in this shell")
+    assert flight.setting_source("E", environ, dotenv) == (None, "unset")
+
+
+def test_a_value_run_sh_loaded_from_dotenv_is_not_an_export_and_is_reloaded(tmp_path):
+    """run.sh exports .env into its own shell, so setup used to read those values back as user exports (and
+    warn that they shadowed what it had just recorded), and kept the stale value after rewriting .env."""
+    (tmp_path / ".env").write_text("DEMO_A=old\n")
+    common = repo_root() / "examples" / "lib" / "common.sh"
+    script = (f'. "{common}"; MERLIN_DOTENV_KEYS=; REPO_ROOT="{tmp_path}"; ex_load_dotenv; '
+              f'echo DEMO_A=new > "{tmp_path}/.env"; '
+              'ex_load_dotenv; printf "%s|%s|%s" "$DEMO_A" "$DEMO_B" "$MERLIN_DOTENV_KEYS"')  # fmt: skip
+    out = subprocess.run(["bash", "-c", script], env={"PATH": "/usr/bin:/bin", "DEMO_B": "mine"},
+                         capture_output=True, text=True, check=True).stdout  # fmt: skip
+    assert out == "new|mine|DEMO_A"
+    setup = _load()
+    assert setup.shadowed_settings({"DEMO_A": "/x"}, {"DEMO_A": "/old", "MERLIN_DOTENV_KEYS": "DEMO_A"}) == []
+
+
+def test_a_placeholder_copied_from_env_example_is_not_a_setting(monkeypatch):
+    setup = _load()
+    monkeypatch.delenv("MERLIN_CHIPYARD", raising=False)
+    args = SimpleNamespace(llvm=None, chipyard=None, zephyr_sw=None, zephyr_sdk=None)
+    assert "MERLIN_CHIPYARD" not in setup.adopt({"MERLIN_CHIPYARD": "/path/to/chipyard"}, args)
+
+
+def test_env_example_lists_every_setting_a_chip_setup_records():
+    """A new user reads .env.example to learn what setup wrote; the Iris variables were missing from it."""
+    from merlin.common import pin_drift as D
+    from merlin.common import provenance as PROV
+
+    setup = _load()
+    keys = set(setup.ADOPTED) | set(setup.CAPTURE_KEYS) | {D.ALLOW_OFF_PIN_ENV}
+    pins = PROV.load_pins()
+    for chip in ("kodiak", "iris"):
+        words = (repo_root() / "examples" / chip / "run.sh").read_text().split()
+        for flag, value in zip(words, words[1:]):
+            if flag in ("--checkout-pin", "--verify-pin"):
+                keys.add(pins[value].root_env)
+            elif flag == "--build-spike":
+                keys.add(value.partition("=")[2])
+    text = (repo_root() / ".env.example").read_text()
+    listed = {line.lstrip("# ").partition("=")[0] for line in text.splitlines() if "=" in line}
+    assert sorted(keys - listed) == []

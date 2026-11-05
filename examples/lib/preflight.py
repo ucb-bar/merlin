@@ -135,6 +135,114 @@ def _rows(board: str, sdk_dir: str | None):
     return out, needs_sdk, sdk_ok
 
 
+def _dotenv() -> dict[str, str]:
+    from merlin.common.paths import repo_root
+
+    out: dict[str, str] = {}
+    path = repo_root() / ".env"
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            key, sep, value = line.partition("=")
+            if sep and not line.lstrip().startswith("#"):
+                out[key.strip()] = value.strip().strip("'\"")
+    return out
+
+
+def setting_source(key: str, environ, dotenv: dict[str, str]) -> tuple[str | None, str]:
+    """``(effective value, where it came from)``, resolved the way every command resolves it (the process
+    environment wins over .env). A value ``run.sh`` loaded from .env (``MERLIN_DOTENV_KEYS``) is ".env"; a
+    shell export that differs from .env is named as overriding it, with the value it hides."""
+    loaded = set((environ.get("MERLIN_DOTENV_KEYS") or "").split())
+    if environ.get(key):
+        if key in loaded:
+            return environ[key], ".env"
+        if key in dotenv and dotenv[key] != environ[key]:
+            return environ[key], f"exported in this shell, OVERRIDING .env's {dotenv[key]}"
+        return environ[key], "exported in this shell" + (" (same as .env)" if key in dotenv else "")
+    if dotenv.get(key):
+        return dotenv[key], ".env"
+    return None, "unset"
+
+
+def _settings(keys: list[str]) -> list[tuple[str, str | None, str]]:
+    """(key, effective value, source) for every key in .env, plus ``keys`` when the shell sets them."""
+    import os
+
+    dotenv = _dotenv()
+    loaded = set((os.environ.get("MERLIN_DOTENV_KEYS") or "").split())
+    names = list(dict.fromkeys([*dotenv, *(k for k in keys if os.environ.get(k) and k not in loaded)]))
+    return [(k, *setting_source(k, os.environ, dotenv)) for k in names]
+
+
+def _selected_targets(board: str) -> list[str]:
+    """The support targets this run selected: each support package on ``MERLIN_BOARD_CATALOG`` (a chip
+    example puts its package there), named by its provider.yaml. With no catalog selected (``run.sh setup``
+    runs this before selecting one), each fetched pinned package whose boards.yaml declares ``board``."""
+    import os
+
+    import yaml
+
+    roots = [Path(e) for e in (os.environ.get("MERLIN_BOARD_CATALOG") or "").split(":") if e]
+    if not roots:
+        from merlin.targetgen import support_pins as SP
+
+        for pin in SP.load_pins().all():
+            root = SP.available_root(pin)
+            boards = (yaml.safe_load((root / "boards.yaml").read_text(encoding="utf-8")) or {}) if root and (
+                root / "boards.yaml").is_file() else {}  # fmt: skip
+            if board in (boards.get("boards") or {}):
+                roots.append(root)
+    out: list[str] = []
+    for root in roots:
+        provider = root / "provider.yaml"
+        if provider.is_file():
+            target = (yaml.safe_load(provider.read_text(encoding="utf-8")) or {}).get("target")
+            if target and target not in out:
+                out.append(str(target))
+    return out
+
+
+def _pin_rows(board: str) -> list[tuple[str, str, str]]:
+    """(state, pin, detail) for the pins this board's builds depend on: the capture pin, and the pins its
+    target's matrix units are derived from. ``stop`` = the stage that depends on it refuses it."""
+    rows: list[tuple[str, str, str]] = []
+    try:
+        from merlin.common import pin_drift as D
+        from merlin.integrations.model2mlir import CAPTURE_PIN, capture_pin, root
+
+        where = str(root(default=""))
+        got = capture_pin(where) if where not in ("", ".") else None
+        if got is None:
+            rows.append(("stop", CAPTURE_PIN, "MERLIN_M2M_DIR is not configured (./run.sh setup)"))
+        elif got["ok"]:
+            rows.append(("ok", CAPTURE_PIN, got["verification"]["observed"]["path"]))
+        else:
+            drift = (got.get("verification") or {}).get("drift") or [got["citation"]]
+            state = "warn" if D.allowed_off_pin(CAPTURE_PIN) else "stop"
+            rows.append((state, CAPTURE_PIN, f"captures refuse it: {'; '.join(drift)} (./run.sh setup)"))
+    except Exception as exc:  # noqa: BLE001
+        rows.append(("stop", "model2mlir_capture", f"{type(exc).__name__}: {exc}"))
+    try:
+        from merlin.common import pin_drift as D
+        from merlin.targetgen import unit_pins
+
+        for m in unit_pins.check([p for t in _selected_targets(board) for p in unit_pins.unit_pins(t)]):
+            seen = m.verification.observed
+            if m.verdict == D.DRIFT_NONE:
+                rows.append(("ok", m.pin, f"{seen.path}"))
+            elif not m.material:
+                rows.append(("warn", m.pin, f"{seen.path} at {seen.commit[:12]}: another revision, same bytes read"))
+            else:
+                allowed = D.allowed_off_pin(m.pin)
+                why = "; ".join(r.rsplit(": ", 1)[0] for r in m.reasons[:3]) or "drift"
+                verdict = "allowed, builds record it" if allowed else "matrix-unit builds refuse it"
+                detail = f"{seen.path} at {seen.commit[:12]}: {verdict}: {why}"
+                rows.append(("warn" if allowed else "stop", m.pin, detail))
+    except Exception as exc:  # noqa: BLE001
+        rows.append(("stop", "matrix unit pins", f"{type(exc).__name__}: {exc}"))
+    return rows
+
+
 def _importable(name: str) -> bool:
     import importlib.util
 
@@ -177,7 +285,25 @@ def main(argv=None) -> int:
             if not present:
                 print(f"         {_fix_hint(envvar, path)}")
     if needs_sdk and not sdk_ok:
-        print(f"\n  [no ] chip SDK      pass --sdk-dir <checkout> (or export it; see the example's README)")
+        print("\n  [no ] chip SDK      pass --sdk-dir <checkout> (or export it; see the example's README)")
+
+    pins = _pin_rows(a.board)
+    if pins:
+        print("\npinned sources (stop = the stages that read it refuse it; MERLIN_ALLOW_OFF_PIN=<pin> accepts it):")
+        pw = max(len(p) for _, p, _ in pins)
+        for state, name, detail in pins:
+            print(f"  [{state:4}] {name:<{pw}}  {detail}")
+
+    named = [part.strip(",()") for c in comps for part in str(c[2]).split()]
+    settings = _settings([k for k in named if k.startswith(("MERLIN_", "ZEPHYR_"))])
+    if settings:
+        print("\nsettings (the value every command uses, and where it comes from; the shell wins over .env):")
+        kw = max(len(k) for k, _, _ in settings)
+        for key, value, source in settings:
+            flag = "!" if "OVERRIDING" in source else " "
+            print(f" {flag}{key:<{kw}} = {value}   [{source}]")
+        if any("OVERRIDING" in s for _, _, s in settings):
+            print("  ! a shell export replaces what setup recorded; unset it unless you mean it")
     if missing:
         print(
             "\nSee examples/README.md ('Set up a machine from scratch') for where each of these comes "
