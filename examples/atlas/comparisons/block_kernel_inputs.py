@@ -6,7 +6,6 @@ import sys
 import zipfile
 
 import numpy as np
-
 from atlas_provider_files import PACKING_FILE, PACKING_FILES, TILE_FILE, packing_paths, provider_path
 
 

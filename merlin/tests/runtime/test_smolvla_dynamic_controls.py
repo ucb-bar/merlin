@@ -1,4 +1,5 @@
 """Selected-block experiments retain exact native control/RNG identities."""
+
 import importlib
 import random
 
@@ -36,8 +37,14 @@ def test_changed_native_layer_inventory_refused(driver):
 
 def test_control_identity_binds_mask_position_and_cache_flags(driver, monkeypatch):
     monkeypatch.setattr(driver, "tensor_id", lambda value, torch: driver.array_identity(value))
-    args = dict(attention_mask=np.ones((1, 2, 2), bool), position_ids=np.array([[0, 1]], np.int64),
-                past_key_values=None, inputs_embeds=[None], use_cache=True, fill_kv_cache=True)
+    args = dict(
+        attention_mask=np.ones((1, 2, 2), bool),
+        position_ids=np.array([[0, 1]], np.int64),
+        past_key_values=None,
+        inputs_embeds=[None],
+        use_cache=True,
+        fill_kv_cache=True,
+    )
     original = driver.attention_control_identity((), args, None)
     args["position_ids"][0, 1] = 2
     assert driver.attention_control_identity((), args, None) != original

@@ -1,15 +1,15 @@
 """External block-fixture admission without compilers or a device provider."""
 
-from merlin.common.digest import sha256_bytes
-
 import importlib.util
-from pathlib import Path
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
 import pytest
+
+from merlin.common.digest import sha256_bytes
 from merlin.common.paths import repo_root
 
 SOURCE = repo_root() / "examples/atlas/comparisons"
@@ -134,7 +134,7 @@ def test_provider_layout_snapshot_includes_nested_headers_and_pins_bytes(tmp_pat
     layout = runtime / "atlas_host_layout.h"
     nested = runtime / "layout_constants.h"
     layout.write_text('#include "layout_constants.h"\n')
-    nested.write_text('#define TILE_BYTES 2048\n')
+    nested.write_text("#define TILE_BYTES 2048\n")
     invocation = build(tmp_path)
     invocation.args.provider_runtime = runtime
     invocation.provider_sources(["atlas_host_layout.h"], "source/")
@@ -159,10 +159,9 @@ def test_provider_header_parent_escape_refused_before_read(tmp_path):
 def test_provider_adapter_keeps_merlin_header_ownership(tmp_path):
     runtime = tmp_path / "provider"
     runtime.mkdir()
-    (runtime / "adapter.h").write_text(
-        '#include "smol_vlm_block_prototype.h"\n#include "atlas_host_layout.h"\n')
+    (runtime / "adapter.h").write_text('#include "smol_vlm_block_prototype.h"\n#include "atlas_host_layout.h"\n')
     layout = runtime / "atlas_host_layout.h"
-    layout.write_text('#define TILE_BYTES 2048\n')
+    layout.write_text("#define TILE_BYTES 2048\n")
     invocation = build(tmp_path)
     invocation.args.provider_runtime = runtime
     invocation.provider_sources(["adapter.h"], "source/", local_headers=["smol_vlm_block_prototype.h"])

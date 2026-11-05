@@ -1,19 +1,17 @@
 """Pure controls for native-example input admission, without workload execution."""
 
-from merlin.common.digest import sha256_bytes
-
 import importlib.util
 import json
-from pathlib import Path
 import stat
 import sys
 import tempfile
-from types import SimpleNamespace
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from merlin.common.digest import sha256_bytes
 from merlin.common.paths import repo_root
-
 
 path = repo_root() / "examples/atlas/comparisons/capture_tinyllama_native.py"
 spec = importlib.util.spec_from_file_location("native_admission_controls", path)
@@ -45,33 +43,40 @@ class NativeAdmissionTest(unittest.TestCase):
             def numpy(self):
                 return values
 
-        self.assertEqual(resnet.tensor_identity(Tensor())["raw_sha256"],
-                         sha256_bytes(values.tobytes()))
+        self.assertEqual(resnet.tensor_identity(Tensor())["raw_sha256"], sha256_bytes(values.tobytes()))
 
     def test_archive_metadata_refuses_paths_duplicates_links(self):
         capture.admit_archive_members([member("checkpoint/"), member("checkpoint/data/0")])
-        bad = ([member("../x")], [member("/x")], [member("a\\b")],
-               [member("a"), member("a")], [member("link", stat.S_IFLNK)],
-               [SimpleNamespace(filename="safe", orig_filename="safe\0hidden", external_attr=0)])
+        bad = (
+            [member("../x")],
+            [member("/x")],
+            [member("a\\b")],
+            [member("a"), member("a")],
+            [member("link", stat.S_IFLNK)],
+            [SimpleNamespace(filename="safe", orig_filename="safe\0hidden", external_attr=0)],
+        )
         for members in bad:
             with self.subTest(members=members), self.assertRaises(ValueError):
                 capture.admit_archive_members(members)
 
     def test_archive_refusal_precedes_content_hash(self):
         archive = SimpleNamespace(infolist=lambda: [member("../x")])
-        with patch.object(capture, "safe_path", return_value=Path("/not-opened/archive.npz")), \
-                patch.object(capture.zipfile, "is_zipfile", return_value=True), \
-                patch.object(capture.zipfile, "ZipFile") as opened, \
-                patch.object(Path, "open", side_effect=AssertionError("content was read")):
+        with (
+            patch.object(capture, "safe_path", return_value=Path("/not-opened/archive.npz")),
+            patch.object(capture.zipfile, "is_zipfile", return_value=True),
+            patch.object(capture.zipfile, "ZipFile") as opened,
+            patch.object(Path, "open", side_effect=AssertionError("content was read")),
+        ):
             opened.return_value.__enter__.return_value = archive
             with self.assertRaises(ValueError):
                 capture.digest("/not-opened/archive.npz")
 
     def test_output_root_is_strict_and_accepts_only_descendants(self):
-        with patch.object(capture, "safe_path", side_effect=Path), \
-                patch.object(capture, "artifacts_dir", return_value=Path("/not-opened/artifacts")):
-            self.assertEqual(capture.artifact_output("/not-opened/artifacts/run"),
-                             Path("/not-opened/artifacts/run"))
+        with (
+            patch.object(capture, "safe_path", side_effect=Path),
+            patch.object(capture, "artifacts_dir", return_value=Path("/not-opened/artifacts")),
+        ):
+            self.assertEqual(capture.artifact_output("/not-opened/artifacts/run"), Path("/not-opened/artifacts/run"))
             for value in ("/not-opened/artifacts", "/not-opened/artifacts-other/run"):
                 with self.subTest(value=value), self.assertRaises(ValueError):
                     capture.artifact_output(value)
@@ -90,12 +95,16 @@ class NativeAdmissionTest(unittest.TestCase):
                 "def recheck(records):\n"
                 "    for record in records:\n"
                 "        if sha256(record['path']) != record['sha256']:\n"
-                "            raise ValueError('binding changed')\n"),
+                "            raise ValueError('binding changed')\n"
+            ),
         }
         for name, source in sources.items():
             (tools / name).write_text(source)
-        code = {name: sha256_bytes(source.encode()) for name, source in sources.items()
-                if name != "validate_model_contraction.py"}
+        code = {
+            name: sha256_bytes(source.encode())
+            for name, source in sources.items()
+            if name != "validate_model_contraction.py"
+        }
         receipt = root / "receipt.json"
         receipt.write_text(json.dumps(dict(status="passed_model_only", code_before=code, code_after=code)))
         return tools, receipt, capture.digest(receipt), capture.digest(tools / "validate_model_contraction.py")

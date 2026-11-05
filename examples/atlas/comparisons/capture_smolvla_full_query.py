@@ -8,18 +8,30 @@ import argparse
 import copy
 import importlib.metadata
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import numpy as np
-
 import source_relocation
+from capture_smolvla import (
+    ARCHIVE_SHA,
+    CHECKPOINT_REVISION,
+    EXPERT_SOURCE_SHA,
+    LLAMA_SHA,
+    OBSERVATION_SHA,
+    RECEIPT_SHA,
+    WEIGHTS_SHA,
+)
+from capture_tinyllama_native import (
+    array_identity,
+    bf16_words_to_float,
+    digest,
+    identity,
+    round_bf16_words,
+    safe_path,
+    verify_declared_sources,
+)
 from source_relocation import argument_relocator, read_metadata
-
-from capture_smolvla import (CHECKPOINT_REVISION, WEIGHTS_SHA, RECEIPT_SHA,
-                            ARCHIVE_SHA, OBSERVATION_SHA, EXPERT_SOURCE_SHA, LLAMA_SHA)
-from capture_tinyllama_native import (array_identity, bf16_words_to_float, digest,
-                                     identity, round_bf16_words, safe_path, verify_declared_sources)
 
 
 def validate_padding(arrays, native_q, native_a):
@@ -30,23 +42,32 @@ def validate_padding(arrays, native_q, native_a):
         value, words = arrays[name], arrays[name + "_bf16"]
         if value.shape != shape or words.shape != shape or value.dtype != np.float32 or words.dtype != np.uint16:
             raise ValueError("Wrong padded full-query shape/dtype: " + name)
-        if not np.isfinite(value).all() or not np.array_equal(value.view(np.uint32), bf16_words_to_float(words).view(np.uint32)):
+        if not np.isfinite(value).all() or not np.array_equal(
+            value.view(np.uint32), bf16_words_to_float(words).view(np.uint32)
+        ):
             raise ValueError("BF16 words do not authenticate exact finite operands: " + name)
-    if (not np.array_equal(arrays["A_bf16"][:177], native_a)
-            or not np.array_equal(arrays["native_C_bf16"][:177], native_q)
-            or np.any(arrays["A_bf16"][177:]) or np.any(arrays["native_C_bf16"][177:])):
+    if (
+        not np.array_equal(arrays["A_bf16"][:177], native_a)
+        or not np.array_equal(arrays["native_C_bf16"][:177], native_q)
+        or np.any(arrays["A_bf16"][177:])
+        or np.any(arrays["native_C_bf16"][177:])
+    ):
         raise ValueError("Native rows changed or synthetic padding rows are not positive zero")
 
 
 def capture(args, report):
     import torch
+    from lerobot.policies.smolvla import smolvlm_with_expert
     from safetensors import safe_open
     from transformers.models.llama import modeling_llama
-    from lerobot.policies.smolvla import smolvlm_with_expert
+
     tile_id = identity(args.native_tile / "manifest.json", args.native_tile_manifest_sha256)
     tile = read_metadata(args, report, tile_id["path"], tile_id["sha256"])
-    if (tile["status"] != "native_selective_capture_passed" or tile["source_dtype"] != "bfloat16"
-            or tile["source"]["revision"] != CHECKPOINT_REVISION):
+    if (
+        tile["status"] != "native_selective_capture_passed"
+        or tile["source_dtype"] != "bfloat16"
+        or tile["source"]["revision"] != CHECKPOINT_REVISION
+    ):
         raise ValueError("Require the retained original native S1 source")
     tile_npz_id = identity(args.native_tile / "operands.npz", tile["npz_sha256"])
     source = copy.deepcopy(tile["source"])
@@ -68,31 +89,55 @@ def capture(args, report):
     identity(source["observation_receipt"]["path"], OBSERVATION_SHA)
     verify_declared_sources(source)
     receipt = read_metadata(args, report, source["historical_source_receipt"]["path"], RECEIPT_SHA)
-    if (receipt["fixture_kind"] != "dataset" or not receipt["source_reference_unchanged"]
-            or receipt["source_run"]["output_file"]["sha256"] != ARCHIVE_SHA):
+    if (
+        receipt["fixture_kind"] != "dataset"
+        or not receipt["source_reference_unchanged"]
+        or receipt["source_run"]["output_file"]["sha256"] != ARCHIVE_SHA
+    ):
         raise ValueError("Archive must be the original policy source, not W8A8 candidate output")
     observation = source["observation"]
-    if (observation["split"] != "train" or observation["episode_index"] != 0 or observation["frame_index"] != 0
-            or observation["noise_seed"] != 0 or observation["dataset_revision"] != "3d6d687a25cdf1565cdf24550814f72d999a861d"):
+    if (
+        observation["split"] != "train"
+        or observation["episode_index"] != 0
+        or observation["frame_index"] != 0
+        or observation["noise_seed"] != 0
+        or observation["dataset_revision"] != "3d6d687a25cdf1565cdf24550814f72d999a861d"
+    ):
         raise ValueError("Expected retained TRAIN episode 0/frame 0/noise 0")
     with np.load(source["historical_original_archive"]["path"], allow_pickle=False) as archive:
         embeddings_np = archive["prefix_embeddings"].copy()
         masks_np = archive["prefix_pad_mask"].copy()
         attention_np = archive["prefix_attention_mask"].copy()
         expected_k = archive["prefix_key_cache"][0].copy()
-    for name, value in (("prefix_embeddings", embeddings_np), ("prefix_pad_mask", masks_np), ("prefix_attention_mask",
-        attention_np)):
+    for name, value in (
+        ("prefix_embeddings", embeddings_np),
+        ("prefix_pad_mask", masks_np),
+        ("prefix_attention_mask", attention_np),
+    ):
         if array_identity(value)["sha256"] != receipt["source_run"]["captures"][name]["sha256"]:
             raise ValueError("Original prefix identity differs: " + name)
-    if (embeddings_np.shape != (1, 177, 960) or embeddings_np.dtype != np.float32
-            or masks_np.shape != (1, 177) or masks_np.dtype != np.bool_ or int(masks_np.sum()) != 141
-            or attention_np.shape != (1, 177) or expected_k.shape != (1, 177, 5, 64) or expected_k.dtype != np.uint16):
+    if (
+        embeddings_np.shape != (1, 177, 960)
+        or embeddings_np.dtype != np.float32
+        or masks_np.shape != (1, 177)
+        or masks_np.dtype != np.bool_
+        or int(masks_np.sum()) != 141
+        or attention_np.shape != (1, 177)
+        or expected_k.shape != (1, 177, 5, 64)
+        or expected_k.dtype != np.uint16
+    ):
         raise ValueError("Original native prefix/cache geometry differs")
     config_data = read_metadata(args, report, source["backbone_config"]["path"], source["backbone_config"]["sha256"])[
-        "text_config"]
+        "text_config"
+    ]
     config = modeling_llama.LlamaConfig(**config_data)
-    if (config.hidden_size != 960 or config.num_attention_heads != 15 or config.head_dim != 64
-            or config.num_key_value_heads != 5 or config.rms_norm_eps != 1e-5):
+    if (
+        config.hidden_size != 960
+        or config.num_attention_heads != 15
+        or config.head_dim != 64
+        or config.num_key_value_heads != 5
+        or config.rms_norm_eps != 1e-5
+    ):
         raise ValueError("Unexpected native query width or backbone geometry")
     config._attn_implementation = "eager"
     torch.set_num_threads(1)
@@ -116,8 +161,11 @@ def capture(args, report):
     embeddings = torch.from_numpy(embeddings_np.copy())
     masks = torch.from_numpy(masks_np.copy())
     attention = torch.from_numpy(attention_np.copy())
-    input_before = {"embeddings": array_identity(embeddings_np), "mask": array_identity(masks_np), "attention": array_identity(
-        attention_np)}
+    input_before = {
+        "embeddings": array_identity(embeddings_np),
+        "mask": array_identity(masks_np),
+        "attention": array_identity(attention_np),
+    }
     positions = torch.cumsum(masks, dim=1) - 1
     captured = []
 
@@ -125,8 +173,12 @@ def capture(args, report):
         pass
 
     def stop_query(_, inputs, output):
-        if (tuple(inputs[0].shape) != (1, 177, 960) or tuple(output.shape) != (1, 177, 960)
-                or inputs[0].dtype != torch.bfloat16 or output.dtype != torch.bfloat16):
+        if (
+            tuple(inputs[0].shape) != (1, 177, 960)
+            or tuple(output.shape) != (1, 177, 960)
+            or inputs[0].dtype != torch.bfloat16
+            or output.dtype != torch.bfloat16
+        ):
             raise ValueError("Native query boundary changed or included synthetic rows")
         captured.append((inputs[0].detach().clone(), output.detach().clone()))
         raise QueryCaptured()
@@ -138,7 +190,8 @@ def capture(args, report):
                 count = len(captured)
                 try:
                     smolvlm_with_expert.SmolVLMWithExpertModel.forward_attn_layer(
-                        None, [[layer], [None]], [embeddings, None], 0, positions, attention, 1, 64)
+                        None, [[layer], [None]], [embeddings, None], 0, positions, attention, 1, 64
+                    )
                 except QueryCaptured:
                     pass
                 else:
@@ -169,12 +222,19 @@ def capture(args, report):
     arrays.update({name: bf16_words_to_float(arrays[name + "_bf16"]) for name in ("A", "B", "native_C")})
     validate_padding(arrays, q_words, a_words)
     with np.load(args.native_tile / "operands.npz", allow_pickle=False) as archive:
-        for name, current in (("A_bf16", a_words[:32]), ("B_bf16", b_words[:, :32]), ("native_C_bf16", q_words[:32, :32])):
+        for name, current in (
+            ("A_bf16", a_words[:32]),
+            ("B_bf16", b_words[:, :32]),
+            ("native_C_bf16", q_words[:32, :32]),
+        ):
             if not np.array_equal(current, archive[name]):
                 raise AssertionError("Full query does not reproduce retained native S1 tile: " + name)
     controls = {}
-    for name, key, row in (("nonzero_synthetic_input", "A_bf16", 177), ("nonzero_synthetic_output", "native_C_bf16", 177),
-                           ("changed_native_query_row", "native_C_bf16", 176)):
+    for name, key, row in (
+        ("nonzero_synthetic_input", "A_bf16", 177),
+        ("nonzero_synthetic_output", "native_C_bf16", 177),
+        ("changed_native_query_row", "native_C_bf16", 176),
+    ):
         changed = {key: value.copy() for key, value in arrays.items()}
         changed[key][row, 0] ^= np.uint16(1)
         changed[key.removesuffix("_bf16")] = bf16_words_to_float(changed[key])
@@ -184,44 +244,83 @@ def capture(args, report):
             controls[name] = True
         else:
             raise AssertionError("Full-query padding control admitted: " + name)
-    if (input_before != {"embeddings": array_identity(embeddings.numpy()), "mask": array_identity(masks.numpy()),
-        "attention": array_identity(attention.numpy())}
-            or params_before != {key: array_identity(value.view(torch.uint16).numpy()) for key, value in weights.items()}):
+    if input_before != {
+        "embeddings": array_identity(embeddings.numpy()),
+        "mask": array_identity(masks.numpy()),
+        "attention": array_identity(attention.numpy()),
+    } or params_before != {key: array_identity(value.view(torch.uint16).numpy()) for key, value in weights.items()}:
         raise AssertionError("Native query capture changed caller input or parameters")
     verified = verify_declared_sources(source)
     np.savez(args.out / "operands.npz", **arrays)
-    np.savez(args.out / "native-query.npz", Q_bf16=q_words, Q_float32=bf16_words_to_float(q_words),
-             prefix_pad_mask=masks_np, prefix_attention_mask=attention_np, position_ids=positions.numpy())
+    np.savez(
+        args.out / "native-query.npz",
+        Q_bf16=q_words,
+        Q_float32=bf16_words_to_float(q_words),
+        prefix_pad_mask=masks_np,
+        prefix_attention_mask=attention_np,
+        position_ids=positions.numpy(),
+    )
     ideal = bf16_words_to_float(a_words).astype(np.float64) @ bf16_words_to_float(b_words).astype(np.float64)
-    report.update(status="native_selective_capture_passed", source_dtype="bfloat16", npz_sha256=digest(args.out / "operands.npz"),
+    report.update(
+        status="native_selective_capture_passed",
+        source_dtype="bfloat16",
+        npz_sha256=digest(args.out / "operands.npz"),
         source=source,
-                  site={"module": prefix + "self_attn.q_proj", "batch": 0, "positions": [0, 177], "output_channels": [0, 960],
-        "k_range": [0, 960],
-                        "native_execution_shape": [1, 177, 960], "full_k_reduction": True, "full_query_projection": True,
-                        "matrix_shape": [192, 960, 960], "native_rows": 177, "valid_rows": 177, "attention_valid_positions": 141,
-                        "original_masked_positions": 36, "padding": {"kind": "exported_matrix_zero_rows_only", "rows": [177, 192],
-                        "native_masks_or_positions_extended": False,
-        "downstream_strip": "target_C[:177,:] before any native RoPE/attention/policy use"}},
-                  capture={"route": "retained_original_prefix_then_native_LeRobot_RMSNorm_cast_query_hook_before_RoPE",
-                           "native_repeats_raw_exact": True, "native_query_replay_after_hook_removal_raw_exact": True,
-                           "retained_native_tile_raw_exact": True, "caller_inputs_preserved": True, "parameters_preserved": True,
-                           "declared_source_bookends_verified": verified, "layer_zero_key_cache_raw_exact": True,
-                           "layer_zero_key_cache_words": int(expected_k.size), "full_policy_executed": False,
-        "vision_prefix_recomputed": False},
-                  arrays={key: array_identity(value) for key, value in arrays.items()}, native_query=identity(
-        args.out / "native-query.npz"),
-                  native_query_words=array_identity(q_words), native_input_words=array_identity(a_words),
+        site={
+            "module": prefix + "self_attn.q_proj",
+            "batch": 0,
+            "positions": [0, 177],
+            "output_channels": [0, 960],
+            "k_range": [0, 960],
+            "native_execution_shape": [1, 177, 960],
+            "full_k_reduction": True,
+            "full_query_projection": True,
+            "matrix_shape": [192, 960, 960],
+            "native_rows": 177,
+            "valid_rows": 177,
+            "attention_valid_positions": 141,
+            "original_masked_positions": 36,
+            "padding": {
+                "kind": "exported_matrix_zero_rows_only",
+                "rows": [177, 192],
+                "native_masks_or_positions_extended": False,
+                "downstream_strip": "target_C[:177,:] before any native RoPE/attention/policy use",
+            },
+        },
+        capture={
+            "route": "retained_original_prefix_then_native_LeRobot_RMSNorm_cast_query_hook_before_RoPE",
+            "native_repeats_raw_exact": True,
+            "native_query_replay_after_hook_removal_raw_exact": True,
+            "retained_native_tile_raw_exact": True,
+            "caller_inputs_preserved": True,
+            "parameters_preserved": True,
+            "declared_source_bookends_verified": verified,
+            "layer_zero_key_cache_raw_exact": True,
+            "layer_zero_key_cache_words": int(expected_k.size),
+            "full_policy_executed": False,
+            "vision_prefix_recomputed": False,
+        },
+        arrays={key: array_identity(value) for key, value in arrays.items()},
+        native_query=identity(args.out / "native-query.npz"),
+        native_query_words=array_identity(q_words),
+        native_input_words=array_identity(a_words),
         negative_controls=controls,
-                  independent_dot={"kind": "FP64_from_original_BF16_operands_diagnostic", "native_reference_replaced": False,
-                                   "rounded_bf16_mismatches": int(np.count_nonzero(round_bf16_words(ideal) != q_words)),
-                                   "max_abs_native_vs_ideal": float(np.max(np.abs(ideal - bf16_words_to_float(q_words))))},
-                  claim_limits=tile["claim_limits"] + ["matrix_padding_is_not_native_policy_positions",
-        "no_full_source_closure_claim"])
+        independent_dot={
+            "kind": "FP64_from_original_BF16_operands_diagnostic",
+            "native_reference_replaced": False,
+            "rounded_bf16_mismatches": int(np.count_nonzero(round_bf16_words(ideal) != q_words)),
+            "max_abs_native_vs_ideal": float(np.max(np.abs(ideal - bf16_words_to_float(q_words)))),
+        },
+        claim_limits=tile["claim_limits"]
+        + ["matrix_padding_is_not_native_policy_positions", "no_full_source_closure_claim"],
+    )
 
 
 def main():
     from workload_cli import run_report
+
     from merlin.common.paths import artifacts_dir
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--native-tile", type=safe_path, required=True)
     parser.add_argument("--native-tile-manifest-sha256", required=True)
@@ -230,14 +329,29 @@ def main():
     args = parser.parse_args()
     if not args.out.is_relative_to(safe_path(artifacts_dir())) or args.out == safe_path(artifacts_dir()):
         parser.error("Output must be a fresh directory beneath the configured artifacts root")
-    report = {"schema_version": 1, "status": "failed", "scope": __doc__, "command": sys.argv, "cwd": str(Path.cwd()),
-              "python_executable": sys.executable, "source_script": identity(__file__), "cpu_threads": 1,
-              "environment": {key: os.environ.get(key) for key in ("PYTHONPATH", "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS",
-        "MKL_NUM_THREADS")}}
-    return run_report(args, capture,
-        filename='manifest.json', output=args.out, report=report,
+    report = {
+        "schema_version": 1,
+        "status": "failed",
+        "scope": __doc__,
+        "command": sys.argv,
+        "cwd": str(Path.cwd()),
+        "python_executable": sys.executable,
+        "source_script": identity(__file__),
+        "cpu_threads": 1,
+        "environment": {
+            key: os.environ.get(key)
+            for key in ("PYTHONPATH", "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
+        },
+    }
+    return run_report(
+        args,
+        capture,
+        filename="manifest.json",
+        output=args.out,
+        report=report,
         summary=lambda report: {"status": report["status"], "out": str(args.out), "error": report.get("error")},
-        memory_unit='bytes')
+        memory_unit="bytes",
+    )
 
 
 if __name__ == "__main__":

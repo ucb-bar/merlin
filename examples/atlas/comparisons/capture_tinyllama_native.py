@@ -5,7 +5,6 @@ native decoder is stopped by a query forward hook, before attention or later
 layers. This is an experiment input capture, not a model-quality evaluation.
 """
 
-from merlin.common.jsonio import write_pretty_json
 import argparse
 import importlib.util
 import inspect
@@ -18,17 +17,20 @@ import time
 import zipfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).absolute().parent))
-from source_relocation import physical_path as safe_path
-from atlas_provider_files import (
-    LEGACY_HELPER_MODULES, LEGACY_PRODUCER_FILES, LEGACY_PROVIDER_REQUIREMENT, LEGACY_VALIDATOR_FILE,
-)
+from merlin.common.jsonio import write_pretty_json
 
+sys.path.insert(0, str(Path(__file__).absolute().parent))
 import numpy as np
+from atlas_provider_files import (
+    LEGACY_HELPER_MODULES,
+    LEGACY_PRODUCER_FILES,
+    LEGACY_PROVIDER_REQUIREMENT,
+    LEGACY_VALIDATOR_FILE,
+)
+from source_relocation import physical_path as safe_path
 
 from merlin.common.digest import sha256_bytes, sha256_file
 from merlin.common.paths import artifacts_dir
-
 
 REVISION = "fe8a4ea1ffedaf415f4da2f062534de366a451e6"
 WEIGHT_SHA = "6e6001da2106d4757498752a021df6c2bdc332c650aae4bae6b0c004dcf14933"
@@ -44,10 +46,15 @@ def admit_archive_members(members):
     for member in members:
         name = member.filename
         parts = name.rstrip("/").split("/")
-        if (not name or getattr(member, "orig_filename", name) != name
-                or name in seen or name.startswith("/") or "\\" in name
-                or any(part in ("", ".", "..") or ":" in part for part in parts)
-                or stat.S_ISLNK(member.external_attr >> 16)):
+        if (
+            not name
+            or getattr(member, "orig_filename", name) != name
+            or name in seen
+            or name.startswith("/")
+            or "\\" in name
+            or any(part in ("", ".", "..") or ":" in part for part in parts)
+            or stat.S_ISLNK(member.external_attr >> 16)
+        ):
             raise ValueError("Unsafe or duplicate archive member metadata")
         seen.add(name)
 
@@ -79,6 +86,7 @@ def artifact_output(path):
 
 def load_provider_validator(producer_root, validator_sha256, receipt_path, receipt_sha256):
     """Bind the explicit producer tuple before importing its admission code."""
+
     def pinned(value):
         return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
 
@@ -88,9 +96,13 @@ def load_provider_validator(producer_root, validator_sha256, receipt_path, recei
     receipt_id = identity(receipt_path, receipt_sha256)
     receipt = json.loads(Path(receipt_id["path"]).read_text())
     code = receipt.get("code_before")
-    if (receipt.get("status") != "passed_model_only" or not isinstance(code, dict)
-            or set(code) != set(LEGACY_PRODUCER_FILES)
-            or code != receipt.get("code_after") or not all(pinned(sha) for sha in code.values())):
+    if (
+        receipt.get("status") != "passed_model_only"
+        or not isinstance(code, dict)
+        or set(code) != set(LEGACY_PRODUCER_FILES)
+        or code != receipt.get("code_after")
+        or not all(pinned(sha) for sha in code.values())
+    ):
         raise ValueError(LEGACY_PROVIDER_REQUIREMENT + "; require an unchanged complete producer source tuple")
     validator_id = identity(root / LEGACY_VALIDATOR_FILE, validator_sha256)
     bindings = [receipt_id, validator_id, *[identity(root / name, sha) for name, sha in code.items()]]
@@ -153,8 +165,7 @@ def verify_declared_sources(value):
 
 def array_identity(array):
     array = np.ascontiguousarray(array)
-    return {"shape": list(array.shape), "dtype": str(array.dtype),
-            "sha256": sha256_bytes(array.tobytes())}
+    return {"shape": list(array.shape), "dtype": str(array.dtype), "sha256": sha256_bytes(array.tobytes())}
 
 
 def bf16_words_to_float(words):
@@ -201,6 +212,7 @@ def capture(args):
     from safetensors import safe_open
     from transformers import AutoTokenizer, cache_utils
     from transformers.models.llama import modeling_llama
+
     from merlin.common.paths import artifacts_dir
 
     started = time.monotonic()
@@ -210,7 +222,8 @@ def capture(args):
     if transformers.__version__ != "5.4.0":
         raise ValueError("The frozen Transformers 5.4.0 implementation is required")
     source = {
-        "checkpoint_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0", "revision": REVISION,
+        "checkpoint_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "revision": REVISION,
         "weights": identity(args.checkpoint / "model.safetensors", WEIGHT_SHA),
         "corpus": identity(args.corpus, CORPUS_SHA),
         "modeling_llama": identity(modeling_llama.__file__, LLAMA_SHA),
@@ -218,23 +231,39 @@ def capture(args):
         "capture_script": identity(__file__),
         "native_linear": identity(inspect.getfile(torch.nn.Linear)),
         "torch_cpu_library": identity(Path(torch.__file__).parent / "lib/libtorch_cpu.so"),
-        "python": sys.version, "torch": torch.__version__, "transformers": transformers.__version__,
-        "source_policies": {"precision": "bfloat16", "quantized": False,
-                            "arithmetic_policy": "native", "rotary_policy": "native",
-                            "silu_export_policy": "native", "chat_template": False},
+        "python": sys.version,
+        "torch": torch.__version__,
+        "transformers": transformers.__version__,
+        "source_policies": {
+            "precision": "bfloat16",
+            "quantized": False,
+            "arithmetic_policy": "native",
+            "rotary_policy": "native",
+            "silu_export_policy": "native",
+            "chat_template": False,
+        },
     }
     checkpoint_files = ("config.json", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json")
     source["checkpoint_files"] = [identity(args.checkpoint / name) for name in checkpoint_files]
     config_json = json.loads((args.checkpoint / "config.json").read_text())
-    expected = {"hidden_size": 2048, "num_hidden_layers": 22, "num_attention_heads": 32,
-                "num_key_value_heads": 4, "vocab_size": 32000, "attention_bias": False,
-                "rms_norm_eps": 1e-5, "torch_dtype": "bfloat16"}
+    expected = {
+        "hidden_size": 2048,
+        "num_hidden_layers": 22,
+        "num_attention_heads": 32,
+        "num_key_value_heads": 4,
+        "vocab_size": 32000,
+        "attention_bias": False,
+        "rms_norm_eps": 1e-5,
+        "torch_dtype": "bfloat16",
+    }
     if any(config_json.get(key) != value for key, value in expected.items()):
         raise ValueError("Pinned checkpoint configuration differs")
-    tokenizer = AutoTokenizer.from_pretrained(str(args.checkpoint), local_files_only=True,
-                                             trust_remote_code=False, use_fast=True)
-    tokens = tokenizer(args.corpus.read_text(encoding="utf-8"), return_tensors="pt",
-                       add_special_tokens=True)["input_ids"][:, :160].contiguous()
+    tokenizer = AutoTokenizer.from_pretrained(
+        str(args.checkpoint), local_files_only=True, trust_remote_code=False, use_fast=True
+    )
+    tokens = tokenizer(args.corpus.read_text(encoding="utf-8"), return_tensors="pt", add_special_tokens=True)[
+        "input_ids"
+    ][:, :160].contiguous()
     if tokens.shape != (1, 160) or array_identity(tokens.numpy())["sha256"] != TOKEN_SHA:
         raise ValueError("Frozen raw-text development token identity differs")
     source["tokens"] = array_identity(tokens.numpy())
@@ -244,8 +273,11 @@ def capture(args):
     with torch.device("meta"):
         embedding = torch.nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
         layer = modeling_llama.LlamaDecoderLayer(config, 0)
-    tensor_keys = ("model.embed_tokens.weight", "model.layers.0.input_layernorm.weight",
-                   "model.layers.0.self_attn.q_proj.weight")
+    tensor_keys = (
+        "model.embed_tokens.weight",
+        "model.layers.0.input_layernorm.weight",
+        "model.layers.0.self_attn.q_proj.weight",
+    )
     with safe_open(str(args.checkpoint / "model.safetensors"), framework="pt", device="cpu") as handle:
         loaded = {name: handle.get_tensor(name) for name in tensor_keys}
     if any(value.dtype != torch.bfloat16 for value in loaded.values()):
@@ -313,8 +345,11 @@ def capture(args):
         "wrong_output_channels_detected": not torch.equal(c, torch.roll(c, shifts=1, dims=1)),
         "wrong_token_order_detected": array_identity(tokens.flip(1).numpy())["sha256"] != TOKEN_SHA,
     }
-    for key, change in (("raw_word_mismatch_refused", "word"), ("wrong_shape_refused", "shape"),
-                        ("nonfinite_refused", "nonfinite")):
+    for key, change in (
+        ("raw_word_mismatch_refused", "word"),
+        ("wrong_shape_refused", "shape"),
+        ("nonfinite_refused", "nonfinite"),
+    ):
         altered = dict(arrays)
         if change == "word":
             altered["A_bf16"] = arrays["A_bf16"].copy()
@@ -338,35 +373,67 @@ def capture(args):
     out.mkdir(parents=True, exist_ok=False)
     np.savez(out / "operands.npz", **arrays)
     report = {
-        "schema_version": 1, "status": "native_selective_capture_passed",
-        "npz_sha256": digest(out / "operands.npz"), "source_dtype": "bfloat16", "source": source,
-        "site": {"module": "model.layers.0.self_attn.q_proj", "batch": 0,
-                 "positions": [0, rows], "output_channels": [0, columns], "k_range": [0, 2048],
-                 "native_execution_shape": [1, 128, 2048], "full_k_reduction": True},
-        "capture": {"route": "pinned_native_Embedding_then_LlamaDecoderLayer_stopped_after_q_proj",
-                    "materialized_parameter_keys": list(tensor_keys), "parameters": parameter_before,
-                    "native_repeats_raw_exact": True, "caller_inputs_preserved": True,
-                    "native_query_input_raw_bf16": first["input"],
-                    "native_query_output_raw_bf16": first["output"],
-                    "full_query_captured": full_query,
-                    "parameters_preserved": True, "source_artifacts_preserved": True,
-                    "declared_source_bookends_verified": verified_sources,
-                    "full_model_executed": False, "full_session_executed": False},
+        "schema_version": 1,
+        "status": "native_selective_capture_passed",
+        "npz_sha256": digest(out / "operands.npz"),
+        "source_dtype": "bfloat16",
+        "source": source,
+        "site": {
+            "module": "model.layers.0.self_attn.q_proj",
+            "batch": 0,
+            "positions": [0, rows],
+            "output_channels": [0, columns],
+            "k_range": [0, 2048],
+            "native_execution_shape": [1, 128, 2048],
+            "full_k_reduction": True,
+        },
+        "capture": {
+            "route": "pinned_native_Embedding_then_LlamaDecoderLayer_stopped_after_q_proj",
+            "materialized_parameter_keys": list(tensor_keys),
+            "parameters": parameter_before,
+            "native_repeats_raw_exact": True,
+            "caller_inputs_preserved": True,
+            "native_query_input_raw_bf16": first["input"],
+            "native_query_output_raw_bf16": first["output"],
+            "full_query_captured": full_query,
+            "parameters_preserved": True,
+            "source_artifacts_preserved": True,
+            "declared_source_bookends_verified": verified_sources,
+            "full_model_executed": False,
+            "full_session_executed": False,
+        },
         "arrays": {key: array_identity(value) for key, value in arrays.items()},
-        "independent_dot": {"kind": "numpy_FP64_from_original_BF16_operands_diagnostic",
-                            "rounded_bf16_mismatches": mismatches,
-                            "max_abs_native_vs_ideal": float(native_error.max()),
-                            "native_reference_replaced": False},
-        "negative_controls": controls, "wall_seconds": time.monotonic() - started,
-        "peak_rss_bytes": check_memory(), "cpu_threads": 1,
-        "claim_limits": ["selective_native_projection_capture", "no_target_execution",
-                         "no_full_model_or_language_quality_claim"],
+        "independent_dot": {
+            "kind": "numpy_FP64_from_original_BF16_operands_diagnostic",
+            "rounded_bf16_mismatches": mismatches,
+            "max_abs_native_vs_ideal": float(native_error.max()),
+            "native_reference_replaced": False,
+        },
+        "negative_controls": controls,
+        "wall_seconds": time.monotonic() - started,
+        "peak_rss_bytes": check_memory(),
+        "cpu_threads": 1,
+        "claim_limits": [
+            "selective_native_projection_capture",
+            "no_target_execution",
+            "no_full_model_or_language_quality_claim",
+        ],
     }
     write_pretty_json(out / "manifest.json", report, sort_keys=False)
-    print(json.dumps({"status": report["status"], "out": str(out),
-                      "npz_sha256": report["npz_sha256"], "independent_dot": report["independent_dot"],
-                      "negative_controls": controls, "wall_seconds": report["wall_seconds"],
-                      "peak_rss_bytes": report["peak_rss_bytes"]}, indent=2))
+    print(
+        json.dumps(
+            {
+                "status": report["status"],
+                "out": str(out),
+                "npz_sha256": report["npz_sha256"],
+                "independent_dot": report["independent_dot"],
+                "negative_controls": controls,
+                "wall_seconds": report["wall_seconds"],
+                "peak_rss_bytes": report["peak_rss_bytes"],
+            },
+            indent=2,
+        )
+    )
 
 
 def main():
@@ -374,8 +441,11 @@ def main():
     parser.add_argument("--checkpoint", type=safe_path, required=True)
     parser.add_argument("--corpus", type=safe_path, required=True)
     parser.add_argument("--out", type=artifact_output)
-    parser.add_argument("--full-query", action="store_true",
-                        help="Capture all 128 prefill positions and 2048 query outputs; default is a 32x32 tile")
+    parser.add_argument(
+        "--full-query",
+        action="store_true",
+        help="Capture all 128 prefill positions and 2048 query outputs; default is a 32x32 tile",
+    )
     args = parser.parse_args()
     capture(args)
 

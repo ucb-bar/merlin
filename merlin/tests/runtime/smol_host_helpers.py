@@ -1,4 +1,5 @@
 """Compile the portable Smol host primitives and expose their array ABI."""
+
 import ctypes
 import subprocess
 

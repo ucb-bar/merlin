@@ -28,8 +28,7 @@ PRODUCER_FILES = (
     "atlas_tile_arithmetic.py",
     "atlas_vector_arithmetic.py",
 )
-PACKING_FILES = (PACKING_FILE, *PRODUCER_FILES,
-                 "atlas_path_guard.py", "atlas_tooling.py", "atlas_host_layout.py")
+PACKING_FILES = (PACKING_FILE, *PRODUCER_FILES, "atlas_path_guard.py", "atlas_tooling.py", "atlas_host_layout.py")
 LAYOUT_HEADER = "atlas_host_layout.h"
 RUNTIME_COMMON = ("atlas_host.c", "atlas_host.h", "atlas_resnet_graph_math.c")
 RUNTIME_FILES = {
@@ -47,8 +46,12 @@ def provider_path(tools, name):
     if path.exists():
         return path
     library = tools.parent / KERNEL_LIBRARY
-    matches = [candidate for pattern in ("lib/" + name, "lib/*/" + name, "kernels/*/" + name)
-               for candidate in sorted(library.glob(pattern)) if candidate.is_file()]
+    matches = [
+        candidate
+        for pattern in ("lib/" + name, "lib/*/" + name, "kernels/*/" + name)
+        for candidate in sorted(library.glob(pattern))
+        if candidate.is_file()
+    ]
     if len(matches) != 1:
         raise ValueError("Provider helper is neither in tools/ nor uniquely in atlas-kernels: " + name)
     return matches[0]

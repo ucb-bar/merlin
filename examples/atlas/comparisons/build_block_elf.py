@@ -5,27 +5,26 @@ hashes. Host C comes from this checkout; device ABI and programs come from the
 explicit companion provider. No device model, RTL, QEMU or workload is executed.
 """
 
-from merlin.common.digest import sha256_bytes
-from merlin.common.jsonio import write_pretty_json
-
 import argparse
 import ctypes
 import hashlib
 import json
 import os
 import re
-from pathlib import Path
 import shutil
 import struct
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
-
-from capture_tinyllama_native import identity, safe_path, artifact_output, admit_archive_members
-from workload_replay_admission import admit_executable
 from atlas_provider_files import LAYOUT_HEADER, RUNTIME_FILES
+from capture_tinyllama_native import admit_archive_members, artifact_output, identity, safe_path
+from workload_replay_admission import admit_executable
+
+from merlin.common.digest import sha256_bytes
+from merlin.common.jsonio import write_pretty_json
 
 SOURCE = Path(__file__).absolute().parent
 RUNTIME = SOURCE / "block_runtime"

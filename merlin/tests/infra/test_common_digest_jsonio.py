@@ -111,7 +111,9 @@ def test_writers(tmp_path):
     write_pretty_json(tmp_path / "made" / "e.json", {}, mkdir=True)
 
 
-@pytest.mark.parametrize("options", [dict(indent=None, sort_keys=False), dict(indent=2, sort_keys=True, allow_nan=False)])
+@pytest.mark.parametrize(
+    "options", [dict(indent=None, sort_keys=False), dict(indent=2, sort_keys=True, allow_nan=False)]
+)
 def test_pretty_writer_preserves_explicit_wire_options(tmp_path, options):
     value = {"z": [1, "é", None], "a": 2}
     path = tmp_path / "wire.json"

@@ -1,8 +1,9 @@
 """Focused full Tiny greedy feedback and physical operand controls."""
-import unittest
-from pathlib import Path
+
 import sys
 import tempfile
+import unittest
+from pathlib import Path
 from unittest import mock
 
 from merlin.common.paths import repo_root
@@ -10,22 +11,22 @@ from merlin.common.paths import repo_root
 sys.path.insert(0, str(repo_root() / "examples/atlas/comparisons"))
 
 import numpy as np
-
-from capture_tinyllama_full import SITES, greedy_token, padded_words
 from capture_atlas_attention import AttentionCapture
+from capture_tinyllama_full import SITES, greedy_token, padded_words
 
 
 class FullCaptureTest(unittest.TestCase):
     def test_attention_worker_receives_explicit_model_checkout(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            script = root / 'worker.py'
-            script.write_text('# worker fixture\n')
-            with mock.patch('capture_atlas_attention.subprocess.Popen') as launch:
-                AttentionCapture(root, '/python', script, None, None, [], model_root=root / 'model')
-            self.assertEqual(launch.call_args.args[0],
-                             ['/python', '-B', str(script), '--model-root', str(root / 'model')])
-            self.assertNotIn('PYTHONPATH', launch.call_args.kwargs['env'])
+            script = root / "worker.py"
+            script.write_text("# worker fixture\n")
+            with mock.patch("capture_atlas_attention.subprocess.Popen") as launch:
+                AttentionCapture(root, "/python", script, None, None, [], model_root=root / "model")
+            self.assertEqual(
+                launch.call_args.args[0], ["/python", "-B", str(script), "--model-root", str(root / "model")]
+            )
+            self.assertNotIn("PYTHONPATH", launch.call_args.kwargs["env"])
 
     def test_all_layers_and_head_in_original_order(self):
         self.assertEqual(len(SITES), 155)
@@ -42,13 +43,17 @@ class FullCaptureTest(unittest.TestCase):
         self.assertEqual(greedy_token(values), 0)
 
     def test_logits_admission(self):
-        for value in (np.zeros(31999, np.float32), np.zeros(32000, np.float64),
-                      np.full(32000, np.inf, np.float32), np.full(32000, np.nan, np.float32)):
+        for value in (
+            np.zeros(31999, np.float32),
+            np.zeros(32000, np.float64),
+            np.full(32000, np.inf, np.float32),
+            np.full(32000, np.nan, np.float32),
+        ):
             with self.subTest(shape=value.shape, dtype=value.dtype), self.assertRaises(ValueError):
                 greedy_token(value)
 
     def test_decode_padding_is_positive_zero_and_preserves_words(self):
-        words = np.array([[0x8000, 0x3f80, 0xbf80]], np.uint16)
+        words = np.array([[0x8000, 0x3F80, 0xBF80]], np.uint16)
         physical = padded_words(words, 1)
         self.assertEqual(physical.shape, (32, 3))
         self.assertEqual(physical[0].tobytes(), words[0].tobytes())
@@ -56,9 +61,11 @@ class FullCaptureTest(unittest.TestCase):
         self.assertEqual(padded_words(np.ones((128, 32), np.uint16), 128).shape, (128, 32))
 
     def test_bad_physical_geometry_rejected(self):
-        for words, rows in ((np.zeros((2, 32), np.uint16), 2),
-                            (np.zeros((1, 32), np.float32), 1),
-                            (np.zeros((128, 32), np.uint16), 1)):
+        for words, rows in (
+            (np.zeros((2, 32), np.uint16), 2),
+            (np.zeros((1, 32), np.float32), 1),
+            (np.zeros((128, 32), np.uint16), 1),
+        ):
             with self.subTest(rows=rows), self.assertRaises(ValueError):
                 padded_words(words, rows)
 

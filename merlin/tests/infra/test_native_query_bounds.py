@@ -7,7 +7,6 @@ import numpy as np
 
 from merlin.common.paths import repo_root
 
-
 path = repo_root() / "examples/atlas/comparisons/capture_tinyllama_native.py"
 spec = importlib.util.spec_from_file_location("native_query_bounds", path)
 capture = importlib.util.module_from_spec(spec)
@@ -17,8 +16,7 @@ spec.loader.exec_module(capture)
 def arrays_for(full_query):
     rows, columns = capture.projection_bounds(full_query)
     result = {}
-    for name, shape in {"A": (rows, 2048), "B": (2048, columns),
-                        "native_C": (rows, columns)}.items():
+    for name, shape in {"A": (rows, 2048), "B": (2048, columns), "native_C": (rows, columns)}.items():
         result[name] = np.ones(shape, dtype=np.float32)
         result[name + "_bf16"] = np.full(shape, 0x3F80, dtype=np.uint16)
     return result

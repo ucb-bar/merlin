@@ -4,25 +4,26 @@ Mapping is pure: only absolute path strings and absolute dictionary keys change.
 A digest authenticates the original bytes, before constructing a relocated view.
 """
 
-from merlin.common.digest import sha256_bytes
 import hashlib
 import json
 import os
-from pathlib import Path
 import stat
+from pathlib import Path
+
+from merlin.common.digest import sha256_bytes
 
 
 def absolute_path(value):
     path = Path(value)
-    if not path.is_absolute() or '..' in path.parts:
-        raise ValueError('require an absolute path without parent components')
+    if not path.is_absolute() or ".." in path.parts:
+        raise ValueError("require an absolute path without parent components")
     return path
 
 
 def physical_path(value):
     original = Path(value)
-    if '..' in original.parts:
-        raise ValueError('parent path component')
+    if ".." in original.parts:
+        raise ValueError("parent path component")
     path = absolute_path(original.absolute())
     current = Path(path.anchor)
     for component in path.parts[1:]:
@@ -32,7 +33,7 @@ def physical_path(value):
         except FileNotFoundError:
             break
         if stat.S_ISLNK(mode):
-            raise ValueError('source metadata requires physical paths without symlinks')
+            raise ValueError("source metadata requires physical paths without symlinks")
     return path
 
 
@@ -43,11 +44,11 @@ class SourceRelocation:
         self.raw_metadata = []
         seen = set()
         for rule in rules:
-            if not isinstance(rule, str) or '=' not in rule:
-                raise ValueError('relocation must be old_absolute_prefix=new_absolute_prefix')
-            old, new = (absolute_path(part) for part in rule.split('=', 1))
+            if not isinstance(rule, str) or "=" not in rule:
+                raise ValueError("relocation must be old_absolute_prefix=new_absolute_prefix")
+            old, new = (absolute_path(part) for part in rule.split("=", 1))
             if old in seen:
-                raise ValueError('duplicate relocation prefix')
+                raise ValueError("duplicate relocation prefix")
             seen.add(old)
             self.rules.append((old, new))
         self.rules.sort(key=lambda pair: (-len(pair[0].parts), str(pair[0])))
@@ -66,15 +67,15 @@ class SourceRelocation:
     def apply(self, value):
         """Copy a JSON value, rewriting paths and checking dictionary collisions."""
         if isinstance(value, str):
-            return self.path(value) if value.startswith('/') else value
+            return self.path(value) if value.startswith("/") else value
         if isinstance(value, list):
             return [self.apply(item) for item in value]
         if isinstance(value, dict):
             result = {}
             for key, item in value.items():
-                mapped_key = self.path(key) if isinstance(key, str) and key.startswith('/') else key
+                mapped_key = self.path(key) if isinstance(key, str) and key.startswith("/") else key
                 if mapped_key in result:
-                    raise ValueError('relocated dictionary keys collide')
+                    raise ValueError("relocated dictionary keys collide")
                 result[mapped_key] = self.apply(item)
             return result
         return value
@@ -85,31 +86,36 @@ class SourceRelocation:
         The file argument is already an observed path. It is not mapped again;
         this avoids chained substitution of a path from an earlier mapped view.
         """
-        if (not isinstance(expected_sha256, str) or len(expected_sha256) != 64
-                or any(char not in '0123456789abcdef' for char in expected_sha256)):
-            raise ValueError('explicit metadata SHA256 required')
+        if (
+            not isinstance(expected_sha256, str)
+            or len(expected_sha256) != 64
+            or any(char not in "0123456789abcdef" for char in expected_sha256)
+        ):
+            raise ValueError("explicit metadata SHA256 required")
         path = physical_path(path)
         raw = path.read_bytes()
         digest = sha256_bytes(raw)
         if digest != expected_sha256:
-            raise ValueError('original metadata digest differs: ' + str(path))
+            raise ValueError("original metadata digest differs: " + str(path))
         record = dict(path=str(path), sha256=digest, bytes=len(raw))
         result = self.apply(json.loads(raw))
         self.raw_metadata.append(record)
         return result, record
 
     def report(self):
-        return dict(policy='original metadata bytes pinned; only path values/absolute keys relocated',
-                    rules=[dict(original_prefix=str(old), observed_prefix=str(new)) for old, new in self.rules],
-                    raw_metadata=list(self.raw_metadata),
-                    substitutions=[dict(original=old, observed=new) for old, new in sorted(self._changes)])
+        return dict(
+            policy="original metadata bytes pinned; only path values/absolute keys relocated",
+            rules=[dict(original_prefix=str(old), observed_prefix=str(new)) for old, new in self.rules],
+            raw_metadata=list(self.raw_metadata),
+            substitutions=[dict(original=old, observed=new) for old, new in sorted(self._changes)],
+        )
 
 
 def argument_relocator(args):
     """Share one lexical mapping context across a CLI's metadata reads."""
-    relocation = getattr(args, '_source_relocation', None)
+    relocation = getattr(args, "_source_relocation", None)
     if relocation is None:
-        relocation = SourceRelocation(getattr(args, 'relocate', ()))
+        relocation = SourceRelocation(getattr(args, "relocate", ()))
         args._source_relocation = relocation
     return relocation
 
@@ -118,5 +124,5 @@ def read_metadata(args, report, path, digest):
     """Read original pinned bytes, expose a relocated view, retain raw identity."""
     relocation = argument_relocator(args)
     document, _ = relocation.read_json(path, digest)
-    report['source_relocation'] = relocation.report()
+    report["source_relocation"] = relocation.report()
     return document

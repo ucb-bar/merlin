@@ -1,7 +1,5 @@
 """Independent conversion and source-binding controls for the graph exporters."""
 
-from merlin.common.digest import sha256_bytes
-
 import importlib.util
 import sys
 import tempfile
@@ -11,8 +9,9 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
-from merlin.common.paths import repo_root
 
+from merlin.common.digest import sha256_bytes
+from merlin.common.paths import repo_root
 
 ROOT = repo_root() / "examples/atlas/comparisons/refresh"
 with patch.object(sys, "path", [str(ROOT), *sys.path]):
@@ -85,7 +84,7 @@ def test_initial_bookend_preserves_admitted_digest(tmp_path):
 
 @pytest.mark.parametrize("cached", provider.PACKING_FILES[1:])
 def test_cached_target_from_another_checkout_refused_before_import(tmp_path, cached):
-    from atlas_provider_files import PACKING_FILES, LAYOUT_HEADER
+    from atlas_provider_files import LAYOUT_HEADER, PACKING_FILES
 
     for name in PACKING_FILES:
         (tmp_path / name).write_text("raise AssertionError('must not import')\n")
@@ -136,8 +135,9 @@ def test_packing_binds_transitive_imports_and_layout_header(tmp_path, mutate_lay
     entry = tools / "compile_workload_inputs.py"
     entry.write_text(source)
     args = SimpleNamespace(atlas_tools=tools, packing_provider_sha256=sha256_bytes(entry.read_bytes()))
-    clean = {key: value for key, value in sys.modules.items() if key not in
-             {name[:-3] for name in provider.PACKING_FILES}}
+    clean = {
+        key: value for key, value in sys.modules.items() if key not in {name[:-3] for name in provider.PACKING_FILES}
+    }
     with patch.dict(sys.modules, clean, clear=True), patch.object(sys, "path", list(sys.path)):
         if mutate_layout:
             with pytest.raises(ValueError, match="changed during import"):
@@ -145,5 +145,6 @@ def test_packing_binds_transitive_imports_and_layout_header(tmp_path, mutate_lay
         else:
             _, _, identities = provider.load_packing(args)
             assert {Path(item["path"]) for item in identities} == {
-                *(tools / name for name in provider.PACKING_FILES), layout,
+                *(tools / name for name in provider.PACKING_FILES),
+                layout,
             }

@@ -1,8 +1,9 @@
 """Explicit target-provider adapter; no task-quality workflow."""
 
 from functools import lru_cache
-from resnet_native import safe_path, file_identity
+
 from atlas_provider_files import PACKING_FILE, PACKING_FILES, packing_paths, provider_path
+from resnet_native import file_identity, safe_path
 
 
 class Provider:
@@ -61,9 +62,8 @@ def read_source(args, torch, torchvision, np):
     from merlin.common.paths import repo_root
 
     sys.path.insert(0, str(repo_root() / "examples/atlas/comparisons"))
-    from source_relocation import SourceRelocation
     from capture_tinyllama_native import verify_declared_sources
-
+    from source_relocation import SourceRelocation
 
     relocation = SourceRelocation(args.relocate)
     document, original = relocation.read_json(args.source_manifest, args.source_manifest_sha256)
@@ -111,9 +111,7 @@ def load_packing(args):
     for name in names[1:]:
         if name in sys.modules and safe_path(sys.modules[name].__file__) != safe_path(before[name]["path"]):
             raise ValueError("Target helper cached from a different provider: " + name)
-    module, own = load_provider(
-        "full_export_packing", args.atlas_tools / PACKING_FILE, args.packing_provider_sha256
-    )
+    module, own = load_provider("full_export_packing", args.atlas_tools / PACKING_FILE, args.packing_provider_sha256)
     for name in names[1:]:
         if name not in sys.modules or safe_path(sys.modules[name].__file__) != safe_path(before[name]["path"]):
             raise ValueError("Actual imported target helper differs: " + name)
@@ -202,8 +200,10 @@ def source_bookend(args, records, source):
             "export_full_reference.py",
         )
     )
-    paths.extend(root.parent / name for name in ("source_relocation.py", "capture_tinyllama_native.py",
-                                                "atlas_provider_files.py"))
+    paths.extend(
+        root.parent / name
+        for name in ("source_relocation.py", "capture_tinyllama_native.py", "atlas_provider_files.py")
+    )
     paths.extend(source[key]["path"] for key in ("checkpoint", "input_stream"))
     paths.extend(
         record["path"]

@@ -1,20 +1,18 @@
 """Synthetic controls for standalone native ResNet admission; no model execution."""
 
-from merlin.common.digest import sha256_bytes
-
 import builtins
 import importlib.util
-from pathlib import Path
 import stat
 import tempfile
-from types import SimpleNamespace
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
 
+from merlin.common.digest import sha256_bytes
 from merlin.common.paths import repo_root
-
 
 REFRESH = repo_root() / "examples/atlas/comparisons/refresh"
 
@@ -57,9 +55,13 @@ def fake_torch(state, mutation=None):
             mutation(Path(stream.name))
         return state
 
-    return SimpleNamespace(Tensor=Tensor, strided="strided", load=read,
-                           isfinite=lambda value: np.isfinite(value.value),
-                           equal=lambda left, right: np.array_equal(left.value, right.value))
+    return SimpleNamespace(
+        Tensor=Tensor,
+        strided="strided",
+        load=read,
+        isfinite=lambda value: np.isfinite(value.value),
+        equal=lambda left, right: np.array_equal(left.value, right.value),
+    )
 
 
 class ResnetNativeAdmissionTest(unittest.TestCase):
@@ -81,8 +83,10 @@ class ResnetNativeAdmissionTest(unittest.TestCase):
             for value in ("/not-opened/../x",):
                 with self.subTest(value=value), self.assertRaises(ValueError):
                     native.safe_path(value)
-        with patch.object(native.os, "lstat", return_value=SimpleNamespace(st_mode=stat.S_IFLNK)), \
-                patch.object(native.os, "readlink", side_effect=AssertionError("link target access")):
+        with (
+            patch.object(native.os, "lstat", return_value=SimpleNamespace(st_mode=stat.S_IFLNK)),
+            patch.object(native.os, "readlink", side_effect=AssertionError("link target access")),
+        ):
             with self.assertRaises(ValueError):
                 native.safe_path("/not-opened/link/x")
 
@@ -102,8 +106,13 @@ class ResnetNativeAdmissionTest(unittest.TestCase):
         good = np.zeros((1, 3, 224, 224), dtype=np.float32)
         nonfinite = good.copy()
         nonfinite.flat[0] = np.nan
-        cases = ({"other": good}, {"images": good.astype(np.float64)},
-                 {"images": good[:, :, :-1]}, {"images": good[:0]}, {"images": nonfinite})
+        cases = (
+            {"other": good},
+            {"images": good.astype(np.float64)},
+            {"images": good[:, :, :-1]},
+            {"images": good[:0]},
+            {"images": nonfinite},
+        )
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "images.npz"
             for values in cases:
@@ -123,11 +132,16 @@ class ResnetNativeAdmissionTest(unittest.TestCase):
             np.testing.assert_array_equal(model.state["weight"].value, state["weight"].value)
 
     def test_checkpoint_rejects_keys_nontensor_layout_shape_dtype_and_nonfinite(self):
-        cases = ([], {}, {"other": Tensor(np.zeros(2, dtype=np.float32))},
-                 {"weight": object()}, {"weight": Tensor(np.zeros(2, dtype=np.float32), "sparse")},
-                 {"weight": Tensor(np.zeros(3, dtype=np.float32))},
-                 {"weight": Tensor(np.zeros(2, dtype=np.float64))},
-                 {"weight": Tensor(np.array([np.inf, 0], dtype=np.float32))})
+        cases = (
+            [],
+            {},
+            {"other": Tensor(np.zeros(2, dtype=np.float32))},
+            {"weight": object()},
+            {"weight": Tensor(np.zeros(2, dtype=np.float32), "sparse")},
+            {"weight": Tensor(np.zeros(3, dtype=np.float32))},
+            {"weight": Tensor(np.zeros(2, dtype=np.float64))},
+            {"weight": Tensor(np.array([np.inf, 0], dtype=np.float32))},
+        )
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "checkpoint.bin"
             path.write_bytes(b"synthetic checkpoint")
@@ -162,7 +176,9 @@ class ResnetNativeAdmissionTest(unittest.TestCase):
     def test_wrong_historical_verifier_is_refused_before_import(self):
         with patch.object(capture, "load_module") as imported:
             with self.assertRaisesRegex(ValueError, "historical verifier"):
-                capture.load_native_admission({"verifier_source": {"path": "/not-opened/old.py", "sha256": "0" * 64}}, [], {})
+                capture.load_native_admission(
+                    {"verifier_source": {"path": "/not-opened/old.py", "sha256": "0" * 64}}, [], {}
+                )
         imported.assert_not_called()
 
     def test_current_helper_mutation_during_import_is_refused(self):
@@ -176,8 +192,10 @@ class ResnetNativeAdmissionTest(unittest.TestCase):
                 path.write_text("VALUE = 2\n")
                 return SimpleNamespace()
 
-            with patch.object(capture, "__file__", str(Path(directory) / "capture_resnet.py")), \
-                    patch.object(capture, "load_module", side_effect=mutate):
+            with (
+                patch.object(capture, "__file__", str(Path(directory) / "capture_resnet.py")),
+                patch.object(capture, "load_module", side_effect=mutate),
+            ):
                 with self.assertRaisesRegex(ValueError, "Source binding changed"):
                     capture.load_native_admission({"verifier_source": historical}, records, report)
         self.assertEqual(records, [])

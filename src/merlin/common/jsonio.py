@@ -70,8 +70,13 @@ def write_canonical_json(path: str | Path, value: Any) -> None:
 
 
 def write_pretty_json(
-    path: str | Path, value: Any, *, mkdir: bool = False,
-    sort_keys: bool = True, allow_nan: bool = True, indent: int | None = 2,
+    path: str | Path,
+    value: Any,
+    *,
+    mkdir: bool = False,
+    sort_keys: bool = True,
+    allow_nan: bool = True,
+    indent: int | None = 2,
 ) -> None:
     """Write newline-terminated JSON, preserving explicit caller formatting and strictness."""
     path = Path(path)

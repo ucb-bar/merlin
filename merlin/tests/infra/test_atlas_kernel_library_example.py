@@ -103,10 +103,17 @@ VPU = ["vector_unit", "exp", "reciprocal", "sqrt", "tanh"]
         ({"op": "rmsnorm", "dtype": "bf16", "shape": {"rows": 128, "cols": 2048}}, "kernels/rmsnorm"),
         ({"op": "rmsnorm", "dtype": "bf16", "shape": {"rows": 128, "cols": 960}}, None),
         (
-            {"op": "attention_gqa_causal", "dtype": "bf16", "shape": {"Sq": 128, "Sk": 128, "D": 64, "QH": 32, "KVH": 4}},
+            {
+                "op": "attention_gqa_causal",
+                "dtype": "bf16",
+                "shape": {"Sq": 128, "Sk": 128, "D": 64, "QH": 32, "KVH": 4},
+            },
             "kernels/attention",
         ),
-        ({"op": "attention_gqa", "dtype": "bf16", "shape": {"Sq": 1024, "Sk": 4096, "D": 64, "QH": 12, "KVH": 12}}, None),
+        (
+            {"op": "attention_gqa", "dtype": "bf16", "shape": {"Sq": 1024, "Sk": 4096, "D": 64, "QH": 12, "KVH": 12}},
+            None,
+        ),
         (
             {"op": "matmul_bias_gelu_tanh", "dtype": "fp8_e4m3", "shape": {"M": 128, "K": 768, "N": 3072}},
             "kernels/smol_fusion",
@@ -349,18 +356,39 @@ def test_local_checkout_rejects_missing_pinned_commit(tmp_path, monkeypatch):
 @pytest.fixture
 def atlas_mlir_checkout(tmp_path):
     """Build a real index and HEAD without needing the linked repository's objects."""
+
     def create(gitlink_commit=None):
         subprocess.run(["git", "-C", str(tmp_path), "init", "--quiet"], check=True)
         if gitlink_commit is not None:
             subprocess.run(
-                ["git", "-C", str(tmp_path), "update-index", "--add", "--cacheinfo",
-                 f"160000,{gitlink_commit},third_party/atlas-kernels"], check=True
+                [
+                    "git",
+                    "-C",
+                    str(tmp_path),
+                    "update-index",
+                    "--add",
+                    "--cacheinfo",
+                    f"160000,{gitlink_commit},third_party/atlas-kernels",
+                ],
+                check=True,
             )
         subprocess.run(
-            ["git", "-C", str(tmp_path), "-c", "user.name=Nicolas Reed",
-             "-c", "user.email=reednicolas@berkeley.edu", "commit", "--quiet", "--allow-empty",
-             "--author=Nicolas Reed <reednicolas@berkeley.edu>",
-             "-m", "test(atlas): create pin fixture"], check=True
+            [
+                "git",
+                "-C",
+                str(tmp_path),
+                "-c",
+                "user.name=Nicolas Reed",
+                "-c",
+                "user.email=reednicolas@berkeley.edu",
+                "commit",
+                "--quiet",
+                "--allow-empty",
+                "--author=Nicolas Reed <reednicolas@berkeley.edu>",
+                "-m",
+                "test(atlas): create pin fixture",
+            ],
+            check=True,
         )
         return tmp_path
 
@@ -371,7 +399,9 @@ def test_atlas_mlir_pin_matches_real_gitlink(atlas_mlir_checkout):
     generator = load_generator()
     checkout = atlas_mlir_checkout(PINNED)
     assert generator.check_atlas_mlir_pin(PINNED, checkout) == {
-        "status": "checked", "source_commit": PINNED, "gitlink_commit": PINNED
+        "status": "checked",
+        "source_commit": PINNED,
+        "gitlink_commit": PINNED,
     }
 
 
@@ -420,7 +450,9 @@ def test_local_checkout_exports_every_family(tmp_path):
         assert (family_root / "kernel.yaml").is_file()
         recipe = subprocess.run(
             ["make", "--no-print-directory", "-n", "-C", str(family_root), "gen"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout
         assert "lib/family_interface.py" in recipe
         assert f'--family "{family_root.name}"' in recipe
@@ -454,15 +486,29 @@ def test_local_checkout_check_mode_reports_drift(tmp_path):
         ("projection_gemm", "semantic_ops", ["nonsense"], "semantic_ops"),
         ("projection_gemm", "requires_hardware", [], "requires_hardware"),
         (
-            "resnet_pool", "shape",
-            {"kernel": {"eq": 2}, "stride": {"eq": 2}, "padding": {"eq": 1},
-             "channels": {"multiple_of": 32}, "height": {"min": 1}, "width": {"min": 1}},
+            "resnet_pool",
+            "shape",
+            {
+                "kernel": {"eq": 2},
+                "stride": {"eq": 2},
+                "padding": {"eq": 1},
+                "channels": {"multiple_of": 32},
+                "height": {"min": 1},
+                "width": {"min": 1},
+            },
             "pool geometry",
         ),
         (
-            "resnet_pool", "shape",
-            {"kernel": {"eq": 3}, "stride": {"eq": 2}, "padding": {"eq": 1},
-             "channels": {"multiple_of": 7}, "height": {"min": 1}, "width": {"min": 1}},
+            "resnet_pool",
+            "shape",
+            {
+                "kernel": {"eq": 3},
+                "stride": {"eq": 2},
+                "padding": {"eq": 1},
+                "channels": {"multiple_of": 7},
+                "height": {"min": 1},
+                "width": {"min": 1},
+            },
             "pool geometry",
         ),
     ],

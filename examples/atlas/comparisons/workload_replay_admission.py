@@ -2,15 +2,13 @@
 
 import json
 import os
-from pathlib import Path
 import posixpath
 import stat
+from pathlib import Path
 
 import numpy as np
-
-from capture_tinyllama_native import identity, safe_path, array_identity
-
 from atlas_provider_files import PRODUCER_FILE, PRODUCER_FILES, PRODUCER_ID, provider_path
+from capture_tinyllama_native import array_identity, identity, safe_path
 
 
 def admit_executable(value):
@@ -72,27 +70,52 @@ def admit_child_result(model, code_identities, runtime_arrays, expected_shape, n
     receipt = json.loads((model / "receipt.json").read_text())
     pins = {name: item["sha256"] for name, item in code_identities.items()}
     runs = receipt.get("runs")
-    if (receipt.get("producer") != PRODUCER_ID
-            or receipt.get("status") != "passed_model_only" or not isinstance(runs, list) or not runs
-            or receipt.get("code_before") != pins or receipt.get("code_after") != pins
-            or receipt.get("source_bookends", {}).get("unchanged") is not True):
+    if (
+        receipt.get("producer") != PRODUCER_ID
+        or receipt.get("status") != "passed_model_only"
+        or not isinstance(runs, list)
+        or not runs
+        or receipt.get("code_before") != pins
+        or receipt.get("code_after") != pins
+        or receipt.get("source_bookends", {}).get("unchanged") is not True
+    ):
         raise ValueError("Unadmitted child producer/status/source bookends")
-    if any(not isinstance(run, dict) or not all(run.get(flag) is True for flag in (
-            "all_output_bytes_exact", "input_and_guards_preserved", "drained_before_halt_observation"))
-           or type(run.get("cycles")) is not int or run["cycles"] <= 0 for run in runs):
+    if any(
+        not isinstance(run, dict)
+        or not all(
+            run.get(flag) is True
+            for flag in ("all_output_bytes_exact", "input_and_guards_preserved", "drained_before_halt_observation")
+        )
+        or type(run.get("cycles")) is not int
+        or run["cycles"] <= 0
+        for run in runs
+    ):
         raise ValueError("Child execution run lacks output/guard/drain/cycle gates")
     bookends = receipt["source_bookends"]
-    if (not isinstance(receipt.get("source_inputs"), dict) or not receipt["source_inputs"]
-            or not isinstance(receipt.get("model_binding_before"), dict) or not receipt["model_binding_before"]
-            or bookends.get("input_before") != bookends.get("input_after")
-            or receipt.get("source_inputs") != bookends.get("input_before")
-            or receipt.get("model_binding_before") != bookends.get("model_after")):
+    if (
+        not isinstance(receipt.get("source_inputs"), dict)
+        or not receipt["source_inputs"]
+        or not isinstance(receipt.get("model_binding_before"), dict)
+        or not receipt["model_binding_before"]
+        or bookends.get("input_before") != bookends.get("input_after")
+        or receipt.get("source_inputs") != bookends.get("input_before")
+        or receipt.get("model_binding_before") != bookends.get("model_after")
+    ):
         raise ValueError("Child source/model bookends disagree")
     for name, digest in pins.items():
         identity(model / "producer-sources" / name, digest)
     artifacts = receipt.get("artifacts", {})
-    required = ("source.npz", "source-manifest.json", "encoded.npz", "program.bin", "program.S",
-                "initial-dram.bin", "expected-bf16-tiles.bin", "actual-bf16-halves-0.bin", "result.npz")
+    required = (
+        "source.npz",
+        "source-manifest.json",
+        "encoded.npz",
+        "program.bin",
+        "program.S",
+        "initial-dram.bin",
+        "expected-bf16-tiles.bin",
+        "actual-bf16-halves-0.bin",
+        "result.npz",
+    )
     if any(name not in artifacts for name in required):
         raise ValueError("Child receipt omits a required artifact digest")
     artifact_ids = {name: identity(model / name, artifacts[name]) for name in required}
@@ -118,21 +141,31 @@ def admit_child_result(model, code_identities, runtime_arrays, expected_shape, n
         if set(archive.files) != {"target_C", "actual_bits", "expected_bits"}:
             raise ValueError("Child result fields differ")
         words, expected, target = (archive[name].copy() for name in ("actual_bits", "expected_bits", "target_C"))
-    if (words.dtype != np.uint16 or words.shape != (m, n) or expected.dtype != np.uint16
-            or expected.shape != words.shape or not np.array_equal(words, expected)
-            or target.dtype != np.float32 or target.shape != words.shape
-            or not np.array_equal(target.view(np.uint32), words.astype(np.uint32) << 16)
-            or not np.isfinite(target).all() or np.any(words[native_rows:])):
+    if (
+        words.dtype != np.uint16
+        or words.shape != (m, n)
+        or expected.dtype != np.uint16
+        or expected.shape != words.shape
+        or not np.array_equal(words, expected)
+        or target.dtype != np.float32
+        or target.shape != words.shape
+        or not np.array_equal(target.view(np.uint32), words.astype(np.uint32) << 16)
+        or not np.isfinite(target).all()
+        or np.any(words[native_rows:])
+    ):
         raise ValueError("Child result target/oracle/BF16/tail contract differs")
-    payload = b"".join(words[r:r + 32, c:c + 32].reshape(32, 2, 16).transpose(1, 0, 2)
-                       .astype("<u2").tobytes()
-                       for r in range(0, m, 32) for c in range(0, n, 32))
-    if (payload != (model / "expected-bf16-tiles.bin").read_bytes()
-            or payload != (model / "actual-bf16-halves-0.bin").read_bytes()):
+    payload = b"".join(
+        words[r : r + 32, c : c + 32].reshape(32, 2, 16).transpose(1, 0, 2).astype("<u2").tobytes()
+        for r in range(0, m, 32)
+        for c in range(0, n, 32)
+    )
+    if (
+        payload != (model / "expected-bf16-tiles.bin").read_bytes()
+        or payload != (model / "actual-bf16-halves-0.bin").read_bytes()
+    ):
         raise ValueError("Child physical output layout/payload differs from returned words")
     # Rehash all data just consumed to close the admission interval.
     identity(receipt_id["path"], receipt_id["sha256"])
     for item in artifact_ids.values():
         identity(item["path"], item["sha256"])
-    return words, receipt, {"receipt": receipt_id, "artifacts": artifact_ids,
-                            "code_identities": code_identities}
+    return words, receipt, {"receipt": receipt_id, "artifacts": artifact_ids, "code_identities": code_identities}

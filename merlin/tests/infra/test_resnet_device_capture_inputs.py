@@ -2,15 +2,14 @@
 
 import copy
 import importlib.util
-from pathlib import Path
 import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
 import pytest
 
 from merlin.common.paths import repo_root
-
 
 REFRESH = repo_root() / "examples/atlas/comparisons/refresh"
 with patch.object(sys, "path", [str(REFRESH), *sys.path]):
@@ -24,17 +23,42 @@ def small_plan():
         "image": {"shape": [1, 5, 12, 10], "dtype": "float32"},
         "nodes": [
             {"node": "x", "operator": "placeholder", "output_shape": [1, 5, 12, 10]},
-            {"node": "conv1", "operator": "Conv2d", "inputs": ["x"], "output_shape": [1, 64, 12, 10],
-             "matrix_mkn": [120, 45, 64], "padded_mkn": [128, 64, 64],
-             "geometry": {"kernel_size": [3, 3], "stride": [1, 1], "padding": [1, 1], "dilation": [1, 1]}},
-            {"node": "maxpool", "operator": "MaxPool2d", "inputs": ["conv1"],
-             "output_shape": [1, 64, 6, 5],
-             "host_params": {"kernel": [3, 3], "stride": [2, 2], "padding": [1, 1],
-                             "dilation": [1, 1], "ceil_mode": False}},
-            {"node": "avgpool", "operator": "AdaptiveAvgPool2d", "inputs": ["maxpool"],
-             "output_shape": [1, 64, 1, 1], "host_params": {"output_size": [1, 1]}},
-            {"node": "fc", "operator": "Linear", "output_shape": [1, 17],
-             "matrix_mkn": [1, 64, 17], "padded_mkn": [32, 64, 32]},
+            {
+                "node": "conv1",
+                "operator": "Conv2d",
+                "inputs": ["x"],
+                "output_shape": [1, 64, 12, 10],
+                "matrix_mkn": [120, 45, 64],
+                "padded_mkn": [128, 64, 64],
+                "geometry": {"kernel_size": [3, 3], "stride": [1, 1], "padding": [1, 1], "dilation": [1, 1]},
+            },
+            {
+                "node": "maxpool",
+                "operator": "MaxPool2d",
+                "inputs": ["conv1"],
+                "output_shape": [1, 64, 6, 5],
+                "host_params": {
+                    "kernel": [3, 3],
+                    "stride": [2, 2],
+                    "padding": [1, 1],
+                    "dilation": [1, 1],
+                    "ceil_mode": False,
+                },
+            },
+            {
+                "node": "avgpool",
+                "operator": "AdaptiveAvgPool2d",
+                "inputs": ["maxpool"],
+                "output_shape": [1, 64, 1, 1],
+                "host_params": {"output_size": [1, 1]},
+            },
+            {
+                "node": "fc",
+                "operator": "Linear",
+                "output_shape": [1, 17],
+                "matrix_mkn": [1, 64, 17],
+                "padded_mkn": [32, 64, 32],
+            },
         ],
     }
 
@@ -88,19 +112,26 @@ def test_bad_expected_hash_is_rejected_without_provenance(tmp_path):
 
 def test_dimensions_follow_plan_without_image_pool_or_classifier_literals():
     assert capture.plan_dimensions(small_plan()) == {
-        "image": [5, 12, 10], "maxpool": [64, 6, 5], "average_channels": 64,
-        "classes": 17, "classifier_padded": [32, 64, 32], "pool_geometry": (3, 2, 1),
+        "image": [5, 12, 10],
+        "maxpool": [64, 6, 5],
+        "average_channels": 64,
+        "classes": 17,
+        "classifier_padded": [32, 64, 32],
+        "pool_geometry": (3, 2, 1),
     }
 
 
-@pytest.mark.parametrize("node,field,value", [
-    ("x", "output_shape", [1, 3, 12, 10]),
-    ("conv1", "matrix_mkn", [119, 45, 64]),
-    ("conv1", "padded_mkn", [120, 64, 64]),
-    ("maxpool", "output_shape", [1, 64, 5, 5]),
-    ("avgpool", "output_shape", [1, 64, 2, 1]),
-    ("fc", "matrix_mkn", [1, 32, 17]),
-])
+@pytest.mark.parametrize(
+    "node,field,value",
+    [
+        ("x", "output_shape", [1, 3, 12, 10]),
+        ("conv1", "matrix_mkn", [119, 45, 64]),
+        ("conv1", "padded_mkn", [120, 64, 64]),
+        ("maxpool", "output_shape", [1, 64, 5, 5]),
+        ("avgpool", "output_shape", [1, 64, 2, 1]),
+        ("fc", "matrix_mkn", [1, 32, 17]),
+    ],
+)
 def test_inconsistent_plan_geometry_is_rejected(node, field, value):
     plan = copy.deepcopy(small_plan())
     next(item for item in plan["nodes"] if item["node"] == node)[field] = value

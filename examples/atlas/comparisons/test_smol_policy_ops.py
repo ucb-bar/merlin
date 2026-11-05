@@ -1,16 +1,16 @@
 """Product FP32 policy host math against native operator output words."""
+
 import ctypes
 import json
 import os
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 import torch
-
-from source_relocation import physical_path as safe
 from smol_test_support import load_shared, operand_array
+from source_relocation import physical_path as safe
 
 
 class PolicyOpsTest(unittest.TestCase):
@@ -18,38 +18,43 @@ class PolicyOpsTest(unittest.TestCase):
     def setUpClass(cls):
         torch.set_num_threads(1)
         torch.set_num_interop_threads(1)
-        cls.temporary = Path(tempfile.mkdtemp(prefix='policy-ops-'))
+        cls.temporary = Path(tempfile.mkdtemp(prefix="policy-ops-"))
         here = Path(__file__).absolute().parent
-        library = cls.temporary / 'policy.so'
-        cls.library = load_shared(library, [here / 'smol_policy_ops.c'])
+        library = cls.temporary / "policy.so"
+        cls.library = load_shared(library, [here / "smol_policy_ops.c"])
         cls.pointer = ctypes.POINTER(ctypes.c_float)
         cls.library.smol_policy_silu_f32.argtypes = [cls.pointer, cls.pointer, ctypes.c_size_t]
         cls.word_pointer = ctypes.POINTER(ctypes.c_uint16)
-        cls.library.smol_policy_cross_attention_bf16.argtypes = [cls.word_pointer]*3 + [ctypes.POINTER(ctypes.c_uint8)] + [cls.pointer]*3 + [cls.word_pointer]
+        cls.library.smol_policy_cross_attention_bf16.argtypes = (
+            [cls.word_pointer] * 3 + [ctypes.POINTER(ctypes.c_uint8)] + [cls.pointer] * 3 + [cls.word_pointer]
+        )
 
     def check(self, incoming, expected):
         a = incoming.detach().numpy().copy()
         b = expected.detach().numpy().copy()
         output = np.empty_like(a)
-        code = self.library.smol_policy_silu_f32(a.ctypes.data_as(self.pointer),
-                                                output.ctypes.data_as(self.pointer), a.size)
+        code = self.library.smol_policy_silu_f32(
+            a.ctypes.data_as(self.pointer), output.ctypes.data_as(self.pointer), a.size
+        )
         self.assertEqual(code, 0)
         mismatch = int(np.count_nonzero(output.view(np.uint32) != b.view(np.uint32)))
-        print(json.dumps({'policy_silu_words': a.size, 'mismatches': mismatch}), flush=True)
+        print(json.dumps({"policy_silu_words": a.size, "mismatches": mismatch}), flush=True)
         self.assertEqual(mismatch, 0)
 
-    @unittest.skipUnless(os.environ.get('SMOL_NATIVE_CAPTURE'), 'Optional native policy fixture is not configured')
+    @unittest.skipUnless(os.environ.get("SMOL_NATIVE_CAPTURE"), "Optional native policy fixture is not configured")
     def test_silu_actual_action_time_boundary_raw_exact(self):
-        root = safe(os.environ['SMOL_NATIVE_CAPTURE'])
-        receipt = json.loads(safe(root / 'receipt.json').read_bytes())
+        root = safe(os.environ["SMOL_NATIVE_CAPTURE"])
+        receipt = json.loads(safe(root / "receipt.json").read_bytes())
 
         def value(module, field):
-            descriptor = next(row for row in receipt['calls'] if row['module'] == module)[field]
-            if descriptor['dtype'] != 'torch.float32':
-                raise ValueError('Expected native FP32 policy boundary')
-            return torch.from_numpy(operand_array(root, descriptor, '<f4', self.assertEqual,
-                                                  invalid='Invalid captured operand path'))
-        self.check(value('action_time_mlp_in', 'output'), value('action_time_mlp_out', 'input'))
+            descriptor = next(row for row in receipt["calls"] if row["module"] == module)[field]
+            if descriptor["dtype"] != "torch.float32":
+                raise ValueError("Expected native FP32 policy boundary")
+            return torch.from_numpy(
+                operand_array(root, descriptor, "<f4", self.assertEqual, invalid="Invalid captured operand path")
+            )
+
+        self.check(value("action_time_mlp_in", "output"), value("action_time_mlp_out", "input"))
 
     def test_silu_finite_interval_and_signed_zero_raw_exact(self):
         incoming = torch.linspace(-100, 100, 65536, dtype=torch.float32)
@@ -72,13 +77,17 @@ class PolicyOpsTest(unittest.TestCase):
         mm = mask.numpy().astype(np.uint8)
         scratch = [np.empty((15, 50, 177), np.float32), np.empty((15, 50, 177), np.float32), np.empty(177, np.float32)]
         output = np.empty_like(qq)
-        code = self.library.smol_policy_cross_attention_bf16(*[item.ctypes.data_as(self.word_pointer) for item in (qq, kw, vw)],
-            mm.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)), *[item.ctypes.data_as(self.pointer) for item in scratch], output.ctypes.data_as(self.word_pointer))
+        code = self.library.smol_policy_cross_attention_bf16(
+            *[item.ctypes.data_as(self.word_pointer) for item in (qq, kw, vw)],
+            mm.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)),
+            *[item.ctypes.data_as(self.pointer) for item in scratch],
+            output.ctypes.data_as(self.word_pointer),
+        )
         self.assertEqual(code, 0)
         mismatch = int(np.count_nonzero(output != expected.view(torch.uint16).numpy()))
-        print(json.dumps({'expert_cross_O_words': output.size, 'mismatches': mismatch}), flush=True)
+        print(json.dumps({"expert_cross_O_words": output.size, "mismatches": mismatch}), flush=True)
         self.assertEqual(mismatch, 0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

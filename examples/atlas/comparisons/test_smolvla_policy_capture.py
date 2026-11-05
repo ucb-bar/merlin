@@ -1,21 +1,21 @@
 """Focused native policy capture closure controls, without model loading."""
+
 import unittest
 
 import numpy as np
-
-from capture_smolvla_policy import validate_trajectory, validate_target_geometry
+from capture_smolvla_policy import validate_target_geometry, validate_trajectory
 
 
 class CaptureClosureTest(unittest.TestCase):
     def test_bf16_and_float_nonfinite_target_refused(self):
-        reference = {'cache': np.array([0x3f80], np.uint16), 'state': np.array([1.0], np.float32)}
+        reference = {"cache": np.array([0x3F80], np.uint16), "state": np.array([1.0], np.float32)}
         validate_target_geometry(reference, reference)
-        for word in (0x7f80, 0xff80, 0x7fc0, 0xffc1):
-            changed = {**reference, 'cache': np.array([word], np.uint16)}
+        for word in (0x7F80, 0xFF80, 0x7FC0, 0xFFC1):
+            changed = {**reference, "cache": np.array([word], np.uint16)}
             with self.assertRaises(ValueError):
                 validate_target_geometry(changed, reference)
         for value in (np.inf, -np.inf, np.nan):
-            changed = {**reference, 'state': np.array([value], np.float32)}
+            changed = {**reference, "state": np.array([value], np.float32)}
             with self.assertRaises(ValueError):
                 validate_target_geometry(changed, reference)
 
@@ -36,8 +36,12 @@ class CaptureClosureTest(unittest.TestCase):
         expected = np.array([[0.0, 1.0]], np.float32)
         changed_bit = expected.copy()
         changed_bit.view(np.uint32)[0, 1] ^= 1
-        for changed in (np.array([[-0.0, 1.0]], np.float32), changed_bit,
-                        expected.astype(np.float64), expected.reshape(2)):
+        for changed in (
+            np.array([[-0.0, 1.0]], np.float32),
+            changed_bit,
+            expected.astype(np.float64),
+            expected.reshape(2),
+        ):
             with self.subTest(dtype=changed.dtype, shape=changed.shape), self.assertRaises(ValueError):
                 validate_trajectory({"value": changed}, {"value": expected}, list(range(10)))
 

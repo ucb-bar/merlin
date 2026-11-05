@@ -1,8 +1,8 @@
 """Generic NCHW patch extraction and tensor identities for graph exporters."""
 
-from merlin.common.digest import sha256_bytes
-
 import hashlib
+
+from merlin.common.digest import sha256_bytes
 
 
 def raw_identity(a):

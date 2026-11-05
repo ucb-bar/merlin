@@ -17,13 +17,27 @@ from unittest.mock import patch
 import numpy as np
 import test_smol_policy_graph as graph
 import torch
+from smol_test_support import (
+    State,
+    bf16_weight,
+    checkpoint_header,
+    load_shared,
+    operand_array,
+)
+from smol_test_support import (
+    VisionCallback as Callback,
+)
+from smol_test_support import (
+    VisionFrame as Frame,
+)
+from smol_test_support import (
+    VisionLayer as Layer,
+)
+from smol_test_support import (
+    VisionParameters as Parameters,
+)
 from source_relocation import SourceRelocation
 from source_relocation import physical_path as safe
-from smol_test_support import load_shared, checkpoint_header, bf16_weight, operand_array
-from smol_test_support import (
-    State, VisionCallback as Callback, VisionFrame as Frame,
-    VisionLayer as Layer, VisionParameters as Parameters,
-)
 
 FIELDS = tuple(name for name, _ in Frame._fields_)
 
@@ -111,8 +125,7 @@ class PolicyVisionReplayTest(unittest.TestCase):
             attention / "smol_host_bits.h",
         ]:
             read(path)
-        owner = load_shared(library, sources,
-                            flags=["-Wall", "-Wextra", "-Werror", "-I" + str(attention)])
+        owner = load_shared(library, sources, flags=["-Wall", "-Wextra", "-Werror", "-I" + str(attention)])
         function = owner.smol_vision_image
         function.argtypes = [
             ct.c_void_p,
@@ -128,8 +141,7 @@ class PolicyVisionReplayTest(unittest.TestCase):
             prefix = archive["prefix_embeddings"].copy()
 
         def tensor(row):
-            return operand_array(root, row, '<u2', self.assertEqual, read=read,
-                                 expected_dtype='torch.bfloat16')
+            return operand_array(root, row, "<u2", self.assertEqual, read=read, expected_dtype="torch.bfloat16")
 
         roles = ("patch_embedding", "q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2", "connector")
         checked_images = []

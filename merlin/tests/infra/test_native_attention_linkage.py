@@ -2,14 +2,13 @@
 
 import importlib.util
 import sys
-from types import SimpleNamespace
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
 
 from merlin.common.paths import repo_root
-
 
 path = repo_root() / "examples/atlas/comparisons/compare_tinyllama_attention.py"
 sys.path.insert(0, str(path.parent))
@@ -20,8 +19,7 @@ spec.loader.exec_module(attention)
 
 class NativeAttentionLinkageTest(unittest.TestCase):
     def test_full_source_input_and_output_words_are_both_required(self):
-        source = {name: np.full((128, 2048), 0x3F80, dtype=np.uint16)
-                  for name in ("A_bf16", "native_C_bf16")}
+        source = {name: np.full((128, 2048), 0x3F80, dtype=np.uint16) for name in ("A_bf16", "native_C_bf16")}
         inputs = source["A_bf16"][None].copy()
         output = source["native_C_bf16"][None].copy()
         torch = SimpleNamespace(bfloat16=np.dtype("uint16"))

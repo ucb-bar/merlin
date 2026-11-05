@@ -5,7 +5,6 @@ Q/K weights are loaded; a native LeRobot forward hook captures Q, and the archiv
 native layer-zero K cache authenticates the reconstructed normalization route.
 """
 
-from merlin.common.jsonio import write_pretty_json
 import argparse
 import importlib.metadata
 import json
@@ -15,12 +14,18 @@ import time
 from pathlib import Path
 
 import numpy as np
-
 from capture_tinyllama_native import (
-    array_identity, bf16_words_to_float, digest, identity, round_bf16_words, safe_path,
-    verify_declared_sources, artifact_output,
+    array_identity,
+    artifact_output,
+    bf16_words_to_float,
+    digest,
+    identity,
+    round_bf16_words,
+    safe_path,
+    verify_declared_sources,
 )
 
+from merlin.common.jsonio import write_pretty_json
 
 CHECKPOINT_REVISION = "c83c3163b8ca9b7e67c509fffd9121e66cb96205"
 WEIGHTS_SHA = "7cd549ac2351fb069c0ddb3c34ad2d09cfc92b56a15dccdfc2e41467aaca01eb"
@@ -33,9 +38,10 @@ LLAMA_SHA = "31bf660a663259134324bc65da4e155951dc89c5ca46471d2325a9938e859e26"
 
 def capture(args):
     import torch
+    from lerobot.policies.smolvla import smolvlm_with_expert
     from safetensors import safe_open
     from transformers.models.llama import modeling_llama
-    from lerobot.policies.smolvla import smolvlm_with_expert
+
     from merlin.common.paths import artifacts_dir
 
     started = time.monotonic()
@@ -44,7 +50,8 @@ def capture(args):
     if importlib.metadata.version("lerobot") != "0.5.1":
         raise ValueError("Retained LeRobot 0.5.1 implementation is required")
     source = {
-        "checkpoint": "lerobot/smolvla_base", "revision": CHECKPOINT_REVISION,
+        "checkpoint": "lerobot/smolvla_base",
+        "revision": CHECKPOINT_REVISION,
         "weights": identity(args.checkpoint / "model.safetensors", WEIGHTS_SHA),
         "historical_source_receipt": identity(args.receipt, RECEIPT_SHA),
         "historical_original_archive": identity(args.archive, ARCHIVE_SHA),
@@ -57,26 +64,37 @@ def capture(args):
         "torch_cpu_library": identity(Path(torch.__file__).parent / "lib/libtorch_cpu.so"),
         "python": sys.version,
         "versions": {key: importlib.metadata.version(key) for key in ("torch", "transformers", "lerobot", "numpy")},
-        "source_policies": {"precision": "original_mixed_BF16_FP32_CPU",
-                            "projection_quantization": False, "original_checkpoint_parameters": True},
+        "source_policies": {
+            "precision": "original_mixed_BF16_FP32_CPU",
+            "projection_quantization": False,
+            "original_checkpoint_parameters": True,
+        },
     }
     receipt = json.loads(args.receipt.read_text())
     observation = json.loads(args.observation_manifest.read_text())
-    if (receipt["fixture_kind"] != "dataset" or not receipt["source_reference_unchanged"]
-            or receipt["source_run"]["output_file"]["sha256"] != ARCHIVE_SHA):
+    if (
+        receipt["fixture_kind"] != "dataset"
+        or not receipt["source_reference_unchanged"]
+        or receipt["source_run"]["output_file"]["sha256"] != ARCHIVE_SHA
+    ):
         raise ValueError("Archive is not the retained original-policy source")
-    if (observation["checkpoint_revision"] != CHECKPOINT_REVISION
-            or observation["dataset_revision"] != "3d6d687a25cdf1565cdf24550814f72d999a861d"
-            or observation["split"] != "train"
-            or (observation["episode_index"], observation["frame_index"]) != (0, 0)):
+    if (
+        observation["checkpoint_revision"] != CHECKPOINT_REVISION
+        or observation["dataset_revision"] != "3d6d687a25cdf1565cdf24550814f72d999a861d"
+        or observation["split"] != "train"
+        or (observation["episode_index"], observation["frame_index"]) != (0, 0)
+    ):
         raise ValueError("Expected retained TRAIN episode-zero frame-zero provenance")
     with np.load(args.archive, allow_pickle=False) as archive:
         embeddings_np = archive["prefix_embeddings"].copy()
         masks_np = archive["prefix_pad_mask"].copy()
         attention_np = archive["prefix_attention_mask"].copy()
         expected_k = archive["prefix_key_cache"][0].copy()
-    for name, value in (("prefix_embeddings", embeddings_np), ("prefix_pad_mask", masks_np),
-                        ("prefix_attention_mask", attention_np)):
+    for name, value in (
+        ("prefix_embeddings", embeddings_np),
+        ("prefix_pad_mask", masks_np),
+        ("prefix_attention_mask", attention_np),
+    ):
         if array_identity(value)["sha256"] != receipt["source_run"]["captures"][name]["sha256"]:
             raise ValueError(f"Original source tensor identity differs: {name}")
     if embeddings_np.shape != (1, 177, 960) or embeddings_np.dtype != np.float32:
@@ -90,8 +108,7 @@ def capture(args):
     with torch.device("meta"):
         layer = modeling_llama.LlamaDecoderLayer(config, 0)
     prefix = "model.vlm_with_expert.vlm.model.text_model.layers.0."
-    names = (prefix + "input_layernorm.weight", prefix + "self_attn.q_proj.weight",
-             prefix + "self_attn.k_proj.weight")
+    names = (prefix + "input_layernorm.weight", prefix + "self_attn.q_proj.weight", prefix + "self_attn.k_proj.weight")
     with safe_open(str(args.checkpoint / "model.safetensors"), framework="pt", device="cpu") as handle:
         weights = {name: handle.get_tensor(name) for name in names}
     if any(value.dtype != torch.bfloat16 for value in weights.values()):
@@ -120,8 +137,8 @@ def capture(args):
             for repeat in range(2):
                 try:
                     smolvlm_with_expert.SmolVLMWithExpertModel.forward_attn_layer(
-                        None, [[layer], [None]], [embeddings, None], 0,
-                        positions, torch.from_numpy(attention_np), 1, 64)
+                        None, [[layer], [None]], [embeddings, None], 0, positions, torch.from_numpy(attention_np), 1, 64
+                    )
                 except ProjectionCaptured:
                     pass
                 else:
@@ -137,7 +154,9 @@ def capture(args):
         hook.remove()
     actual_k = native_k.view(torch.uint16).numpy()
     if not np.array_equal(actual_k, expected_k):
-        raise AssertionError(f"Reconstructed source K-cache differs on {np.count_nonzero(actual_k != expected_k)} words")
+        raise AssertionError(
+            f"Reconstructed source K-cache differs on {np.count_nonzero(actual_k != expected_k)} words"
+        )
     if not torch.equal(embeddings, before):
         raise AssertionError("Capture modified archived source inputs")
     if params_before != {key: array_identity(value.view(torch.uint16).numpy()) for key, value in weights.items()}:
@@ -156,8 +175,11 @@ def capture(args):
     wrong_b = arrays["B"].copy()
     wrong_b[[0, 1]] = wrong_b[[1, 0]]
     controls = {
-        "wrong_k_order_detected": bool(np.any(round_bf16_words(arrays["A"].astype(np.float64) @ wrong_b.astype(
-        np.float64)) != arrays["native_C_bf16"])),
+        "wrong_k_order_detected": bool(
+            np.any(
+                round_bf16_words(arrays["A"].astype(np.float64) @ wrong_b.astype(np.float64)) != arrays["native_C_bf16"]
+            )
+        ),
         "wrong_output_channels_detected": not torch.equal(c, observed["output"][0, :32, 32:64]),
         "wrong_cached_key_word_detected": not np.array_equal(actual_k ^ np.uint16(1), expected_k),
     }
@@ -170,41 +192,88 @@ def capture(args):
     out = artifact_output(args.out if args.out else artifacts_dir() / "compare" / "workloads" / "smolvla-native-s1")
     out.mkdir(parents=True, exist_ok=False)
     np.savez(out / "operands.npz", **arrays)
-    source["observation"] = {key: observation[key] for key in (
-        "dataset_id", "dataset_revision", "episode_index", "frame_index", "split", "task", "noise_seed",
-        "camera_mapping", "training_camera_mapping_verified", "video_upstream_hashes_verified",
-        "source_closure_verified", "backbone_revision_verified")}
+    source["observation"] = {
+        key: observation[key]
+        for key in (
+            "dataset_id",
+            "dataset_revision",
+            "episode_index",
+            "frame_index",
+            "split",
+            "task",
+            "noise_seed",
+            "camera_mapping",
+            "training_camera_mapping_verified",
+            "video_upstream_hashes_verified",
+            "source_closure_verified",
+            "backbone_revision_verified",
+        )
+    }
     source["parameters"] = params_before
     report = {
-        "schema_version": 1, "status": "native_selective_capture_passed",
-        "npz_sha256": digest(out / "operands.npz"), "source_dtype": "bfloat16", "source": source,
-        "site": {"module": prefix.rstrip(".") + ".self_attn.q_proj", "batch": 0,
-                 "positions": [0, 32], "output_channels": [0, 32], "k_range": [0, 960],
-                 "position_meaning": "first_camera_visual_tokens", "padding": False,
-                 "native_execution_shape": [1, 177, 960], "full_k_reduction": True},
-        "capture": {"route": "retained_original_prefix_then_native_LeRobot_forward_attn_layer_to_query_hook",
-                    "native_repeats_raw_exact": True, "caller_inputs_preserved": True,
-                    "parameters_preserved": True, "source_artifacts_preserved": True,
-                    "declared_source_bookends_verified": verified_sources,
-                    "layer_zero_key_cache_raw_exact": True,
-                    "layer_zero_key_cache_words": expected_k.size,
-                    "full_policy_executed": False, "vision_prefix_recomputed": False},
+        "schema_version": 1,
+        "status": "native_selective_capture_passed",
+        "npz_sha256": digest(out / "operands.npz"),
+        "source_dtype": "bfloat16",
+        "source": source,
+        "site": {
+            "module": prefix.rstrip(".") + ".self_attn.q_proj",
+            "batch": 0,
+            "positions": [0, 32],
+            "output_channels": [0, 32],
+            "k_range": [0, 960],
+            "position_meaning": "first_camera_visual_tokens",
+            "padding": False,
+            "native_execution_shape": [1, 177, 960],
+            "full_k_reduction": True,
+        },
+        "capture": {
+            "route": "retained_original_prefix_then_native_LeRobot_forward_attn_layer_to_query_hook",
+            "native_repeats_raw_exact": True,
+            "caller_inputs_preserved": True,
+            "parameters_preserved": True,
+            "source_artifacts_preserved": True,
+            "declared_source_bookends_verified": verified_sources,
+            "layer_zero_key_cache_raw_exact": True,
+            "layer_zero_key_cache_words": expected_k.size,
+            "full_policy_executed": False,
+            "vision_prefix_recomputed": False,
+        },
         "arrays": {key: array_identity(value) for key, value in arrays.items()},
-        "independent_dot": {"kind": "numpy_FP64_from_original_BF16_operands_diagnostic",
-                            "rounded_bf16_mismatches": int(np.count_nonzero(round_bf16_words(ideal) != arrays["native_C_bf16"])),
-                            "max_abs_native_vs_ideal": float(np.abs(ideal - arrays["native_C"]).max()),
-                            "native_reference_replaced": False},
-        "negative_controls": controls, "wall_seconds": time.monotonic() - started,
-        "peak_rss_bytes": peak, "cpu_threads": 1,
-        "claim_limits": ["source_archive_reuse_not_fresh_vision_run", "no_policy_quality_claim",
-                         "no_target_execution", "original_native_policy_not_W8A8_candidate"],
+        "independent_dot": {
+            "kind": "numpy_FP64_from_original_BF16_operands_diagnostic",
+            "rounded_bf16_mismatches": int(np.count_nonzero(round_bf16_words(ideal) != arrays["native_C_bf16"])),
+            "max_abs_native_vs_ideal": float(np.abs(ideal - arrays["native_C"]).max()),
+            "native_reference_replaced": False,
+        },
+        "negative_controls": controls,
+        "wall_seconds": time.monotonic() - started,
+        "peak_rss_bytes": peak,
+        "cpu_threads": 1,
+        "claim_limits": [
+            "source_archive_reuse_not_fresh_vision_run",
+            "no_policy_quality_claim",
+            "no_target_execution",
+            "original_native_policy_not_W8A8_candidate",
+        ],
         "invocation": {"argv": sys.argv, "cwd": str(Path.cwd())},
     }
     write_pretty_json(out / "manifest.json", report, sort_keys=False)
-    print(json.dumps({"status": report["status"], "out": str(out), "npz_sha256": report["npz_sha256"],
-                      "independent_dot": report["independent_dot"], "negative_controls": controls,
-                      "key_cache_raw_exact_words": expected_k.size, "wall_seconds": report["wall_seconds"],
-                      "peak_rss_bytes": peak}, indent=2))
+    print(
+        json.dumps(
+            {
+                "status": report["status"],
+                "out": str(out),
+                "npz_sha256": report["npz_sha256"],
+                "independent_dot": report["independent_dot"],
+                "negative_controls": controls,
+                "key_cache_raw_exact_words": expected_k.size,
+                "wall_seconds": report["wall_seconds"],
+                "peak_rss_bytes": peak,
+            },
+            indent=2,
+        )
+    )
 
 
 def main():

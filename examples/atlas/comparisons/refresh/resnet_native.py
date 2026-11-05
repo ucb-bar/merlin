@@ -6,11 +6,13 @@ paths use the current Atlas examples' stricter lexical and symlink checks.
 
 import hashlib
 import os
-from pathlib import Path
 import stat
 import sys
+from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from source_relocation import physical_path as safe_path
+
 from merlin.common.digest import sha256_file
 
 

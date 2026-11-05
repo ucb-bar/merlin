@@ -4,8 +4,8 @@ import ast
 import importlib.util
 import json
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -51,18 +51,37 @@ def child(tmp_path, admission):
     (root / "initial-dram.bin").write_bytes(b"synthetic")
     for name in ("expected-bf16-tiles.bin", "actual-bf16-halves-0.bin"):
         (root / name).write_bytes(bytes(2048))
-    np.savez(root / "result.npz", target_C=np.zeros(shape, np.float32),
-             actual_bits=np.zeros(shape, np.uint16), expected_bits=np.zeros(shape, np.uint16))
+    np.savez(
+        root / "result.npz",
+        target_C=np.zeros(shape, np.float32),
+        actual_bits=np.zeros(shape, np.uint16),
+        expected_bits=np.zeros(shape, np.uint16),
+    )
     pins = {name: item["sha256"] for name, item in code.items()}
-    receipt = {"producer": admission.PRODUCER_ID,
-               "status": "passed_model_only", "shape": [32, 32, 32],
-               "runs": [{"cycles": 123, "all_output_bytes_exact": True,
-                         "input_and_guards_preserved": True, "drained_before_halt_observation": True}],
-               "code_before": pins.copy(), "code_after": pins.copy(),
-               "source_inputs": {"kind": "synthetic"}, "model_binding_before": {"kind": "synthetic"},
-               "source_bookends": {"unchanged": True, "input_before": {"kind": "synthetic"},
-                                   "input_after": {"kind": "synthetic"}, "model_after": {"kind": "synthetic"}},
-               "artifacts": {path.name: digest(path) for path in root.iterdir() if path.is_file()}}
+    receipt = {
+        "producer": admission.PRODUCER_ID,
+        "status": "passed_model_only",
+        "shape": [32, 32, 32],
+        "runs": [
+            {
+                "cycles": 123,
+                "all_output_bytes_exact": True,
+                "input_and_guards_preserved": True,
+                "drained_before_halt_observation": True,
+            }
+        ],
+        "code_before": pins.copy(),
+        "code_after": pins.copy(),
+        "source_inputs": {"kind": "synthetic"},
+        "model_binding_before": {"kind": "synthetic"},
+        "source_bookends": {
+            "unchanged": True,
+            "input_before": {"kind": "synthetic"},
+            "input_after": {"kind": "synthetic"},
+            "model_after": {"kind": "synthetic"},
+        },
+        "artifacts": {path.name: digest(path) for path in root.iterdir() if path.is_file()},
+    }
     (root / "receipt.json").write_text(json.dumps(receipt))
     runtime = {name: admission.array_identity(value) for name, value in values.items()}
     return root, code, receipt, runtime
@@ -105,9 +124,15 @@ def test_current_atlas_receipt_updates_admitted_without_model(admission, child):
     source = admission.safe_path(tools / admission.PRODUCER_FILE)
     tree = ast.parse(source.read_text(), filename=str(source))
     run = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "run")
-    code_function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "code_sources")
-    names = next(node.value for node in code_function.body if isinstance(node, ast.Assign)
-                 and any(isinstance(target, ast.Name) and target.id == "names" for target in node.targets))
+    code_function = next(
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "code_sources"
+    )
+    names = next(
+        node.value
+        for node in code_function.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "names" for target in node.targets)
+    )
     assert set(ast.literal_eval(names)) == set(admission.PRODUCER_FILES)
     root, code, receipt, _ = child
     for name in code:
@@ -115,28 +140,56 @@ def test_current_atlas_receipt_updates_admitted_without_model(admission, child):
         snapshot.write_bytes(admission.safe_path(admission.provider_path(tools, name)).read_bytes())
         code[name] = admission.identity(snapshot)
     pins = {name: record["sha256"] for name, record in code.items()}
-    context = dict(before=pins, after=pins.copy(), m=32, k=32, n=32,
-                   inputs_before=receipt["source_inputs"], inputs_after=receipt["source_inputs"].copy(),
-                   model_before=receipt["model_binding_before"], model_after=receipt["model_binding_before"].copy())
-    required = {"producer", "code_before", "code_after", "shape", "source_inputs",
-                "model_binding_before", "source_bookends"}
+    context = dict(
+        before=pins,
+        after=pins.copy(),
+        m=32,
+        k=32,
+        n=32,
+        inputs_before=receipt["source_inputs"],
+        inputs_after=receipt["source_inputs"].copy(),
+        model_before=receipt["model_binding_before"],
+        model_after=receipt["model_binding_before"].copy(),
+    )
+    required = {
+        "producer",
+        "code_before",
+        "code_after",
+        "shape",
+        "source_inputs",
+        "model_binding_before",
+        "source_bookends",
+    }
     observed = {}
     for node in run.body:
         if not (isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)):
             continue
         call = node.value
-        if not (isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name)
-                and call.func.value.id == "receipt" and call.func.attr == "update"):
+        if not (
+            isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "receipt"
+            and call.func.attr == "update"
+        ):
             continue
         for keyword in call.keywords:
             if keyword.arg in required:
                 expression = compile(ast.Expression(keyword.value), str(source), "eval")
                 observed[keyword.arg] = eval(expression, {"__builtins__": {}}, context)
     assert set(observed) == required, "Atlas receipt.update admission fields changed"
-    status = next(node.value for node in reversed(run.body) if isinstance(node, ast.Assign)
-                  and any(isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name)
-                          and target.value.id == "receipt" and isinstance(target.slice, ast.Constant)
-                          and target.slice.value == "status" for target in node.targets))
+    status = next(
+        node.value
+        for node in reversed(run.body)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Subscript)
+            and isinstance(target.value, ast.Name)
+            and target.value.id == "receipt"
+            and isinstance(target.slice, ast.Constant)
+            and target.slice.value == "status"
+            for target in node.targets
+        )
+    )
     receipt.update(observed, status=ast.literal_eval(status))
     save_receipt(child)
     words, admitted, _ = admit(admission, child)
@@ -162,13 +215,16 @@ def test_incomplete_direct_caller_contract_refused(admission, child, field):
         admit(admission, child)
 
 
-@pytest.mark.parametrize("path,value", [
-    (("runs",), []),
-    (("runs", 0, "all_output_bytes_exact"), False),
-    (("runs", 0, "cycles"), 0),
-    (("code_after", "atlas_vector_arithmetic.py"), "0" * 64),
-    (("source_bookends", "input_after"), {"kind": "different"}),
-])
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("runs",), []),
+        (("runs", 0, "all_output_bytes_exact"), False),
+        (("runs", 0, "cycles"), 0),
+        (("code_after", "atlas_vector_arithmetic.py"), "0" * 64),
+        (("source_bookends", "input_after"), {"kind": "different"}),
+    ],
+)
 def test_incomplete_execution_or_bookends_refused(admission, child, path, value):
     target = child[2]
     for key in path[:-1]:
@@ -187,9 +243,11 @@ def test_result_digest_checked_before_np_load(admission, child, monkeypatch):
     np.savez(path, **arrays)
     calls = []
     original = admission.np.load
+
     def observed(path, **kwargs):
         calls.append(Path(path).name)
         return original(path, **kwargs)
+
     monkeypatch.setattr(admission.np, "load", observed)
     with pytest.raises(ValueError, match="hash"):
         admit(admission, child)
@@ -264,10 +322,12 @@ def test_parent_destination_refused_before_erased_component_inspection(admission
     entry.symlink_to("uninspected-component/../python")
     observed = []
     original = os.lstat
+
     def checked(path, *args, **kwargs):
         assert "uninspected-component" not in Path(path).parts
         observed.append(str(path))
         return original(path, *args, **kwargs)
+
     monkeypatch.setattr(admission.os, "lstat", checked)
     with pytest.raises(ValueError, match="Parent traversal"):
         admission.admit_executable(entry)

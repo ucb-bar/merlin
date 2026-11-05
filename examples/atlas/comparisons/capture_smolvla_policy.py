@@ -4,26 +4,25 @@ This is source-native capture, not Atlas execution or a quality qualification.
 Every Linear and Conv2d invocation records its actual incoming tensor. Parameters
 are stored once per module, while ten denoising steps retain distinct inputs.
 """
+
 from __future__ import annotations
 
 import argparse
 import importlib.metadata
 import json
 import os
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
-
 from capture_smolvla import ARCHIVE_SHA, WEIGHTS_SHA
 from capture_tinyllama_native import identity, safe_path, verify_declared_sources
 from evaluate_smolvla_retained_prefix import INPUT_NAMES, INPUT_SHA, STATE_SHA, state_sha, tensor_id, tensor_words
 
 
 def require_equal(actual, expected, name):
-    if (actual.dtype != expected.dtype or actual.shape != expected.shape
-            or actual.tobytes() != expected.tobytes()):
+    if actual.dtype != expected.dtype or actual.shape != expected.shape or actual.tobytes() != expected.tobytes():
         raise ValueError("Native reference changed: " + name)
 
 
@@ -43,7 +42,7 @@ def validate_target_geometry(captures, reference):
         if actual.dtype != reference[name].dtype or actual.shape != reference[name].shape:
             raise ValueError("Target trajectory geometry changed: " + name)
         if actual.dtype == np.uint16:
-            finite = not np.any((actual & np.uint16(0x7f80)) == np.uint16(0x7f80))
+            finite = not np.any((actual & np.uint16(0x7F80)) == np.uint16(0x7F80))
         else:
             finite = np.isfinite(actual).all()
         if not finite:
@@ -61,9 +60,16 @@ def main():
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
-    report = {"status": "failed", "command": [sys.executable, *sys.argv], "cwd": os.getcwd(),
-              "fresh_vision_executed": False, "atlas_executed": False, "timing_qualified": False,
-              "policy_quality_qualified": False, "cpu_threads": 1}
+    report = {
+        "status": "failed",
+        "command": [sys.executable, *sys.argv],
+        "cwd": os.getcwd(),
+        "fresh_vision_executed": False,
+        "atlas_executed": False,
+        "timing_qualified": False,
+        "policy_quality_qualified": False,
+        "cpu_threads": 1,
+    }
     pins, handles = [], []
 
     def pin(path, expected=None):
@@ -80,8 +86,14 @@ def main():
         torch.set_num_threads(1)
         torch.set_num_interop_threads(1)
         pin(__file__)
-        for name in ("capture_smolvla", "capture_tinyllama_native", "evaluate_smolvla_retained_prefix",
-                     "capture_smolvla_full_query", "evaluate_smolvla_attention", "source_relocation"):
+        for name in (
+            "capture_smolvla",
+            "capture_tinyllama_native",
+            "evaluate_smolvla_retained_prefix",
+            "capture_smolvla_full_query",
+            "evaluate_smolvla_attention",
+            "source_relocation",
+        ):
             pin(sys.modules[name].__file__)
         pin(args.source_receipt)
         parent = json.loads(args.source_receipt.read_text())
@@ -93,11 +105,13 @@ def main():
                 raise ValueError("Atlas replay requires the completed fresh native capture")
             report["native_capture"] = pin(args.native_capture)
             native_capture = json.loads(args.native_capture.read_text())
-            if (native_capture.get("status") != "PASS_FRESH_VISION_NATIVE_POLICY_CAPTURE"
-                    or native_capture.get("all_archived_fields_raw_exact") is not True
-                    or native_capture.get("input_state_rng_bookends_equal") is not True
-                    or len(native_capture.get("calls", [])) != 1421
-                    or native_capture["source"]["weights"] != source["weights"]):
+            if (
+                native_capture.get("status") != "PASS_FRESH_VISION_NATIVE_POLICY_CAPTURE"
+                or native_capture.get("all_archived_fields_raw_exact") is not True
+                or native_capture.get("input_state_rng_bookends_equal") is not True
+                or len(native_capture.get("calls", [])) != 1421
+                or native_capture["source"]["weights"] != source["weights"]
+            ):
                 raise ValueError("Incomplete or different native capture")
             pin(native_capture["trajectory"]["path"], native_capture["trajectory"]["sha256"])
         verify_declared_sources(source)
@@ -121,8 +135,11 @@ def main():
             raise ValueError("Wrong policy configuration")
         config.device = "cpu"
         config.vlm_model_name = str(safe_path(source["backbone_config"]["path"]).parent)
-        policy = SmolVLAPolicy.from_pretrained(str(policy_dir), config=config,
-                                              local_files_only=True, strict=True).eval().requires_grad_(False)
+        policy = (
+            SmolVLAPolicy.from_pretrained(str(policy_dir), config=config, local_files_only=True, strict=True)
+            .eval()
+            .requires_grad_(False)
+        )
         model = policy.model
         vlm = model.vlm_with_expert.get_vlm_model()
         report["native_dispatch"] = {
@@ -138,6 +155,7 @@ def main():
         projection = None
         if args.atlas_tools is not None:
             from smol_policy_projection import AtlasProjection
+
             projection = AtlasProjection(args.atlas_tools, args.out / "atlas-kernels", args.workers)
         (args.out / "parameters").mkdir()
         (args.out / "calls").mkdir()
@@ -162,27 +180,53 @@ def main():
                     output = projection.apply(name, module, incoming[0], output.dtype)
                 if name not in parameters:
                     stem = f"{len(parameters):04d}"
-                    item = {"name": name, "kind": type(module).__name__,
-                            "weight": save_tensor(args.out / "parameters" / (stem + "-weight.bin"), module.weight)}
+                    item = {
+                        "name": name,
+                        "kind": type(module).__name__,
+                        "weight": save_tensor(args.out / "parameters" / (stem + "-weight.bin"), module.weight),
+                    }
                     if module.bias is not None:
                         item["bias"] = save_tensor(args.out / "parameters" / (stem + "-bias.bin"), module.bias)
                     if isinstance(module, torch.nn.Conv2d):
-                        item.update(stride=list(module.stride), padding=module.padding if isinstance(module.padding, str) else list(module.padding),
-                                    dilation=list(module.dilation), groups=module.groups)
+                        item.update(
+                            stride=list(module.stride),
+                            padding=module.padding if isinstance(module.padding, str) else list(module.padding),
+                            dilation=list(module.dilation),
+                            groups=module.groups,
+                        )
                     parameters[name] = item
                 stem = f"{index:05d}"
-                calls.append({"index": index, "module": name,
-                              "input": save_tensor(args.out / "calls" / (stem + "-input.bin"), incoming[0]),
-                              "output": save_tensor(args.out / "calls" / (stem + "-output.bin"), output)})
+                calls.append(
+                    {
+                        "index": index,
+                        "module": name,
+                        "input": save_tensor(args.out / "calls" / (stem + "-input.bin"), incoming[0]),
+                        "output": save_tensor(args.out / "calls" / (stem + "-output.bin"), output),
+                    }
+                )
                 if index % 100 == 0:
-                    print(json.dumps({"milestone": "native_operator" if projection is None else "Atlas_arithmetic_operator", "index": index, "module": name}), flush=True)
+                    print(
+                        json.dumps(
+                            {
+                                "milestone": "native_operator" if projection is None else "Atlas_arithmetic_operator",
+                                "index": index,
+                                "module": name,
+                            }
+                        ),
+                        flush=True,
+                    )
                 return output if projection is not None else None
+
             return capture
 
         for name, module in model.named_modules():
             if isinstance(module, (torch.nn.Linear, torch.nn.Conv2d)):
                 handles.append(module.register_forward_hook(hook(name)))
-        original_embed, original_forward, original_denoise = model.embed_prefix, model.vlm_with_expert.forward, model.denoise_step
+        original_embed, original_forward, original_denoise = (
+            model.embed_prefix,
+            model.vlm_with_expert.forward,
+            model.denoise_step,
+        )
         steps = []
 
         def embed(*arguments, **kwargs):
@@ -192,7 +236,17 @@ def main():
                 if projection is None:
                     require_equal(captures[name], reference[name], name)
             report["fresh_vision_executed"] = True
-            print(json.dumps({"milestone": "fresh_vision_prefix_raw_exact" if projection is None else "Atlas_arithmetic_vision_prefix", "operators": len(calls)}), flush=True)
+            print(
+                json.dumps(
+                    {
+                        "milestone": "fresh_vision_prefix_raw_exact"
+                        if projection is None
+                        else "Atlas_arithmetic_vision_prefix",
+                        "operators": len(calls),
+                    }
+                ),
+                flush=True,
+            )
             return result
 
         def forward(*arguments, **kwargs):
@@ -213,16 +267,31 @@ def main():
             result = original_denoise(*arguments, **kwargs)
             captures[stem + "_velocity"] = save_array(result)
             steps.append(index)
-            print(json.dumps({"milestone": "native_denoising_step" if projection is None else "Atlas_arithmetic_denoising_step", "step": index, "operators": len(calls)}), flush=True)
+            print(
+                json.dumps(
+                    {
+                        "milestone": "native_denoising_step"
+                        if projection is None
+                        else "Atlas_arithmetic_denoising_step",
+                        "step": index,
+                        "operators": len(calls),
+                    }
+                ),
+                flush=True,
+            )
             return result
 
         model.embed_prefix, model.vlm_with_expert.forward, model.denoise_step = embed, forward, denoise
         try:
             with torch.inference_mode():
-                final = model.sample_actions([inputs["images"][:, i] for i in range(2)],
-                                             [inputs["image_masks"][:, i] for i in range(2)],
-                                             inputs["language_tokens"], inputs["language_mask"],
-                                             inputs["state"], noise=inputs["noise"])
+                final = model.sample_actions(
+                    [inputs["images"][:, i] for i in range(2)],
+                    [inputs["image_masks"][:, i] for i in range(2)],
+                    inputs["language_tokens"],
+                    inputs["language_mask"],
+                    inputs["state"],
+                    noise=inputs["noise"],
+                )
         finally:
             del model.embed_prefix, model.vlm_with_expert.forward, model.denoise_step
         captures["final_full_state"] = save_array(final)
@@ -230,7 +299,11 @@ def main():
         if len(steps) != 10:
             raise ValueError("Incomplete denoising trajectory")
         for index in steps:
-            captures[f"step_{index:02d}_output_state"] = captures[f"step_{index + 1:02d}_input_state"].copy() if index < 9 else captures["final_full_state"].copy()
+            captures[f"step_{index:02d}_output_state"] = (
+                captures[f"step_{index + 1:02d}_input_state"].copy()
+                if index < 9
+                else captures["final_full_state"].copy()
+            )
         if projection is None:
             validate_trajectory(captures, reference, steps)
         else:
@@ -239,21 +312,37 @@ def main():
             validate_target_geometry(captures, reference)
             for index in steps:
                 stem = f"step_{index:02d}"
-                update = torch.from_numpy(captures[stem + "_input_state"]) + (-1.0 / 10) * torch.from_numpy(captures[stem + "_velocity"])
+                update = torch.from_numpy(captures[stem + "_input_state"]) + (-1.0 / 10) * torch.from_numpy(
+                    captures[stem + "_velocity"]
+                )
                 require_equal(captures[stem + "_output_state"], update.numpy(), stem + " own Euler update")
             report["projection_reference"] = projection.finish()
-        if (before != {name: tensor_id(value, torch) for name, value in inputs.items()}
-                or not torch.equal(rng, torch.random.get_rng_state()) or state_sha(model, torch) != STATE_SHA):
+        if (
+            before != {name: tensor_id(value, torch) for name, value in inputs.items()}
+            or not torch.equal(rng, torch.random.get_rng_state())
+            or state_sha(model, torch) != STATE_SHA
+        ):
             raise ValueError("Native input, RNG or state mutated")
         for item in tuple(pins):
             identity(item["path"], item["sha256"])
         np.savez(args.out / "trajectory.npz", **captures)
-        report.update(status="PASS_FRESH_VISION_NATIVE_POLICY_CAPTURE" if projection is None else "PASS_ATLAS_ARITHMETIC_FULL_POLICY_REPLAY", source=source,
-                      source_bookends=pins, versions=versions, parameters=parameters, calls=calls,
-                      trajectory=identity(args.out / "trajectory.npz"),
-                      all_archived_fields_raw_exact=projection is None, input_state_rng_bookends_equal=True,
-                      parameter_bytes=sum(item["weight"]["bytes"] + item.get("bias", {}).get("bytes", 0) for item in parameters.values()),
-                      invocation_bytes=sum(item["input"]["bytes"] + item["output"]["bytes"] for item in calls))
+        report.update(
+            status="PASS_FRESH_VISION_NATIVE_POLICY_CAPTURE"
+            if projection is None
+            else "PASS_ATLAS_ARITHMETIC_FULL_POLICY_REPLAY",
+            source=source,
+            source_bookends=pins,
+            versions=versions,
+            parameters=parameters,
+            calls=calls,
+            trajectory=identity(args.out / "trajectory.npz"),
+            all_archived_fields_raw_exact=projection is None,
+            input_state_rng_bookends_equal=True,
+            parameter_bytes=sum(
+                item["weight"]["bytes"] + item.get("bias", {}).get("bytes", 0) for item in parameters.values()
+            ),
+            invocation_bytes=sum(item["input"]["bytes"] + item["output"]["bytes"] for item in calls),
+        )
     except Exception as error:
         report["error"] = {"type": type(error).__name__, "message": str(error)}
         raise

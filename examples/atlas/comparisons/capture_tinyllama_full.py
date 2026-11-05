@@ -3,23 +3,23 @@
 This emits arithmetic references and actual predecessor operands. It does not
 execute Atlas instructions, qualify model quality, or measure target timing.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import random
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
-
 import tiny_workload_native as native
+from capture_tinyllama_native import array_identity, identity, safe_path
+from compare_tinyllama_attention import raw_array
+from tiny_fp8_pack import encode
 from tiny_workload_full import load_arithmetic
 from tiny_workload_inventory import column_shards
-from tiny_fp8_pack import encode
-from capture_tinyllama_native import safe_path, identity, array_identity
-from compare_tinyllama_attention import raw_array
 
 SITES = tuple(f"model.layers.{layer}.{site}" for layer in range(22) for site in native.PROJECTIONS) + ("lm_head",)
 
@@ -42,6 +42,7 @@ def padded_words(words, rows):
 
 def capture(args, projection_factory=None):
     import torch
+
     layer_count = getattr(args, "layer_count", 22)
     block_only = getattr(args, "block_only", False)
     attention_python = getattr(args, "attention_worker_python", None)
@@ -62,23 +63,42 @@ def capture(args, projection_factory=None):
     records = []
     oracle = load_arithmetic(args.atlas_arithmetic, args.atlas_arithmetic_sha256, records)
     from source_relocation import SourceRelocation
+
     relocation = SourceRelocation(getattr(args, "relocate", ()))
-    model, tokens, _, torch, cache_utils, modeling_llama, _ = native.prepare(args.historical, records, relocation=relocation)
-    records.extend(identity(Path(__file__).with_name(name)) for name in (
-        "capture_tinyllama_full.py", "tiny_workload_native.py", "tiny_workload_full.py",
-        "tiny_workload_inventory.py", "tiny_fp8_pack.py", "capture_tinyllama_native.py",
-        "compare_tinyllama_attention.py", "source_relocation.py"))
+    model, tokens, _, torch, cache_utils, modeling_llama, _ = native.prepare(
+        args.historical, records, relocation=relocation
+    )
+    records.extend(
+        identity(Path(__file__).with_name(name))
+        for name in (
+            "capture_tinyllama_full.py",
+            "tiny_workload_native.py",
+            "tiny_workload_full.py",
+            "tiny_workload_inventory.py",
+            "tiny_fp8_pack.py",
+            "capture_tinyllama_native.py",
+            "compare_tinyllama_attention.py",
+            "source_relocation.py",
+        )
+    )
     initial = native.state(model, torch)
     rng, nrng, prng = torch.get_rng_state().clone(), np.random.get_state(), random.getstate()
     out.mkdir(parents=True)
     (out / "parameters").mkdir()
     (out / "calls").mkdir()
-    report = {"status": "failed", "atlas_instruction_execution": False,
-              "timing_qualified": False, "quality_qualified": False,
-              "decode_count": args.decode_count, "source_records": records, "layer_count": layer_count,
-              "block_only": block_only, "include_lm_head": not block_only,
-              "scope": "layer0-prefill" if block_only and layer_count == 1 else "full-model",
-              "source_relocation": relocation.report()}
+    report = {
+        "status": "failed",
+        "atlas_instruction_execution": False,
+        "timing_qualified": False,
+        "quality_qualified": False,
+        "decode_count": args.decode_count,
+        "source_records": records,
+        "layer_count": layer_count,
+        "block_only": block_only,
+        "include_lm_head": not block_only,
+        "scope": "layer0-prefill" if block_only and layer_count == 1 else "full-model",
+        "source_relocation": relocation.report(),
+    }
     started = time.monotonic()
     handles, calls, parameters, saved, weights = [], [], {}, {}, {}
     mode, counter = "capture", 0
@@ -96,11 +116,17 @@ def capture(args, projection_factory=None):
             nonlocal counter
             step, index = divmod(counter, len(sites))
             rows = 128 if step == 0 else 1
-            if (step > args.decode_count or sites[index] != site or len(inputs) != 1
-                    or module.bias is not None or inputs[0].dtype != torch.bfloat16
-                    or output.dtype != torch.bfloat16 or module.weight.dtype != torch.bfloat16
-                    or tuple(inputs[0].shape) != (1, rows, module.in_features)
-                    or tuple(output.shape) != (1, rows, module.out_features)):
+            if (
+                step > args.decode_count
+                or sites[index] != site
+                or len(inputs) != 1
+                or module.bias is not None
+                or inputs[0].dtype != torch.bfloat16
+                or output.dtype != torch.bfloat16
+                or module.weight.dtype != torch.bfloat16
+                or tuple(inputs[0].shape) != (1, rows, module.in_features)
+                or tuple(output.shape) != (1, rows, module.out_features)
+            ):
                 raise ValueError("full linear order or BF16 ABI changed")
             a = raw_array(inputs[0][0], torch)
             a_id = array_identity(a)
@@ -132,17 +158,34 @@ def capture(args, projection_factory=None):
                 words = oracle.rescale_bf16_array(oracle.ordered_matmul(encoded_a, b), a_scale + b_scale)
                 result.append(words)
                 stem = f"calls/{step:02d}-{index:03d}-{panel:02d}"
-                panels.append({"columns": [lo, hi], "logical_mkn": [rows, module.in_features, hi-lo],
-                               "physical_mkn": [128 if rows == 128 else 32, module.in_features, hi-lo],
-                               "A_scale": a_scale, "B_scale": b_scale, "rescale": a_scale + b_scale,
-                               "expected_bf16": save(stem + "-expected.bin", padded_words(words, rows))})
-                print(json.dumps(dict(milestone="projection_panel", step=step, site=site, panel=panel,
-                                      columns=[lo, hi])), flush=True)
+                panels.append(
+                    {
+                        "columns": [lo, hi],
+                        "logical_mkn": [rows, module.in_features, hi - lo],
+                        "physical_mkn": [128 if rows == 128 else 32, module.in_features, hi - lo],
+                        "A_scale": a_scale,
+                        "B_scale": b_scale,
+                        "rescale": a_scale + b_scale,
+                        "expected_bf16": save(stem + "-expected.bin", padded_words(words, rows)),
+                    }
+                )
+                print(
+                    json.dumps(dict(milestone="projection_panel", step=step, site=site, panel=panel, columns=[lo, hi])),
+                    flush=True,
+                )
             words = np.concatenate(result, axis=1)
             saved[key] = (a_id, words)
-            calls.append({"step": step, "site": site, "site_index": index,
-                          "A_bf16": save(f"calls/{step:02d}-{index:03d}-A.bin", a), "panels": panels})
+            calls.append(
+                {
+                    "step": step,
+                    "site": site,
+                    "site_index": index,
+                    "A_bf16": save(f"calls/{step:02d}-{index:03d}-A.bin", a),
+                    "panels": panels,
+                }
+            )
             return torch.from_numpy(words.copy()).view(torch.bfloat16).unsqueeze(0)
+
         return linear
 
     class StopBlock(Exception):
@@ -155,13 +198,18 @@ def capture(args, projection_factory=None):
         next_token, trace = None, []
         for step in range(args.decode_count + 1):
             ids = tokens[:, :128] if step == 0 else torch.tensor([[next_token]], dtype=tokens.dtype)
-            previous = [(raw_array(layer.keys, torch), raw_array(layer.values, torch))
-                        for layer in cache.layers[:layer_count]] if step else []
+            previous = (
+                [(raw_array(layer.keys, torch), raw_array(layer.values, torch)) for layer in cache.layers[:layer_count]]
+                if step
+                else []
+            )
             boundary = {}
+
             def stop(_module, _inputs, output):
                 value = output[0] if isinstance(output, tuple) else output
                 boundary["hidden"] = raw_array(value[0], torch)
                 raise StopBlock()
+
             stop_handle = model.model.layers[layer_count - 1].register_forward_hook(stop) if block_only else None
             try:
                 with torch.inference_mode():
@@ -202,9 +250,11 @@ def capture(args, projection_factory=None):
 
     try:
         linear_weights = {site + ".weight" for site in SITES}
-        host_parameters = {name: save(f"parameters/host-{index:03d}.bin", raw_array(value, torch))
-                           for index, (name, value) in enumerate(model.named_parameters())
-                           if name not in linear_weights}
+        host_parameters = {
+            name: save(f"parameters/host-{index:03d}.bin", raw_array(value, torch))
+            for index, (name, value) in enumerate(model.named_parameters())
+            if name not in linear_weights
+        }
         positions = torch.arange(160, dtype=torch.int64).unsqueeze(0)
         with torch.inference_mode():
             cosine, sine = model.model.rotary_emb(torch.zeros((1, 160, 2048), dtype=torch.bfloat16), positions)
@@ -220,14 +270,24 @@ def capture(args, projection_factory=None):
             projection.install()
         if attention_python is not None:
             from capture_atlas_attention import AttentionCapture
+
             records.append(identity(Path(__file__).with_name("capture_atlas_attention.py")))
-            attention = AttentionCapture(out, attention_python, args.attention_worker_script, save, torch, records,
-                                         model_root=getattr(args, 'attention_model_root', None))
+            attention = AttentionCapture(
+                out,
+                attention_python,
+                args.attention_worker_script,
+                save,
+                torch,
+                records,
+                model_root=getattr(args, "attention_model_root", None),
+            )
             if projection is not None and hasattr(projection, "attach_attention"):
                 projection.attach_attention(attention)
+
             def atlas_attention(module, query, key, value, attention_mask, scaling, dropout=0.0, **kwargs):
                 step = (counter - 1) // len(sites)
                 return attention.apply(step, module, query, key, value, attention_mask, scaling)
+
             modeling_llama.eager_attention_forward = atlas_attention
         for site in sites:
             handles.append(modules[site].register_forward_hook(hook(site)))
@@ -259,14 +319,25 @@ def capture(args, projection_factory=None):
             raise ValueError("caller Torch RNG changed")
         for record in records:
             identity(record["path"], record["sha256"])
-        report.update(status="PASS_TINY_ATTENTION_BLOCK_CAPTURE_REPLAY" if block_only else "PASS_FULL_TINY_ARITHMETIC_CAPTURE_REPLAY", parameters=parameters,
-                      host_parameters=host_parameters, calls=calls,
-                      native_trace=native_trace, target_trace=target_trace,
-                      greedy_feedback_actual=not block_only, all22_cache_prefixes_exact=layer_count == 22,
-                      cache_prefixes_exact=True, projection_calls=len(calls),
-                      attention_calls=[] if attention is None else attention.calls,
-                      atlas_instruction_execution=attention is not None,
-                      source_bookends_verified=True, target_replay_exact=True, native_restored_exact=True)
+        report.update(
+            status="PASS_TINY_ATTENTION_BLOCK_CAPTURE_REPLAY"
+            if block_only
+            else "PASS_FULL_TINY_ARITHMETIC_CAPTURE_REPLAY",
+            parameters=parameters,
+            host_parameters=host_parameters,
+            calls=calls,
+            native_trace=native_trace,
+            target_trace=target_trace,
+            greedy_feedback_actual=not block_only,
+            all22_cache_prefixes_exact=layer_count == 22,
+            cache_prefixes_exact=True,
+            projection_calls=len(calls),
+            attention_calls=[] if attention is None else attention.calls,
+            atlas_instruction_execution=attention is not None,
+            source_bookends_verified=True,
+            target_replay_exact=True,
+            native_restored_exact=True,
+        )
         if projection is not None:
             report.update(projection.summary())
     except Exception as error:
@@ -305,8 +376,11 @@ def main():
     parser.add_argument("--relocate", action="append", default=[])
     parser.add_argument("--attention-worker-python", type=Path)
     parser.add_argument("--attention-worker-script", type=safe_path)
-    parser.add_argument("--attention-model-root", type=safe_path,
-                        help="explicit pinned npu_model checkout passed to the delivered attention worker")
+    parser.add_argument(
+        "--attention-model-root",
+        type=safe_path,
+        help="explicit pinned npu_model checkout passed to the delivered attention worker",
+    )
     args = parser.parse_args()
     if bool(args.attention_worker_python) != bool(args.attention_worker_script):
         parser.error("both attention worker arguments are required together")

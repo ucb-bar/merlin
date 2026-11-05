@@ -5,17 +5,18 @@ This is an experiment inventory. It does not claim automatic device compilation
 or turn an estimated MAC share into measured runtime coverage.
 """
 
-from merlin.common.jsonio import write_pretty_json
-from merlin.common.digest import sha256_bytes
 import argparse
 import hashlib
 import json
 import math
 import operator
-from pathlib import Path
 import sys
+from pathlib import Path
 
-from resnet_native import safe_path, file_identity, load_checkpoint, load_images
+from resnet_native import file_identity, load_checkpoint, load_images, safe_path
+
+from merlin.common.digest import sha256_bytes
+from merlin.common.jsonio import write_pretty_json
 
 
 def digest_tensor(value):
@@ -78,8 +79,7 @@ def inventory(model, image, torch, tile_shape):
                         ((x + alignment - 1) // alignment) * alignment for x, alignment in zip((m, k, n), tile_shape)
                     ],
                     host_preparation=(
-                        "NCHW im2col with explicit stride, dilation and zero padding, "
-                        "FP8 conversion and tiled packing"
+                        "NCHW im2col with explicit stride, dilation and zero padding, FP8 conversion and tiled packing"
                     ),
                     geometry={x: list(getattr(module, x)) for x in ("kernel_size", "stride", "padding", "dilation")},
                     weight_shape=list(module.weight.shape),
@@ -127,7 +127,7 @@ def main():
     p.add_argument("--tile-shape", type=int, nargs=3, required=True, metavar=("M", "K", "N"))
     p.add_argument("--out", required=True)
     args = p.parse_args()
-    from resnet_provider import read_source, artifact_output, source_bookend, finish_bookend
+    from resnet_provider import artifact_output, finish_bookend, read_source, source_bookend
 
     out = artifact_output(args.out)
     out.mkdir(parents=True, exist_ok=False)
@@ -226,7 +226,7 @@ def main():
             lines.append(
                 (
                     f"| {x['target']} | {x['operator']} | {x['output_shape']} | {x['partition']} | "
-                    f"{x.get('matrix_mkn','')} | {x['macs']} |"
+                    f"{x.get('matrix_mkn', '')} | {x['macs']} |"
                 )
             )
     (out / "partition.md").write_text("\n".join(lines) + "\n")
@@ -243,38 +243,46 @@ def epilogue_partition(records):
     Return launch dependencies explicitly, so a downsample branch is scheduled
     before the conv3 that consumes it. No pointwise-only launch is introduced.
     """
-    by_name = {node['node']: node for node in records}
+    by_name = {node["node"]: node for node in records}
     users = {name: [] for name in by_name}
     for node in records:
-        for source in node['inputs']:
-            users[source].append(node['node'])
+        for source in node["inputs"]:
+            users[source].append(node["node"])
     launches = []
-    for baseline_index, conv in enumerate(node for node in records if node['operator'] in ('Conv2d', 'Linear')):
-        name = conv['node']
-        item = dict(baseline_index=baseline_index, node=name, input_node=conv['inputs'][0],
-                    output_node=name, fused_nodes=[name], bn_node=None, residual_node=None, relu=False)
-        if conv['operator'] == 'Conv2d':
-            if len(users[name]) != 1 or by_name[users[name][0]]['operator'] != 'BatchNorm2d':
-                raise ValueError('ResNet convolution must have one BN successor')
+    for baseline_index, conv in enumerate(node for node in records if node["operator"] in ("Conv2d", "Linear")):
+        name = conv["node"]
+        item = dict(
+            baseline_index=baseline_index,
+            node=name,
+            input_node=conv["inputs"][0],
+            output_node=name,
+            fused_nodes=[name],
+            bn_node=None,
+            residual_node=None,
+            relu=False,
+        )
+        if conv["operator"] == "Conv2d":
+            if len(users[name]) != 1 or by_name[users[name][0]]["operator"] != "BatchNorm2d":
+                raise ValueError("ResNet convolution must have one BN successor")
             bn = by_name[users[name][0]]
-            item['bn_node'] = bn['node']
-            item['fused_nodes'].append(bn['node'])
-            tail = bn['node']
-            if conv['target'].endswith('.conv3'):
-                if len(users[tail]) != 1 or by_name[users[tail][0]]['operator'] != 'residual_add':
-                    raise ValueError('conv3 must feed one residual add')
+            item["bn_node"] = bn["node"]
+            item["fused_nodes"].append(bn["node"])
+            tail = bn["node"]
+            if conv["target"].endswith(".conv3"):
+                if len(users[tail]) != 1 or by_name[users[tail][0]]["operator"] != "residual_add":
+                    raise ValueError("conv3 must feed one residual add")
                 add = by_name[users[tail][0]]
-                item['residual_node'] = next(source for source in add['inputs'] if source != tail)
-                tail = add['node']
-                item['fused_nodes'].append(tail)
-            if len(users[tail]) == 1 and by_name[users[tail][0]]['operator'] == 'ReLU':
+                item["residual_node"] = next(source for source in add["inputs"] if source != tail)
+                tail = add["node"]
+                item["fused_nodes"].append(tail)
+            if len(users[tail]) == 1 and by_name[users[tail][0]]["operator"] == "ReLU":
                 tail = users[tail][0]
-                item['relu'] = True
-                item['fused_nodes'].append(tail)
-            item['output_node'] = tail
+                item["relu"] = True
+                item["fused_nodes"].append(tail)
+            item["output_node"] = tail
         else:
-            item['output_node'] = name + '_acc'
+            item["output_node"] = name + "_acc"
         launches.append(item)
-    if len(launches) != 54 or sum(item['residual_node'] is not None for item in launches) != 16:
-        raise ValueError('unexpected ResNet50 epilogue inventory')
+    if len(launches) != 54 or sum(item["residual_node"] is not None for item in launches) != 16:
+        raise ValueError("unexpected ResNet50 epilogue inventory")
     return launches

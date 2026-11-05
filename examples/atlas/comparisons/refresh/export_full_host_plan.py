@@ -1,24 +1,30 @@
 #!/usr/bin/env python3
 """Export source-bound full ResNet graph and offline parameters; no runtime gate."""
 
-from merlin.common.jsonio import write_pretty_json
-from merlin.common.digest import sha256_bytes
-import argparse, hashlib, json, math, sys
+import argparse
+import hashlib
+import json
+import math
+import sys
 from pathlib import Path
-from resnet_native import safe_path, file_identity, load_checkpoint, load_images
+
 from partition_resnet import digest_tensor, inventory, state_identity
 from resnet_graph_inputs import explicit_patches, raw_identity
+from resnet_native import file_identity, load_checkpoint, load_images, safe_path
 from resnet_provider import (
     Provider,
-    read_source,
-    load_provider,
-    load_packing,
-    validate_plan,
     add_export_arguments,
-    source_bookend,
-    finish_bookend,
     artifact_output,
+    finish_bookend,
+    load_packing,
+    load_provider,
+    read_source,
+    source_bookend,
+    validate_plan,
 )
+
+from merlin.common.digest import sha256_bytes
+from merlin.common.jsonio import write_pretty_json
 
 
 def pair(value):
@@ -30,7 +36,8 @@ def main():
     add_export_arguments(p, reference=False)
     a = p.parse_args()
     import numpy as np
-    import torch, torchvision
+    import torch
+    import torchvision
 
     source, sourceid, relocation = read_source(a, torch, torchvision, np)
     vector, vectorid = load_provider("full_export_vector", a.vector, a.vector_sha256)
