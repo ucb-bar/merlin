@@ -57,6 +57,7 @@
       "test/full_bundle_fixture.py",
       "test/host-bits-object.c",
       "test/host-bits-test.c",
+      "test/prepare_smol_fixture.py",
       "test/test_atlas_execution.py",
       "test/test_atlas_result.py",
       "test/test_attention_timing_contract.py",
@@ -448,6 +449,7 @@
     ]
   },
   "new_paths": [
+    "test/prepare_smol_fixture.py",
     "test/test_host_bits.py"
   ]
 }

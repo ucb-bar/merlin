@@ -22,10 +22,14 @@ class AttentionExportTest(unittest.TestCase):
         model = exporter.checked(os.environ["TINY_MODEL_ROOT"])
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory) / "qualified"
+            source_args = []
+            relocation = os.environ.get("TINY_ATTENTION_RELOCATE")
+            if relocation:
+                source_args.extend(["--relocate", relocation])
             subprocess.run([sys.executable, "-B", str(exporter.ROOT / "tools/tiny_full/export_capture.py"),
                 "--capture", str(capture), "--capture-sha256", exporter.sha256(capture),
                 "--model-root", str(model), "--out", str(out), "--dram-bytes", "0x80000000",
-                "--qualify-launches"], check=True, capture_output=True, text=True)
+                "--qualify-launches", *source_args], check=True, capture_output=True, text=True)
             data = json.loads((out / "contract.json").read_text())
             gate = json.loads((out / "qualification.json").read_text())
             sums = {line.split("  ", 1)[1]: line.split("  ", 1)[0]

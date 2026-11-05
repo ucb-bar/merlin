@@ -87,9 +87,14 @@ class FullExportTest(unittest.TestCase):
         from npu_model.configs.numerics import RtlNumerics
         capture = exporter.checked(os.environ["TINY_FULL_CAPTURE"])
         report = json.loads(capture.read_text())
-        codec_path = [row["path"] for row in report["source_records"]
-                      if Path(row["path"]).name == "tiny_fp8_pack.py"][0]
-        spec = importlib.util.spec_from_file_location("tiny_codec_test", exporter.checked(codec_path))
+        records = [row for row in report["source_records"]
+                   if Path(row["path"]).name == "tiny_fp8_pack.py"]
+        self.assertEqual(len(records), 1, "one capture-bound FP8 codec required")
+        # Retained captures can name a source root that has since been offloaded.
+        codec_path = exporter.checked(os.environ.get("TINY_FULL_CODEC", records[0]["path"]))
+        self.assertEqual(exporter.sha256(codec_path), records[0]["sha256"],
+                         "fixture codec differs from the captured source")
+        spec = importlib.util.spec_from_file_location("tiny_codec_test", codec_path)
         codec = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(codec)
         words = np.arange(65536, dtype=np.uint16)

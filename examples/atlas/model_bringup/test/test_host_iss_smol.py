@@ -3,8 +3,10 @@
 import copy
 import json
 import os
+import shutil
 from pathlib import Path
 import struct
+import subprocess
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -16,6 +18,7 @@ sys.path[:0] = [str(TOOLS), str(TOOLS / "host_iss")]
 import kernel_library  # noqa: E402,F401
 from atlas_path_guard import checked
 from block_bundle import BlockBundle
+from bundle import ChecksumBundle
 from elf_image import Image as ELFImage
 import smol_contract as smol
 
@@ -162,6 +165,32 @@ class AdmissionTests(unittest.TestCase):
     def test_captured_elf_and_source_admission(self):
         bundle, image = self.captured()
         smol.validate_bundle(bundle, image)
+        # The historical archive inputs also enable the adapter regression.
+        archive_root = os.environ.get("SMOL_BLOCK_ARCHIVE")
+        if not (archive_root and os.environ.get("SMOL_BLOCK_TRUST")):
+            return
+        # Exercise the adapter against real bytes at a different physical root.
+        with self.subTest(adapter="relocated archive"), tempfile.TemporaryDirectory() as temp:
+            root = checked(temp)
+            source = root / "archive"
+            archive = ChecksumBundle(checked(archive_root))
+            for name in [*archive.sums, "SHA256SUMS"]:
+                destination = checked(source / name)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(archive.path(name), destination)
+            target = root / "overlay"
+            result = subprocess.run([
+                sys.executable, "-B", str(Path(__file__).with_name("prepare_smol_fixture.py")),
+                "--source", str(source), "--trust-receipt", str(checked(os.environ["SMOL_BLOCK_TRUST"])),
+                "--view", str(TOOLS.parent), "--out", str(target),
+                "--report", str(root / "report.json")], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            relocated = BlockBundle(target, "smol")
+            smol.validate_bundle(relocated, ELFImage(relocated.read("host/host.elf")))
+            for name in relocated.sums.keys() - {"provenance.json", "storage.json"}:
+                self.assertEqual(relocated.sums[name], archive.sums[name])
+            archive.verify_bookends()
+            relocated.verify_bookends()
 
     def test_descriptor_and_embedded_payload_mutations_are_rejected(self):
         bundle, image = self.captured()

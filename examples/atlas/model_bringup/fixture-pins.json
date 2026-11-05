@@ -1,0 +1,390 @@
+{
+  "schema": "atlas.model_test_fixture_pins.v1",
+  "scope": "CPU fixture admission, original eight-launch diagnostic execution, and FP8 codec checks; no complete model execution claim.",
+  "smol_block": {
+    "environment": "SMOL_BLOCK_BUNDLE",
+    "schema": "atlas.block_bundle.v1",
+    "kernel_count": 7,
+    "preparation": "test/prepare_smol_fixture.py",
+    "historical_trust_receipt_sha256": "d5af5f9d31b5199ff092c5fc1bb042c680b11ef8c27d1dabdc1ebfcbd0001214",
+    "contract_sha256": "f1dfaeaa32f43dbb9597556c3d44c41eabbc1e2a7752da5c783f9f07ff071d68",
+    "original_sha256sums_sha256": "8d60980cdddaedac04620a64840ebfb5ef030ffe6494be83b8260941a11cbefd",
+    "inherited_files": {
+      "data/attention_boundaries.bin": {
+        "bytes": 177,
+        "sha256": "1d301e81de70faf13cc2f34e436a16b75cdc24d48c887c82302aa327043e8717"
+      },
+      "data/cosine.bin": {
+        "bytes": 1048704,
+        "sha256": "b764ba72786bae0d1e1649fba00c1dd8063d78a1da7a632667b621713d0a645c"
+      },
+      "data/expected_key_cache.bin": {
+        "bytes": 113280,
+        "sha256": "2e73ff8070680486ad65aae82d847f5525e041c27e1e04cec18cd4204cf3fb55"
+      },
+      "data/expected_output.bin": {
+        "bytes": 339840,
+        "sha256": "4baafa10ee4534a67e41d4b60b7857fe4b1c9d8f8fffd1f45aa142220cf2e08b"
+      },
+      "data/expected_value_cache.bin": {
+        "bytes": 113280,
+        "sha256": "ed7d11661ace00fcc35655ac574c6bc9432b6388a705d409a6a92289559a54a3"
+      },
+      "data/input.bin": {
+        "bytes": 339840,
+        "sha256": "e587b0f6699bdc3a6232048830a5e457759c941000435adff21519abacd8d9e7"
+      },
+      "data/input_norm_weight.bin": {
+        "bytes": 1920,
+        "sha256": "c7d6795a2febff01c31858452da76115230627e087a3cfe815fa0a7b639fdb0e"
+      },
+      "data/pad.bin": {
+        "bytes": 177,
+        "sha256": "e0322868cf4c212d056826ab259cdcfe8cb323e742c44837fc90a02820138dea"
+      },
+      "data/post_norm_weight.bin": {
+        "bytes": 1920,
+        "sha256": "12f8d6416c8a7801b87301e2993bf98d213b92c5f51f7ce4dd3757a7a7ed9cb9"
+      },
+      "data/program_0.bin": {
+        "bytes": 1940,
+        "sha256": "29c395fc547351bcc1d2d3118ba2e75a5412c570e6df188fb3670f134e4d96cb"
+      },
+      "data/program_1.bin": {
+        "bytes": 1940,
+        "sha256": "1a9d8caa9ac0a2009abf7d7e7c447d307bad6c9a43d10c16d51e03c1b4b72253"
+      },
+      "data/program_2.bin": {
+        "bytes": 1940,
+        "sha256": "0524d771bf36cb05be43d831bdc0fb31dd20300ef430aee31bccfaec3dec54ff"
+      },
+      "data/program_3.bin": {
+        "bytes": 1940,
+        "sha256": "5878a9c75acd5a850941554f0a1055947905476e636ead60459cf082279bb68d"
+      },
+      "data/program_4.bin": {
+        "bytes": 1940,
+        "sha256": "bcffa0426ef0506c5e0033aaddce2a8ae30452800bafb944338464145012884b"
+      },
+      "data/program_6.bin": {
+        "bytes": 5324,
+        "sha256": "c5a0e9e9584542ee22ee181437e9a6bc4e396da5cd94a9fed88a31b9a1125f91"
+      },
+      "data/sine.bin": {
+        "bytes": 1048704,
+        "sha256": "d44c2374ae13d76552e79cf0139f8b6617914e2b6d0d48dbf2828e57959f85a0"
+      },
+      "host/build.json": {
+        "bytes": 91866,
+        "sha256": "e403abd652a0529f857b17f482c9591dcec1c884124802a70f00da91302d7fd9"
+      },
+      "host/host.elf": {
+        "bytes": 13153552,
+        "sha256": "67484ec4cab9af8f3508c96816a51d41cf0f9f9a239226192d81132262b1ba8d"
+      },
+      "host/smol-epoch3-contract.json": {
+        "bytes": 82790,
+        "sha256": "f1dfaeaa32f43dbb9597556c3d44c41eabbc1e2a7752da5c783f9f07ff071d68"
+      },
+      "model/mlp.down_proj/actual-bf16-halves-0.bin": {
+        "bytes": 368640,
+        "sha256": "5482e2ee87925b13e40c2fb80efd0e3d59c6d2e987ce8e3cb47d593face5eeff"
+      },
+      "model/mlp.down_proj/initial-dram.bin": {
+        "bytes": 3318272,
+        "sha256": "cbf62e7569418499171d7cb6386d9dc8de65bfc3385a196e7756c7cda79bfc82"
+      },
+      "model/mlp.down_proj/program.S": {
+        "bytes": 21964,
+        "sha256": "b5bedc58e9a430c15905107998b309474e658d4bad4fd9dc484e7b8fb054f71c"
+      },
+      "model/mlp.gate_proj/actual-bf16-halves-0.bin": {
+        "bytes": 983040,
+        "sha256": "c2110877492f0618e822200bd0bf27f55dd48c426c57473ba744dcba451e1cce"
+      },
+      "model/mlp.gate_proj/initial-dram.bin": {
+        "bytes": 3625472,
+        "sha256": "908d1768c3ea425f8568c9ccea3b3c806c2201167a5f4dfd5b6d294a0299ff64"
+      },
+      "model/mlp.gate_proj/program.S": {
+        "bytes": 7745,
+        "sha256": "a5ff135dd17cb0f41c68d9ac120f21b03ae8bb5bb01015d89ec23d7aa288b89c"
+      },
+      "model/mlp.up_proj/actual-bf16-halves-0.bin": {
+        "bytes": 983040,
+        "sha256": "d5d85a8e94a7109fc19a4e4e2551203b2dba8765bfbccdf43017924c441b4cda"
+      },
+      "model/mlp.up_proj/initial-dram.bin": {
+        "bytes": 3625472,
+        "sha256": "879ea8a2c462d8360f27b9d763b67d4b9335d4b3a6c4848791b2775fc5b6149b"
+      },
+      "model/self_attn.k_proj/actual-bf16-halves-0.bin": {
+        "bytes": 122880,
+        "sha256": "0c6b5d36ed50151de11a1b0b379b095e9508d93ce1f9d2022b6a5da1326eaa79"
+      },
+      "model/self_attn.k_proj/initial-dram.bin": {
+        "bytes": 614912,
+        "sha256": "04dfa8b7bcf57025cc0b9f06fbfcc6196db65b37008e52106fc4fe562cc4e5e4"
+      },
+      "model/self_attn.k_proj/program.S": {
+        "bytes": 7744,
+        "sha256": "9f1c901de33e5562f764673826f244361a2cbbf0f716f2d35bf6a8d092ff0c65"
+      },
+      "model/self_attn.o_proj/actual-bf16-halves-0.bin": {
+        "bytes": 368640,
+        "sha256": "56bf12f426f88189c2d44bae54a3286dac859a7ae61938810bd2f4f599d23bd6"
+      },
+      "model/self_attn.o_proj/initial-dram.bin": {
+        "bytes": 1475072,
+        "sha256": "f6059133dc3f6340ea416591455aa78fe24f825630118126099f7f418c4d5d37"
+      },
+      "model/self_attn.o_proj/program.S": {
+        "bytes": 7745,
+        "sha256": "d330bc5841ea4ea3e39c6a20aa27c4b41137f8ac2bc63232299adbce68ca5dd0"
+      },
+      "model/self_attn.q_proj/actual-bf16-halves-0.bin": {
+        "bytes": 368640,
+        "sha256": "7e707da93789999867b99611eb6015a4e8b5d71a0c8f89a5c8715a142ad64703"
+      },
+      "model/self_attn.q_proj/initial-dram.bin": {
+        "bytes": 1475072,
+        "sha256": "84c38a14fd18efca32e8c7c2d35be9e54b185969b73eb176ff520d5a1eda829f"
+      },
+      "model/self_attn.q_proj/program.S": {
+        "bytes": 7745,
+        "sha256": "902b26a379ccf321f9e7d87fdb731e5ebb1b1e04dd8efe8c748e6e0b7fae2035"
+      },
+      "model/self_attn.v_proj/actual-bf16-halves-0.bin": {
+        "bytes": 122880,
+        "sha256": "bf104c9b9ae262fd8c2dd356a0455873c00b0f930748a34640c8b67308fb66af"
+      },
+      "model/self_attn.v_proj/initial-dram.bin": {
+        "bytes": 614912,
+        "sha256": "eda6260268708f9e40b829282e62c8c75c9d673e4617c60e9358b5a50ebb3961"
+      },
+      "model/self_attn.v_proj/program.S": {
+        "bytes": 7744,
+        "sha256": "b0869d6d5d54f007d502fdb6950e59af49a3183973120a2cd78a942ce4e22f53"
+      }
+    },
+    "listed_files": 41,
+    "total_bytes_including_manifest": 34487482,
+    "recovery_overlay_files": {
+      "SHA256SUMS": {
+        "sha256": "66384453fceceff0175b6f8b9a778afa5e0c3cff895785cac6393501399bfdc1",
+        "bytes": 3920
+      },
+      "provenance.json": {
+        "sha256": "1b846618eca7bbdf6554de38d959b49dea648a5f45210465d1293dfebbb8cb4e",
+        "bytes": 3072
+      },
+      "storage.json": {
+        "sha256": "863e59cd87bad274bb61fd812bac44bf2ac0e06a44f4198f243b4aa2c65c2e58",
+        "bytes": 1785
+      }
+    },
+    "overlay_hash_scope": "Recorded recovery placement. storage.json and SHA256SUMS change when the physical archive root changes; original contract and inherited file hashes remain binding."
+  },
+  "tiny_attention": {
+    "environment": "TINY_ATTENTION_CAPTURE",
+    "source_relocation_environment": "TINY_ATTENTION_RELOCATE",
+    "capture_source_prefix": "/tmp/reednicolas-atlas/oct31/V2/A",
+    "replacement_source_root": "source-root",
+    "capture_designation": "SYNTHETIC_EXPORT_CLI_ONLY_NOT_A_MODEL_CAPTURE",
+    "kernel_count": 8,
+    "model_revision": "47b8599d8ffbe5ddd96059ffe2b5be2427a410f5",
+    "files": {
+      "a-0.bin": {
+        "sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "bytes": 8192
+      },
+      "a-1.bin": {
+        "sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "bytes": 8192
+      },
+      "a-2.bin": {
+        "sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "bytes": 8192
+      },
+      "a-3.bin": {
+        "sha256": "4fe7b59af6de3b665b67788cc2f99892ab827efae3a467342b3bb4e3bc8e5bfe",
+        "bytes": 16384
+      },
+      "a-4.bin": {
+        "sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "bytes": 8192
+      },
+      "a-5.bin": {
+        "sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "bytes": 8192
+      },
+      "a-6.bin": {
+        "sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "bytes": 8192
+      },
+      "attention/arena-expected.bin": {
+        "sha256": "16db79bd80f25f6d8e0f6ce2fdec769f826f794d66e6390ce845a64ef759586a",
+        "bytes": 74368
+      },
+      "attention/arena-initial.bin": {
+        "sha256": "055fd044e9b27007e4442526f205aac5ffee36d371c418b4b267423faf88c1fa",
+        "bytes": 74368
+      },
+      "attention/k-tiled.bin": {
+        "sha256": "4fe7b59af6de3b665b67788cc2f99892ab827efae3a467342b3bb4e3bc8e5bfe",
+        "bytes": 16384
+      },
+      "attention/output-bf16.bin": {
+        "sha256": "4fe7b59af6de3b665b67788cc2f99892ab827efae3a467342b3bb4e3bc8e5bfe",
+        "bytes": 16384
+      },
+      "attention/output-tiled.bin": {
+        "sha256": "4fe7b59af6de3b665b67788cc2f99892ab827efae3a467342b3bb4e3bc8e5bfe",
+        "bytes": 16384
+      },
+      "attention/program.S": {
+        "sha256": "b83e66f91dae5934a6ad6f05af0e3b94cbe86b160cff626ccc1933dc715fb8f9",
+        "bytes": 5601
+      },
+      "attention/program.bin": {
+        "sha256": "b3b006005a634e86437da2489765c202ade2b79bbf26062a2a8e4a3a1fd89cb7",
+        "bytes": 1372
+      },
+      "attention/q-tiled.bin": {
+        "sha256": "4fe7b59af6de3b665b67788cc2f99892ab827efae3a467342b3bb4e3bc8e5bfe",
+        "bytes": 16384
+      },
+      "attention/v-tiled.bin": {
+        "sha256": "4fe7b59af6de3b665b67788cc2f99892ab827efae3a467342b3bb4e3bc8e5bfe",
+        "bytes": 16384
+      },
+      "b-0.bin": {
+        "sha256": "e5a00aa9991ac8a5ee3109844d84a55583bd20572ad3ffcd42792f3c36b183ad",
+        "bytes": 2048
+      },
+      "b-1.bin": {
+        "sha256": "e5a00aa9991ac8a5ee3109844d84a55583bd20572ad3ffcd42792f3c36b183ad",
+        "bytes": 2048
+      },
+      "b-2.bin": {
+        "sha256": "e5a00aa9991ac8a5ee3109844d84a55583bd20572ad3ffcd42792f3c36b183ad",
+        "bytes": 2048
+      },
+      "b-3.bin": {
+        "sha256": "ad7facb2586fc6e966c004d7d1d16b024f5805ff7cb47c7a85dabd8b48892ca7",
+        "bytes": 4096
+      },
+      "b-4.bin": {
+        "sha256": "e5a00aa9991ac8a5ee3109844d84a55583bd20572ad3ffcd42792f3c36b183ad",
+        "bytes": 2048
+      },
+      "b-5.bin": {
+        "sha256": "e5a00aa9991ac8a5ee3109844d84a55583bd20572ad3ffcd42792f3c36b183ad",
+        "bytes": 2048
+      },
+      "b-6.bin": {
+        "sha256": "e5a00aa9991ac8a5ee3109844d84a55583bd20572ad3ffcd42792f3c36b183ad",
+        "bytes": 2048
+      },
+      "expected-0.bin": {
+        "sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "bytes": 8192
+      },
+      "expected-1.bin": {
+        "sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "bytes": 8192
+      },
+      "expected-2.bin": {
+        "sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "bytes": 8192
+      },
+      "expected-3.bin": {
+        "sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "bytes": 8192
+      },
+      "expected-4.bin": {
+        "sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "bytes": 8192
+      },
+      "expected-5.bin": {
+        "sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "bytes": 8192
+      },
+      "expected-6.bin": {
+        "sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "bytes": 8192
+      },
+      "host-placeholder.bin": {
+        "sha256": "96a296d224f285c67bee93c30f8a309157f0daa35dc5b87e410b78630a09cfc7",
+        "bytes": 2
+      },
+      "k.bin": {
+        "sha256": "4fe7b59af6de3b665b67788cc2f99892ab827efae3a467342b3bb4e3bc8e5bfe",
+        "bytes": 16384
+      },
+      "q.bin": {
+        "sha256": "4fe7b59af6de3b665b67788cc2f99892ab827efae3a467342b3bb4e3bc8e5bfe",
+        "bytes": 16384
+      },
+      "receipt.json": {
+        "sha256": "899487d77d60437883a0a6e6ca5f85d8baaed68286b32d9ccd9de2e60d176266",
+        "bytes": 39926
+      },
+      "source-root/atlas-mlir/tools/atlas_attention_program.py": {
+        "sha256": "b24ed19768a00d1669dc1930b8c9bd0806a49b5d6e3ef89e8bf256b848f19508",
+        "bytes": 13404
+      },
+      "source-root/atlas-mlir/tools/atlas_execution.py": {
+        "sha256": "b061645a5a4500ccc0464dbcf1426cddf130d4c6f3ca3daa4869b143a148a324",
+        "bytes": 9659
+      },
+      "source-root/atlas-mlir/tools/atlas_path_guard.py": {
+        "sha256": "c22c49be2477c51f880d981124cf474a31a8f9a0bedc009c1a202aa311cfb30e",
+        "bytes": 3080
+      },
+      "source-root/atlas-mlir/tools/tiny_full/attention_worker.py": {
+        "sha256": "50fbcdb474c1cb7460c77e427569268f918c3622084a6a0aca6e71c63a505104",
+        "bytes": 5765
+      },
+      "source-root/fix-validation/make_execution_fixture.py": {
+        "sha256": "779f5421362ca3a815c306f90225a103b909a222b5c0eab5aabf173b25d2677a",
+        "bytes": 3872
+      },
+      "source-root/merlin/examples/atlas/comparisons/tiny_fp8_pack.py": {
+        "sha256": "fff76584a936c357668a4aea5f4d24b7dc756a4067f74131f732f4fce72f949f",
+        "bytes": 1916
+      },
+      "tokens.bin": {
+        "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+        "bytes": 1024
+      },
+      "v.bin": {
+        "sha256": "4fe7b59af6de3b665b67788cc2f99892ab827efae3a467342b3bb4e3bc8e5bfe",
+        "bytes": 16384
+      }
+    }
+  },
+  "tiny_full_codec": {
+    "capture_environment": "TINY_FULL_CAPTURE",
+    "codec_environment": "TINY_FULL_CODEC",
+    "model_environment": "TINY_MODEL_ROOT",
+    "model_revision": "9e6313bddecb8ba936206eb347f5cd4e5335282c",
+    "capture_sha256": "9dfe0737bb6ad68a086b7448727c84232bd3f8f549afa692e13668d0a3e4e803",
+    "capture_status": "PASS_FULL_TINY_FUSED_C_NATIVE_CAPTURE_REPLAY_REQUIRES_ORIGINAL47_BACKFILL",
+    "capture_calls": 465,
+    "scope": "Codec boundaries and actual captured q_proj weight only; native capture still requires original47 backfill for complete numerical admission.",
+    "codec_sha256": "fff76584a936c357668a4aea5f4d24b7dc756a4067f74131f732f4fce72f949f",
+    "codec_bytes": 1916,
+    "weight_parameter": "model.layers.0.self_attn.q_proj",
+    "weight_descriptor": {
+      "file": "parameters/000-B.bin",
+      "shape": [
+        2048,
+        2048
+      ],
+      "dtype": "uint16",
+      "sha256": "0a22db4b41819bd63c74f786be6d23b6f03e00a745381a2b7ef2a61c170fcefe",
+      "bytes": 8388608
+    }
+  }
+}
