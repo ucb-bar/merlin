@@ -154,8 +154,9 @@ def test_a_model_with_nothing_to_route_says_why_and_builds_no_twin(tmp_path, mon
     provider = SimpleNamespace(
         load_contract=lambda unit: None, derive_encodings=lambda c: SimpleNamespace(encodings={})
     )
-    routing = SimpleNamespace(unit="unit_a", provider=lambda: provider)
+    routing = SimpleNamespace(unit="unit_a", support_target="t", provider=lambda: provider)
     monkeypatch.setattr("merlin.runtime.boards.board", lambda name: SimpleNamespace(check_matrix_image=lambda h: None))
+    monkeypatch.setattr("merlin.targetgen.unit_pins.unit_pins", lambda target, unit=None: [])
     monkeypatch.setattr(zm, "build_app", fake_build)
     monkeypatch.setattr(matrix_image, "_audit", lambda elf, enc: {})
     monkeypatch.setattr(matrix_image, "routing_report", lambda build_dir, routing: dict(_NOTHING))

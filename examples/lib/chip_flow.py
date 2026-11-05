@@ -121,11 +121,36 @@ def ensure_capture_deps(py: Path, deps: list[str], *, workload: str) -> None:
         raise SystemExit(f"installing {got['missing']} into {py} failed; see the output above")
 
 
+#: Beside a bundle: which model2MLIR revision captured it (``capture_pin``'s record).
+FRONTEND_PIN = "frontend_pin.json"
+
+
+def bundle_on_pin(bundle: Path) -> bool:
+    """True when ``bundle`` records a capture by model2MLIR at today's capture pin. A bundle captured
+    before (no record) or by another revision is not reused by ``op``: 8893a37's int8 Linear captures,
+    for one, are not in SSA order, and a cached one would keep failing after model2MLIR was moved."""
+    from merlin.common import provenance as P
+    from merlin.integrations.model2mlir import CAPTURE_PIN
+
+    try:
+        got = json.loads((bundle / FRONTEND_PIN).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    pin = P.load_pins(P.software_pins_path())[CAPTURE_PIN]
+    return bool(got.get("ok")) and (got.get("verification") or {}).get("observed", {}).get("commit") == pin.commit
+
+
 def capture(name: str, loader: Path | None, *, env: dict | None = None) -> Path:
+    from merlin.integrations.model2mlir import CapturePinError, require_capture_pin
+
     bundle = bundle_dir(name)
     m2m = _env("MERLIN_M2M_DIR")
     if not m2m:
         raise SystemExit("set MERLIN_M2M_DIR to a model2MLIR checkout (examples/kodiak/run.sh setup does it)")
+    try:
+        frontend = require_capture_pin(m2m)
+    except CapturePinError as exc:
+        raise SystemExit(f"not capturing {name}: {exc}") from None
     if loader is not None:
         m2m_py = _env("MERLIN_M2M_PYTHON")
         if not m2m_py:
@@ -163,6 +188,7 @@ def capture(name: str, loader: Path | None, *, env: dict | None = None) -> Path:
         ]
     if _run(cmd, env=env).returncode != 0 or not (bundle / "model.mlir").is_file():
         raise SystemExit(f"capture of {name} failed; see the output above")
+    (bundle / FRONTEND_PIN).write_text(json.dumps(frontend, indent=2, default=str) + "\n", encoding="utf-8")
     # Weight-only int8 capture; Merlin computes W8A8. This writes the reference a W8A8 image is graded
     # against (Merlin's own host datapath: it checks the DEVICE reproduces the host).
     if _run([PY, "build_tools/scripts/make_w8a8_golden.py", bundle]).returncode != 0:
@@ -320,7 +346,20 @@ def op(args) -> int:
             raise SystemExit(f"{args.op}: not one of {sorted(OPS)} and not a loader file")
         name = "op_" + loader.parent.name
     env = {**os.environ, **{k: str(v) for k, v in zip(keys, dims)}}
-    if args.recapture or not (bundle_dir(name) / "golden_w8a8.npy").is_file():
+    if args.matrix_unit:
+        # Before any capture or build: a unit whose sources are materially off their pin stops here, with
+        # the commands that fix it, rather than after the RVV leg in a truncated build error.
+        from merlin.targetgen import unit_pins
+
+        try:
+            for m in unit_pins.require(args.matrix_support_target, args.matrix_unit):
+                if m.verdict != "pinned":
+                    seen = m.verification.observed.path
+                    print(f"note: {m.pin} is {m.verdict} off its pin ({seen}); the build records it")
+        except unit_pins.UnitPinError as exc:
+            raise SystemExit(f"not building {name} for {args.matrix_unit}: {exc}") from None
+    bundle = bundle_dir(name)
+    if args.recapture or not (bundle / "golden_w8a8.npy").is_file() or not bundle_on_pin(bundle):
         capture(name, loader, env=env)
     results = {"rvv": _compile(name, args, matrix=False)}
     if args.matrix_unit:

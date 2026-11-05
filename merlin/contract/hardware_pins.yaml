@@ -56,6 +56,7 @@ pins:
     repo_observed_note: >-
       The opu-int8 branch lives on the fork https://github.com/miles-rusch-berkeley/saturn-vectors.git,
       not on ucb-bar. Recorded rather than silently tolerated: anyone reproducing this needs the fork.
+    repo_observed: https://github.com/miles-rusch-berkeley/saturn-vectors.git
     commit: ea373800169ce7bbb9ca27ececf74101a7caf9d5
     targets: [saturn_opu, kodiak]
     branch: opu-int8
@@ -84,8 +85,15 @@ pins:
     #
     # This is a declaration to be reviewed, not a way to quiet the gate. Land it upstream and delete
     # this block; do not add an entry here for an edit nobody has read.
+    #
+    # THE DIGEST is of the bytes the PUBLISHED edit produces: `git apply` of
+    # firesim/01-saturn-OPUConfigs.patch from kodiak-mlir at its pin (fa37a1b3) onto ea373800, with the
+    # passthrough model's path left as shipped (it is read from $MERLIN_EICG_PASSTHROUGH_V). That is what
+    # examples/kodiak/README.md tells a new machine to do, and the OPU route refuses to build from any
+    # other bytes of this file (merlin.targetgen.unit_pins), so the two have to name the same content.
+    # The digest declared before (8cbea4f9...) was of an edit no published file reproduces.
     local_edits:
-      chipyard/OPUConfigs.scala: "8cbea4f9f46f33ad808da1f68b34b0460240b2c07cd08a22b92066921576d258"
+      chipyard/OPUConfigs.scala: "86fd7ac9e1cbcc5a8a491be884d8466ede1008ce604ab034c81d31e480e693d4"
     used_by:
       - OPU microkernel emission and encoding derivation (kernels/opu_kernel, targetgen/rtl/opu_isa)
       - OPU L3 numerical certification (kernels/opu_cert)

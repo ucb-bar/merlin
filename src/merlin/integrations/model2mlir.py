@@ -67,7 +67,7 @@ def capture_python(*, checkout: Path | None = None) -> Path:
 CAPTURE_PIN = "model2mlir_capture"
 
 
-def capture_pin(checkout: "Path | str | None") -> dict:
+def capture_pin(checkout: Path | str | None) -> dict:
     """The capture checkout verified against :data:`CAPTURE_PIN`, as the record a capture carries.
 
     ``{"pin", "ok", "citation", "verification"}``; ``ok`` is False on ANY drift -- another commit, or
@@ -90,3 +90,33 @@ def capture_pin(checkout: "Path | str | None") -> dict:
             "verification": {},
         }
     return {"pin": CAPTURE_PIN, "ok": got.ok, "citation": citation, "verification": got.to_dict()}
+
+
+class CapturePinError(RuntimeError):
+    """The model2MLIR checkout a capture would run is not the pinned capture revision."""
+
+
+def require_capture_pin(checkout: Path | str) -> dict:
+    """:func:`capture_pin`, refusing ANY drift unless ``MERLIN_ALLOW_OFF_PIN`` names the pin.
+
+    Stricter than a hardware pin's content rule on purpose: the pin's read set is a sample of the files a
+    capture depends on, not all of them, so another commit can change a capture while every listed file
+    is byte-identical. The message names the commands that put the checkout on the pin."""
+    from merlin.common import pin_drift as D
+    from merlin.common import provenance as P
+
+    got = capture_pin(checkout)
+    if got["ok"] or D.allowed_off_pin(CAPTURE_PIN):
+        return got
+    pin = P.load_pins(P.software_pins_path())[CAPTURE_PIN]
+    drift = (got.get("verification") or {}).get("drift") or [got["citation"]]
+    raise CapturePinError(
+        f"model2MLIR at {checkout} is not the pinned capture revision {pin.commit[:12]} "
+        f"({'; '.join(drift)}), and captures made with another revision are not the ones Merlin is checked "
+        f"against (merlin/contract/software_pins.yaml says what changed).\n"
+        "  a clean clone made by a chip example's `run.sh setup` (out/build/ext/model2MLIR) is moved by "
+        "running setup again; any other checkout:\n"
+        f"    git -C {checkout} fetch {pin.repo_canonical} {pin.commit}\n"
+        f"    git -C {checkout} checkout --detach {pin.commit}\n"
+        f"  or, to capture with it anyway (the bundle records the drift): export {D.ALLOW_OFF_PIN_ENV}={CAPTURE_PIN}"
+    )

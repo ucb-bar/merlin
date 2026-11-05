@@ -157,6 +157,11 @@ def build_matrix_pair(
     from ..boards import board as _board
 
     _board(board).check_matrix_image(harts)
+    # The unit's encodings and geometry are derived from pinned checkouts. Off the pin in a byte the
+    # derivation reads, the image would be about other hardware: refused (UnitPinError) unless allowed.
+    from merlin.targetgen import unit_pins
+
+    unit_pins.require(routing.support_target, routing.unit)
     provider = routing.provider()
     encodings = provider.derive_encodings(provider.load_contract(routing.unit)).encodings
 

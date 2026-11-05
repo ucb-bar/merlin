@@ -137,6 +137,9 @@ class Pin:
     #: see :func:`merlin.targetgen.provenance.declared_pins`.
     targets: tuple[str, ...] = ()
     repo_observed_note: str = ""
+    #: Where the pinned commit can actually be fetched from, when that is not ``repo_canonical`` (a fork
+    #: carrying the branch). Used only to PRINT fetch commands; verification never reads it.
+    repo_observed: str = ""
     #: Files this checkout is KNOWN to carry uncommitted, as ``(repo-relative path, sha256)`` pairs.
     #:
     #: The registry's rule is that a commit must describe the bytes that were read. Sometimes it cannot:
@@ -618,6 +621,7 @@ def load_pins(path: str | Path | None = None) -> dict[str, Pin]:
             used_by=tuple(body.get("used_by") or ()),
             targets=_targets(p, name, body.get("targets")),
             repo_observed_note=str(body.get("repo_observed_note") or ""),
+            repo_observed=str(body.get("repo_observed") or ""),
             local_edits=_local_edits(p, name, body.get("local_edits")),
             nested_in=str(body.get("nested_in") or ""),
             nested_path=str(body.get("nested_path") or ""),
