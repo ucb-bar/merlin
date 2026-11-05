@@ -102,7 +102,68 @@ def _eval_generic(op, env):
     return out
 
 
-def _run(module, a, b):
+_SHIM_KERNEL = r"""
+#include <stdint.h>
+#include <stddef.h>
+static void ref_kernel(int32_t *c, const int8_t *at, const int8_t *b, const int32_t *bias,
+                       size_t m, size_t n, size_t k)
+{
+  for (size_t i = 0; i < m; ++i)
+    for (size_t j = 0; j < n; ++j) {
+      int32_t s = bias ? bias[j] : 0;
+      for (size_t q = 0; q < k; ++q) s += (int32_t)at[q * m + i] * (int32_t)b[q * n + j];
+      c[i * n + j] = s;
+    }
+}
+"""
+
+
+def _shim_kernel(signatures, tmp_path):
+    """The routed calls executed by the GENERIC C bridge (matrix_shim) around a reference K-major kernel.
+
+    This is what makes the layout rewrite a kernel-agnostic claim: the sidecar's signatures are compiled
+    into the same translation unit every unit's kernel is linked into, with the ABI unchanged, and the
+    rewritten module's calls go through it -- descriptors, the K-major pack of A and the batched loop.
+    """
+    import ctypes
+    import shutil
+    import subprocess
+
+    from merlin.kernels import matrix_shim
+
+    if shutil.which("cc") is None:
+        pytest.skip("no host C compiler")
+    src = matrix_shim.emit_translation_unit(_SHIM_KERNEL, "ref_kernel", signatures, alignment_bytes=16, prefix="cnf_t")
+    c, so = tmp_path / "shim.c", tmp_path / "shim.so"
+    c.write_text(str(src))
+    got = subprocess.run(["cc", "-O1", "-fPIC", "-shared", str(c), "-o", str(so)], capture_output=True, text=True)
+    assert got.returncode == 0, got.stderr[-2000:]
+    lib = ctypes.CDLL(str(so))
+
+    def desc(arr):
+        base = ctypes.c_void_p(arr.ctypes.data)
+        strides = [s // arr.itemsize for s in arr.strides]
+        return [base, base, ctypes.c_ssize_t(0), *(ctypes.c_ssize_t(s) for s in arr.shape),
+                *(ctypes.c_ssize_t(s) for s in strides)]  # fmt: skip
+
+    def call(sym, lhs, rhs, out_shape):
+        lhs, rhs = np.ascontiguousarray(lhs, np.int8), np.ascontiguousarray(rhs, np.int8)
+        out = np.zeros(out_shape, np.int32)
+        fields = [("allocated", ctypes.c_void_p), ("aligned", ctypes.c_void_p), ("offset", ctypes.c_ssize_t)]
+        rank = len(out_shape)
+
+        class Ret(ctypes.Structure):
+            _fields_ = [*fields, ("sizes", ctypes.c_ssize_t * rank), ("strides", ctypes.c_ssize_t * rank)]
+
+        fn = getattr(lib, sym)
+        fn.restype = Ret
+        fn(*desc(lhs), *desc(rhs), *desc(out))
+        return out
+
+    return call
+
+
+def _run(module, a, b, kernel=None):
     func = next(op for op in module.walk() if op.name == "func.func" and op.sym_name.data == "forward")
     block = func.body.blocks[0]
     env = {id(block.args[0]): a, id(block.args[1]): b}
@@ -124,9 +185,13 @@ def _run(module, a, b):
         elif name == "linalg.generic":
             env[id(res)] = _eval_generic(op, env)
         elif name == "func.call":
-            lhs, rhs = (env[id(v)].astype(np.int64) for v in op.operands[:2])
-            env[id(res)] = np.matmul(lhs, rhs).astype(np.int32)
-            assert env[id(res)].shape == tuple(res.type.get_shape())
+            lhs, rhs = (env[id(v)] for v in op.operands[:2])
+            shape = tuple(res.type.get_shape())
+            if kernel is None:
+                env[id(res)] = np.matmul(lhs.astype(np.int64), rhs.astype(np.int64)).astype(np.int32)
+            else:
+                env[id(res)] = kernel(op.callee.string_value(), lhs, rhs, shape)
+            assert env[id(res)].shape == shape
         else:
             raise AssertionError(f"the reference does not evaluate {name}")
     raise AssertionError("no func.return")
@@ -148,7 +213,7 @@ class _Force:
         return True
 
 
-def _check(text, a_shape, b_shape, orientation=cnf.AS_IS, *, steps=None):
+def _check(text, a_shape, b_shape, orientation=cnf.AS_IS, *, steps=None, shim_dir=None):
     rng = np.random.default_rng(0)
     a = rng.integers(-127, 128, size=a_shape, dtype=np.int8)
     b = rng.integers(-127, 128, size=b_shape, dtype=np.int8)
@@ -162,6 +227,8 @@ def _check(text, a_shape, b_shape, orientation=cnf.AS_IS, *, steps=None):
     if steps is not None:
         assert set(got.routed[0].steps) == set(steps), got.routed[0].steps
     np.testing.assert_array_equal(_run(module, a, b), want)
+    if shim_dir is not None:
+        np.testing.assert_array_equal(_run(module, a, b, kernel=_shim_kernel(got.signatures, shim_dir)), want)
     return got
 
 
@@ -300,3 +367,31 @@ def test_the_site_is_read_from_provenance_only():
     assert cnf.site_of(op) == "unknown"
     op.attributes["prov.conv_path"] = StringAttr("im2col_matmul")
     assert cnf.site_of(op) == "conv"
+
+
+class TestThroughTheGenericShim:
+    """The same rewrites, with every kernel call executed by matrix_shim's C entries (ABI unchanged)."""
+
+    def test_rank4_scores_use_the_batched_entry(self, tmp_path):
+        maps = [
+            "(d0, d1, d2, d3, d4) -> (d0, d1, d2, d4)",
+            "(d0, d1, d2, d3, d4) -> (d0, d1, d3, d4)",
+            "(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3)",
+        ]
+        text = _contraction((2, 3, 10, 8), (2, 3, 12, 8), (2, 3, 10, 12), maps, ["parallel"] * 4 + ["reduction"])
+        got = _check(text, (2, 3, 10, 8), (2, 3, 12, 8), shim_dir=tmp_path)
+        assert list(got.signatures.values()) == [(6, 10, 12, 8)]
+
+    def test_a_swapped_transposed_b(self, tmp_path):
+        text = _contraction((24, 40), (20, 40), (24, 20), [_MK, "(d0, d1, d2) -> (d1, d2)", _MN], _PPR)
+        _check(text, (24, 40), (20, 40), cnf.SWAPPED, shim_dir=tmp_path)
+
+    def test_a_strided_conv_through_im2col(self, tmp_path):
+        maps = [
+            "(d0, d1, d2, d3, d4, d5, d6) -> (d0, d4, d2 * 2 + d5, d3 * 2 + d6)",
+            "(d0, d1, d2, d3, d4, d5, d6) -> (d1, d4, d5, d6)",
+            "(d0, d1, d2, d3, d4, d5, d6) -> (d0, d1, d2, d3)",
+        ]
+        its = ["parallel"] * 4 + ["reduction"] * 3
+        text = _contraction((2, 3, 9, 9), (5, 3, 3, 3), (2, 5, 4, 4), maps, its)
+        _check(text, (2, 3, 9, 9), (5, 3, 3, 3), cnf.SWAPPED, shim_dir=tmp_path)
