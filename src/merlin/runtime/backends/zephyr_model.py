@@ -2512,7 +2512,9 @@ def build_app(
         if budget.need_bytes(floor) > brd.dram_bytes:
             budget.image_bytes = floor
             raise ZephyrModelError(budget.refusal(image_at_least=True))
-        estimate = budget.need_bytes(floor + (work / "model.o").stat().st_size)
+        # The embedded inputs and output buffers are known from the generated runtime; what is still
+        # unknown (the kernel, stacks) is usually a few MiB, and an underestimate costs one relink.
+        estimate = budget.need_bytes(floor + (work / "model.o").stat().st_size + int(info.get("static_io_bytes") or 0))
         linked_region = _zmem.region_for(budget, estimate, brd.zephyr_default_ram_bytes)
         if brd.dram_bytes <= brd.zephyr_link_limit_bytes:
             linked_region = min(linked_region, max(brd.dram_bytes, brd.zephyr_default_ram_bytes))
