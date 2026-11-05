@@ -78,6 +78,7 @@ kernel-bench = "merlin.kernels.bench_ceiling:main"
 merlin-targetgen = "merlin.targetgen.cli:main"
 merlin-target-tools = "merlin.targetgen.tool_cli:main"
 merlin-target-fetch = "merlin.targetgen.oot_fetch:main"
+merlin-target-compose = "merlin.targetgen.provider_compose:main"
 merlin-onboard = "merlin.targetgen.onboard:main"
 merlin-target-publish = "merlin.targetgen.publish:main"
 # Search/mining campaign commands are owned by packages/merlin-mining.

@@ -2,6 +2,11 @@
 
 Roles describe ownership, not trust or executability. Compiler ABI validation, plugin loading,
 and grading remain the responsibility of their existing consumers. No provider code is imported.
+
+A ``merlin.provider.v2`` support provider may declare ``extends``: it is a layer on top of another
+support provider (its base), authoring only a contract overlay. The effective contract every consumer
+reads is materialized from base + overlay by :mod:`merlin.targetgen.provider_compose`, so a layered
+provider looks exactly like a flat one to everything downstream.
 """
 
 from __future__ import annotations
@@ -16,7 +21,14 @@ import yaml
 from merlin.common.yaml import safe_load_text
 
 SCHEMA = "merlin.provider.v1"
+SCHEMA_V2 = "merlin.provider.v2"
+SCHEMAS = (SCHEMA, SCHEMA_V2)
 METADATA_FILE = "provider.yaml"
+DEFAULT_CONTRACT = "contracts/target_contract.yaml"
+DEFAULT_OVERLAY = "contracts/overlay.yaml"
+_V1_FIELDS = frozenset({"schema", "id", "target", "role", "contract"})
+_V2_FIELDS = _V1_FIELDS | {"extends"}
+_EXTENDS_FIELDS = frozenset({"target", "commit", "repo", "overlay"})
 
 
 class ProviderError(ValueError):
@@ -30,6 +42,17 @@ class ProviderRole(StrEnum):
 
 
 @dataclass(frozen=True)
+class ProviderBase:
+    """What a layered provider declares it builds on. ``commit`` pins the base's revision (full sha);
+    ``repo`` is where to fetch it from when it is not already selected or vendored."""
+
+    target: str
+    overlay: str
+    commit: str | None = None
+    repo: str | None = None
+
+
+@dataclass(frozen=True)
 class Provider:
     id: str
     target: str
@@ -37,6 +60,11 @@ class Provider:
     root: Path
     contract_path: Path | None = None
     declared: bool = False
+    extends: ProviderBase | None = None
+
+    @property
+    def overlay_path(self) -> Path | None:
+        return None if self.extends is None else self.root / self.extends.overlay
 
 
 def _mapping(path: Path) -> dict[str, Any]:
@@ -72,8 +100,32 @@ def contained_resource(root: Path, value: str) -> Path:
     return resolved
 
 
-def read_provider(root: str | Path) -> Provider | None:
+def _extends(value: Any, *, target: str, path: Path) -> ProviderBase:
+    if not isinstance(value, dict):
+        raise ProviderError(f"{path}: extends must be a mapping")
+    unknown = set(value) - _EXTENDS_FIELDS
+    if unknown:
+        raise ProviderError(f"{path}: extends has unknown fields {sorted(unknown)}")
+    base = _identity(value.get("target"), field="extends.target", path=path)
+    if base == target:
+        raise ProviderError(f"{path}: a provider cannot extend its own target {target!r}")
+    commit = value.get("commit")
+    if commit is not None:
+        commit = _identity(commit, field="extends.commit", path=path)
+        if len(commit) != 40 or any(ch not in "0123456789abcdef" for ch in commit):
+            raise ProviderError(f"{path}: extends.commit must be a full lowercase 40-char sha, got {commit!r}")
+    repo = value.get("repo")
+    if repo is not None:
+        repo = _identity(repo, field="extends.repo", path=path)
+    overlay = _identity(value.get("overlay", DEFAULT_OVERLAY), field="extends.overlay", path=path)
+    return ProviderBase(target=base, overlay=overlay, commit=commit, repo=repo)
+
+
+def read_provider(root: str | Path, *, materialized: bool = True) -> Provider | None:
     """Describe a package without importing it or qualifying any claimed capability.
+
+    ``materialized=False`` describes a layered provider whose effective contract has not been composed
+    yet (only :mod:`merlin.targetgen.provider_compose` needs that).
 
     Explicit metadata is authoritative and validated fail-closed. Legacy contract packages are
     support providers. Legacy schedule payloads take precedence over ABI-looking wrappers, since
@@ -83,27 +135,40 @@ def read_provider(root: str | Path) -> Provider | None:
     metadata = root / METADATA_FILE
     if metadata.is_file():
         doc = _mapping(metadata)
-        if doc.get("schema") != SCHEMA:
-            raise ProviderError(f"{metadata}: expected schema {SCHEMA!r}")
-        unknown = set(doc) - {"schema", "id", "target", "role", "contract"}
+        schema = doc.get("schema")
+        if schema not in SCHEMAS:
+            raise ProviderError(f"{metadata}: expected schema one of {list(SCHEMAS)}, got {schema!r}")
+        unknown = set(doc) - (_V2_FIELDS if schema == SCHEMA_V2 else _V1_FIELDS)
         if unknown:
-            raise ProviderError(f"{metadata}: unknown fields {sorted(unknown)}")
+            raise ProviderError(f"{metadata}: unknown fields {sorted(unknown)} for {schema}")
         identity = _identity(doc.get("id"), field="id", path=metadata)
         target = _identity(doc.get("target"), field="target", path=metadata)
         try:
             role = ProviderRole(doc.get("role"))
         except (TypeError, ValueError) as exc:
             raise ProviderError(f"{metadata}: invalid provider role {doc.get('role')!r}") from exc
+        extends = _extends(doc.get("extends"), target=target, path=metadata) if "extends" in doc else None
+        if extends is not None and role != ProviderRole.SUPPORT:
+            raise ProviderError(f"{metadata}: only support providers may declare extends")
         contract = None
         if role == ProviderRole.SUPPORT:
-            resource = _identity(doc.get("contract", "contracts/target_contract.yaml"), field="contract", path=metadata)
+            resource = _identity(doc.get("contract", DEFAULT_CONTRACT), field="contract", path=metadata)
+            if extends is not None:
+                contained_resource(root, extends.overlay)
+                if not materialized:
+                    return Provider(identity, target, role, root, root / resource, declared=True, extends=extends)
+                if not (root / resource).is_file():
+                    raise ProviderError(
+                        f"{metadata}: extends {extends.target!r} but its effective contract {resource} has not "
+                        f"been materialized; run `merlin-target-compose {root}`"
+                    )
             contract = contained_resource(root, resource)
             name = _mapping(contract).get("name")
             if name != target:
                 raise ProviderError(f"{metadata}: target {target!r} differs from contract name {name!r}")
         elif "contract" in doc:
             raise ProviderError(f"{metadata}: only support providers may declare a contract")
-        return Provider(identity, target, role, root, contract, declared=True)
+        return Provider(identity, target, role, root, contract, declared=True, extends=extends)
 
     contract = root / "contracts" / "target_contract.yaml"
     if contract.is_file():
