@@ -181,8 +181,8 @@ spike-model)
   ex_say "build the OPU spike model from $PKG"
   ex_run "$PY" "$PKG/spike/build.py" --out "$REPO_ROOT/out/build/spike-ext/kodiak"
   ex_note "export MERLIN_KODIAK_OPU_SPIKE_EXTLIB=$REPO_ROOT/out/build/spike-ext/kodiak/libsaturn_opu_model.so"
-  ex_note "then \`op\` also runs the SHIPPED OPU image on spike (leg matrix_on_spike). The .so's sha256 must"
-  ex_note "equal the one the package declares; a rebuild with other bytes is refused, not loaded."
+  ex_note "then \`op\` also runs the SHIPPED OPU image on spike (leg matrix_on_spike). Any build is accepted"
+  ex_note "whose manifest records the model inputs the package declares (built_from) and a passing self-test."
   ;;
 
 build|package)
