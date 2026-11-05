@@ -1,0 +1,58 @@
+#!/bin/bash
+# Run one bare-metal ELF (read from stdin) on a free FPGA slot. Target console -> stdout, FireSim driver
+# messages -> stderr, exit status = the driver's (the target's exit code; 124 = wall timeout).
+# This is the forced command for the workhorses' f2run key.
+set -uo pipefail
+. /opt/f2run/f2run.conf
+set -- ${SSH_ORIGINAL_COMMAND:-run}
+CMD=$1; WALL=${2:-$RUN_TIMEOUT}; PIN=${3:-}
+if [ "$CMD" = probe ]; then   # is a FireSim driver attached to slot $WALL? (arg 2 = slot)
+  pgrep -f "FireSim-f2.*[+]slotid=$WALL( |\$)" >/dev/null && echo running || echo stopped; exit 0
+fi
+if [ "$CMD" = reset ]; then   # force the slot driver down (the next run reloads the slot)
+  sudo -n pkill -KILL -f "FireSim-f2.*[+]slotid=$WALL( |\$)"; sleep 1
+  pgrep -f "FireSim-f2.*[+]slotid=$WALL( |\$)" >/dev/null && echo running || echo stopped; exit 0
+fi
+if [ "$CMD" = status ]; then   # health probe from f2-run
+  [ -f /run/f2run/ready ] && { echo "ready $(cat /run/f2run/slots) slot(s) $AGFI"; exit 0; }
+  echo "not ready (flashing)"; exit 75
+fi
+tmp=$(mktemp /var/tmp/f2run/elf.XXXXXX); trap 'rm -f "$tmp"' EXIT
+# Full-model ELFs (TinyLlama ~1.3 GB) exceed 1 GiB. Cap at 8 GiB, refuse rather than truncate, and need room on disk.
+cap=$((8 << 30))
+[ "$(df --output=avail -B1 /var/tmp/f2run | tail -1)" -gt $((cap + (1 << 30))) ] || { echo "f2-exec: /var/tmp/f2run has under 9 GiB free" >&2; exit 73; }
+head -c $((cap + 1)) > "$tmp"
+[ "$(stat -c %s "$tmp")" -le "$cap" ] || { echo "f2-exec: ELF exceeds the 8 GiB cap" >&2; exit 64; }
+[ -s "$tmp" ] && [ "$(head -c 4 "$tmp" | od -An -tx1 | tr -d ' ')" = 7f454c46 ] || { echo "f2-exec: stdin is not an ELF" >&2; exit 64; }
+for _ in $(seq 600); do [ -f /run/f2run/ready ] && break; sleep 1; done
+[ -f /run/f2run/ready ] || { echo "f2-exec: FPGAs not flashed (f2-flash)" >&2; exit 69; }
+n=$(cat /run/f2run/slots)
+[ -z "$PIN" ] || [ "$PIN" -lt "$n" ] || { echo "f2-exec: no slot $PIN" >&2; exit 64; }
+exec 8>/run/f2run/queue.lock
+while :; do   # first free slot; the queue lock makes waiters take turns
+  flock 8
+  for s in $(if [ -n "$PIN" ]; then echo $PIN; else seq 0 $((n - 1)); fi); do
+    exec 9>/run/f2run/slot$s.lock
+    if flock -n 9; then slot=$s; break 2; fi
+    exec 9>&-
+  done
+  flock -u 8; sleep 0.2
+done
+flock -u 8; exec 8>&-
+touch /run/f2run/last
+cd /var/tmp/f2run/slot$slot
+echo "[boot] elf_sha256=$(sha256sum "$tmp" | cut -d" " -f1) bytes=$(stat -c %s "$tmp") slot=$slot agfi=$AGFI" >&2
+sudo -n /opt/f2run/f2-flash --reload "$slot" >&2 || { echo "f2-exec: could not reload slot $slot" >&2; exit 70; }
+case "$WALL" in @*) WALL=$(( ${WALL#@} - $(date +%s) - 5 )); [ "$WALL" -ge 3 ] || WALL=3 ;; esac   # absolute deadline: upload and reload already spent
+echo "[boot] driver_wall_seconds=$WALL" >&2
+sudo -n timeout -k 3 "$WALL" "$DRIVER_DIR/FireSim-f2" $DRIVER_ARGS +slotid=$slot +permissive-off +prog0="$tmp" </dev/null \
+  | awk '
+    /^Attached to BAR|^widget_registry_t::|^cpu2fpga: |^UART0 is here|^command line for program|^\+permissive |^FireSim fingerprint|^TracerV: |^tsibridge_t::tick skipping tick/ { print "[firesim] " $0 > "/dev/stderr"; fflush("/dev/stderr"); next }
+    { print; fflush() }'
+rc=${PIPESTATUS[0]}
+touch /run/f2run/last
+if [ "$rc" = 124 ] || [ "$rc" = 137 ]; then   # killed mid-run; the next run reloads this slot before starting
+  echo "f2-exec: wall timeout (${WALL}s driver wall) on slot $slot" >&2; rc=124
+fi
+echo "f2-exec: slot $slot rc $rc" >&2
+exit "$rc"

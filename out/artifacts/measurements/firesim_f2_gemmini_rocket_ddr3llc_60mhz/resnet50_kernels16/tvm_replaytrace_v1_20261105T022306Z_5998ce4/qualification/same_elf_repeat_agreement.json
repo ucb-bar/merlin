@@ -1,0 +1,15 @@
+{
+  "max": 1972011,
+  "min": 1972011,
+  "note": "Reports actual cycle variability; determinism is not assumed.",
+  "spread_fraction": 0.0,
+  "status": "pass",
+  "test": "same_elf_repeat_agreement",
+  "warm_cycles": [
+    1972011,
+    1972011,
+    1972011,
+    1972011,
+    1972011
+  ]
+}

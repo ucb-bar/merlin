@@ -1,0 +1,225 @@
+{
+  "schema": "tvm_handoff_regression_v1",
+  "host": "a26 (shared university VM), 2026-11-04",
+  "sources": {
+    "merlin": "5998ce4ef51ef506af1485eecb035e6148d77712 + staged handoff docs",
+    "tvm_f2_pin": "f3cfd1a7dc95d00191225fa8ac5fc8aee3a6940d",
+    "tvm_tip": "fee495aca14dbb58e2dfbd5fe66e5417e9162ed4 + handoff doc edits",
+    "libtvm": "out/build/baselines/tvm-f2-followup/compiler-migration/libtvm.so (C++ identical c50c4e269..fee495aca)",
+    "riscv_gcc": "riscv64-unknown-elf-gcc (gc891d8dc23e) 13.2.0"
+  },
+  "tests": {
+    "merlin F2-path (firesim, kernels, shared chunks, resnet, target, package session, payload)": {
+      "result": "154 passed in 76.86s (0:01:16)",
+      "exit": "exit 0",
+      "failed": []
+    },
+    "merlin all TVM-comparison tests": {
+      "result": "33 failed, 294 passed, 46 skipped in 60.24s (0:01:00)",
+      "exit": "exit 1",
+      "failed": [
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLAArithmeticDiagnosticTests::test_fused_bf16_silu_preserves_one_output_cast_and_fp32_default",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLAArithmeticDiagnosticTests::test_original_processor_namespaced_statistics_are_not_silently_remapped",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLAArithmeticDiagnosticTests::test_original_processor_provenance_binds_selected_config_state_and_classes",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLAObservationTests::test_recorded_preparation_uses_original_processor_without_inventing_camera",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceConvTests::test_contract_refuses_other_dispatch_and_modified_binary",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceConvTests::test_real_export_selects_only_bound_bf16_patch_geometry",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceFlashTests::test_source_flash_defaults_and_factory_export_refusals",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceFlashTests::test_source_flash_public_factory_compiler_and_ordinary_fallback",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceLayerNormTests::test_export_selects_original_bf16_affines_shape_and_epsilon",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceLayerNormTests::test_public_factory_compiler_composes_named_layernorm_and_generic_fallback",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceLayerNormTests::test_public_layernorm_selection_preserves_overlap_and_admission_refusals",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceMeanTests::test_export_selects_only_bound_fp32_last_axis_keepdim_geometry",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceMeanTests::test_real_export_extends_only_declared_mean960_geometry_and_preserves_720",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourcePolicyTests::test_session_hooks_select_only_declared_policies_and_preserve_default_table",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceRotaryTests::test_source_rotary_defaults_factory_and_export_admission",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceRotaryTests::test_source_rotary_public_factory_compiler_preserves_native_words",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceScalarTests::test_source_scalar_real_public_export_and_strict_LLVM_grid",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSgemmTests::test_extended_contract_refuses_other_bf16_dispatch",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSgemmTests::test_prefix_bf16_pv177_is_distinct_from_old_fp32_pv177_and_defaults",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSgemmTests::test_real_export_keeps_177_policy_and_admits_only_proved_227_dtypes",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSgemmTests::test_real_export_selects_only_bound_fp32_qk_and_pv",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSiluTests::test_source_silu_defaults_contract_and_factory_refusals",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSiluTests::test_source_silu_public_factory_compiler_exact_native_and_default_dtype_routes",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSoftmaxTests::test_export_selects_only_bound_fp32_shape_and_axis",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSoftmaxTests::test_prefix_policy_preserves_old_scopes_and_both_callback_fallbacks",
+        "merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSoftmaxTests::test_real_export_keeps_177_policy_and_admits_227_only_when_selected",
+        "merlin/tests/gemmini/test_tinyllama_session.py::TinyLlamaIntegerTests::test_fixed_tree_installer_preserves_norm_parameters_and_source_interface",
+        "merlin/tests/gemmini/test_tinyllama_session.py::TinyLlamaIntegerTests::test_fixed_tree_missing_mask_fails_before_caller_state_changes",
+        "merlin/tests/gemmini/test_tinyllama_session.py::TinyLlamaIntegerTests::test_source_rotary_table_preserves_source_words_and_rejects_positions",
+        "merlin/tests/gemmini/test_tinyllama_session.py::TinyLlamaIntegerTests::test_v1_attention_matmul_unchanged_after_v2_registration",
+        "merlin/tests/gemmini/test_tinyllama_session.py::TinyLlamaIntegerTests::test_v2_capacity_rejection_precedes_cache_and_parameter_mutation",
+        "merlin/tests/gemmini/test_tinyllama_session.py::TinyLlamaIntegerTests::test_v3_invalid_mask_precedes_cache_update_and_projections",
+        "merlin/tests/gemmini/test_tvm_synthetic_tinyllama.py::test_replay_preserves_frozen_reference_bytes_instead_of_recomputing"
+      ]
+    },
+    "tvm gemmini tests at tip": {
+      "result": "10 failed, 359 passed in 59.53s",
+      "exit": "exit 1",
+      "failed": [
+        "tests/python/relax/test_apps_gemmini_memory_model.py::test_candidate_runner_refuses_incomplete_or_unconfirmed_timing[False-True]",
+        "tests/python/relax/test_apps_gemmini_memory_model.py::test_candidate_runner_refuses_incomplete_or_unconfirmed_timing[True-False]",
+        "tests/python/relax/test_apps_gemmini_memory_model.py::test_candidate_runner_refuses_incomplete_or_unconfirmed_timing[True-True]",
+        "tests/python/relax/test_apps_gemmini_memory_model.py::test_console_requires_every_channel_and_exact_parameters",
+        "tests/python/relax/test_apps_gemmini_memory_model.py::test_registry_settings_change_measurement_identity",
+        "tests/python/relax/test_apps_gemmini_memory_model.py::test_variant_binds_base_and_pin_and_clears_inherited_overrides",
+        "tests/python/relax/test_apps_gemmini_tuning_preset.py::test_union_preset_replays_smoke_but_does_not_match_new_prefill_shape",
+        "tests/python/relax/test_backend_contrib_gemmini_arithmetic.py::GemminiArithmeticTests::test_native_contracts_and_cpu_numeric_fallback_keep_aten_results",
+        "tests/python/relax/test_backend_contrib_gemmini_baremetal.py::StaticGraphTests::test_unknown_shapes_dtypes_and_memory_are_rejected",
+        "tests/python/relax/test_backend_contrib_gemmini_dse.py::GemminiDSETests::test_bias_preload_can_be_disabled_without_changing_results"
+      ]
+    },
+    "tvm gemmini tests at F2 pin": {
+      "result": "10 failed, 358 passed in 74.03s (0:01:14)",
+      "exit": "exit 1",
+      "failed": [
+        "tests/python/relax/test_apps_gemmini_memory_model.py::test_candidate_runner_refuses_incomplete_or_unconfirmed_timing[False-True]",
+        "tests/python/relax/test_apps_gemmini_memory_model.py::test_candidate_runner_refuses_incomplete_or_unconfirmed_timing[True-False]",
+        "tests/python/relax/test_apps_gemmini_memory_model.py::test_candidate_runner_refuses_incomplete_or_unconfirmed_timing[True-True]",
+        "tests/python/relax/test_apps_gemmini_memory_model.py::test_console_requires_every_channel_and_exact_parameters",
+        "tests/python/relax/test_apps_gemmini_memory_model.py::test_registry_settings_change_measurement_identity",
+        "tests/python/relax/test_apps_gemmini_memory_model.py::test_variant_binds_base_and_pin_and_clears_inherited_overrides",
+        "tests/python/relax/test_apps_gemmini_tuning_preset.py::test_union_preset_replays_smoke_but_does_not_match_new_prefill_shape",
+        "tests/python/relax/test_backend_contrib_gemmini_arithmetic.py::GemminiArithmeticTests::test_native_contracts_and_cpu_numeric_fallback_keep_aten_results",
+        "tests/python/relax/test_backend_contrib_gemmini_baremetal.py::StaticGraphTests::test_unknown_shapes_dtypes_and_memory_are_rejected",
+        "tests/python/relax/test_backend_contrib_gemmini_dse.py::GemminiDSETests::test_bias_preload_can_be_disabled_without_changing_results"
+      ]
+    }
+  },
+  "inherited_failure_causes": {
+    "merlin test_smolvla_session/test_tinyllama_session/test_tvm_synthetic_tinyllama (33)": "backlogged full-model sessions: onnxscript/transformers/lerobot/safetensors absent from the compiler venv; software-BF16 dispatch guards refuse this host CPU",
+    "tvm test_apps_gemmini_memory_model (6)": "needs merlin.targetgen.mem_perturb.pinned_latency_pipe from the removed FASED memory worktree",
+    "tvm test_backend_contrib_gemmini_dse bias preload": "automatic bias preload was removed on purpose",
+    "tvm test_backend_contrib_gemmini_arithmetic native contracts": "INT32 wrapping_add has no active TensorIntrin (documented)",
+    "tvm test_apps_gemmini_tuning_preset union preset": "old preset records no longer match the new prefill shape",
+    "tvm test_backend_contrib_gemmini_baremetal unknown shapes": "expected ValueError no longer raised; not investigated",
+    "identical at F2 pin and tip": true
+  },
+  "gates": {
+    "check_structure": "  - module over 1500 lines (1534); split it: packages/merlin-experiments/src/merlin_experiments/phase0/generation.py",
+    "check_docs": "docs: OK",
+    "check_doc_paths": "doc paths: OK",
+    "check_artifact_layout": "See CLAUDE.md 'Generated-output convention' / .claude/skills/artifact-layout.",
+    "check_provenance": "  UNRECOVERABLE gsim_emitter_246bfdac: 246bfdac0a99 lost 2026-09-08T10:40Z (build/gsim/gsim); do not re-declare these bytes; 3 thing(s) still verify",
+    "check_no_regex": "[  ok] no-regex: 3 allowlisted file(s); no stray regex in scope.",
+    "check_no_target_name": "[DEBT] 7 file(s) still name a target in an identifier or string (target_token_ratchet.txt); the list may only shrink."
+  },
+  "gate_notes": {
+    "check_docs": "pass",
+    "check_doc_paths": "pass",
+    "check_no_regex": "pass",
+    "check_no_target_name": "pass (existing ratchet debt only)",
+    "check_structure": "only the 9 inherited module-size failures, none in touched files",
+    "check_artifact_layout": "stale 'runs/' literals in 5 test files not touched here",
+    "check_provenance": "one older untracked perf-studies artifact lacks a provenance block; not touched here"
+  },
+  "reproduction": {
+    "kernel_inputs_vs_f2_study": {
+      "G01/program": {
+        "a26": "3857d23825ab7cc37e3c63ba26e05fab6b7b7367154e85e25a789b3bb02fcee6",
+        "f2": "3857d23825ab7cc37e3c63ba26e05fab6b7b7367154e85e25a789b3bb02fcee6",
+        "identical": true
+      },
+      "G01/fixture": {
+        "a26": "6ec735dc55dd73b07f66a0bbb53c48c78aed987e41e88d9ca0609ad21aae1234",
+        "f2": "6ec735dc55dd73b07f66a0bbb53c48c78aed987e41e88d9ca0609ad21aae1234",
+        "identical": true
+      },
+      "T01/program": {
+        "a26": "20619c0ad1be2e45ab260cbc649fe6680ec00a11cba541e961189ca40533fca4",
+        "f2": "20619c0ad1be2e45ab260cbc649fe6680ec00a11cba541e961189ca40533fca4",
+        "identical": true
+      },
+      "T01/fixture": {
+        "a26": "db2a1c64355aadeb3146fde2c549e2781fc3ffb48689c161b0712b4dce4b1056",
+        "f2": "db2a1c64355aadeb3146fde2c549e2781fc3ffb48689c161b0712b4dce4b1056",
+        "identical": true
+      }
+    },
+    "adapter_vs_f2": {
+      "adapter_sources_equal": true,
+      "headers_equal": true,
+      "public_symbols_equal": true,
+      "compiler_a26": "riscv64-unknown-elf-gcc (gc891d8dc23e) 13.2.0",
+      "compiler_f2": "riscv64-unknown-elf-gcc (g6afcc4f6d-dirty) 16.1.0",
+      "object_sha256_a26": "a305d1ca38e133696e843db41c2dcda75f00ce6095fb07913fa00fe6cb584638",
+      "object_sha256_f2": "53348598556ac5b22de2cda7f91c733f89686754796ca30a451b5f37b227e608"
+    },
+    "g01_baseline_elf": {
+      "a26": "2d8a564f3cf2800664231815551dfb2a47000d51e02964645395005004e9ed49",
+      "f2": "a676c0aa5985a3149d64b6ced652b9f7c07aaee81c9c5000f2949dba50b5fcb6",
+      "note": "differs because GCC 13.2.0 (a26) vs 16.1.0 (F2) compile the adapter and link the ELF"
+    },
+    "spike": {
+      "baseline/G01": {
+        "status": "passed",
+        "checks": {
+          "valid": {
+            "passed": true,
+            "returncode": 0
+          },
+          "bad-oracle": {
+            "passed": true,
+            "returncode": 22
+          }
+        },
+        "valid_elf_sha256": "2d8a564f3cf2800664231815551dfb2a47000d51e02964645395005004e9ed49"
+      },
+      "baseline/T01": {
+        "status": "passed",
+        "checks": {
+          "valid": {
+            "passed": true,
+            "returncode": 0
+          },
+          "bad-oracle": {
+            "passed": true,
+            "returncode": 22
+          }
+        },
+        "valid_elf_sha256": "6984493dc11717b7501f930e698630bfcc5ea685bc1646168d6c852e2e12e471"
+      },
+      "tuned-fuse2/G01": {
+        "status": "passed",
+        "checks": {
+          "valid": {
+            "passed": true,
+            "returncode": 0
+          },
+          "bad-oracle": {
+            "passed": true,
+            "returncode": 22
+          }
+        },
+        "valid_elf_sha256": "e133e7d6408f995c093444b4d4e985a233ef4b001bccf1b7b67ef30051b4fd66"
+      },
+      "tuned-fuse2/T01": {
+        "status": "passed",
+        "checks": {
+          "valid": {
+            "passed": true,
+            "returncode": 0
+          },
+          "bad-oracle": {
+            "passed": true,
+            "returncode": 22
+          }
+        },
+        "valid_elf_sha256": "9eab9c731381a3c981056b3ad66b44b66db88420266074ed97b08e7eb69409bb"
+      }
+    },
+    "db_resnet_union_of_owner_databases": {
+      "identical": true,
+      "records": 221,
+      "workloads": 21,
+      "key": "(workload structural hash, trace, run_secs)"
+    },
+    "cycles_reproduced": false,
+    "cycles_note": "F2 hardware not available from a26; no cycle claim",
+    "spike_oracle": {
+      "receipt": "out/build/baselines/tvm-gemmini/simulator-a26/receipt.json",
+      "plugin": "plain libgemmini ea8f7ed7 (plugin sha256 9b70fa14...)",
+      "note": "not the repaired-RNE plugin (patch sha256 f723f1885fb1...) behind SPIKE_HANDOFF_EVIDENCE; that build and patch were not found on a26"
+    }
+  }
+}

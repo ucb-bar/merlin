@@ -1,0 +1,330 @@
+{
+  "status": "cross_compiled",
+  "device_execution": false,
+  "paper_validation": false,
+  "source_set": {
+    "gemmini": "6ad65b90b1eb270c20ce4f04109e3dde0180b36f",
+    "gemmini_rocc_tests": "7c540b3adf1b86ad93d07f893abe3a73489b568e",
+    "rocc_software": "fddb795a0b52e82f8f4ce9ead9b1428440a62ab0",
+    "libgemmini": "ea8f7ed7afd68e001fb06ddccad9a023c990961d"
+  },
+  "hardware_source_check": {
+    "configs_sha256": "178c21ac741c89c08158efa71fb34da35d27b75bd50bde5116a5e19178f8391b",
+    "fields": {
+      "spatialArrayOutputType": "SInt(20.W)",
+      "tileRows": "1",
+      "tileColumns": "1",
+      "meshRows": "16",
+      "meshColumns": "16"
+    },
+    "execution_verified": false
+  },
+  "headers": {
+    "include/gemmini_params.h": {
+      "sha256": "3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924",
+      "revision": "7c540b3adf1b86ad93d07f893abe3a73489b568e"
+    },
+    "include/gemmini.h": {
+      "sha256": "18801f4eab0cd2e81e25a6c2aa97c7ed644b693e8d2c24cdeb41ab3a7208336d",
+      "revision": "7c540b3adf1b86ad93d07f893abe3a73489b568e"
+    },
+    "include/gemmini_counter.h": {
+      "sha256": "5826242287784b9a383d45fdcb6791f8a1651d9d320a1a5f011585a9885b5669",
+      "revision": "7c540b3adf1b86ad93d07f893abe3a73489b568e"
+    },
+    "rocc-software/src/xcustom.h": {
+      "sha256": "9582eb00cee774e4680fde6408a0d607bba85196a0a4fd803f7b7ddd801aad69",
+      "revision": "fddb795a0b52e82f8f4ce9ead9b1428440a62ab0"
+    }
+  },
+  "adapter_sources": {
+    "matmul.c": "dc98604b792e22594a3164464051761697c8aaede915f281558d1cb059871c98",
+    "matmul.h": "3aa2ffc1c8400e8cc421b56bc92d934b6d331bcb11c48e1f6ac28b5227c60318",
+    "verify_matmul.py": "d971814355a2deddf3a07dc5e530fc863190b5f4fb3f5d2aeaab09367ed650ac"
+  },
+  "public_symbols": [
+    "tvm_gemmini_dma_acc_write",
+    "tvm_gemmini_dma_acc_add",
+    "tvm_gemmini_dma_widen",
+    "tvm_gemmini_dma_spad_out",
+    "tvm_gemmini_dma_relu_out",
+    "tvm_gemmini_dma_scaled_out",
+    "tvm_gemmini_dma_scaled_in",
+    "tvm_gemmini_dma_pool_out",
+    "tvm_gemmini_matmul_i8_i32",
+    "tvm_gemmini_validate_matmul_i8_i32",
+    "tvm_gemmini_begin",
+    "tvm_gemmini_load_a",
+    "tvm_gemmini_load_b",
+    "tvm_gemmini_compute",
+    "tvm_gemmini_store",
+    "tvm_gemmini_end",
+    "tvm_gemmini_zero_acc",
+    "tvm_gemmini_dma_a",
+    "tvm_gemmini_dma_b",
+    "tvm_gemmini_dma_out",
+    "tvm_gemmini_compute_ws",
+    "tvm_gemmini_dma_a_blocks",
+    "tvm_gemmini_dma_b_blocks",
+    "tvm_gemmini_validate_tensor_buffers",
+    "tvm_gemmini_validate_tensor_output"
+  ],
+  "resolved_headers": {
+    "/work/exp/tvmfs/tvm/apps/gemmini/matmul.c": "dc98604b792e22594a3164464051761697c8aaede915f281558d1cb059871c98",
+    "/work/exp/tvmfs/tvm/apps/gemmini/matmul.h": "3aa2ffc1c8400e8cc421b56bc92d934b6d331bcb11c48e1f6ac28b5227c60318",
+    "/work/exp/tvmfs/work/baselines/tvm-gemmini/adapter-gemmini-8c3f9923/headers/include/gemmini.h": "18801f4eab0cd2e81e25a6c2aa97c7ed644b693e8d2c24cdeb41ab3a7208336d",
+    "/work/exp/tvmfs/work/baselines/tvm-gemmini/adapter-gemmini-8c3f9923/headers/include/gemmini_counter.h": "5826242287784b9a383d45fdcb6791f8a1651d9d320a1a5f011585a9885b5669",
+    "/work/exp/tvmfs/work/baselines/tvm-gemmini/adapter-gemmini-8c3f9923/headers/include/gemmini_params.h": "3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924",
+    "/work/exp/tvmfs/work/baselines/tvm-gemmini/adapter-gemmini-8c3f9923/headers/rocc-software/src/xcustom.h": "9582eb00cee774e4680fde6408a0d607bba85196a0a4fd803f7b7ddd801aad69",
+    "/work/shared/chipyard/.conda-env/riscv-tools/lib/gcc/riscv64-unknown-elf/16.1.0/include/limits.h": "6d4668459f9c1da38f2f9d5e4d341889e8560c14609a0ac12b820b04947fdd9e",
+    "/work/shared/chipyard/.conda-env/riscv-tools/lib/gcc/riscv64-unknown-elf/16.1.0/include/stdarg.h": "173a81bfbe88a2da5ed5d238e14e0eaca61b090ee6d7b12b5f9614daeea21600",
+    "/work/shared/chipyard/.conda-env/riscv-tools/lib/gcc/riscv64-unknown-elf/16.1.0/include/stdbool.h": "f2a112e8b2128fb1d76e7c0b625cec8760955ebeae5cdf6b419ccf0c6d62768f",
+    "/work/shared/chipyard/.conda-env/riscv-tools/lib/gcc/riscv64-unknown-elf/16.1.0/include/stddef.h": "868352506950054491b9c76a4e2814f4f3601d227d3dea62a3e75875f327f2c1",
+    "/work/shared/chipyard/.conda-env/riscv-tools/lib/gcc/riscv64-unknown-elf/16.1.0/include/stdint.h": "64ab730bb09eba38f01a62174fb8371ef281778ac33f141a6fa4217a9b39466a",
+    "/work/shared/chipyard/.conda-env/riscv-tools/lib/gcc/riscv64-unknown-elf/16.1.0/include/syslimits.h": "9409a59233daef9339a757c58b3dd1cee980a65f1ef2590040fe5e106222a4bc",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/_ansi.h": "5c6403b471ee897c9a6c12e00a58617247804eb3ee72d7baeb7c08616090dd1d",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/_newlib_version.h": "be2a4d2763fd9f409369fc62a741dff6722b71ca56050b7c6469581c81fd2420",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/alloca.h": "fdebd60de65105d933b55dcde1650f6c9b3cf6142c225397c5f956638208d4de",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/limits.h": "16b91bb4b4f7053ddfbbe6ec0925d901093499468151289d5c224d718ec25e44",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/machine/_default_types.h": "5d8f9f7ead7927e4b8b7ed00172e84f2ae82ea7f5f6ba3240ff813a9236771b3",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/machine/_types.h": "44544ecbbc10c8aa58ca2da6d0617ffeee5af847af24515ab108c8218d6d92c8",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/machine/ieeefp.h": "26c64fcff653e1461d227e6ab5c61e30203d057bfd04956aacea2fb2a7fdcac4",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/machine/stdlib.h": "43552e520d412993325ba62cb496839cd03fd46b0df67149a5ccbe1b95c45fdd",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/math.h": "af8b612e6f341fdaab6d30f154e1c24b18695cc0a8dc17b6e98da3cb3ecfdb72",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/newlib.h": "eed9d080a8c79e3b93099a55b75b63d56f317c63d2a8e18d89924d533246e332",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/stdint.h": "99fe201684856075ccd92704f63b702f6fa882b9dab61bd7a9bcce2588275861",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/stdio.h": "c900e320b44518e1a214792b8caf7cffa683fda7bae2cb70714bdcd8087fe2f8",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/stdlib.h": "6818259ef7240e2dd9b3fc789ac35e8d51651bc0c46f671948b491639e19913b",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/sys/_intsup.h": "1af8abe244b43a3a5b5a85f6c834aa206930b6938e8109fbec430bc140b68df5",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/sys/_stdint.h": "49f8328943afa2a83ed4a35fcb808ed08b8c9fcb55373c786fb1b1d3a21952d7",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/sys/_types.h": "1abe39aca5104bafbde2e0219e7cdc3e96129b22ce1ef5cd58b66d8d147d3fb7",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/sys/cdefs.h": "6934407e76242c86361247a6fcadf1f885985bd7cdd3652afc26d8056073f32e",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/sys/config.h": "6e40b5263b35e7d685e38b7765464160d6e4f471e6d887bf7dce8a83edb6aec7",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/sys/features.h": "a5a354650269fde5003f824c747a56016a10738ea2aa919bf5abe786a78e4d27",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/sys/lock.h": "f5cad9196ce745967fd2673e085b5c03df7887d4d11d7544aff05ff6679be6b8",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/sys/reent.h": "44726a2edc83783ecaba3c83a6c7c71db3466ffd6d607c89b1f3ff74311510da",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/sys/stdio.h": "bd987ea6fed5d31d8a4e7d183a7d988e981ecca3cffce76ee482fcb0bf65594b",
+    "/work/shared/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf/include/sys/syslimits.h": "780971936dd4b8f3b192669e693430c204a72c7fb05e7a1db67d48f02cd9aec4"
+  },
+  "compiler": {
+    "path": "/work/shared/chipyard/.conda-env/riscv-tools/bin/riscv64-unknown-elf-gcc",
+    "sha256": "1efdf021dc2ec66eac7e42313689fa363472e638dfd6945c3c9a74a9e74d29a0",
+    "version": "riscv64-unknown-elf-gcc (g6afcc4f6d-dirty) 16.1.0"
+  },
+  "compile_command": [
+    "/work/shared/chipyard/.conda-env/riscv-tools/bin/riscv64-unknown-elf-gcc",
+    "-std=gnu11",
+    "-O3",
+    "-finline-limit=10000",
+    "-march=rv64gc",
+    "-mabi=lp64d",
+    "-mcmodel=medany",
+    "-ffunction-sections",
+    "-fdata-sections",
+    "-fno-common",
+    "-fno-builtin-printf",
+    "-fno-tree-loop-distribute-patterns",
+    "-DBAREMETAL=1",
+    "-DPRINT_TILE=0",
+    "-DTVM_GEMMINI_FORBID_HW_LOOPS=1",
+    "-DTVM_GEMMINI_PE_OUTPUT_BITS=20",
+    "-I",
+    "/work/exp/tvmfs/work/baselines/tvm-gemmini/adapter-gemmini-8c3f9923/headers",
+    "/work/exp/tvmfs/tvm/apps/gemmini/matmul.c",
+    "-c",
+    "-o",
+    "/work/exp/tvmfs/work/baselines/tvm-gemmini/adapter-gemmini-8c3f9923/matmul.raw.o"
+  ],
+  "partial_link_command": [
+    "/work/shared/chipyard/.conda-env/riscv-tools/bin/riscv64-unknown-elf-gcc",
+    "-march=rv64gc",
+    "-mabi=lp64d",
+    "-nostdlib",
+    "-r",
+    "-Wl,--gc-sections,-e,tvm_gemmini_matmul_i8_i32",
+    "-Wl,--undefined=tvm_gemmini_dma_acc_write",
+    "-Wl,--undefined=tvm_gemmini_dma_acc_add",
+    "-Wl,--undefined=tvm_gemmini_dma_widen",
+    "-Wl,--undefined=tvm_gemmini_dma_spad_out",
+    "-Wl,--undefined=tvm_gemmini_dma_relu_out",
+    "-Wl,--undefined=tvm_gemmini_dma_scaled_out",
+    "-Wl,--undefined=tvm_gemmini_dma_scaled_in",
+    "-Wl,--undefined=tvm_gemmini_dma_pool_out",
+    "-Wl,--undefined=tvm_gemmini_matmul_i8_i32",
+    "-Wl,--undefined=tvm_gemmini_validate_matmul_i8_i32",
+    "-Wl,--undefined=tvm_gemmini_begin",
+    "-Wl,--undefined=tvm_gemmini_load_a",
+    "-Wl,--undefined=tvm_gemmini_load_b",
+    "-Wl,--undefined=tvm_gemmini_compute",
+    "-Wl,--undefined=tvm_gemmini_store",
+    "-Wl,--undefined=tvm_gemmini_end",
+    "-Wl,--undefined=tvm_gemmini_zero_acc",
+    "-Wl,--undefined=tvm_gemmini_dma_a",
+    "-Wl,--undefined=tvm_gemmini_dma_b",
+    "-Wl,--undefined=tvm_gemmini_dma_out",
+    "-Wl,--undefined=tvm_gemmini_compute_ws",
+    "-Wl,--undefined=tvm_gemmini_dma_a_blocks",
+    "-Wl,--undefined=tvm_gemmini_dma_b_blocks",
+    "-Wl,--undefined=tvm_gemmini_validate_tensor_buffers",
+    "-Wl,--undefined=tvm_gemmini_validate_tensor_output",
+    "/work/exp/tvmfs/work/baselines/tvm-gemmini/adapter-gemmini-8c3f9923/matmul.raw.o",
+    "-o",
+    "/work/exp/tvmfs/work/baselines/tvm-gemmini/adapter-gemmini-8c3f9923/matmul.o"
+  ],
+  "raw_object": {
+    "sha256": "b148b193a73182eae2177775d58fd925b9ef0ca8d094d40307543ad3c1dcc7d3",
+    "linkable": false,
+    "instruction_audit": {
+      "executable_sections": [
+        ".text",
+        ".text.sp_tiled_matmul_os",
+        ".text.sp_tiled_matmul_ws",
+        ".text.tvm_gemmini_validate_matmul_i8_i32",
+        ".text.tvm_gemmini_begin",
+        ".text.tvm_gemmini_load_a",
+        ".text.tvm_gemmini_load_b",
+        ".text.tvm_gemmini_compute",
+        ".text.tvm_gemmini_compute_ws",
+        ".text.tvm_gemmini_store",
+        ".text.tvm_gemmini_end",
+        ".text.tvm_gemmini_validate_tensor_output",
+        ".text.tvm_gemmini_validate_tensor_buffers",
+        ".text.tvm_gemmini_zero_acc",
+        ".text.tvm_gemmini_dma_a",
+        ".text.tvm_gemmini_dma_b",
+        ".text.tvm_gemmini_dma_a_blocks",
+        ".text.tvm_gemmini_dma_b_blocks",
+        ".text.tvm_gemmini_dma_out",
+        ".text.tvm_gemmini_dma_acc_write",
+        ".text.tvm_gemmini_dma_acc_add",
+        ".text.tvm_gemmini_dma_widen",
+        ".text.tvm_gemmini_dma_scaled_in",
+        ".text.tvm_gemmini_dma_spad_out",
+        ".text.tvm_gemmini_dma_relu_out",
+        ".text.tvm_gemmini_dma_scaled_out",
+        ".text.tvm_gemmini_dma_pool_out",
+        ".text.tvm_gemmini_matmul_i8_i32"
+      ],
+      "instructions": 2264,
+      "prohibited_hits": [
+        {
+          "section": ".text.sp_tiled_matmul_ws",
+          "offset": 70,
+          "funct": 9,
+          "word": "1317307b"
+        },
+        {
+          "section": ".text.sp_tiled_matmul_ws",
+          "offset": 74,
+          "funct": 10,
+          "word": "1485b07b"
+        },
+        {
+          "section": ".text.sp_tiled_matmul_ws",
+          "offset": 88,
+          "funct": 11,
+          "word": "16d5b07b"
+        },
+        {
+          "section": ".text.sp_tiled_matmul_ws",
+          "offset": 96,
+          "funct": 12,
+          "word": "18d7307b"
+        },
+        {
+          "section": ".text.sp_tiled_matmul_ws",
+          "offset": 112,
+          "funct": 13,
+          "word": "1ae5307b"
+        },
+        {
+          "section": ".text.sp_tiled_matmul_ws",
+          "offset": 164,
+          "funct": 8,
+          "word": "10e7b07b"
+        }
+      ]
+    }
+  },
+  "object_sha256": "53348598556ac5b22de2cda7f91c733f89686754796ca30a451b5f37b227e608",
+  "disassembly_sha256": "03ea766929f4ed2dab8edd5f2cf0a0820ad9dc188ee8725673e943bf0526c4db",
+  "rejections": {
+    "policy_unspecified": {
+      "status": "rejected",
+      "diagnostic": "requires explicit TVM_GEMMINI_FORBID_HW_LOOPS=1"
+    },
+    "small_readout_only": {
+      "status": "rejected",
+      "diagnostic": "full-width accumulator"
+    },
+    "unsigned_operands": {
+      "status": "rejected",
+      "diagnostic": "signed int8"
+    },
+    "normalizations": {
+      "status": "rejected",
+      "diagnostic": "does not admit a normalization configuration"
+    }
+  },
+  "instruction_policy": {
+    "hardware_loops": "forbidden",
+    "derived_definitions": {
+      "XCUSTOM_ACC": 3,
+      "k_LOOP_WS": 8,
+      "k_LOOP_WS_CONFIG_BOUNDS": 9,
+      "k_LOOP_WS_CONFIG_ADDRS_AB": 10,
+      "k_LOOP_WS_CONFIG_ADDRS_DC": 11,
+      "k_LOOP_WS_CONFIG_STRIDES_AB": 12,
+      "k_LOOP_WS_CONFIG_STRIDES_DC": 13,
+      "k_LOOP_CONV_WS": 15,
+      "k_LOOP_CONV_WS_CONFIG_1": 16,
+      "k_LOOP_CONV_WS_CONFIG_2": 17,
+      "k_LOOP_CONV_WS_CONFIG_3": 18,
+      "k_LOOP_CONV_WS_CONFIG_4": 19,
+      "k_LOOP_CONV_WS_CONFIG_5": 20,
+      "k_LOOP_CONV_WS_CONFIG_6": 21,
+      "k_LOOP_WS_CONFIG_SPAD_AB": 24,
+      "k_LOOP_WS_CONFIG_SPAD_C": 25
+    },
+    "custom_opcode": 123
+  },
+  "instruction_audits": {
+    "/work/exp/tvmfs/work/baselines/tvm-gemmini/adapter-gemmini-8c3f9923/matmul.o": {
+      "sha256": "53348598556ac5b22de2cda7f91c733f89686754796ca30a451b5f37b227e608",
+      "executable_sections": [
+        ".text.sp_tiled_matmul_os",
+        ".text.tvm_gemmini_validate_matmul_i8_i32",
+        ".text.tvm_gemmini_begin",
+        ".text.tvm_gemmini_load_a",
+        ".text.tvm_gemmini_load_b",
+        ".text.tvm_gemmini_compute",
+        ".text.tvm_gemmini_compute_ws",
+        ".text.tvm_gemmini_store",
+        ".text.tvm_gemmini_end",
+        ".text.tvm_gemmini_validate_tensor_output",
+        ".text.tvm_gemmini_validate_tensor_buffers",
+        ".text.tvm_gemmini_zero_acc",
+        ".text.tvm_gemmini_dma_a",
+        ".text.tvm_gemmini_dma_b",
+        ".text.tvm_gemmini_dma_a_blocks",
+        ".text.tvm_gemmini_dma_b_blocks",
+        ".text.tvm_gemmini_dma_out",
+        ".text.tvm_gemmini_dma_acc_write",
+        ".text.tvm_gemmini_dma_acc_add",
+        ".text.tvm_gemmini_dma_widen",
+        ".text.tvm_gemmini_dma_scaled_in",
+        ".text.tvm_gemmini_dma_spad_out",
+        ".text.tvm_gemmini_dma_relu_out",
+        ".text.tvm_gemmini_dma_scaled_out",
+        ".text.tvm_gemmini_dma_pool_out",
+        ".text.tvm_gemmini_matmul_i8_i32"
+      ],
+      "instructions": 2206,
+      "prohibited_hits": []
+    }
+  },
+  "normalization_compatibility": {
+    "fallback_stat_ids": 2,
+    "hardware_enabled": false
+  }
+}

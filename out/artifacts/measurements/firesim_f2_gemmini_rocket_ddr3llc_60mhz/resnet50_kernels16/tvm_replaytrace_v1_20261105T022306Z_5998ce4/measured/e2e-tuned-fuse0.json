@@ -1,0 +1,6 @@
+{
+ "ok": true,
+ "cycles": 2302656248,
+ "elf_sha256": "31ef7fcf5321a7582de84deba43c4f29ed35a3e5e0c44df7d293c4b4abf8099c",
+ "run": "/work/exp/tvmfs/f2/results/runs/full-resnet-e2e-tuned-fuse0"
+}

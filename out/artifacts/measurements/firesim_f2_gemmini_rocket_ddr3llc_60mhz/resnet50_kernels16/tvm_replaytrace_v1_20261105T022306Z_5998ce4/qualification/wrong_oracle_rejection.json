@@ -1,0 +1,6 @@
+{
+  "guest_exit": 22,
+  "pool_error": "ValueError('FireSim result lacks matching ELF, deadline enforcement or successful guest exit')",
+  "status": "pass",
+  "test": "wrong_oracle_rejection"
+}

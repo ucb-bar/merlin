@@ -1,0 +1,61 @@
+{
+  "schema": "imported_measurement_source_v1",
+  "repository": "git@github.com:grammy117/grammy-trash-can.git",
+  "commit": "5c1fab823e3667c12eb84e98eaf4aeddeb314c7d",
+  "path": "tvmfs-f2-20261028",
+  "full_tree_bytes_approx": 207000000,
+  "copied": {
+    "measured/summary.json": "f2/results/summary.json",
+    "measured/confirm.json": "f2/results/confirm.json",
+    "measured/e2e.json": "f2/results/e2e.json",
+    "measured/e2e-tuned-fuse0.json": "f2/results/e2e-tuned-fuse0.json",
+    "measured/tuning-accounting.json": "f2/results/tuning-accounting.json",
+    "measured/pilot-summary.json": "f2/pilot/summary.json",
+    "setup/hardware-receipt.json": "f2/hardware-receipt.json",
+    "setup/toolchain.json": "f2/toolchain.json",
+    "setup/adapter-receipt.json": "work/baselines/tvm-gemmini/adapter-gemmini-8c3f9923/receipt.json",
+    "setup/resnet-study.json": "work/resnet-study/study.json",
+    "setup/kernel-study.json": "work/kernel-study2/study.json",
+    "setup/tune-resnet-commands.json": "work/tune-resnet/commands.json",
+    "setup/tune-kernel-commands.json": "work/tune-kernel/commands.json",
+    "qualification/remote_cancellation.json": "f2/qualification/remote_cancellation.json",
+    "qualification/runner_qualification.json": "f2/qualification/runner_qualification.json",
+    "qualification/same_elf_repeat_agreement.json": "f2/qualification/same_elf_repeat_agreement.json",
+    "qualification/startup_exclusion.json": "f2/qualification/startup_exclusion.json",
+    "qualification/wall_timeout.json": "f2/qualification/wall_timeout.json",
+    "qualification/wrong_oracle_rejection.json": "f2/qualification/wrong_oracle_rejection.json",
+    "tools/env.sh": "env.sh",
+    "tools/launch-tuning.sh": "launch-tuning.sh",
+    "tools/pilot.py": "f2/pilot.py",
+    "tools/qualify.py": "f2/qualify.py",
+    "tools/stage2.py": "stage2.py",
+    "tools/make_continuation.py": "make_continuation.py",
+    "tools/summarize.py": "summarize.py",
+    "tools/accounting.py": "accounting.py",
+    "tools/tvmfs_adapter.py": "tvmfs_adapter.py",
+    "tools/f2-host/f2run.conf": "f2run.conf",
+    "tools/f2-host/f2-exec": "f2-exec",
+    "tools/f2-host/f2-flash": "f2-flash",
+    "tools/f2-host/f2-idle-stop": "f2-idle-stop"
+  },
+  "omitted": {
+    "f2/hosts.json": "private host address and instance id",
+    "f2/pool.json": "operator ssh key path (slot layout is documented in the guide)",
+    "f2-install.sh": "artifact bucket names the AWS account",
+    "work/tune-*/**, logs/**, f2/results/runs/**": "large per-trial trees; kept in the source commit"
+  },
+  "compiler_sources": {
+    "tvm": {
+      "repository": "grammy117/tvm",
+      "commit": "f3cfd1a7dc95d00191225fa8ac5fc8aee3a6940d",
+      "pre_identity_fix": "bb4ad9f8dbd21dd96a4dc63121dfebc24742f260",
+      "evidence": "all 62 TVM compiler_sources sha256 in setup/resnet-study.json match this commit"
+    },
+    "merlin": {
+      "repository": "ucb-bar/merlin",
+      "commit": "fe0306676",
+      "pre_identity_fix": "9530ee83d0e10ea95bbdf9ce3981825b87efddb1",
+      "evidence": "all 5 Merlin compiler_sources match; comparison builders unchanged through 5998ce4ef"
+    }
+  }
+}

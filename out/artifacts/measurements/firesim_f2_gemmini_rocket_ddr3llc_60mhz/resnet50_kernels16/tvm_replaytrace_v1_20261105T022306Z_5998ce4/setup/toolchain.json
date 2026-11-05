@@ -1,0 +1,7 @@
+{
+ "gcc": "/work/shared/chipyard/.conda-env/riscv-tools/bin/riscv64-unknown-elf-gcc",
+ "adapter_receipt": "/work/exp/tvmfs/work/baselines/tvm-gemmini/adapter-gemmini-8c3f9923/receipt.json",
+ "hardware_receipt": "/work/exp/tvmfs/f2/hardware-receipt.json",
+ "timing_policy": "fixed-warm",
+ "cycle_watchdog": false
+}

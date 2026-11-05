@@ -1,0 +1,10 @@
+{
+  "elf": "/work/exp/tvmfs/work/baseline/full-resnet/guest/valid.elf",
+  "guest_exit": 124,
+  "occupied_seconds": 41.4381691640001,
+  "pool_error": "ValueError('FireSim result lacks matching ELF, deadline enforcement or successful guest exit')",
+  "result_status": "timeout",
+  "status": "pass",
+  "test": "wall_timeout",
+  "wall_seconds": 45
+}

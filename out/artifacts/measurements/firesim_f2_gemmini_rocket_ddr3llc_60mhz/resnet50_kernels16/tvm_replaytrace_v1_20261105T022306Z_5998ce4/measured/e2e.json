@@ -1,0 +1,20 @@
+{
+ "baseline": {
+  "ok": true,
+  "cycles": 2236439673,
+  "elf_sha256": "ecb50729de301b35ba3d866a9b051dbeb0456170d575344626c965eb087a91d3",
+  "run": "/work/exp/tvmfs/f2/results/runs/full-resnet-e2e-baseline"
+ },
+ "tuned": {
+  "ok": true,
+  "cycles": 2229304805,
+  "elf_sha256": "9478e5fa5f2cd66ac30c731b78cddb6311a29dc78d723a70d24707f749d0ee17",
+  "run": "/work/exp/tvmfs/f2/results/runs/full-resnet-e2e-tuned"
+ },
+ "bad_oracle_control": {
+  "ok": false,
+  "error": "ValueError('FireSim result lacks matching ELF, deadline enforcement or successful guest exit')",
+  "elf_sha256": "6ee06e37e4fe19ffe5b3a13a20114e23c12affb6b702208597bd4c5aad423ef7",
+  "run": "/work/exp/tvmfs/f2/results/runs/full-resnet-e2e-bad-oracle"
+ }
+}

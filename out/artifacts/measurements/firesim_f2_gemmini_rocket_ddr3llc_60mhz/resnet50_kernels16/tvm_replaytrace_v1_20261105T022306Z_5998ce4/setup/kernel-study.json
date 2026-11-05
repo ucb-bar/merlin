@@ -1,0 +1,1022 @@
+{
+  "schema": "gemmini_active_replay_study_v1",
+  "campaign_kind": "kernel",
+  "campaigns": [
+    {
+      "id": "G01",
+      "program": "../kernel-inputs/G01/program.json",
+      "fixture": "../kernel-inputs/G01/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "f739bff6f2352306"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "G02",
+      "program": "../kernel-inputs/G02/program.json",
+      "fixture": "../kernel-inputs/G02/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "4fdc09ff648fbe05"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "G03",
+      "program": "../kernel-inputs/G03/program.json",
+      "fixture": "../kernel-inputs/G03/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "b676007f27167df8"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "G04",
+      "program": "../kernel-inputs/G04/program.json",
+      "fixture": "../kernel-inputs/G04/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "15f26c0b047d3ac4"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "G05",
+      "program": "../kernel-inputs/G05/program.json",
+      "fixture": "../kernel-inputs/G05/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "11eaabbd882ce496"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "G06",
+      "program": "../kernel-inputs/G06/program.json",
+      "fixture": "../kernel-inputs/G06/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "433a659a5350d394"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "C01",
+      "program": "../kernel-inputs/C01/program.json",
+      "fixture": "../kernel-inputs/C01/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "e519611305d58a27"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "C02",
+      "program": "../kernel-inputs/C02/program.json",
+      "fixture": "../kernel-inputs/C02/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "f609558abe708e22"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "C03",
+      "program": "../kernel-inputs/C03/program.json",
+      "fixture": "../kernel-inputs/C03/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "a7d215ef35084012"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "T01",
+      "program": "../kernel-inputs/T01/program.json",
+      "fixture": "../kernel-inputs/T01/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "1aeea326b36d2566"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "T02",
+      "program": "../kernel-inputs/T02/program.json",
+      "fixture": "../kernel-inputs/T02/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "51f2318ac03acfa8"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "T03",
+      "program": "../kernel-inputs/T03/program.json",
+      "fixture": "../kernel-inputs/T03/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "07f2563e3160ab3f"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "T04",
+      "program": "../kernel-inputs/T04/program.json",
+      "fixture": "../kernel-inputs/T04/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "9e53917ab82a5045"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "T05",
+      "program": "../kernel-inputs/T05/program.json",
+      "fixture": "../kernel-inputs/T05/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "a8d1d5981cc67405"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "T06",
+      "program": "../kernel-inputs/T06/program.json",
+      "fixture": "../kernel-inputs/T06/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "445d984ef19f4da3",
+        "ac5f4644a47366be"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    },
+    {
+      "id": "T07",
+      "program": "../kernel-inputs/T07/program.json",
+      "fixture": "../kernel-inputs/T07/fixture.npz",
+      "model": "kernel",
+      "status": "ready_for_functional_build",
+      "phase": "initial",
+      "strategy": "replay",
+      "trials": 20,
+      "batch": 1,
+      "workload_keys": [
+        "f11bf215d34cfc8e"
+      ],
+      "graph_fusion_level": 2,
+      "graph_cse": false,
+      "prepack_weights": false,
+      "bias_preload": false
+    }
+  ],
+  "global_proposal_cap": 400,
+  "initial_trials_per_owner": 20,
+  "reserved_per_owner": 5,
+  "full_tinyllama_smolvla_excluded": true,
+  "slots_budget_seconds": 86400,
+  "execution_admission": false,
+  "qualification": "Fresh extraction only; remote proof/guest/runner checks required",
+  "coverage": [
+    {
+      "id": "G01",
+      "keys": [
+        "f739bff6f2352306"
+      ],
+      "owners": [
+        "G01"
+      ],
+      "tasks": [
+        {
+          "task": "product",
+          "weight": 1,
+          "kind": "contraction",
+          "blocks": [
+            "matmul"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "3857d23825ab7cc37e3c63ba26e05fab6b7b7367154e85e25a789b3bb02fcee6",
+      "fixture_sha256": "6ec735dc55dd73b07f66a0bbb53c48c78aed987e41e88d9ca0609ad21aae1234"
+    },
+    {
+      "id": "G02",
+      "keys": [
+        "4fdc09ff648fbe05"
+      ],
+      "owners": [
+        "G02"
+      ],
+      "tasks": [
+        {
+          "task": "product",
+          "weight": 1,
+          "kind": "contraction",
+          "blocks": [
+            "matmul"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "ccaf3a81722dae13e06ba748b2d82a1aa934b7f73dce601d57d243c9cbe55371",
+      "fixture_sha256": "696b08c2921dd506b40cecbf56ca50af18d2f43188520dcac5acf9ce4427a84e"
+    },
+    {
+      "id": "G03",
+      "keys": [
+        "b676007f27167df8"
+      ],
+      "owners": [
+        "G03"
+      ],
+      "tasks": [
+        {
+          "task": "product",
+          "weight": 1,
+          "kind": "contraction",
+          "blocks": [
+            "matmul"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "708930328d48427586636c50c01c4376ed7f5e3bf104a2e9279b016b7d1c9eea",
+      "fixture_sha256": "98169817b8aea2fe57fec017d1e7d0f6c784599cb1c43ccdf0f877d665cb41eb"
+    },
+    {
+      "id": "G04",
+      "keys": [
+        "15f26c0b047d3ac4"
+      ],
+      "owners": [
+        "G04"
+      ],
+      "tasks": [
+        {
+          "task": "product",
+          "weight": 1,
+          "kind": "contraction",
+          "blocks": [
+            "matmul"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "548ab2e2e357b1356d1c25b4ad17079069a787e9c6bd258f0a6f5138adfc6a3b",
+      "fixture_sha256": "536db6b70345c1f6ce4c39e8d976b8c22bcda27433e39f5c67c0d30f46a171a8"
+    },
+    {
+      "id": "G05",
+      "keys": [
+        "11eaabbd882ce496"
+      ],
+      "owners": [
+        "G05"
+      ],
+      "tasks": [
+        {
+          "task": "product",
+          "weight": 1,
+          "kind": "contraction",
+          "blocks": [
+            "matmul"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "39573c3278d53510dded2bccb823643fac7ffbad8ee8b0faa3d4dbd3b3ae20f9",
+      "fixture_sha256": "98aee85bc1b590c1b32a83d30339d83590d24245c10c1814a30921692727578e"
+    },
+    {
+      "id": "G06",
+      "keys": [
+        "433a659a5350d394"
+      ],
+      "owners": [
+        "G06"
+      ],
+      "tasks": [
+        {
+          "task": "product",
+          "weight": 1,
+          "kind": "contraction",
+          "blocks": [
+            "matmul"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "60f37b7b96b6500531617c90722b563e5f9f035aca603a05edb7a0d7f09e0ad8",
+      "fixture_sha256": "a49e12f81a98fe8af7649ec03ca7de98d72f599169004769a1c6a4b6df68445c"
+    },
+    {
+      "id": "C01",
+      "keys": [
+        "e519611305d58a27"
+      ],
+      "owners": [
+        "C01"
+      ],
+      "tasks": [
+        {
+          "task": "convolution",
+          "weight": 1,
+          "kind": "contraction",
+          "blocks": [
+            "conv"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "75512bcc630cdca3e70db8854b24e2695c711b8226d0b0c4c8069085786d0e66",
+      "fixture_sha256": "45e48a043c4457619a852c847d450676fed7c1ee6242ca8e836db333bfc60496"
+    },
+    {
+      "id": "C02",
+      "keys": [
+        "f609558abe708e22"
+      ],
+      "owners": [
+        "C02"
+      ],
+      "tasks": [
+        {
+          "task": "convolution",
+          "weight": 1,
+          "kind": "contraction",
+          "blocks": [
+            "conv"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "e079a189e82fd0dbd0ed5451ec3558af3bb566a4cc76625b6b630c96a37b84d2",
+      "fixture_sha256": "b27ec525d4478be2ca4d47f11d5c71a4b33bcb7f7125696e95853e978bfed18d"
+    },
+    {
+      "id": "C03",
+      "keys": [
+        "a7d215ef35084012"
+      ],
+      "owners": [
+        "C03"
+      ],
+      "tasks": [
+        {
+          "task": "convolution",
+          "weight": 1,
+          "kind": "contraction",
+          "blocks": [
+            "conv"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "3101fd2ea51f7e7c565fea010bf8f527ffdf87ff7dca79374c7bb9cebf399d33",
+      "fixture_sha256": "516b129733228ccdd4526afd41503ab16816a4b1853987aff672f42d0919bb9d"
+    },
+    {
+      "id": "T01",
+      "keys": [
+        "1aeea326b36d2566"
+      ],
+      "owners": [
+        "T01"
+      ],
+      "tasks": [
+        {
+          "task": "product",
+          "weight": 32,
+          "kind": "contraction",
+          "blocks": [
+            "matmul"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "20619c0ad1be2e45ab260cbc649fe6680ec00a11cba541e961189ca40533fca4",
+      "fixture_sha256": "db2a1c64355aadeb3146fde2c549e2781fc3ffb48689c161b0712b4dce4b1056"
+    },
+    {
+      "id": "T02",
+      "keys": [
+        "51f2318ac03acfa8"
+      ],
+      "owners": [
+        "T02"
+      ],
+      "tasks": [
+        {
+          "task": "product",
+          "weight": 32,
+          "kind": "contraction",
+          "blocks": [
+            "matmul"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "b31f3a79b0b2c85f46f85348d702161c546136b231f2c99421a6ce303f23701f",
+      "fixture_sha256": "74d53e90f606e9449a5072d19e23754049d9a1cf2c4d94bb282ac868ee45dd23"
+    },
+    {
+      "id": "T03",
+      "keys": [
+        "07f2563e3160ab3f"
+      ],
+      "owners": [
+        "T03"
+      ],
+      "tasks": [
+        {
+          "task": "product",
+          "weight": 1,
+          "kind": "contraction",
+          "blocks": [
+            "matmul"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "e157a6b3d5912a05ff625e56c68f86537ebecf4df06f6797bbbc7ea48406c187",
+      "fixture_sha256": "1820e84d202ad59ed154e6f9ab5509ae4abc2e5dd38d0a6f664669b41cef70b4"
+    },
+    {
+      "id": "T04",
+      "keys": [
+        "9e53917ab82a5045"
+      ],
+      "owners": [
+        "T04"
+      ],
+      "tasks": [
+        {
+          "task": "product",
+          "weight": 2,
+          "kind": "contraction",
+          "blocks": [
+            "matmul"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "e5f1f93b0c943aed0839f174003934cc9419d00ecdd037fee8618bf5f6902db8",
+      "fixture_sha256": "e38a526b77bf77e23545874e299d03468e117df48f7c6df544db90282f25fe26"
+    },
+    {
+      "id": "T05",
+      "keys": [
+        "a8d1d5981cc67405"
+      ],
+      "owners": [
+        "T05"
+      ],
+      "tasks": [
+        {
+          "task": "product",
+          "weight": 1,
+          "kind": "contraction",
+          "blocks": [
+            "matmul"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "7051cde4619d5da4eeff7e5605e71de2ed8db69900c75bb2d4793022ac199b7b",
+      "fixture_sha256": "d1265b8ccdcb808e0be8f2d842f39275321e5773dfa1f7760eb277145af7be7c"
+    },
+    {
+      "id": "T06",
+      "keys": [
+        "445d984ef19f4da3",
+        "ac5f4644a47366be"
+      ],
+      "owners": [
+        "T06",
+        "T06"
+      ],
+      "tasks": [
+        {
+          "task": "product",
+          "weight": 1,
+          "kind": "contraction",
+          "blocks": [
+            "matmul"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        },
+        {
+          "task": "product1",
+          "weight": 2,
+          "kind": "contraction",
+          "blocks": [
+            "matmul"
+          ],
+          "eligible": true,
+          "tuning_index": 1
+        }
+      ],
+      "program_sha256": "e0646b6023436fc3787e3672f0ff58807a94f5eed27b548f3080b15cc5a62151",
+      "fixture_sha256": "0f79d9121653daa522177a9df7232b3a265ce8f589bf33a2069348ad3c65c7aa"
+    },
+    {
+      "id": "T07",
+      "keys": [
+        "f11bf215d34cfc8e"
+      ],
+      "owners": [
+        "T07"
+      ],
+      "tasks": [
+        {
+          "task": "product",
+          "weight": 1,
+          "kind": "contraction",
+          "blocks": [
+            "matmul"
+          ],
+          "eligible": true,
+          "tuning_index": 0
+        }
+      ],
+      "program_sha256": "25c9355a05571d12e36f869fe30ff08b527562d6274dfe998439b4c87aad7d75",
+      "fixture_sha256": "53c049e4c5318cdb21587f248f89de9dbed9084127719464532654df520cf1fc"
+    }
+  ],
+  "compiler_sources": [
+    {
+      "path": "/work/exp/tvmfs/merlin/examples/gemmini/comparisons/tvm/firesim_job_pool.py",
+      "sha256": "5bc96fa72cf2ddff32576c6f7f76cfed41c05ea37a625942bc4c56b751ccbe04",
+      "bytes": 10615
+    },
+    {
+      "path": "/work/exp/tvmfs/merlin/examples/gemmini/comparisons/tvm/firesim_runner_seconds.py",
+      "sha256": "9752aedb449959992a07c969dfa6a878cb66ea5ec2fd26d514ef48a77d4df26f",
+      "bytes": 1331
+    },
+    {
+      "path": "/work/exp/tvmfs/merlin/examples/gemmini/comparisons/tvm/firesim_timeout.py",
+      "sha256": "5e5131c41d1803e56e74a16f37a48e07ad53f500640f0cd9ecbbf38f7b233530",
+      "bytes": 4032
+    },
+    {
+      "path": "/work/exp/tvmfs/merlin/examples/gemmini/comparisons/tvm/run_firesim_study.py",
+      "sha256": "a31cbdf2169ee9ae5be1af955885ec218a52f6e4f8c0ed7901441e28492fae4b",
+      "bytes": 17489
+    },
+    {
+      "path": "/work/exp/tvmfs/merlin/examples/gemmini/comparisons/tvm/tune_firesim_chunks.py",
+      "sha256": "45ba60f46471f92d56f85934d65a0bbd3322dda15c78a5e5d83375ca7de9224f",
+      "bytes": 22030
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/audit_graph_plans.py",
+      "sha256": "537b45ef034a5c84ba946b188db3aa87fedc185d1b866ca2279459345212c465",
+      "bytes": 2491
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/baremetal.py",
+      "sha256": "67440beb49d0a1796332259c8399aeb18f2affec634422c22e2495354585d735",
+      "bytes": 37057
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/benchmark_el4.py",
+      "sha256": "bbedc7e66441f2498586de1ca83cb8db0ec37349c542b11c0da51c751f775419",
+      "bytes": 15781
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/chunk_measure.py",
+      "sha256": "e040ff3cf6f1a51cbdad0e79f8c8a1973f08e1af0447bd1ca5f5464818e47d71",
+      "bytes": 11135
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/compile_package.py",
+      "sha256": "6c3ce48d06c1d72ef1f48ae1ba4009325b996ee61d39ac0b35762c52c3a7773a",
+      "bytes": 26224
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/complete_baselines.py",
+      "sha256": "a6e0c2b6337c7d3b9a39e4e948e4961c0d65b7103703cf13aa707397938ca19e",
+      "bytes": 6963
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/cycle_watchdog.py",
+      "sha256": "0d159f9105013880ba4f51b1cfdf84b75596f413d076834a97d95d9ab77639de",
+      "bytes": 3700
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/extract_tensorir.py",
+      "sha256": "07c39a3d2cbd407e85a623d0632aa81b1c5969ea344cfb0a3c3c19ad77228931",
+      "bytes": 6536
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/graph_plans.py",
+      "sha256": "6f502128617443c54da264f2b41425acf42d452ddb6885ebd81a5106c7e4b877",
+      "bytes": 10943
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/host_execution.py",
+      "sha256": "e73dd91bb10d3aaaddafdf417daedae87983c1cac775af83e8ad5effb079f9b0",
+      "bytes": 4662
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/measure.py",
+      "sha256": "649bd282b21f42786fc4094647c26b0a109548ed28802b0c0c866fe82cd6246f",
+      "bytes": 33813
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/memory_model.py",
+      "sha256": "d9966905dcf664b37e4ff0044624cc50829ac66cc554a0ca07113aa7fbc6cad2",
+      "bytes": 6617
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/merge_comparison_records.py",
+      "sha256": "b154f2ce2a757c6934abbbe442aae8cd82e3f578af702a8b5d59beb14ca21d6e",
+      "bytes": 4388
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/model_workloads.py",
+      "sha256": "184b742ecb97c2e091665497ee826ba511fe5b86ecea4556b977e1e6001c2baa",
+      "bytes": 10862
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/operator_contracts.py",
+      "sha256": "ddf65b50aee003bb9f2ef5258524b8daf2529128a957eecf555732ea261954d8",
+      "bytes": 13277
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/operator_inputs.py",
+      "sha256": "bbba2f65d13f0ae1954640f2bad18e8b2137257de9a760b0032859ec37ad8053",
+      "bytes": 8887
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/package_audit.py",
+      "sha256": "e56d1b7c92b606eb72c56a5ec017038ce47457332f5398b48376237575613696",
+      "bytes": 3317
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/program_io.py",
+      "sha256": "4cced916bb5eeef08eebc46adde2085f6df302b517417fdf2efabe39dc64202b",
+      "bytes": 1416
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/qualify_package.py",
+      "sha256": "cda27e9851642cbfae11415a9d51d5c45e4773d99ddfc752638ad101f71e2250",
+      "bytes": 12587
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/qualify_tuning_package.py",
+      "sha256": "2e8ad2c8d41badb7223cf4960bfa356e3fc7b8d5fbcfab17fd95a78bc865e8bd",
+      "bytes": 8378
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/replay_candidate.py",
+      "sha256": "1dfa2b5490dd490d394934c1f4dee593b162af1a206516393d8cb84830aebd95",
+      "bytes": 17175
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/report_el4.py",
+      "sha256": "b038131d3a39979e88f148799c67b7890c217551eb4f4069e446fec22b4ad30b",
+      "bytes": 17777
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/report_followup.py",
+      "sha256": "576367b6f1c7da321a5831fe0dd6a5a6ba1e5def506f6b70d3d6268b5170a7e9",
+      "bytes": 10773
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/report_tuning.py",
+      "sha256": "36c9ff497a3c916ef1f12c0edf790fc36164e3b87767e740b555c01be905af8f",
+      "bytes": 9642
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/retry_capped.py",
+      "sha256": "71777e0618d6199e00372e0c4c4283e71a2b0ffa9e57b37b538c4da4f0c9fcef",
+      "bytes": 7257
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/tune_chunk.py",
+      "sha256": "9a3cf7231ac07ce1dd37e9c565df910816746529940a5244f8a8902486dfe367",
+      "bytes": 13516
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/tune_models.py",
+      "sha256": "f9e60addb4a3df6feb0a961bb0c6b9e402ea7fe9048870b64d0097deb789270b",
+      "bytes": 38290
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/tune_tensorir.py",
+      "sha256": "fdaa1b3df77fe4f0c8ee211f548e9079da78debbec9f2e89dd34585ffd21013c",
+      "bytes": 1064
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/tuning_library.py",
+      "sha256": "d9d09818abe27ce4e73a5ef476dff1909fd61caaf37ac5da37efd2c491a717db",
+      "bytes": 25227
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/tuning_preset.py",
+      "sha256": "84fddc67f50d294e4485461ac7052c7ef0f2b57e815ebed9ee05dd78d9df9441",
+      "bytes": 2445
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/verify_baremetal_cpu.py",
+      "sha256": "ba5c5c57ab11c1a1f148633080b3ece03342167f37f61e876477bf67254683da",
+      "bytes": 35612
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/verify_device_ops.py",
+      "sha256": "65fce34a428ae09dd6d334a34f2f2df341a863a8aabf13e2660f39c672e67f94",
+      "bytes": 10420
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/verify_el4.py",
+      "sha256": "4cf750b0d2621addde448a127c71abc857d3da1caa4f52fa2abc493c8ebd287e",
+      "bytes": 2708
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/verify_exported_graph.py",
+      "sha256": "71dda809658752d7beca9d662b238030b967cdc3c7a7b8e639e9815f21d206b7",
+      "bytes": 50531
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/verify_graph.py",
+      "sha256": "c3dd747531c5a353f4e4547594d41bb6ee1a09b835cb7ab0425a8ec7f15de849",
+      "bytes": 28036
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/verify_host.py",
+      "sha256": "f4ffcf79eb0982f13f0241a7a9acb018f092ae6b2cf2f4f258222b5b4dca1058",
+      "bytes": 6059
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/verify_matmul.py",
+      "sha256": "d971814355a2deddf3a07dc5e530fc863190b5f4fb3f5d2aeaab09367ed650ac",
+      "bytes": 18543
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/verify_matmul_runtime.py",
+      "sha256": "f730764b016cd506cc85029d77a11a451453348c118a28f5000e26b36d6416dc",
+      "bytes": 26152
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/verify_onnx.py",
+      "sha256": "335ef721669d49df34af962d9b44d5659c9a02929c78d58e916dc3e09de7bd6d",
+      "bytes": 28168
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/verify_tensorir.py",
+      "sha256": "b81f18c61f6551a901e79b83f8beb808fbd8b65dc9ea3064be6c11941aee2d2f",
+      "bytes": 74129
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/workload_chunks.py",
+      "sha256": "8bd9262f1cac36d8227f814db0af0a1a8ed3cc24028c55f5512a2a936475bf3d",
+      "bytes": 11714
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/workload_reference.py",
+      "sha256": "f86091fd5f71cc297eb0b4041103825e9fd02cd0761134b0d0ae7be24501f181",
+      "bytes": 13884
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/apps/gemmini/workload_tuning.py",
+      "sha256": "12bd6abfed098bb2d0f1216c5eb458dfe3a155cf2d77454d4305d65e861ad2ba",
+      "bytes": 14947
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini.py",
+      "sha256": "5ea4954becbf649dec3e73f7d9144e1e80915cbb85fe8b0ef4ed15d3f72a64ad",
+      "bytes": 17843
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_affine.py",
+      "sha256": "5d3466cebf810c34de2a67dd1910fcdcac575dceb65279191f50007ed3106141",
+      "bytes": 14024
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_bias.py",
+      "sha256": "79e9dd251a02ec702b80922dbd554189b13a5be070c9034be6d9ce47c720648d",
+      "bytes": 6817
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_bytes.py",
+      "sha256": "57f810fdd54265912a586c45dd14c5464a104d5aaad0aab79072e9cfec0f80ff",
+      "bytes": 5572
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_conv.py",
+      "sha256": "94799fe0ded364295e8a9384c66a8d179bb078612737825279b8c5ec0bbdd2a2",
+      "bytes": 7537
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_elementwise.py",
+      "sha256": "18b0563a57a8d3fb16d8fbc58c4797150d4bf96f17242fb8d6566901086a3155",
+      "bytes": 30705
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_epilogue.py",
+      "sha256": "0a4e59c30923f0c7ec1a3d25b557a3ead80b6a260e65483487901cc947bb7160",
+      "bytes": 13575
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_intrin.py",
+      "sha256": "a91df2f20582d4fb601d954d046eb510a5fd626937b9ed2321b6ebd584aa3e15",
+      "bytes": 9723
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_memory.py",
+      "sha256": "6c5803a41942dfb1b60d60ee3c229f11b6d0f85737c63fa1e6d323ac4b150c7d",
+      "bytes": 16314
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_meta_schedule.py",
+      "sha256": "be9cdf6bb1906ff32e08353500ae81a322faee1fe426d2e8155cb50443e040a8",
+      "bytes": 11217
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_pool.py",
+      "sha256": "38b3cee5db2d709542566d5f64c0c5f8254a4a44c1d37470f84c026c5e8ca4d5",
+      "bytes": 8725
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_reduction.py",
+      "sha256": "5da51ab36d6a724e93ff64f847aa4ed75d9aa0e02d6af08126bd06bb622d6138",
+      "bytes": 16564
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_regions.py",
+      "sha256": "7f869679fee0291b46f126f6c71266cecf425d02e921e6d9926edc8f6951dc08",
+      "bytes": 9764
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_schedule.py",
+      "sha256": "1f4912c080bb3a137c333a6e80cd000a4c7aa4ceb566646aebe8ddac0749eb7c",
+      "bytes": 15605
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_search.py",
+      "sha256": "cf0f80115b72e23f30e5801bd2411ef7a38f417343eeec785093c3590db7db3a",
+      "bytes": 13849
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_sketch.py",
+      "sha256": "5f0cf886ff16b41d8299093ee2aaa8a575ae38d0000494f9d47b323753058f0c",
+      "bytes": 26147
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_target.py",
+      "sha256": "aaefd92eeedb6d2d943ad9d05467e51d78f83c4936836181cca18496206dfaec",
+      "bytes": 3479
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_tensorir.py",
+      "sha256": "2cff6c3ec7bfd199725cb51326baa5e0d1106ca9577a3f2df81d622e53e9e391",
+      "bytes": 28609
+    },
+    {
+      "path": "/work/exp/tvmfs/tvm/python/tvm/relax/backend/contrib/gemmini_tuning.py",
+      "sha256": "674638055a7578084a698385f8ec0319b147ddfc919f92641a39515a9b713d23",
+      "bytes": 24143
+    }
+  ],
+  "extractor_sha256": "b8deddae65da85b4c3ce1179ce721e28a19242d40c62d5c14c542cf3572a70fe"
+}

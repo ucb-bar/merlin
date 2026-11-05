@@ -1,0 +1,562 @@
+[
+ {
+  "name": "T07",
+  "warm_cycles": 32172886,
+  "wall_seconds": 17.40602366600001,
+  "error": null,
+  "elf_bytes": 65690648,
+  "occupancy": {
+   "admitted_at": 1793167657.9575377,
+   "finished_at": 1793167675.3486779,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 17.391146289000062,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "full-resnet",
+  "warm_cycles": 2236439673,
+  "wall_seconds": 99.86555819699993,
+  "error": null,
+  "elf_bytes": 26550032,
+  "occupancy": {
+   "admitted_at": 1793167657.9531682,
+   "finished_at": 1793167757.8085732,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 99.85541154499992,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "T04",
+  "warm_cycles": 11164602,
+  "wall_seconds": 13.015468449000082,
+  "error": null,
+  "elf_bytes": 23305544,
+  "occupancy": {
+   "admitted_at": 1793167657.9526339,
+   "finished_at": 1793167670.9590347,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 13.006406409999954,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "T03",
+  "warm_cycles": 5475334,
+  "wall_seconds": 11.608969343000126,
+  "error": null,
+  "elf_bytes": 11778224,
+  "occupancy": {
+   "admitted_at": 1793167657.957384,
+   "finished_at": 1793167669.5527515,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 11.595374289999882,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage4-block1",
+  "warm_cycles": 54718932,
+  "wall_seconds": 12.954209213000013,
+  "error": null,
+  "elf_bytes": 7321688,
+  "occupancy": {
+   "admitted_at": 1793167657.9555538,
+   "finished_at": 1793167670.8982384,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 12.942691016000026,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage1-block2",
+  "warm_cycles": 260109631,
+  "wall_seconds": 22.268916248000096,
+  "error": null,
+  "elf_bytes": 6535936,
+  "occupancy": {
+   "admitted_at": 1793167657.9564755,
+   "finished_at": 1793167680.2132814,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 22.25681213000007,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage1-block3",
+  "warm_cycles": 259681832,
+  "wall_seconds": 21.815148521000083,
+  "error": null,
+  "elf_bytes": 6535936,
+  "occupancy": {
+   "admitted_at": 1793167657.9546237,
+   "finished_at": 1793167679.7602842,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 21.805666512000016,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "T06",
+  "warm_cycles": 2229270,
+  "wall_seconds": 10.79943907400002,
+  "error": null,
+  "elf_bytes": 5342864,
+  "occupancy": {
+   "admitted_at": 1793167657.957112,
+   "finished_at": 1793167668.7453368,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 10.788231879000023,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage4-block2",
+  "warm_cycles": 35061802,
+  "wall_seconds": 11.085262341000089,
+  "error": null,
+  "elf_bytes": 5324256,
+  "occupancy": {
+   "admitted_at": 1793167668.7462187,
+   "finished_at": 1793167679.83065,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 11.084437337999816,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage4-block3",
+  "warm_cycles": 35489090,
+  "wall_seconds": 11.036800134000032,
+  "error": null,
+  "elf_bytes": 5324256,
+  "occupancy": {
+   "admitted_at": 1793167669.5536394,
+   "finished_at": 1793167680.5895884,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 11.035954951999884,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage2-block1",
+  "warm_cycles": 177860135,
+  "wall_seconds": 17.8956768930002,
+  "error": null,
+  "elf_bytes": 5249904,
+  "occupancy": {
+   "admitted_at": 1793167670.8990066,
+   "finished_at": 1793167688.7939446,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 17.89494439000009,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "T05",
+  "warm_cycles": 1709140,
+  "wall_seconds": 9.38141741000004,
+  "error": null,
+  "elf_bytes": 4380304,
+  "occupancy": {
+   "admitted_at": 1793167670.959691,
+   "finished_at": 1793167680.3404791,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 9.380793978000156,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "G02",
+  "warm_cycles": 3424353,
+  "wall_seconds": 11.685921134999944,
+  "error": null,
+  "elf_bytes": 4052840,
+  "occupancy": {
+   "admitted_at": 1793167675.3496835,
+   "finished_at": 1793167687.034622,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 11.684945232000018,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "G03",
+  "warm_cycles": 4283444,
+  "wall_seconds": 10.484186138000041,
+  "error": null,
+  "elf_bytes": 4052744,
+  "occupancy": {
+   "admitted_at": 1793167679.7610312,
+   "finished_at": 1793167690.2445421,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 10.483517826000025,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage3-block1",
+  "warm_cycles": 90207878,
+  "wall_seconds": 13.039300409999896,
+  "error": null,
+  "elf_bytes": 3984016,
+  "occupancy": {
+   "admitted_at": 1793167679.831515,
+   "finished_at": 1793167692.8699906,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 13.038481287999957,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage2-block2",
+  "warm_cycles": 125241868,
+  "wall_seconds": 14.840379703000053,
+  "error": null,
+  "elf_bytes": 3536312,
+  "occupancy": {
+   "admitted_at": 1793167680.214093,
+   "finished_at": 1793167695.0537026,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 14.839616380000052,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage2-block3",
+  "warm_cycles": 123089858,
+  "wall_seconds": 14.74073733199998,
+  "error": null,
+  "elf_bytes": 3536312,
+  "occupancy": {
+   "admitted_at": 1793167680.3411648,
+   "finished_at": 1793167695.081273,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 14.740113460999964,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage2-block4",
+  "warm_cycles": 125241868,
+  "wall_seconds": 14.641906674999973,
+  "error": null,
+  "elf_bytes": 3536312,
+  "occupancy": {
+   "admitted_at": 1793167680.5904539,
+   "finished_at": 1793167695.2315402,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 14.641092732000061,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage1-block1",
+  "warm_cycles": 281526463,
+  "wall_seconds": 22.002521777999846,
+  "error": null,
+  "elf_bytes": 3531736,
+  "occupancy": {
+   "admitted_at": 1793167687.0355618,
+   "finished_at": 1793167709.0370119,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 22.001456354000084,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage3-block2",
+  "warm_cycles": 60346878,
+  "wall_seconds": 12.3353180040001,
+  "error": null,
+  "elf_bytes": 2773112,
+  "occupancy": {
+   "admitted_at": 1793167688.794783,
+   "finished_at": 1793167701.1292791,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 12.334503200999961,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage3-block3",
+  "warm_cycles": 60346878,
+  "wall_seconds": 11.084803427999987,
+  "error": null,
+  "elf_bytes": 2773112,
+  "occupancy": {
+   "admitted_at": 1793167690.2452655,
+   "finished_at": 1793167701.3293614,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 11.08410194499993,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage3-block4",
+  "warm_cycles": 60346878,
+  "wall_seconds": 12.037854743000025,
+  "error": null,
+  "elf_bytes": 2773112,
+  "occupancy": {
+   "admitted_at": 1793167692.8708208,
+   "finished_at": 1793167704.9078646,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 12.037050150000141,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage3-block5",
+  "warm_cycles": 60346878,
+  "wall_seconds": 12.885687829999824,
+  "error": null,
+  "elf_bytes": 2773112,
+  "occupancy": {
+   "admitted_at": 1793167695.054515,
+   "finished_at": 1793167707.9394152,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 12.88490635800008,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stage3-block6",
+  "warm_cycles": 60346878,
+  "wall_seconds": 12.738481267999987,
+  "error": null,
+  "elf_bytes": 2773112,
+  "occupancy": {
+   "admitted_at": 1793167695.0818865,
+   "finished_at": 1793167707.8197742,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 12.737894125999901,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-classifier",
+  "warm_cycles": 2028945,
+  "wall_seconds": 9.883713838999938,
+  "error": null,
+  "elf_bytes": 2489176,
+  "occupancy": {
+   "admitted_at": 1793167695.23238,
+   "finished_at": 1793167705.1152582,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 9.882884805000003,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "G04",
+  "warm_cycles": 3082783,
+  "wall_seconds": 9.983311355000069,
+  "error": null,
+  "elf_bytes": 2095888,
+  "occupancy": {
+   "admitted_at": 1793167701.13008,
+   "finished_at": 1793167711.1126392,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 9.982566122000208,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "G05",
+  "warm_cycles": 3606097,
+  "wall_seconds": 9.833191191999958,
+  "error": null,
+  "elf_bytes": 2095840,
+  "occupancy": {
+   "admitted_at": 1793167701.3301485,
+   "finished_at": 1793167711.162614,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 9.832471540000142,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "C01",
+  "warm_cycles": 327109776,
+  "wall_seconds": 20.093757890000006,
+  "error": null,
+  "elf_bytes": 1725680,
+  "occupancy": {
+   "admitted_at": 1793167704.9087455,
+   "finished_at": 1793167725.0016594,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 20.09292055800006,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "G06",
+  "warm_cycles": 3297937,
+  "wall_seconds": 8.930161244999908,
+  "error": null,
+  "elf_bytes": 1289184,
+  "occupancy": {
+   "admitted_at": 1793167705.1161742,
+   "finished_at": 1793167714.0454469,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 8.929278643000089,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "C03",
+  "warm_cycles": 228703886,
+  "wall_seconds": 17.895059345999925,
+  "error": null,
+  "elf_bytes": 1077928,
+  "occupancy": {
+   "admitted_at": 1793167707.8204532,
+   "finished_at": 1793167725.7148433,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 17.89439686300011,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "C02",
+  "warm_cycles": 348516304,
+  "wall_seconds": 22.89970574899985,
+  "error": null,
+  "elf_bytes": 1034552,
+  "occupancy": {
+   "admitted_at": 1793167707.9402068,
+   "finished_at": 1793167730.8391173,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 22.898916897000163,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "resnet-stem",
+  "warm_cycles": 386810844,
+  "wall_seconds": 25.30816814600007,
+  "error": null,
+  "elf_bytes": 874448,
+  "occupancy": {
+   "admitted_at": 1793167709.0380788,
+   "finished_at": 1793167734.3453836,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 25.307311303000006,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "G01",
+  "warm_cycles": 1972011,
+  "wall_seconds": 9.930159044999982,
+  "error": null,
+  "elf_bytes": 809184,
+  "occupancy": {
+   "admitted_at": 1793167711.1134768,
+   "finished_at": 1793167721.042828,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 9.929357763000098,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "T01",
+  "warm_cycles": 48718,
+  "wall_seconds": 8.978992604000041,
+  "error": null,
+  "elf_bytes": 143168,
+  "occupancy": {
+   "admitted_at": 1793167711.1632993,
+   "finished_at": 1793167720.1415875,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 8.978294642000037,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ },
+ {
+  "name": "T02",
+  "warm_cycles": 48581,
+  "wall_seconds": 8.529411663000019,
+  "error": null,
+  "elf_bytes": 118552,
+  "occupancy": {
+   "admitted_at": 1793167714.046371,
+   "finished_at": 1793167722.5748966,
+   "admission_deadline_epoch": 1793182057.9401631,
+   "occupied_seconds": 8.52853155899993,
+   "post_budget_seconds": 0,
+   "finish_active_runs": false,
+   "scope": "local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals"
+  }
+ }
+]

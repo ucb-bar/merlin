@@ -1,0 +1,4 @@
+provenance: FAILED
+  - out/artifacts/perf-studies/gemmini-fased-workload-sweeps/v1/perf-studies_gemmini-fased-workload-sweeps_v1_20261024T073102Z_36899e8/fixtures/smolvla-action-time/host-llvm-crosscheck.json: claims a verdict but records no `provenance` block, so the result cannot be attributed to a hardware revision. Record one via merlin.common.provenance.record(), or add the path to provenance_ratchet.txt with a reason.
+  18 pin(s) declared: atlas_fp_units, atlas_npu, atlas_npu_model, gemmini_isa_headers, gemmini_rocket_chipyard, gemmini_rocket_rtl, gemmini_rtl, gemmini_universal_chipyard, gemmini_universal_rtl, gsim_compiler, muon_arc_model, radiance_kernels, radiance_muon_rtl, saturn_opu_int8, saturn_tapeout, voyager_accelerator, voyager_compiler, voyager_compiler_accel_pair
+  UNRECOVERABLE gsim_emitter_246bfdac: 246bfdac0a99 lost 2026-09-08T10:40Z (build/gsim/gsim); do not re-declare these bytes; 3 thing(s) still verify

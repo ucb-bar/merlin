@@ -1,0 +1,28 @@
+#!/bin/bash
+# Boot (and recovery) step: flash every FPGA slot with $AGFI, then mark the host ready. usage: f2-flash [slot]
+#   f2-flash --reload SLOT   reload $AGFI into one slot without clearing it (~5 s; f2-exec does this before every run,
+#                            since back-to-back runs on an unreloaded slot deadlock or hang after a few runs)
+set -euo pipefail
+. /opt/f2run/f2run.conf
+if [ "${1:-}" = --reload ]; then
+  fpga-load-local-image -S "$2" -I "$AGFI" -A >/dev/null
+  for _ in $(seq 300); do fpga-describe-local-image -S "$2" -R -H | grep -q loaded && break; sleep 0.2; done
+  fpga-describe-local-image -S "$2" -H | awk -v a="$AGFI" '$1 == "AFI" && $3 == a && $4 == "loaded" {ok = 1} END {exit !ok}' || { echo "f2-flash: slot $2 reload failed" >&2; exit 1; }
+  exit 0
+fi
+install -d -o ubuntu -g ubuntu /run/f2run /var/tmp/f2run; rm -f /run/f2run/ready
+n=$(fpga-describe-local-image-slots -H | grep -c AFIDEVICE)
+[ "$n" -ge 1 ] || { echo "f2-flash: no FPGA slots" >&2; exit 1; }
+sysctl -qw vm.nr_hugepages=$((16 * n))
+flash() {
+  fpga-clear-local-image -S "$1" -A >/dev/null
+  until fpga-describe-local-image -S "$1" -R -H | grep -q cleared; do sleep 1; done
+  fpga-load-local-image -S "$1" -I "$AGFI" -A >/dev/null
+  until fpga-describe-local-image -S "$1" -R -H | grep -q loaded; do sleep 1; done
+  fpga-describe-local-image -S "$1" -H | grep -q "$AGFI" || { echo "f2-flash: slot $1 did not load $AGFI" >&2; return 1; }
+}
+if [ $# = 1 ]; then flash "$1"; else for s in $(seq 0 $((n - 1))); do flash "$s" & done; wait; fi
+echo "$n" > /run/f2run/slots
+for s in $(seq 0 $((n - 1))); do install -d -o ubuntu -g ubuntu /var/tmp/f2run/slot$s; done
+touch /run/f2run/ready /run/f2run/last; chown ubuntu:ubuntu /run/f2run/*
+echo "f2-flash: $n slot(s) loaded with $AGFI"

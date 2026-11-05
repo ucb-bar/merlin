@@ -1,0 +1,556 @@
+enabled targets: llvm
+pytest marker: 
+bringing up nodes...
+bringing up nodes...
+
+............................................................F....FFF..F. [ 19%]
+....................F................................................... [ 39%]
+....................................................F................... [ 58%]
+...........F...F........................................................ [ 78%]
+...........................F............................................ [ 97%]
+.........                                                                [100%]
+=================================== FAILURES ===================================
+___________ test_console_requires_every_channel_and_exact_parameters ___________
+[gw4] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+receipts = (PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_console_requires_every_ch0/hardware.json'), PosixP...0/pins.yaml'), PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_console_requires_every_ch0/variant'))
+
+    def test_console_requires_every_channel_and_exact_parameters(receipts):
+        hardware, receipt, registry, _ = receipts
+>       bound = bind_memory_model(hardware, receipt, "board", registry)
+
+tests/python/relax/test_apps_gemmini_memory_model.py:73: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+hardware_receipt = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_console_requires_every_ch0/hardware.json')
+variant_receipt = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_console_requires_every_ch0/variant.json')
+artifact = 'board'
+registry = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_console_requires_every_ch0/pins.yaml')
+
+    def bind_memory_model(hardware_receipt, variant_receipt=None, artifact=None, registry=None):
+        """Return immutable identities and settings for a stock or FASED run."""
+        if bool(variant_receipt) != bool(artifact) or (registry and not artifact):
+            raise ValueError("Memory variant receipt and FireSim memory artifact must be supplied together")
+        base = json.loads(Path(hardware_receipt).read_text())
+        simulator = identity(base["simulator"]["path"])
+        if simulator["sha256"] != base["simulator"]["sha256"]:
+            raise ValueError("Base simulator differs from its hardware qualification")
+        bound = {"schema": "tvm_verilator_memory_model_v1", "kind": "stock_mm_magic",
+                 "simulator": simulator, "base_simulator": simulator,
+                 "bindings": [identity(hardware_receipt), simulator, identity(__file__)], "knobs": {},
+                 "requires_console_confirmation": False,
+                 "scope": "Local RTL timing; not deployed FireSim qualification"}
+        if variant_receipt:
+            from merlin.common import provenance
+            from merlin.targetgen import mem_perturb
+    
+            variant = json.loads(Path(variant_receipt).read_text())
+            if variant.get("schema_version") != mem_perturb.SCHEMA:
+                raise ValueError("Unknown memory variant receipt")
+            if "latency_pipe" not in variant.get("models", {}):
+                raise ValueError("Variant does not declare a latency-pipe implementation")
+            control = variant.get("control_relink", {})
+            if (not control.get("performed") or control.get("digest") != simulator["sha256"]
+                    or control.get("base_on_disk_digest") != simulator["sha256"]):
+                raise ValueError("Variant control relink does not match the qualified base simulator")
+            binary = identity(variant["binary"]["path"])
+            if binary["sha256"] != variant["binary"]["sha256"]:
+                raise ValueError("Memory variant binary changed")
+            registry = Path(registry) if registry else provenance.pins_path()
+>           knobs = mem_perturb.pinned_latency_pipe(artifact, registry=registry)
+E           AttributeError: module 'merlin.targetgen.mem_perturb' has no attribute 'pinned_latency_pipe'
+
+apps/gemmini/memory_model.py:70: AttributeError
+__ test_candidate_runner_refuses_incomplete_or_unconfirmed_timing[False-True] __
+[gw4] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+receipts = (PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_0/hardware.json'), PosixP...0/pins.yaml'), PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_0/variant'))
+tmp_path = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7486b998d850>
+confirm = False, complete = True
+
+    @pytest.mark.parametrize("confirm,complete", [(False, True), (True, False), (True, True)])
+    def test_candidate_runner_refuses_incomplete_or_unconfirmed_timing(receipts, tmp_path, monkeypatch, confirm, complete):
+        import measure
+        from types import SimpleNamespace
+    
+        hardware, receipt, registry, _ = receipts
+>       bound = bind_memory_model(hardware, receipt, "board", registry)
+
+tests/python/relax/test_apps_gemmini_memory_model.py:143: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+hardware_receipt = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_0/hardware.json')
+variant_receipt = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_0/variant.json')
+artifact = 'board'
+registry = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_0/pins.yaml')
+
+    def bind_memory_model(hardware_receipt, variant_receipt=None, artifact=None, registry=None):
+        """Return immutable identities and settings for a stock or FASED run."""
+        if bool(variant_receipt) != bool(artifact) or (registry and not artifact):
+            raise ValueError("Memory variant receipt and FireSim memory artifact must be supplied together")
+        base = json.loads(Path(hardware_receipt).read_text())
+        simulator = identity(base["simulator"]["path"])
+        if simulator["sha256"] != base["simulator"]["sha256"]:
+            raise ValueError("Base simulator differs from its hardware qualification")
+        bound = {"schema": "tvm_verilator_memory_model_v1", "kind": "stock_mm_magic",
+                 "simulator": simulator, "base_simulator": simulator,
+                 "bindings": [identity(hardware_receipt), simulator, identity(__file__)], "knobs": {},
+                 "requires_console_confirmation": False,
+                 "scope": "Local RTL timing; not deployed FireSim qualification"}
+        if variant_receipt:
+            from merlin.common import provenance
+            from merlin.targetgen import mem_perturb
+    
+            variant = json.loads(Path(variant_receipt).read_text())
+            if variant.get("schema_version") != mem_perturb.SCHEMA:
+                raise ValueError("Unknown memory variant receipt")
+            if "latency_pipe" not in variant.get("models", {}):
+                raise ValueError("Variant does not declare a latency-pipe implementation")
+            control = variant.get("control_relink", {})
+            if (not control.get("performed") or control.get("digest") != simulator["sha256"]
+                    or control.get("base_on_disk_digest") != simulator["sha256"]):
+                raise ValueError("Variant control relink does not match the qualified base simulator")
+            binary = identity(variant["binary"]["path"])
+            if binary["sha256"] != variant["binary"]["sha256"]:
+                raise ValueError("Memory variant binary changed")
+            registry = Path(registry) if registry else provenance.pins_path()
+>           knobs = mem_perturb.pinned_latency_pipe(artifact, registry=registry)
+E           AttributeError: module 'merlin.targetgen.mem_perturb' has no attribute 'pinned_latency_pipe'
+
+apps/gemmini/memory_model.py:70: AttributeError
+__ test_candidate_runner_refuses_incomplete_or_unconfirmed_timing[True-False] __
+[gw4] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+receipts = (PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_1/hardware.json'), PosixP...1/pins.yaml'), PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_1/variant'))
+tmp_path = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7486b998f5f0>
+confirm = True, complete = False
+
+    @pytest.mark.parametrize("confirm,complete", [(False, True), (True, False), (True, True)])
+    def test_candidate_runner_refuses_incomplete_or_unconfirmed_timing(receipts, tmp_path, monkeypatch, confirm, complete):
+        import measure
+        from types import SimpleNamespace
+    
+        hardware, receipt, registry, _ = receipts
+>       bound = bind_memory_model(hardware, receipt, "board", registry)
+
+tests/python/relax/test_apps_gemmini_memory_model.py:143: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+hardware_receipt = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_1/hardware.json')
+variant_receipt = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_1/variant.json')
+artifact = 'board'
+registry = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_1/pins.yaml')
+
+    def bind_memory_model(hardware_receipt, variant_receipt=None, artifact=None, registry=None):
+        """Return immutable identities and settings for a stock or FASED run."""
+        if bool(variant_receipt) != bool(artifact) or (registry and not artifact):
+            raise ValueError("Memory variant receipt and FireSim memory artifact must be supplied together")
+        base = json.loads(Path(hardware_receipt).read_text())
+        simulator = identity(base["simulator"]["path"])
+        if simulator["sha256"] != base["simulator"]["sha256"]:
+            raise ValueError("Base simulator differs from its hardware qualification")
+        bound = {"schema": "tvm_verilator_memory_model_v1", "kind": "stock_mm_magic",
+                 "simulator": simulator, "base_simulator": simulator,
+                 "bindings": [identity(hardware_receipt), simulator, identity(__file__)], "knobs": {},
+                 "requires_console_confirmation": False,
+                 "scope": "Local RTL timing; not deployed FireSim qualification"}
+        if variant_receipt:
+            from merlin.common import provenance
+            from merlin.targetgen import mem_perturb
+    
+            variant = json.loads(Path(variant_receipt).read_text())
+            if variant.get("schema_version") != mem_perturb.SCHEMA:
+                raise ValueError("Unknown memory variant receipt")
+            if "latency_pipe" not in variant.get("models", {}):
+                raise ValueError("Variant does not declare a latency-pipe implementation")
+            control = variant.get("control_relink", {})
+            if (not control.get("performed") or control.get("digest") != simulator["sha256"]
+                    or control.get("base_on_disk_digest") != simulator["sha256"]):
+                raise ValueError("Variant control relink does not match the qualified base simulator")
+            binary = identity(variant["binary"]["path"])
+            if binary["sha256"] != variant["binary"]["sha256"]:
+                raise ValueError("Memory variant binary changed")
+            registry = Path(registry) if registry else provenance.pins_path()
+>           knobs = mem_perturb.pinned_latency_pipe(artifact, registry=registry)
+E           AttributeError: module 'merlin.targetgen.mem_perturb' has no attribute 'pinned_latency_pipe'
+
+apps/gemmini/memory_model.py:70: AttributeError
+__ test_candidate_runner_refuses_incomplete_or_unconfirmed_timing[True-True] ___
+[gw4] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+receipts = (PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_2/hardware.json'), PosixP...2/pins.yaml'), PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_2/variant'))
+tmp_path = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7486ba3cae40>
+confirm = True, complete = True
+
+    @pytest.mark.parametrize("confirm,complete", [(False, True), (True, False), (True, True)])
+    def test_candidate_runner_refuses_incomplete_or_unconfirmed_timing(receipts, tmp_path, monkeypatch, confirm, complete):
+        import measure
+        from types import SimpleNamespace
+    
+        hardware, receipt, registry, _ = receipts
+>       bound = bind_memory_model(hardware, receipt, "board", registry)
+
+tests/python/relax/test_apps_gemmini_memory_model.py:143: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+hardware_receipt = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_2/hardware.json')
+variant_receipt = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_2/variant.json')
+artifact = 'board'
+registry = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw4/test_candidate_runner_refuses_2/pins.yaml')
+
+    def bind_memory_model(hardware_receipt, variant_receipt=None, artifact=None, registry=None):
+        """Return immutable identities and settings for a stock or FASED run."""
+        if bool(variant_receipt) != bool(artifact) or (registry and not artifact):
+            raise ValueError("Memory variant receipt and FireSim memory artifact must be supplied together")
+        base = json.loads(Path(hardware_receipt).read_text())
+        simulator = identity(base["simulator"]["path"])
+        if simulator["sha256"] != base["simulator"]["sha256"]:
+            raise ValueError("Base simulator differs from its hardware qualification")
+        bound = {"schema": "tvm_verilator_memory_model_v1", "kind": "stock_mm_magic",
+                 "simulator": simulator, "base_simulator": simulator,
+                 "bindings": [identity(hardware_receipt), simulator, identity(__file__)], "knobs": {},
+                 "requires_console_confirmation": False,
+                 "scope": "Local RTL timing; not deployed FireSim qualification"}
+        if variant_receipt:
+            from merlin.common import provenance
+            from merlin.targetgen import mem_perturb
+    
+            variant = json.loads(Path(variant_receipt).read_text())
+            if variant.get("schema_version") != mem_perturb.SCHEMA:
+                raise ValueError("Unknown memory variant receipt")
+            if "latency_pipe" not in variant.get("models", {}):
+                raise ValueError("Variant does not declare a latency-pipe implementation")
+            control = variant.get("control_relink", {})
+            if (not control.get("performed") or control.get("digest") != simulator["sha256"]
+                    or control.get("base_on_disk_digest") != simulator["sha256"]):
+                raise ValueError("Variant control relink does not match the qualified base simulator")
+            binary = identity(variant["binary"]["path"])
+            if binary["sha256"] != variant["binary"]["sha256"]:
+                raise ValueError("Memory variant binary changed")
+            registry = Path(registry) if registry else provenance.pins_path()
+>           knobs = mem_perturb.pinned_latency_pipe(artifact, registry=registry)
+E           AttributeError: module 'merlin.targetgen.mem_perturb' has no attribute 'pinned_latency_pipe'
+
+apps/gemmini/memory_model.py:70: AttributeError
+______________ test_registry_settings_change_measurement_identity ______________
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+receipts = (PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw1/test_registry_settings_change_0/hardware.json'), PosixP...0/pins.yaml'), PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw1/test_registry_settings_change_0/variant'))
+
+    def test_registry_settings_change_measurement_identity(receipts):
+        hardware, receipt, registry, _ = receipts
+>       original = bind_memory_model(hardware, receipt, "board", registry)
+
+tests/python/relax/test_apps_gemmini_memory_model.py:97: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+hardware_receipt = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw1/test_registry_settings_change_0/hardware.json')
+variant_receipt = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw1/test_registry_settings_change_0/variant.json')
+artifact = 'board'
+registry = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw1/test_registry_settings_change_0/pins.yaml')
+
+    def bind_memory_model(hardware_receipt, variant_receipt=None, artifact=None, registry=None):
+        """Return immutable identities and settings for a stock or FASED run."""
+        if bool(variant_receipt) != bool(artifact) or (registry and not artifact):
+            raise ValueError("Memory variant receipt and FireSim memory artifact must be supplied together")
+        base = json.loads(Path(hardware_receipt).read_text())
+        simulator = identity(base["simulator"]["path"])
+        if simulator["sha256"] != base["simulator"]["sha256"]:
+            raise ValueError("Base simulator differs from its hardware qualification")
+        bound = {"schema": "tvm_verilator_memory_model_v1", "kind": "stock_mm_magic",
+                 "simulator": simulator, "base_simulator": simulator,
+                 "bindings": [identity(hardware_receipt), simulator, identity(__file__)], "knobs": {},
+                 "requires_console_confirmation": False,
+                 "scope": "Local RTL timing; not deployed FireSim qualification"}
+        if variant_receipt:
+            from merlin.common import provenance
+            from merlin.targetgen import mem_perturb
+    
+            variant = json.loads(Path(variant_receipt).read_text())
+            if variant.get("schema_version") != mem_perturb.SCHEMA:
+                raise ValueError("Unknown memory variant receipt")
+            if "latency_pipe" not in variant.get("models", {}):
+                raise ValueError("Variant does not declare a latency-pipe implementation")
+            control = variant.get("control_relink", {})
+            if (not control.get("performed") or control.get("digest") != simulator["sha256"]
+                    or control.get("base_on_disk_digest") != simulator["sha256"]):
+                raise ValueError("Variant control relink does not match the qualified base simulator")
+            binary = identity(variant["binary"]["path"])
+            if binary["sha256"] != variant["binary"]["sha256"]:
+                raise ValueError("Memory variant binary changed")
+            registry = Path(registry) if registry else provenance.pins_path()
+>           knobs = mem_perturb.pinned_latency_pipe(artifact, registry=registry)
+E           AttributeError: module 'merlin.targetgen.mem_perturb' has no attribute 'pinned_latency_pipe'
+
+apps/gemmini/memory_model.py:70: AttributeError
+________ test_variant_binds_base_and_pin_and_clears_inherited_overrides ________
+[gw2] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+receipts = (PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw2/test_variant_binds_base_and_pi0/hardware.json'), PosixP...0/pins.yaml'), PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw2/test_variant_binds_base_and_pi0/variant'))
+
+    def test_variant_binds_base_and_pin_and_clears_inherited_overrides(receipts):
+        hardware, receipt, registry, _ = receipts
+>       bound = bind_memory_model(hardware, receipt, "board", registry)
+
+tests/python/relax/test_apps_gemmini_memory_model.py:62: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+hardware_receipt = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw2/test_variant_binds_base_and_pi0/hardware.json')
+variant_receipt = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw2/test_variant_binds_base_and_pi0/variant.json')
+artifact = 'board'
+registry = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw2/test_variant_binds_base_and_pi0/pins.yaml')
+
+    def bind_memory_model(hardware_receipt, variant_receipt=None, artifact=None, registry=None):
+        """Return immutable identities and settings for a stock or FASED run."""
+        if bool(variant_receipt) != bool(artifact) or (registry and not artifact):
+            raise ValueError("Memory variant receipt and FireSim memory artifact must be supplied together")
+        base = json.loads(Path(hardware_receipt).read_text())
+        simulator = identity(base["simulator"]["path"])
+        if simulator["sha256"] != base["simulator"]["sha256"]:
+            raise ValueError("Base simulator differs from its hardware qualification")
+        bound = {"schema": "tvm_verilator_memory_model_v1", "kind": "stock_mm_magic",
+                 "simulator": simulator, "base_simulator": simulator,
+                 "bindings": [identity(hardware_receipt), simulator, identity(__file__)], "knobs": {},
+                 "requires_console_confirmation": False,
+                 "scope": "Local RTL timing; not deployed FireSim qualification"}
+        if variant_receipt:
+            from merlin.common import provenance
+            from merlin.targetgen import mem_perturb
+    
+            variant = json.loads(Path(variant_receipt).read_text())
+            if variant.get("schema_version") != mem_perturb.SCHEMA:
+                raise ValueError("Unknown memory variant receipt")
+            if "latency_pipe" not in variant.get("models", {}):
+                raise ValueError("Variant does not declare a latency-pipe implementation")
+            control = variant.get("control_relink", {})
+            if (not control.get("performed") or control.get("digest") != simulator["sha256"]
+                    or control.get("base_on_disk_digest") != simulator["sha256"]):
+                raise ValueError("Variant control relink does not match the qualified base simulator")
+            binary = identity(variant["binary"]["path"])
+            if binary["sha256"] != variant["binary"]["sha256"]:
+                raise ValueError("Memory variant binary changed")
+            registry = Path(registry) if registry else provenance.pins_path()
+>           knobs = mem_perturb.pinned_latency_pipe(artifact, registry=registry)
+E           AttributeError: module 'merlin.targetgen.mem_perturb' has no attribute 'pinned_latency_pipe'
+
+apps/gemmini/memory_model.py:70: AttributeError
+_____ StaticGraphTests.test_unknown_shapes_dtypes_and_memory_are_rejected ______
+[gw2] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_backend_contrib_gemmini_baremetal.StaticGraphTests testMethod=test_unknown_shapes_dtypes_and_memory_are_rejected>
+
+    def test_unknown_shapes_dtypes_and_memory_are_rejected(self):
+        for mod in (graph(dtype="float16"), graph(shape=(tir.Var("batch", "int64"), 3))):
+>           with self.assertRaises(ValueError):
+E           AssertionError: ValueError not raised
+
+tests/python/relax/test_backend_contrib_gemmini_baremetal.py:525: AssertionError
+_ GemminiArithmeticTests.test_native_contracts_and_cpu_numeric_fallback_keep_aten_results _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_backend_contrib_gemmini_arithmetic.GemminiArithmeticTests testMethod=test_native_contracts_and_cpu_numeric_fallback_keep_aten_results>
+
+    def test_native_contracts_and_cpu_numeric_fallback_keep_aten_results(self):
+        try:
+            import torch
+        except ImportError:
+            self.skipTest("PyTorch is unavailable")
+        from tvm.relax.frontend.torch import from_exported_program
+    
+        for kind in (
+            "mm",
+            "bmm",
+            "addmm",
+            "add",
+            "scalar_add",
+            "subtract",
+            "multiply",
+            "divide",
+            "alpha",
+            "int64_add",
+            "int64_mm",
+        ):
+            with self.subTest(kind=kind):
+    
+                class Arithmetic(torch.nn.Module):
+                    def forward(self, x, y, bias):
+                        if kind in ("mm", "int64_mm"):
+                            return torch.mm(x, y)
+                        if kind == "bmm":
+                            return torch.bmm(x, y)
+                        if kind == "addmm":
+                            return torch.addmm(bias, x, y)
+                        if kind in ("add", "int64_add"):
+                            return torch.add(x, y)
+                        if kind == "scalar_add":
+                            return torch.ops.aten.add.Scalar(x, 17)
+                        if kind == "subtract":
+                            return torch.sub(x, y, alpha=3)
+                        if kind == "multiply":
+                            return torch.ops.aten.mul.Scalar(x, -3)
+                        if kind == "divide":
+                            return torch.ops.aten.div.Scalar(x, 3)
+                        return torch.add(x, y, alpha=1.1)
+    
+                dtype = (
+                    "int64"
+                    if kind.startswith("int64")
+                    else "float32"
+                    if kind == "alpha"
+                    else "int8"
+                    if kind in ("mm", "bmm", "addmm")
+                    else "int32"
+                )
+                matrix = kind in ("mm", "addmm", "int64_mm")
+                shapes = (
+                    ((2, 3), (3, 4), (4,))
+                    if matrix
+                    else (
+                        ((2, 2, 3), (2, 3, 4), (4,)) if kind == "bmm" else ((3, 17), (3, 17), (17,))
+                    )
+                )
+                seed = (
+                    np.array([-3.75, 1.125, -0.0, 1, 0.25, -0.5], dtype)
+                    if dtype == "float32"
+                    else np.array([np.iinfo(dtype).min, np.iinfo(dtype).max, -1, 0, 1, 17], dtype)
+                )
+                values = [
+                    np.resize(seed if i % 2 == 0 else seed[::-1], shape)
+                    for i, shape in enumerate(shapes)
+                ]
+                model = Arithmetic()
+                examples = [torch.from_numpy(value) for value in values]
+                graph = from_exported_program(
+                    torch.export.export(model, tuple(examples)), unwrap_unit_return_tuple=True
+                )
+                report = []
+                prepared = prepare_gemmini_graph(graph, report=report)
+                native = kind in ("mm", "bmm", "addmm", "add", "scalar_add")
+>               self.assertEqual(
+                    sum(row["placement"] == "gemmini" for row in report), int(native), report
+                )
+E               AssertionError: 0 != 1 : [{'function': 'wrapping_add', 'placement': 'cpu', 'reason': 'No supported exact integer contraction, bounded sum/window, affine/readout, copy or widening'}]
+
+tests/python/relax/test_backend_contrib_gemmini_arithmetic.py:108: AssertionError
+----------------------------- Captured stderr call -----------------------------
+__ GemminiDSETests.test_bias_preload_can_be_disabled_without_changing_results __
+[gw2] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_backend_contrib_gemmini_dse.GemminiDSETests testMethod=test_bias_preload_can_be_disabled_without_changing_results>
+
+    def test_bias_preload_can_be_disabled_without_changing_results(self):
+        for preload in (False, True):
+            a = relax.Var("a", relax.TensorStructInfo((3, 5), "int8"))
+            b = relax.Var("b", relax.TensorStructInfo((5, 4), "int8"))
+            bias = relax.Var("bias", relax.TensorStructInfo((4,), "int32"))
+            builder = relax.BlockBuilder()
+            with builder.function("main", [a, b, bias]):
+                with builder.dataflow():
+                    product = builder.emit(relax.op.matmul(a, b, out_dtype="int32"))
+                    output = builder.emit_output(relax.op.add(product, bias))
+                builder.emit_func_output(output)
+            report = []
+>           graph = prepare_gemmini_graph(builder.get(), bias_preload=preload, report=report)
+
+tests/python/relax/test_backend_contrib_gemmini_dse.py:174: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+python/tvm/relax/backend/contrib/gemmini.py:62: in prepare_gemmini_graph
+    return prepare_gemmini_tensorir_graph(mod, optimize=optimize, capabilities=capabilities,
+python/tvm/relax/backend/contrib/gemmini_tensorir.py:682: in prepare_gemmini_tensorir_graph
+    mod, _, _ = prepare_gemmini_tensorir_workloads(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+mod = # from tvm.script import ir as I
+# from tvm.script import tir as T
+# from tvm.script import relax as R
+
+@I.ir_module
+c...s.fused_matmul_add, (a, b, bias), out_sinfo=R.Tensor((3, 4), dtype="int32"))
+            R.output(gv)
+        return gv
+
+    def prepare_gemmini_tensorir_workloads(
+        mod, *, optimize=True, bias_preload=False, prepack_weights=False, fusion_level=-1,
+        eliminate_common_subexpr=False
+    ):
+        """Expose the same mathematical workloads used by compile and DSE paths."""
+        from tvm import relax  # pylint: disable=import-outside-toplevel
+    
+        if type(optimize) is not bool:
+            raise ValueError("optimize must be a boolean")
+        if type(fusion_level) is not int or fusion_level not in (-1, 0, 1, 2, 3):
+            raise ValueError("fusion_level must be -1 (PassContext) or an integer from 0 to 3")
+        if not optimize and fusion_level != -1:
+            raise ValueError("Explicit fusion_level requires optimize=True")
+        if type(eliminate_common_subexpr) is not bool:
+            raise ValueError("eliminate_common_subexpr must be a boolean")
+        if eliminate_common_subexpr:
+            if not optimize:
+                raise ValueError("Graph CSE requires optimize=True")
+            mod = relax.transform.EliminateCommonSubexpr()(mod)
+        passes = [relax.transform.LegalizeOps(), relax.transform.AnnotateTIROpPattern()]
+        if optimize:
+            passes.extend(
+                [
+                    relax.transform.FoldConstant(),
+                    relax.transform.CanonicalizeBindings(),
+                    relax.transform.FuseOps(fuse_opt_level=fusion_level),
+                    relax.transform.FuseTIR(),
+                    relax.transform.RewriteDataflowReshape(),
+                    relax.transform.DeadCodeElimination(),
+                ]
+            )
+        mod = tvm.transform.Sequential(passes)(mod)
+        if type(prepack_weights) is not bool:
+            raise ValueError("prepack_weights must be a boolean")
+        if prepack_weights:
+            raise ValueError("Automatic weight prepacking was removed; use TensorIR layout schedules")
+        if type(bias_preload) is not bool:
+            raise ValueError("bias_preload must be a boolean")
+        if bias_preload:
+>           raise ValueError("Automatic bias preload was removed; express accumulator initialization in TensorIR")
+E           ValueError: Automatic bias preload was removed; express accumulator initialization in TensorIR
+
+python/tvm/relax/backend/contrib/gemmini_tensorir.py:647: ValueError
+----------------------------- Captured stderr call -----------------------------
+_____ test_union_preset_replays_smoke_but_does_not_match_new_prefill_shape _____
+[gw5] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+tmp_path = PosixPath('/tmp/pytest-of-gram117anderson/pytest-10/popen-gw5/test_union_preset_replays_smok0')
+
+    def test_union_preset_replays_smoke_but_does_not_match_new_prefill_shape(tmp_path):
+        caps = GemminiCapabilities()
+        folder = materialize_preset("rtl-v1", tmp_path / "portable", capabilities=caps)
+        # No input PrimFuncs: database loading must register all stored families
+        # itself, even in a fresh process compiling an unrelated program.
+        database = open_gemmini_database(folder, tvm.IRModule(), capabilities=caps)
+        assert len(database.get_all_tuning_records()) == 9
+        manifest = json.loads((folder / "preset.json").read_text())
+        assert len(manifest["records"]) == 9
+        report = []
+        mod, _ = smoke()
+        prepare_gemmini_graph(mod, report=report, database=database)
+        winners = [row for row in report if row.get("origin") == "TVM MetaSchedule database"]
+>       assert len(winners) == 2, report
+E       AssertionError: [{'function': 'fused_matmul1_cast1_multiply2_multiply3', 'metadata': {'acc_rows': 16, 'allocations': [{'row': 0, 'rows...77638543d', 'completion_fences': 1, ...}, 'origin': 'default Gemmini contraction sketch', 'placement': 'gemmini', ...}]
+E       assert 0 == 2
+E        +  where 0 = len([])
+
+tests/python/relax/test_apps_gemmini_tuning_preset.py:63: AssertionError
+----------------------------- Captured stderr call -----------------------------
+=========================== short test summary info ============================
+FAILED tests/python/relax/test_apps_gemmini_memory_model.py::test_console_requires_every_channel_and_exact_parameters
+FAILED tests/python/relax/test_apps_gemmini_memory_model.py::test_candidate_runner_refuses_incomplete_or_unconfirmed_timing[False-True]
+FAILED tests/python/relax/test_apps_gemmini_memory_model.py::test_candidate_runner_refuses_incomplete_or_unconfirmed_timing[True-False]
+FAILED tests/python/relax/test_apps_gemmini_memory_model.py::test_candidate_runner_refuses_incomplete_or_unconfirmed_timing[True-True]
+FAILED tests/python/relax/test_apps_gemmini_memory_model.py::test_registry_settings_change_measurement_identity
+FAILED tests/python/relax/test_apps_gemmini_memory_model.py::test_variant_binds_base_and_pin_and_clears_inherited_overrides
+FAILED tests/python/relax/test_backend_contrib_gemmini_baremetal.py::StaticGraphTests::test_unknown_shapes_dtypes_and_memory_are_rejected
+FAILED tests/python/relax/test_backend_contrib_gemmini_arithmetic.py::GemminiArithmeticTests::test_native_contracts_and_cpu_numeric_fallback_keep_aten_results
+FAILED tests/python/relax/test_backend_contrib_gemmini_dse.py::GemminiDSETests::test_bias_preload_can_be_disabled_without_changing_results
+FAILED tests/python/relax/test_apps_gemmini_tuning_preset.py::test_union_preset_replays_smoke_but_does_not_match_new_prefill_shape
+10 failed, 359 passed in 59.53s
+exit 1

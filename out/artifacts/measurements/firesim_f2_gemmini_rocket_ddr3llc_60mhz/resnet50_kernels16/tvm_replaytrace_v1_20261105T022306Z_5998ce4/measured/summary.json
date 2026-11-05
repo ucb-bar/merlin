@@ -1,0 +1,705 @@
+{
+ "units": [
+  {
+   "unit": "resnet-classifier",
+   "kind": "resnet",
+   "baseline_cycles": 2028945,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 1534393,
+   "tuned_vs_baseline_pct": -24.37,
+   "alt_plans_measured": {
+    "fuse3": 1534393,
+    "fuse1": 1534393,
+    "fuse0": 1553189,
+    "fuse2-cse": 1534393,
+    "fuse3-cse": 1534393
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 1534393,
+   "best_vs_baseline_pct": -24.37,
+   "best_seconds_at_60MHz": 0.025573216666666666
+  },
+  {
+   "unit": "resnet-stage1-block1",
+   "kind": "resnet",
+   "baseline_cycles": 281526463,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 280863141,
+   "tuned_vs_baseline_pct": -0.24,
+   "alt_plans_measured": {
+    "fuse3": 280863141,
+    "fuse1": 280863141,
+    "fuse0": 339594686,
+    "fuse2-cse": 281608347,
+    "fuse3-cse": 281608347
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 280863141,
+   "best_vs_baseline_pct": -0.24,
+   "best_seconds_at_60MHz": 4.68105235
+  },
+  {
+   "unit": "resnet-stage1-block2",
+   "kind": "resnet",
+   "baseline_cycles": 260109631,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 259471872,
+   "tuned_vs_baseline_pct": -0.25,
+   "alt_plans_measured": {
+    "fuse3": 259471872,
+    "fuse1": 259471872,
+    "fuse0": 285468240,
+    "fuse2-cse": 259471872,
+    "fuse3-cse": 259471872
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 259471872,
+   "best_vs_baseline_pct": -0.25,
+   "best_seconds_at_60MHz": 4.3245312
+  },
+  {
+   "unit": "resnet-stage1-block3",
+   "kind": "resnet",
+   "baseline_cycles": 259681832,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 259074145,
+   "tuned_vs_baseline_pct": -0.23,
+   "alt_plans_measured": {
+    "fuse3": 259074145,
+    "fuse1": 259074145,
+    "fuse0": 289452363,
+    "fuse2-cse": 259074145,
+    "fuse3-cse": 259074145
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 259074145,
+   "best_vs_baseline_pct": -0.23,
+   "best_seconds_at_60MHz": 4.317902416666667
+  },
+  {
+   "unit": "resnet-stage2-block1",
+   "kind": "resnet",
+   "baseline_cycles": 177860135,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 177440013,
+   "tuned_vs_baseline_pct": -0.24,
+   "alt_plans_measured": {
+    "fuse3": 177440013,
+    "fuse1": 177440013,
+    "fuse0": 223469884,
+    "fuse2-cse": 177440013,
+    "fuse3-cse": 177440013
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 177440013,
+   "best_vs_baseline_pct": -0.24,
+   "best_seconds_at_60MHz": 2.95733355
+  },
+  {
+   "unit": "resnet-stage2-block2",
+   "kind": "resnet",
+   "baseline_cycles": 125241868,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 125203576,
+   "tuned_vs_baseline_pct": -0.03,
+   "alt_plans_measured": {
+    "fuse3": 125203576,
+    "fuse1": 125203576,
+    "fuse0": 116287609,
+    "fuse2-cse": 125203576,
+    "fuse3-cse": 125203576
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-fuse0",
+   "best_cycles": 116287609,
+   "best_vs_baseline_pct": -7.15,
+   "best_seconds_at_60MHz": 1.9381268166666668
+  },
+  {
+   "unit": "resnet-stage2-block3",
+   "kind": "resnet",
+   "baseline_cycles": 123089858,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 123051402,
+   "tuned_vs_baseline_pct": -0.03,
+   "alt_plans_measured": {
+    "fuse3": 123051402,
+    "fuse1": 123051402,
+    "fuse0": 114261680,
+    "fuse2-cse": 123051402,
+    "fuse3-cse": 123051402
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-fuse0",
+   "best_cycles": 114261680,
+   "best_vs_baseline_pct": -7.17,
+   "best_seconds_at_60MHz": 1.9043613333333334
+  },
+  {
+   "unit": "resnet-stage2-block4",
+   "kind": "resnet",
+   "baseline_cycles": 125241868,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 125203576,
+   "tuned_vs_baseline_pct": -0.03,
+   "alt_plans_measured": {
+    "fuse3": 125203576,
+    "fuse1": 125203576,
+    "fuse0": 116287609,
+    "fuse2-cse": 125203576,
+    "fuse3-cse": 125203576
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-fuse0",
+   "best_cycles": 116287609,
+   "best_vs_baseline_pct": -7.15,
+   "best_seconds_at_60MHz": 1.9381268166666668
+  },
+  {
+   "unit": "resnet-stage3-block1",
+   "kind": "resnet",
+   "baseline_cycles": 90207878,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 90207878,
+   "tuned_vs_baseline_pct": 0.0,
+   "alt_plans_measured": {
+    "fuse3": 90207878,
+    "fuse1": 90207878,
+    "fuse0": 102900740,
+    "fuse2-cse": 90207878,
+    "fuse3-cse": 90207878
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "default-untuned",
+   "best_cycles": 90207878,
+   "best_vs_baseline_pct": 0.0,
+   "best_seconds_at_60MHz": 1.5034646333333332
+  },
+  {
+   "unit": "resnet-stage3-block2",
+   "kind": "resnet",
+   "baseline_cycles": 60346878,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 60353072,
+   "tuned_vs_baseline_pct": 0.01,
+   "alt_plans_measured": {
+    "fuse3": 60353072,
+    "fuse1": 60353072,
+    "fuse0": 55674442,
+    "fuse2-cse": 60353072,
+    "fuse3-cse": 60353072
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-fuse0",
+   "best_cycles": 55674442,
+   "best_vs_baseline_pct": -7.74,
+   "best_seconds_at_60MHz": 0.9279073666666666
+  },
+  {
+   "unit": "resnet-stage3-block3",
+   "kind": "resnet",
+   "baseline_cycles": 60346878,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 60353072,
+   "tuned_vs_baseline_pct": 0.01,
+   "alt_plans_measured": {
+    "fuse3": 60353072,
+    "fuse1": 60353072,
+    "fuse0": 55674442,
+    "fuse2-cse": 60353072,
+    "fuse3-cse": 60353072
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-fuse0",
+   "best_cycles": 55674442,
+   "best_vs_baseline_pct": -7.74,
+   "best_seconds_at_60MHz": 0.9279073666666666
+  },
+  {
+   "unit": "resnet-stage3-block4",
+   "kind": "resnet",
+   "baseline_cycles": 60346878,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 60353072,
+   "tuned_vs_baseline_pct": 0.01,
+   "alt_plans_measured": {
+    "fuse3": 60353072,
+    "fuse1": 60353072,
+    "fuse0": 55674442,
+    "fuse2-cse": 60353072,
+    "fuse3-cse": 60353072
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-fuse0",
+   "best_cycles": 55674442,
+   "best_vs_baseline_pct": -7.74,
+   "best_seconds_at_60MHz": 0.9279073666666666
+  },
+  {
+   "unit": "resnet-stage3-block5",
+   "kind": "resnet",
+   "baseline_cycles": 60346878,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 60353072,
+   "tuned_vs_baseline_pct": 0.01,
+   "alt_plans_measured": {
+    "fuse3": 60353072,
+    "fuse1": 60353072,
+    "fuse0": 55674442,
+    "fuse2-cse": 60353072,
+    "fuse3-cse": 60353072
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-fuse0",
+   "best_cycles": 55674442,
+   "best_vs_baseline_pct": -7.74,
+   "best_seconds_at_60MHz": 0.9279073666666666
+  },
+  {
+   "unit": "resnet-stage3-block6",
+   "kind": "resnet",
+   "baseline_cycles": 60346878,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 60353072,
+   "tuned_vs_baseline_pct": 0.01,
+   "alt_plans_measured": {
+    "fuse3": 60353072,
+    "fuse1": 60353072,
+    "fuse0": 55674442,
+    "fuse2-cse": 60353072,
+    "fuse3-cse": 60353072
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-fuse0",
+   "best_cycles": 55674442,
+   "best_vs_baseline_pct": -7.74,
+   "best_seconds_at_60MHz": 0.9279073666666666
+  },
+  {
+   "unit": "resnet-stage4-block1",
+   "kind": "resnet",
+   "baseline_cycles": 54718932,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 53061993,
+   "tuned_vs_baseline_pct": -3.03,
+   "alt_plans_measured": {
+    "fuse3": 53061993,
+    "fuse1": 53061993,
+    "fuse0": 54201766,
+    "fuse2-cse": 53061993,
+    "fuse3-cse": 53061993
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 53061993,
+   "best_vs_baseline_pct": -3.03,
+   "best_seconds_at_60MHz": 0.88436655
+  },
+  {
+   "unit": "resnet-stage4-block2",
+   "kind": "resnet",
+   "baseline_cycles": 35061802,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 33864200,
+   "tuned_vs_baseline_pct": -3.42,
+   "alt_plans_measured": {
+    "fuse3": 33864200,
+    "fuse1": 33864200,
+    "fuse0": 30629309,
+    "fuse2-cse": 33864200,
+    "fuse3-cse": 33864200
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-fuse0",
+   "best_cycles": 30629309,
+   "best_vs_baseline_pct": -12.64,
+   "best_seconds_at_60MHz": 0.5104884833333333
+  },
+  {
+   "unit": "resnet-stage4-block3",
+   "kind": "resnet",
+   "baseline_cycles": 35489090,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 34138172,
+   "tuned_vs_baseline_pct": -3.81,
+   "alt_plans_measured": {
+    "fuse3": 34138172,
+    "fuse1": 34138172,
+    "fuse0": 30605957,
+    "fuse2-cse": 34138172,
+    "fuse3-cse": 34138172
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-fuse0",
+   "best_cycles": 30605957,
+   "best_vs_baseline_pct": -13.76,
+   "best_seconds_at_60MHz": 0.5100992833333333
+  },
+  {
+   "unit": "resnet-stem",
+   "kind": "resnet",
+   "baseline_cycles": 386810844,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 386810844,
+   "tuned_vs_baseline_pct": 0.0,
+   "alt_plans_measured": {
+    "fuse3": 386810844,
+    "fuse1": 386810844,
+    "fuse0": 326187976,
+    "fuse2-cse": 386810844,
+    "fuse3-cse": 386810844
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-fuse0",
+   "best_cycles": 326187976,
+   "best_vs_baseline_pct": -15.67,
+   "best_seconds_at_60MHz": 5.436466266666667
+  },
+  {
+   "unit": "G01",
+   "kind": "kernel",
+   "baseline_cycles": 1972011,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 1959012,
+   "tuned_vs_baseline_pct": -0.66,
+   "alt_plans_measured": {
+    "fuse3": 1959012,
+    "fuse1": 1959012,
+    "fuse0": 1959012,
+    "fuse2-cse": 1959012,
+    "fuse3-cse": 1959012
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 1959012,
+   "best_vs_baseline_pct": -0.66,
+   "best_seconds_at_60MHz": 0.0326502
+  },
+  {
+   "unit": "G02",
+   "kind": "kernel",
+   "baseline_cycles": 3424353,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 3192686,
+   "tuned_vs_baseline_pct": -6.77,
+   "alt_plans_measured": {
+    "fuse3": 3192686,
+    "fuse1": 3192686,
+    "fuse0": 3192686,
+    "fuse2-cse": 3192686,
+    "fuse3-cse": 3192686
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 3192686,
+   "best_vs_baseline_pct": -6.77,
+   "best_seconds_at_60MHz": 0.053211433333333336
+  },
+  {
+   "unit": "G03",
+   "kind": "kernel",
+   "baseline_cycles": 4283444,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 3696135,
+   "tuned_vs_baseline_pct": -13.71,
+   "alt_plans_measured": {
+    "fuse3": 3696135,
+    "fuse1": 3696135,
+    "fuse0": 3696135,
+    "fuse2-cse": 3696135,
+    "fuse3-cse": 3696135
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 3696135,
+   "best_vs_baseline_pct": -13.71,
+   "best_seconds_at_60MHz": 0.06160225
+  },
+  {
+   "unit": "G04",
+   "kind": "kernel",
+   "baseline_cycles": 3082783,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 2814698,
+   "tuned_vs_baseline_pct": -8.7,
+   "alt_plans_measured": {
+    "fuse3": 2814698,
+    "fuse1": 2814698,
+    "fuse0": 2814698,
+    "fuse2-cse": 2814698,
+    "fuse3-cse": 2814698
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 2814698,
+   "best_vs_baseline_pct": -8.7,
+   "best_seconds_at_60MHz": 0.046911633333333334
+  },
+  {
+   "unit": "G05",
+   "kind": "kernel",
+   "baseline_cycles": 3606097,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 3037933,
+   "tuned_vs_baseline_pct": -15.76,
+   "alt_plans_measured": {
+    "fuse3": 3037933,
+    "fuse1": 3037933,
+    "fuse0": 3037933,
+    "fuse2-cse": 3037933,
+    "fuse3-cse": 3037933
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 3037933,
+   "best_vs_baseline_pct": -15.76,
+   "best_seconds_at_60MHz": 0.05063221666666667
+  },
+  {
+   "unit": "G06",
+   "kind": "kernel",
+   "baseline_cycles": 3297937,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 2932182,
+   "tuned_vs_baseline_pct": -11.09,
+   "alt_plans_measured": {
+    "fuse3": 2932182,
+    "fuse1": 2932182,
+    "fuse0": 2932182,
+    "fuse2-cse": 2932182,
+    "fuse3-cse": 2932182
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 2932182,
+   "best_vs_baseline_pct": -11.09,
+   "best_seconds_at_60MHz": 0.0488697
+  },
+  {
+   "unit": "C01",
+   "kind": "kernel",
+   "baseline_cycles": 327109776,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 38872761,
+   "tuned_vs_baseline_pct": -88.12,
+   "alt_plans_measured": {
+    "fuse3": 38872761,
+    "fuse1": 38872761,
+    "fuse0": 38872761,
+    "fuse2-cse": 38872761,
+    "fuse3-cse": 38872761
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 38872761,
+   "best_vs_baseline_pct": -88.12,
+   "best_seconds_at_60MHz": 0.64787935
+  },
+  {
+   "unit": "C02",
+   "kind": "kernel",
+   "baseline_cycles": 348516304,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 44215831,
+   "tuned_vs_baseline_pct": -87.31,
+   "alt_plans_measured": {
+    "fuse3": 44215831,
+    "fuse1": 44215831,
+    "fuse0": 44215831,
+    "fuse2-cse": 44215831,
+    "fuse3-cse": 44215831
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 44215831,
+   "best_vs_baseline_pct": -87.31,
+   "best_seconds_at_60MHz": 0.7369305166666666
+  },
+  {
+   "unit": "C03",
+   "kind": "kernel",
+   "baseline_cycles": 228703886,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 103739715,
+   "tuned_vs_baseline_pct": -54.64,
+   "alt_plans_measured": {
+    "fuse3": 103739715,
+    "fuse1": 103739715,
+    "fuse0": 103739715,
+    "fuse2-cse": 103739715,
+    "fuse3-cse": 103739715
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 103739715,
+   "best_vs_baseline_pct": -54.64,
+   "best_seconds_at_60MHz": 1.72899525
+  },
+  {
+   "unit": "T01",
+   "kind": "kernel",
+   "baseline_cycles": 48718,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 47623,
+   "tuned_vs_baseline_pct": -2.25,
+   "alt_plans_measured": {
+    "fuse3": 47623,
+    "fuse1": 47623,
+    "fuse0": 47623,
+    "fuse2-cse": 47623,
+    "fuse3-cse": 47623
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 47623,
+   "best_vs_baseline_pct": -2.25,
+   "best_seconds_at_60MHz": 0.0007937166666666666
+  },
+  {
+   "unit": "T02",
+   "kind": "kernel",
+   "baseline_cycles": 48581,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 49885,
+   "tuned_vs_baseline_pct": 2.68,
+   "alt_plans_measured": {
+    "fuse3": 49885,
+    "fuse1": 49885,
+    "fuse0": 49885,
+    "fuse2-cse": 49885,
+    "fuse3-cse": 49885
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "default-untuned",
+   "best_cycles": 48581,
+   "best_vs_baseline_pct": 0.0,
+   "best_seconds_at_60MHz": 0.0008096833333333333
+  },
+  {
+   "unit": "T03",
+   "kind": "kernel",
+   "baseline_cycles": 5475334,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 4507132,
+   "tuned_vs_baseline_pct": -17.68,
+   "alt_plans_measured": {
+    "fuse3": 4507132,
+    "fuse1": 4507132,
+    "fuse0": 4507132,
+    "fuse2-cse": 4507132,
+    "fuse3-cse": 4507132
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 4507132,
+   "best_vs_baseline_pct": -17.68,
+   "best_seconds_at_60MHz": 0.07511886666666667
+  },
+  {
+   "unit": "T04",
+   "kind": "kernel",
+   "baseline_cycles": 11164602,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 9324924,
+   "tuned_vs_baseline_pct": -16.48,
+   "alt_plans_measured": {
+    "fuse3": 9324924,
+    "fuse1": 9324924,
+    "fuse0": 9324924,
+    "fuse2-cse": 9324924,
+    "fuse3-cse": 9324924
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 9324924,
+   "best_vs_baseline_pct": -16.48,
+   "best_seconds_at_60MHz": 0.1554154
+  },
+  {
+   "unit": "T05",
+   "kind": "kernel",
+   "baseline_cycles": 1709140,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 1590971,
+   "tuned_vs_baseline_pct": -6.91,
+   "alt_plans_measured": {
+    "fuse3": 1590971,
+    "fuse1": 1590971,
+    "fuse0": 1590971,
+    "fuse2-cse": 1590971,
+    "fuse3-cse": 1590971
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 1590971,
+   "best_vs_baseline_pct": -6.91,
+   "best_seconds_at_60MHz": 0.026516183333333332
+  },
+  {
+   "unit": "T06",
+   "kind": "kernel",
+   "baseline_cycles": 2229270,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 2077751,
+   "tuned_vs_baseline_pct": -6.8,
+   "alt_plans_measured": {
+    "fuse3": 2077751,
+    "fuse1": 2077751,
+    "fuse0": 2077751,
+    "fuse2-cse": 2077751,
+    "fuse3-cse": 2077751
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 2077751,
+   "best_vs_baseline_pct": -6.8,
+   "best_seconds_at_60MHz": 0.034629183333333334
+  },
+  {
+   "unit": "T07",
+   "kind": "kernel",
+   "baseline_cycles": 32172886,
+   "baseline_repeats_equal": true,
+   "tuned_cycles": 25781071,
+   "tuned_vs_baseline_pct": -19.87,
+   "alt_plans_measured": {
+    "fuse3": 25781071,
+    "fuse1": 25781071,
+    "fuse0": 25781071,
+    "fuse2-cse": 25781071,
+    "fuse3-cse": 25781071
+   },
+   "alt_plans_not_distinct_or_failed": [],
+   "best_confirmed": "tuned-default-plan",
+   "best_cycles": 25781071,
+   "best_vs_baseline_pct": -19.87,
+   "best_seconds_at_60MHz": 0.4296845166666667
+  }
+ ],
+ "e2e": {
+  "baseline": {
+   "ok": true,
+   "cycles": 2236439673,
+   "elf_sha256": "ecb50729de301b35ba3d866a9b051dbeb0456170d575344626c965eb087a91d3",
+   "run": "/work/exp/tvmfs/f2/results/runs/full-resnet-e2e-baseline"
+  },
+  "tuned": {
+   "ok": true,
+   "cycles": 2229304805,
+   "elf_sha256": "9478e5fa5f2cd66ac30c731b78cddb6311a29dc78d723a70d24707f749d0ee17",
+   "run": "/work/exp/tvmfs/f2/results/runs/full-resnet-e2e-tuned"
+  },
+  "bad_oracle_control": {
+   "ok": false,
+   "error": "ValueError('FireSim result lacks matching ELF, deadline enforcement or successful guest exit')",
+   "elf_sha256": "6ee06e37e4fe19ffe5b3a13a20114e23c12affb6b702208597bd4c5aad423ef7",
+   "run": "/work/exp/tvmfs/f2/results/runs/full-resnet-e2e-bad-oracle"
+  }
+ },
+ "clock_hz": 60000000.0
+}

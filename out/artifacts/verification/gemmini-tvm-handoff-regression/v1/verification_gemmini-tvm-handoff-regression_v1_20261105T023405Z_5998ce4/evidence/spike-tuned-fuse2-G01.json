@@ -1,0 +1,196 @@
+{
+  "status": "passed",
+  "functional_only": true,
+  "performance_qualified": false,
+  "oracle_receipt_sha256": "deada8902bb4d60050b67fb9d63a5d3a85afae69e93f008b120b80b714f609ec",
+  "oracle_receipt": {
+    "status": "built_and_load_verified",
+    "libgemmini_revision": "ea8f7ed7afd68e001fb06ddccad9a023c990961d",
+    "sources": {
+      "gemmini.cc": "209c0f4f4bc7c2313655ea36f3742a5eb590988b8ef7958cd74b9f80b5e7fc9f",
+      "gemmini.h": "e13cde296d0faa650fe558351021628f3e4461525fa85b86bf81d44e66625590",
+      "gemmini_params.h": "3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924",
+      "Makefile": "896f714ef395e4a11175ec6ceb8f0abd7152e06c08a26e6ec823f28048c48900"
+    },
+    "plugin_path": "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/simulator-a26/libgemmini.so",
+    "plugin_sha256": "9b70fa14fa72a9c56d585a4c277e4e87046764e2096cf66e3a85032e0b7ec647",
+    "spike_path": "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/bin/spike",
+    "spike_sha256": "1647da23d5c39dbd1f274e73a5234decb6c516449ea5d244d90df8170fac3361",
+    "compiler": "/scratch/grammy/blast/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-g++",
+    "compiler_sha256": "01143157a02c904234153b7ef169aae66798d5258c9a84678b220e056f7e528e",
+    "compiler_version": "x86_64-conda-linux-gnu-g++ (conda-forge gcc 13.2.0-13) 13.2.0",
+    "command": [
+      "/scratch/grammy/blast/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-g++",
+      "-shared",
+      "-fPIC",
+      "-O3",
+      "-std=c++17",
+      "-I",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include",
+      "-L",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/lib",
+      "-Wl,-rpath,/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/lib",
+      "-MMD",
+      "-MF",
+      "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/simulator-a26/plugin.d",
+      "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/simulator-a26/source/gemmini.cc",
+      "-o",
+      "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/simulator-a26/libgemmini.so"
+    ],
+    "dependency_command": [
+      "/scratch/grammy/blast/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-g++",
+      "-shared",
+      "-fPIC",
+      "-O3",
+      "-std=c++17",
+      "-I",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include",
+      "-MM",
+      "-MF",
+      "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/simulator-a26/plugin.d",
+      "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/simulator-a26/source/gemmini.cc"
+    ],
+    "resolved_compiler_dependencies": {
+      "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/simulator-a26/source/gemmini.cc": "209c0f4f4bc7c2313655ea36f3742a5eb590988b8ef7958cd74b9f80b5e7fc9f",
+      "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/simulator-a26/source/gemmini.h": "e13cde296d0faa650fe558351021628f3e4461525fa85b86bf81d44e66625590",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/extension.h": "2ebb1f4c9b3a379f4d6f56ad4b2b6ebf61fc3b8802d3a76853c0b6edf0e15f24",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/processor.h": "09f45c658343cfaa44860bd4189f22f4e5f5abd8ae582a267567c7f8d9a84137",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/decode.h": "463d860f0617520c0d725d2fe18f65388de4d5d942a28a776e1a03d7c90696a1",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/softfloat/softfloat_types.h": "b7daff9a2a5d82a569d6cc37ae52231bd20a4b3fc53e7dc24db4d51de23138cc",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/trap.h": "7f9e68be8a51994b5d2d76d39b4457f40c683a61706bea410769b68e868abccd",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/encoding.h": "0b1cab26010ad4de8791aa7ac9eea0aae54dc1abe62640c4e242e2d3ca9228e5",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/abstract_device.h": "9b104017bb90ac3f81f80874ee8c5e7c4ad4cc52c6913961d200d3d808e19868",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/common.h": "0290c94d4315ba6b256b474d64c812f93028b68600bb49916f84ad2f4e5995c1",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/debug_rom_defines.h": "4fea46952476fd83381f04c19178004129edde85d3a6b43da90a944510c0cb73",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/entropy_source.h": "52a03b599e30b74cdeafb967f3312e06d3eea7f1aa846a910ab545e9648eb12a",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/csrs.h": "3c6041912843021666c81524f2640504cbb8645b706c0a34fcd443845831d47e",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/memtracer.h": "9fd696eaa3602b2ebcdf4eb4d2e650a992d2fd602b1d7be43ac18e26dd33394f",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/isa_parser.h": "efddb4055c665470aa608fa7f65261c0abf079695167d2a6b8e435799e67da01",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/triggers.h": "3fa2a0838e1105423b4e9e243cb84b2c7763a360739cf37a675631fcd1b69129",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/fesvr/memif.h": "483a03f681fa03d43afc28c15b6f3c75be444463fd1efcc1980334ab81546461",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/fesvr/byteorder.h": "af2a8f9dbbbbcfe892bfe464a7b21d34894ae303dbccc2caa1c06b7fac449492",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/cfg.h": "a0ea7f5348484f6684f8144ac0cd336ff1ea154a02de60618b15fb4665693427",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/vector_unit.h": "3b37be136db5c47399c3704628a126f027cb05b28fe80263368894c958698b11",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/disasm.h": "3a5595480bd14adebd781a5e53442d707c8dded28192d41eba3b66cdeab24770",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/rocc.h": "08bdaf6f3f6e846125c937f4c19d54ab11efaf3026ffab55aad609e2c6a52eea",
+      "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/simulator-a26/source/gemmini_params.h": "3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/mmu.h": "e2b1115c68abb9ad43879e9998f4b3b2e8469fbffe1ed9758dc3faedbd295007",
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/include/riscv/simif.h": "e4c3c031d18e56099fa6e2611544d9e9de4bb0d85fb505f39cbd48af01a60b19"
+    },
+    "compiler_dependency_scope": "non-system dependencies (-MM/-MMD), not the complete SDK closure",
+    "builder_path": "/scratch/grammy/blast/merlin-tvm-tuning/examples/gemmini/comparisons/tvm/build_simulator.py",
+    "builder_sha256": "88f85e2794a182f6c95586837dec85f1203f4865c3a77961d79e6cbabc9e50cb",
+    "dtc_path": "/scratch/grammy/blast/chipyard/.conda-env/bin/dtc",
+    "dtc_sha256": "cf4a6fcf83e0f8c2d01bb62be1a93c332bf55819e93bf266d80da0705cabd9b7",
+    "runtime_libstdcpp_sha256": "629e62ae3ccde6c48b8910e7152f82ea90c12fc8a539146a96be8e1b0719c1b0",
+    "inputs_unchanged": true,
+    "runtime_environment": {
+      "LD_LIBRARY_PATH": "/scratch/grammy/blast/chipyard/.conda-env/lib",
+      "PATH": "/scratch/grammy/blast/chipyard/.conda-env/bin:/usr/bin:/bin",
+      "LD_PRELOAD": null,
+      "LD_AUDIT": null
+    },
+    "negative_load": {
+      "command": [
+        "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/bin/spike",
+        "--extlib=/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/simulator-a26/missing-plugin.so",
+        "--extension=gemmini",
+        "--isa=rv64gc",
+        "-p1",
+        "-m0x80000000:0x1000000",
+        "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/cpu-proof-a26/model.elf"
+      ],
+      "returncode": 255,
+      "stderr_sha256": "38bd429df0b66796787d476d9811f84a434aae8b5472333c1fd93e2db5d00d1c"
+    },
+    "load_smoke": {
+      "kind": "CPU-only ELF with explicitly loaded new plugin",
+      "command": [
+        "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/bin/spike",
+        "--extlib=/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/simulator-a26/libgemmini.so",
+        "--extension=gemmini",
+        "--isa=rv64gc",
+        "-p1",
+        "-m0x80000000:0x1000000",
+        "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/cpu-proof-a26/model.elf"
+      ],
+      "returncode": 0,
+      "elf_sha256": "ffc3ec3c5866f4f491145f7438428edbc3c2b7e510bb1edf65ccd7484d27a016",
+      "stdout_sha256": "709800fb8635a5b04614d52dca499b28293b4bfdbafb67f1fd38da2a8b83c2b4",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "numerical_gemmini_verified": false
+    },
+    "qualification": {
+      "functional_model_only": true,
+      "rtl_bit_exact": false,
+      "timing_verified": false,
+      "deployed_hardware_verified": false
+    }
+  },
+  "checks": [
+    {
+      "label": "valid",
+      "passed": true,
+      "returncode": 0,
+      "elf": {
+        "path": "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/f2-repro-a26-20261104/tuned-fuse2/G01/guest/valid.elf",
+        "sha256": "e133e7d6408f995c093444b4d4e985a233ef4b001bccf1b7b67ef30051b4fd66",
+        "bytes": 811640,
+        "memory_audit": {
+          "entry": 2147483648,
+          "load_segments": [
+            {
+              "base": 2147483648,
+              "memory_bytes": 1077888,
+              "file_bytes": 798728,
+              "flags": 7
+            }
+          ],
+          "stack_reserved_bytes": 16384
+        },
+        "instruction_audit": {
+          "executable_sections": [
+            ".text"
+          ],
+          "instructions": 4020,
+          "prohibited_hits": []
+        }
+      },
+      "log_sha256": "fd2b17643704b93d0a72aab4b69124ae2d65fc49d72f31b57af29157b449ee07",
+      "wall_timeout_seconds": 120
+    },
+    {
+      "label": "bad-oracle",
+      "passed": true,
+      "returncode": 22,
+      "elf": {
+        "path": "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-gemmini/f2-repro-a26-20261104/tuned-fuse2/G01/guest/bad-oracle.elf",
+        "sha256": "dbde6e0c4548136a4531f84990258d7c48938fa7bff8a6a97e197f2eb4d6bc41",
+        "bytes": 811640,
+        "memory_audit": {
+          "entry": 2147483648,
+          "load_segments": [
+            {
+              "base": 2147483648,
+              "memory_bytes": 1077888,
+              "file_bytes": 798728,
+              "flags": 7
+            }
+          ],
+          "stack_reserved_bytes": 16384
+        },
+        "instruction_audit": {
+          "executable_sections": [
+            ".text"
+          ],
+          "instructions": 4022,
+          "prohibited_hits": []
+        }
+      },
+      "log_sha256": "f90c85d07c167e24243edf3644b44d0334169db0df03e6053d93f6ea80412329",
+      "wall_timeout_seconds": 120
+    }
+  ],
+  "checker_sha256": "eacf6e7e68971ab29ed5066e0fb754018a0953912184546796c780fe10c801b8",
+  "artifact_sha256": "0a508e31aa9e6f3517983ef6e177908b734fbb95799cfda684569b075698de78"
+}

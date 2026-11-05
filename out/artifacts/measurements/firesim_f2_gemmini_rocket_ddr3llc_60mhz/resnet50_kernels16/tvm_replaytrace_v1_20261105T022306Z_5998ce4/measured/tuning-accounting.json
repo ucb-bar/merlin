@@ -1,0 +1,560 @@
+{
+ "per_campaign": [
+  {
+   "kind": "resnet",
+   "campaign": "resnet-classifier",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 233.5,
+   "baseline_cycles": {
+    "matmul": 1245346
+   },
+   "best_cycles": {
+    "matmul": 781427
+   }
+  },
+  {
+   "kind": "resnet",
+   "campaign": "resnet-stage1-block1",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 29,
+   "occupied_slot_seconds": 300.6,
+   "baseline_cycles": {
+    "matmul": 349699,
+    "matmul1": 1924640,
+    "matmul2": 1434350
+   },
+   "best_cycles": {
+    "matmul": 279554,
+    "matmul1": 1716211,
+    "matmul2": 1256632
+   }
+  },
+  {
+   "kind": "resnet",
+   "campaign": "resnet-stage1-block2",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 19,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 229.7,
+   "baseline_cycles": {
+    "matmul": 941109
+   },
+   "best_cycles": {
+    "matmul": 817109
+   }
+  },
+  {
+   "kind": "resnet",
+   "campaign": "resnet-stage2-block1",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 32,
+   "occupied_slot_seconds": 312.8,
+   "baseline_cycles": {
+    "matmul": 1850807,
+    "matmul1": 1723445,
+    "matmul2": 1056631,
+    "matmul3": 1804987
+   },
+   "best_cycles": {
+    "matmul": 1546309,
+    "matmul1": 2321672,
+    "matmul2": 1059102,
+    "matmul3": 1768494
+   }
+  },
+  {
+   "kind": "resnet",
+   "campaign": "resnet-stage2-block2",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 219.7,
+   "baseline_cycles": {
+    "matmul": 793786
+   },
+   "best_cycles": {
+    "matmul": 777954
+   }
+  },
+  {
+   "kind": "resnet",
+   "campaign": "resnet-stage3-block1",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 32,
+   "occupied_slot_seconds": 314.4,
+   "baseline_cycles": {
+    "matmul": 1657227,
+    "matmul1": 1936246,
+    "matmul2": 1007332,
+    "matmul3": 1872744
+   },
+   "best_cycles": {
+    "matmul": 1912171,
+    "matmul1": 2109813,
+    "matmul2": 1030842,
+    "matmul3": 1963137
+   }
+  },
+  {
+   "kind": "resnet",
+   "campaign": "resnet-stage3-block2",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 222.5,
+   "baseline_cycles": {
+    "matmul": 883614
+   },
+   "best_cycles": {
+    "matmul": 852554
+   }
+  },
+  {
+   "kind": "resnet",
+   "campaign": "resnet-stage4-block1",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 32,
+   "occupied_slot_seconds": 312.7,
+   "baseline_cycles": {
+    "matmul": 1780317,
+    "matmul1": 3751063,
+    "matmul2": 1711700,
+    "matmul3": 3316782
+   },
+   "best_cycles": {
+    "matmul": 2238770,
+    "matmul1": 2884275,
+    "matmul2": 1456744,
+    "matmul3": 2659546
+   }
+  },
+  {
+   "kind": "resnet",
+   "campaign": "resnet-stage4-block2",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 226.7,
+   "baseline_cycles": {
+    "matmul": 1620006
+   },
+   "best_cycles": {
+    "matmul": 1289850
+   }
+  },
+  {
+   "kind": "resnet",
+   "campaign": "resnet-stem",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 269.5,
+   "baseline_cycles": {
+    "matmul": 4729557
+   },
+   "best_cycles": {
+    "matmul": 4916515
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "C01",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 18,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 2,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 586.4,
+   "baseline_cycles": {
+    "convolution": 327109776
+   },
+   "best_cycles": {
+    "convolution": 38872761
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "C02",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 19,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 1,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 566.6,
+   "baseline_cycles": {
+    "convolution": 348516304
+   },
+   "best_cycles": {
+    "convolution": 44215831
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "C03",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 18,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 2,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 509.3,
+   "baseline_cycles": {
+    "convolution": 228703886
+   },
+   "best_cycles": {
+    "convolution": 103739715
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "G01",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 221.1,
+   "baseline_cycles": {
+    "product": 2007045
+   },
+   "best_cycles": {
+    "product": 1881025
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "G02",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 19,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 240.4,
+   "baseline_cycles": {
+    "product": 3423367
+   },
+   "best_cycles": {
+    "product": 3196425
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "G03",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 259.3,
+   "baseline_cycles": {
+    "product": 4277599
+   },
+   "best_cycles": {
+    "product": 3696818
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "G04",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 229.0,
+   "baseline_cycles": {
+    "product": 3079254
+   },
+   "best_cycles": {
+    "product": 2816194
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "G05",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 18,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 231.1,
+   "baseline_cycles": {
+    "product": 3607186
+   },
+   "best_cycles": {
+    "product": 3036920
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "G06",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 233.9,
+   "baseline_cycles": {
+    "product": 3203530
+   },
+   "best_cycles": {
+    "product": 3030031
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "T01",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 15,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 223.6,
+   "baseline_cycles": {
+    "product": 1105
+   },
+   "best_cycles": {
+    "product": 1052
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "T02",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 15,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 226.1,
+   "baseline_cycles": {
+    "product": 1116
+   },
+   "best_cycles": {
+    "product": 1115
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "T03",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 250.8,
+   "baseline_cycles": {
+    "product": 5476807
+   },
+   "best_cycles": {
+    "product": 4508399
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "T04",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 256.2,
+   "baseline_cycles": {
+    "product": 5471104
+   },
+   "best_cycles": {
+    "product": 4617610
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "T05",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 231.8,
+   "baseline_cycles": {
+    "product": 1708083
+   },
+   "best_cycles": {
+    "product": 1593229
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "T06",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 20,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 26,
+   "occupied_slot_seconds": 252.2,
+   "baseline_cycles": {
+    "product": 1632510,
+    "product1": 198895
+   },
+   "best_cycles": {
+    "product": 1571470,
+    "product1": 197468
+   }
+  },
+  {
+   "kind": "kernel",
+   "campaign": "T07",
+   "budget": 20,
+   "attempted": 20,
+   "unique": 18,
+   "built": 20,
+   "successful": 20,
+   "timeouts": 0,
+   "build_errors": 0,
+   "run_errors": 0,
+   "admitted_jobs": 23,
+   "occupied_slot_seconds": 400.7,
+   "baseline_cycles": {
+    "product": 31672557
+   },
+   "best_cycles": {
+    "product": 25764425
+   }
+  }
+ ],
+ "occupied_slot_seconds_total": {
+  "resnet": 2642.1,
+  "kernel": 4918.5
+ },
+ "occupied_slot_hours_total": {
+  "resnet": 0.734,
+  "kernel": 1.366
+ },
+ "caps_slot_hours": {
+  "resnet": 4,
+  "kernel": 24
+ }
+}

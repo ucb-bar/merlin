@@ -1,0 +1,10 @@
+Artifact-layout check FAILED:
+  - stale generated-root literal 'runs/' (use out/ prefix): merlin/tests/infra/test_model_check_full_output_audit.py:136
+  - stale generated-root literal 'runs/' (use out/ prefix): merlin/tests/infra/test_phase1_full_model_supervisor.py:500
+  - stale generated-root literal 'runs/' (use out/ prefix): packages/merlin-experiments/tests/test_background_grade_priority.py:323
+  - stale generated-root literal 'runs/' (use out/ prefix): packages/merlin-experiments/tests/test_phase1_driver_grade_reuse.py:24
+  - stale generated-root literal 'runs/' (use out/ prefix): packages/merlin-experiments/tests/test_phase1_driver_grade_reuse.py:239
+  - stale generated-root literal 'runs/' (use out/ prefix): packages/merlin-experiments/tests/test_phase1_loop_grading.py:862
+  - stale generated-root literal 'runs/' (use out/ prefix): packages/merlin-experiments/tests/test_phase1_progress.py:22
+
+See CLAUDE.md 'Generated-output convention' / .claude/skills/artifact-layout.

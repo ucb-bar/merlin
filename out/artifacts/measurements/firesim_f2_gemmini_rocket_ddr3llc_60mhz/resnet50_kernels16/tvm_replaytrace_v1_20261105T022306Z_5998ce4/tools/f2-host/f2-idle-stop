@@ -1,0 +1,8 @@
+#!/bin/bash
+# Stop this F2 host when no ELF has run for IDLE_STOP_MIN minutes (f2-run on the workhorse starts it again).
+. /opt/f2run/f2run.conf
+[ -f /run/f2run/last ] || exit 0
+pgrep -f FireSim-f2 >/dev/null && exit 0
+idle=$(( ($(date +%s) - $(stat -c %Y /run/f2run/last)) / 60 ))
+[ "$idle" -ge "$IDLE_STOP_MIN" ] && { logger "f2-idle-stop: idle ${idle} min, stopping"; shutdown -h now; }
+exit 0

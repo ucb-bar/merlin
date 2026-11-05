@@ -1,0 +1,31 @@
+artifacts:
+- README.md
+- evidence/adapter-a26-f3cfd1a7d-receipt.json
+- evidence/final_tests.sh
+- evidence/spike-baseline-G01.json
+- evidence/spike-baseline-T01.json
+- evidence/spike-tuned-fuse2-G01.json
+- evidence/spike-tuned-fuse2-T01.json
+- gate-check_artifact_layout.log
+- gate-check_doc_paths.log
+- gate-check_docs.log
+- gate-check_no_regex.log
+- gate-check_no_target_name.log
+- gate-check_provenance.log
+- gate-check_structure.log
+- merlin-f2-path-tests.log
+- merlin-tvm-all-tests.log
+- summary.json
+- tvm-pin-gemmini-tests.log
+- tvm-tip-gemmini-tests.log
+git_sha: 5998ce4
+notes: Submission-handoff regression and sanity checks on a26 (2026-11-04)
+run_id: verification_gemmini-tvm-handoff-regression_v1_20261105T023405Z_5998ce4
+sources:
+- merlin: 5998ce4ef51ef506af1485eecb035e6148d77712
+- tvm_f2_pin: f3cfd1a7dc95d00191225fa8ac5fc8aee3a6940d
+- tvm_tip: fee495aca14dbb58e2dfbd5fe66e5417e9162ed4
+target: gemmini-tvm-handoff-regression
+timestamp: 20261105T023405Z
+topic: verification
+version: 1

@@ -1,0 +1,26 @@
+{
+  "first_call_cycles": [
+    2027738,
+    2027738,
+    2027738,
+    2027738,
+    2027738
+  ],
+  "note": "Pool cost is the guest second-call window; the first (warmup) call and boot are not in it.",
+  "status": "pass",
+  "test": "startup_exclusion",
+  "total_target_cycles_emulated": [
+    88209662,
+    88209662,
+    88209662,
+    88209662,
+    88209662
+  ],
+  "warm_cycles": [
+    1972011,
+    1972011,
+    1972011,
+    1972011,
+    1972011
+  ]
+}

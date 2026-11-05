@@ -1,0 +1,7 @@
+{"schema":"tvmfs_f2_hardware_receipt_v1","deployment_id":"tvmfs-f2-ddr3llc-60mhz-2026-10-28",
+ "agfi":"agfi-02410ef1a8461b435","afi":"afi-0b759e97614a74b1b","hwdb_name":"f2_gemmini_rocket_ddr3llc_60mhz",
+ "design":"FireSim GemminiRocketConfig, FRFCFS16GBQuadRankLLC4MB_BaseF2Config (DDR3 FR-FCFS quad-rank model + 4 MB LLC), no NIC",
+ "target_clock_hz":60000000,"target_clock_evidence":"build frequency 60 MHz; driver reports FMR 1.07 at 56.04 MHz effective","post_route_wns_ns":0.092,"timing_met":true,
+ "sources":{"chipyard":"157dd69e","firesim":"e1bdea8bb042b900995436ecc3d7c44100eb9da0","gemmini":"8c3f9923a44a2fe2c7930587be297d6d4f8c09ca","gemmini_params_h_sha256":"3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924"},
+ "instance_type":"f2.48xlarge (8 FPGA slots, Xilinx VU47P), us-east-1; slot 0 qualified earlier on f2.6xlarge","identity":"NOT the selected U250 30 MHz model target; separately attributed F2 60 MHz experiment (FIRESIM_HANDOFF: kernel results on an F2 image)",
+ "driver_bundle_s3":"merlin-p1/f2host/driver-bundle-ddr3llc.tar.gz","expected_memory_model":"DDR3"}

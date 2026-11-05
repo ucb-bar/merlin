@@ -1,0 +1,19 @@
+{
+  "local_kill_result": {
+    "remote_stopped": true,
+    "status": "timeout"
+  },
+  "note": "Local-kill path: remote driver was left running past the deadline; adapter probed it, reset the slot, and the next run passed.",
+  "reuse_after_local_kill": {
+    "folder": "/work/exp/tvmfs/f2/qualification/runs/reuse-after-local-kill",
+    "ok": true,
+    "warm": 1972011
+  },
+  "reuse_after_timeout": {
+    "folder": "/work/exp/tvmfs/f2/qualification/runs/reuse-after-timeout",
+    "ok": true,
+    "warm": 1972011
+  },
+  "status": "pass",
+  "test": "remote_cancellation"
+}

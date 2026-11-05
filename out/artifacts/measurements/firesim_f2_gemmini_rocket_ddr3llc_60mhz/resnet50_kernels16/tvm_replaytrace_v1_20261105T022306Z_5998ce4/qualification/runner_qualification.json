@@ -1,0 +1,42 @@
+{
+  "adapter_source_sha256": [
+    "32c33872949d7d23d35bbf234d1c0f98aa65252a49848b2ad06aac033bd07ce3",
+    "3b40083e4963209333ee62e7186cae39df3a05b595fdab8c3a44f040bd30acfa",
+    "baa6d8d254a5b7bbd66a8ad2166d19ff0343463394f2aff70fba7b27f19d8580",
+    "3d194fc414603834a03160f1eda729edf293f539d93336d0539f2ca490de2a82",
+    "1aca7f6ae91f9186b086ab6306b9e070b0cd56446be3069a15c8d53d0b4189b2"
+  ],
+  "created_epoch": 1793168609.9093878,
+  "cycle_scope": "fixed_warm_model_run",
+  "deployment_id": "tvmfs-f2-ddr3llc-60mhz-2026-10-28",
+  "schema": "gemmini_firesim_runner_qualification_v1",
+  "slot": "h0s7",
+  "tests": {
+    "remote_cancellation": {
+      "bytes": 570,
+      "path": "/work/exp/tvmfs/f2/qualification/remote_cancellation.json",
+      "sha256": "362a4224e00cc1d24a06eaeb0d0b613126e39b6dda4340923ce2de357f6c3233"
+    },
+    "same_elf_repeat_agreement": {
+      "bytes": 287,
+      "path": "/work/exp/tvmfs/f2/qualification/same_elf_repeat_agreement.json",
+      "sha256": "46e8af5d7a073cb7ca3d32d6b5204b6fbe1de57f01c1b65e53f36f008f7fb915"
+    },
+    "startup_exclusion": {
+      "bytes": 450,
+      "path": "/work/exp/tvmfs/f2/qualification/startup_exclusion.json",
+      "sha256": "609f6bb2a0bbdd3c99020ef8e487d8dfa01f1ba71c9b565b79a9917ccc00bf2b"
+    },
+    "wall_timeout": {
+      "bytes": 346,
+      "path": "/work/exp/tvmfs/f2/qualification/wall_timeout.json",
+      "sha256": "ac0e46d516120bbf14729cb39a795ba44104b4d56f7a43c0336d3c520578f874"
+    },
+    "wrong_oracle_rejection": {
+      "bytes": 193,
+      "path": "/work/exp/tvmfs/f2/qualification/wrong_oracle_rejection.json",
+      "sha256": "4bff7ced7e0e4b05a80ce77e295b05079553be372020edf6878f81e8cb05da53"
+    }
+  },
+  "timeout_scope": "wall_execution"
+}

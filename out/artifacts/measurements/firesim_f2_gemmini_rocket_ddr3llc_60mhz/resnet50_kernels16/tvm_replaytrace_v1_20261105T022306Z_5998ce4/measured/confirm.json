@@ -1,0 +1,4847 @@
+[
+ {
+  "unit": "resnet-classifier",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 2028945,
+    "elf_sha256": "0160227a74eb0965ab94a39079df4036435e37d736b5296d1c19a5b76b622feb",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-classifier-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 2028945,
+    "elf_sha256": "0160227a74eb0965ab94a39079df4036435e37d736b5296d1c19a5b76b622feb",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-classifier-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 2028945,
+    "elf_sha256": "0160227a74eb0965ab94a39079df4036435e37d736b5296d1c19a5b76b622feb",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-classifier-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-classifier/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-classifier.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 1534393,
+    "elf_sha256": "63152e813e460a2ffe9a1039f32be60f985a7316d4fb83710d1e4cc674a0ca84",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-classifier-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 1534393,
+    "elf_sha256": "63152e813e460a2ffe9a1039f32be60f985a7316d4fb83710d1e4cc674a0ca84",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-classifier-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 1534393,
+    "elf_sha256": "63152e813e460a2ffe9a1039f32be60f985a7316d4fb83710d1e4cc674a0ca84",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-classifier-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-classifier/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-classifier.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1534393,
+     "elf_sha256": "c4f3cca3c2cc65bc3697021a9bbd81dfcbb0b22d4d659d03d1c198c301182afc",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-classifier-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-classifier/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-classifier.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1534393,
+     "elf_sha256": "4fb91a33e775dc3ae04a856f247d000264e97d8c8fc1ead8c121c6fb5135c563",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-classifier-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-classifier/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-classifier.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1553189,
+     "elf_sha256": "2a4402e47e47a78f31131d588c3736d0cb77c5be6371b87a5b1565989aebf940",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-classifier-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-classifier/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-classifier.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1534393,
+     "elf_sha256": "c0fc27348f997b9b049b2461f9093917342ee09c436050adea3daa6804cd4d2b",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-classifier-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-classifier/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-classifier.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1534393,
+     "elf_sha256": "7a91fcc5ae6508bad8c982b203cf45f6a9ccb7b98d3b7807aa9476e1d478d3b2",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-classifier-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage1-block1",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 281526463,
+    "elf_sha256": "963f191cff73e286bd5fbf2484bb7ed7ce5ecf905cf8b5c17f569a6759d41bf0",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block1-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 281526463,
+    "elf_sha256": "963f191cff73e286bd5fbf2484bb7ed7ce5ecf905cf8b5c17f569a6759d41bf0",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block1-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 281526463,
+    "elf_sha256": "963f191cff73e286bd5fbf2484bb7ed7ce5ecf905cf8b5c17f569a6759d41bf0",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block1-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage1-block1/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage1-block1.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 280863141,
+    "elf_sha256": "3a623195097966af8d950225165034a5e17eae59a782062126b6257ee082844c",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block1-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 280863141,
+    "elf_sha256": "3a623195097966af8d950225165034a5e17eae59a782062126b6257ee082844c",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block1-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 280863141,
+    "elf_sha256": "3a623195097966af8d950225165034a5e17eae59a782062126b6257ee082844c",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block1-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage1-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage1-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 280863141,
+     "elf_sha256": "33e0b1fcffd2eca8c92718701b564aafc64fcbf433357776053cc6d7a19b0daa",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block1-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage1-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage1-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 280863141,
+     "elf_sha256": "90f5b48f677b14006396d585543b7a5d2ce40bb88a8049092bab5c5430a3e3c7",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block1-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage1-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage1-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 339594686,
+     "elf_sha256": "16723f67ca8b8af7245c9f57f5cfed61e838fe307ec6079041b36f6289ddbea6",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block1-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage1-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage1-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 281608347,
+     "elf_sha256": "66999590d4825e774b677043a916ccc8d900d19ce550646c16ae6493d027864b",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block1-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage1-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage1-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 281608347,
+     "elf_sha256": "a0958b978115904c0a185f2a9881e39870663d5d12a235c4fec4bbf2ba87464c",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block1-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage1-block2",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 260109631,
+    "elf_sha256": "d2b87d6cb32adbf2e21b99f95673a63088e74149435c04461574c8d925d81e7f",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block2-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 260109631,
+    "elf_sha256": "d2b87d6cb32adbf2e21b99f95673a63088e74149435c04461574c8d925d81e7f",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block2-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 260109631,
+    "elf_sha256": "d2b87d6cb32adbf2e21b99f95673a63088e74149435c04461574c8d925d81e7f",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block2-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage1-block2/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage1-block2.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 259471872,
+    "elf_sha256": "186312e7b8f93889cfaf2f3b7199c648c2f127557906b3e1f22d74e1da4f7730",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block2-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 259471872,
+    "elf_sha256": "186312e7b8f93889cfaf2f3b7199c648c2f127557906b3e1f22d74e1da4f7730",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block2-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 259471872,
+    "elf_sha256": "186312e7b8f93889cfaf2f3b7199c648c2f127557906b3e1f22d74e1da4f7730",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block2-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage1-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage1-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 259471872,
+     "elf_sha256": "30b1da5034bab99d2ac10c8b973efa27a5df5c288f40852101b090dccbb547cf",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block2-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage1-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage1-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 259471872,
+     "elf_sha256": "ee109bb4684d882e05e5167a6a3833b1e07c1613010b8ce9443a655593a1235e",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block2-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage1-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage1-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 285468240,
+     "elf_sha256": "e1e3ab95f4daf48a9f120a23a9c9f1a8115391aa86704fa3baf691cac92ec0c0",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block2-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage1-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage1-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 259471872,
+     "elf_sha256": "a6cc7cf2686a2c6bb8436313cf93c99705e7e8c39b88b63c71fa0a70615a55c0",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block2-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage1-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage1-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 259471872,
+     "elf_sha256": "5c4308ffbfdfcf979a5df23d20a513b0ddb29520ea967ea37f013bbcecddde38",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block2-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage1-block3",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 259681832,
+    "elf_sha256": "79056ba7c98ede10fc44886561713d29a4ce6e6f4b27b1c7f156b71ae55cc169",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block3-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 259681832,
+    "elf_sha256": "79056ba7c98ede10fc44886561713d29a4ce6e6f4b27b1c7f156b71ae55cc169",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block3-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 259681832,
+    "elf_sha256": "79056ba7c98ede10fc44886561713d29a4ce6e6f4b27b1c7f156b71ae55cc169",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block3-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage1-block3/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage1-block3.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 259074145,
+    "elf_sha256": "129aacc6abcb8c8438fef421bcd8b927ae31ddc7c9cac148f911d764f354b41c",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block3-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 259074145,
+    "elf_sha256": "129aacc6abcb8c8438fef421bcd8b927ae31ddc7c9cac148f911d764f354b41c",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block3-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 259074145,
+    "elf_sha256": "129aacc6abcb8c8438fef421bcd8b927ae31ddc7c9cac148f911d764f354b41c",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block3-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage1-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage1-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 259074145,
+     "elf_sha256": "a6071384b4440afd28cc03b94a4f706271a858a847ab2eee8e30d0ee8cdd592a",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block3-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage1-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage1-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 259074145,
+     "elf_sha256": "daa42064d021a807677a8a431f1048c474b3d5a307f43f53bb861c765b9b6d5f",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block3-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage1-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage1-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 289452363,
+     "elf_sha256": "6a4320373957b82535fb2717c54108df9751932665ae1f517e45cdcfaedc7c8d",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block3-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage1-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage1-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 259074145,
+     "elf_sha256": "46c2352617749030b7f551ed94019be036b461b8ab44c910ee33ae2bb06a5679",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block3-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage1-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage1-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 259074145,
+     "elf_sha256": "eadb482c591c3e52cdd1288c0c79b4224dff11e4ea3498671a39172b0e553a77",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage1-block3-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage2-block1",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 177860135,
+    "elf_sha256": "9dd19e367a8208ec92b28bd39d4b2aa6a92b9a2f4c7611faaed8e33db3969583",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block1-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 177860135,
+    "elf_sha256": "9dd19e367a8208ec92b28bd39d4b2aa6a92b9a2f4c7611faaed8e33db3969583",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block1-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 177860135,
+    "elf_sha256": "9dd19e367a8208ec92b28bd39d4b2aa6a92b9a2f4c7611faaed8e33db3969583",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block1-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage2-block1/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage2-block1.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 177440013,
+    "elf_sha256": "b3ff8091bf568ca331b1ffe70eb58496e20a84ace7b480cd9f208576344e2c9d",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block1-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 177440013,
+    "elf_sha256": "b3ff8091bf568ca331b1ffe70eb58496e20a84ace7b480cd9f208576344e2c9d",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block1-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 177440013,
+    "elf_sha256": "b3ff8091bf568ca331b1ffe70eb58496e20a84ace7b480cd9f208576344e2c9d",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block1-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage2-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage2-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 177440013,
+     "elf_sha256": "ea95f492c5832a9e32c5e5ae02ab8a3b2f6df1d0370cef708df2cf963ae3aedf",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block1-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage2-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage2-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 177440013,
+     "elf_sha256": "36e5880bb737479eb40c98a2f0ffd18f2e782eeddaf5351f1f0d5596720642e5",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block1-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage2-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage2-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 223469884,
+     "elf_sha256": "1e4eedb698b7278adf0ea38d6c657865464d39d34111f7fa4ab67fd74e9091de",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block1-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage2-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage2-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 177440013,
+     "elf_sha256": "86ef17f51b931d0c2d01924b2a9e7c825896ada3db76e1f5f5844699aeca8676",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block1-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage2-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage2-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 177440013,
+     "elf_sha256": "a0b6b928c4575b9bebe5c9b02dbe4f5eeeb117557c855621fede6c7fe54e70fc",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block1-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage2-block2",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 125241868,
+    "elf_sha256": "fa55c0f9e3c6d9c0359ea42866d47188f1567cb8477a5892a8a471b2fd411821",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block2-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 125241868,
+    "elf_sha256": "fa55c0f9e3c6d9c0359ea42866d47188f1567cb8477a5892a8a471b2fd411821",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block2-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 125241868,
+    "elf_sha256": "fa55c0f9e3c6d9c0359ea42866d47188f1567cb8477a5892a8a471b2fd411821",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block2-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage2-block2/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage2-block2.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 125203576,
+    "elf_sha256": "362f42b1772b397f421de08deba95d60c7d2d861efce5728231fdd3aa925b404",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block2-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 125203576,
+    "elf_sha256": "362f42b1772b397f421de08deba95d60c7d2d861efce5728231fdd3aa925b404",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block2-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 125203576,
+    "elf_sha256": "362f42b1772b397f421de08deba95d60c7d2d861efce5728231fdd3aa925b404",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block2-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage2-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage2-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 125203576,
+     "elf_sha256": "ee897ad8672ca6325b1036e84a94bce02131dd1c04656e70af99e9f19724f710",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block2-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage2-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage2-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 125203576,
+     "elf_sha256": "6d0eddbb63595471d631b8297047bc2aa3ade5103248259ce25122f651cffec0",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block2-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage2-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage2-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 116287609,
+     "elf_sha256": "696b6ade9c4e9ba6fc2b1c3c6755c27b41b2b247a1959c6c1d131334dc313092",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block2-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage2-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage2-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 125203576,
+     "elf_sha256": "0f2964db81e8058f815adf15b9a54f870c5fa44eb23058353f15b6168635c6ed",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block2-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage2-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage2-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 125203576,
+     "elf_sha256": "00d0a768df3ab43635addb0f83517958d16d0e2d47cb1022423de2b75f2f2a17",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block2-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage2-block3",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 123089858,
+    "elf_sha256": "54053f48e31dbab7490f436c440df74809fb78b61ce2b43dcdefe97af32b23f1",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block3-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 123089858,
+    "elf_sha256": "54053f48e31dbab7490f436c440df74809fb78b61ce2b43dcdefe97af32b23f1",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block3-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 123089858,
+    "elf_sha256": "54053f48e31dbab7490f436c440df74809fb78b61ce2b43dcdefe97af32b23f1",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block3-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage2-block3/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage2-block3.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 123051402,
+    "elf_sha256": "7d4b30dfb7425999ed51195a143e4f6833ba30b52ee40c6473fe121af9943da3",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block3-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 123051402,
+    "elf_sha256": "7d4b30dfb7425999ed51195a143e4f6833ba30b52ee40c6473fe121af9943da3",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block3-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 123051402,
+    "elf_sha256": "7d4b30dfb7425999ed51195a143e4f6833ba30b52ee40c6473fe121af9943da3",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block3-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage2-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage2-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 123051402,
+     "elf_sha256": "4a84995000c2681e37c0535c2273b31cf0dcb6c60fbf7a762e449dd4bd58bac2",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block3-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage2-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage2-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 123051402,
+     "elf_sha256": "5a3a61973b67e92a42a2c416f888c9c1b7a10629b634e530bcabc5cc7c70fa77",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block3-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage2-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage2-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 114261680,
+     "elf_sha256": "0ffa43125636bed7b4800d60ec134e3dbae57926f99ff074514ef7577112556d",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block3-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage2-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage2-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 123051402,
+     "elf_sha256": "f48aaa5c2e4fc3645dea829c5c460d36ef897a8716476898037e51582c920e76",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block3-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage2-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage2-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 123051402,
+     "elf_sha256": "63f4687136048709a6be0d9a01d3cf2f7d439f003b55810a2501d65cdcfef279",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block3-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage2-block4",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 125241868,
+    "elf_sha256": "fa966b472c2aa0556ae897f7c44086b451456d594c899ee54d8680c0d1a4be9a",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block4-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 125241868,
+    "elf_sha256": "fa966b472c2aa0556ae897f7c44086b451456d594c899ee54d8680c0d1a4be9a",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block4-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 125241868,
+    "elf_sha256": "fa966b472c2aa0556ae897f7c44086b451456d594c899ee54d8680c0d1a4be9a",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block4-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage2-block4/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage2-block4.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 125203576,
+    "elf_sha256": "16fafaf317ef3d50423c6a64bb087f2bfd82aadbe13156a5e1cf23739461e750",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block4-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 125203576,
+    "elf_sha256": "16fafaf317ef3d50423c6a64bb087f2bfd82aadbe13156a5e1cf23739461e750",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block4-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 125203576,
+    "elf_sha256": "16fafaf317ef3d50423c6a64bb087f2bfd82aadbe13156a5e1cf23739461e750",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block4-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage2-block4/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage2-block4.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 125203576,
+     "elf_sha256": "b94ba71c279dd2169a5ce8091e8f6eabfd686855783c56c6d0fe9a44c1532bd7",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block4-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage2-block4/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage2-block4.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 125203576,
+     "elf_sha256": "35371c1b05ea705971b6fd83ae9972c0427d372cdbd0c409721d18a96616849a",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block4-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage2-block4/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage2-block4.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 116287609,
+     "elf_sha256": "d80264bc9ab61f0afa639b6be458502cbd5b381aebdca6472672acd8644555ae",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block4-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage2-block4/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage2-block4.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 125203576,
+     "elf_sha256": "6db8106d5ab361fc067398be0e9c408b479a6e67737e268c4c6723cf06cb961e",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block4-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage2-block4/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage2-block4.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 125203576,
+     "elf_sha256": "d93acc42afca2830b1641e20dd6dd5663bb36a60a1a0ed5df625da0be7e07cf8",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage2-block4-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage3-block1",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 90207878,
+    "elf_sha256": "b681b95cc155bc99ed970ef3e7eaf3416a7824f869718b984c7af82190286795",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block1-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 90207878,
+    "elf_sha256": "b681b95cc155bc99ed970ef3e7eaf3416a7824f869718b984c7af82190286795",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block1-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 90207878,
+    "elf_sha256": "b681b95cc155bc99ed970ef3e7eaf3416a7824f869718b984c7af82190286795",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block1-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage3-block1/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage3-block1.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 90207878,
+    "elf_sha256": "7095d589445e1f504eec4e994511a080a6caa922314683f1eb6c3200900c8cc4",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block1-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 90207878,
+    "elf_sha256": "7095d589445e1f504eec4e994511a080a6caa922314683f1eb6c3200900c8cc4",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block1-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 90207878,
+    "elf_sha256": "7095d589445e1f504eec4e994511a080a6caa922314683f1eb6c3200900c8cc4",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block1-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage3-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage3-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 90207878,
+     "elf_sha256": "432a5cf3f156752f15996b6af3347ba7232268c7faf28da5e309b0c58d96c63c",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block1-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage3-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage3-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 90207878,
+     "elf_sha256": "8e101141c24b5324b8c9b0a70035db75b588f7164ceffbed8d2a90a33c1cb1db",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block1-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage3-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage3-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 102900740,
+     "elf_sha256": "90fa893955447e023571cc4e0e5fc4db319c37ee04506b7c5b30eefd783352b0",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block1-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage3-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage3-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 90207878,
+     "elf_sha256": "6a985ab6d784d5331945fd530656f294e7f3b725c5d06ac8cb35bade75479d74",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block1-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage3-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage3-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 90207878,
+     "elf_sha256": "f182099307de47a0bc1db8c0fae089a64fc0409964373b5cee343398555eb9ce",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block1-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage3-block2",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "31a15f9782d28617b31b2205bf9a531d893174e96c005c78e972f0850b0e0dd2",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block2-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "31a15f9782d28617b31b2205bf9a531d893174e96c005c78e972f0850b0e0dd2",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block2-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "31a15f9782d28617b31b2205bf9a531d893174e96c005c78e972f0850b0e0dd2",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block2-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage3-block2/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage3-block2.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "3ee278a4297e084ab9652a08314ff564b439dc792b082669b906f8b136403fca",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block2-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "3ee278a4297e084ab9652a08314ff564b439dc792b082669b906f8b136403fca",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block2-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "3ee278a4297e084ab9652a08314ff564b439dc792b082669b906f8b136403fca",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block2-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage3-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage3-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "b5b8073e4a17ba790ec633c5494696198ba1b8cf9d8d3f382530099678be164f",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block2-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage3-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage3-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "5c5ef12db52b2395e866fd8adcb323f2226af49345e655794d808261d63481f7",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block2-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage3-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage3-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 55674442,
+     "elf_sha256": "bfacc21dbd63f9df571ad62416ee5676474a3320b2132ec654a4006558663563",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block2-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage3-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage3-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "4d9d8b966406833ea2a87f7acee4bc723958bf9b3bca3803f7e801529e35440c",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block2-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage3-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage3-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "7e6be8da0148e039bdcba49ba8a8d0e2b37f8d0ca619f35f93a3fa483f7ca653",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block2-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage3-block3",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "a49e1337d028549c0e6917764fe9d70d65a073bdff01c45d63871b9a5fb3d891",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block3-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "a49e1337d028549c0e6917764fe9d70d65a073bdff01c45d63871b9a5fb3d891",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block3-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "a49e1337d028549c0e6917764fe9d70d65a073bdff01c45d63871b9a5fb3d891",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block3-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage3-block3/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage3-block3.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "81dfa1696470ebfde102886b94a9cb5aab41bfd1d1fb62526f6b4d0a3f6f06fc",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block3-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "81dfa1696470ebfde102886b94a9cb5aab41bfd1d1fb62526f6b4d0a3f6f06fc",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block3-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "81dfa1696470ebfde102886b94a9cb5aab41bfd1d1fb62526f6b4d0a3f6f06fc",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block3-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage3-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage3-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "20b538830855de842080a2f5b7d95f26d4781e9f2799323e040d2f761306b256",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block3-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage3-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage3-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "899d2f6fadaf7047b4956165a2b0c7cefd5f8444c88d9d992df68909c797d9a1",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block3-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage3-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage3-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 55674442,
+     "elf_sha256": "bb079f21e7d70f0db7e60620e869ff35375b12e06454f9e9c73caf46ff7f10a5",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block3-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage3-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage3-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "4bca6bfb8baee42494a7daf1b1a62a2e36a93ffc86e8c6ee33fa99d7d8bf06d3",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block3-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage3-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage3-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "2d0b2fec59bcc6c9442421e21e58c80422cd47752373a7c5f61d6f4573ae1e74",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block3-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage3-block4",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "88b4f14536a52c70796ee4d20ecd1093e052219cf4f79093ba4e01febec9be9d",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block4-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "88b4f14536a52c70796ee4d20ecd1093e052219cf4f79093ba4e01febec9be9d",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block4-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "88b4f14536a52c70796ee4d20ecd1093e052219cf4f79093ba4e01febec9be9d",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block4-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage3-block4/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage3-block4.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "05c0faab19876501773c17f82338338be4f708a0fe59562314ab83e53feb5048",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block4-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "05c0faab19876501773c17f82338338be4f708a0fe59562314ab83e53feb5048",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block4-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "05c0faab19876501773c17f82338338be4f708a0fe59562314ab83e53feb5048",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block4-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage3-block4/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage3-block4.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "98cb99dd7cfdc246f93517ea7286ade215adc5d8fb556d458b86b2f9fe215ecd",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block4-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage3-block4/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage3-block4.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "a5226c25b0b957a79c42fcb2f12a4b38d734a8a98c14c59dee668091ca631a88",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block4-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage3-block4/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage3-block4.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 55674442,
+     "elf_sha256": "39048da7806d10648483233bcd830cf488e4df0e2df3191f9d643673dfa150a1",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block4-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage3-block4/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage3-block4.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "f829be8f08aec85bd37b03c35aa0d20704d09c4337b40452d6b193eaeaa6c32d",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block4-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage3-block4/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage3-block4.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "16fb029fe39381224baaf9dcbf9b67509337a6c2fe397d24b7fc8311221aa1aa",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block4-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage3-block5",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "69c863a8919f04e252ef5df6d1c6297d1595ed96854ea39a24f33ec2479507ec",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block5-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "69c863a8919f04e252ef5df6d1c6297d1595ed96854ea39a24f33ec2479507ec",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block5-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "69c863a8919f04e252ef5df6d1c6297d1595ed96854ea39a24f33ec2479507ec",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block5-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage3-block5/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage3-block5.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "a6cbfedba9605c0fbcf1d7b15f6cb59934d1a9080a4bdaede60b9a4217ca20fb",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block5-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "a6cbfedba9605c0fbcf1d7b15f6cb59934d1a9080a4bdaede60b9a4217ca20fb",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block5-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "a6cbfedba9605c0fbcf1d7b15f6cb59934d1a9080a4bdaede60b9a4217ca20fb",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block5-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage3-block5/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage3-block5.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "2c72904dc18235389b989abd170b589631a7746e209b065b78bd1c2997fb44cd",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block5-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage3-block5/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage3-block5.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "3147c3a24fb6bc2abc16a43a83ab99092468af14a4c24ec7288f03c7a5789d63",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block5-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage3-block5/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage3-block5.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 55674442,
+     "elf_sha256": "fa07b04d9050e429d4ba6b86f72df10ddea93ec27cc6dd932ad211a7a2e2e3af",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block5-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage3-block5/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage3-block5.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "7db39380ce305c14f9f7c29a0210f85b276cb176ff28233e6bb6ca6132550ff5",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block5-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage3-block5/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage3-block5.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "c7f7bc1069bf9ad4d7fc3134fb3474eabdccc380749e6362979e6b8d946a0901",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block5-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage3-block6",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "0613aa1cc28d43ae74786d0f871812e5bf917820ae970eb7454c105ee43e2efd",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block6-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "0613aa1cc28d43ae74786d0f871812e5bf917820ae970eb7454c105ee43e2efd",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block6-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60346878,
+    "elf_sha256": "0613aa1cc28d43ae74786d0f871812e5bf917820ae970eb7454c105ee43e2efd",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block6-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage3-block6/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage3-block6.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "eb111eb06305bbc394ac5681584767479fa96a06d38a7f052e2af205c201734c",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block6-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "eb111eb06305bbc394ac5681584767479fa96a06d38a7f052e2af205c201734c",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block6-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 60353072,
+    "elf_sha256": "eb111eb06305bbc394ac5681584767479fa96a06d38a7f052e2af205c201734c",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block6-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage3-block6/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage3-block6.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "62d0f1a5788ecf1e8e5f5395144756f3ad31be6899f56c4b15b2b909cdb4efa4",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block6-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage3-block6/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage3-block6.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "2bb509854b0e55a7d6ad0e5ec6a468ba9e76419de485eecfcf89fe7a580fd1fe",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block6-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage3-block6/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage3-block6.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 55674442,
+     "elf_sha256": "680a6792b98ba3275dc44cfa7b3fd31053c839c0f137fced7acc8a5e2fc9e196",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block6-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage3-block6/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage3-block6.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "fd3dc9f4fc88502f52c7906f75ff436f942746bda40fef66a2be1b89e564727a",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block6-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage3-block6/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage3-block6.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 60353072,
+     "elf_sha256": "ea1240dc20000256ede72da1884aec20517a109b8532c0fe52dbedbc78a9f2ec",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage3-block6-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage4-block1",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 54718932,
+    "elf_sha256": "63fdf590d0b4982bfa9febb90814b2700f454e3a1830f1ac2986cdbef18a2848",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block1-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 54718932,
+    "elf_sha256": "63fdf590d0b4982bfa9febb90814b2700f454e3a1830f1ac2986cdbef18a2848",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block1-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 54718932,
+    "elf_sha256": "63fdf590d0b4982bfa9febb90814b2700f454e3a1830f1ac2986cdbef18a2848",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block1-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage4-block1/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage4-block1.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 53061993,
+    "elf_sha256": "ed930f9fbdfa6cf2aa757db96aa85c38f2a17a08e0d9d570550d42f6a0a6c12b",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block1-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 53061993,
+    "elf_sha256": "ed930f9fbdfa6cf2aa757db96aa85c38f2a17a08e0d9d570550d42f6a0a6c12b",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block1-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 53061993,
+    "elf_sha256": "ed930f9fbdfa6cf2aa757db96aa85c38f2a17a08e0d9d570550d42f6a0a6c12b",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block1-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage4-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage4-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 53061993,
+     "elf_sha256": "b4fa16177e287daa56ad63dcd108de1a2f5c80fa3b99599ec0a336831e2eef0c",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block1-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage4-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage4-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 53061993,
+     "elf_sha256": "37a1087f25c53b8d018d0c9980ab2c04e90c1fb0e9cc4fa42099881ed93eef14",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block1-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage4-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage4-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 54201766,
+     "elf_sha256": "baedde5fa355f60b34c2fe3417fb9976ccfe4aae6e521a881cd6b35f3b4010c5",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block1-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage4-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage4-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 53061993,
+     "elf_sha256": "2b59e1678e484e074c6c85ddc18cd6edfe4dad53a6c8f95dc75b7a36d920ee69",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block1-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage4-block1/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage4-block1.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 53061993,
+     "elf_sha256": "ab599b9699878254ff7c7b93d682f76e5ce6f826dafdb9869d24eaf4eefb5f7e",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block1-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage4-block2",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 35061802,
+    "elf_sha256": "7905d4cab2bda668e3624697c040bda0b38ca723afa40e30c0e643aae0ca89c4",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block2-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 35061802,
+    "elf_sha256": "7905d4cab2bda668e3624697c040bda0b38ca723afa40e30c0e643aae0ca89c4",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block2-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 35061802,
+    "elf_sha256": "7905d4cab2bda668e3624697c040bda0b38ca723afa40e30c0e643aae0ca89c4",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block2-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage4-block2/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage4-block2.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 33864200,
+    "elf_sha256": "7537aa08b487c6ab63d92e1d4e8eba245c3b4d1d13eb0bf7c8e2154b013e9e4d",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block2-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 33864200,
+    "elf_sha256": "7537aa08b487c6ab63d92e1d4e8eba245c3b4d1d13eb0bf7c8e2154b013e9e4d",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block2-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 33864200,
+    "elf_sha256": "7537aa08b487c6ab63d92e1d4e8eba245c3b4d1d13eb0bf7c8e2154b013e9e4d",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block2-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage4-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage4-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 33864200,
+     "elf_sha256": "2fd5667ad5d0db8d2537472fa51510153386ee3880c431178fc561b820b233bb",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block2-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage4-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage4-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 33864200,
+     "elf_sha256": "dc10239973cc961fd5af7e991aafbaf72ed141af73c72f655fc212e37f825818",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block2-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage4-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage4-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 30629309,
+     "elf_sha256": "180388927973ce2006623b45b32d68bc6ab8d2d761f1733023f72fc60f999496",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block2-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage4-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage4-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 33864200,
+     "elf_sha256": "4965ee77238320eebccf2521ce0591754af5905232b7b8800146860758c81dd7",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block2-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage4-block2/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage4-block2.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 33864200,
+     "elf_sha256": "fe93a9970dd0b6cce86cd57ad67939322d7d1964d2c5fb7f21315e248d30c70e",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block2-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stage4-block3",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 35489090,
+    "elf_sha256": "bb32e3e4c665dc78942e922f9cc1b1193689170f183239b09c5f5b15ee83d14d",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block3-baseline-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 35489090,
+    "elf_sha256": "bb32e3e4c665dc78942e922f9cc1b1193689170f183239b09c5f5b15ee83d14d",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block3-baseline-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 35489090,
+    "elf_sha256": "bb32e3e4c665dc78942e922f9cc1b1193689170f183239b09c5f5b15ee83d14d",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block3-baseline-2",
+    "reused": true
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stage4-block3/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stage4-block3.log",
+   "tuned_miss": false,
+   "reused": true
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 34138172,
+    "elf_sha256": "ada4e9f27f6878f849f1d8422a49f02895422c213233b7a2967f4a7b9cdcc073",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block3-tuned-0",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 34138172,
+    "elf_sha256": "ada4e9f27f6878f849f1d8422a49f02895422c213233b7a2967f4a7b9cdcc073",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block3-tuned-1",
+    "reused": true
+   },
+   {
+    "ok": true,
+    "cycles": 34138172,
+    "elf_sha256": "ada4e9f27f6878f849f1d8422a49f02895422c213233b7a2967f4a7b9cdcc073",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block3-tuned-2",
+    "reused": true
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stage4-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stage4-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 34138172,
+     "elf_sha256": "4a65e549cdfffc4c0dbf1dd05623629110ecff8d9eadc468be8dd345f6cad306",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block3-fuse3-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stage4-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stage4-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 34138172,
+     "elf_sha256": "2bdba88c2bf3612966fc84c204a6429ba446a169a12a8416414a827b6a9705bb",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block3-fuse1-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stage4-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stage4-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 30605957,
+     "elf_sha256": "d50fa9552acca430dd3d5de731c8718870d64ec6eee7930ae47f31f120a0a566",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block3-fuse0-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stage4-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stage4-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 34138172,
+     "elf_sha256": "495d3903020bb2b73d884c69e0e56ccbe0545faf79895ce6036269ab07d2cee0",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block3-fuse2-cse-0",
+     "reused": true
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stage4-block3/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stage4-block3.log",
+     "tuned_miss": false,
+     "reused": true
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 34138172,
+     "elf_sha256": "f04df82d5bfe2d94aaa470b0edb04e4b33a5377d85b73283fabc91d359f1d0e0",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stage4-block3-fuse3-cse-0",
+     "reused": true
+    }
+   }
+  ]
+ },
+ {
+  "unit": "resnet-stem",
+  "kind": "resnet",
+  "database": "/work/exp/tvmfs/work/db-resnet",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 386810844,
+    "elf_sha256": "d74d7ad1f2514aec768d7c6a2225734f0f9a6554e089a58be51e12169d6acdc5",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stem-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 386810844,
+    "elf_sha256": "d74d7ad1f2514aec768d7c6a2225734f0f9a6554e089a58be51e12169d6acdc5",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stem-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 386810844,
+    "elf_sha256": "d74d7ad1f2514aec768d7c6a2225734f0f9a6554e089a58be51e12169d6acdc5",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stem-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/resnet-stem/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-resnet-stem.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 386810844,
+    "elf_sha256": "250058941e633d54206b518c41b91077c8b475400de382026ade58962afd43fa",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stem-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 386810844,
+    "elf_sha256": "250058941e633d54206b518c41b91077c8b475400de382026ade58962afd43fa",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stem-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 386810844,
+    "elf_sha256": "250058941e633d54206b518c41b91077c8b475400de382026ade58962afd43fa",
+    "run": "/work/exp/tvmfs/f2/results/runs/resnet-stem-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/resnet-stem/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-resnet-stem.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 386810844,
+     "elf_sha256": "145c967616372f106faa9a1a792add422111295c236fbacd805c806fd0c30037",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stem-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/resnet-stem/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-resnet-stem.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 386810844,
+     "elf_sha256": "3cf2716d33ede705b8374f49ef284b153d7abc65ebdba9a0ee7ef8ded5e4e4dd",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stem-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/resnet-stem/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-resnet-stem.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 326187976,
+     "elf_sha256": "60959da0cea8c92480d81668d6b5bfa02d9f421f5a6e9108b9e6674079309c22",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stem-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/resnet-stem/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-resnet-stem.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 386810844,
+     "elf_sha256": "01cbc398a77be07139691e03b21b5097305fed35e2c0d59866deedd7092a63a7",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stem-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/resnet-stem/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-resnet-stem.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 386810844,
+     "elf_sha256": "61c7852cd85bbd93a76927fda4ac8cead7f20277769db2bf246bf260879fd19f",
+     "run": "/work/exp/tvmfs/f2/results/runs/resnet-stem-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "G01",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/G01/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 1972011,
+    "elf_sha256": "a676c0aa5985a3149d64b6ced652b9f7c07aaee81c9c5000f2949dba50b5fcb6",
+    "run": "/work/exp/tvmfs/f2/results/runs/G01-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 1972011,
+    "elf_sha256": "a676c0aa5985a3149d64b6ced652b9f7c07aaee81c9c5000f2949dba50b5fcb6",
+    "run": "/work/exp/tvmfs/f2/results/runs/G01-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 1972011,
+    "elf_sha256": "a676c0aa5985a3149d64b6ced652b9f7c07aaee81c9c5000f2949dba50b5fcb6",
+    "run": "/work/exp/tvmfs/f2/results/runs/G01-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/G01/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-G01.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 1959012,
+    "elf_sha256": "f45ab1e304c1184702726e9c9daa497477b4d25da9958b12c4ada9a3fb168bbf",
+    "run": "/work/exp/tvmfs/f2/results/runs/G01-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 1959012,
+    "elf_sha256": "f45ab1e304c1184702726e9c9daa497477b4d25da9958b12c4ada9a3fb168bbf",
+    "run": "/work/exp/tvmfs/f2/results/runs/G01-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 1959012,
+    "elf_sha256": "f45ab1e304c1184702726e9c9daa497477b4d25da9958b12c4ada9a3fb168bbf",
+    "run": "/work/exp/tvmfs/f2/results/runs/G01-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/G01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-G01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1959012,
+     "elf_sha256": "b01ffcbe0c8ce8a6e57b03e84b7bb90d3fcd0fd952567398a17fc6e695578c49",
+     "run": "/work/exp/tvmfs/f2/results/runs/G01-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/G01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-G01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1959012,
+     "elf_sha256": "bbb8ea4fe956cefeba782bea0b2c280b0f9c61cebc997d6d31ef6b0ac471fe9b",
+     "run": "/work/exp/tvmfs/f2/results/runs/G01-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/G01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-G01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1959012,
+     "elf_sha256": "50576cd67feb2cbdab8ccc97f45b4c722a5515b460364f8a820d70f1ab991980",
+     "run": "/work/exp/tvmfs/f2/results/runs/G01-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/G01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-G01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1959012,
+     "elf_sha256": "6821a017c001035c5d3193c54ef6b7fbe65d2db28fb2a4c4ddb8b4b6cc3f0ae2",
+     "run": "/work/exp/tvmfs/f2/results/runs/G01-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/G01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-G01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1959012,
+     "elf_sha256": "2432798fa24fbb643ba857cc64400f75bd04d152de71f20e7d1c75836e146362",
+     "run": "/work/exp/tvmfs/f2/results/runs/G01-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "G02",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/G02/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 3424353,
+    "elf_sha256": "51094bd0993880a7ebb4d50f1844b31db4349e8249abea4e1d3b96a499d249fe",
+    "run": "/work/exp/tvmfs/f2/results/runs/G02-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 3424353,
+    "elf_sha256": "51094bd0993880a7ebb4d50f1844b31db4349e8249abea4e1d3b96a499d249fe",
+    "run": "/work/exp/tvmfs/f2/results/runs/G02-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 3424353,
+    "elf_sha256": "51094bd0993880a7ebb4d50f1844b31db4349e8249abea4e1d3b96a499d249fe",
+    "run": "/work/exp/tvmfs/f2/results/runs/G02-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/G02/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-G02.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 3192686,
+    "elf_sha256": "f1d66ba069770d65f3be24a9a654069d9694c4fb648a3c4239db102e20f67341",
+    "run": "/work/exp/tvmfs/f2/results/runs/G02-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 3192686,
+    "elf_sha256": "f1d66ba069770d65f3be24a9a654069d9694c4fb648a3c4239db102e20f67341",
+    "run": "/work/exp/tvmfs/f2/results/runs/G02-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 3192686,
+    "elf_sha256": "f1d66ba069770d65f3be24a9a654069d9694c4fb648a3c4239db102e20f67341",
+    "run": "/work/exp/tvmfs/f2/results/runs/G02-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/G02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-G02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3192686,
+     "elf_sha256": "c5de6902104304922edde8f614f952216df1eb18d1dc745b34988f44d0bab3ff",
+     "run": "/work/exp/tvmfs/f2/results/runs/G02-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/G02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-G02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3192686,
+     "elf_sha256": "652970a54ca1e041c2a9d8b0bf9c57dd7f9a446d72de41010f63d69b5ec9ac17",
+     "run": "/work/exp/tvmfs/f2/results/runs/G02-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/G02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-G02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3192686,
+     "elf_sha256": "18d799a39cfb957072de97a60d0524d0b6a8c9b45a35e8495ba505a342f77d21",
+     "run": "/work/exp/tvmfs/f2/results/runs/G02-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/G02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-G02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3192686,
+     "elf_sha256": "30d8d8ee3b51fbb4226f92a3586d345df6b40209b85f65a136f3bcc797d33faa",
+     "run": "/work/exp/tvmfs/f2/results/runs/G02-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/G02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-G02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3192686,
+     "elf_sha256": "536cb6d26dcbf8537616db83989c29578e543fb6a6063ba9debc65a2b83c3431",
+     "run": "/work/exp/tvmfs/f2/results/runs/G02-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "G03",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/G03/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 4283444,
+    "elf_sha256": "bf9d1b8df8d2d39f9ddd9cfa3a9a0e9854ac6fdb90e2888f3a40fa8a82873e6f",
+    "run": "/work/exp/tvmfs/f2/results/runs/G03-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 4283444,
+    "elf_sha256": "bf9d1b8df8d2d39f9ddd9cfa3a9a0e9854ac6fdb90e2888f3a40fa8a82873e6f",
+    "run": "/work/exp/tvmfs/f2/results/runs/G03-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 4283444,
+    "elf_sha256": "bf9d1b8df8d2d39f9ddd9cfa3a9a0e9854ac6fdb90e2888f3a40fa8a82873e6f",
+    "run": "/work/exp/tvmfs/f2/results/runs/G03-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/G03/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-G03.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 3696135,
+    "elf_sha256": "2d1f59ca41f9e3f051ccad00cc5a0c84a1dab18524fa0b1144ddd443d9df87cb",
+    "run": "/work/exp/tvmfs/f2/results/runs/G03-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 3696135,
+    "elf_sha256": "2d1f59ca41f9e3f051ccad00cc5a0c84a1dab18524fa0b1144ddd443d9df87cb",
+    "run": "/work/exp/tvmfs/f2/results/runs/G03-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 3696135,
+    "elf_sha256": "2d1f59ca41f9e3f051ccad00cc5a0c84a1dab18524fa0b1144ddd443d9df87cb",
+    "run": "/work/exp/tvmfs/f2/results/runs/G03-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/G03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-G03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3696135,
+     "elf_sha256": "9bb2a2055759e068ee010db944fe8e19891cf33fcb350d16d3bf8a708c1d2526",
+     "run": "/work/exp/tvmfs/f2/results/runs/G03-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/G03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-G03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3696135,
+     "elf_sha256": "e8b048104e940bfb0b0fcd446d74741aa69d34f94259cd27de34ea88860e9708",
+     "run": "/work/exp/tvmfs/f2/results/runs/G03-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/G03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-G03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3696135,
+     "elf_sha256": "6277f6743c131712afa627b6941d69e24fad2b0344977b5e7e53f58cbfd531a5",
+     "run": "/work/exp/tvmfs/f2/results/runs/G03-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/G03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-G03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3696135,
+     "elf_sha256": "f984ce07f31fdc8d75209ecddc162e60f4c32fed99de059c3c8d8bc652ad3124",
+     "run": "/work/exp/tvmfs/f2/results/runs/G03-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/G03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-G03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3696135,
+     "elf_sha256": "7af8abe0d5a12cf43f82e3201a03687b387a5eb75cf688a51fc056f5d77f09e0",
+     "run": "/work/exp/tvmfs/f2/results/runs/G03-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "G04",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/G04/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 3082783,
+    "elf_sha256": "fc4af1e4317ac8713e03980afa3f1f2ec9592266f7b4a4bdcc6cec0bdbc27dc3",
+    "run": "/work/exp/tvmfs/f2/results/runs/G04-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 3082783,
+    "elf_sha256": "fc4af1e4317ac8713e03980afa3f1f2ec9592266f7b4a4bdcc6cec0bdbc27dc3",
+    "run": "/work/exp/tvmfs/f2/results/runs/G04-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 3082783,
+    "elf_sha256": "fc4af1e4317ac8713e03980afa3f1f2ec9592266f7b4a4bdcc6cec0bdbc27dc3",
+    "run": "/work/exp/tvmfs/f2/results/runs/G04-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/G04/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-G04.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 2814698,
+    "elf_sha256": "ac4ef5994e7c7a55d427108f36b0a8027d2fa4074975d0204cc8c06a413c9290",
+    "run": "/work/exp/tvmfs/f2/results/runs/G04-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 2814698,
+    "elf_sha256": "ac4ef5994e7c7a55d427108f36b0a8027d2fa4074975d0204cc8c06a413c9290",
+    "run": "/work/exp/tvmfs/f2/results/runs/G04-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 2814698,
+    "elf_sha256": "ac4ef5994e7c7a55d427108f36b0a8027d2fa4074975d0204cc8c06a413c9290",
+    "run": "/work/exp/tvmfs/f2/results/runs/G04-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/G04/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-G04.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2814698,
+     "elf_sha256": "18798163d1b33a821d9081013fde09d629f45f2a4a2a2d7d958ca3e19c9c37af",
+     "run": "/work/exp/tvmfs/f2/results/runs/G04-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/G04/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-G04.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2814698,
+     "elf_sha256": "ee035d53a373ca771d0ca5ed8c99f41b8c3a1d83c10cccafe046c9d5b19d850b",
+     "run": "/work/exp/tvmfs/f2/results/runs/G04-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/G04/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-G04.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2814698,
+     "elf_sha256": "64f3184755269aafaaaa4e27808dd42828014b1bca24730e7757124311d1660e",
+     "run": "/work/exp/tvmfs/f2/results/runs/G04-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/G04/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-G04.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2814698,
+     "elf_sha256": "3bdeb8a85e069a9cebca9c91e77b4a0f5810c9b04577cd8606fc94c01f570547",
+     "run": "/work/exp/tvmfs/f2/results/runs/G04-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/G04/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-G04.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2814698,
+     "elf_sha256": "68db5821a853ce090b1999b5353856964f3b32d3782b5cc286dcb543ea93e153",
+     "run": "/work/exp/tvmfs/f2/results/runs/G04-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "G05",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/G05/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 3606097,
+    "elf_sha256": "05e1968eb39c20150225b4d11e6349a6c758dff3572c65f49b98a3cb86587e4c",
+    "run": "/work/exp/tvmfs/f2/results/runs/G05-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 3606097,
+    "elf_sha256": "05e1968eb39c20150225b4d11e6349a6c758dff3572c65f49b98a3cb86587e4c",
+    "run": "/work/exp/tvmfs/f2/results/runs/G05-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 3606097,
+    "elf_sha256": "05e1968eb39c20150225b4d11e6349a6c758dff3572c65f49b98a3cb86587e4c",
+    "run": "/work/exp/tvmfs/f2/results/runs/G05-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/G05/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-G05.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 3037933,
+    "elf_sha256": "607c37e91558ce85752fce6cc3fc596b2e7a543acbbfe33dd809970ce08d00b3",
+    "run": "/work/exp/tvmfs/f2/results/runs/G05-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 3037933,
+    "elf_sha256": "607c37e91558ce85752fce6cc3fc596b2e7a543acbbfe33dd809970ce08d00b3",
+    "run": "/work/exp/tvmfs/f2/results/runs/G05-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 3037933,
+    "elf_sha256": "607c37e91558ce85752fce6cc3fc596b2e7a543acbbfe33dd809970ce08d00b3",
+    "run": "/work/exp/tvmfs/f2/results/runs/G05-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/G05/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-G05.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3037933,
+     "elf_sha256": "1f2ed6abdcf02c48c57a8677eb81e05d007e7465b37a8e2f44d5aa905ab41edc",
+     "run": "/work/exp/tvmfs/f2/results/runs/G05-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/G05/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-G05.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3037933,
+     "elf_sha256": "33fd560f007e52dedba93be6cc39221e0c1c8725d97c725e68341abe00a7afa0",
+     "run": "/work/exp/tvmfs/f2/results/runs/G05-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/G05/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-G05.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3037933,
+     "elf_sha256": "6abb5298dbf0055f2498872d94dc8d70d407b20dbe389e2456fcbb37d862db7a",
+     "run": "/work/exp/tvmfs/f2/results/runs/G05-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/G05/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-G05.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3037933,
+     "elf_sha256": "f7a53190ecfe1e98c2bc45ef0cd82ccf9735482b3cdbf768825e50e209de6fdf",
+     "run": "/work/exp/tvmfs/f2/results/runs/G05-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/G05/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-G05.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 3037933,
+     "elf_sha256": "5f47bb52ec1fa369560cb333dadb86c1c0024784f9ec4fba5d44d66d2c8c91b6",
+     "run": "/work/exp/tvmfs/f2/results/runs/G05-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "G06",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/G06/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 3297937,
+    "elf_sha256": "6b18e354d419bff61980a6bba0da587d0d058ed85e61ba3a755e7d724648ea44",
+    "run": "/work/exp/tvmfs/f2/results/runs/G06-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 3297937,
+    "elf_sha256": "6b18e354d419bff61980a6bba0da587d0d058ed85e61ba3a755e7d724648ea44",
+    "run": "/work/exp/tvmfs/f2/results/runs/G06-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 3297937,
+    "elf_sha256": "6b18e354d419bff61980a6bba0da587d0d058ed85e61ba3a755e7d724648ea44",
+    "run": "/work/exp/tvmfs/f2/results/runs/G06-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/G06/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-G06.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 2932182,
+    "elf_sha256": "27b26828281e893f8ddc156956d20a0f7bee5be9c33e6cbc86601800c04a2bfb",
+    "run": "/work/exp/tvmfs/f2/results/runs/G06-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 2932182,
+    "elf_sha256": "27b26828281e893f8ddc156956d20a0f7bee5be9c33e6cbc86601800c04a2bfb",
+    "run": "/work/exp/tvmfs/f2/results/runs/G06-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 2932182,
+    "elf_sha256": "27b26828281e893f8ddc156956d20a0f7bee5be9c33e6cbc86601800c04a2bfb",
+    "run": "/work/exp/tvmfs/f2/results/runs/G06-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/G06/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-G06.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2932182,
+     "elf_sha256": "b3800d97daf51a1fac2edfec2e5ae6dc201063bfb6931ef53c6ba53a7e9655be",
+     "run": "/work/exp/tvmfs/f2/results/runs/G06-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/G06/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-G06.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2932182,
+     "elf_sha256": "3ce2bc3f625024a8ad6d593c918cccc4a6a5eaab411b7b76a915a14ff51791f8",
+     "run": "/work/exp/tvmfs/f2/results/runs/G06-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/G06/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-G06.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2932182,
+     "elf_sha256": "cd8a44701515d84be1984086328d028692bbce15e450bd7a67df7bdd5dbddb6e",
+     "run": "/work/exp/tvmfs/f2/results/runs/G06-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/G06/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-G06.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2932182,
+     "elf_sha256": "82d2611f39bb5cfe64b497cf9a43630cffc045fb5bdc6bb53a021c019e2c51e6",
+     "run": "/work/exp/tvmfs/f2/results/runs/G06-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/G06/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-G06.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2932182,
+     "elf_sha256": "a7b6054f394ad150aeff53d2197a3afb0db8ea25de56603f34ee8b17bd3f7565",
+     "run": "/work/exp/tvmfs/f2/results/runs/G06-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "C01",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/C01/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 327109776,
+    "elf_sha256": "3fde5fa8e83da609b0adee16dd13375313f812efe978d04522919933b698a461",
+    "run": "/work/exp/tvmfs/f2/results/runs/C01-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 327109776,
+    "elf_sha256": "3fde5fa8e83da609b0adee16dd13375313f812efe978d04522919933b698a461",
+    "run": "/work/exp/tvmfs/f2/results/runs/C01-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 327109776,
+    "elf_sha256": "3fde5fa8e83da609b0adee16dd13375313f812efe978d04522919933b698a461",
+    "run": "/work/exp/tvmfs/f2/results/runs/C01-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/C01/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-C01.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 38872761,
+    "elf_sha256": "6948c6815a346f93812904ec59daa587e13a40a70fab4e500b5c8c722aaeb863",
+    "run": "/work/exp/tvmfs/f2/results/runs/C01-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 38872761,
+    "elf_sha256": "6948c6815a346f93812904ec59daa587e13a40a70fab4e500b5c8c722aaeb863",
+    "run": "/work/exp/tvmfs/f2/results/runs/C01-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 38872761,
+    "elf_sha256": "6948c6815a346f93812904ec59daa587e13a40a70fab4e500b5c8c722aaeb863",
+    "run": "/work/exp/tvmfs/f2/results/runs/C01-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/C01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-C01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 38872761,
+     "elf_sha256": "b9180edba4a4d64181ec012173100f8abdc9abc19e56d712be6cc469c89d7c32",
+     "run": "/work/exp/tvmfs/f2/results/runs/C01-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/C01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-C01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 38872761,
+     "elf_sha256": "23ad32ef79f86ac440b91a3104ecb7b5050ae96c4ac4175408990ecac18314e0",
+     "run": "/work/exp/tvmfs/f2/results/runs/C01-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/C01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-C01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 38872761,
+     "elf_sha256": "733cf8734dbdc2aebee83ad9e5f65635821ecbd5593d2e6d537e9d30b0a77d91",
+     "run": "/work/exp/tvmfs/f2/results/runs/C01-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/C01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-C01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 38872761,
+     "elf_sha256": "c5ce9bd6a9ac5709b767aabe7db7cddfebf084f0c6fea11571d03a782627b9b4",
+     "run": "/work/exp/tvmfs/f2/results/runs/C01-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/C01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-C01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 38872761,
+     "elf_sha256": "d2d3909951977730b326c56b1cfa74843310c683cf1ccd7d72b196247002104d",
+     "run": "/work/exp/tvmfs/f2/results/runs/C01-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "C02",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/C02/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 348516304,
+    "elf_sha256": "762369f20e91d60dab962e56f09b4134577ec6e1a4209b38b8d01a71cc04eeea",
+    "run": "/work/exp/tvmfs/f2/results/runs/C02-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 348516304,
+    "elf_sha256": "762369f20e91d60dab962e56f09b4134577ec6e1a4209b38b8d01a71cc04eeea",
+    "run": "/work/exp/tvmfs/f2/results/runs/C02-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 348516304,
+    "elf_sha256": "762369f20e91d60dab962e56f09b4134577ec6e1a4209b38b8d01a71cc04eeea",
+    "run": "/work/exp/tvmfs/f2/results/runs/C02-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/C02/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-C02.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 44215831,
+    "elf_sha256": "1b8daec12e33b886b2b92c6388f4af347b3913526c66ec9a0d1f2291a1817574",
+    "run": "/work/exp/tvmfs/f2/results/runs/C02-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 44215831,
+    "elf_sha256": "1b8daec12e33b886b2b92c6388f4af347b3913526c66ec9a0d1f2291a1817574",
+    "run": "/work/exp/tvmfs/f2/results/runs/C02-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 44215831,
+    "elf_sha256": "1b8daec12e33b886b2b92c6388f4af347b3913526c66ec9a0d1f2291a1817574",
+    "run": "/work/exp/tvmfs/f2/results/runs/C02-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/C02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-C02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 44215831,
+     "elf_sha256": "278bce366140a0d7b3c9889efec58704d1f217f0c398258b2c0d3a0b14c09979",
+     "run": "/work/exp/tvmfs/f2/results/runs/C02-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/C02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-C02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 44215831,
+     "elf_sha256": "a6225a9fc2f3fb68dd18c091f5651538ec576dc684cc46a14a6e3c2abe17d808",
+     "run": "/work/exp/tvmfs/f2/results/runs/C02-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/C02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-C02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 44215831,
+     "elf_sha256": "1fae0463a6de119285af143b9c362fbff4898cc2d5aa88ea563fc84604cd8829",
+     "run": "/work/exp/tvmfs/f2/results/runs/C02-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/C02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-C02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 44215831,
+     "elf_sha256": "d885317c60f546a2aab7e6f450f655f3b195645eef31d16117a0abf1522ba0fe",
+     "run": "/work/exp/tvmfs/f2/results/runs/C02-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/C02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-C02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 44215831,
+     "elf_sha256": "4ba77fe71a24656af3f26e9dd7a75f1cfcc8571b7f32f332b90e7d0fe86d144d",
+     "run": "/work/exp/tvmfs/f2/results/runs/C02-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "C03",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/C03/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 228703886,
+    "elf_sha256": "c7e04ce21e732ec5828e124beedecaddc1c70b5296f88bde4fa1e42735078976",
+    "run": "/work/exp/tvmfs/f2/results/runs/C03-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 228703886,
+    "elf_sha256": "c7e04ce21e732ec5828e124beedecaddc1c70b5296f88bde4fa1e42735078976",
+    "run": "/work/exp/tvmfs/f2/results/runs/C03-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 228703886,
+    "elf_sha256": "c7e04ce21e732ec5828e124beedecaddc1c70b5296f88bde4fa1e42735078976",
+    "run": "/work/exp/tvmfs/f2/results/runs/C03-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/C03/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-C03.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 103739715,
+    "elf_sha256": "356505e5988e37b2fe383d07e35ec4c30a56f5fe9734532fc1658195d65fcb27",
+    "run": "/work/exp/tvmfs/f2/results/runs/C03-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 103739715,
+    "elf_sha256": "356505e5988e37b2fe383d07e35ec4c30a56f5fe9734532fc1658195d65fcb27",
+    "run": "/work/exp/tvmfs/f2/results/runs/C03-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 103739715,
+    "elf_sha256": "356505e5988e37b2fe383d07e35ec4c30a56f5fe9734532fc1658195d65fcb27",
+    "run": "/work/exp/tvmfs/f2/results/runs/C03-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/C03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-C03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 103739715,
+     "elf_sha256": "e4886e74952cfd929730373c0227a8718a3c55929ad183e4111e776c41ded37b",
+     "run": "/work/exp/tvmfs/f2/results/runs/C03-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/C03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-C03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 103739715,
+     "elf_sha256": "096744e5cc00c3acc8c5240f05567ac6b9d3300b1ba50cdf33e8845e4289a870",
+     "run": "/work/exp/tvmfs/f2/results/runs/C03-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/C03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-C03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 103739715,
+     "elf_sha256": "224419703a2b147c4e1ee7f3582dcd9c0cd25a0fb3ef160e33821c2eb2ff13a6",
+     "run": "/work/exp/tvmfs/f2/results/runs/C03-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/C03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-C03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 103739715,
+     "elf_sha256": "491ff4936f1d2734794f7c1d530a66e97e2f669c04c924d540191bde92af914c",
+     "run": "/work/exp/tvmfs/f2/results/runs/C03-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/C03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-C03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 103739715,
+     "elf_sha256": "bb009d609dd633c1af71d03a5e5bf9d6738f0e761424fc865d2406eaa5651205",
+     "run": "/work/exp/tvmfs/f2/results/runs/C03-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "T01",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/T01/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 48718,
+    "elf_sha256": "e445e1561d7653d33ce85e3e1049ac3eb8541dbfc6a485786324e5091333ecff",
+    "run": "/work/exp/tvmfs/f2/results/runs/T01-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 48718,
+    "elf_sha256": "e445e1561d7653d33ce85e3e1049ac3eb8541dbfc6a485786324e5091333ecff",
+    "run": "/work/exp/tvmfs/f2/results/runs/T01-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 48718,
+    "elf_sha256": "e445e1561d7653d33ce85e3e1049ac3eb8541dbfc6a485786324e5091333ecff",
+    "run": "/work/exp/tvmfs/f2/results/runs/T01-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/T01/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-T01.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 47623,
+    "elf_sha256": "8ff479f6cc0ce9a1ec62e13cc74286b739c362057889f8accc2efabbaec8f9cf",
+    "run": "/work/exp/tvmfs/f2/results/runs/T01-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 47623,
+    "elf_sha256": "8ff479f6cc0ce9a1ec62e13cc74286b739c362057889f8accc2efabbaec8f9cf",
+    "run": "/work/exp/tvmfs/f2/results/runs/T01-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 47623,
+    "elf_sha256": "8ff479f6cc0ce9a1ec62e13cc74286b739c362057889f8accc2efabbaec8f9cf",
+    "run": "/work/exp/tvmfs/f2/results/runs/T01-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/T01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-T01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 47623,
+     "elf_sha256": "5d2d738c6361dfd2fdde2afbfd1a8c70ae1ed89af9fe5d57a7071959cb381c6a",
+     "run": "/work/exp/tvmfs/f2/results/runs/T01-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/T01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-T01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 47623,
+     "elf_sha256": "dc65b1cbbbb21c9fc5f86bf67d985969d8ada1cdd3eeaddad523027b4ba1a2c7",
+     "run": "/work/exp/tvmfs/f2/results/runs/T01-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/T01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-T01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 47623,
+     "elf_sha256": "b950a8278df7388ffc211dded1b621fff5895a26c49f35e668dc9757c7f65498",
+     "run": "/work/exp/tvmfs/f2/results/runs/T01-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/T01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-T01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 47623,
+     "elf_sha256": "225be9c6c184eba7f0f9f4085d05c7145046114f1f247640602655cf3cb197ac",
+     "run": "/work/exp/tvmfs/f2/results/runs/T01-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/T01/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-T01.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 47623,
+     "elf_sha256": "f72c9dd925ea4ad7c1c5a3085c4b07a94f648957b1126fd87dd1f2acf14dc9b7",
+     "run": "/work/exp/tvmfs/f2/results/runs/T01-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "T02",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/T02/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 48581,
+    "elf_sha256": "51d5bbd7bd1d7c4e09456d33a0b1c46c3096a33785027398417a4c2f0ce7a541",
+    "run": "/work/exp/tvmfs/f2/results/runs/T02-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 48581,
+    "elf_sha256": "51d5bbd7bd1d7c4e09456d33a0b1c46c3096a33785027398417a4c2f0ce7a541",
+    "run": "/work/exp/tvmfs/f2/results/runs/T02-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 48581,
+    "elf_sha256": "51d5bbd7bd1d7c4e09456d33a0b1c46c3096a33785027398417a4c2f0ce7a541",
+    "run": "/work/exp/tvmfs/f2/results/runs/T02-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/T02/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-T02.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 49885,
+    "elf_sha256": "84f80ef541683dfae7cd32a3d39dbd4e9309bcd8abc819b08478d8e66ac56dec",
+    "run": "/work/exp/tvmfs/f2/results/runs/T02-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 49885,
+    "elf_sha256": "84f80ef541683dfae7cd32a3d39dbd4e9309bcd8abc819b08478d8e66ac56dec",
+    "run": "/work/exp/tvmfs/f2/results/runs/T02-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 49885,
+    "elf_sha256": "84f80ef541683dfae7cd32a3d39dbd4e9309bcd8abc819b08478d8e66ac56dec",
+    "run": "/work/exp/tvmfs/f2/results/runs/T02-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/T02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-T02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 49885,
+     "elf_sha256": "dd106496ad0bb1a05ed7f7fa77b88d36945e237546f521ee69a3d2ff086b4f8e",
+     "run": "/work/exp/tvmfs/f2/results/runs/T02-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/T02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-T02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 49885,
+     "elf_sha256": "e41d9e3c542c4378b245152d91e21a1573ac5fd7ba3a281557e4e4d36c692af6",
+     "run": "/work/exp/tvmfs/f2/results/runs/T02-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/T02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-T02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 49885,
+     "elf_sha256": "8c1bb8a7ab430737c202fc36e8e538ed7d79992819c01ac60240f0dae52c5d3e",
+     "run": "/work/exp/tvmfs/f2/results/runs/T02-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/T02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-T02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 49885,
+     "elf_sha256": "a489045338196e46e80a4d3f6af707a8675b31d16bc9fbd6b00bf4ae972a5412",
+     "run": "/work/exp/tvmfs/f2/results/runs/T02-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/T02/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-T02.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 49885,
+     "elf_sha256": "97f1f004b268937ccd1e56338e7488591f29b80e4b222f8c32c3eafbf23d7d1d",
+     "run": "/work/exp/tvmfs/f2/results/runs/T02-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "T03",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/T03/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 5475334,
+    "elf_sha256": "6b0c426d2e3657112ffeb277a8bc3b529a59421a9536cc63ccbddbc3e38d5e69",
+    "run": "/work/exp/tvmfs/f2/results/runs/T03-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 5475334,
+    "elf_sha256": "6b0c426d2e3657112ffeb277a8bc3b529a59421a9536cc63ccbddbc3e38d5e69",
+    "run": "/work/exp/tvmfs/f2/results/runs/T03-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 5475334,
+    "elf_sha256": "6b0c426d2e3657112ffeb277a8bc3b529a59421a9536cc63ccbddbc3e38d5e69",
+    "run": "/work/exp/tvmfs/f2/results/runs/T03-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/T03/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-T03.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 4507132,
+    "elf_sha256": "7a30589d2c31c115f2779eae7081634d13f6e827718538af2f99f97c24103de7",
+    "run": "/work/exp/tvmfs/f2/results/runs/T03-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 4507132,
+    "elf_sha256": "7a30589d2c31c115f2779eae7081634d13f6e827718538af2f99f97c24103de7",
+    "run": "/work/exp/tvmfs/f2/results/runs/T03-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 4507132,
+    "elf_sha256": "7a30589d2c31c115f2779eae7081634d13f6e827718538af2f99f97c24103de7",
+    "run": "/work/exp/tvmfs/f2/results/runs/T03-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/T03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-T03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 4507132,
+     "elf_sha256": "b08ffd35583676b8becf65e0908d0ba6e1a9dfe8af537af44362bd98477ceb1b",
+     "run": "/work/exp/tvmfs/f2/results/runs/T03-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/T03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-T03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 4507132,
+     "elf_sha256": "22322b0180bef30867acf35af1d3797523cdd911d294265a33a6a5b25b2fc21a",
+     "run": "/work/exp/tvmfs/f2/results/runs/T03-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/T03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-T03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 4507132,
+     "elf_sha256": "2571c90e1e591fb72d8ff7a57a89bec85c3c9109fbd21c644ab070a3020b6338",
+     "run": "/work/exp/tvmfs/f2/results/runs/T03-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/T03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-T03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 4507132,
+     "elf_sha256": "e5aa2b38173748966b502c921c2d20cfa3b084703d763fb3597d2c296a0f76bb",
+     "run": "/work/exp/tvmfs/f2/results/runs/T03-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/T03/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-T03.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 4507132,
+     "elf_sha256": "118f09da7b563944cd84e16f1537aa3c6aa58cea12d7472e532e95eec1b85b6f",
+     "run": "/work/exp/tvmfs/f2/results/runs/T03-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "T04",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/T04/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 11164602,
+    "elf_sha256": "89002ed7c2101d287a8fc63235e215bf390667221afb522cb89d8172e7eacde7",
+    "run": "/work/exp/tvmfs/f2/results/runs/T04-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 11164602,
+    "elf_sha256": "89002ed7c2101d287a8fc63235e215bf390667221afb522cb89d8172e7eacde7",
+    "run": "/work/exp/tvmfs/f2/results/runs/T04-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 11164602,
+    "elf_sha256": "89002ed7c2101d287a8fc63235e215bf390667221afb522cb89d8172e7eacde7",
+    "run": "/work/exp/tvmfs/f2/results/runs/T04-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/T04/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-T04.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 9324924,
+    "elf_sha256": "f652e5ebfc56ff8b025cf81954cbe5572c0bf21a8eb5d2d16fc7f9a9c847eb0f",
+    "run": "/work/exp/tvmfs/f2/results/runs/T04-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 9324924,
+    "elf_sha256": "f652e5ebfc56ff8b025cf81954cbe5572c0bf21a8eb5d2d16fc7f9a9c847eb0f",
+    "run": "/work/exp/tvmfs/f2/results/runs/T04-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 9324924,
+    "elf_sha256": "f652e5ebfc56ff8b025cf81954cbe5572c0bf21a8eb5d2d16fc7f9a9c847eb0f",
+    "run": "/work/exp/tvmfs/f2/results/runs/T04-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/T04/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-T04.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 9324924,
+     "elf_sha256": "1cf0a94c0c35f2229e76c100357e44d0a1068c4b03b9bf8c9c79c5eef7373aea",
+     "run": "/work/exp/tvmfs/f2/results/runs/T04-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/T04/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-T04.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 9324924,
+     "elf_sha256": "3186a7bd6c1ab5d22c8da39b5a59c551aa95399202f02b2459e1d4c8163355a6",
+     "run": "/work/exp/tvmfs/f2/results/runs/T04-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/T04/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-T04.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 9324924,
+     "elf_sha256": "911d867414dee9935c5391dedd5a433214043fa04012477da27008989e4f43a4",
+     "run": "/work/exp/tvmfs/f2/results/runs/T04-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/T04/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-T04.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 9324924,
+     "elf_sha256": "232582aa2c4f6d906ba5fc6a6331d4e7fc947a899b56bf392330da93c37dc518",
+     "run": "/work/exp/tvmfs/f2/results/runs/T04-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/T04/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-T04.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 9324924,
+     "elf_sha256": "0d2bb1bab670d6a771a7964e4d7e5b3cce3e40a061eb1bb52c50b6c85a7c2749",
+     "run": "/work/exp/tvmfs/f2/results/runs/T04-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "T05",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/T05/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 1709140,
+    "elf_sha256": "e21155a110dd87c67d3a81afc01782519a9604ab0c4ae780791154d897254c2a",
+    "run": "/work/exp/tvmfs/f2/results/runs/T05-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 1709140,
+    "elf_sha256": "e21155a110dd87c67d3a81afc01782519a9604ab0c4ae780791154d897254c2a",
+    "run": "/work/exp/tvmfs/f2/results/runs/T05-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 1709140,
+    "elf_sha256": "e21155a110dd87c67d3a81afc01782519a9604ab0c4ae780791154d897254c2a",
+    "run": "/work/exp/tvmfs/f2/results/runs/T05-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/T05/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-T05.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 1590971,
+    "elf_sha256": "810c606be676af8a6f87d1aa89572078cd13ac4e25f86d92dbae2dd226699b97",
+    "run": "/work/exp/tvmfs/f2/results/runs/T05-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 1590971,
+    "elf_sha256": "810c606be676af8a6f87d1aa89572078cd13ac4e25f86d92dbae2dd226699b97",
+    "run": "/work/exp/tvmfs/f2/results/runs/T05-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 1590971,
+    "elf_sha256": "810c606be676af8a6f87d1aa89572078cd13ac4e25f86d92dbae2dd226699b97",
+    "run": "/work/exp/tvmfs/f2/results/runs/T05-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/T05/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-T05.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1590971,
+     "elf_sha256": "ee26c89c9fee980c6f04e033a927542c2d522da9a58cf09a0f247290dfed5a9a",
+     "run": "/work/exp/tvmfs/f2/results/runs/T05-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/T05/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-T05.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1590971,
+     "elf_sha256": "c37a88003888faa9b9e2acd0d331b14ddffdaa49c0e8f4170bdf0dd470933158",
+     "run": "/work/exp/tvmfs/f2/results/runs/T05-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/T05/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-T05.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1590971,
+     "elf_sha256": "8c926cdd8601b20f80d354f6f17259ad94f1ffaf53e5b4f6f9e485a1090e44da",
+     "run": "/work/exp/tvmfs/f2/results/runs/T05-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/T05/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-T05.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1590971,
+     "elf_sha256": "ac8db053c0ebe2b7c33db1793061696db6e65584f58023af18fb5d7e8339b6d3",
+     "run": "/work/exp/tvmfs/f2/results/runs/T05-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/T05/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-T05.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 1590971,
+     "elf_sha256": "6b682161e0f9d1fc100ed3a9a0ffe34fae36f258c72b8255e0aab1e41ebeef99",
+     "run": "/work/exp/tvmfs/f2/results/runs/T05-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "T06",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/T06/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 2229270,
+    "elf_sha256": "bda8db08deb6343658e5d4115e4626c483bb950f4c5d97ae46aa855d42038afc",
+    "run": "/work/exp/tvmfs/f2/results/runs/T06-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 2229270,
+    "elf_sha256": "bda8db08deb6343658e5d4115e4626c483bb950f4c5d97ae46aa855d42038afc",
+    "run": "/work/exp/tvmfs/f2/results/runs/T06-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 2229270,
+    "elf_sha256": "bda8db08deb6343658e5d4115e4626c483bb950f4c5d97ae46aa855d42038afc",
+    "run": "/work/exp/tvmfs/f2/results/runs/T06-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/T06/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-T06.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 2077751,
+    "elf_sha256": "db21ed5ef0fd5762f2ea818feea7d1120ab05f859cb351417a50b39db498253c",
+    "run": "/work/exp/tvmfs/f2/results/runs/T06-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 2077751,
+    "elf_sha256": "db21ed5ef0fd5762f2ea818feea7d1120ab05f859cb351417a50b39db498253c",
+    "run": "/work/exp/tvmfs/f2/results/runs/T06-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 2077751,
+    "elf_sha256": "db21ed5ef0fd5762f2ea818feea7d1120ab05f859cb351417a50b39db498253c",
+    "run": "/work/exp/tvmfs/f2/results/runs/T06-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/T06/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-T06.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2077751,
+     "elf_sha256": "4c102e5911aedf10e3e61e6dbeb7df267a133a80cd3e2e21fe5cffeaa93dde3a",
+     "run": "/work/exp/tvmfs/f2/results/runs/T06-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/T06/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-T06.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2077751,
+     "elf_sha256": "2b05b365d8a60d32ba0f36229a3d9faad88199f7a990f1f12df39136a12b3c7a",
+     "run": "/work/exp/tvmfs/f2/results/runs/T06-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/T06/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-T06.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2077751,
+     "elf_sha256": "f9dc473389281cae2928c697a189320acfb0aa31d17e619dbbb4bd2a4f7fcc83",
+     "run": "/work/exp/tvmfs/f2/results/runs/T06-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/T06/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-T06.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2077751,
+     "elf_sha256": "b20969cfe38a3c634dc7d095b497891791731f6ce40510aefcfbbd734d2348b1",
+     "run": "/work/exp/tvmfs/f2/results/runs/T06-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/T06/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-T06.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 2077751,
+     "elf_sha256": "c963449bf1e4e793c8d078e2ca81df6d312a3f871736831df8ed4046fd09472e",
+     "run": "/work/exp/tvmfs/f2/results/runs/T06-fuse3-cse-0"
+    }
+   }
+  ]
+ },
+ {
+  "unit": "T07",
+  "kind": "kernel",
+  "database": "/work/exp/tvmfs/work/tune-kernel/T07/validated-database",
+  "baseline": [
+   {
+    "ok": true,
+    "cycles": 32172886,
+    "elf_sha256": "5d75f464a7bde089728ae675feddf78190520244fcdc309f17b2882b442ba7eb",
+    "run": "/work/exp/tvmfs/f2/results/runs/T07-baseline-0"
+   },
+   {
+    "ok": true,
+    "cycles": 32172886,
+    "elf_sha256": "5d75f464a7bde089728ae675feddf78190520244fcdc309f17b2882b442ba7eb",
+    "run": "/work/exp/tvmfs/f2/results/runs/T07-baseline-1"
+   },
+   {
+    "ok": true,
+    "cycles": 32172886,
+    "elf_sha256": "5d75f464a7bde089728ae675feddf78190520244fcdc309f17b2882b442ba7eb",
+    "run": "/work/exp/tvmfs/f2/results/runs/T07-baseline-2"
+   }
+  ],
+  "tuned_build": {
+   "ok": true,
+   "elf": "/work/exp/tvmfs/work/tuned/fuse2/T07/guest/valid.elf",
+   "log": "/work/exp/tvmfs/logs/tuned-fuse2-T07.log",
+   "tuned_miss": false
+  },
+  "tuned": [
+   {
+    "ok": true,
+    "cycles": 25781071,
+    "elf_sha256": "a9a505f1fbe70fd357994bfd9769ff4d9717999bbfdfe44998f00e4f3a5b76a6",
+    "run": "/work/exp/tvmfs/f2/results/runs/T07-tuned-0"
+   },
+   {
+    "ok": true,
+    "cycles": 25781071,
+    "elf_sha256": "a9a505f1fbe70fd357994bfd9769ff4d9717999bbfdfe44998f00e4f3a5b76a6",
+    "run": "/work/exp/tvmfs/f2/results/runs/T07-tuned-1"
+   },
+   {
+    "ok": true,
+    "cycles": 25781071,
+    "elf_sha256": "a9a505f1fbe70fd357994bfd9769ff4d9717999bbfdfe44998f00e4f3a5b76a6",
+    "run": "/work/exp/tvmfs/f2/results/runs/T07-tuned-2"
+   }
+  ],
+  "tuned_elf_identical_to_baseline": false,
+  "alternatives": [
+   {
+    "plan": "fuse3",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3/T07/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-T07.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 25781071,
+     "elf_sha256": "fc10e5b6967c4ff9bad08766ae8e35458291463cb1fbb5cb492ef59442d714d5",
+     "run": "/work/exp/tvmfs/f2/results/runs/T07-fuse3-0"
+    }
+   },
+   {
+    "plan": "fuse1",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse1/T07/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse1-T07.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 25781071,
+     "elf_sha256": "e040cd470ca5a409a5a25025715f5914266e41ae99de34fd4524c61a04d17f36",
+     "run": "/work/exp/tvmfs/f2/results/runs/T07-fuse1-0"
+    }
+   },
+   {
+    "plan": "fuse0",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse0/T07/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse0-T07.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 25781071,
+     "elf_sha256": "667bae827a00506d209c0c775f3ab3aa1f8c8dbb2bbe3f815331b6d65aef9993",
+     "run": "/work/exp/tvmfs/f2/results/runs/T07-fuse0-0"
+    }
+   },
+   {
+    "plan": "fuse2-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse2-cse/T07/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse2-cse-T07.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 25781071,
+     "elf_sha256": "e466e6167b3e2d0ab4c1f86e9e8e42d001079918e0fbc1b02a967663dfe6f1a1",
+     "run": "/work/exp/tvmfs/f2/results/runs/T07-fuse2-cse-0"
+    }
+   },
+   {
+    "plan": "fuse3-cse",
+    "build": {
+     "ok": true,
+     "elf": "/work/exp/tvmfs/work/tuned/fuse3-cse/T07/guest/valid.elf",
+     "log": "/work/exp/tvmfs/logs/tuned-fuse3-cse-T07.log",
+     "tuned_miss": false
+    },
+    "distinct": true,
+    "run": {
+     "ok": true,
+     "cycles": 25781071,
+     "elf_sha256": "3244adc2555cf2ca707574001f2276dd86a1fc742d42915e14fbe11ffdd9468d",
+     "run": "/work/exp/tvmfs/f2/results/runs/T07-fuse3-cse-0"
+    }
+   }
+  ]
+ }
+]

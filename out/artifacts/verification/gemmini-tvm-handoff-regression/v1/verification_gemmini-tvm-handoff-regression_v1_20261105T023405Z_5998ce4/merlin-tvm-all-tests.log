@@ -1,0 +1,1111 @@
+bringing up nodes...
+bringing up nodes...
+
+........................................................................ [ 19%]
+........................................................................ [ 38%]
+........ssssssssssssssssssssssssssssssssssss.......................F.... [ 57%]
+.....................s.........sssssF.s...FF....s.Fs.........s....F..... [ 77%]
+.....FFFFFF.F..F.F.F.FFFFFFF.F.FFF...F..FF.F...............F..F......... [ 96%]
+.............                                                            [100%]
+=================================== FAILURES ===================================
+_____ test_replay_preserves_frozen_reference_bytes_instead_of_recomputing ______
+[gw6] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+tmp_path = PosixPath('/scratch/pytest-of-gram117anderson/pytest-82/popen-gw6/test_replay_preserves_frozen_r0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x778a6c8b8ce0>
+
+    def test_replay_preserves_frozen_reference_bytes_instead_of_recomputing(tmp_path, monkeypatch):
+        pytest.importorskip("tvm")
+        folder = repo_root() / "examples/gemmini/comparisons/tvm"
+        monkeypatch.syspath_prepend(str(folder))
+        spec = importlib.util.spec_from_file_location("synthetic_prepare_test", folder / "prepare_synthetic_tinyllama.py")
+        prepare = importlib.util.module_from_spec(spec)
+>       spec.loader.exec_module(prepare)
+
+merlin/tests/gemmini/test_tvm_synthetic_tinyllama.py:101: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<frozen importlib._bootstrap_external>:995: in exec_module
+    ???
+<frozen importlib._bootstrap>:488: in _call_with_frames_removed
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    """Prepare diagnostic synthetic TinyLlama numerics and real-shape chunks.
+    
+    This source does not conform to the selected EL4 recipe or cache ABI. See
+    EL4_INPUT_AUDIT.md; do not substitute its outputs into selected-profile campaigns.
+    No FPGA execution, schedules, new compiler passes or quality claims. The normal
+    mode calibrates separately, freezes scales, computes a full 32+32 source session
+    and exports its prefill/decode. Replay mode rebuilds cheap chunk inputs from the
+    published fixture bundle and the pinned checkpoint, without recalibration.
+    """
+    
+    import argparse
+    import gc
+    import hashlib
+    import json
+    import shutil
+    from pathlib import Path
+    
+    import numpy as np
+    import torch
+    from prepare_firesim_chunks import identity, write_json
+>   from safetensors import safe_open
+E   ModuleNotFoundError: No module named 'safetensors'
+
+examples/gemmini/comparisons/tvm/prepare_synthetic_tinyllama.py:21: ModuleNotFoundError
+_ TinyLlamaIntegerTests.test_source_rotary_table_preserves_source_words_and_rejects_positions _
+[gw4] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_tinyllama_session.TinyLlamaIntegerTests testMethod=test_source_rotary_table_preserves_source_words_and_rejects_positions>
+
+    def test_source_rotary_table_preserves_source_words_and_rejects_positions(self):
+>       from transformers import LlamaConfig
+E       ModuleNotFoundError: No module named 'transformers'
+
+merlin/tests/gemmini/test_tinyllama_session.py:206: ModuleNotFoundError
+_ TinyLlamaIntegerTests.test_fixed_tree_installer_preserves_norm_parameters_and_source_interface _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_tinyllama_session.TinyLlamaIntegerTests testMethod=test_fixed_tree_installer_preserves_norm_parameters_and_source_interface>
+
+    def test_fixed_tree_installer_preserves_norm_parameters_and_source_interface(self):
+        from types import SimpleNamespace
+>       from transformers import LlamaConfig
+E       ModuleNotFoundError: No module named 'transformers'
+
+merlin/tests/gemmini/test_tinyllama_session.py:305: ModuleNotFoundError
+_ TinyLlamaIntegerTests.test_fixed_tree_missing_mask_fails_before_caller_state_changes _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_tinyllama_session.TinyLlamaIntegerTests testMethod=test_fixed_tree_missing_mask_fails_before_caller_state_changes>
+
+    def test_fixed_tree_missing_mask_fails_before_caller_state_changes(self):
+>       from transformers import LlamaConfig
+E       ModuleNotFoundError: No module named 'transformers'
+
+merlin/tests/gemmini/test_tinyllama_session.py:332: ModuleNotFoundError
+_ TinyLlamaIntegerTests.test_v3_invalid_mask_precedes_cache_update_and_projections _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_tinyllama_session.TinyLlamaIntegerTests testMethod=test_v3_invalid_mask_precedes_cache_update_and_projections>
+
+    def test_v3_invalid_mask_precedes_cache_update_and_projections(self):
+        from types import SimpleNamespace
+>       from transformers import LlamaConfig
+E       ModuleNotFoundError: No module named 'transformers'
+
+merlin/tests/gemmini/test_tinyllama_session.py:195: ModuleNotFoundError
+_ SmolVLAObservationTests.test_recorded_preparation_uses_original_processor_without_inventing_camera _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLAObservationTests testMethod=test_recorded_preparation_uses_original_processor_without_inventing_camera>
+
+    def test_recorded_preparation_uses_original_processor_without_inventing_camera(self):
+        import torch
+>       from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
+E       ModuleNotFoundError: No module named 'lerobot'
+
+merlin/tests/gemmini/test_smolvla_session.py:195: ModuleNotFoundError
+_ TinyLlamaIntegerTests.test_v1_attention_matmul_unchanged_after_v2_registration _
+[gw4] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_tinyllama_session.TinyLlamaIntegerTests testMethod=test_v1_attention_matmul_unchanged_after_v2_registration>
+
+    def test_v1_attention_matmul_unchanged_after_v2_registration(self):
+        from types import SimpleNamespace
+        generator = torch.Generator().manual_seed(971)
+        q = torch.rand((1, 2, 3, 64), generator=generator)
+        k = torch.rand((1, 2, 7, 64), generator=generator)
+        v = torch.rand((1, 2, 7, 4), generator=generator)
+        mask = torch.zeros((1, 1, 3, 7))
+        v1 = SimpleNamespace(num_key_value_groups=1, training=False, arithmetic_policy="fixed_tree_fp32_v1")
+        v2 = SimpleNamespace(num_key_value_groups=1, training=False, arithmetic_policy="fixed_tree_fp32_v2_pv")
+        expected_weights = torch.softmax(INTEGER.fixed_tree_dot(q, k) * .125 + mask, dim=-1)
+        expected_output = torch.matmul(expected_weights, v).transpose(1, 2).contiguous()
+>       INTEGER.fixed_tree_attention(v2, q, k, v, mask, .125)
+
+merlin/tests/gemmini/test_tinyllama_session.py:457: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+module = namespace(num_key_value_groups=1, training=False, arithmetic_policy='fixed_tree_fp32_v2_pv')
+query = tensor([[[[0.3749, 0.8060, 0.4954, 0.4594, 0.6637, 0.6505, 0.0015, 0.7144,
+           0.1662, 0.8230, 0.0211, 0.7093, ... 0.9950, 0.8711, 0.3340, 0.8633, 0.5734,
+           0.2944, 0.6679, 0.8450, 0.1306, 0.1037, 0.6827, 0.7836, 0.5563]]]])
+key = tensor([[[[0.9034, 0.3392, 0.2715, 0.0063, 0.8615, 0.9018, 0.3644, 0.2104,
+           0.9523, 0.4150, 0.5283, 0.2163, ... 0.1167, 0.0321, 0.6391, 0.1960, 0.8272,
+           0.0628, 0.3399, 0.7721, 0.4951, 0.3445, 0.2723, 0.7761, 0.9215]]]])
+value = tensor([[[[0.0442, 0.6717, 0.7623, 0.9815],
+          [0.9298, 0.9229, 0.2033, 0.0758],
+          [0.1416, 0.1220, 0.0...11, 0.6721, 0.4772, 0.8540],
+          [0.8211, 0.7331, 0.1194, 0.8749],
+          [0.5003, 0.7401, 0.2867, 0.6990]]]])
+attention_mask = tensor([[[[0., 0., 0., 0., 0., 0., 0.],
+          [0., 0., 0., 0., 0., 0., 0.],
+          [0., 0., 0., 0., 0., 0., 0.]]]])
+scaling = 0.125, dropout = 0.0, kwargs = {}
+
+    def fixed_tree_attention(module, query, key, value, attention_mask, scaling, dropout=0.0, **kwargs):
+>       from transformers.models.llama.modeling_llama import repeat_kv
+E       ModuleNotFoundError: No module named 'transformers'
+
+examples/gemmini/comparisons/tvm/tinyllama_integer.py:249: ModuleNotFoundError
+_ TinyLlamaIntegerTests.test_v2_capacity_rejection_precedes_cache_and_parameter_mutation _
+[gw4] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_tinyllama_session.TinyLlamaIntegerTests testMethod=test_v2_capacity_rejection_precedes_cache_and_parameter_mutation>
+
+    def test_v2_capacity_rejection_precedes_cache_and_parameter_mutation(self):
+        from types import SimpleNamespace
+>       from transformers import LlamaConfig
+E       ModuleNotFoundError: No module named 'transformers'
+
+merlin/tests/gemmini/test_tinyllama_session.py:408: ModuleNotFoundError
+_ SmolVLASourceScalarTests.test_source_scalar_real_public_export_and_strict_LLVM_grid _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceScalarTests testMethod=test_source_scalar_real_public_export_and_strict_LLVM_grid>
+
+    @unittest.skipUnless(os.environ.get("TVM_LIBRARY_PATH"), "requires opt-in pinned TVM/PyTorch CPU build")
+    def test_source_scalar_real_public_export_and_strict_LLVM_grid(self):
+        import gc
+        import hashlib
+        import math
+        import re
+        import numpy as np
+        import onnx
+        import torch
+        if torch.version.git_version != "449b1768410104d3ed79d3bcfe4ba1d65c7f22c0" or torch.backends.cpu.get_cpu_capability() != "AVX512" or torch.get_num_threads() != 1:
+            self.skipTest("requires pinned AVX512 PyTorch CPU build and one native thread")
+        import tvm
+        from tvm import relax
+        from tvm.relax.frontend.onnx import from_onnx
+        from verify_resnet import prepare_graph
+    
+        class Language(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.register_buffer("weight", torch.zeros(49280, 960, dtype=torch.bfloat16))
+    
+            def forward(self, tokens):
+                return (torch.nn.functional.embedding(tokens, self.weight) * math.sqrt(960)).float()
+    
+        # Finite independent grid includes signed zero and tiny BF16 operands.
+        grid = np.array([0, 0x8000, 1, 0x8001, 0x0080, 0x8080, 0x3f00, 0xbf00, 0x3f80, 0xbf80, 0x3f81, 0xbf81, 0x4001, 0xc001, 0x3f90, 0xbf90], dtype=np.uint16)
+        model = Language().eval()
+        row_words = np.resize(grid, 960).copy()
+        model.weight[0].copy_(torch.from_numpy(row_words).view(torch.bfloat16))
+        tokens = torch.zeros(1, 48, dtype=torch.int64)
+        source_value = model(tokens).numpy().copy()
+        self.assertEqual(source_value.dtype, np.float32)
+        self.assertEqual(source_value.shape, (1, 48, 960))
+        gathered = torch.nn.functional.embedding(tokens, model.weight)
+        rounded_scalar = torch.tensor(math.sqrt(960), dtype=torch.bfloat16)
+        rounded_control = (gathered * rounded_scalar).float().numpy().copy()
+        self.assertEqual(int(rounded_scalar.view(torch.uint16)), 0x41f8)
+        self.assertTrue(np.any(source_value.view(np.uint32) != rounded_control.view(np.uint32)))
+        # ±1.125 distinguish native original-scalar opmath from narrowing to31.
+        for word in (0x3f90, 0xbf90):
+            column = int(np.flatnonzero(row_words == word)[0])
+            self.assertNotEqual(source_value[0, 0, column], rounded_control[0, 0, column])
+        tokens_before = tokens.numpy().tobytes()
+        weight_before = hashlib.sha256(model.weight.view(torch.uint16).numpy().tobytes()).hexdigest()
+        source = torch.export.export(model, (tokens,))
+        original_graph = str(source.graph)
+        original_signature = str(source.graph_signature)
+        prepared, record = NUMERICS.prepare_source_scalar_export(torch, source, "torch_cpu_language_scale960_v1")
+        self.assertIsNot(prepared, source)
+        self.assertEqual(record["site_count"], 1)
+        self.assertEqual(len(record["sites"]), 1)
+        self.assertEqual(str(source.graph), original_graph)
+        self.assertEqual(str(source.graph_signature), original_signature)
+        self.assertEqual(str(prepared.graph_signature), original_signature)
+        for exported in (source, prepared):
+            self.assertEqual(hashlib.sha256(exported.state_dict["weight"].view(torch.uint16).numpy().tobytes()).hexdigest(), weight_before)
+>       graph = torch.onnx.export(prepared, dynamo=True, opset_version=18, optimize=False).model_proto
+
+merlin/tests/gemmini/test_smolvla_session.py:410: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+out/build/python/tvm-migration/lib/python3.12/site-packages/torch/onnx/__init__.py:282: in export
+    from torch.onnx._internal.exporter import _compat
+out/build/python/tvm-migration/lib/python3.12/site-packages/torch/onnx/_internal/exporter/_compat.py:16: in <module>
+    from torch.onnx._internal.exporter import (
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    # mypy: allow-untyped-defs
+    # flake8: noqa: B950 We do not need flake8 as it complains line length
+    from __future__ import annotations
+    
+    import ctypes
+    import datetime
+    import inspect
+    import itertools
+    import logging
+    import operator
+    import pathlib
+    import sys
+    import textwrap
+    import traceback
+    import typing
+    from collections.abc import Callable, Mapping, Sequence
+    from typing import Any, Literal
+    
+>   import onnxscript
+E   ModuleNotFoundError: No module named 'onnxscript'
+
+out/build/python/tvm-migration/lib/python3.12/site-packages/torch/onnx/_internal/exporter/_core.py:19: ModuleNotFoundError
+_ SmolVLASourceFlashTests.test_source_flash_defaults_and_factory_export_refusals _
+[gw4] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceFlashTests testMethod=test_source_flash_defaults_and_factory_export_refusals>
+
+    def test_source_flash_defaults_and_factory_export_refusals(self):
+        import torch
+        from verify_session import StageCompiler
+    
+        for policy, exporter, fused in (("unknown", "dynamo", True), (self.policy, "legacy", False), (self.policy, "dynamo", False)):
+            with self.subTest(policy=policy, exporter=exporter, fused=fused), self.assertRaisesRegex(ValueError, "[Ff]lash"):
+                StageCompiler(Path("unused"), "baseline", None, torch, SimpleNamespace(), None, exporter=exporter, bf16_fused_export=fused, export_options={"source_flash_policy": policy})
+>       self.assertNotIn("source_flash_policy", FACTORY.get_onnx_export_options(torch))
+
+merlin/tests/gemmini/test_smolvla_session.py:683: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+examples/gemmini/comparisons/tvm/smolvla_session.py:654: in get_onnx_export_options
+    options = shared.export_options(torch)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch_module = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+arithmetic_policy = 'native', silu_export_policy = 'native'
+
+    def export_options(torch_module, arithmetic_policy="native", silu_export_policy="native"):
+        """Modern exporter preserves signed-int8 operands with standard MatMulInteger."""
+>       from onnxscript import opset18 as op
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/tinyllama_integer.py:618: ModuleNotFoundError
+_ SmolVLASourceRotaryTests.test_source_rotary_defaults_factory_and_export_admission _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceRotaryTests testMethod=test_source_rotary_defaults_factory_and_export_admission>
+
+    def test_source_rotary_defaults_factory_and_export_admission(self):
+        import torch
+        from verify_session import StageCompiler
+    
+        for policy, exporter in (("unknown", "dynamo"), (self.policy, "legacy")):
+            with self.subTest(policy=policy), self.assertRaisesRegex(ValueError, "source rotary|Source rotary"):
+                StageCompiler(Path("unused"), "baseline", None, torch, SimpleNamespace(), None, exporter=exporter, export_options={"source_rotary_policy": policy})
+>       self.assertNotIn("source_rotary_policy", FACTORY.get_onnx_export_options(torch))
+
+merlin/tests/gemmini/test_smolvla_session.py:533: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+examples/gemmini/comparisons/tvm/smolvla_session.py:654: in get_onnx_export_options
+    options = shared.export_options(torch)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch_module = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+arithmetic_policy = 'native', silu_export_policy = 'native'
+
+    def export_options(torch_module, arithmetic_policy="native", silu_export_policy="native"):
+        """Modern exporter preserves signed-int8 operands with standard MatMulInteger."""
+>       from onnxscript import opset18 as op
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/tinyllama_integer.py:618: ModuleNotFoundError
+_ SmolVLASourceFlashTests.test_source_flash_public_factory_compiler_and_ordinary_fallback _
+[gw4] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceFlashTests testMethod=test_source_flash_public_factory_compiler_and_ordinary_fallback>
+
+    @unittest.skipUnless(os.environ.get("TVM_LIBRARY_PATH"), "requires opt-in pinned TVM/PyTorch CPU build")
+    def test_source_flash_public_factory_compiler_and_ordinary_fallback(self):
+        import hashlib
+        import numpy as np
+        import onnx
+        import torch
+        import tvm
+        from verify_session import StageCompiler, array
+        if torch.version.git_version != "449b1768410104d3ed79d3bcfe4ba1d65c7f22c0" or torch.backends.cpu.get_cpu_capability() != "AVX512" or torch.get_num_threads() != 1:
+            self.skipTest("requires pinned AVX512 PyTorch CPU build and one native thread")
+    
+>       contract = NUMERICS.source_flash_contract(torch, self.policy)
+
+merlin/tests/gemmini/test_smolvla_session.py:757: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+policy = 'torch_cpu_flash_bf16_vision1024_v1'
+
+    def source_flash_contract(torch, policy="native"):
+        """Bind the proved host-only vision Flash arithmetic and native dispatch."""
+        if policy == "native":
+            return None
+        if policy != "torch_cpu_flash_bf16_vision1024_v1":
+            raise ValueError("Unknown source Flash export policy")
+        import ctypes
+        import os
+        from pathlib import Path
+        from verify_resnet import file_identity, safe_path
+        overrides = ("MKL_CBWR", "MKL_ENABLE_INSTRUCTIONS", "MKL_DEBUG_CPU_TYPE", "ATEN_CPU_CAPABILITY", "ONEDNN_MAX_CPU_ISA", "DNNL_MAX_CPU_ISA", "ONEDNN_DEFAULT_FPMATH_MODE", "DNNL_DEFAULT_FPMATH_MODE")
+        if not torch.backends.mkl.is_available() or not torch.backends.mkldnn.is_available() or not torch.backends.mkldnn.enabled or torch.get_float32_matmul_precision() != "highest" or any(name in os.environ for name in overrides):
+            raise ValueError("Source Flash requires original highest-precision MKL/oneDNN dispatch without ISA or consistency overrides")
+        if torch.cpu._is_avx512_bf16_supported() or torch.cpu._is_amx_tile_supported():
+>           raise ValueError("Source Flash requires the proved AVX512 software-BF16 CPU family")
+E           ValueError: Source Flash requires the proved AVX512 software-BF16 CPU family
+
+examples/gemmini/comparisons/tvm/bf16_export.py:209: ValueError
+_ SmolVLASourcePolicyTests.test_session_hooks_select_only_declared_policies_and_preserve_default_table _
+[gw4] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourcePolicyTests testMethod=test_session_hooks_select_only_declared_policies_and_preserve_default_table>
+
+    def test_session_hooks_select_only_declared_policies_and_preserve_default_table(self):
+        import torch
+        import bf16_export
+        import tinyllama_integer
+>       original = tinyllama_integer.export_options(torch)["custom_translation_table"]
+
+merlin/tests/gemmini/test_smolvla_session.py:881: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch_module = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+arithmetic_policy = 'native', silu_export_policy = 'native'
+
+    def export_options(torch_module, arithmetic_policy="native", silu_export_policy="native"):
+        """Modern exporter preserves signed-int8 operands with standard MatMulInteger."""
+>       from onnxscript import opset18 as op
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/tinyllama_integer.py:618: ModuleNotFoundError
+_ SmolVLASourceMeanTests.test_export_selects_only_bound_fp32_last_axis_keepdim_geometry _
+[gw4] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceMeanTests testMethod=test_export_selects_only_bound_fp32_last_axis_keepdim_geometry>
+
+    def test_export_selects_only_bound_fp32_last_axis_keepdim_geometry(self):
+        import torch
+        class Means(torch.nn.Module):
+            def forward(self, value, other):
+                return value.mean(-1, keepdim=True), value.mean(-1), value.mean(1, keepdim=True), other.mean(-1, keepdim=True)
+        for dtype in (torch.float32, torch.bfloat16):
+            inputs = (torch.arange(36000, dtype=torch.float32).reshape(1, 50, 720).to(dtype), torch.ones(1, 2, 720, dtype=dtype))
+            before = tuple(value.clone() for value in inputs)
+            with mock.patch.object(NUMERICS, "source_mean_contract", return_value={"name": "torch_cpu_mean720_v1"}):
+>               table = NUMERICS.source_mean_translations(torch, "torch_cpu_mean720_v1")
+
+merlin/tests/gemmini/test_smolvla_session.py:910: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+policy = 'torch_cpu_mean720_v1'
+
+    def source_mean_translations(torch, policy="native"):
+        """Export only the proved Smol mean geometry; preserve other translations."""
+        if source_mean_contract(torch, policy) is None:
+            return {}
+        from onnx import defs
+>       from onnxscript import ir
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/bf16_export.py:869: ModuleNotFoundError
+_ SmolVLASourceMeanTests.test_real_export_extends_only_declared_mean960_geometry_and_preserves_720 _
+[gw4] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceMeanTests testMethod=test_real_export_extends_only_declared_mean960_geometry_and_preserves_720>
+
+    def test_real_export_extends_only_declared_mean960_geometry_and_preserves_720(self):
+        import onnx
+        import torch
+        class Means(torch.nn.Module):
+            def forward(self, short, wide, other):
+                return (short.mean(-1, keepdim=True), wide.mean(-1, keepdim=True), wide.mean(2, keepdim=True),
+                        wide.mean(-1), wide.mean(1, keepdim=True), other.mean(-1, keepdim=True),
+                        wide.mean(-1, keepdim=True, dtype=torch.float64))
+    
+        for dtype in (torch.float32, torch.bfloat16):
+            inputs = tuple(torch.linspace(-1, 1, rows * width).reshape(1, rows, width).to(dtype) for rows, width in ((50, 720), (177, 960), (176, 960)))
+            before = tuple(value.clone() for value in inputs)
+            for policy in ("native", "torch_cpu_mean720_v1", "torch_cpu_mean720_960_v1"):
+                with self.subTest(dtype=dtype, policy=policy):
+                    if policy == "native":
+                        table = NUMERICS.source_mean_translations(torch, policy)
+                    else:
+                        with mock.patch.object(NUMERICS, "source_mean_contract", return_value={"name": policy}):
+                            table = NUMERICS.source_mean_translations(torch, policy)
+>                   graph = torch.onnx.export(Means().eval(), inputs, dynamo=True, opset_version=18, optimize=False, custom_translation_table=table).model_proto
+
+merlin/tests/gemmini/test_smolvla_session.py:936: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+out/build/python/tvm-migration/lib/python3.12/site-packages/torch/onnx/__init__.py:282: in export
+    from torch.onnx._internal.exporter import _compat
+out/build/python/tvm-migration/lib/python3.12/site-packages/torch/onnx/_internal/exporter/_compat.py:16: in <module>
+    from torch.onnx._internal.exporter import (
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    # mypy: allow-untyped-defs
+    # flake8: noqa: B950 We do not need flake8 as it complains line length
+    from __future__ import annotations
+    
+    import ctypes
+    import datetime
+    import inspect
+    import itertools
+    import logging
+    import operator
+    import pathlib
+    import sys
+    import textwrap
+    import traceback
+    import typing
+    from collections.abc import Callable, Mapping, Sequence
+    from typing import Any, Literal
+    
+>   import onnxscript
+E   ModuleNotFoundError: No module named 'onnxscript'
+
+out/build/python/tvm-migration/lib/python3.12/site-packages/torch/onnx/_internal/exporter/_core.py:19: ModuleNotFoundError
+_ SmolVLASourceSiluTests.test_source_silu_defaults_contract_and_factory_refusals _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceSiluTests testMethod=test_source_silu_defaults_contract_and_factory_refusals>
+
+    def test_source_silu_defaults_contract_and_factory_refusals(self):
+        import torch
+        from verify_session import StageCompiler
+        for policy, exporter, fused in (("unknown", "dynamo", True), (self.policy, "legacy", False), (self.policy, "dynamo", False)):
+            with self.subTest(policy=policy, exporter=exporter, fused=fused), self.assertRaisesRegex(ValueError, "[Ss]ource SiLU"):
+                StageCompiler(Path("unused"), "baseline", None, torch, SimpleNamespace(), None, exporter=exporter, bf16_fused_export=fused, export_options={"source_silu_policy": policy})
+>       self.assertNotIn("source_silu_policy", FACTORY.get_onnx_export_options(torch))
+
+merlin/tests/gemmini/test_smolvla_session.py:962: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+examples/gemmini/comparisons/tvm/smolvla_session.py:654: in get_onnx_export_options
+    options = shared.export_options(torch)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch_module = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+arithmetic_policy = 'native', silu_export_policy = 'native'
+
+    def export_options(torch_module, arithmetic_policy="native", silu_export_policy="native"):
+        """Modern exporter preserves signed-int8 operands with standard MatMulInteger."""
+>       from onnxscript import opset18 as op
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/tinyllama_integer.py:618: ModuleNotFoundError
+_ SmolVLASourceSoftmaxTests.test_export_selects_only_bound_fp32_shape_and_axis _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceSoftmaxTests testMethod=test_export_selects_only_bound_fp32_shape_and_axis>
+
+    def test_export_selects_only_bound_fp32_shape_and_axis(self):
+        import torch
+        class Softmax(torch.nn.Module):
+            def forward(self, value, other):
+                return value.softmax(-1), torch.ops.aten._softmax.default(value, -1, False), value.softmax(2), other.softmax(-1)
+        for dtype in (torch.float32, torch.bfloat16):
+            inputs = (torch.linspace(-2, 2, 132750).reshape(1, 15, 50, 177).to(dtype), torch.ones(1, 15, 50, 176, dtype=dtype))
+            before = tuple(value.clone() for value in inputs)
+            with mock.patch.object(NUMERICS, "source_softmax_contract", return_value={"name": "torch_cpu_softmax177_v1"}):
+>               table = NUMERICS.source_softmax_translations(torch, "torch_cpu_softmax177_v1")
+
+merlin/tests/gemmini/test_smolvla_session.py:1064: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+policy = 'torch_cpu_softmax177_v1'
+
+    def source_softmax_translations(torch, policy="native"):
+        """Export only the proved FP32 Smol shape and last axis."""
+        if source_softmax_contract(torch, policy) is None:
+            return {}
+        from onnx import defs
+>       from onnxscript import ir
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/bf16_export.py:924: ModuleNotFoundError
+_ SmolVLASourceSoftmaxTests.test_prefix_policy_preserves_old_scopes_and_both_callback_fallbacks _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceSoftmaxTests testMethod=test_prefix_policy_preserves_old_scopes_and_both_callback_fallbacks>
+
+    def test_prefix_policy_preserves_old_scopes_and_both_callback_fallbacks(self):
+        import onnx
+        import torch
+        class Softmax(torch.nn.Module):
+            def forward(self, prefix, wrong):
+                return prefix.softmax(-1), torch.ops.aten._softmax.default(prefix, -1, False), prefix.softmax(2), wrong.softmax(-1)
+        policy = "torch_cpu_softmax177_227_prefix_v1"
+        with mock.patch.object(NUMERICS, "_source_cpu_bindings", return_value={"fixture": "bound"}):
+            record = NUMERICS.source_softmax_contract(torch, policy)
+        self.assertEqual(record["export_shapes"], [[1, 15, 50, 177], [1, 15, 50, 227], [1, 15, 177, 177]])
+        self.assertIn("unqualified", record["qualification"])
+        self.assertEqual(record["prefix_native_strides"], [469935, 31329, 177, 1])
+        for dtype in (torch.float32, torch.bfloat16):
+            inputs = (torch.linspace(-2, 2, 469935).reshape(1, 15, 177, 177).to(dtype), torch.ones(1, 15, 176, 177, dtype=dtype))
+            before = tuple(value.clone() for value in inputs)
+            for selected_policy in ("native", "torch_cpu_softmax177_v1", "torch_cpu_softmax177_227_v1", policy):
+                with mock.patch.object(NUMERICS, "source_softmax_contract", return_value=None if selected_policy == "native" else {"name": selected_policy}):
+                    table = NUMERICS.source_softmax_translations(torch, selected_policy)
+>               graph = torch.onnx.export(Softmax().eval(), inputs, dynamo=True, opset_version=18, optimize=False, custom_translation_table=table).model_proto
+
+merlin/tests/gemmini/test_smolvla_session.py:1107: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+out/build/python/tvm-migration/lib/python3.12/site-packages/torch/onnx/__init__.py:282: in export
+    from torch.onnx._internal.exporter import _compat
+out/build/python/tvm-migration/lib/python3.12/site-packages/torch/onnx/_internal/exporter/_compat.py:16: in <module>
+    from torch.onnx._internal.exporter import (
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    # mypy: allow-untyped-defs
+    # flake8: noqa: B950 We do not need flake8 as it complains line length
+    from __future__ import annotations
+    
+    import ctypes
+    import datetime
+    import inspect
+    import itertools
+    import logging
+    import operator
+    import pathlib
+    import sys
+    import textwrap
+    import traceback
+    import typing
+    from collections.abc import Callable, Mapping, Sequence
+    from typing import Any, Literal
+    
+>   import onnxscript
+E   ModuleNotFoundError: No module named 'onnxscript'
+
+out/build/python/tvm-migration/lib/python3.12/site-packages/torch/onnx/_internal/exporter/_core.py:19: ModuleNotFoundError
+_ SmolVLASourceLayerNormTests.test_export_selects_original_bf16_affines_shape_and_epsilon _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceLayerNormTests testMethod=test_export_selects_original_bf16_affines_shape_and_epsilon>
+
+    def test_export_selects_original_bf16_affines_shape_and_epsilon(self):
+        import torch
+        class LayerNorm(torch.nn.Module):
+            def forward(self, value, weight, bias):
+                return torch.nn.functional.layer_norm(value, (768,), weight, bias, 1e-6), torch.nn.functional.layer_norm(value, (768,), weight, bias, 1e-5), torch.nn.functional.layer_norm(value, (768,), None, None, 1e-6)
+        for dtype in (torch.bfloat16, torch.float32):
+            inputs = (torch.linspace(-2, 2, 786432).reshape(1, 1024, 768).to(dtype), torch.ones(768, dtype=dtype), torch.zeros(768, dtype=dtype))
+            before = tuple(value.clone() for value in inputs)
+            with mock.patch.object(NUMERICS, "source_layernorm_contract", return_value={"name": "torch_cpu_layernorm768_v1"}):
+>               table = NUMERICS.source_layernorm_translations(torch, "torch_cpu_layernorm768_v1")
+
+merlin/tests/gemmini/test_smolvla_session.py:1201: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+policy = 'torch_cpu_layernorm768_v1'
+
+    def source_layernorm_translations(torch, policy="native"):
+        """Preserve only the proved native BF16 vision shape and original epsilon."""
+        if source_layernorm_contract(torch, policy) is None:
+            return {}
+        from onnx import defs
+>       from onnxscript import ir, opset18 as op
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/bf16_export.py:976: ModuleNotFoundError
+_ SmolVLASourceLayerNormTests.test_public_factory_compiler_composes_named_layernorm_and_generic_fallback _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceLayerNormTests testMethod=test_public_factory_compiler_composes_named_layernorm_and_generic_fallback>
+
+    def test_public_factory_compiler_composes_named_layernorm_and_generic_fallback(self):
+        import copy
+        import onnx
+        import torch
+        import verify_session
+    
+        policy = "torch_cpu_layernorm768_v1"
+        provider = SimpleNamespace(session=SimpleNamespace(metadata={
+            "provenance": {"source_layernorm_policy": {"name": policy}}}))
+>       options = verify_session.factory_export_options(FACTORY, torch, provider)
+
+merlin/tests/gemmini/test_smolvla_session.py:1130: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+examples/gemmini/comparisons/tvm/verify_session.py:52: in factory_export_options
+    return hook(torch, model=model) if "model" in inspect.signature(hook).parameters else hook(torch)
+examples/gemmini/comparisons/tvm/smolvla_session.py:654: in get_onnx_export_options
+    options = shared.export_options(torch)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch_module = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+arithmetic_policy = 'native', silu_export_policy = 'native'
+
+    def export_options(torch_module, arithmetic_policy="native", silu_export_policy="native"):
+        """Modern exporter preserves signed-int8 operands with standard MatMulInteger."""
+>       from onnxscript import opset18 as op
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/tinyllama_integer.py:618: ModuleNotFoundError
+_ SmolVLASourceLayerNormTests.test_public_layernorm_selection_preserves_overlap_and_admission_refusals _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceLayerNormTests testMethod=test_public_layernorm_selection_preserves_overlap_and_admission_refusals>
+
+    def test_public_layernorm_selection_preserves_overlap_and_admission_refusals(self):
+        import onnx
+        import torch
+        import verify_session
+    
+        policy = "torch_cpu_layernorm768_v1"
+        for exporter, fused in (("legacy", False), ("dynamo", False)):
+            with self.subTest(exporter=exporter), self.assertRaisesRegex(ValueError, "explicit dynamo and fused"):
+                verify_session.StageCompiler(Path("unused"), "baseline", None, torch, onnx, None,
+                    exporter=exporter, bf16_fused_export=fused, export_options={"source_layernorm_policy": policy})
+        with self.assertRaisesRegex(ValueError, "Unknown source LayerNorm"):
+            verify_session.StageCompiler(Path("unused"), "baseline", None, torch, onnx, None,
+                exporter="dynamo", bf16_fused_export=True, export_options={"source_layernorm_policy": "unknown"})
+        for selected in ("native", policy):
+            with self.subTest(policy=selected), mock.patch.object(verify_session, "load_module", return_value=NUMERICS), \
+                    mock.patch.object(NUMERICS, "source_layernorm_contract", return_value={"name": policy}), \
+                    self.assertRaisesRegex(ValueError, "translations overlap"):
+>               verify_session.StageCompiler(Path("unused"), "baseline", None, torch, onnx, None,
+                    exporter="dynamo", bf16_fused_export=True,
+                    export_options={"source_layernorm_policy": selected,
+                                    "custom_translation_table": {torch.ops.aten.layer_norm.default: lambda: None}})
+
+merlin/tests/gemmini/test_smolvla_session.py:1182: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+examples/gemmini/comparisons/tvm/verify_session.py:687: in __init__
+    self.export_options["custom_translation_table"] = helper.scalar_translations(torch)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def scalar_translations(torch):
+        """Preserve original Python scalars when materializing DOUBLE constants.
+    
+        The scalar attribute annotation avoids the built-in TensorType argument's
+        implicit FLOAT constant before its DOUBLE cast. Other ordinary dtypes keep
+        the built-in translation. This does not select floating arithmetic order.
+        """
+>       from onnxscript import ir, opset18 as op
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/bf16_export.py:1201: ModuleNotFoundError
+_ SmolVLASourceConvTests.test_contract_refuses_other_dispatch_and_modified_binary _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceConvTests testMethod=test_contract_refuses_other_dispatch_and_modified_binary>
+
+    def test_contract_refuses_other_dispatch_and_modified_binary(self):
+        import torch
+        with mock.patch.object(NUMERICS, "_source_cpu_bindings", return_value=[]) as bindings:
+>           record = NUMERICS.source_conv_contract(torch, "torch_cpu_conv3x16_v1")
+
+merlin/tests/gemmini/test_smolvla_session.py:1216: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+policy = 'torch_cpu_conv3x16_v1'
+
+    def source_conv_contract(torch, policy="native"):
+        """Bind the proved software-BF16 native patch convolution dispatch."""
+        if policy == "native":
+            return None
+        if policy != "torch_cpu_conv3x16_v1":
+            raise ValueError("Unknown source convolution export policy")
+        import os
+        overrides = ("ONEDNN_MAX_CPU_ISA", "DNNL_MAX_CPU_ISA", "ONEDNN_DEFAULT_FPMATH_MODE", "DNNL_DEFAULT_FPMATH_MODE", "ATEN_CPU_CAPABILITY")
+        if not torch.backends.mkldnn.is_available() or not torch.backends.mkldnn.enabled or torch.cpu._is_avx512_bf16_supported() or torch.cpu._is_amx_tile_supported() or any(name in os.environ for name in overrides):
+>           raise ValueError("Source convolution requires the proved software-BF16 oneDNN dispatch without ISA/fpmath overrides")
+E           ValueError: Source convolution requires the proved software-BF16 oneDNN dispatch without ISA/fpmath overrides
+
+examples/gemmini/comparisons/tvm/bf16_export.py:1002: ValueError
+_ SmolVLASourceConvTests.test_real_export_selects_only_bound_bf16_patch_geometry _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceConvTests testMethod=test_real_export_selects_only_bound_bf16_patch_geometry>
+
+    def test_real_export_selects_only_bound_bf16_patch_geometry(self):
+        import torch
+        class Conv(torch.nn.Module):
+            def forward(self, value, weight, bias):
+                return torch.ops.aten.conv2d.default(value, weight, bias, [16, 16], [0, 0], [1, 1], 1), torch.ops.aten.convolution.default(value, weight, bias, [16, 16], [0, 0], [1, 1], False, [0, 0], 1), torch.nn.functional.conv2d(value, weight, None, stride=16), torch.nn.functional.conv2d(value, weight, bias, stride=8)
+        for dtype in (torch.bfloat16, torch.float32):
+            inputs = (torch.zeros(1, 3, 512, 512, dtype=dtype), torch.ones(768, 3, 16, 16, dtype=dtype), torch.zeros(768, dtype=dtype))
+            before = tuple(value.clone() for value in inputs)
+            with mock.patch.object(NUMERICS, "source_conv_contract", return_value={"name": "torch_cpu_conv3x16_v1"}):
+>               table = NUMERICS.source_conv_translations(torch, "torch_cpu_conv3x16_v1")
+
+merlin/tests/gemmini/test_smolvla_session.py:1245: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+policy = 'torch_cpu_conv3x16_v1'
+
+    def source_conv_translations(torch, policy="native"):
+        """Export the proved patch geometry; keep other convolutions ordinary."""
+        if source_conv_contract(torch, policy) is None:
+            return {}
+        from onnx import defs
+>       from onnxscript import ir
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/bf16_export.py:1021: ModuleNotFoundError
+__ SmolVLASourceSgemmTests.test_extended_contract_refuses_other_bf16_dispatch __
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceSgemmTests testMethod=test_extended_contract_refuses_other_bf16_dispatch>
+
+    def test_extended_contract_refuses_other_bf16_dispatch(self):
+        import torch
+        policy = "torch_cpu_attention177_227_v1"
+        with mock.patch.object(NUMERICS, "_source_cpu_bindings", return_value=[]) as bindings:
+>           record = NUMERICS.source_sgemm_contract(torch, policy)
+
+merlin/tests/gemmini/test_smolvla_session.py:1289: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+policy = 'torch_cpu_attention177_227_v1'
+
+    def source_sgemm_contract(torch, policy="native"):
+        """Bind the scoped native attention kernels, leaving scaling intact."""
+        if policy == "native":
+            return None
+        if policy not in ("torch_cpu_sgemm177_v1", "torch_cpu_attention177_227_v1", "torch_cpu_attention177_227_prefix_v1"):
+            raise ValueError("Unknown source SGEMM export policy")
+        import os
+        if not torch.backends.mkl.is_available() or torch.get_float32_matmul_precision() != "highest" or any(name in os.environ for name in ("MKL_CBWR", "MKL_ENABLE_INSTRUCTIONS", "MKL_DEBUG_CPU_TYPE", "ATEN_CPU_CAPABILITY")):
+            raise ValueError("Source SGEMM requires the proved highest-precision MKL dispatch without ISA/consistency overrides")
+        artifacts = SOURCE_SGEMM_ARTIFACTS
+        if policy in ("torch_cpu_attention177_227_v1", "torch_cpu_attention177_227_prefix_v1"):
+            overrides = ("ONEDNN_MAX_CPU_ISA", "DNNL_MAX_CPU_ISA", "ONEDNN_DEFAULT_FPMATH_MODE", "DNNL_DEFAULT_FPMATH_MODE")
+            if not torch.backends.mkldnn.is_available() or not torch.backends.mkldnn.enabled or torch.cpu._is_avx512_bf16_supported() or torch.cpu._is_amx_tile_supported() or any(name in os.environ for name in overrides):
+>               raise ValueError("Source attention requires the proved software-BF16 oneDNN dispatch without ISA/fpmath overrides")
+E               ValueError: Source attention requires the proved software-BF16 oneDNN dispatch without ISA/fpmath overrides
+
+examples/gemmini/comparisons/tvm/bf16_export.py:1064: ValueError
+_ SmolVLASourceRotaryTests.test_source_rotary_public_factory_compiler_preserves_native_words _
+[gw3] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceRotaryTests testMethod=test_source_rotary_public_factory_compiler_preserves_native_words>
+
+    @unittest.skipUnless(os.environ.get("TVM_LIBRARY_PATH"), "requires opt-in pinned TVM/PyTorch CPU build")
+    def test_source_rotary_public_factory_compiler_preserves_native_words(self):
+        import gc
+        import hashlib
+        import numpy as np
+        import onnx
+        import torch
+        import tvm
+        from verify_session import StageCompiler, array, onnx_tensors
+        if torch.version.git_version != "449b1768410104d3ed79d3bcfe4ba1d65c7f22c0" or torch.backends.cpu.get_cpu_capability() != "AVX512" or torch.get_num_threads() != 1:
+            self.skipTest("requires pinned AVX512 PyTorch CPU build and one native thread")
+    
+>       contract = NUMERICS.source_rotary_contract(torch, self.policy)
+
+merlin/tests/gemmini/test_smolvla_session.py:586: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+examples/gemmini/comparisons/tvm/bf16_export.py:488: in source_rotary_contract
+    model_bindings = [file_identity(root / relative, safe_path) for relative in SOURCE_ROTARY_MODEL_ARTIFACTS]
+examples/gemmini/comparisons/tvm/verify_resnet.py:53: in file_identity
+    with path.open("rb") as stream:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/lerobot/policies/smolvla/smolvlm_with_expert.py')
+mode = 'rb', buffering = -1, encoding = None, errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+E       FileNotFoundError: [Errno 2] No such file or directory: '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/lerobot/policies/smolvla/smolvlm_with_expert.py'
+
+/usr/lib/python3.12/pathlib.py:1015: FileNotFoundError
+_ SmolVLASourceSgemmTests.test_prefix_bf16_pv177_is_distinct_from_old_fp32_pv177_and_defaults _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceSgemmTests testMethod=test_prefix_bf16_pv177_is_distinct_from_old_fp32_pv177_and_defaults>
+
+    def test_prefix_bf16_pv177_is_distinct_from_old_fp32_pv177_and_defaults(self):
+        import onnx
+        import torch
+        class Attention(torch.nn.Module):
+            def forward(self, probability, value, expert):
+                return probability @ value, probability[..., :176, :] @ value, expert.float() @ value.float()
+        policy = "torch_cpu_attention177_227_prefix_v1"
+        with mock.patch.object(NUMERICS, "_source_cpu_bindings", return_value=[]):
+>           record = NUMERICS.source_sgemm_contract(torch, policy)
+
+merlin/tests/gemmini/test_smolvla_session.py:1326: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+policy = 'torch_cpu_attention177_227_prefix_v1'
+
+    def source_sgemm_contract(torch, policy="native"):
+        """Bind the scoped native attention kernels, leaving scaling intact."""
+        if policy == "native":
+            return None
+        if policy not in ("torch_cpu_sgemm177_v1", "torch_cpu_attention177_227_v1", "torch_cpu_attention177_227_prefix_v1"):
+            raise ValueError("Unknown source SGEMM export policy")
+        import os
+        if not torch.backends.mkl.is_available() or torch.get_float32_matmul_precision() != "highest" or any(name in os.environ for name in ("MKL_CBWR", "MKL_ENABLE_INSTRUCTIONS", "MKL_DEBUG_CPU_TYPE", "ATEN_CPU_CAPABILITY")):
+            raise ValueError("Source SGEMM requires the proved highest-precision MKL dispatch without ISA/consistency overrides")
+        artifacts = SOURCE_SGEMM_ARTIFACTS
+        if policy in ("torch_cpu_attention177_227_v1", "torch_cpu_attention177_227_prefix_v1"):
+            overrides = ("ONEDNN_MAX_CPU_ISA", "DNNL_MAX_CPU_ISA", "ONEDNN_DEFAULT_FPMATH_MODE", "DNNL_DEFAULT_FPMATH_MODE")
+            if not torch.backends.mkldnn.is_available() or not torch.backends.mkldnn.enabled or torch.cpu._is_avx512_bf16_supported() or torch.cpu._is_amx_tile_supported() or any(name in os.environ for name in overrides):
+>               raise ValueError("Source attention requires the proved software-BF16 oneDNN dispatch without ISA/fpmath overrides")
+E               ValueError: Source attention requires the proved software-BF16 oneDNN dispatch without ISA/fpmath overrides
+
+examples/gemmini/comparisons/tvm/bf16_export.py:1064: ValueError
+_ SmolVLASourceSoftmaxTests.test_real_export_keeps_177_policy_and_admits_227_only_when_selected _
+[gw3] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceSoftmaxTests testMethod=test_real_export_keeps_177_policy_and_admits_227_only_when_selected>
+
+    def test_real_export_keeps_177_policy_and_admits_227_only_when_selected(self):
+        import torch
+        class Softmax(torch.nn.Module):
+            def forward(self, short, long):
+                return short.softmax(-1), long.softmax(-1), long.softmax(2)
+        for dtype in (torch.float32, torch.bfloat16):
+            inputs = tuple(torch.linspace(-2, 2, 750 * width).reshape(1, 15, 50, width).to(dtype) for width in (177, 227))
+            for policy in ("torch_cpu_softmax177_v1", "torch_cpu_softmax177_227_v1", "torch_cpu_softmax177_227_prefix_v1"):
+                with mock.patch.object(NUMERICS, "source_softmax_contract", return_value={"name": policy}):
+>                   table = NUMERICS.source_softmax_translations(torch, policy)
+
+merlin/tests/gemmini/test_smolvla_session.py:1081: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+policy = 'torch_cpu_softmax177_v1'
+
+    def source_softmax_translations(torch, policy="native"):
+        """Export only the proved FP32 Smol shape and last axis."""
+        if source_softmax_contract(torch, policy) is None:
+            return {}
+        from onnx import defs
+>       from onnxscript import ir
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/bf16_export.py:924: ModuleNotFoundError
+_ SmolVLASourceSgemmTests.test_real_export_keeps_177_policy_and_admits_only_proved_227_dtypes _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceSgemmTests testMethod=test_real_export_keeps_177_policy_and_admits_only_proved_227_dtypes>
+
+    def test_real_export_keeps_177_policy_and_admits_only_proved_227_dtypes(self):
+        import torch
+        class Attention(torch.nn.Module):
+            def forward(self, query, key, probability, value):
+                return query @ key, probability @ value, query.to(torch.bfloat16) @ key.to(torch.bfloat16), probability.float() @ value.float(), query[..., :49, :] @ key
+        inputs = (torch.ones((1, 15, 50, 64)), torch.ones((1, 15, 64, 227)), torch.ones((1, 15, 50, 227), dtype=torch.bfloat16), torch.ones((1, 15, 227, 64), dtype=torch.bfloat16))
+        before = tuple(value.clone() for value in inputs)
+        for policy in ("torch_cpu_sgemm177_v1", "torch_cpu_attention177_227_v1", "torch_cpu_attention177_227_prefix_v1"):
+            operators = ["TorchMklSgemmF32QK177", "TorchMklSgemmF32PV177"] + (["TorchMklSgemmF32QK227", "TorchOnednnGemmBf16PV227"] if policy != "torch_cpu_sgemm177_v1" else [])
+            if policy == "torch_cpu_attention177_227_prefix_v1":
+                operators.append("TorchOnednnGemmBf16PV177")
+            with mock.patch.object(NUMERICS, "source_sgemm_contract", return_value={"name": policy, "operators": operators}):
+>               table = NUMERICS.source_sgemm_translations(torch, policy)
+
+merlin/tests/gemmini/test_smolvla_session.py:1310: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+policy = 'torch_cpu_sgemm177_v1'
+
+    def source_sgemm_translations(torch, policy="native"):
+        """Preserve only the proved manual-attention contraction geometries."""
+        record = source_sgemm_contract(torch, policy)
+        if record is None:
+            return {}
+        from onnx import defs
+>       from onnxscript import ir
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/bf16_export.py:1105: ModuleNotFoundError
+_ SmolVLAArithmeticDiagnosticTests.test_original_processor_namespaced_statistics_are_not_silently_remapped _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLAArithmeticDiagnosticTests testMethod=test_original_processor_namespaced_statistics_are_not_silently_remapped>
+
+    def test_original_processor_namespaced_statistics_are_not_silently_remapped(self):
+        import torch
+>       from lerobot.configs.types import FeatureType, NormalizationMode, PolicyFeature
+E       ModuleNotFoundError: No module named 'lerobot'
+
+merlin/tests/gemmini/test_smolvla_session.py:1455: ModuleNotFoundError
+_ SmolVLAArithmeticDiagnosticTests.test_fused_bf16_silu_preserves_one_output_cast_and_fp32_default _
+[gw3] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLAArithmeticDiagnosticTests testMethod=test_fused_bf16_silu_preserves_one_output_cast_and_fp32_default>
+
+    @unittest.skipUnless(os.environ.get("TVM_LIBRARY_PATH"), "Requires explicit LLVM-enabled TVM host build")
+    def test_fused_bf16_silu_preserves_one_output_cast_and_fp32_default(self):
+        from decimal import Decimal, localcontext
+        import numpy as np
+        import onnx
+        import torch
+        import tvm
+        from verify_session import StageCompiler, array
+    
+        class Silu(torch.nn.Module):
+            def forward(self, value):
+                return torch.nn.functional.silu(value)
+    
+        values = torch.tensor([0.0, -0.0, 0.01171875, 0.01953125, 1.015625, 2.015625, -1.0078125, -2.015625, -15.75, -14.75], dtype=torch.bfloat16)
+        source = Silu()(values)
+        self.assertTrue(torch.equal(source.view(torch.uint16), Silu()(values.float()).bfloat16().view(torch.uint16)))
+        staged = values * values.sigmoid()
+        self.assertTrue(torch.any(staged[values > 0].view(torch.uint16) != source[values > 0].view(torch.uint16)))
+        self.assertTrue(torch.any(staged[values < 0].view(torch.uint16) != source[values < 0].view(torch.uint16)))
+        for value, output in zip(values[2:], source[2:], strict=True):
+            word = int(output.view(torch.uint16))
+            with localcontext() as context:
+                context.prec = 80
+                exact_input = Decimal.from_float(float(value))
+                ideal = exact_input / (1 + (-exact_input).exp())
+                distances = [(abs(ideal - Decimal.from_float(float(torch.tensor(candidate, dtype=torch.uint16).view(torch.bfloat16)))), candidate) for candidate in range(word - 2, word + 3)]
+                ordered = sorted(distances, key=lambda item: (item[0], item[1] & 1))
+                self.assertEqual(ordered[0][1], word)
+                self.assertGreater(ordered[1][0] - ordered[0][0], Decimal("1e-65"))
+        inputs = (array(values, np, torch),)
+        for mode in ("baseline", "optimized"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+>               compiler = StageCompiler(Path(directory), mode, np, torch, onnx, tvm, exporter="dynamo", opset=18, bf16_fused_export=True)
+
+merlin/tests/gemmini/test_smolvla_session.py:1387: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+examples/gemmini/comparisons/tvm/verify_session.py:687: in __init__
+    self.export_options["custom_translation_table"] = helper.scalar_translations(torch)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+
+    def scalar_translations(torch):
+        """Preserve original Python scalars when materializing DOUBLE constants.
+    
+        The scalar attribute annotation avoids the built-in TensorType argument's
+        implicit FLOAT constant before its DOUBLE cast. Other ordinary dtypes keep
+        the built-in translation. This does not select floating arithmetic order.
+        """
+>       from onnxscript import ir, opset18 as op
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/bf16_export.py:1201: ModuleNotFoundError
+_ SmolVLAArithmeticDiagnosticTests.test_original_processor_provenance_binds_selected_config_state_and_classes _
+[gw1] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLAArithmeticDiagnosticTests testMethod=test_original_processor_provenance_binds_selected_config_state_and_classes>
+
+    def test_original_processor_provenance_binds_selected_config_state_and_classes(self):
+        import torch
+>       from lerobot.configs.types import FeatureType, NormalizationMode, PolicyFeature
+E       ModuleNotFoundError: No module named 'lerobot'
+
+merlin/tests/gemmini/test_smolvla_session.py:1429: ModuleNotFoundError
+_ SmolVLASourceSiluTests.test_source_silu_public_factory_compiler_exact_native_and_default_dtype_routes _
+[gw4] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceSiluTests testMethod=test_source_silu_public_factory_compiler_exact_native_and_default_dtype_routes>
+
+    @unittest.skipUnless(os.environ.get("TVM_LIBRARY_PATH"), "requires opt-in pinned TVM/PyTorch CPU build")
+    def test_source_silu_public_factory_compiler_exact_native_and_default_dtype_routes(self):
+        import hashlib
+        import numpy as np
+        import onnx
+        import torch
+        import tvm
+        from verify_session import StageCompiler, array
+        class Activation(torch.nn.Module):
+            def forward(self, value):
+                return torch.ops.aten.silu.default(value)
+        contract = NUMERICS.source_silu_contract(torch, self.policy)
+        marker = SimpleNamespace(session=SimpleNamespace(metadata={"provenance": {"source_silu_policy": contract}}))
+>       options = FACTORY.get_onnx_export_options(torch, marker)
+
+merlin/tests/gemmini/test_smolvla_session.py:1016: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+examples/gemmini/comparisons/tvm/smolvla_session.py:654: in get_onnx_export_options
+    options = shared.export_options(torch)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch_module = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+arithmetic_policy = 'native', silu_export_policy = 'native'
+
+    def export_options(torch_module, arithmetic_policy="native", silu_export_policy="native"):
+        """Modern exporter preserves signed-int8 operands with standard MatMulInteger."""
+>       from onnxscript import opset18 as op
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/tinyllama_integer.py:618: ModuleNotFoundError
+__ SmolVLASourceSgemmTests.test_real_export_selects_only_bound_fp32_qk_and_pv __
+[gw4] linux -- Python 3.12.3 /scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/bin/python
+
+self = <test_smolvla_session.SmolVLASourceSgemmTests testMethod=test_real_export_selects_only_bound_fp32_qk_and_pv>
+
+    def test_real_export_selects_only_bound_fp32_qk_and_pv(self):
+        import torch
+        class Attention(torch.nn.Module):
+            def forward(self, query, key, probability, value):
+                return query @ key, probability @ value, query[..., :49, :] @ key
+        for dtype in (torch.float32, torch.bfloat16):
+            inputs = tuple(torch.ones(shape, dtype=dtype) for shape in ((1, 15, 50, 64), (1, 15, 64, 177), (1, 15, 50, 177), (1, 15, 177, 64)))
+            before = tuple(value.clone() for value in inputs)
+            with mock.patch.object(NUMERICS, "source_sgemm_contract", return_value={"name": "torch_cpu_sgemm177_v1", "operators": ["TorchMklSgemmF32QK177", "TorchMklSgemmF32PV177"]}):
+>               table = NUMERICS.source_sgemm_translations(torch, "torch_cpu_sgemm177_v1")
+
+merlin/tests/gemmini/test_smolvla_session.py:1277: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+torch = <module 'torch' from '/scratch/grammy/blast/merlin-tvm-tuning/out/build/python/tvm-migration/lib/python3.12/site-packages/torch/__init__.py'>
+policy = 'torch_cpu_sgemm177_v1'
+
+    def source_sgemm_translations(torch, policy="native"):
+        """Preserve only the proved manual-attention contraction geometries."""
+        record = source_sgemm_contract(torch, policy)
+        if record is None:
+            return {}
+        from onnx import defs
+>       from onnxscript import ir
+E       ModuleNotFoundError: No module named 'onnxscript'
+
+examples/gemmini/comparisons/tvm/bf16_export.py:1105: ModuleNotFoundError
+=========================== short test summary info ============================
+FAILED merlin/tests/gemmini/test_tvm_synthetic_tinyllama.py::test_replay_preserves_frozen_reference_bytes_instead_of_recomputing
+FAILED merlin/tests/gemmini/test_tinyllama_session.py::TinyLlamaIntegerTests::test_source_rotary_table_preserves_source_words_and_rejects_positions
+FAILED merlin/tests/gemmini/test_tinyllama_session.py::TinyLlamaIntegerTests::test_fixed_tree_installer_preserves_norm_parameters_and_source_interface
+FAILED merlin/tests/gemmini/test_tinyllama_session.py::TinyLlamaIntegerTests::test_fixed_tree_missing_mask_fails_before_caller_state_changes
+FAILED merlin/tests/gemmini/test_tinyllama_session.py::TinyLlamaIntegerTests::test_v3_invalid_mask_precedes_cache_update_and_projections
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLAObservationTests::test_recorded_preparation_uses_original_processor_without_inventing_camera
+FAILED merlin/tests/gemmini/test_tinyllama_session.py::TinyLlamaIntegerTests::test_v1_attention_matmul_unchanged_after_v2_registration
+FAILED merlin/tests/gemmini/test_tinyllama_session.py::TinyLlamaIntegerTests::test_v2_capacity_rejection_precedes_cache_and_parameter_mutation
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceScalarTests::test_source_scalar_real_public_export_and_strict_LLVM_grid
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceFlashTests::test_source_flash_defaults_and_factory_export_refusals
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceRotaryTests::test_source_rotary_defaults_factory_and_export_admission
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceFlashTests::test_source_flash_public_factory_compiler_and_ordinary_fallback
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourcePolicyTests::test_session_hooks_select_only_declared_policies_and_preserve_default_table
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceMeanTests::test_export_selects_only_bound_fp32_last_axis_keepdim_geometry
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceMeanTests::test_real_export_extends_only_declared_mean960_geometry_and_preserves_720
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSiluTests::test_source_silu_defaults_contract_and_factory_refusals
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSoftmaxTests::test_export_selects_only_bound_fp32_shape_and_axis
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSoftmaxTests::test_prefix_policy_preserves_old_scopes_and_both_callback_fallbacks
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceLayerNormTests::test_export_selects_original_bf16_affines_shape_and_epsilon
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceLayerNormTests::test_public_factory_compiler_composes_named_layernorm_and_generic_fallback
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceLayerNormTests::test_public_layernorm_selection_preserves_overlap_and_admission_refusals
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceConvTests::test_contract_refuses_other_dispatch_and_modified_binary
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceConvTests::test_real_export_selects_only_bound_bf16_patch_geometry
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSgemmTests::test_extended_contract_refuses_other_bf16_dispatch
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceRotaryTests::test_source_rotary_public_factory_compiler_preserves_native_words
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSgemmTests::test_prefix_bf16_pv177_is_distinct_from_old_fp32_pv177_and_defaults
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSoftmaxTests::test_real_export_keeps_177_policy_and_admits_227_only_when_selected
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSgemmTests::test_real_export_keeps_177_policy_and_admits_only_proved_227_dtypes
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLAArithmeticDiagnosticTests::test_original_processor_namespaced_statistics_are_not_silently_remapped
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLAArithmeticDiagnosticTests::test_fused_bf16_silu_preserves_one_output_cast_and_fp32_default
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLAArithmeticDiagnosticTests::test_original_processor_provenance_binds_selected_config_state_and_classes
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSiluTests::test_source_silu_public_factory_compiler_exact_native_and_default_dtype_routes
+FAILED merlin/tests/gemmini/test_smolvla_session.py::SmolVLASourceSgemmTests::test_real_export_selects_only_bound_fp32_qk_and_pv
+33 failed, 294 passed, 46 skipped in 60.24s (0:01:00)
+exit 1
