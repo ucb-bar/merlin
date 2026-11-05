@@ -11,7 +11,7 @@ target `atlas`; provider identity and hardware configuration are separate inputs
 - [Phase 1 guide](phase1/README.md): supplied compiler-authoring inputs and functional experiment requirements.
 - [Phase 2 handoff](phase2/README.md): select frozen compiler evidence and the existing optimization templates.
 - [Whole-model entrypoints](whole-model/README.md): capture/lowering inspection and separate deployment prerequisites.
-- Model bringup ([PR #55](https://github.com/ucb-bar/merlin/pull/55)): the TinyLlama and SmolVLA [captures and hand-written host graphs](comparisons/README.md), the [currently disabled atlas-kernels selection and materialization example](phase1/README.md#kernel-library), the [atlas-kernels](https://github.com/ucb-bar/atlas-kernels/tree/feat/kernel-library) library itself, and atlas-mlir's [bringup guide](https://github.com/ucb-bar/atlas-mlir/blob/sota/bringup-performance/docs/bringing-up-a-model.md).
+- Model bringup ([PR #55](https://github.com/ucb-bar/merlin/pull/55)): the TinyLlama and SmolVLA [captures and hand-written host graphs](comparisons/README.md), the [currently disabled atlas-kernels selection and materialization example](phase1/README.md#kernel-library), the [atlas-kernels](https://github.com/ucb-bar/atlas-kernels/tree/feat/kernel-library) library itself, and the [relocated runtime, builders, tests, and runbooks](model_bringup/README.md).
 - [Artifact navigation](artifacts/README.md): raw CIRCT facts, actual consumer views, coverage and capsule lineage.
 
 [Target setup](target/README.md) describes support selection (the vendored [`support/`](support/README.md)

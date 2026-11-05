@@ -53,3 +53,5 @@ SmolVLA and ResNet-50 are held-out validation workloads, never capsule derivatio
 or tuning inputs. Partial checkpoints, synthetic data and one denoising stage
 remain explicitly diagnostic. The evaluator uses the selected OOT compiler and
 saved facts; it does not download a model or silently select a reference backend.
+
+The model runtime, builders, tests, and runbooks are maintained in [model bringup](../model_bringup/README.md), beside the capture providers in [comparisons](../comparisons/README.md).
