@@ -103,6 +103,20 @@ def test_named_typed_selection_keeps_legacy_positional_api_and_refuses_multiple(
         op_profile.instrument(source, [], structural=True)
 
 
+def test_a_module_the_context_cannot_parse_is_a_refusal_not_a_crash():
+    """A debug image build asks for profiling and degrades on OpProfileError. A named linalg op the
+    profiling context has no format for (seen: `linalg.reciprocal` in a per-channel dequant) used to
+    escape as an xDSL ParseError and take the whole image build with it."""
+    source = """module {
+      func.func @forward(%a: tensor<4xf32>, %b: tensor<4xf32>) -> tensor<4xf32> {
+        %r = linalg.reciprocal ins(%a : tensor<4xf32>) outs(%b : tensor<4xf32>) -> tensor<4xf32>
+        return %r : tensor<4xf32>
+      }
+    }"""
+    with pytest.raises(op_profile.OpProfileError, match="cannot parse the module"):
+        op_profile.instrument(source, ["forward"], structural=True)
+
+
 def test_multi_block_control_flow_refuses_before_mutation():
     source = """module {
       func.func @forward() {

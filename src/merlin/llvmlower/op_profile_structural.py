@@ -19,13 +19,22 @@ from merlin.common.mlir_query import op_name
 
 def _parse_text(text):
     from xdsl.dialects.vector import Vector
+    from xdsl.utils.exceptions import ParseError
 
     from merlin.frontends.linalg_mlir import make_context, parse_mlir_text
+
+    from .op_profile import OpProfileError
 
     context = make_context()
     # The shared frontend already owns the prepared memref dialect registry.
     context.load_dialect(Vector)
-    return parse_mlir_text(text, ctx=context)
+    try:
+        return parse_mlir_text(text, ctx=context)
+    except ParseError as exc:
+        # An op this context has no format for (a named linalg op it does not register, say) means the
+        # module cannot be instrumented -- which is the profiler's refusal to make, not a crash of the
+        # image build that asked for it. Callers already degrade on OpProfileError.
+        raise OpProfileError(f"cannot parse the module to instrument it: {' '.join(str(exc).split())[:400]}") from exc
 
 
 def instrument_module(module, *, function: str = "forward"):
