@@ -688,6 +688,7 @@ def build_legs(args) -> Path:
             "--board", brd.name, "--package", args.package, "--harts", str(args.harts), "--vlen", str(brd.vlen),
             "--unit", args.matrix_unit, "--config", args.matrix_config,
             "--matrix-support-target", args.matrix_support_target,
+            *(["--matrix-kernel", args.matrix_kernel] if getattr(args, "matrix_kernel", None) else []),
         ]  # fmt: skip
         print("$ " + " ".join(str(c) for c in cmd), flush=True)
         if subprocess.run([str(c) for c in cmd], cwd=REPO).returncode != 0:
@@ -739,6 +740,7 @@ def main(argv: list[str] | None = None) -> int:
     lg.add_argument("--matrix-unit", required=True)
     lg.add_argument("--matrix-config", required=True)
     lg.add_argument("--matrix-support-target", required=True)
+    lg.add_argument("--matrix-kernel", help="the device leg's matrix kernel (registered name or C file)")
     _queue_flags(lg)
     sb = sub.add_parser("submit", help="print (or with --submit, run) the queue jobs of a job directory")
     sb.add_argument("job_dir", type=Path)

@@ -2,7 +2,7 @@
 """Model regression matrix: every model x hart count x leg, built for one board and gated on spike.
 
     model_matrix.py --board B --models m1,m2 [--harts 1,2]
-                    [--matrix-unit U --matrix-config C --matrix-support-target T]
+                    [--matrix-unit U --matrix-config C --matrix-support-target T [--matrix-kernel K]]
                     [--legs rvv,matrix] [--jobs 2] [--rerun] [--timeout S]
 
 A model is a capture bundle, ``recaptures/<model>_int8_full`` (``chip_flow.py capture`` writes one). For
@@ -20,9 +20,10 @@ Then, per model and leg, every hart count's output must be bit-identical to the 
 multicore split computes the same thing, so any difference is a lost or overlapping work split.
 
 Writes ``out/artifacts/probes/model_matrix/<board>/``: one ``<model>/h<N>_<leg>.json`` per cell (kept, so
-a rerun only builds the cells that have none, unless ``--rerun``), ``matrix.json`` and ``MATRIX.md``.
-The process exits non-zero unless every cell passed. Nothing here names a model or a chip: the board, the
-unit and the models are arguments, and a cell's verdict comes only from its own gates.
+a rerun only builds the cells that have none, unless ``--rerun``), ``matrix.json`` and ``MATRIX.md``; with
+``--matrix-kernel K``, ``<board>+kernel-<K>/`` instead, so cells of different kernels never mix. The
+process exits non-zero unless every cell passed. Nothing here names a model or a chip: the board, the unit
+and the models are arguments, and a cell's verdict comes only from its own gates.
 """
 
 from __future__ import annotations
@@ -43,10 +44,13 @@ import chip_flow  # noqa: E402  (the shared compile + matrix_on_spike steps)
 LEGS = ("rvv", "matrix")
 
 
-def out_root(board: str) -> Path:
+def out_root(board: str, kernel: str | None = None) -> Path:
+    """The board's table; a selected matrix kernel gets its own (``<board>+kernel-<name>``), so cells built
+    with one kernel are never reused, or tabulated, as cells of another."""
     from merlin.common.paths import artifacts_dir
 
-    return artifacts_dir() / "probes" / "model_matrix" / board
+    tag = "" if not kernel else "+kernel-" + "".join(c if c.isalnum() or c in "-_." else "_" for c in Path(kernel).name)
+    return artifacts_dir() / "probes" / "model_matrix" / f"{board}{tag}"
 
 
 def _cell_args(a, harts: int) -> SimpleNamespace:
@@ -56,6 +60,7 @@ def _cell_args(a, harts: int) -> SimpleNamespace:
         matrix_unit=a.matrix_unit,
         matrix_config=a.matrix_config,
         matrix_support_target=a.matrix_support_target,
+        matrix_kernel=a.matrix_kernel,
         timeout=a.timeout,
     )
 
@@ -243,6 +248,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--matrix-unit")
     ap.add_argument("--matrix-config")
     ap.add_argument("--matrix-support-target")
+    ap.add_argument("--matrix-kernel", help="the matrix kernel (registered name or C file); default: the package's")
     ap.add_argument("--jobs", type=int, default=2, help="cells built and simulated at once (each is a whole model)")
     ap.add_argument("--rerun", action="store_true", help="rebuild cells that already have a result")
     ap.add_argument("--timeout", type=int, default=4 * 3600, help="per-simulation limit, s")
@@ -261,7 +267,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"{m}: no {chip_flow.bundle_dir(m)}/golden_w8a8.npy; capture it first (chip_flow.py capture)"
             )
 
-    root = out_root(a.board)
+    root = out_root(a.board, a.matrix_kernel)
     todo, cells = [], []
     for m in models:
         for h in harts:

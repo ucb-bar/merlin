@@ -15,6 +15,14 @@
 #                                 VME image's stand-in twin is gated on spike; with $MERLIN_SPIKE_ZVT the
 #                                 SHIPPED VME image also runs on a spike that implements the unit
 #   ./run.sh op gemm --rvv-only   the RVV leg alone (no VME route)
+#   ./run.sh op gemm --matrix-kernel K
+#                                 every routed contraction calls VME kernel K: a name in the package's
+#                                 kernels/kernels.yaml or path/to/kernel.c[:function] (default:
+#                                 $MERLIN_MATRIX_KERNEL, else the package's default kernel)
+#   ./run.sh kernel-test [kernel] [--quick|--full] [--list]
+#                                 check ONE VME kernel in seconds: a sweep of shapes (edges, K tails, tile
+#                                 multiples, bias, back-to-back calls) on the Zvt spike, bit-exact
+#                                 against Merlin's reference
 #
 # The VME route derives the unit's encodings and geometry from $MERLIN_CHIPYARD_IRIS (a chipyard iris-cy
 # checkout at pin chipyard_iris, with generators/saturn at saturn_vme and generators/rocket-chip at
@@ -31,9 +39,11 @@ MATRIX_CONFIG=IrisConfig
 ex_parse_flags "$@"
 set -- ${EX_ARGS[@]+"${EX_ARGS[@]}"}
 LOADER=""; HARTS_OPT=""; RVV_ONLY=0; REST=()
+MATRIX_KERNEL="${MERLIN_MATRIX_KERNEL:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --loader)   LOADER="$(ex_abs "$2")"; shift ;;
+    --matrix-kernel) MATRIX_KERNEL="$2"; shift ;;
     --harts)    HARTS_OPT="$2"; shift ;;
     --rvv-only) RVV_ONLY=1 ;;
     *)          REST+=("$1") ;;
@@ -42,6 +52,8 @@ while [ $# -gt 0 ]; do
 done
 set -- ${REST[@]+"${REST[@]}"}
 STAGE="${1:-preflight}"
+KERNEL_ARGS=()
+if [ -n "$MATRIX_KERNEL" ]; then KERNEL_ARGS=(--matrix-kernel "$(ex_kernel_spec "$MATRIX_KERNEL")"); fi
 cd "$REPO_ROOT"
 # Iris's support package (and its boards) is iris-mlir at the commit Merlin pins, fetched by setup.
 case "$STAGE" in setup|help|-h|--help) ;; *) ex_select_support "$MATRIX_SUPPORT" ;; esac
@@ -74,7 +86,8 @@ op)
   if [ "$RVV_ONLY" = "1" ]; then
     ex_say "single-operator test on $BOARD (RVV only)"
   else
-    MATRIX_ARGS=(--matrix-unit "$MATRIX_UNIT" --matrix-config "$MATRIX_CONFIG" --matrix-support-target "$MATRIX_SUPPORT")
+    MATRIX_ARGS=(--matrix-unit "$MATRIX_UNIT" --matrix-config "$MATRIX_CONFIG" --matrix-support-target "$MATRIX_SUPPORT"
+                 ${KERNEL_ARGS[@]+"${KERNEL_ARGS[@]}"})
     ex_say "single-operator test on $BOARD: RVV vs RVV+VME"
     if [ -z "${MERLIN_CHIPYARD_IRIS:-}" ]; then
       ex_note "MERLIN_CHIPYARD_IRIS is unset: the VME encodings and geometry are derived from"
@@ -88,8 +101,22 @@ op)
   ex_run "$PY" "$EX_LIB_DIR/chip_flow.py" op "$@" --board "$BOARD" --harts "${HARTS_OPT:-1}" \
       ${MATRIX_ARGS[@]+"${MATRIX_ARGS[@]}"}
   ;;
+kernel-test)
+  # One VME kernel against Merlin's reference on the Zvt spike, in seconds: no model, no Zephyr. The kernel
+  # is the first argument or --matrix-kernel (a name in the package's kernels/kernels.yaml, or
+  # path/to/kernel.c[:function]); neither, the package default. --quick: small shapes only; --full: also the
+  # large corpus shapes; --list: the registered kernels.
+  shift
+  KT=()
+  if [ $# -ge 1 ] && [ "${1#--}" = "$1" ]; then KT=("$(ex_kernel_spec "$1")"); shift
+  elif [ -n "$MATRIX_KERNEL" ]; then KT=("$(ex_kernel_spec "$MATRIX_KERNEL")"); fi
+  if [ "$FULL" = "1" ]; then set -- "$@" --full; fi
+  ex_say "kernel-test ${KT[0]:-<package default>} for $MATRIX_UNIT ($MATRIX_CONFIG) at $BOARD's VLEN"
+  ex_run "$PY" -m merlin.kernels.matrix_kernel_test ${KT[@]+"${KT[@]}"} --support-target "$MATRIX_SUPPORT" \
+      --unit "$MATRIX_UNIT" --config "$MATRIX_CONFIG" --board "$BOARD" "$@"
+  ;;
 *)
-  sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac

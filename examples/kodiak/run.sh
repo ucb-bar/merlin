@@ -24,6 +24,11 @@
 #   ./run.sh matrix --models a,b [--harts 1,2]
 #                                 model regression matrix: each model x harts x {RVV, RVV+OPU}, every
 #                                 image gated on spike, h2 checked bit-identical to h1   (no board)
+#   ./run.sh kernel-test [kernel] [--quick|--full] [--list]
+#                                 check ONE OPU kernel in seconds: a sweep of shapes (edges, K tails, tile
+#                                 multiples, bias, back-to-back calls) on spike's OPU model, bit-exact
+#                                 against Merlin's reference. kernel: a name in the package's
+#                                 kernels/kernels.yaml or path/to/kernel.c[:function]   (no board)
 #   ./run.sh grade <console.txt> [model]  score a console log a board owner sent back
 #   ./run.sh firesim [--models m] [--submit]
 #                                 whole model on FireSim (firesim_kodiak_opu): OPU device leg + RVV
@@ -41,6 +46,9 @@
 #        --board B       with `op`/`firesim`, build for board B (op default: chipyard_kodiak)
 #        --submit        with `op`/`firesim` on a FireSim board, actually run on the shared FPGA;
 #                        without it the queue submission is only printed
+#        --matrix-kernel K  with `op`/`build`/`package`/`matrix`/`firesim`, every routed contraction calls
+#                        OPU kernel K: a name in kernels/kernels.yaml or path/to/kernel.c[:function]
+#                        (default: $MERLIN_MATRIX_KERNEL, else the package's default kernel)
 set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/common.sh"
 # The OPU route's executable support and the unit facts it derives from. The unit and config are named
@@ -62,9 +70,11 @@ RVV_PACKAGE=rvv/impr_tuned_wholemodel_vf_int8
 ex_parse_flags "$@"
 set -- ${EX_ARGS[@]+"${EX_ARGS[@]}"}
 OPU=0; MODELS_OVERRIDE=""; LOADER=""; HARTS_OPT=""; BOARD_OPT=""; SUBMIT=(); REST=()
+MATRIX_KERNEL="${MERLIN_MATRIX_KERNEL:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --opu)     OPU=1 ;;
+    --matrix-kernel) MATRIX_KERNEL="$2"; shift ;;
     --board)   BOARD_OPT="$2"; shift ;;
     --submit)  SUBMIT=(--submit) ;;
     --models)  MODELS_OVERRIDE="$2"; shift ;;
@@ -76,6 +86,9 @@ while [ $# -gt 0 ]; do
 done
 set -- ${REST[@]+"${REST[@]}"}
 STAGE="${1:-preflight}"
+# The selected OPU kernel, passed to every stage that builds a routed image (empty: the package default).
+KERNEL_ARGS=()
+if [ -n "$MATRIX_KERNEL" ]; then KERNEL_ARGS=(--matrix-kernel "$(ex_kernel_spec "$MATRIX_KERNEL")"); fi
 
 cd "$REPO_ROOT"
 # Kodiak's support package (and its boards) is kodiak-mlir at the commit Merlin pins, fetched by setup.
@@ -129,7 +142,22 @@ op)
   ex_say "single-operator test on $OP_BOARD: RVV vs RVV+OPU"
   ex_run "$PY" "$EX_LIB_DIR/chip_flow.py" op "$@" --board "$OP_BOARD" --harts "${HARTS_OPT:-1}" \
       --matrix-unit "$MATRIX_UNIT" --matrix-config "$MATRIX_CONFIG" --matrix-support-target "$MATRIX_SUPPORT" \
-      ${SUBMIT[@]+--firesim-submit}
+      ${KERNEL_ARGS[@]+"${KERNEL_ARGS[@]}"} ${SUBMIT[@]+--firesim-submit}
+  ;;
+
+kernel-test)
+  # One OPU kernel against Merlin's reference on spike's OPU model, in seconds: no model, no Zephyr. The
+  # kernel is the first argument or --matrix-kernel (a name in the package's kernels/kernels.yaml, or
+  # path/to/kernel.c[:function]); neither, the package default. --quick: small shapes only; --full: also the
+  # large corpus shapes; --list: the registered kernels.
+  shift
+  KT=()
+  if [ $# -ge 1 ] && [ "${1#--}" = "$1" ]; then KT=("$(ex_kernel_spec "$1")"); shift
+  elif [ -n "$MATRIX_KERNEL" ]; then KT=("$(ex_kernel_spec "$MATRIX_KERNEL")"); fi
+  if [ "$FULL" = "1" ]; then set -- "$@" --full; fi
+  ex_say "kernel-test ${KT[0]:-<package default>} for $MATRIX_UNIT ($MATRIX_CONFIG) at $BOARD's VLEN"
+  ex_run "$PY" -m merlin.kernels.matrix_kernel_test ${KT[@]+"${KT[@]}"} --support-target "$MATRIX_SUPPORT" \
+      --unit "$MATRIX_UNIT" --config "$MATRIX_CONFIG" --board "$BOARD" "$@"
   ;;
 
 firesim)
@@ -156,7 +184,7 @@ firesim)
     ex_run "$PY" "$EX_LIB_DIR/firesim_flow.py" legs "${m}_int8_full" --board "$FS_BOARD" \
         --package "$RVV_PACKAGE" --harts "${HARTS_OPT:-1}" --matrix-unit "$MATRIX_UNIT" \
         --matrix-config "$MATRIX_CONFIG" --matrix-support-target "$MATRIX_SUPPORT" \
-        "$@" ${SUBMIT[@]+"${SUBMIT[@]}"}
+        ${KERNEL_ARGS[@]+"${KERNEL_ARGS[@]}"} "$@" ${SUBMIT[@]+"${SUBMIT[@]}"}
   done
   ex_note "the legs are not spike-gated here (spike cannot execute the OPU). Gate the model first with"
   ex_note "./run.sh build --opu --models <model>, which runs each OPU image's stand-in twin on spike."
@@ -209,7 +237,7 @@ build|package)
   MATRIX_ARGS=()
   if [ "$OPU" = "1" ]; then
     MATRIX_ARGS=(--matrix-harts "$HARTS" --matrix-unit "$MATRIX_UNIT" --matrix-config "$MATRIX_CONFIG"
-                 --matrix-support-target "$MATRIX_SUPPORT")
+                 --matrix-support-target "$MATRIX_SUPPORT" ${KERNEL_ARGS[@]+"${KERNEL_ARGS[@]}"})
     ex_note "--opu: each OPU image is gated through its scalar stand-in twin (same lowering, no unit"
     ex_note "instructions), since no simulator here executes the OPU. Each build writes"
     ex_note "routing_report.json: which contractions went to the OPU, which did not and why."
@@ -236,8 +264,8 @@ matrix)
   ex_say "model matrix on $BOARD: $MODELS_OVERRIDE"
   ex_run "$PY" "$EX_LIB_DIR/model_matrix.py" --board "$BOARD" --models "$MODELS_OVERRIDE" \
       --harts "${HARTS_OPT:-1,2}" --matrix-unit "$MATRIX_UNIT" --matrix-config "$MATRIX_CONFIG" \
-      --matrix-support-target "$MATRIX_SUPPORT" "${@:2}"
-  ex_note "table: out/artifacts/probes/model_matrix/$BOARD/MATRIX.md (one JSON per cell beside it)"
+      --matrix-support-target "$MATRIX_SUPPORT" ${KERNEL_ARGS[@]+"${KERNEL_ARGS[@]}"} "${@:2}"
+  ex_note "table: out/artifacts/probes/model_matrix/$BOARD${MATRIX_KERNEL:++kernel-<name>}/MATRIX.md (one JSON per cell beside it)"
   ;;
 
 grade)
@@ -255,7 +283,7 @@ grade)
   ;;
 
 *)
-  sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,51p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac

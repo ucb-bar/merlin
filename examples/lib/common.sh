@@ -80,6 +80,14 @@ ex_parse_flags() {
   done
 }
 
+# ex_kernel_spec <spec>: a matrix kernel as merlin.kernels.matrix_kernels takes it. A registered name stays as
+# it is; a C file (file.c, or file.c:function) is made absolute against the caller's directory.
+ex_kernel_spec() {
+  local spec="$1" file func=""
+  case "$spec" in *.c:*) file="${spec%:*}"; func=":${spec##*:}" ;; *) file="$spec" ;; esac
+  case "$file" in *.c) printf '%s%s' "$(ex_abs "$file")" "$func" ;; *) printf '%s' "$spec" ;; esac
+}
+
 ex_say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
 # Echo then run. The echo is not decoration: these commands are the deliverable half of the example,
