@@ -161,5 +161,12 @@ rtl_source:
   config: KodiakOPUConfig
   generator: saturn
 matrix_contract: contracts/matrix_units.yaml
+runner:
+  spike_extension:
+    extension_name: saturn_opu
+    extlib_env: MERLIN_KODIAK_OPU_SPIKE_EXTLIB
+    sha256: fe9d77b85a0a9d9be6a391e9d154226208a75f115ac569505f980960204f8338
+    built_by: spike/build.py
+    models: KodiakOPUConfig (rtl_source.config) at pin saturn_opu_int8
 plugin:
   matrix_lowering: matrix_lowering.py

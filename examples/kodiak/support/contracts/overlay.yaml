@@ -45,6 +45,21 @@ compute_units:
 
 matrix_contract: contracts/matrix_units.yaml
 
+# The OPU's functional model for spike (spike/: source + build.py, which generates the instruction words
+# and geometry from the RTL). Merlin loads it ONLY as declared here: `merlin.targetgen.spike_extension`
+# reads the .so from $MERLIN_KODIAK_OPU_SPIKE_EXTLIB, hashes it, and refuses anything whose sha256 is not
+# this one -- a rebuild with different bytes (another compiler, another RTL revision, another spike) has
+# to be re-declared here. The base's runner (K1 capsule suite) is removed above; this is Kodiak's own.
+# The digest is of a build against the spike in $MERLIN_CHIPYARD/.conda-env/riscv-tools (its symbols are
+# resolved from that binary at load time); spike/build.py's manifest.json records which one.
+runner:
+  spike_extension:
+    extension_name: saturn_opu
+    extlib_env: MERLIN_KODIAK_OPU_SPIKE_EXTLIB
+    sha256: fe9d77b85a0a9d9be6a391e9d154226208a75f115ac569505f980960204f8338
+    built_by: spike/build.py
+    models: KodiakOPUConfig (rtl_source.config) at pin saturn_opu_int8
+
 # Executable support owned by THIS package: the whole-model route's contraction rewrite + OPU shim.
 plugin:
   matrix_lowering: matrix_lowering.py

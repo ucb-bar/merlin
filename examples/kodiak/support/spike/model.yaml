@@ -1,0 +1,36 @@
+# Where the spike functional model's facts are READ FROM, beyond what contracts/matrix_units.yaml
+# already names (the encodings and the vector geometry). Addresses, never values: every number the model
+# is compiled with is read out of the unit's own Chisel by spike/build.py, and one that cannot be read
+# fails the build.
+version: 1
+
+unit: saturn_opu                    # the block in contracts/matrix_units.yaml this model implements
+
+# The name the .so registers and `spike --extension=<name>` selects. Declared again, with the .so's
+# digest, under `runner.spike_extension` in contracts/overlay.yaml.
+extension_name: saturn_opu
+
+datapath:
+  # Relative to the unit checkout (matrix_units.yaml `root_env`/`path`), read at the same pin.
+  source: src/main/scala/exu/OuterProductUnit.scala
+  # The case class whose DEFAULTS are the datapath widths and the matrix register count. Its
+  # instantiation must carry no overrides (checked in the `params` source of matrix_units.yaml).
+  params_class: OPUParameters
+  params_fields:
+    a_bits: aWidth                  # left (row) operand width
+    b_bits: bWidth                  # top (column) operand width
+    c_bits: cWidth                  # accumulator width
+    matrix_regs: nMrfRegs
+  # The trait carrying the LMUL bound the sequencer's col_idx register is sized by.
+  params_trait: HasOPUParams
+  max_lmul_def: maxLMUL
+
+# The other RTL files whose BEHAVIOUR spike/opu_ext.cc transliterates. Not parsed: digested into the
+# build manifest, so a model built from one revision cannot be mistaken for one built from another.
+behaviour_sources:
+  - src/main/scala/backend/OuterProductSequencer.scala
+  - src/main/scala/backend/Backend.scala
+  - src/main/scala/exu/OuterProductUnit.scala
+  - src/main/scala/frontend/Dispatch.scala
+  - src/main/scala/frontend/PipelinedFaultCheck.scala
+  - src/main/scala/frontend/EarlyDecode.scala

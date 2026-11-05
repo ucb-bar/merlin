@@ -7,22 +7,22 @@ schema: merlin.vendored_support.v1
 target: kodiak
 provider_id: kodiak-support
 path: support
-file_count: 21
+file_count: 26
 vendored: '2026-11-04'
 source:
   repository: https://github.com/ucb-bar/kodiak-mlir.git
   published: false
-  commit: b812e0bb52a9ade32ef711227d615bc30853e194
-  commit_date: '2026-11-04T18:12:58-08:00'
+  commit: 2d51d40c823b061e959ba1422818c31ed94ba48b
+  commit_date: '2026-11-04T18:24:08-08:00'
   provider_root: .
-  tree: 2c41604af45a7af540d03f30fd9a3b23e8b32c76
-vendored_tree: 2c41604af45a7af540d03f30fd9a3b23e8b32c76
+  tree: 251510a17639f4e0053b16a9d9409dfc27e5cae3
+vendored_tree: 251510a17639f4e0053b16a9d9409dfc27e5cae3
 normalized: []
 pinned:
   manifest: build_tools/upstreams/target_support.json
-  companion_commit: b812e0bb52a9ade32ef711227d615bc30853e194
+  companion_commit: 2d51d40c823b061e959ba1422818c31ed94ba48b
   relation: same_commit
-  provider_tree: 2c41604af45a7af540d03f30fd9a3b23e8b32c76
+  provider_tree: 251510a17639f4e0053b16a9d9409dfc27e5cae3
   identical_to_source: true
 records:
   file_provenance: support/provenance.json
