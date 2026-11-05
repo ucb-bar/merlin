@@ -6,9 +6,11 @@
         defines get_model_and_inputs(); without it, a model in model2MLIR's workloads/ roster.
 
     chip_flow.py op <gemm|conv2d|encoder_block|path/to/loader.py> [dims ...] --board B [--harts N]
-                 [--matrix-unit U --matrix-config C --matrix-support-target T]
+                 [--matrix-unit U --matrix-config C --matrix-support-target T] [--firesim-submit]
         Capture the operator (once per shape), build it for the board as plain RVV and -- with the
-        matrix flags -- routed to the matrix unit, gate both on spike, and print one summary.
+        matrix flags -- routed to the matrix unit, gate both on spike, and print one summary. For a
+        board that names a FireSim `bitstream`, also plan one FireSim job per image (firesim_flow.py)
+        and print its submission; --firesim-submit runs them and grades the result.
 
 The board, the matrix unit and its configuration are arguments: a chip example passes its own. Nothing
 here names a chip.
@@ -179,9 +181,47 @@ def op(args) -> int:
         print("  spike cannot execute the unit: the twin checks routing, pack, ABI and epilogue; run the")
         print("  shipped ELF on the chip or FireSim for the unit's datapath and cycles.")
     print(f"  RVV ELF: {results['rvv'].get('binary')}")
-    print(f"  kept in: {_keep(name, args, results)}")
+    kept = _keep(name, args, results)
+    print(f"  kept in: {kept}")
     ok = all(r.get("status") == "verified" for r in results.values())
+    if ok and _firesim_board(args.board):
+        return _firesim(kept, name, args, results)
+    if _firesim_board(args.board):
+        print("  not planning FireSim jobs: an image that fails its spike gate is not worth an FPGA slot")
     return 0 if ok else 1
+
+
+def _firesim_board(name: str) -> bool:
+    from merlin.runtime.boards import board
+
+    return bool(board(name).bitstream)
+
+
+def _firesim(kept: Path, name: str, args, results: dict) -> int:
+    """Plan one FireSim job per kept image: the OPU image is the DEVICE leg, the plain RVV image its
+    CONTROL. Printed by default; --firesim-submit runs them through the queue and grades them."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import firesim_flow
+
+    legs = {"control": {"elf": kept / "rvv.elf", "build_hash": results["rvv"].get("build_hash")}}
+    if "matrix" in results:
+        m = results["matrix"].get("matrix") or {}
+        legs["device"] = {
+            "elf": kept / "matrix.elf",
+            "build_hash": results["matrix"].get("build_hash"),
+            "unit_instruction_counts": m.get("unit_instruction_counts"),
+        }
+    firesim_flow.plan(kept, board=args.board, name=name, bundle=bundle_dir(name), legs=legs, harts=args.harts,
+                      timeout_s=args.firesim_timeout)  # fmt: skip
+    print()
+    print(firesim_flow.describe(kept, firesim_flow.load(kept), firesim_flow.host_config()))
+    if not args.firesim_submit:
+        print("\n  (not submitted: pass --submit to run these on the FPGA)")
+        return 0
+    firesim_flow.submit(kept)
+    result = firesim_flow.collect(kept)
+    print(firesim_flow.summary(result))
+    return 0 if result["all_verified"] else 1
 
 
 def _keep(name: str, args, results: dict) -> Path:
@@ -221,6 +261,8 @@ def main(argv: list[str] | None = None) -> int:
     o.add_argument("--matrix-config")
     o.add_argument("--matrix-support-target")
     o.add_argument("--recapture", action="store_true", help="capture again even if the bundle exists")
+    o.add_argument("--firesim-submit", action="store_true", help="on a FireSim board, run the images on the FPGA")
+    o.add_argument("--firesim-timeout", type=int, default=1800, help="FireSim RUNNING-phase limit per image, s")
     args = ap.parse_args(argv)
     if args.cmd == "capture":
         print(capture(args.name, args.loader.resolve() if args.loader else None))

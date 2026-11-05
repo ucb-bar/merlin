@@ -13,16 +13,27 @@
 #                                 capture any model to an int8 bundle + its W8A8 golden   (no board)
 #   ./run.sh op gemm [M N K]      ONE operator (gemm|conv2d|encoder_block|loader.py), RVV vs RVV+OPU,
 #                                 both gated on spike, with the routing report             (no board)
+#                                 --board firesim_kodiak_opu: built for FireSim, and one FireSim job
+#                                 per image is printed (--submit runs them on the shared FPGA)
 #   ./run.sh build                build + gate ONE small model at 1 and 2 harts          (no board)
 #   ./run.sh package              assemble a full delivery package + zip                 (no board)
 #   ./run.sh grade <console.txt> [model]  score a console log a board owner sent back
+#   ./run.sh firesim [--models m] [--submit]
+#                                 whole model on FireSim (firesim_kodiak_opu): OPU device leg + RVV
+#                                 control leg, audited; prints one queue job per leg
+#   ./run.sh firesim <job-dir> [--submit]    print (or run) the jobs of an existing job directory
+#   ./run.sh firesim-collect <job-dir> [--job device=ID --job control=ID | --uartlog LEG=PATH]
+#                                 grade finished FireSim runs: bitstream, build hash, cycles, W8A8
 #
 # Flags: --dry-run       prints the commands without running them (useful with no toolchain at all)
 #        --full          with `build`/`package`, the whole model x hart matrix instead of the cheap subset
 #        --opu           with `build`/`package`, ALSO build images that route int8 contractions to the
 #                        outer-product unit (OPU), each gated through its scalar stand-in twin
-#        --models a,b    with `build`/`package`, these bundles instead of the default set
+#        --models a,b    with `build`/`package`/`firesim`, these bundles instead of the default set
 #                        (a name -> recaptures/<name>_int8_full, or label:/path/to/bundle)
+#        --board B       with `op`/`firesim`, build for board B (op default: chipyard_kodiak)
+#        --submit        with `op`/`firesim` on a FireSim board, actually run on the shared FPGA;
+#                        without it the queue submission is only printed
 set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/common.sh"
 # Kodiak's boards ship with its support package (examples/kodiak/support, vendored from kodiak-mlir).
@@ -37,13 +48,20 @@ BOARD=chipyard_kodiak
 # Kodiak's console is HTIF, served by its own loader's --fesvr, so no vendor SDK is needed here. That
 # is the main practical difference from the gemmelos example next door.
 OUT="$REPO_ROOT/out/artifacts/delivery/example-kodiak"
+# FireSim: Kodiak's vector unit with the OPU on ONE Shuttle core (the two-core config does not route on
+# the U250). The board descriptor names its bitstream; nothing here does.
+FIRESIM_BOARD=firesim_kodiak_opu
+# The RVV package FireSim legs are lowered with: the one make_delivery.py packages with by default.
+RVV_PACKAGE=rvv/impr_tuned_wholemodel_vf_int8
 
 ex_parse_flags "$@"
 set -- ${EX_ARGS[@]+"${EX_ARGS[@]}"}
-OPU=0; MODELS_OVERRIDE=""; LOADER=""; HARTS_OPT=""; REST=()
+OPU=0; MODELS_OVERRIDE=""; LOADER=""; HARTS_OPT=""; BOARD_OPT=""; SUBMIT=(); REST=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --opu)     OPU=1 ;;
+    --board)   BOARD_OPT="$2"; shift ;;
+    --submit)  SUBMIT=(--submit) ;;
     --models)  MODELS_OVERRIDE="$2"; shift ;;
     --loader)  LOADER="$2"; shift ;;
     --harts)   HARTS_OPT="$2"; shift ;;
@@ -101,9 +119,51 @@ op)
   # CIN COUT HW K; or `op path/to/loader.py` for your own one-op model.
   shift
   if [ $# -lt 1 ]; then echo "usage: $0 op <gemm|conv2d|encoder_block|loader.py> [dims...] [--harts N]" >&2; exit 2; fi
-  ex_say "single-operator test on $BOARD: RVV vs RVV+OPU"
-  ex_run "$PY" "$EX_LIB_DIR/chip_flow.py" op "$@" --board "$BOARD" --harts "${HARTS_OPT:-1}" \
-      --matrix-unit "$MATRIX_UNIT" --matrix-config "$MATRIX_CONFIG" --matrix-support-target "$MATRIX_SUPPORT"
+  # On a FireSim board (--board firesim_kodiak_opu) the same two images are built for that board, and
+  # one FireSim job per image is planned and printed; --submit runs them on the shared FPGA.
+  OP_BOARD="${BOARD_OPT:-$BOARD}"
+  ex_say "single-operator test on $OP_BOARD: RVV vs RVV+OPU"
+  ex_run "$PY" "$EX_LIB_DIR/chip_flow.py" op "$@" --board "$OP_BOARD" --harts "${HARTS_OPT:-1}" \
+      --matrix-unit "$MATRIX_UNIT" --matrix-config "$MATRIX_CONFIG" --matrix-support-target "$MATRIX_SUPPORT" \
+      ${SUBMIT[@]+--firesim-submit}
+  ;;
+
+firesim)
+  # Whole models on FireSim, the way the single-core Kodiak OPU numbers were measured: a DEVICE image
+  # (int8 contractions routed to the OPU) and its CONTROL twin (identical lowering, nothing routed),
+  # each audited for the unit's instructions, then one queue job per leg. The FPGA is shared, so the
+  # jobs are only PRINTED unless --submit is given. `firesim <job-dir>` prints (or submits) the jobs of
+  # an existing directory, e.g. one `op --board firesim_kodiak_opu` wrote.
+  shift
+  if [ $# -ge 1 ] && [ -d "$1" ]; then
+    ex_say "FireSim jobs of $1"
+    ex_run "$PY" "$EX_LIB_DIR/firesim_flow.py" submit "$@" ${SUBMIT[@]+"${SUBMIT[@]}"}
+    exit 0
+  fi
+  FS_BOARD="${BOARD_OPT:-$FIRESIM_BOARD}"
+  if [ -z "${MERLIN_CHIPYARD:-}" ]; then
+    ex_note "MERLIN_CHIPYARD is unset: the OPU's encodings come from \$MERLIN_CHIPYARD/generators/saturn"
+    ex_note "(pin saturn_opu_int8), and the FireSim deploy tree is found under it"
+  fi
+  IFS=, read -r -a FS_MODELS <<< "${MODELS_OVERRIDE:-spectformer}"
+  for m in "${FS_MODELS[@]}"; do
+    ex_say "FireSim legs for $m on $FS_BOARD: OPU device + RVV control"
+    ex_run "$PY" "$EX_LIB_DIR/firesim_flow.py" legs "${m}_int8_full" --board "$FS_BOARD" \
+        --package "$RVV_PACKAGE" --harts "${HARTS_OPT:-1}" --matrix-unit "$MATRIX_UNIT" \
+        --matrix-config "$MATRIX_CONFIG" --matrix-support-target "$MATRIX_SUPPORT" \
+        "$@" ${SUBMIT[@]+"${SUBMIT[@]}"}
+  done
+  ex_note "the legs are not spike-gated here (spike cannot execute the OPU). Gate the model first with"
+  ex_note "./run.sh build --opu --models <model>, which runs each OPU image's stand-in twin on spike."
+  ;;
+
+firesim-collect)
+  # Grade finished runs. FireSim's own HW_CFG_SUMMARY must name the board's bitstream, the console's
+  # build_hash must be the planned image's, and the output is graded against the W8A8 golden.
+  shift
+  if [ $# -lt 1 ]; then echo "usage: $0 firesim-collect <job-dir> [--job LEG=ID ...] [--uartlog LEG=PATH ...]" >&2; exit 2; fi
+  ex_say "grade the FireSim runs of $1"
+  ex_run "$PY" "$EX_LIB_DIR/firesim_flow.py" collect "$@"
   ;;
 
 build|package)
@@ -158,7 +218,7 @@ grade)
   ;;
 
 *)
-  sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac
