@@ -7,7 +7,7 @@ Neither an ISA name nor the host package's FP32 strategy certifies FP8/BF16
 operation support.
 
 The selected integrated source is `EE290SimConfig` in `bringup-chipyard` at
-`426a862f97f98938660772bd8a5d8f41316d15c3`. Its recorded
+`245f2a9d203be685176cc01e26e28029c5593202`. Its recorded
 `generators/atlas-npu` gitlink is
 `0079c0541111197741a231c002e3843fa6f545b2`. The target descriptor
 checks both revisions when resolving that source; set
@@ -15,6 +15,14 @@ checks both revisions when resolving that source; set
 AtlasCore observations retain their own execution tier and are not an
 integrated EE290SimConfig qualification. A new elaboration, source audit,
 and integrated execution are still required.
+
+This source selection supersedes the earlier `426a862f97f98938660772bd8a5d8f41316d15c3`
+selection. The later Chipyard revision moves `EE290SimConfig` from
+`EE290Configs.scala` to `config/AtlasConfigs.scala` and updates Rocket Chip,
+Shuttle, and Tacit gitlinks. Keep receipts from the earlier source selection
+with their original identity; they do not qualify the selected integrated
+system. The OOT Atlas host map names this same Chipyard revision, but its
+bitstream and cache behavior still require an integrated build and run.
 
 The separate [hand-authored Atlas MLIR dialect](https://github.com/ucb-bar/atlas-mlir/tree/handwritten-implementation)
 shows typed machine operations and an LLVM/assembly handoff for fixed diagnostic

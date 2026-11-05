@@ -82,7 +82,9 @@ def test_one_bounded_scale_register_per_command_is_a_per_tensor_readout() -> Non
     facet = RF.derive("t", facts=_facts(), unit={"name": "u", "dtypes": ["int8"]}, scalar_abi=_ABI, readouts=_READOUTS)
     assert facet.scale_granularities == ("tensor",)
     assert facet.rungs_for("scale_granularities") == ("register_layout",)
-    assert (facet.element_dtype, facet.accumulator_dtype, facet.accumulator_kind) == ("i8", "i32", "addressable")
+    assert (facet.element_dtype, facet.output_dtype, facet.accumulator_dtype, facet.accumulator_kind) == (
+        "i8", "i8", "i32", "addressable"
+    )
     assert set(facet.register_stages) == {"activation", "pool"}
     assert facet.zero_point_carried is False and not facet.unknown
 
@@ -144,6 +146,30 @@ def test_the_scalar_contract_reaches_a_numerics_contract_builder_unchanged() -> 
     facet = RF.derive("t", facts=_facts(), scalar_abi=_ABI)
     assert facet.scalar_readout_facts() == _ABI
     assert RF.derive("t", facts=_facts()).scalar_readout_facts() is None
+
+
+def test_operand_and_readout_formats_are_separate_evidence() -> None:
+    from merlin.targetgen import quant_recipe as QR
+
+    abi = {**_ABI, "output_dtype": "bf16"}
+    facet = RF.derive("t", facts=_facts(), unit={"name": "u", "dtypes": ["int8"]}, scalar_abi=abi)
+    assert (facet.element_dtype, facet.output_dtype) == ("i8", "bf16")
+    assert facet.rungs_for("element_dtype") == ("rtl_datapath",)
+    assert facet.rungs_for("output_dtype") == ("scalar_abi",)
+    assert "mixed-format conversion path" in QR.derive(facet).underivable["output_dtype"]
+
+    abi_only = RF.derive("t", facts={}, scalar_abi=_ABI)
+    assert (abi_only.element_dtype, abi_only.output_dtype) == (None, "i8")
+    assert "element_dtype" in QR.derive(abi_only).underivable
+
+    conflicting = _facts()
+    conflicting["facts"]["datapaths"].append({"name": "output", "dtype": "bf16", "evidence": "RTL output"})
+    facet = RF.derive("t", facts=conflicting, scalar_abi=_ABI)
+    assert facet.output_dtype is None
+    assert "disagrees" in facet.unknown["output_dtype"]
+    assert facet.scalar_readout_facts() is None
+    assert facet.numerics_handoff()["readout_facts"] is None
+    assert "output_dtype" in QR.derive(facet).underivable
 
 
 def test_every_declared_target_derives_a_facet_with_no_code_of_its_own() -> None:
@@ -234,6 +260,7 @@ def test_the_numerics_handoff_is_one_digest_over_what_a_scheduler_may_assume() -
     handoff = facet.numerics_handoff()
     # Exactly the record a numerics contract is built from, and the granularities it may be built at.
     assert handoff["readout_facts"]["schema"] == RF.SCALAR_ABI_SCHEMA
+    assert handoff["output_dtype"] == "i8"
     assert (handoff["granularities"], handoff["granularities_complete"]) == (["tensor"], False)
     assert handoff["sha256"] == facet.numerics_handoff()["sha256"]
     # A different readout is a different digest: the two sides cannot agree by accident.

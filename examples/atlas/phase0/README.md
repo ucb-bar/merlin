@@ -98,10 +98,21 @@ independent comparator and is not a substitute for Merlin-generated signatures
 and verifiers. Keep the ledger and generated compiler outside this example
 directory.
 
-The current descriptor selects `EE290SimConfig`, with source revision `426a862f97f98938660772bd8a5d8f41316d15c3` and `generators/atlas-npu` gitlink `0079c0541111197741a231c002e3843fa6f545b2`. Create a selected source bundle and Phase 0 run with that exact elaboration and simulator identity. Existing standalone-core or other-configuration receipts must not be relabeled as evidence for this SoC configuration.
+The current descriptor selects `EE290SimConfig` in `bringup-chipyard` source
+revision `426a862f97f98938660772bd8a5d8f41316d15c3`, with
+`generators/atlas-npu` gitlink `0079c0541111197741a231c002e3843fa6f545b2`.
+Create a selected source bundle and Phase 0 run with that exact elaboration
+and simulator identity. Earlier `AtlasRocketConfig`, standalone-core, or
+other-configuration receipts remain historical evidence and must not be
+relabeled for this SoC configuration.
 
-For this campaign, use the generic [`rtl.elaboration` receipt](../../../docs/guides/phase0_specification.md#bind-the-selected-configuration-to-its-elaborated-source) to bind the exact `EE290SimConfig` invocation to fresh FIRRTL, then supply `--elaboration-receipt` when producing `source-selection.json`. The selected Chipyard Git link for `generators/atlas-npu` must be checked against the exact Atlas revision; a matching configuration name in a command alone does not establish the selected hardware source or execution behavior.
-
+For the selected campaign, use the generic
+[`rtl.elaboration` receipt](../../../docs/guides/phase0_specification.md#bind-the-selected-configuration-to-its-elaborated-source)
+to bind the exact `EE290SimConfig` invocation to fresh FIRRTL, then supply
+`--elaboration-receipt` when producing `source-selection.json`. The selected
+Chipyard Git link for `generators/atlas-npu` must be checked against the exact
+Atlas revision; a matching configuration name in a command alone does not
+establish the selected hardware source or execution behavior.
 Then run `merlin-targetgen audit-dialect-source-scope` with that selection,
 the ISA census regenerated from the pinned `generators/atlas-npu` checkout,
 the reviewed OOT mode ledger, and `--expected-config EE290SimConfig`. The

@@ -87,6 +87,7 @@
     "merlin/runtime/c/encoded_row_equality.h",
     "merlin/runtime/c/f32_floor_bits.h",
     "merlin/runtime/c/f32_interval_endpoint.h",
+    "merlin/runtime/c/finite_float_boundary.h",
     "merlin/runtime/c/fma_product_norms.h",
     "merlin/runtime/c/hal_baremetal_spike.c",
     "merlin/runtime/c/hal_linux.c",

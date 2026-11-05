@@ -14,10 +14,12 @@ and express through :meth:`TargetPlanningAdapter.evaluate` and ``lower_bound``.
 from __future__ import annotations
 
 import heapq
+import json
 import math
 import time
-from dataclasses import dataclass, field
-from typing import Any, Protocol, Sequence, runtime_checkable
+from collections.abc import Sequence
+from dataclasses import dataclass, field, replace
+from typing import Any, Protocol, runtime_checkable
 
 from merlin.xdsl_dialects.lowering.dispatch_program import DispatchProgram, verify_program
 from merlin.xdsl_dialects.lowering.global_plan import (
@@ -60,7 +62,7 @@ class Bound:
         return self.cycles is not None
 
     @classmethod
-    def unknown(cls, *missing: str) -> "Bound":
+    def unknown(cls, *missing: str) -> Bound:
         return cls(None, missing=tuple(str(item) for item in missing if str(item).strip()))
 
     def to_dict(self) -> dict[str, Any]:
@@ -241,8 +243,27 @@ class GlobalPlanPolicy:
     timeout_s: float = 60.0
     max_expanded_states: int = 100_000
     attainment_fraction: float = 0.90
+    # Empty means unrestricted. Names come from the selected target adapter,
+    # not from a built-in host/device registry.
+    allowed_placements: tuple[str, ...] = ()
+    required_placements: tuple[tuple[int, str], ...] = ()
 
     def __post_init__(self) -> None:
+        if len(set(self.allowed_placements)) != len(self.allowed_placements) or any(
+            not isinstance(name, str) or not name.strip() for name in self.allowed_placements
+        ):
+            raise ValueError("allowed placements must have distinct nonempty names")
+        required = dict(self.required_placements)
+        if (
+            len(required) != len(self.required_placements)
+            or any(
+                type(node) is not int or node < 0 or not isinstance(name, str) or not name.strip()
+                for node, name in self.required_placements
+            )
+            or self.allowed_placements
+            and any(name not in self.allowed_placements for name in required.values())
+        ):
+            raise ValueError("required placements need distinct nodes and permitted placement names")
         if self.timeout_s <= 0 or self.timeout_s > 300:
             raise ValueError("the static global planner timeout must be in (0, 300] seconds")
         if self.max_expanded_states <= 0:
@@ -426,8 +447,18 @@ def optimize_program(
             None, missing, missing, missing, None, 0, 0, time.monotonic() - started, False, True, (problem,)
         )
 
+    all_alternatives = alternatives
+    required = dict(pol.required_placements)
+    alternatives = tuple(
+        alternative
+        for alternative in all_alternatives
+        if (not pol.allowed_placements or alternative.placement in pol.allowed_placements)
+        and all(required.get(node, alternative.placement) == alternative.placement for node in alternative.nodes)
+    )
     refusals: list[str] = []
     n_nodes = len(program.nodes)
+    if any(node >= n_nodes for node in required):
+        refusals.append("required placement names a node outside the program")
     by_anchor: dict[int, list[RegionAlternative]] = {}
     ids: set[str] = set()
     for alternative in alternatives:
@@ -444,9 +475,9 @@ def optimize_program(
         by_anchor.setdefault(alternative.nodes[0], []).append(alternative)
     absent = [index for index in range(n_nodes) if not any(index in alt.nodes for alt in alternatives)]
     if absent:
-        refusals.append(f"no legal alternative covers node(s) {absent}")
+        refusals.append(f"no legal alternative permitted by placement policy covers node(s) {absent}")
     try:
-        physical = adapter.physical_floor(program, alternatives)
+        physical = adapter.physical_floor(program, all_alternatives)
     except Exception as exc:
         problem = f"physical-floor derivation failed: {type(exc).__name__}: {exc}"
         missing = Bound.unknown(problem)
@@ -576,6 +607,21 @@ def optimize_program(
     # The best compatible implementation is no faster than the smallest admissible bound among the
     # incumbent and every unexplored state.  When the adapter bound was unresolved, legal attainment
     # remains unresolved even though the planner can still return the best complete plan it saw.
+    if pol.allowed_placements or pol.required_placements:
+        best = replace(
+            best,
+            notes=(
+                *best.notes,
+                "placement policy: "
+                + json.dumps(
+                    {
+                        "allowed": list(pol.allowed_placements),
+                        "required": sorted(pol.required_placements),
+                    },
+                    sort_keys=True,
+                ),
+            ),
+        )
     incumbent_lo = float(best.cycles.lo)
     solver_lower = min(incumbent_lo, pending_lower) if math.isfinite(pending_lower) else incumbent_lo
     solver = Bound(solver_lower, provenance=("compatible-plan branch-and-bound",))

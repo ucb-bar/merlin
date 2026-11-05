@@ -7,7 +7,7 @@ smuggle executable Python into an instruction rule or numerical policy.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from hashlib import sha256
 from math import prod
 from typing import Any
@@ -26,7 +26,9 @@ class TensorType:
     numerical_policy: str
 
     def __post_init__(self) -> None:
-        if not self.shape or any(not isinstance(d, int) or isinstance(d, bool) or d <= 0 for d in self.shape):
+        if not isinstance(self.shape, tuple) or any(
+            not isinstance(d, int) or isinstance(d, bool) or d <= 0 for d in self.shape
+        ):
             raise ValueError("tensor shape must have positive static dimensions")
         if any(not isinstance(value, str) or not value for value in (self.dtype, self.numerical_policy)):
             raise ValueError("dtype and numerical policy must be explicit")
@@ -54,7 +56,9 @@ class IndexMap:
     def __post_init__(self) -> None:
         if type(self.loop_rank) is not int or self.loop_rank <= 0:
             raise ValueError("index map needs a positive logical loop rank")
-        if not self.coefficients or len(self.coefficients) != len(self.offsets):
+        # A rank-zero tensor has an empty result tuple, e.g. a vector sum's
+        # accumulator map. The surrounding loop domain still has positive rank.
+        if len(self.coefficients) != len(self.offsets):
             raise ValueError("index map needs one offset per result dimension")
         if any(len(row) != self.loop_rank or any(type(value) is not int for value in row) for row in self.coefficients):
             raise ValueError("index map coefficients have invalid rank or type")
@@ -81,6 +85,18 @@ class IndexMap:
         if set(row) != {"loop_rank", "coefficients", "offsets"}:
             raise ValueError("index map has missing or unknown fields")
         return cls(row["loop_rank"], tuple(tuple(result) for result in row["coefficients"]), tuple(row["offsets"]))
+
+
+def pointwise_identity_maps(rank: int, inputs: int) -> tuple[IndexMap, ...]:
+    """Canonical logical maps for an elementwise tensor operation."""
+    if type(rank) is not int or rank <= 0 or type(inputs) is not int or inputs <= 0:
+        raise ValueError("pointwise maps need positive rank and input count")
+    identity = IndexMap(
+        rank,
+        tuple(tuple(int(axis == result) for axis in range(rank)) for result in range(rank)),
+        (0,) * rank,
+    )
+    return (identity,) * (inputs + 1)
 
 
 @dataclass(frozen=True)
@@ -181,15 +197,39 @@ class ConstantBinding:
     data_hex: str
 
     def __post_init__(self) -> None:
-        if not self.node_id or self.encoding not in {"i8", "i32-le"}:
+        if not self.node_id or self.encoding not in {
+            "i1-raw",
+            "i8",
+            "i32-le",
+            "i64-le",
+            "fp8_e4m3-raw",
+            "bf16-le-raw",
+            "f32-le-raw",
+            "f64-le-raw",
+        }:
             raise ValueError("constant needs a named, admitted byte encoding")
         if len(self.data_hex) % 2 or any(char not in "0123456789abcdef" for char in self.data_hex):
             raise ValueError("constant bytes must be canonical lowercase hex")
 
     def validate_type(self, type_: TensorType) -> None:
-        expected = {"i8": ("i8", 1), "i32-le": ("i32", 4)}[self.encoding]
+        expected = {
+            "i1-raw": ("i1", 1),
+            "i8": ("i8", 1),
+            "i32-le": ("i32", 4),
+            "i64-le": ("i64", 8),
+            "fp8_e4m3-raw": ("fp8_e4m3", 1),
+            "bf16-le-raw": ("bf16", 2),
+            "f32-le-raw": ("f32", 4),
+            "f64-le-raw": ("f64", 8),
+        }[self.encoding]
         if type_.dtype != expected[0] or len(self.data_hex) // 2 != prod(type_.shape) * expected[1]:
             raise ValueError("constant bytes differ from declared tensor type")
+        if self.encoding == "i64-le" and type_.numerical_policy != "signed-i64":
+            raise ValueError("signed i64 constant needs its exact numerical policy")
+        if self.encoding == "i1-raw" and (
+            type_.numerical_policy != "boolean" or any(value not in (0, 1) for value in bytes.fromhex(self.data_hex))
+        ):
+            raise ValueError("Boolean constant needs canonical zero/one bytes and its Boolean policy")
 
     def record(self) -> dict[str, str]:
         return {"node_id": self.node_id, "encoding": self.encoding, "data_hex": self.data_hex}
@@ -201,17 +241,43 @@ class ConstantBinding:
         return cls(**row)
 
 
+def _immutable_identity_value(value: object) -> bool:
+    """Check containers before memoizing an otherwise frozen source value.
+
+    Constructors historically accept some lists despite tuple annotations.
+    Such callers retain fresh hashing; cached identities must never conceal
+    a mutation through a list, an attribute pair or an affine coefficient row.
+    """
+    if value is None or type(value) in {str, int, float, bool}:
+        return True
+    if type(value) is tuple:
+        return all(_immutable_identity_value(item) for item in value)
+    if type(value) in {TensorType, IndexMap, SemanticNode, ConstantBinding}:
+        return all(_immutable_identity_value(getattr(value, item.name)) for item in fields(value) if item.init)
+    return False
+
+
 @dataclass(frozen=True)
 class KernelRequest:
     nodes: tuple[SemanticNode, ...]
     outputs: tuple[str, ...]
     output_storages: tuple[str, ...]
-    input_storages: tuple[tuple[str, str], ...]
+    input_storages: tuple[tuple[str, str], ...]  # Ordered boundary ports, not a set.
     target_identity: str
     lowering_policy: str = "strict-native"
     source_identity: str = ""
     constants: tuple[ConstantBinding, ...] = ()
+    # Extents are measured in the named storage bank's address unit, not tensor
+    # elements. Legacy v2 requests use one unit per boundary value.
+    physical_extents: tuple[tuple[str, int], ...] = ()
+    # A qualified no-copy view needs the element order at every boundary.
+    # Empty fields retain older, layout-unknown requests, which cannot supply
+    # a source for a layout-dependent view.
+    boundary_layouts: tuple[tuple[str, str], ...] = ()
+    output_layouts: tuple[str, ...] = ()
     _by_id: dict[str, SemanticNode] = field(init=False, repr=False, compare=False)
+    _digest_cacheable: bool = field(init=False, repr=False, compare=False, default=False)
+    _cached_digest: str | None = field(init=False, repr=False, compare=False, default=None)
 
     def __post_init__(self) -> None:
         seen: dict[str, SemanticNode] = {}
@@ -262,14 +328,61 @@ class KernelRequest:
             raise ValueError("each semantic constant needs exactly one declared byte binding")
         for node_id, binding in bindings.items():
             binding.validate_type(seen[node_id].type)
+        extents = dict(self.physical_extents)
+        if self.physical_extents and (
+            len(extents) != len(self.physical_extents)
+            or set(extents) != set(boundary) | set(bindings)
+            or any(type(extent) is not int or extent <= 0 for extent in extents.values())
+        ):
+            raise ValueError("physical extents must cover every input and constant in storage units")
+        layouts = dict(self.boundary_layouts)
+        if self.boundary_layouts and (
+            len(layouts) != len(self.boundary_layouts)
+            or set(layouts) != set(boundary) | set(bindings)
+            or any(not isinstance(layout, str) or not layout for layout in layouts.values())
+        ):
+            raise ValueError("physical layouts must cover every input and constant")
+        if self.output_layouts and (
+            len(self.output_layouts) != len(self.outputs)
+            or any(not isinstance(layout, str) or not layout for layout in self.output_layouts)
+        ):
+            raise ValueError("physical output layouts must cover every ordered output")
+        if bool(self.boundary_layouts) != bool(self.output_layouts):
+            raise ValueError("physical boundary and output layouts must be declared together")
+        if self.boundary_layouts and not self.physical_extents:
+            raise ValueError("physical layouts need explicit boundary extents")
+        object.__setattr__(self, "physical_extents", tuple(sorted(extents.items())))
+        object.__setattr__(self, "boundary_layouts", tuple(sorted(layouts.items())))
         object.__setattr__(self, "_by_id", seen)
+        object.__setattr__(self, "_digest_cacheable", all(
+            _immutable_identity_value(getattr(self, item.name)) for item in fields(self) if item.init
+        ))
 
     def node(self, node_id: str) -> SemanticNode:
         return self._by_id[node_id]
 
+    def physical_extent(self, node_id: str) -> int:
+        if node_id not in dict(self.input_storages) and node_id not in {binding.node_id for binding in self.constants}:
+            raise ValueError("physical extent applies only to boundary values")
+        return dict(self.physical_extents).get(node_id, 1)
+
+    def boundary_layout(self, node_id: str) -> str:
+        return dict(self.boundary_layouts).get(node_id, "")
+
     def record(self) -> dict[str, Any]:
-        return {
-            "schema": "merlin.semantic_kernel.v2",
+        # Older records only contain a storage map, whose canonical key order is
+        # lexical. Preserve an explicit calling convention when it differs.
+        ordered_inputs = self.input_storages != tuple(sorted(self.input_storages))
+        record = {
+            "schema": (
+                "merlin.semantic_kernel.v5"
+                if ordered_inputs
+                else "merlin.semantic_kernel.v4"
+                if self.boundary_layouts
+                else "merlin.semantic_kernel.v3"
+                if self.physical_extents
+                else "merlin.semantic_kernel.v2"
+            ),
             "nodes": [node.record() for node in self.nodes],
             "outputs": list(self.outputs),
             "output_storages": list(self.output_storages),
@@ -279,9 +392,27 @@ class KernelRequest:
             "source_identity": self.source_identity,
             "constants": [binding.record() for binding in sorted(self.constants, key=lambda item: item.node_id)],
         }
+        if self.physical_extents:
+            record["physical_extents"] = dict(sorted(self.physical_extents))
+        if self.boundary_layouts:
+            record["boundary_layouts"] = dict(self.boundary_layouts)
+            record["output_layouts"] = list(self.output_layouts)
+        if ordered_inputs:
+            record.update(
+                input_order=[key for key, _ in self.input_storages],
+                physical_extents=dict(self.physical_extents),
+                boundary_layouts=dict(self.boundary_layouts),
+                output_layouts=list(self.output_layouts),
+            )
+        return record
 
     def digest(self) -> str:
-        return sha256(_json_bytes(self.record())).hexdigest()
+        if self._cached_digest is not None:
+            return self._cached_digest
+        identity = sha256(_json_bytes(self.record())).hexdigest()
+        if self._digest_cacheable:
+            object.__setattr__(self, "_cached_digest", identity)
+        return identity
 
     @classmethod
     def from_record(cls, row: dict[str, Any]) -> KernelRequest:
@@ -296,17 +427,48 @@ class KernelRequest:
             "source_identity",
             "constants",
         }
-        if set(row) != expected or row["schema"] != "merlin.semantic_kernel.v2":
+        schema = row.get("schema")
+        if schema == "merlin.semantic_kernel.v5":
+            expected.update({"input_order", "boundary_layouts", "output_layouts", "physical_extents"})
+        elif schema == "merlin.semantic_kernel.v4":
+            expected.update({"boundary_layouts", "output_layouts", "physical_extents"})
+        elif schema == "merlin.semantic_kernel.v3":
+            expected.add("physical_extents")
+        elif schema != "merlin.semantic_kernel.v2":
+            raise ValueError("unexpected semantic kernel schema or fields")
+        if set(row) != expected:
             raise ValueError("unexpected semantic kernel schema or fields")
         if not isinstance(row["nodes"], list) or not isinstance(row["input_storages"], dict):
             raise ValueError("semantic kernel graph or boundary has invalid structure")
+        has_extents = schema in {"merlin.semantic_kernel.v3", "merlin.semantic_kernel.v4", "merlin.semantic_kernel.v5"}
+        has_layouts = schema in {"merlin.semantic_kernel.v4", "merlin.semantic_kernel.v5"}
+        if has_extents and (
+            not isinstance(row["physical_extents"], dict)
+            or (schema != "merlin.semantic_kernel.v5" and not row["physical_extents"])
+        ):
+            raise ValueError("semantic kernel physical extents have invalid structure")
+        if has_layouts and (
+            not isinstance(row["boundary_layouts"], dict) or not isinstance(row["output_layouts"], list)
+        ):
+            raise ValueError("semantic kernel physical layouts have invalid structure")
+        input_order = row.get("input_order", sorted(row["input_storages"]))
+        if (
+            not isinstance(input_order, list)
+            or any(not isinstance(key, str) for key in input_order)
+            or len(input_order) != len(row["input_storages"])
+            or set(input_order) != set(row["input_storages"])
+        ):
+            raise ValueError("semantic kernel input order must cover each boundary exactly once")
         return cls(
             nodes=tuple(SemanticNode.from_record(node) for node in row["nodes"]),
             outputs=tuple(row["outputs"]),
             output_storages=tuple(row["output_storages"]),
-            input_storages=tuple(sorted(row["input_storages"].items())),
+            input_storages=tuple((key, row["input_storages"][key]) for key in input_order),
             target_identity=row["target_identity"],
             lowering_policy=row["lowering_policy"],
             source_identity=row["source_identity"],
             constants=tuple(ConstantBinding.from_record(item) for item in row["constants"]),
+            physical_extents=tuple(sorted(row["physical_extents"].items())) if has_extents else (),
+            boundary_layouts=tuple(sorted(row["boundary_layouts"].items())) if has_layouts else (),
+            output_layouts=tuple(row["output_layouts"]) if has_layouts else (),
         )

@@ -15,9 +15,10 @@ These run before the upstream pipeline:
 from __future__ import annotations
 
 import string
+from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any, Callable
+from typing import Any
 
 from ..frontends.linalg_mlir import make_context, parse_mlir_text  # noqa: F401
 
@@ -676,18 +677,24 @@ def preprocess_text(mlir_text: str, *, audit=None) -> tuple[str, dict]:
     module = parse_mlir_text(mlir_text)
     transform_map = None
     if audit is not None and audit.directory is not None:
-        supported = _SourceTransformMap.supports(module)
+        transform_map = _transform_map_for_module(mlir_text, module)
+        supported = transform_map is not None
+        scope = (
+            "one defined, single-block func.func; top-level non-return operations"
+            if isinstance(transform_map, _SourceTransformMap)
+            else "multiple defined, single-block func.func; top-level non-return operations"
+            if supported
+            else "defined, single-block func.func; top-level non-return operations"
+        )
         audit.record["source_transform_map"] = {
             "status": "pending" if supported else "unavailable",
-            "scope": "one defined, single-block func.func; top-level non-return operations",
+            "scope": scope,
         }
         if not supported:
             audit.record["source_transform_map"]["reason"] = (
-                "module has zero or multiple defined functions, or a multi-block function"
+                "module has no defined function, duplicate symbols, or a multi-block function"
             )
         audit._flush()
-        if supported:
-            transform_map = _SourceTransformMap(mlir_text, module)
     stats = _preprocess_module(
         module,
         audit=audit,
@@ -701,7 +708,7 @@ def preprocess_text(mlir_text: str, *, audit=None) -> tuple[str, dict]:
         descriptor = audit.accounting("source-transform-map", transform_map.finish(upstream))
         audit.record["source_transform_map"] = {
             "status": "recorded",
-            "scope": "one defined, single-block func.func; top-level non-return operations",
+            "scope": scope,
             "receipt": descriptor["file"],
             "sha256": descriptor["sha256"],
         }
@@ -710,7 +717,7 @@ def preprocess_text(mlir_text: str, *, audit=None) -> tuple[str, dict]:
 
 
 def preprocess_text_with_transform_map(mlir_text: str) -> tuple[str, dict, dict]:
-    """Preprocess one entry and receipt-map every top-level source op/result.
+    """Preprocess defined functions and receipt-map top-level source ops/results.
 
     This is an accounting map, not a semantics proof. The normal audited path
     records the same map as an accounting sidecar without a second parse/rewrite.
@@ -720,10 +727,20 @@ def preprocess_text_with_transform_map(mlir_text: str) -> tuple[str, dict, dict]
     from ..xdsl_dialects._common import text as module_to_text
 
     module = parse_mlir_text(mlir_text)
-    transform_map = _SourceTransformMap(mlir_text, module)
+    transform_map = _transform_map_for_module(mlir_text, module)
+    if transform_map is None:
+        raise ValueError("transform map needs unique single-block defined functions")
     stats = _preprocess_module(module, on_quant_rewrite=transform_map.record)
     upstream = module_to_text(module, generic=True)
     return upstream, stats, transform_map.finish(upstream)
+
+
+def _transform_map_for_module(mlir_text: str, module):
+    if _SourceTransformMap.supports(module):
+        return _SourceTransformMap(mlir_text, module)
+    if _MultiSourceTransformMap.supports(module):
+        return _MultiSourceTransformMap(mlir_text, module)
+    return None
 
 
 class _SourceTransformMap:
@@ -731,15 +748,20 @@ class _SourceTransformMap:
 
     @staticmethod
     def supports(module) -> bool:
+        names = [op.sym_name.data for op in module.body.block.ops if op.name == "func.func"]
         functions = [op for op in module.body.block.ops if op.name == "func.func" and op.body.blocks]
-        return len(functions) == 1 and len(functions[0].body.blocks) == 1
+        return len(names) == len(set(names)) and len(functions) == 1 and len(functions[0].body.blocks) == 1
 
-    def __init__(self, mlir_text: str, module):
+    def __init__(self, mlir_text: str, module, *, function=None):
         self.source_sha256 = sha256(mlir_text.encode()).hexdigest()
-        functions = [op for op in module.body.block.ops if op.name == "func.func" and op.body.blocks]
-        if len(functions) != 1 or len(functions[0].body.blocks) != 1:
-            raise ValueError("transform map requires exactly one single-block function")
-        self.function = functions[0]
+        if function is None:
+            functions = [op for op in module.body.block.ops if op.name == "func.func" and op.body.blocks]
+            if len(functions) != 1 or len(functions[0].body.blocks) != 1:
+                raise ValueError("transform map requires exactly one single-block function")
+            function = functions[0]
+        elif function.name != "func.func" or len(function.body.blocks) != 1:
+            raise ValueError("transform map function must have one block")
+        self.function = function
         self.original = [op for op in self.function.body.block.ops if op.name != "func.return"]
         self.source_by_id = {id(op): index for index, op in enumerate(self.original)}
         self.generated_owner: dict[int, int] = {}
@@ -803,6 +825,73 @@ class _SourceTransformMap:
             "source_op_count": len(self.original),
             "preprocessed_op_count": len(processed),
             "operations": operations,
+        }
+
+
+class _MultiSourceTransformMap:
+    """Keep each defined function's operation indices separate in one receipt."""
+
+    @staticmethod
+    def _functions(module):
+        return [op for op in module.body.block.ops if op.name == "func.func"]
+
+    @staticmethod
+    def _signatures(functions) -> list[dict]:
+        return [
+            {
+                "symbol": op.sym_name.data,
+                "defined": bool(op.body.blocks),
+                "inputs": [str(value) for value in op.function_type.inputs.data],
+                "outputs": [str(value) for value in op.function_type.outputs.data],
+            }
+            for op in functions
+        ]
+
+    @classmethod
+    def supports(cls, module) -> bool:
+        functions = cls._functions(module)
+        defined = [op for op in functions if op.body.blocks]
+        names = [op.sym_name.data for op in functions]
+        return (len(defined) > 1 and len(names) == len(set(names))
+                and all(len(op.body.blocks) == 1 for op in defined))
+
+    def __init__(self, mlir_text: str, module):
+        if not self.supports(module):
+            raise ValueError("multi-function transform map needs unique single-block definitions")
+        self.module = module
+        self.signatures = self._signatures(self._functions(module))
+        self.trackers = [
+            _SourceTransformMap(mlir_text, module, function=op)
+            for op in self._functions(module) if op.body.blocks
+        ]
+        self.by_source = {
+            operation_id: tracker
+            for tracker in self.trackers for operation_id in tracker.source_by_id
+        }
+
+    def record(self, source, generated: tuple[Any, ...], result_owner) -> None:
+        tracker = self.by_source.get(id(source))
+        if tracker is None:
+            raise ValueError("quantization rewrite has no defined function source owner")
+        tracker.record(source, generated, result_owner)
+
+    def finish(self, upstream: str) -> dict:
+        if self._signatures(self._functions(self.module)) != self.signatures:
+            raise ValueError("preprocessing changed function symbols or signatures")
+        functions = []
+        for tracker in self.trackers:
+            part = tracker.finish(upstream)
+            functions.append({key: part[key] for key in
+                              ("entry", "source_op_count", "preprocessed_op_count", "operations")})
+        return {
+            "schema": "source_transform_map_v2",
+            "source_sha256": self.trackers[0].source_sha256,
+            "preprocessed_sha256": sha256(upstream.encode()).hexdigest(),
+            "function_signatures": self.signatures,
+            "defined_function_count": len(functions),
+            "source_op_count": sum(row["source_op_count"] for row in functions),
+            "preprocessed_op_count": sum(row["preprocessed_op_count"] for row in functions),
+            "functions": functions,
         }
 
 
@@ -886,7 +975,7 @@ class _Dequant:
     result_type: str
 
 
-def _parse_dequant(line: str) -> "_Dequant | None":
+def _parse_dequant(line: str) -> _Dequant | None:
     """Split a dequantize line into :class:`_Dequant`, or ``None`` if it is not one."""
     body = line.lstrip()
     indent = line[: len(line) - len(body)]
@@ -927,7 +1016,7 @@ def _parse_dequant(line: str) -> "_Dequant | None":
             return _Dequant(indent, result, operands, int(body[digits_at:digits_end]), *parsed)
 
 
-def _dequant_to_generic(op: "_Dequant") -> str:
+def _dequant_to_generic(op: _Dequant) -> str:
     ind, res = op.indent, op.result
     init = f"%dq_init_{res[1:]}"  # %123 -> %dq_init_123 (suffixing %123 is invalid)
     wty, sty, zty, outty = (t.strip() for t in (op.weight_type, op.scale_type, op.zero_type, op.result_type))

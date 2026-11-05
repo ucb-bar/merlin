@@ -23,7 +23,8 @@ Strategy (single-op-per-dispatch baseline):
 - **Roots** = the heavy compute ops (every ``linalg.*`` op other than ``linalg.fill`` /
   ``linalg.yield``). Each becomes its own kernel.
 - **Cloned producers** = the cheap, pure producers a root consumes (``arith.constant``,
-  ``tensor.empty``, ``linalg.fill``) are *cloned into* the kernel — IREE's
+  ``tensor.empty``, ``linalg.fill``, and matmul/generic ``tensor.splat`` output initializers)
+  are *cloned into* the kernel — IREE's
   clone-producers-into-dispatch — so the kernel allocates and zeroes its own
   accumulator and is self-contained for the per-kernel backend (bufferization can fuse
   the fill into the contraction). They are left in the driver as well; if a clone is dead
@@ -94,6 +95,57 @@ class OutlineResult:
     @property
     def n_kernels(self) -> int:
         return len(self.dispatches)
+
+
+@dataclass(frozen=True)
+class ExternalizedDispatches:
+    """Outlined driver with selected kernel bodies replaced by typed declarations.
+
+    The caller must link an implementation for every selected symbol. This stage
+    makes no claim that the implementation preserves the removed body's semantics.
+    """
+
+    module: Any
+    symbols: tuple[str, ...]
+
+
+def externalize_dispatches(outlined: OutlineResult, symbols: Iterable[str]) -> ExternalizedDispatches:
+    """Expose exact outlined symbols to a separately compiled dispatch provider.
+
+    Selection is by the symbols emitted by :func:`outline_dispatches`, never by
+    a model name or by a guessed position in the module. The source module is
+    left intact so an independent host/reference build can use its bodies.
+    """
+    from xdsl.dialects import func
+
+    selected = tuple(symbols)
+    if any(not isinstance(symbol, str) or not symbol for symbol in selected):
+        raise OutlineError("external dispatch symbols must be nonempty strings")
+    if len(set(selected)) != len(selected):
+        raise OutlineError("external dispatch symbols must be unique")
+    known = {dispatch.symbol for dispatch in outlined.dispatches}
+    unknown = sorted(set(selected) - known)
+    if unknown:
+        raise OutlineError("not an outlined dispatch: " + ", ".join(f"@{symbol}" for symbol in unknown))
+
+    module = outlined.module.clone()
+    module.verify()
+    functions = {
+        op.sym_name.data: op for op in module.body.block.ops if isinstance(op, func.FuncOp)
+    }
+    for symbol in selected:
+        original = functions.get(symbol)
+        if original is None or not original.body.blocks or original.parent is not module.body.block:
+            raise OutlineError(f"outlined dispatch @{symbol} must have one top-level definition")
+        signature = original.function_type
+        declaration = func.FuncOp.external(symbol, list(signature.inputs.data), list(signature.outputs.data))
+        for key, value in original.attributes.items():
+            if key not in {"sym_name", "function_type", "sym_visibility"}:
+                declaration.attributes[key] = value
+        module.body.block.insert_op_before(declaration, original)
+        original.detach()
+    module.verify()
+    return ExternalizedDispatches(module=module, symbols=selected)
 
 
 def _prov(op) -> dict[str, str]:
@@ -184,7 +236,12 @@ def _producer_closure(root):
     for operand in root.operands:
         if _is_block_arg(operand):
             continue
-        if _cloneable(operand.owner):
+        if (_cloneable(operand.owner) or (
+            root.name in {"linalg.matmul", "linalg.generic"}
+            and hasattr(root, "outputs")
+            and operand in root.outputs
+            and operand.owner.name == "tensor.splat"
+        )):
             visit(operand.owner)
     ops.append(root)
     return ops

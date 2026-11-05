@@ -30,7 +30,9 @@ def test_e4m3_matches_the_existing_whole_model_decoder():
 
 
 def test_e5m2_decodes_its_own_layout_including_inf_nan():
-    dec = lambda u, f: float(fp8_to_f32(np.array([u], np.uint8), f)[0])
+    def dec(u, f):
+        return float(fp8_to_f32(np.array([u], np.uint8), f)[0])
+
     assert dec(0x3C, "fp8_e5m2") == 1.0  # e5m2 1.0 (exp 15, man 0)
     assert dec(0x38, "fp8_e4m3") == 1.0  # e4m3 1.0 (exp 7, man 0) — same byte, DIFFERENT value:
     assert dec(0x3C, "fp8_e4m3") != 1.0  #   0x3C is not 1.0 in e4m3
@@ -116,6 +118,18 @@ def test_encode_is_the_exact_inverse_of_decode_for_every_code():
         finite = np.isfinite(vals)
         back = _decode(float_to_codes(vals[finite], fmt), fmt)
         assert np.array_equal(back, vals[finite]), f"{fmt}: decode(encode(v)) != v"
+
+
+@pytest.mark.parametrize("fmt", ["bf16", "fp16", "fp8_e4m3", "fp8_e5m2", "fp6_e3m2", "fp4_e2m1"])
+def test_values_rounding_to_zero_keep_the_source_sign(fmt):
+    from merlin.runtime.fp8_formats import codes_to_f32, float_to_codes, storage_bits
+
+    smallest = codes_to_f32([1], fmt)[0]
+    half = np.float32(smallest / 2)
+    above = np.nextafter(half, np.float32(np.inf))
+    values = np.array([0.0, -0.0, smallest / 4, -smallest / 4, half, -half, above, -above], dtype=np.float32)
+    sign = 1 << (storage_bits(fmt) - 1)
+    assert float_to_codes(values, fmt).tolist() == [0, sign, 0, sign, 0, sign, 1, sign | 1]
 
 
 def test_out_of_range_saturates_instead_of_becoming_inf():

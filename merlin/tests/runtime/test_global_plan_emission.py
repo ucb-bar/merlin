@@ -106,6 +106,47 @@ def test_plan_without_emitter_is_explicit_shadow_analysis() -> None:
     assert program.stats["global_plan_emitted"] is False
 
 
+def test_planner_emits_fused_program_before_memory_and_c_export():
+    from merlin.compile.dispatch_c import DispatchCall, emit_program_c
+    from merlin.perf.global_planner import Bound, OccupancySummary, PlanEvaluation
+    from merlin.runtime.program import plan_program
+    from merlin.xdsl_dialects.lowering.arena_plan import ArenaRequirements
+
+    logical = _logical()
+    plan = _plan(logical)
+
+    class Adapter:
+        def region_alternatives(self, program):
+            return plan.selected
+
+        def boundary_representation(self, program, buffer, direction):
+            return ValueRepresentation("memory", "linear", "i8")
+
+        def transition(self, *args, **kwargs):
+            raise AssertionError("no representation change is needed")
+
+        def evaluate(self, program, selected, transitions):
+            return PlanEvaluation(plan.cycles, OccupancySummary(10, (), provenance=("test",)))
+
+        def lower_bound(self, *args):
+            return Bound(10, provenance=("test",))
+
+        def physical_floor(self, *args):
+            return Bound(10, provenance=("test",))
+
+    def memory(emitted):
+        assert len(emitted.nodes) == 1  # the original graph had two nodes
+        return ArenaRequirements(64, (0,), (0,), dispatch_digest=dispatch_digest(emitted))
+
+    program, search = plan_program(logical, Adapter(), _Emitter(), memory_requirements=memory)
+    assert search.resolved
+    assert program.kernels["fused_kernel"].capability == "engine"
+    report, files = emit_program_c(program, "fused", {0: DispatchCall("compiled_fused", "engine")})
+    assert len(report["calls"]) == 1 and "compiled_fused(context" in files["fused.c"]
+    with pytest.raises(ValueError, match="selected placement"):
+        emit_program_c(program, "fused", {0: DispatchCall("host_substitute", "cpu")})
+
+
 def test_emitter_cannot_hide_unaccounted_executable_work() -> None:
     logical = _logical()
     with pytest.raises(ValueError, match="unaccounted"):

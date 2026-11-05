@@ -251,3 +251,43 @@ def test_uncalibrated_structural_alternative_cannot_enter_cycle_ranking() -> Non
     result = optimize_program(_program(), adapter)
     assert result.plan is None
     assert any("needs calibration before cycle ranking" in reason for reason in result.refusals)
+
+
+def test_explicit_device_policy_cannot_silently_choose_the_cheaper_host_route():
+    device = _alt("device", (0, 1), 20, inputs=(("b0", PLAIN),), outputs=(("b2", PLAIN),))
+    host = replace(device, id="host", implementation="host", placement="cpu", cycles=CycleInterval.point(1))
+    adapter = SerialAdapter((device, host))
+    unrestricted = optimize_program(_program(), adapter)
+    assert unrestricted.plan.selected[0].id == "host"
+    strict = optimize_program(_program(), adapter, policy=GlobalPlanPolicy(allowed_placements=("array",)))
+    assert strict.plan.selected[0].id == "device"
+    assert "placement policy" in strict.plan.notes[-1]
+    assert strict.physical_floor.cycles == unrestricted.physical_floor.cycles
+    refused = optimize_program(
+        _program(), SerialAdapter((host,)), policy=GlobalPlanPolicy(allowed_placements=("array",))
+    )
+    assert refused.plan is None
+    assert any("placement policy" in reason for reason in refused.refusals)
+
+
+def test_required_node_placement_prevents_a_fused_region_from_moving_it():
+    device = _alt("device", (0, 1), 1, inputs=(("b0", PLAIN),), outputs=(("b2", PLAIN),))
+    a = _alt("a", (0,), 10, inputs=(("b0", PLAIN),), outputs=(("b1", PLAIN),))
+    b = _alt("b", (1,), 10, inputs=(("b1", PLAIN),), outputs=(("b2", PLAIN),), placement="cpu")
+    result = optimize_program(
+        _program(), SerialAdapter((device, a, b)), policy=GlobalPlanPolicy(required_placements=((1, "cpu"),))
+    )
+    assert [item.id for item in result.plan.selected] == ["a", "b"]
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"allowed_placements": ("array", "array")},
+        {"required_placements": ((0, "array"), (0, "cpu"))},
+        {"allowed_placements": ("array",), "required_placements": ((0, "cpu"),)},
+    ],
+)
+def test_invalid_placement_policy_is_rejected(settings):
+    with pytest.raises(ValueError):
+        GlobalPlanPolicy(**settings)

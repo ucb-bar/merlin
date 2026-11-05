@@ -246,7 +246,17 @@ def _hardware_matches(declaration: dict, snapshot: Mapping, semantics: dict) -> 
             for facet in snapshot.get("readout_facets") or []
             if isinstance(facet, Mapping) and facet.get("unit") == candidate.get("unit")
         ]
-        facet = facets[0] if len(facets) == 1 else None
+        matching_facets = []
+        for facet in facets:
+            try:
+                if _dtype(facet.get("element_dtype")) == candidate_format:
+                    matching_facets.append(facet)
+            except (KeyError, ValueError, TypeError):
+                continue
+        # Match the same format-specific facet used by the candidate builder.
+        # A sole mismatched facet is retained for an explicit mismatch report;
+        # duplicate claims cannot silently choose one readout.
+        facet = matching_facets[0] if len(matching_facets) == 1 else facets[0] if len(facets) == 1 else None
         parameters, unknowns, conflicts = _parameters(declaration, dict(candidate), facet, semantics)
         try:
             semantic_pair = (_dtype(semantics.get("operand_dtype")), _dtype(semantics.get("accumulator_dtype")))
@@ -297,6 +307,23 @@ def _observations(accounting: Mapping | None, declaration_id: str) -> list[dict]
             if declaration_id in signature.get("matching_declarations", []):
                 observations.append({"application": application.get("id", application.get("name")), **signature})
     return observations
+
+
+def _admission_op(operation: Mapping, observation: Mapping) -> str | None:
+    """Use the observed operation, preserving an explicit SW op roster.
+
+    Linalg accounting retains the dialect prefix while authored SW rosters may
+    name the corresponding Linalg operation without it. Strip that prefix only
+    when the exact suffix is in this declaration's roster. Other dialects and
+    unlisted operations keep their original spelling and must be screened.
+    """
+    observed = observation.get("operation")
+    if not isinstance(observed, str) or not observed:
+        return None
+    declared = operation.get("ops") or ()
+    if observed.startswith("linalg.") and observed[7:] in declared:
+        return observed[7:]
+    return observed
 
 
 def capture_recipe_candidates(spec: Mapping, quantization_contract: Mapping) -> list[dict]:
@@ -387,7 +414,12 @@ def _operation_eligibility(
             # an operation this format's eligible_operations did not select.
             selected = {**spec, "operations": [operation]}
             signature = observation.get("observed_admission_signature") or {}
-            admission = admit_operation(selected, identity, signature, placement)
+            observed_op = _admission_op(operation, observation)
+            admission = (
+                admit_operation(selected, observed_op, signature, placement)
+                if observed_op is not None
+                else {"status": "unknown", "reason": "observed operation name is missing", "op": None}
+            )
             hardware = observation.get("hardware_admission") or {}
             family = signature.get("family")
             units = hardware.get("units") or []

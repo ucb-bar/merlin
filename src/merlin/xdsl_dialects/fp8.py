@@ -149,6 +149,40 @@ if HAS_XDSL:
             for fp8_type in _FP8_BY_NAME.values():
                 based.setdefault(type(fp8_type), BaseAttr(type(fp8_type)))
 
+    _LINALG_FLAG = "_merlin_fp8_linalg_body_arg_types"
+
+    def register_fp8_linalg_named_ops() -> None:
+        """Admit FP8 elements in xDSL's named Linalg parser without changing other types.
+
+        xDSL 0.68's named-op parser asserts a fixed ``AnyFloat`` union while
+        constructing the scalar region for ``linalg.copy`` and
+        ``linalg.transpose``. That union cannot be extended through the IRDL
+        constraint registration above. Delegate every non-FP8 operand to the
+        original method so its existing checks remain authoritative.
+        """
+        from xdsl.dialects.builtin import MemRefType, TensorType
+        from xdsl.dialects.linalg.abstract_ops import NamedOperation
+
+        if getattr(NamedOperation, _LINALG_FLAG, False):
+            return
+        original = NamedOperation.body_arg_types
+
+        def element_type(operand):
+            type_ = operand.type
+            return type_.get_element_type() if isinstance(type_, (MemRefType, TensorType)) else type_
+
+        def body_arg_types(operands):
+            if not any(isinstance(element_type(operand), _Fp8Type) for operand in operands):
+                return original(operands)
+            result = []
+            for operand in operands:
+                element = element_type(operand)
+                result.extend((element,) if isinstance(element, _Fp8Type) else original((operand,)))
+            return result
+
+        NamedOperation.body_arg_types = staticmethod(body_arg_types)
+        setattr(NamedOperation, _LINALG_FLAG, True)
+
     # Install the hook as a side effect of importing the kit, so any parse path that touches
     # merlin's xDSL dialects (interface load, make_context, roundtrip) can read fp8 capsules.
     register_fp8_types()
@@ -161,4 +195,7 @@ else:  # pragma: no cover - exercised only when xDSL is absent
         return
 
     def register_fp8_float_constraints() -> None:
+        return
+
+    def register_fp8_linalg_named_ops() -> None:
         return

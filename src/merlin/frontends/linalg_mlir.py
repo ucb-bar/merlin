@@ -89,10 +89,15 @@ def make_context():
     # BEFORE any parse, exactly as `xdsl_dialects._common.make_context` does. Without this the two
     # context builders disagree: a capsule spelling `f8E4M3FN` -- or an ordinary `arith.truncf %x :
     # f32 to f8E4M3FN` requantize -- loads through one reader and fails `type expected` in the other.
-    from ..xdsl_dialects.fp8 import register_fp8_float_constraints, register_fp8_types
+    from ..xdsl_dialects.fp8 import (
+        register_fp8_float_constraints,
+        register_fp8_linalg_named_ops,
+        register_fp8_types,
+    )
 
     register_fp8_types()
     register_fp8_float_constraints()
+    register_fp8_linalg_named_ops()
 
     ctx = Context(allow_unregistered=True)
     for d in (Builtin, Func, Arith, Linalg, Tensor, Scf, Math, Cf, MemRef, Bufferization):

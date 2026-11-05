@@ -76,7 +76,8 @@ def _composition_plan(graph: dict, functions: list[dict], crossings: list[dict],
                         {
                             "kind": "kernel",
                             "operation_id": operation_id,
-                            "interface_sha256": candidate["interface_sha256"],
+                            "interface_sha256": candidate.get("interface_sha256"),
+                            "request_digest": candidate.get("request_digest"),
                             "software_admission": candidate["software_admission"],
                             "compiler_support": candidate["compiler_support"],
                             "operand_value_ids": [item["value_id"] for item in operation["inputs"][:2]],
@@ -159,7 +160,7 @@ def stitching_inventory(module, model_sha256: str, candidates: list[dict]) -> di
     by_id = {row["operation_id"]: row for row in rows}
     selected = {candidate["operation_id"] for candidate in candidates}
     if len(selected) != len(candidates) or any(
-        operation_id not in by_id or by_id[operation_id]["mlir_operation"] != "linalg.generic"
+        operation_id not in by_id or by_id[operation_id]["mlir_operation"] not in {"linalg.generic", "linalg.matmul"}
         for operation_id in selected
     ):
         raise ValueError("outlined candidates do not identify distinct parsed contractions")

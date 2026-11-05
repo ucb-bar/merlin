@@ -29,6 +29,7 @@ _FORMS = {
     "reciprocal_f32": (("f32", "f32", "f32"), 1, ()),
     "reciprocal_signed_i64_to_f32": (("i64", "f32", "f32"), 1, ()),
     "literal_base_pow_f32": (("f32", "f32", "f32"), 1, ("math.powf",)),
+    "sigmoid_f32": (("f32", "f32", "f32"), 1, ("math.exp",)),
     "tanh_gelu_f32": (("f32", "f32", "f32"), 4, ("math.tanh",)),
 }
 _POSITIVE_ONE = "0x3f800000"
@@ -171,6 +172,23 @@ def _recognize_pow(body, source):
     return "literal_base_pow_f32", (bits,)
 
 
+def _recognize_sigmoid(body, source):
+    from xdsl.dialects.arith import AddfOp, DivfOp, NegfOp
+    from xdsl.dialects.math import ExpOp
+
+    if len(body) != 6:
+        raise InvalidLinalgPattern("sigmoid source must be one, negate, exp, add, divide, yield")
+    one, bits = _literal(body[0])
+    if bits != _POSITIVE_ONE:
+        raise InvalidLinalgPattern("sigmoid source needs exact positive one")
+    negative = _scalar(body[1], NegfOp, (source,), "f32", frozenset({"fastmath"}))
+    exponential = _scalar(body[2], ExpOp, (negative,), "f32", frozenset({"fastmath"}))
+    denominator = _scalar(body[3], AddfOp, (one, exponential), "f32", frozenset({"fastmath"}))
+    result = _scalar(body[4], DivfOp, (one, denominator), "f32", frozenset({"fastmath"}))
+    _yield(body[5], result)
+    return "sigmoid_f32", (bits,)
+
+
 def _recognize_tanh_gelu(body, source):
     from xdsl.dialects.arith import AddfOp, MulfOp
     from xdsl.dialects.math import TanhOp
@@ -225,6 +243,10 @@ def recognize_static_composite_math_body(op) -> StaticCompositeMathPattern:
         if types != ("f32", "f32", "f32"):
             raise InvalidLinalgPattern("literal-base power requires f32 input/init/result")
         operation, literals = _recognize_pow(body, shell.args[0])
+    elif names[:2] == ("arith.constant", "arith.negf"):
+        if types != ("f32", "f32", "f32"):
+            raise InvalidLinalgPattern("sigmoid source requires f32 input/init/result")
+        operation, literals = _recognize_sigmoid(body, shell.args[0])
     elif names[:4] == ("arith.constant",) * 4:
         if types != ("f32", "f32", "f32"):
             raise InvalidLinalgPattern("tanh GELU requires f32 input/init/result")
@@ -269,8 +291,8 @@ def validate_serialized_static_composite_math_pattern(record: object) -> StaticC
         if literal != f"0x{value:08x}" or not isfinite(unpack("<f", pack("<I", value))[0]):
             raise InvalidLinalgPattern("serialized composite math literal is not a finite f32 bit pattern")
         bits.append(literal)
-    if operation.startswith("reciprocal_") and tuple(bits) != (_POSITIVE_ONE,):
-        raise InvalidLinalgPattern("serialized reciprocal does not use exact positive one")
+    if (operation.startswith("reciprocal_") or operation == "sigmoid_f32") and tuple(bits) != (_POSITIVE_ONE,):
+        raise InvalidLinalgPattern("serialized reciprocal or sigmoid does not use exact positive one")
     if operation == "tanh_gelu_f32" and tuple(bits) != _TANH_GELU_LITERALS:
         raise InvalidLinalgPattern("serialized tanh GELU coefficient bits differ")
     listed = record.get("lowering_intrinsic_obligations")

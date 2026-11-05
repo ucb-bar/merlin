@@ -87,6 +87,24 @@ def test_registration_is_idempotent():
     _roundtrip(_cast("truncf", "f32", "f8E4M3FN"))
 
 
+def test_named_linalg_fp8_hook_preserves_builtin_float_parsing():
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects.fp8 import register_fp8_linalg_named_ops
+
+    for _ in range(3):
+        register_fp8_linalg_named_ops()
+    for dtype in ("f8E4M3FN", "f32"):
+        source = f"""module {{
+          func.func @transpose(%input: tensor<2x2x{dtype}>) -> tensor<2x2x{dtype}> {{
+            %empty = tensor.empty() : tensor<2x2x{dtype}>
+            %result = linalg.transpose ins(%input : tensor<2x2x{dtype}>)
+              outs(%empty : tensor<2x2x{dtype}>) permutation = [1, 0]
+            func.return %result : tensor<2x2x{dtype}>
+          }}
+        }}"""
+        parse_mlir_text(source).verify()
+
+
 def test_both_merlin_readers_register_fp8():
     """READER PARITY, IN A FRESH INTERPRETER.
 

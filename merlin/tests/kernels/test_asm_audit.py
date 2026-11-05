@@ -443,10 +443,17 @@ class TestUnaccountedIsIntersectedNotMinimised:
         a = self._a("epA", "vector", [])
         assert A.merge_audits([a])["unaccounted"] == 0
 
-    def test_two_text_sources_are_two_streams_even_with_no_name(self):
+    def test_two_text_sources_are_two_streams_even_with_no_name(self, monkeypatch):
         """A text source has no name to key on, and object identity will NOT do: a freed list's id
         is reused, so two files could alias to one stream and be counted once instead of twice."""
-        lines = ["VMATMUL.MXU0 0, 0, 0"]
+        from merlin.targetgen import isa_model as IM
+
+        entry = {"class": "MXUMatMul", "mnemonic": "VMATMUL_MXU0", "role": "matmul"}
+        model = IM.IsaModel(
+            target="atlas", by_mnemonic={"VMATMUL_MXU0": entry}, asm_mnemonics={"vmatmul.mxu0": "VMATMUL_MXU0"}
+        )
+        monkeypatch.setattr(IM, "isa_model_for_target", lambda target: model)
+        lines = ["VMATMUL.MXU0 acc0, m0, w0"]
         got = {a.stream for a in A.audit_every_endpoint(list(lines), "atlas", text=True)}
         got |= {a.stream for a in A.audit_every_endpoint(list(lines), "atlas", text=True)}
         assert len(got) == 2, got

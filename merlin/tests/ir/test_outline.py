@@ -7,12 +7,10 @@ bit-identical outputs (auto-skips without the m2m venv / clang-23).
 
 from __future__ import annotations
 
-import ctypes
-
 import numpy as np
 import pytest
 
-from merlin.common.paths import merlin_dir, repo_root
+from merlin.common.paths import repo_root
 from merlin.xdsl_dialects import _common
 
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
@@ -53,6 +51,34 @@ builtin.module {
 }
 """
 
+SPLAT_MATMUL = """module {
+  func.func @forward(%a: tensor<2x3xf32>, %b: tensor<3x4xf32>) -> tensor<2x4xf32> {
+    %zero = arith.constant 0.000000e+00 : f32
+    %init = tensor.splat %zero : tensor<2x4xf32>
+    %result = linalg.matmul {prov.region_id = "matmul_0"}
+      ins(%a, %b : tensor<2x3xf32>, tensor<3x4xf32>)
+      outs(%init : tensor<2x4xf32>) -> tensor<2x4xf32>
+    func.return %result : tensor<2x4xf32>
+  }
+}"""
+
+CAPTURED_GENERIC = """module {
+  func.func @forward(%x: tensor<2xf32>, %bias: f32, %extra: f32) -> tensor<2xf32> {
+    %zero = arith.constant 0.000000e+00 : f32
+    %init = tensor.splat %zero : tensor<2xf32>
+    %result = linalg.generic {
+      indexing_maps = [affine_map<(i)->(i)>, affine_map<(i)->(i)>],
+      iterator_types = ["parallel"]
+    } ins(%x : tensor<2xf32>) outs(%init : tensor<2xf32>) {
+    ^bb0(%value: f32, %acc: f32):
+      %sum = arith.addf %value, %bias : f32
+      %both = arith.addf %sum, %extra : f32
+      linalg.yield %both : f32
+    } -> tensor<2xf32>
+    func.return %result : tensor<2xf32>
+  }
+}"""
+
 
 REPO = repo_root()
 
@@ -72,6 +98,118 @@ def test_outline_splits_each_compute_op_into_a_kernel():
     assert [d.n_operands for d in res.dispatches] == [2, 2]
     # The module verifies as valid SSA / typed IR.
     res.module.verify()
+
+
+def test_positive_zero_splat_stays_inside_outlined_matmul():
+    from io import StringIO
+
+    from xdsl.printer import Printer
+
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.targetgen.contract.model_host_object import _check_entry_dataflow
+    from merlin.xdsl_dialects.lowering.outline import externalize_dispatches, outline_dispatches
+
+    outlined = outline_dispatches(parse_mlir_text(SPLAT_MATMUL), forward="forward")
+    assert len(outlined.dispatches) == 1
+    dispatch = outlined.dispatches[0]
+    assert dispatch.n_operands == 2
+    kernel = next(op for op in outlined.module.body.block.ops
+                  if op.name == "func.func" and op.sym_name.data == dispatch.symbol)
+    assert [op.name for op in kernel.body.block.ops] == [
+        "arith.constant", "tensor.splat", "linalg.matmul", "func.return",
+    ]
+
+    def printed(module):
+        stream = StringIO()
+        Printer(stream=stream, print_generic_format=True).print_op(module)
+        return stream.getvalue() + "\n"
+
+    retained = _check_entry_dataflow(SPLAT_MATMUL, printed(outlined.module), "forward", [])
+    assert retained["host_initializer_check_count"] == 1
+    external = externalize_dispatches(outlined, [dispatch.symbol])
+    selected = _check_entry_dataflow(
+        SPLAT_MATMUL, printed(external.module), "forward", [dispatch.symbol],
+    )
+    assert selected["native_external_call_count"] == 1
+    assert selected["native_zero_initialization_obligation_count"] == 1
+
+    negative_zero = SPLAT_MATMUL.replace("0.000000e+00", "-0.000000e+00")
+    negative = outline_dispatches(parse_mlir_text(negative_zero), forward="forward")
+    external_negative = externalize_dispatches(negative, [negative.dispatches[0].symbol])
+    with pytest.raises(ValueError, match="nonzero or unknown initializer"):
+        _check_entry_dataflow(
+            negative_zero, printed(external_negative.module),
+            "forward", [negative.dispatches[0].symbol],
+        )
+
+
+def test_retained_generic_keeps_splat_and_captured_scalar_wiring():
+    from io import StringIO
+
+    from xdsl.printer import Printer
+
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.targetgen.contract.model_host_object import _check_entry_dataflow
+    from merlin.xdsl_dialects.lowering.outline import outline_dispatches
+
+    def printed(module):
+        stream = StringIO()
+        Printer(stream=stream, print_generic_format=True).print_op(module)
+        return stream.getvalue() + "\n"
+
+    outlined = outline_dispatches(parse_mlir_text(CAPTURED_GENERIC), forward="forward")
+    assert [dispatch.n_operands for dispatch in outlined.dispatches] == [3]
+    checked = _check_entry_dataflow(CAPTURED_GENERIC, printed(outlined.module), "forward", [])
+    assert checked["host_defined_call_count"] == 1
+    assert checked["host_initializer_check_count"] == 1
+
+    kernel = next(op for op in outlined.module.body.block.ops
+                  if op.name == "func.func" and "$kernel_" in op.sym_name.data)
+    generic = next(op for op in kernel.body.block.ops if op.name == "linalg.generic")
+    additions = [op for op in generic.regions[0].block.ops if op.name == "arith.addf"]
+    additions[1].operands[1] = kernel.body.block.args[1]
+    with pytest.raises(ValueError, match="changed its Linalg computation"):
+        _check_entry_dataflow(CAPTURED_GENERIC, printed(outlined.module), "forward", [])
+
+
+def test_externalize_exact_dispatch_keeps_driver_and_other_kernel():
+    from xdsl.dialects import func
+
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects.lowering.outline import externalize_dispatches, outline_dispatches
+
+    outlined = outline_dispatches(parse_mlir_text(CHAIN))
+    first, second = (dispatch.symbol for dispatch in outlined.dispatches)
+    selected = externalize_dispatches(outlined, [first])
+
+    functions = {
+        op.sym_name.data: op for op in selected.module.body.block.ops if isinstance(op, func.FuncOp)
+    }
+    assert selected.symbols == (first,)
+    assert not functions[first].body.blocks
+    assert functions[second].body.blocks
+    assert functions["forward"].body.blocks
+    assert functions[first].function_type == next(
+        op.function_type
+        for op in outlined.module.body.block.ops
+        if isinstance(op, func.FuncOp) and op.sym_name.data == first
+    )
+    assert all(op.body.blocks for op in outlined.module.body.block.ops if isinstance(op, func.FuncOp))
+    selected.module.verify()
+
+
+def test_externalize_dispatch_rejects_unknown_duplicate_and_bad_symbol():
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects.lowering.outline import OutlineError, externalize_dispatches, outline_dispatches
+
+    outlined = outline_dispatches(parse_mlir_text(CHAIN))
+    symbol = outlined.dispatches[0].symbol
+    with pytest.raises(OutlineError, match="not an outlined dispatch"):
+        externalize_dispatches(outlined, ["forward"])
+    with pytest.raises(OutlineError, match="unique"):
+        externalize_dispatches(outlined, [symbol, symbol])
+    with pytest.raises(OutlineError, match="nonempty strings"):
+        externalize_dispatches(outlined, [""])
 
 
 def test_runtime_inventory_matches_exact_outlined_symbols():

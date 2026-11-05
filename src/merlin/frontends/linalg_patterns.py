@@ -6,7 +6,7 @@ provenance labels or operation names cannot silently stand in for the body.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -406,7 +406,28 @@ def recognize_static_projected_pointwise(op) -> StaticProjectedPointwisePattern:
     )
 
 
-def _recognize_static_scalar_pointwise(op, shell: _StaticLinalgShell) -> StaticPointwisePattern:
+def recognize_static_f32_division(op) -> StaticProjectedPointwisePattern:
+    """Check projected, unflagged f32 division without admitting it to host schemas."""
+    shell = _checked_static_linalg_shell(op, singleton_projection_inputs=True)
+    scalar = _recognize_static_scalar_pointwise(
+        op, shell, additional_signatures={"arith.divf": (("f32", "f32"), "f32")},
+    )
+    if scalar.operation != "arith.divf":
+        raise InvalidLinalgPattern("f32 division needs exactly one arith.divf and yield")
+    return StaticProjectedPointwisePattern(
+        scalar.operation,
+        scalar.shape,
+        scalar.ordered_types,
+        tuple(tuple(value.type.get_shape()) for value in op.inputs),
+        tuple(str(mapping) for mapping in shell.input_maps),
+        scalar.predicate,
+    )
+
+
+def _recognize_static_scalar_pointwise(
+    op, shell: _StaticLinalgShell, *,
+    additional_signatures: Mapping[str, tuple[tuple[str, ...], str]] | None = None,
+) -> StaticPointwisePattern:
     """Common closed scalar body for strict identity and opt-in projections."""
     from xdsl.dialects import arith
     from xdsl.dialects.linalg.ops import YieldOp
@@ -419,6 +440,8 @@ def _recognize_static_scalar_pointwise(op, shell: _StaticLinalgShell) -> StaticP
         raise InvalidLinalgPattern("pointwise body does not end in registered linalg.yield")
     scalar, yld = body
     signature = _POINTWISE_TYPES.get(scalar.name)
+    if signature is None and additional_signatures is not None:
+        signature = additional_signatures.get(scalar.name)
     if signature is None or type(scalar) not in tuple(arith.Arith.operations) or not type(scalar).has_trait(Pure):
         raise InvalidLinalgPattern("scalar operation is not a registered pure arith pointwise form")
     if scalar.regions or scalar.successors:
@@ -444,6 +467,7 @@ def _recognize_static_scalar_pointwise(op, shell: _StaticLinalgShell) -> StaticP
         "arith.addf": {"fastmath"},
         "arith.subf": {"fastmath"},
         "arith.mulf": {"fastmath"},
+        "arith.divf": {"fastmath"},
         "arith.negf": {"fastmath"},
         "arith.addi": {"overflowFlags"},
         "arith.subi": {"overflowFlags"},
@@ -518,6 +542,66 @@ def screen_static_projected_pointwise_source(path: Path, ordinals: tuple[int, ..
     """Bind proved projected bodies to exact raw/normalized source ordinals."""
     raw, normalized, evidence = _screen_static_linalg_source(path, ordinals, recognize_static_projected_pointwise)
     return StaticProjectedPointwiseSource(raw, normalized, evidence)
+
+
+def recognize_f32_relu_ordered_select(op) -> tuple[object, object]:
+    """Recognize the closed f32 `x < +0 ? +0 : x` scalar region.
+
+    This is a source arithmetic form, not a target ReLU admission. Its compare
+    is ordered, so NaNs take the original input arm and negative zero survives.
+    """
+    from xdsl.dialects import arith
+    from xdsl.dialects.builtin import IntegerAttr
+    from xdsl.dialects.linalg.attrs import IteratorType
+    from xdsl.dialects.linalg.ops import YieldOp
+    from xdsl.ir.affine import AffineMap
+    from xdsl.traits import Pure
+
+    shell = _checked_static_indexed_linalg_shell(op)
+    rank = len(shell.shape)
+    if (
+        len(op.inputs) != 1 or len(op.outputs) != 1 or len(op.results) != 1
+        or shell.ordered_types != ("f32", "f32", "f32")
+        or shell.input_shapes != (shell.shape,)
+        or shell.output_shapes != (shell.shape,)
+        or shell.indexing_maps != (AffineMap.identity(rank),) * 2
+        or shell.iterator_types != (IteratorType.PARALLEL,) * rank
+    ):
+        raise InvalidLinalgPattern("f32 zero select needs identity maps and one static f32 input/output")
+    body = shell.body
+    if tuple(item.name for item in body) != (
+        "arith.constant", "arith.sitofp", "arith.cmpf", "arith.select", "linalg.yield",
+    ):
+        raise InvalidLinalgPattern("f32 zero select needs integer zero, cast, ordered compare and select")
+    integer, cast, compare, select, yld = body
+    for item, allowed in zip(body[:-1], ({"value"}, set(), {"predicate", "fastmath"}, set()), strict=True):
+        if (
+            not type(item).has_trait(Pure) or item.regions or item.successors
+            or any(not name.startswith("prov.") for name in item.attributes)
+            or set(item.properties) - allowed
+        ):
+            raise InvalidLinalgPattern("f32 zero select has an effect or unknown scalar property")
+    zero = integer.properties.get("value")
+    predicate = compare.properties.get("predicate")
+    flags = compare.properties.get("fastmath")
+    if (
+        not isinstance(zero, IntegerAttr) or str(zero.type) != "i64" or zero.value.data != 0
+        or not isinstance(predicate, IntegerAttr) or str(predicate.type) != "i64"
+        or predicate.value.data != 4  # ordered less than
+        or flags is not None and (not isinstance(flags, arith.FastMathFlagsAttr) or flags.data)
+        or any(len(item.results) != 1 for item in body[:-1])
+        or str(integer.results[0].type) != "i64"
+        or str(cast.results[0].type) != "f32" or str(compare.results[0].type) != "i1"
+        or str(select.results[0].type) != "f32"
+        or tuple(cast.operands) != (integer.results[0],)
+        or tuple(compare.operands) != (shell.args[0], cast.results[0])
+        or tuple(select.operands) != (compare.results[0], cast.results[0], shell.args[0])
+        or type(yld) is not YieldOp or yld.regions or yld.successors or yld.properties
+        or any(not name.startswith("prov.") for name in yld.attributes)
+        or tuple(yld.operands) != (select.results[0],)
+    ):
+        raise InvalidLinalgPattern("f32 zero select scalar body differs from ordered less-than and select")
+    return op.inputs[0], op.outputs[0]
 
 
 def recognize_signed_i8_i32_matmul(op) -> tuple:

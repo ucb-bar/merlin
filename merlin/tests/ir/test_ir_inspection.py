@@ -166,7 +166,7 @@ def test_whole_model_xdsl_preprocessing_failure_keeps_completed_prefix(tmp_path,
     assert [stage["name"] for stage in audit.record["stages"]] == ["xdsl-parsed", "xdsl-pruned"]
 
 
-def test_multi_function_audit_explicitly_marks_transform_map_unavailable(tmp_path):
+def test_multi_function_audit_records_separate_source_maps(tmp_path):
     from merlin.llvmlower.passes_xdsl import preprocess_text
 
     source = """module {
@@ -178,9 +178,13 @@ def test_multi_function_audit_explicitly_marks_transform_map_unavailable(tmp_pat
         observed = preprocess_text(source, audit=audit)
     assert observed == plain
     assert audit.record["outcome"] == "completed"
-    assert audit.record["source_transform_map"]["status"] == "unavailable"
-    assert "multiple defined functions" in audit.record["source_transform_map"]["reason"]
-    assert "accounting_receipts" not in audit.record
+    assert audit.record["source_transform_map"]["status"] == "recorded"
+    descriptor = audit.record["accounting_receipts"][0]
+    assert descriptor["schema"] == "source_transform_map_v2"
+    receipt = json.loads((audit.directory / descriptor["file"]).read_bytes())
+    assert receipt["defined_function_count"] == 2
+    assert [row["entry"] for row in receipt["functions"]] == ["first", "second"]
+    assert receipt["source_op_count"] == receipt["preprocessed_op_count"] == 0
 
 
 def test_audit_refuses_modified_accounting_receipt(tmp_path):

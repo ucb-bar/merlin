@@ -13,7 +13,7 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
 - `linalg_math_patterns.py` — source-only, closed unary f32 sine/cosine scalar-region checks;
   no host admission or numerical-equivalence claim. Its unary schema refuses scalar-literal power.
 - `linalg_composite_math.py` — separate source-only, closed literal clamp, reciprocal,
-  literal-base power, and tanh-GELU scalar regions. It records exact f32 literal bits
+  literal-base power, sigmoid, and tanh-GELU scalar regions. It records exact f32 literal bits
   and unresolved math-intrinsic obligations; no host, libm-supplier, or numerical grant.
 - `linalg_patterns.py` has separate strict identity and opt-in static singleton-projected
   pointwise schemas. The latter reuses the same closed scalar-region proof, retains each
@@ -56,6 +56,16 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
 
 ## Invariants
 
+- Tensor archives are staged and hashed in chunks and checked against typed headers
+  without copying complete payloads. Selective argument reads preserve every
+  role in the signature, count repeated stored tensors once, and enforce the
+  payload budget before allocation. Extract bytes from the same stream that
+  supplies the checked digest; unselected archives still need their identity.
+- Compiler-input staging selects only receipt-declared lifted constants and
+  manifest-declared buffer initializers from `extra.npz`. Keep the raw archive,
+  runtime samples and reference outputs outside the compiler directory. Buffers
+  retain their state role. Recover BF16 storage only with exact bits; refuse
+  lossy legacy dtype casts and unqualified NaN payloads.
 - Parse the **full** model artifact, not `sections/*.mlir`: the model2MLIR section splitter currently emits use-before-def SSA references (invalid SSACFG IR; e.g. `%2034` in `sections/smolvla.model.mlir`). Fix upstream before relying on sections.
 - `PAREN_RESULTS` exists because xDSL 0.65's linalg parser rejects `} -> (T1, T2)`; remove it once xDSL accepts the parenthesized multi-result form.
 - The integer pipeline executes a layer's **i8 deployment GEMM** with the real (M,K,N); the capture dtype is preserved as provenance, never silently claimed as executed.

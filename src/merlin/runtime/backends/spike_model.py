@@ -501,9 +501,11 @@ def build(
     Returns ``{elf, mem_bytes, weights_base, build_hash, ...}``.
 
     ``host_math_policy`` defaults to emission-neutral ``native``. Explicit
-    ``expf_via_double`` changes libm returned-value precision; callers must
-    qualify their original numerical contract. It does not preserve errno or
-    floating-point exception equivalence to native expf.
+    ``expf_via_double`` changes libm returned-value precision;
+    ``rsqrtf_via_sqrtf`` supplies reciprocal square root through sqrtf on
+    libm implementations without rsqrtf. Callers must qualify their original
+    numerical contract. These policies do not preserve errno or floating-point
+    exception equivalence to native functions.
 
     ``math_archive_symbols`` optionally requests actual-link defining-supplier
     traces for caller-selected C symbols. Each must resolve to the selected

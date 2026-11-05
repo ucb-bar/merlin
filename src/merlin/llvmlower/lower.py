@@ -117,6 +117,12 @@ def lower_model(
     round-trip. The default route emits generic MLIR at the upstream seam to
     preserve attributes and avoid custom-printer grammar skew.
 
+    Public C-interface tensor inputs default to read-only storage during native
+    bufferization, so functional tensor updates leave caller inputs unchanged.
+    Explicit ``bufferization.writable`` attributes are honored. A caller that
+    declares a writable tensor argument permits its storage to be overwritten;
+    explicit memref stores keep their mutable ABI.
+
     ``vectorize=True`` bakes native RVV (fixed-width vector ops) into the IR instead of
     relying on clang auto-vectorization — for the rv64gcv vector-tile target.
 

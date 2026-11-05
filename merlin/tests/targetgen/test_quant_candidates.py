@@ -89,6 +89,44 @@ def test_distinct_units_can_independently_derive_distinct_formats() -> None:
     assert candidates[1].recipe.weight.dtype == "fp32"
 
 
+def test_one_unit_uses_its_unique_format_specific_readout_per_candidate() -> None:
+    contract = {"compute_units": [_unit("u", ["int8", "fp32"])]}
+    integer = _facet("u", ["int8", "fp32"], "i8")
+    floating = _facet("u", ["int8", "fp32"], "f32")
+    forward = QR.derive_candidates(contract, [integer, floating])
+    backward = QR.derive_candidates(contract, [floating, integer])
+    assert [(c.format, c.status, c.recipe.weight.dtype) for c in forward] == [
+        ("int8", QR.DERIVED, "int8"), ("fp32", QR.DERIVED, "fp32")
+    ]
+    assert [candidate.to_dict() for candidate in forward] == [candidate.to_dict() for candidate in backward]
+    assert all("readout" not in candidate.underivable for candidate in forward)
+
+
+def test_ambiguous_matching_readouts_do_not_hide_a_distinct_format() -> None:
+    contract = {"compute_units": [_unit("u", ["int8", "fp32"])]}
+    facets = [
+        _facet("u", ["int8", "fp32"], "i8"),
+        _facet("u", ["int8", "fp32"], "i8"),
+        _facet("u", ["int8", "fp32"], "f32"),
+    ]
+    integer, floating = QR.derive_candidates(contract, facets)
+    assert integer.status == QR.UNDERIVABLE
+    assert "2 readout facets claim" in integer.underivable["readout"]
+    assert floating.status == QR.DERIVED
+    assert floating.recipe.weight.dtype == "fp32"
+
+
+def test_unmatched_readout_stays_unknown_when_other_facets_exist() -> None:
+    contract = {"compute_units": [_unit("u", ["int8", "fp32"])]}
+    integer, floating = QR.derive_candidates(
+        contract,
+        [_facet("u", ["int8", "fp32"], "i8"), RF.ReadoutFacet(target="t", unit="u")],
+    )
+    assert integer.status == QR.DERIVED
+    assert floating.status == QR.UNDERIVABLE
+    assert "no unique format-specific readout facet" in floating.underivable["readout"]
+
+
 def test_format_rung_from_other_block_format_cannot_license_int8() -> None:
     contract = {"compute_units": [_unit("u", ["int8", "mxfp4"])]}
     facet = _facet("u", ["int8", "mxfp4"], "i8")
@@ -118,6 +156,6 @@ def test_mismatched_scalar_abi_or_missing_facet_refuses_even_declared_format() -
     facet.scalar_abi["output_dtype"] = "f32"
     contract = {"compute_units": [_unit("u", ["int8"]), _unit("other", ["fp32"])]}
     first, second = QR.derive_candidates(contract, [facet])
-    assert "does not prove" in first.underivable["scalar_abi"]
+    assert "differs from derived" in first.underivable["scalar_abi"]
     assert "no readout facet" in second.underivable["readout"]
     assert (first.status, second.status) == (QR.UNDERIVABLE, QR.UNDERIVABLE)

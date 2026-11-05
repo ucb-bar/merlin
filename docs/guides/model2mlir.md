@@ -3,7 +3,7 @@ title: model2MLIR frontend
 kind: guide
 status: current
 owner: frontends
-last_verified: 2026-10-06
+last_verified: 2026-10-20
 related: [getting_started, extending_the_stack, phase0_specification, model_lowering, reproducibility]
 code_refs: [src/merlin/frontends, src/merlin/capture/bundle.py, src/merlin/targetgen/_m2m_capture_worker.py, src/merlin/targetgen/frontend_trace.py, src/merlin/frontends/compile_inputs.py, src/merlin/semantic_compiler/linalg_bridge.py, src/merlin/targetgen/cli.py, packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py]
 ---
@@ -15,6 +15,31 @@ payloads. Framework capture and importer/decomposition extensions belong in the
 selected model2MLIR environment. Target encoding and drivers belong in OOT support
 packages. Parsing a capture or inventorying its matmuls is not proof of complete
 model lowering, numerical agreement, or accelerator execution.
+
+The compiler-only staged signature marks each function argument as a runtime
+input, parameter, constant, or buffer. The application compiler binds parameters
+and declared constants as immutable values. Buffers require an explicit state
+interface, including their initialization and any returned updates; storing a
+buffer initializer does not make the buffer immutable. Runtime arguments remain inputs.
+
+The bridge currently preserves these source operations as typed graph nodes:
+
+- Fully static `tensor.insert_slice`, including non-unit strides and the
+  initialized destination outside the inserted area. Dynamic and rank-reduced
+  slices are unsupported.
+- All-parallel `linalg.generic` gathers with an identity output map and an
+  in-bounds integer-affine input map.
+- Strict f32 add, subtract, and multiply with static singleton-projected
+  inputs, including a rank-one bias over a rank-two result.
+- One-axis f32 `linalg.reduce` when the source declares
+  `merlin.reduction_order = "axis-ascending"` and the body adds each input to
+  the initialized accumulator with unflagged `arith.addf`. The graph keeps
+  one binary32 rounding per addition.
+
+An unannotated reduction has no assumed order. The source annotation records
+the chosen order but does not establish that an external model intended it.
+Captured f32 arithmetic still needs a selected precision policy or compiled
+host route before it can execute on a target with different arithmetic.
 
 For the complete model → kernel → MLIR → machine-code distinction, start with
 [Extending the compiler stack](extending_the_stack.md#understand-the-two-lowering-routes).
@@ -134,10 +159,110 @@ merlin-targetgen stage-capture --capture /absolute/capture \
 
 The staged directory contains parsed `program.mlir`, external weights and their
 argument manifest, the frontend source trace, a static invocation signature,
-and a digest manifest. It does not copy or read runtime samples or goldens.
+and a digest manifest. When the MLIR function has externalized parameters or
+buffers, the signature records each function argument's weight name or runtime
+input position. Staging checks those roles, types, shapes, and weight bytes
+against the receipt-bound manifest. It does not copy or read runtime samples or goldens.
 The capture receipt binds the copied member bytes; source closure, target
 numerical admission, and model execution remain separate checks. The output
 directory must be new, and failure returns a nonzero status.
+If metadata omits the entry name, staging accepts only a single parsed function.
+Captures with several functions must name the entry explicitly.
+
+When the capture stores declared lifted constants or buffer initializers in
+`extra.npz`, staging selects only those tensors. It checks their parsed argument
+types and the producer's declarations, then writes
+`capture-constants.safetensors`. The original weights keep their bytes. The
+v3 signature names one of these two archives for each stored argument, and the
+digest manifest records the extraction. The raw `extra.npz` archive is excluded
+from compiler inputs, along with runtime samples and reference outputs.
+
+Staging performs no quantization or general dtype conversion. It accepts the
+producer's BF16-as-f32 storage only when every original BF16 bit can be
+recovered exactly; NaN payloads remain unqualified. Lossy legacy buffer storage,
+missing initializers, and ambiguous buffer names produce an error. Existing
+v1/v2 stages retain their format and checks.
+
+Staging copies and rehashes the weight archive in chunks before publishing it.
+`load_compile_inputs` hashes tensor archives in chunks and reads their bounded
+headers without copying the complete payload into Python. Argument extraction
+can also select roles and limit the total unique payload bytes:
+
+```python
+from merlin.frontends.compile_inputs import load_compile_inputs, load_lifted_argument_bytes
+
+staged = load_compile_inputs(compiler_directory)
+constants = load_lifted_argument_bytes(
+    compiler_directory, staged, kinds=("constant",), max_bytes=1024 * 1024,
+)
+```
+
+This still rechecks every archive's digest, including unselected parameters.
+Selected bytes and the digest come from the same read stream. Repeated
+arguments naming one stored tensor share one payload and count once against
+the extraction budget. Parameter and buffer roles remain in the signature;
+this selection does not turn them into runtime samples or make them optional.
+Without `kinds`, all stored argument roles are returned. The embedded C
+parameter exporter checks its byte budget before materializing payloads.
+
+An explicitly selected precision policy can be staged with
+`stage-capture --precision-policy /absolute/policy.json`. The JSON must carry a
+`source_sha256` matching the original captured `model.mlir`; staging copies its
+exact bytes and records their hash. It does not validate the policy's arithmetic
+or accept it as a target lowering. Keep the policy outside the capture bundle.
+
+The native commands accept `--compile-inputs /absolute/artifacts/compiler-inputs`
+in place of `--linalg` or `--request`. They recheck the declared file set and
+member hashes, and use the staged signature's entry function. A staged precision
+policy still returns `unsupported_semantics` for whole-source compilation: no
+native numerical transformation covers the full captured graph.
+
+For an explicitly selected, source-bound matmul tile, `native-select` and
+`native-compile` also accept `--diagnostic-region REGION_ID --mode diagnostic`.
+The installed target support must provide that exact tile profile; pass
+`--support SUPPORT_NAME` to both commands and to `native-verify`. The compiler
+checks every policy matmul region against parsed source operations, builds one
+typed target tile, and records input reindexing and precision conversions as
+**unmaterialized boundary obligations**. `native-compile` keeps that record in
+`precision-plan.json`, tracked by the compilation manifest. Its emitted binary
+is a diagnostic target-program region, not a source-equivalent model artifact;
+the boundary conversions, source-model quality, and host execution still need
+separate qualification. A missing region or a target mode absent from the
+selected support fails explicitly.
+
+To inspect every declared matmul in one staged capture, run the diagnostic
+region sweep with the same snapshot and support. An exact `--abi` file applies
+when every tile has the same input roles. For regions with different operand
+counts, pass an explicit slot pool instead:
+
+```bash
+merlin-targetgen native-probe-model-regions --engine merlin_native \
+  --support SUPPORT_NAME --snapshot /absolute/native-snapshot \
+  --compile-inputs /absolute/artifacts/compiler-inputs \
+  --abi-pool /absolute/diagnostic-slots.json \
+  --target-source /absolute/target-source \
+  --out /absolute/artifacts/model-region-probe
+```
+
+The slot pool is JSON with `input_slots` and `output_slots` arrays of distinct,
+nonnegative physical slot numbers, for example `{"input_slots":[3,4,5,6],
+"output_slots":[35]}`. The probe derives an exact ABI for each tile from its
+declared operand roles and writes it under `abis/`. The selected target compiler
+still checks those addresses. A pool that cannot fit a tile returns a resource
+limit; it does not justify moving the computation to the host.
+
+`manifest.json` records each source region's SSA inputs and result, its compile
+status and artifact, plus every top-level operation still lacking a route.
+For explicit source-bound precision decisions, it also attempts named and
+batched output tiles. It checks that emitted tile plans cover distinct source
+windows without gaps before reporting all tiles emitted. A direct whole-region
+failure remains visible beside its isolated tile results.
+`source-graph.json` retains the exact parsed SSA inventory. The command
+also writes `stitching.json` with ordered kernel, host and transfer steps;
+those steps are obligations, not executable dispatches. The command
+continues after one region fails and returns a nonzero `incomplete` status:
+separate region programs are not yet a composed model, and a per-tile ABI does
+not imply that their physical addresses can be reused across a model schedule.
 
 For a single admitted static rank-two integer contraction, the installed native
 selector can parse Linalg directly. Supply a native snapshot built for the selected
@@ -148,6 +273,21 @@ merlin-targetgen native-select --engine merlin_native \
   --snapshot /absolute/native-snapshot --linalg /absolute/region.mlir \
   --linalg-entry work --mode strict-native --out /absolute/selection.json
 ```
+
+When the selected target requires a physical boundary representation, pass
+`--physical-layouts /absolute/layouts.json` to `native-select`, `native-compile`,
+and `native-verify`. Both `merlin.physical_boundary_layouts.v1` and `.v2`
+contain `target_identity`, `source_identity` (SHA-256 of the exact Linalg file),
+`physical_extents` and `boundary_layouts` keyed by every input/constant ID,
+and `output_layouts` in result order. Extents use the named storage bank's
+address unit. Version 2 also requires `request_digest` for the exact typed
+request after any selected precision transformation and before layouts are
+bound. A changed transform or numerical policy therefore requires a new layout
+declaration. Version 1 applies only to direct parsed Linalg. Merlin checks the
+declaration before selection, and verification reconstructs the same request
+and compares the canonical `physical-boundary-layouts.json` stage file. This
+option still refuses outer tiling and typed `--request` inputs; a typed request
+already carries its own layouts.
 
 The optional `native-select --abi` file fixes boundary addresses with
 `fixed_inputs` and `fixed_outputs`. It may also list `reservations`, which are
@@ -160,9 +300,48 @@ ABI takes only the fixed input and output addresses.
 its required OOT support, ABI, target source and output arguments. Both commands
 also accept `--request` for an already typed semantic graph. The Linalg bridge
 currently admits signed i8/i32 or i32 contractions with ordered wrapping i32
-accumulation, explicit initialization and static rank-two shapes. Other
-operations or numerical policies return a nonzero structured status; this
-single-region route does not compile a complete capture or model.
+accumulation, explicit initialization and static rank-two shapes. It also
+admits type-preserving tensor movement, static reshapes, same-rank slices and
+insertions, checked affine gathers, and a bounded i64-indexed embedding lookup.
+An unflagged, all-parallel f32 multiplication is retained as a typed semantic
+node, including a one-input square. These entries describe source semantics;
+Target instruction selection and physical execution remain separate checks.
+Bare f32 `linalg.reduce` still requires a qualified numerical-order policy or
+a compiled host route. The bridge does not assign it a K-ascending fold merely
+because a sequential implementation would be convenient.
+Closed, explicitly annotated Linalg regions admit a finite-domain ordered
+FP8/BF16 reset reduction, bounded BF16 add, nearest-even BF16 multiply,
+sign-clamp ReLU, and a BF16-to-E4M3 `arith.truncf` with declared numerical
+policy, input domain,
+and scale code. These forms do not equate an f32 model with a quantized target
+program. The multiply form requires the exact unflagged FP32 product and
+nearest-even BF16 bit-rounding body, with finite normal operands and a normal
+rounded result supplied as a caller premise. The cast bridge checks the scalar
+body and a direct input's
+domain declaration. It retains a computed producer as a separate semantic
+node; the selected OOT target binding must establish that producer's result
+satisfies the cast's declared domain. The caller must establish runtime
+input-domain assumptions.
+Other operations or numerical policies return a nonzero
+structured status. This single-region route does not compile a complete
+capture or model.
+
+After compilation, reopen the published package against the same source and
+native snapshot:
+
+```bash
+merlin-targetgen native-verify --engine merlin_native \
+  --snapshot /absolute/native-snapshot --linalg /absolute/region.mlir \
+  --linalg-entry work --mode diagnostic \
+  --artifact /absolute/compiled-region --out /absolute/verification.json
+```
+
+`native-verify` checks source, target, compile mode, snapshot, binary, execution
+plan, and every stage file declared in the package manifest. If the package
+records a selected graph, it must also carry a checked selection record with
+the same fingerprint. The command returns a nonzero status and replaces its
+status JSON when a file or identity changes. This is an artifact-integrity
+check; it does not execute the program or establish numerical or RTL behavior.
 
 `merlin.capture.bundle.CaptureBundle` is the canonical capture-bundle interface.
 `merlin.baselines.bundle` retains a compatibility import. Legacy roster resolution

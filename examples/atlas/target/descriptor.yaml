@@ -10,7 +10,7 @@ rtl:
     ext_root: bringup_chipyard
     config: EE290SimConfig
     generator: atlas-npu
-    source_revision: "426a862f97f98938660772bd8a5d8f41316d15c3"
+    source_revision: "245f2a9d203be685176cc01e26e28029c5593202"
     gitlinks:
       generators/atlas-npu: "0079c0541111197741a231c002e3843fa6f545b2"
 

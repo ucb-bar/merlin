@@ -10,6 +10,7 @@ from merlin.common import mlir_query as mq
 from merlin.frontends.linalg_math_patterns import (
     SOURCE_ONLY_SCOPE,
     STATIC_F32_MATH_SOURCE_BODY_SCHEMA,
+    recognize_static_f32_exp_rsqrt_body,
     recognize_static_f32_math_body,
     screen_static_f32_math_source,
     static_f32_math_ordered_types,
@@ -63,6 +64,26 @@ def test_registered_unary_f32_math_is_source_only(kind, shape):
     assert pattern.ordered_types == ("f32", "f32", "f32")
     assert pattern.scope == SOURCE_ONLY_SCOPE
     assert "selected-libm equivalence" in pattern.scope
+
+
+@pytest.mark.parametrize("kind", ("exp", "rsqrt"))
+def test_exp_and_rsqrt_have_separate_source_only_recognition(kind):
+    scalar = f'"math.{kind}"(%input) <{{fastmath = #arith.fastmath<none>}}> : (f32) -> f32'
+    pattern = recognize_static_f32_exp_rsqrt_body(_generic(_program(scalar=scalar)))
+    assert pattern.operation == f"math.{kind}"
+    assert pattern.shape == (2, 3)
+    with pytest.raises(InvalidLinalgPattern, match="closed unary f32 math"):
+        validate_static_f32_math_source_body({
+            "schema": STATIC_F32_MATH_SOURCE_BODY_SCHEMA, "operation": f"math.{kind}",
+        })
+    for changed in (
+        _program(scalar=f'"math.{kind}"(%acc) : (f32) -> f32'),
+        _program(scalar=f'"math.{kind}"(%input) '
+                 '<{fastmath = #arith.fastmath<fast>}> : (f32) -> f32'),
+        _program(scalar=f'"math.{kind}"(%input) : (f32) -> f32', input_map="(d1, d0)"),
+    ):
+        with pytest.raises(InvalidLinalgPattern):
+            recognize_static_f32_exp_rsqrt_body(_generic(changed))
 
 
 @pytest.mark.parametrize(

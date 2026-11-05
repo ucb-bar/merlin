@@ -116,7 +116,14 @@ class GlobalPlanEmitter(Protocol):
 def _boundary_buffers(program: DispatchProgram, direction: str) -> set[str]:
     if direction == "output":
         return set(program.results)
-    return {name for name, buffer in program.buffers.items() if buffer.kind == "arg"}
+    # Older outlined programs also label constants produced by driver operations
+    # as const. Only constants without such a producer are external bindings.
+    produced = {name for node in program.nodes for name in node.outputs}
+    return {
+        name
+        for name, buffer in program.buffers.items()
+        if buffer.kind == "arg" or buffer.kind == "const" and name not in produced
+    }
 
 
 def _component_boundary(program: DispatchProgram, indices: tuple[int, ...]) -> tuple[set[str], set[str]]:
@@ -263,7 +270,7 @@ def verify_global_plan_emission(program: DispatchProgram, plan: GlobalPlan, emis
     # DispatchProgram's general verifier is intentionally permissive for older runtime writers.
     # A proof-carrying emitter must additionally establish SSA ownership and explicit captures.
     for label, dispatch in (("logical", program), ("emitted", emission.dispatch)):
-        defined = {key for key, buffer in dispatch.buffers.items() if buffer.kind == "arg"}
+        defined = _boundary_buffers(dispatch, "input")
         for index, node in enumerate(dispatch.nodes):
             if node.regions and node.captures is None:
                 problems.append(f"{label} node {index} has an unknown region capture set")
@@ -302,9 +309,9 @@ def verify_global_plan_emission(program: DispatchProgram, plan: GlobalPlan, emis
                 direction == "input"
                 and logical_spec is not None
                 and emitted_spec is not None
-                and logical_spec.arg_index != emitted_spec.arg_index
+                and (logical_spec.arg_index != emitted_spec.arg_index or logical_spec.kind != emitted_spec.kind)
             ):
-                problems.append(f"boundary input {row.logical_buffer!r} changes its ABI argument index")
+                problems.append(f"boundary input {row.logical_buffer!r} changes its buffer role or ABI argument index")
     output_map = {row.logical_buffer: row.emitted_buffer for row in emission.boundaries if row.direction == "output"}
     if [output_map.get(name) for name in program.results] != emission.dispatch.results:
         problems.append("emission changes model result order")

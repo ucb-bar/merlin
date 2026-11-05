@@ -187,6 +187,10 @@ def codes_to_f32(codes, fmt: str) -> np.ndarray:
     u = np.asarray(codes, dtype=np.int64) & np.int64(mask)
     if bits >= 32:
         return np.ascontiguousarray(u.astype(np.uint32)).view(np.float32).copy()
+    if t == "bf16":
+        # Widen the stored pattern directly. Arithmetic reconstruction would
+        # canonicalize NaNs and lose their sign or payload bits.
+        return np.ascontiguousarray(u.astype(np.uint32) << 16).view(np.float32).copy()
     return _decode(u.astype(np.uint32), t)
 
 
@@ -267,10 +271,11 @@ def float_to_codes(values, fmt: str) -> np.ndarray:
         even_hi = (codes[hi] & 1) == 0
         pick = np.where(tie, np.where(even_hi, hi, lo), pick)
     result = codes[pick].copy()
-    zeros = a == 0
+    zeros = (result & ((1 << (bits - 1)) - 1)) == 0
     if zeros.any():
         # The ordered grid contains both zero codes at the same numerical
-        # position. Preserve the input's sign explicitly for byte preloads.
+        # position. Preserve the input's sign both for exact zeros and values
+        # that round to zero; stable grid ordering cannot choose that sign.
         result[zeros] = np.where(np.signbit(a[zeros]), 1 << (bits - 1), 0)
     return result
 

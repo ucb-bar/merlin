@@ -51,6 +51,14 @@ def _body(kind: str) -> str:
             '        %value = "math.powf"(%base, %input) '
             "<{fastmath = #arith.fastmath<none>}> : (f32, f32) -> f32"
         )
+    if kind == "sigmoid_f32":
+        return "\n        ".join((
+            '%one = "arith.constant"() <{value = 1.000000e+00 : f32}> : () -> f32',
+            '%negative = "arith.negf"(%input) : (f32) -> f32',
+            '%exponential = "math.exp"(%negative) : (f32) -> f32',
+            '%denominator = "arith.addf"(%one, %exponential) : (f32, f32) -> f32',
+            '%value = "arith.divf"(%one, %denominator) : (f32, f32) -> f32',
+        ))
     if kind == "tanh_gelu_f32":
         # Public tanh approximation coefficients; no captured model source.
         return "\n        ".join(
@@ -106,6 +114,7 @@ def _generic(text: str):
         "reciprocal_f32",
         "reciprocal_signed_i64_to_f32",
         "literal_base_pow_f32",
+        "sigmoid_f32",
         "tanh_gelu_f32",
     ),
 )
@@ -123,6 +132,8 @@ def test_closed_source_forms_are_typed_literal_bit_preserving_and_not_admission(
     assert "numerical equivalence unproved" in SOURCE_ONLY_SCOPE
     if kind == "literal_base_pow_f32":
         assert pattern.lowering_intrinsic_obligations == ("math.powf",)
+    elif kind == "sigmoid_f32":
+        assert pattern.lowering_intrinsic_obligations == ("math.exp",)
     elif kind == "tanh_gelu_f32":
         assert pattern.lowering_intrinsic_obligations == ("math.tanh",)
     else:
@@ -138,6 +149,10 @@ def test_closed_source_forms_are_typed_literal_bit_preserving_and_not_admission(
         ("reciprocal_signed_i64_to_f32", "arith.sitofp", "arith.uitofp"),
         ("reciprocal_f32", "1.000000e+00", "2.000000e+00"),
         ("literal_base_pow_f32", "(%base, %input)", "(%input, %base)"),
+        ("sigmoid_f32", "1.000000e+00", "2.000000e+00"),
+        ("sigmoid_f32", "math.exp", "math.erf"),
+        ("sigmoid_f32", "(%one, %exponential)", "(%exponential, %one)"),
+        ("sigmoid_f32", "(%one, %denominator)", "(%denominator, %one)"),
         ("tanh_gelu_f32", "4.471500e-02", "4.471600e-02"),
         ("tanh_gelu_f32", "(%scale, %plus)", "(%plus, %scale)"),
         ("tanh_gelu_f32", "math.tanh", "math.erf"),

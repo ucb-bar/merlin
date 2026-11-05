@@ -208,6 +208,27 @@ def test_selected_recipe_and_observed_admission_do_not_license_host_or_framework
         build_quantization_contract(_spec(), _hardware())["formats"][0]["operation_eligibility"][0]["status"]
         == "unknown"
     )
+
+
+def test_quantization_eligibility_screens_the_observed_linalg_op() -> None:
+    accounting = _accounting()
+    observed = accounting["applications"][0]["signatures"][0]
+    report = build_quantization_contract(_spec(), _hardware(), accounting)
+    admitted = report["formats"][0]["operation_eligibility"][0]["observed_signatures"][0]
+    assert admitted["software_admission"]["op"] == "matmul"
+    assert admitted["status"] == "candidate"
+
+    observed["operation"] = "linalg.generic"
+    refused = build_quantization_contract(_spec(), _hardware(), accounting)
+    row = refused["formats"][0]["operation_eligibility"][0]["observed_signatures"][0]
+    assert row["software_admission"]["op"] == "linalg.generic"
+    assert row["status"] == "ineligible"
+
+    del observed["operation"]
+    unresolved = build_quantization_contract(_spec(), _hardware(), accounting)
+    row = unresolved["formats"][0]["operation_eligibility"][0]["observed_signatures"][0]
+    assert row["software_admission"]["status"] == "unknown"
+    assert row["status"] == "unknown"
     accounting = _accounting()
     accounting["applications"][0]["signatures"][0]["hardware_admission"]["units"] = ["different_unit"]
     assert (
@@ -264,6 +285,65 @@ def test_multi_format_candidates_never_borrow_the_selected_format_readout():
     assert alternative["hardware_matches"][0]["candidate"]["status"] == "derived"
     assert "numerical_semantics.format_specific_selection" in alternative["hardware_matches"][0]["unknowns"]
     assert alternative["status"] == "unknown"
+
+
+def test_multi_format_unit_joins_each_candidate_to_its_own_readout():
+    spec = _spec()
+    spec["quantization"]["formats"].append(
+        {
+            "id": "float_alternative",
+            "operand_dtype": "fp32",
+            "accumulator_dtype": "i32",
+            "eligible_operations": ["matrix"],
+        }
+    )
+    contract = {
+        "compute_units": [
+            {
+                "name": "unit",
+                "kind": "systolic",
+                "dtypes": ["int8", "fp32"],
+                "semantic_capabilities": [{"family": "contraction", "dtypes": ["int8", "fp32"]}],
+            }
+        ]
+    }
+    integer = readout_facet.ReadoutFacet(
+        target="test_device", unit="unit", element_dtype="i8", accumulator_dtype="i32",
+        scale_granularities=("tensor",), scale_dtype="fp32", zero_point_carried=False,
+        clamp=(-128, 127),
+    )
+    floating = readout_facet.ReadoutFacet(
+        target="test_device", unit="unit", element_dtype="f32", accumulator_dtype="i32",
+        scale_granularities=("column", "tensor"), scale_dtype="fp32", zero_point_carried=False,
+        clamp=(-128, 127),
+    )
+
+    def snapshot(facets):
+        return {
+            "quantization_candidates": [
+                row.to_dict() for row in quant_recipe.derive_candidates(contract, facets)
+            ],
+            "readout_facets": [facet.to_dict() for facet in facets],
+        }
+
+    forward = build_quantization_contract(spec, snapshot([integer, floating]), _accounting())
+    backward = build_quantization_contract(spec, snapshot([floating, integer]), _accounting())
+    assert forward["formats"] == backward["formats"]
+    int_match = forward["formats"][0]["hardware_matches"][0]
+    float_match = forward["formats"][1]["hardware_matches"][0]
+    assert int_match["status"] == "candidate"
+    assert int_match["parameters"]["weight_granularity"]["value"] == "tensor"
+    assert float_match["candidate"]["status"] == "derived"
+    assert float_match["parameters"]["weight_granularity"]["value"] == "channel"
+    assert "hardware.accumulator_dtype" not in float_match["unknowns"]
+    assert "numerical_semantics.format_specific_selection" in float_match["unknowns"]
+
+    ambiguous = build_quantization_contract(spec, snapshot([integer, integer, floating]), _accounting())
+    int_match = ambiguous["formats"][0]["hardware_matches"][0]
+    assert int_match["status"] == "unknown"
+    assert int_match["candidate"]["recipe"] is None
+    assert "hardware.accumulator_dtype" in int_match["unknowns"]
+    assert ambiguous["formats"][1]["hardware_matches"][0]["candidate"]["status"] == "derived"
 
 
 def test_float_semantics_and_unknowns_are_explicit_and_refusals_fail_closed():

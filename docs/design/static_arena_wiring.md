@@ -12,6 +12,14 @@ code_refs: [src/merlin/xdsl_dialects/lowering/arena_plan.py, src/merlin/llvmlowe
 
 ## What is wired now
 
+The explicit serial-dispatch path now has a separate executable consumer:
+`compile.dispatch_c.emit_program_c` emits calls to selected compiled wrappers
+and binds the bounded `MemoryPlan` offsets in generated C. It independently
+checks placement before emission and requires every operation to have a
+synchronous implementation. This is an opt-in library path, not a change to the
+monolithic LLVM build discussed below. It has no tensor interpreter or automatic
+per-kernel MLIR compilation. See [C dispatch](../guides/dispatch_c.md).
+
 `lower_model(static_arena=True)` (or `MERLIN_STATIC_ARENA=1`) runs
 `llvmlower.arena_bind.bind_arena` on the LLVM IR the pipeline returns, before it is written to
 `model.ll` and compiled. That is the last seam the measured whole-model path still passes through as

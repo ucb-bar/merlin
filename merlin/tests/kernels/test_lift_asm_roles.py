@@ -168,62 +168,125 @@ class TestTheLiftReportsWhatItCouldNotSee:
 class TestTextIsaStreams:
     """A self-hosted-ISA corpus is hand-written text, not a disassembly, and the same lifter reads it."""
 
-    def _atlas(self):
+    @pytest.fixture(autouse=True)
+    def metadata(self, monkeypatch):
         from merlin.targetgen import isa_model as IM
 
-        try:
-            if IM.isa_model_for_target("atlas").is_empty():
-                pytest.skip("atlas IsaModel unavailable")
-        except Exception:  # noqa: BLE001
-            pytest.skip("atlas IsaModel unavailable")
+        entries = (
+            ("VMATPUSH_WEIGHT_MXU0", "vmatpush.weight.mxu0", "MXUWeightPush", "weight_load"),
+            ("VMATMUL_MXU0", "vmatmul.mxu0", "MXUMatMul", "matmul"),
+            ("VMATPOP_BF16_ACC_MXU0", "vmatpop.bf16.acc.mxu0", "MXUAccumulatorPop", "acc_readout"),
+            ("VMATPOP_FP8_ACC_MXU0", "vmatpop.fp8.acc.mxu0", "MXUAccumulatorPopE1", "acc_readout_scaled"),
+            ("VRELU", "vrelu.bf16", "TensorComputeUnary", "tensor_compute_unary"),
+            ("DMA_CONFIG_CH0", "dma.config.ch0", "DMARegUnary", "scalar"),
+            ("DMA_CONFIG_CH1", "dma.config.ch1", "DMARegUnary", "scalar"),
+        )
+        model = IM.IsaModel(target="atlas")
+        for name, mnemonic, cls, role in entries:
+            model.by_mnemonic[name] = {"mnemonic": name, "class": cls, "role": role}
+            model.asm_mnemonics[mnemonic] = name
+            model.roles.setdefault(role, []).append(cls)
+        monkeypatch.setattr(IM, "isa_model_for_target", lambda target: model)
+        return model
 
     def test_a_text_stream_lifts_like_a_binary_one(self):
-        self._atlas()
         from merlin.kernels.decode import isa_text as T
 
         ep = EP.load_endpoint("atlas_isa")
         d = T.decode_text(
-            ["vmatpush.weight.mxu0 0, 1", "vmatmul.mxu0 0,0,0", "vmatmul.mxu0 0,1,0", "vmatpop.mxu0 2"], "atlas", ep
+            [
+                "vmatpush.weight.mxu0 w0, m1",
+                "vmatmul.mxu0 acc0,m0,w0",
+                "vmatmul.mxu0 acc0,m1,w0",
+                "vmatpop.bf16.acc.mxu0 m2,acc0",
+            ],
+            "atlas",
+            ep,
         )
         c = C.lift_asm_roles(d, ep, op="matmul", source="t", geometry={"pe_rows": 32, "pe_cols": 32})
         assert c.spatial.pe_rows == 32
         assert c.provenance["role_counts"].get("accumulate") == 2
 
-    def test_the_corpus_spelling_now_resolves_through_the_targets_assembler(self):
-        """VMATPUSH.W.MXU0 vs vmatpush.weight.mxu0 is an ABBREVIATION, so no string normalization
-        joins them — and it is the corpus's core MXU instruction. The target's own assembler is a pure
-        encoder, so the two are joined by ENCODING (opcode + funct7), never by name."""
-        self._atlas()
+    def test_declared_metadata_resolves_without_an_assembler(self):
         from merlin.kernels.decode import isa_text as T
 
-        ep = EP.load_endpoint("atlas_isa")
-        if not T._assembler_bridge("atlas", ep):
-            pytest.skip("atlas assembler not readable in this checkout")
-        d = T.decode_text(["VMATPUSH.W.MXU0 0, 1"], "atlas", ep)
-        assert "VMATPUSH.W.MXU0" not in T.unresolved_mnemonics(d)
-        assert d[0].roles == ("weight_load",), d[0].roles
+        d = T.decode_text(["VMATPUSH.WEIGHT.MXU0\tw0, m1"], "atlas", EP.load_endpoint("atlas_isa"))
+        assert not T.unresolved_mnemonics(d)
+        assert d[0].roles == ("weight_load",)
+        assert d[0].operands == ("w0", "m1")
+        assert d[0].fields["operation"] == "VMATPUSH_WEIGHT_MXU0"
+        old = T.decode_text(["VMATPUSH.W.MXU0 0, 1"], "atlas", EP.load_endpoint("atlas_isa"))
+        assert T.unresolved_mnemonics(old) == ("VMATPUSH.W.MXU0",)
 
     def test_a_mnemonic_nothing_can_place_is_still_named_not_dropped(self):
         """The invariant survives the fix: mining the subset that happened to parse is the recorded
         silent-drop failure, so what remains unresolvable must be reported BY NAME."""
-        self._atlas()
         from merlin.kernels.decode import isa_text as T
 
         d = T.decode_text(["NOT.A.REAL.INSTRUCTION 0"], "atlas", EP.load_endpoint("atlas_isa"))
         assert "NOT.A.REAL.INSTRUCTION" in T.unresolved_mnemonics(d)
 
     def test_labels_directives_and_comments_are_not_instructions(self):
-        self._atlas()
         from merlin.kernels.decode import isa_text as T
 
         d = T.decode_text(["loop:", "  // a comment", ".align 4", "", "nop"], "atlas", None)
         assert [x.mnemonic for x in d] == ["nop"]
 
     def test_two_endpoints_on_one_isa_do_not_claim_each_others_work(self):
-        self._atlas()
         from merlin.kernels.decode import isa_text as T
 
         arr, vpu = EP.load_endpoint("atlas_isa"), EP.load_endpoint("atlas_vpu")
-        line = ["vmatmul.mxu0 0,0,0"]
+        line = ["vmatmul.mxu0 acc0,m0,w0"]
         assert T.role_histogram(T.decode_text(line, "atlas", arr)).get("accumulate") == 1
         assert T.role_histogram(T.decode_text(line, "atlas", vpu)) == {}
+
+    def test_prefixes_never_choose_an_operand_encoded_variant(self):
+        from merlin.kernels.decode import isa_text as T
+
+        d = T.decode_text(["dma.config x5, ch1", "vmatpop m2, acc0"], "atlas")
+        assert T.unresolved_mnemonics(d) == ("dma.config", "vmatpop")
+        variants = T.decode_text(["dma.config.ch0 x5", "dma.config.ch1 x5"], "atlas")
+        assert not T.unresolved_mnemonics(variants)
+        assert [x.fields["operation"] for x in variants] == ["DMA_CONFIG_CH0", "DMA_CONFIG_CH1"]
+
+    def test_unresolved_occurrences_keep_every_source_line_operand_and_reason(self):
+        from merlin.kernels.decode import isa_text as T
+
+        lines = ["loop:", "  MISSING x1, x2 # first", "MISSING x3, x4", "li x5, 1", "nop"]
+        d = T.decode_text(lines, "atlas")
+        gaps = T.unresolved_instructions(d)
+        assert T.unresolved_mnemonics(d) == ("MISSING", "li", "nop")
+        assert [g["index"] for g in gaps] == [1, 2, 3, 4]
+        assert [g["line"] for g in gaps] == [2, 3, 4, 5]
+        assert [g["source_line"] for g in gaps] == lines[1:]
+        assert [g["operands"] for g in gaps] == [["x1", "x2"], ["x3", "x4"], ["x5", "1"], []]
+        assert all("not declared" in g["reason"] and "no pseudo expansion" in g["reason"] for g in gaps)
+
+    def test_unresolved_text_is_unaccounted_and_serializes_uncapped_source_occurrences(self):
+        from merlin.kernels import asm_audit as A
+
+        lines = [f"MISSING x{i}" for i in range(12)] + ["li x5, 1", "nop"]
+        audit = A.audit_every_endpoint(lines, "atlas", text=True, stream="kernel.S")[0]
+        assert audit.is_consistent()
+        assert audit.total == audit.unaccounted == len(lines)
+        assert audit.named_by_tool == 0
+        assert len(audit.unaccounted_samples) == 8
+        gaps = audit.to_dict()["unresolved_instructions"]
+        assert len(gaps) == len(lines)
+        assert all(g["source"] == "kernel.S" for g in gaps)
+        assert [g["source_line"] for g in gaps] == lines
+        assert audit.unaccounted_indices == tuple(range(len(lines)))
+
+    @pytest.mark.parametrize("unavailable", [None, "empty", "error"])
+    def test_unavailable_selected_metadata_fails(self, monkeypatch, unavailable):
+        from merlin.kernels.decode import isa_text as T
+        from merlin.targetgen import isa_model as IM
+
+        def selected(target):
+            if unavailable == "error":
+                raise OSError("missing selected model")
+            return IM.IsaModel(target=target) if unavailable == "empty" else None
+
+        monkeypatch.setattr(IM, "isa_model_for_target", selected)
+        with pytest.raises(RuntimeError, match="selected ISA metadata unavailable"):
+            T.decode_text(["nop"], "atlas")

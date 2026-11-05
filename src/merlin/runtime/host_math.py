@@ -21,13 +21,19 @@ def host_math_recipe(policy: str = "native") -> HostMathRecipe:
     """Return a GNU-compatible link recipe; no implicit policy selection."""
     if policy == "native":
         return HostMathRecipe()
-    if policy != "expf_via_double":
-        raise ValueError("host_math_policy must be 'native' or 'expf_via_double'")
-    return HostMathRecipe(
-        source=("#include <math.h>\nfloat __wrap_expf(float x) { return (float)exp((double)x); }\n"),
-        compile_flags=("-fno-builtin", "-fno-fast-math", "-ffp-contract=off"),
-        link_flags=("-Wl,--wrap=expf",),
-    )
+    if policy == "expf_via_double":
+        return HostMathRecipe(
+            source=("#include <math.h>\nfloat __wrap_expf(float x) { return (float)exp((double)x); }\n"),
+            compile_flags=("-fno-builtin", "-fno-fast-math", "-ffp-contract=off"),
+            link_flags=("-Wl,--wrap=expf",),
+        )
+    if policy == "rsqrtf_via_sqrtf":
+        return HostMathRecipe(
+            source=("#include <math.h>\nfloat __wrap_rsqrtf(float x) { return 1.0f / sqrtf(x); }\n"),
+            compile_flags=("-fno-builtin", "-fno-fast-math", "-ffp-contract=off"),
+            link_flags=("-Wl,--wrap=rsqrtf",),
+        )
+    raise ValueError("host_math_policy must be 'native', 'expf_via_double', or 'rsqrtf_via_sqrtf'")
 
 
 def build_host_math(

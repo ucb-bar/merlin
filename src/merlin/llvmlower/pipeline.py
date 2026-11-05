@@ -887,7 +887,7 @@ def build_rvv_pipeline(
 # act_poly runner called the PassManager directly, so every fork that also enabled
 # `vectorized_transcendental_activation` (the whole-model proposer enables it by default) got the
 # self-copy erase requested, reported as applied, and never run.
-from . import fusion_guard
+from . import fusion_guard, tensor_input_ownership
 from .alloca_scope_lower import RUNNER_PRELUDE as _ALLOCA_SCOPE_LOWER_PRELUDE
 from .broadcast_fold import RUNNER_PRELUDE as _BROADCAST_FOLD_PRELUDE
 from .concat_dps import RUNNER_PRELUDE as _CONCAT_DPS_PRELUDE
@@ -1451,7 +1451,7 @@ def _select_runner(
     source = _bind_source_observation_runner(source, selected=_SOURCE_OBSERVATION_FEATURE in feats)
     # Every variant runs elementwise fusion under the broadcast control function (fusion_guard).
     return bind_inspection(
-        fusion_guard.inject(source),
+        tensor_input_ownership.bind_runner(fusion_guard.inject(source)),
         inspection_dir,
         keep_exact=keep_exact,
         print_before=printing[0],
@@ -1586,7 +1586,7 @@ def lower_to_llvm_ir(
 
     (work / _SOURCE_CHECKPOINT).unlink(missing_ok=True)
     (work / _SOURCE_REPORT).unlink(missing_ok=True)
-    recipe_sources = {"pipeline_driver": Path(__file__)}
+    recipe_sources = dict(pipeline_driver=Path(__file__), tensor_input_ownership=Path(tensor_input_ownership.__file__))
     from .impr_features import apply_schedule, normalize
 
     # `normalize` REJECTS an unregistered name, and the lowering runs in forked/child processes that

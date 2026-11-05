@@ -115,6 +115,7 @@ exclude = ["merlin._data", "merlin._data.*"]
 # canonical merlin/{schemas,prompts} instead.
 [tool.setuptools.package-data]
 merlin = [
+    "semantic_compiler/constant_math.c",
     "semantic_compiler/egg_bridge/Cargo.toml",
     "semantic_compiler/egg_bridge/Cargo.lock",
     "semantic_compiler/egg_bridge/src/main.rs",

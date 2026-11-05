@@ -52,9 +52,9 @@ from typing import Any
 
 from merlin.common import quant_formats as qf
 
-SCHEMA = "readout_facet_v1"
+SCHEMA = "readout_facet_v2"
 SCALAR_ABI_SCHEMA = "scalar_narrow_readout_contract_v1"
-HANDOFF_SCHEMA = "readout_numerics_handoff_v1"
+HANDOFF_SCHEMA = "readout_numerics_handoff_v2"
 OPERAND_SUM_SCHEMA = "operand_sum_contract_v1"
 
 #: How a scale varies over the accumulator tile. ``row`` / ``column`` are one scale per tile row /
@@ -110,7 +110,8 @@ class Evidence:
 class ReadoutFacet:
     target: str
     unit: str | None = None
-    element_dtype: str | None = None
+    element_dtype: str | None = None  # operand format, never inferred from the readout ABI
+    output_dtype: str | None = None  # materialized readout format
     accumulator_dtype: str | None = None
     accumulator_kind: str | None = None  # "addressable" | "in_datapath"
     scale_granularities: tuple[str, ...] | None = None
@@ -150,6 +151,7 @@ class ReadoutFacet:
             "target": self.target,
             "unit": self.unit,
             "element_dtype": self.element_dtype,
+            "output_dtype": self.output_dtype,
             "accumulator_dtype": self.accumulator_dtype,
             "accumulator_kind": self.accumulator_kind,
             "scale": {
@@ -174,10 +176,12 @@ class ReadoutFacet:
     def scalar_readout_facts(self) -> dict[str, Any] | None:
         """The scalar readout contract a numerics contract is built from, or ``None``.
 
-        Only the backend's header-verified record licenses a rounding, so only that record is
-        returned; the dtypes this facet derived elsewhere are not promoted into one.
+        Only the backend's header-verified record licenses a rounding. An output-format conflict
+        with the extracted datapath withholds that record instead of letting a scheduler use it.
         """
-        return dict(self.scalar_abi) if self.scalar_abi else None
+        if not self.scalar_abi or self.output_dtype != self.scalar_abi.get("output_dtype"):
+            return None
+        return dict(self.scalar_abi)
 
     def numerics_handoff(self) -> dict[str, Any]:
         """What a kernel scheduler may build its numerics contract from, with a digest to compare by.
@@ -196,6 +200,7 @@ class ReadoutFacet:
             "schema": HANDOFF_SCHEMA,
             "target": self.target,
             "unit": self.unit,
+            "output_dtype": self.output_dtype,
             "readout_facts": self.scalar_readout_facts(),
             "granularities": list(self.scale_granularities) if self.scale_granularities is not None else None,
             "granularities_complete": self.scale_granularities_complete,
@@ -327,7 +332,11 @@ def _from_formats(facet: ReadoutFacet, dtypes: Sequence[str]) -> None:
 
 def _from_datapath(facet: ReadoutFacet, facts: Mapping[str, Any]) -> None:
     datapaths = {str(d.get("name")): d for d in facts.get("datapaths") or () if isinstance(d, Mapping)}
-    for role, attribute in (("input", "element_dtype"), ("accumulator", "accumulator_dtype")):
+    for role, attribute in (
+        ("input", "element_dtype"),
+        ("accumulator", "accumulator_dtype"),
+        ("output", "output_dtype"),
+    ):
         entry = datapaths.get(role)
         if entry and entry.get("dtype"):
             setattr(facet, attribute, str(entry["dtype"]))
@@ -453,7 +462,7 @@ def _from_registers(facet: ReadoutFacet, facts: Mapping[str, Any]) -> None:
             "register_layout",
             "a command-register field carries a zero point"
             if facet.zero_point_carried
-            else f"no command-register field carries a zero point"
+            else "no command-register field carries a zero point"
             + (f" (layouts not derived for {sorted(unresolved)})" if unresolved else ""),
         )
     if facet.scale_granularities is not None:
@@ -544,7 +553,7 @@ def _from_scalar_abi(facet: ReadoutFacet, abi: Mapping[str, Any] | None) -> None
     source = f"scalar readout contract ({abi.get('provenance', {}).get('scope', 'backend-derived')})"
     for key, attribute in (
         ("accumulator_dtype", "accumulator_dtype"),
-        ("output_dtype", "element_dtype"),
+        ("output_dtype", "output_dtype"),
         ("scale_dtype", "scale_dtype"),
     ):
         value = abi.get(key)
@@ -558,6 +567,11 @@ def _from_scalar_abi(facet: ReadoutFacet, abi: Mapping[str, Any] | None) -> None
             "scalar_abi",
             f"{source}: {key}={value}" + ("" if current in (None, str(value)) else f" (rtl says {current})"),
         )
+        if attribute == "output_dtype" and current not in (None, str(value)):
+            facet.output_dtype = None
+            facet.unknown["output_dtype"] = (
+                f"extracted output datapath {current!r} disagrees with scalar readout ABI {value!r}"
+            )
     if abi.get("clamp_min") is not None and abi.get("clamp_max") is not None:
         facet.clamp = (int(abi["clamp_min"]), int(abi["clamp_max"]))
         facet.note("clamp", "scalar_abi", f"{source}: clamp [{facet.clamp[0]}, {facet.clamp[1]}]")
@@ -619,6 +633,7 @@ def derive(
     facet = ReadoutFacet(target=target, unit=str(unit.get("name")) if unit else None)
     for name in (
         "element_dtype",
+        "output_dtype",
         "accumulator_dtype",
         "accumulator_kind",
         "scale_granularities",
@@ -919,7 +934,7 @@ def epilogue_capability(facet: ReadoutFacet, *, name: str | None = None):
 
     needed = {
         "accumulator_dtype": facet.accumulator_dtype,
-        "element_dtype": facet.element_dtype,
+        "output_dtype": facet.output_dtype,
         "scale_granularities": facet.scale_granularities,
         "scale_dtype": facet.scale_dtype,
         "rounding": facet.rounding,
@@ -960,7 +975,7 @@ def epilogue_capability(facet: ReadoutFacet, *, name: str | None = None):
     return QuantizedEpilogueCapability(
         name=name or f"{facet.target}:{facet.unit or 'readout'}",
         accumulator_dtypes=(facet.accumulator_dtype,),
-        output_dtypes=(facet.element_dtype,),
+        output_dtypes=(facet.output_dtype,),
         scale_granularities=granularities,
         bias_domains=("none", "accumulator") if has_bias else ("none",),
         output_zero_points=(0,),

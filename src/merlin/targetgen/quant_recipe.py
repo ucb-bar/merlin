@@ -186,6 +186,16 @@ def derive(facet: Any, *, prefer_activation_mode: str | None = None) -> QuantRec
         recipe.underivable["element_dtype"] = facet.unknown.get(
             "element_dtype", f"element dtype {facet.element_dtype!r} is not a registered format"
         )
+    output = _format_of(facet.output_dtype)
+    if facet.output_dtype is not None and output != element:
+        recipe.underivable["output_dtype"] = (
+            f"readout output {facet.output_dtype!r} differs from operand {facet.element_dtype!r}; "
+            "a mixed-format conversion path is required"
+        )
+    elif facet.output_dtype is None and facet.rungs_for("output_dtype"):
+        recipe.underivable["output_dtype"] = facet.unknown.get(
+            "output_dtype", "readout output evidence is inconsistent"
+        )
     held = facet.scale_granularities
     if held is None:
         recipe.underivable["granularity"] = facet.unknown.get(
@@ -348,11 +358,11 @@ def derive_candidates(
 ) -> list[QuantCandidate]:
     """Inventory every declared unit format without promoting a declaration to a proven recipe.
 
-    The existing readout derivation produces one facet per unit, not one per format. A candidate
-    therefore derives only when that facet's observed element format matches this candidate and
-    its format-dependent evidence agrees. Other declared formats are present, but explicitly
-    underivable until format-specific readout evidence exists. No candidate is selected for a
-    whole-model capture here; :func:`select` retains its existing behavior.
+    The default readout derivation produces one facet per unit, not one per format. When a
+    provider supplies separately qualified format-specific facets, select the unique facet
+    whose observed element format matches the candidate. A shared facet cannot license a
+    different format, and duplicate matching facets remain ambiguous. No candidate is
+    selected for a whole-model capture here; :func:`select` retains its existing behavior.
     """
     from merlin.targetgen.compute_units import compute_units
 
@@ -366,7 +376,8 @@ def derive_candidates(
         for name in dict.fromkeys(unit.dtypes):
             fmt = qf.get(name)
             matches = by_unit.get(unit.name, [])
-            facet = matches[0] if len(matches) == 1 else None
+            matching_format = [candidate for candidate in matches if _format_of(candidate.element_dtype) == fmt]
+            facet = matching_format[0] if len(matching_format) == 1 else matches[0] if len(matches) == 1 else None
             target = (
                 str(facet.target)
                 if facet is not None
@@ -386,8 +397,15 @@ def derive_candidates(
             reasons: dict[str, str] = {}
             if not matches:
                 reasons["readout"] = f"no readout facet was derived for compute unit {unit.name!r}"
-            elif len(matches) != 1:
-                reasons["readout"] = f"{len(matches)} readout facets exist for compute unit {unit.name!r}"
+            elif len(matching_format) > 1:
+                reasons["readout"] = (
+                    f"{len(matching_format)} readout facets claim {fmt.name!r} for compute unit {unit.name!r}"
+                )
+            elif len(matches) > 1 and not matching_format:
+                reasons["readout"] = (
+                    f"no unique format-specific readout facet claims {fmt.name!r} "
+                    f"among {len(matches)} facets for compute unit {unit.name!r}"
+                )
 
             # A quantization recipe is about a contraction. A unit that declares only movement or
             # standalone elementwise work cannot license one merely by declaring a storage dtype.
@@ -429,9 +447,10 @@ def derive_candidates(
                     )
                 abi = facet.scalar_abi or {}
                 abi_output = _format_of(abi.get("output_dtype"))
-                if abi.get("output_dtype") and abi_output != fmt:
+                if abi.get("output_dtype") and abi_output != _format_of(facet.output_dtype):
                     reasons["scalar_abi"] = (
-                        f"scalar readout ABI output {abi['output_dtype']!r} does not prove {fmt.name!r}"
+                        f"scalar readout ABI output {abi['output_dtype']!r} differs from "
+                        f"derived readout output {facet.output_dtype!r}"
                     )
                 format_rung = "format" in facet.rungs_for("scale_granularities")
                 if format_rung:

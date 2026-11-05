@@ -16,6 +16,7 @@ returned untouched so every existing integer capsule parses byte-identically.
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from merlin.runtime import fp8_formats as ff
@@ -52,6 +53,13 @@ def test_a_sign_extended_container_still_decodes(fmt):
     wire = _printed_as_signed(codes, ff.storage_bits(fmt))
     assert any(w < 0 for w in wire), "the fixture must actually exercise sign extension"
     assert [float(v) for v in ff.codes_to_f32(wire, fmt)] == VALUES
+
+
+def test_bf16_widening_preserves_every_stored_bit_pattern():
+    codes = np.arange(1 << 16, dtype=np.uint16)
+    expected = np.ascontiguousarray(codes.astype(np.uint32) << 16).view(np.float32)
+    assert ff.codes_to_f32(codes, "bf16").tobytes() == expected.tobytes()
+    assert ff.codes_to_f32(codes.view(np.int16), "bf16").tobytes() == expected.tobytes()
 
 
 def test_an_unregistered_format_fails_closed():

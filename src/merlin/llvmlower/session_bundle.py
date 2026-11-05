@@ -95,8 +95,15 @@ def _child_state_names(program: Program) -> set[str]:
             if isinstance(item, dict)}
 
 
-def load(root: str | Path) -> MultiProgramSession:
-    """Load a version-2 session and fail before codegen on any path, stage, or ABI ambiguity."""
+def load(root: str | Path, *, runtime_inputs: bool = True) -> MultiProgramSession:
+    """Validate a version-2 session's paths, stages and typed tensor edges.
+
+    Compiler-only consumers select ``runtime_inputs=False`` and receive the
+    same structural checks without requiring sample tensors. This does not
+    enable the reference-data-dependent ``generate`` route on that intake.
+    """
+    if type(runtime_inputs) is not bool:
+        raise ValueError("runtime_inputs must be an explicit Boolean")
     root = Path(root).resolve()
     raw = _mapping(load_yaml(root / "session_contract.yaml"), "multi-program session")
     if int(raw.get("version", 0)) != 2:
@@ -113,7 +120,9 @@ def load(root: str | Path) -> MultiProgramSession:
         steps = int(item.get("steps", 0))
         if steps < 1:
             raise ValueError(f"program {name}: steps must be positive")
-        required = ("model.mlir", "inputs.npz", "weights.safetensors.manifest.json")
+        required = ("model.mlir", "weights.safetensors.manifest.json")
+        if runtime_inputs:
+            required += ("inputs.npz",)
         missing = [str(bundle / filename) for filename in required
                    if not (bundle / filename).is_file()]
         if missing:

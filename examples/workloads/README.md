@@ -3,6 +3,9 @@
 Use the same independent iteration models across accelerator examples. They are
 small enough for capture, compiler development and numerical debugging without
 loading a headline checkpoint. The capture worker seeds model construction.
+Compiler support and the current target adapter requirements are documented
+in [model compilation](../../docs/guides/model_memory_and_device_lowering.md#target-adapter-availability).
+A loader alone does not establish an executable route for a target.
 
 | Iteration loader | Comparable operator patterns | Not established by passing it |
 | --- | --- | --- |
@@ -21,6 +24,10 @@ The [host-control/math probes](host_control_math/README.md) independently exerci
 scalar arithmetic, masks, selection and trigonometry with an exact saved-capture
 checker. They are diagnostic inputs, not permission for host fallback or evidence
 of accelerator support.
+
+The [row-softmax probe](row_softmax/README.md) supplies a non-square 33-by-65
+normalization graph for source-region and tiled-reduction development. It is a
+separate operation diagnostic, not another required iteration model.
 
 The [per-tensor dequantization probes](quant_boundary/loader.py) are separate,
 target-independent operation diagnostics. The [rank-4 companion](quant_boundary/loader_rank4.py)
