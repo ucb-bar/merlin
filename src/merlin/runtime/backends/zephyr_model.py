@@ -3130,11 +3130,11 @@ def _parse_console(console: str, rc: int) -> dict[str, Any]:
             if len(p_) >= 4:
                 out_hash = {"algo": p_[1], "elems": int(p_[2]), "value": int(p_[3]) & 0xFFFFFFFF}
         elif l.startswith("STAGE "):
-            # K1 multi-program protocol: STAGE <session-repeat> <program> <wall-ns>.
-            # Keep the repeat index structural: missing/duplicate rows are evidence of an invalid
-            # diagnostic series, not values that should be silently packed into a shorter list.
+            # K1 multi-program protocol: STAGE <session-repeat> <program> <wall-ns>; a gap or duplicate
+            # in the repeat index is an invalid series, never packed. A debug image's milestone line,
+            # `STAGE <milestone> hart=<h> t=<ms>`, is also four tokens: its key=value fields mark it.
             p_ = l.split()
-            if len(p_) == 4:
+            if len(p_) == 4 and not ("=" in p_[2] and "=" in p_[3]):
                 repeat, name, value = int(p_[1]), p_[2], int(p_[3])
                 values = stage_wall_ns.setdefault(name, [])
                 if repeat != len(values):
