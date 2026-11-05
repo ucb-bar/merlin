@@ -52,18 +52,16 @@ TORCH_MLIR_WHEELS = "https://github.com/llvm/torch-mlir-release/releases/expande
 #: pinned mlir-translate reads it; a much newer wheel prints `llvm.load ... <alignment = N>`, which that
 #: mlir-translate rejects. Move this together with the LLVM pin.
 TORCH_MLIR = "torch-mlir==20260531.828"
-#: model2MLIR's own runtime dependencies (installed apart so they do not move torch), plus the
-#: quantization and model libraries the shipped loaders import.
-CAPTURE_DEPS = [
-    "xdsl>=0.24",
-    "structlog>=24.1",
-    "numpy>=1.26",
-    "PyYAML>=6.0",
-    "ml_dtypes",
-    "safetensors",
-    "torchao",
-    "timm",
-]
+#: model2MLIR's own runtime dependencies (installed apart so they do not move torch). Each is installed at
+#: the version the model2MLIR checkout's own ``uv.lock`` records (see :func:`capture_deps`): model2MLIR
+#: calls their APIs directly, and its ``>=`` floors do not keep them from moving under it. An unpinned
+#: ``xdsl`` resolved to 0.74, which no longer has ``Printer.print``, and every capture that printed its
+#: module died in model2MLIR with an AttributeError.
+CAPTURE_LOCKED_DEPS = ("xdsl", "structlog", "numpy", "PyYAML", "ml_dtypes", "safetensors")
+#: The quantization and model libraries the shipped loaders import. They are built against torch's own
+#: version, and torch here is the nightly that matches the torch-mlir wheel, not the torch model2MLIR's
+#: lock was resolved with, so these follow the installed torch rather than the lock.
+CAPTURE_TORCH_DEPS = ("torchao", "timm")
 #: The software pin model2MLIR captures are verified against (merlin/contract/software_pins.yaml).
 M2M_PIN = "model2mlir_capture"
 ZEPHYR_SW_URL = "https://github.com/ucb-bar/zephyr-chipyard-sw.git"
@@ -498,13 +496,51 @@ def _site_packages(py: Path) -> Path:
     return Path(out.stdout.strip())
 
 
+def _lock_name(name: str) -> str:
+    """A distribution name as a lock file spells it (PEP 503: lower case, runs of ``-_.`` as one ``-``)."""
+    out: list[str] = []
+    sep = False
+    for ch in name.lower():
+        if ch in "-_.":
+            sep = True
+            continue
+        if sep and out:
+            out.append("-")
+        sep = False
+        out.append(ch)
+    return "".join(out)
+
+
+def capture_deps(m2m: Path) -> list[str]:
+    """The capture venv's dependency specs: each of :data:`CAPTURE_LOCKED_DEPS` at the version
+    ``m2m/uv.lock`` records (unpinned when the lock has no entry, or there is no lock), then
+    :data:`CAPTURE_TORCH_DEPS`, which follow the installed torch."""
+    import tomllib
+
+    locked: dict[str, str] = {}
+    lock = m2m / "uv.lock"
+    if lock.is_file():
+        try:
+            packages = tomllib.loads(lock.read_text(encoding="utf-8")).get("package", [])
+        except (OSError, tomllib.TOMLDecodeError):
+            packages = []
+        locked = {_lock_name(p["name"]): str(p["version"]) for p in packages if "name" in p and "version" in p}
+    specs = [f"{d}=={locked[_lock_name(d)]}" if _lock_name(d) in locked else d for d in CAPTURE_LOCKED_DEPS]
+    return specs + list(CAPTURE_TORCH_DEPS)
+
+
 def _capture_env_ok(py: Path, m2m: Path) -> bool:
+    """The venv imports torch, the pinned torch-mlir and this model2MLIR, and carries every locked
+    dependency at its locked version, so a venv built before a dependency moved is repaired on re-run."""
     if not py.is_file():
         return False
+    pinned = dict(d.split("==", 1) for d in capture_deps(m2m) if "==" in d)
     probe = (
         "import importlib.metadata as md, sys, torch, torch_mlir, torchao, m2m.capture; "
+        f"pinned = {pinned!r}; "
         f"sys.exit(0 if 'torch-mlir==' + md.version('torch-mlir') == {TORCH_MLIR!r} "
-        f"and m2m.__path__[0].startswith({str(m2m)!r}) else 1)"
+        f"and m2m.__path__[0].startswith({str(m2m)!r}) "
+        "and all(md.version(k) == v for k, v in pinned.items()) else 1)"
     )
     return subprocess.run([str(py), "-c", probe], capture_output=True).returncode == 0
 
@@ -550,7 +586,7 @@ def capture_item(settings: dict[str, str], m2m_arg: Path | None, *, fetch: bool)
         _run(["uv", "venv", "--python", "3.12", venv])
     _run(["uv", "pip", "install", "--pre", "torch", "torchvision", "--index-url", TORCH_NIGHTLY], env=env)
     _run(["uv", "pip", "install", "--pre", "--no-deps", TORCH_MLIR, "-f", TORCH_MLIR_WHEELS], env=env)
-    _run(["uv", "pip", "install", *CAPTURE_DEPS], env=env)
+    _run(["uv", "pip", "install", *capture_deps(m2m)], env=env)
     (_site_packages(py) / "merlin-model2mlir.pth").write_text(str(m2m) + "\n", encoding="utf-8")
     if not _capture_env_ok(py, m2m):
         return Item(name=name, state=MISSING, detail=f"{venv} was built but cannot import torch/torch_mlir/m2m",
@@ -698,14 +734,27 @@ def main(argv: list[str] | None = None) -> int:
         if not sep or pin_name not in checkouts:
             raise SystemExit(f"--build-spike {spec}: expected PIN=ENV with PIN also given to --checkout-pin")
         items.append(build_spike(pin_name, env_name, checkouts[pin_name], prefix=_build_dir() / pin_name))
-        overridden = os.environ.get(env_name)
-        if overridden and overridden != items[-1].settings.get(env_name):
-            print(f"note: ${env_name} is exported as {overridden}; the process environment wins over .env")
 
     record = {k: v for i in items if i.done for k, v in i.settings.items()}
     if record:
         _upsert_env(args.env_file, record)
-    return report(items)
+    status = report(items)
+    shadowed = shadowed_settings(record, os.environ)
+    if shadowed:
+        # Setup checked the value it recorded; every later run.sh and merlin command reads the exported one.
+        print("\nwarning: this shell exports a different value for what setup just recorded, and the exported")
+        print("value wins over .env in every later command, so they will not use what was verified above:")
+        for key, exported, recorded in shadowed:
+            print(f"    {key}={exported}   (recorded: {recorded})")
+        print("  unset them (or export the recorded values), e.g.:  unset " + " ".join(k for k, _, _ in shadowed))
+    return status
+
+
+def shadowed_settings(record: dict[str, str], environ) -> list[tuple[str, str, str]]:
+    """``(key, exported, recorded)`` for each recorded setting the process environment overrides with a
+    different value. ``run.sh`` and ``merlin.common.paths.env`` both let the environment win over .env, so a
+    stale export (a workspace that has since moved) silently replaces the path setup just verified."""
+    return [(k, environ[k], v) for k, v in sorted(record.items()) if environ.get(k) and environ[k] != v]
 
 
 if __name__ == "__main__":

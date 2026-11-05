@@ -34,7 +34,7 @@ set -- ${EX_ARGS[@]+"${EX_ARGS[@]}"}
 LOADER=""; HARTS_OPT=""; RVV_ONLY=0; REST=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --loader)   LOADER="$2"; shift ;;
+    --loader)   LOADER="$(ex_abs "$2")"; shift ;;
     --harts)    HARTS_OPT="$2"; shift ;;
     --rvv-only) RVV_ONLY=1 ;;
     *)          REST+=("$1") ;;
@@ -68,6 +68,7 @@ op)
   # `op gemm 96 80 200` = M N K; `op conv2d 16 64 16 3` = CIN COUT HW K; or `op path/to/loader.py`.
   shift
   if [ $# -lt 1 ]; then echo "usage: $0 op <gemm|conv2d|encoder_block|loader.py> [dims...] [--harts N]" >&2; exit 2; fi
+  case "$1" in *.py) set -- "$(ex_abs "$1")" "${@:2}" ;; esac
   MATRIX_ARGS=()
   if [ "$RVV_ONLY" = "1" ]; then
     ex_say "single-operator test on $BOARD (RVV only)"

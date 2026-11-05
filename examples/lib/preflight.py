@@ -75,6 +75,21 @@ def _components():
     return rows
 
 
+def _fix_hint(envvar: str, path) -> str:
+    """What to do about a missing prerequisite. "set X" is wrong advice when X is already exported: then
+    the exported value is the problem, and it also overrides whatever setup recorded in .env."""
+    import os
+
+    name = envvar.split(" ")[0].rstrip(",")
+    exported = os.environ.get(name)
+    if exported and str(path) == exported:
+        return (
+            f"{name} is exported in this shell as {exported}, which does not exist, and it overrides .env: "
+            f"unset {name} (or point it at the right place) and re-run"
+        )
+    return f"set {envvar} (or run the example's ./run.sh setup)"
+
+
 def _llvm_ok() -> bool:
     """Can this machine compile at all? `toolchain.available()` is the library's own guard (clang + the
     m2m venv the lowering runner executes in); mlir-translate is additionally required by any multi-hart
@@ -160,7 +175,7 @@ def main(argv=None) -> int:
             mark = "ok " if present else "no "
             print(f"  [{mark}] {label:<{cw}} {path}")
             if not present:
-                print(f"         set {envvar}")
+                print(f"         {_fix_hint(envvar, path)}")
     if needs_sdk and not sdk_ok:
         print(f"\n  [no ] chip SDK      pass --sdk-dir <checkout> (or export it; see the example's README)")
     if missing:

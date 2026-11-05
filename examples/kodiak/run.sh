@@ -66,7 +66,7 @@ while [ $# -gt 0 ]; do
     --board)   BOARD_OPT="$2"; shift ;;
     --submit)  SUBMIT=(--submit) ;;
     --models)  MODELS_OVERRIDE="$2"; shift ;;
-    --loader)  LOADER="$2"; shift ;;
+    --loader)  LOADER="$(ex_abs "$2")"; shift ;;
     --harts)   HARTS_OPT="$2"; shift ;;
     *)         REST+=("$1") ;;
   esac
@@ -118,6 +118,7 @@ op)
   # CIN COUT HW K; or `op path/to/loader.py` for your own one-op model.
   shift
   if [ $# -lt 1 ]; then echo "usage: $0 op <gemm|conv2d|encoder_block|loader.py> [dims...] [--harts N]" >&2; exit 2; fi
+  case "$1" in *.py) set -- "$(ex_abs "$1")" "${@:2}" ;; esac
   # On a FireSim board (--board firesim_kodiak_opu) the same two images are built for that board, and
   # one FireSim job per image is planned and printed; --submit runs them on the shared FPGA.
   OP_BOARD="${BOARD_OPT:-$BOARD}"
@@ -134,6 +135,7 @@ firesim)
   # jobs are only PRINTED unless --submit is given. `firesim <job-dir>` prints (or submits) the jobs of
   # an existing directory, e.g. one `op --board firesim_kodiak_opu` wrote.
   shift
+  if [ $# -ge 1 ]; then set -- "$(ex_abs "$1")" "${@:2}"; fi
   if [ $# -ge 1 ] && [ -d "$1" ]; then
     ex_say "FireSim jobs of $1"
     ex_run "$PY" "$EX_LIB_DIR/firesim_flow.py" submit "$@" ${SUBMIT[@]+"${SUBMIT[@]}"}
@@ -161,6 +163,7 @@ firesim-collect)
   # build_hash must be the planned image's, and the output is graded against the W8A8 golden.
   shift
   if [ $# -lt 1 ]; then echo "usage: $0 firesim-collect <job-dir> [--job LEG=ID ...] [--uartlog LEG=PATH ...]" >&2; exit 2; fi
+  set -- "$(ex_abs "$1")" "${@:2}"
   ex_say "grade the FireSim runs of $1"
   ex_run "$PY" "$EX_LIB_DIR/firesim_flow.py" collect "$@"
   ;;
@@ -222,7 +225,7 @@ build|package)
 grade)
   # `grade <console.txt> [model]`. The model cannot be inferred from a log — a package holds several —
   # so it defaults to the one the cheap `build` stage produces.
-  LOG="${2:-}"; MODEL="${3:-deepjscc}"
+  LOG="$(ex_abs "${2:-}")"; MODEL="${3:-deepjscc}"
   if [ -z "$LOG" ]; then echo "usage: $0 grade <console.txt> [model]" >&2; exit 2; fi
   # grade.py is vendored INTO each package (numpy only, no merlin checkout), so grading uses the
   # package's own copy — the references it scores against have to be the ones that shipped.

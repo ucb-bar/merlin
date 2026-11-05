@@ -12,6 +12,19 @@ set -euo pipefail
 
 EX_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$EX_LIB_DIR/../.." && pwd)"
+# Where the user ran the example from. Every run.sh then `cd`s to the repo root, so a relative path the
+# user typed (a loader, a console log, a job directory) has to be made absolute against this first, or it
+# is silently looked up under the repo root instead.
+EX_CALLER_PWD="$PWD"
+
+# ex_abs <path>: <path> made absolute against the caller's directory when it names something there;
+# otherwise unchanged, so the tool's own "not found" names exactly what was typed.
+ex_abs() {
+  case "$1" in
+    ''|/*) printf '%s' "$1" ;;
+    *) if [ -e "$EX_CALLER_PWD/$1" ]; then printf '%s/%s' "$EX_CALLER_PWD" "$1"; else printf '%s' "$1"; fi ;;
+  esac
+}
 
 # Prefer the repo's own venv (uv, py3.13) — `python` is frequently not on PATH here, and a system
 # interpreter would not have merlin importable.

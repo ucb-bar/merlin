@@ -314,3 +314,55 @@ def test_each_chip_setup_asks_for_its_own_prerequisites(chip, flags):
         name = flag.split()[1].partition("=")[0] if " " in flag else None
         if name:
             assert name in pins
+
+
+def test_capture_libraries_are_installed_at_the_versions_model2mlir_locks(tmp_path):
+    """model2MLIR calls xDSL's API directly; an unpinned xdsl resolved to a release without ``Printer.print``
+    and every capture died in model2MLIR. The checkout's own uv.lock decides the version."""
+    setup = _load()
+    (tmp_path / "uv.lock").write_text(
+        'version = 1\n[[package]]\nname = "xdsl"\nversion = "0.65.0"\n'
+        '[[package]]\nname = "pyyaml"\nversion = "6.0.3"\n'
+        '[[package]]\nname = "torchao"\nversion = "0.17.0"\n'
+    )
+    deps = setup.capture_deps(tmp_path)
+    assert "xdsl==0.65.0" in deps and "PyYAML==6.0.3" in deps  # lock names are normalized (PEP 503)
+    assert "structlog" in deps  # not in this lock: left to the resolver rather than guessed
+    # built against torch, which here is the nightly matching torch-mlir, not the torch the lock resolved
+    assert "torchao" in deps and not any(d.startswith("torchao==") for d in deps)
+
+
+def test_capture_libraries_are_unpinned_without_a_lock(tmp_path):
+    setup = _load()
+    assert setup.capture_deps(tmp_path) == [*setup.CAPTURE_LOCKED_DEPS, *setup.CAPTURE_TORCH_DEPS]
+
+
+def test_an_exported_value_that_shadows_a_recorded_setting_is_named():
+    """run.sh lets the process environment win over .env, so a stale export silently replaces what setup
+    verified (a ZEPHYR_BASE left pointing at a moved workspace made preflight fail right after setup said
+    everything was configured)."""
+    setup = _load()
+    record = {"ZEPHYR_BASE": "/verified", "MERLIN_CHIPYARD": "/cy", "MERLIN_CLANG": "/c"}
+    environ = {"ZEPHYR_BASE": "/stale", "MERLIN_CHIPYARD": "/cy"}
+    assert setup.shadowed_settings(record, environ) == [("ZEPHYR_BASE", "/stale", "/verified")]
+
+
+def test_a_relative_path_is_resolved_against_the_directory_the_user_ran_from(tmp_path):
+    """Every run.sh cd's to the repo root; `--loader my/loader.py` typed in examples/kodiak must still
+    name examples/kodiak/my/loader.py, and a built-in operator name must stay a name."""
+    (tmp_path / "my").mkdir()
+    (tmp_path / "my" / "loader.py").write_text("")
+    common = repo_root() / "examples" / "lib" / "common.sh"
+    script = f'. "{common}"; cd /; printf "%s|%s|%s" "$(ex_abs my/loader.py)" "$(ex_abs gemm)" "$(ex_abs /abs)"'
+    out = subprocess.run(["bash", "-c", script], cwd=tmp_path, env={"PATH": "/usr/bin:/bin"},
+                         capture_output=True, text=True, check=True).stdout  # fmt: skip
+    assert out == f"{tmp_path}/my/loader.py|gemm|/abs"
+
+
+def test_preflight_names_an_exported_path_that_does_not_exist(monkeypatch):
+    flight = _load("preflight")
+    monkeypatch.setenv("ZEPHYR_BASE", "/gone/zephyr")
+    hint = flight._fix_hint("ZEPHYR_BASE", Path("/gone/zephyr"))
+    assert "exported" in hint and "/gone/zephyr" in hint and "unset ZEPHYR_BASE" in hint
+    monkeypatch.delenv("ZEPHYR_BASE")
+    assert flight._fix_hint("ZEPHYR_BASE", Path("/x")).startswith("set ZEPHYR_BASE")
