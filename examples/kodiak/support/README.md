@@ -13,6 +13,7 @@ inherits all of RVV and adds only what Kodiak has:
 | the whole-model hook: which contractions go to the OPU, and building the object | `matrix_lowering.py` |
 | the boards: Kodiak silicon, the 2-core OPU elaboration, FireSim 1-core | `boards.yaml` |
 | how to run on the chip (shared rig: check it is idle first) | [`RUNNING.md`](RUNNING.md) |
+| how to build the Kodiak+OPU FireSim bitstream (config patches, FPGA clock-gate model) | [`firesim/`](firesim/README.md) |
 
 ```
 rvv-mlir   (RVV contract, schedules)

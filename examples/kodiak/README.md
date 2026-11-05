@@ -198,7 +198,7 @@ the firechip `FireSimKodiakOPU1CoreConfig` target. Two things matter more than t
 - the clock-gate model must be [`merlin/contract/rtl/eicg_passthrough.v`](../../merlin/contract/rtl/eicg_passthrough.v)
   (selected through `ClockGateModelFile`). With rocket-chip's stock `EICG_wrapper` the gated OPU array
   gets a second global clock net and hold never closes, at any frequency;
-- the configs are additions not yet upstream, so ask the Kodiak package maintainers for the two patches
+- the configs are additions not yet upstream: the two patches and the FPGA clock-gate model are in [`support/firesim/`](support/firesim/README.md)
   rather than re-deriving them.
 
 Register the result in `config_hwdb.yaml` under the **same key** (`alveo_u250_firesim_kodiak_opu_1core`):

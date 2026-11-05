@@ -1,0 +1,209 @@
+diff --git a/chipyard/OPUConfigs.scala b/chipyard/OPUConfigs.scala
+index 0b05c9f..3b9718a 100644
+--- a/chipyard/OPUConfigs.scala
++++ b/chipyard/OPUConfigs.scala
+@@ -29,3 +29,204 @@ class OPUV512D256RocketConfig extends Config(
+   new chipyard.config.WithSystemBusWidth(256) ++
+   new freechips.rocketchip.rocket.WithNHugeCores(1) ++
+   new chipyard.config.AbstractConfig)
++
++/** Replaces rocket-chip's EICG_wrapper clock-gate model with a passthrough.
++  *
++  * Selected by pointing ClockGateModelFile at a different Verilog file, so neither a Scala class nor
++  * any target RTL changes. Placed first in the config chain below so it overrides the
++  * WithClockGateModel that chipyard.config.AbstractConfig already applies. The path comes from the
++  * environment and elaboration FAILS if it is unset, rather than falling back to the gated model --
++  * a build that quietly kept gating would look like a passing experiment.
++  */
++object EICGPassthrough {
++  /** Path to the passthrough EICG_wrapper.v.
++    *
++    * MERLIN_EICG_PASSTHROUGH_V wins when set, but it cannot be relied on: FireSim runs elaboration over
++    * ssh to the build host, and ssh strips arbitrary environment variables, so an export in the launcher
++    * never arrives. Hence the fallback. What must NOT be silent is a missing model file -- pointing
++    * ClockGateModelFile at a path that does not exist falls back to addResource and can leave the gate
++    * defined by something else entirely, i.e. a build that looks like the ungated variant and is not. So
++    * existence is checked here and elaboration fails loudly if it is absent.
++    */
++  val vsrc: String = {
++    val p = sys.env.getOrElse(
++      "MERLIN_EICG_PASSTHROUGH_V",
++      "/ABSOLUTE/PATH/TO/eicg_passthrough.v")   // <-- EDIT ME (see README)
++    require(java.nio.file.Files.exists(java.nio.file.Paths.get(p)),
++      s"clock-gate passthrough model not found at $p -- set MERLIN_EICG_PASSTHROUGH_V to its location")
++    p
++  }
++}
++
++class WithEICGPassthrough extends Config(
++  new freechips.rocketchip.subsystem.WithClockGateModel(EICGPassthrough.vsrc))
++
++/** OPUV256D128ShuttleConfig with the OPU cluster array's clock gate removed.
++  *
++  * On FPGA the gate is combinational logic in the clock path, so the tools must add a second global
++  * clock net behind it for the gated domain's 131,585 loads, and that net cannot be delay-matched to
++  * its ungated parent: FireSimOPUV256D128ShuttleConfig came out at 4.207 ns of clock skew, WHS
++  * -4.068 ns and 258,620 hold-failing endpoints, which no frequency change can help because hold and
++  * skew are both period-independent.
++  *
++  * The vector unit is spelled out rather than inherited from OPUV256D128ShuttleConfig because the
++  * geometry deriver reads a config's OWN body for its *VectorUnit mixin and refuses to guess a tile
++  * edge it cannot ground -- an inherited one came back unbindable, as it should.
++  */
++class OPUV256D128ShuttleNoGateConfig extends Config(
++  new WithEICGPassthrough ++
++  new saturn.shuttle.WithShuttleVectorUnit(256, 128, VectorParams.opuParams) ++
++  new chipyard.config.WithSystemBusWidth(128) ++
++  new shuttle.common.WithShuttleTileBeatBytes(16) ++
++  new shuttle.common.WithNShuttleCores(1) ++
++  new chipyard.config.AbstractConfig)
++
++/* ---------------------------------------------------------------------------------------------
++ * Kodiak, ported.
++ *
++ * PROVENANCE. The body below is a port of `KodiakFireSimConfig` from
++ * raghav-g13/chipyard@kodiak-multi-chip-firesim (ad438e3c, generators/chipyard/.../KodiakConfigs.scala:303),
++ * the branch whose sibling CTC config built the handed-over bitstream
++ * (firesim.tar.gz metadata: FireSim-FireSimCTCKodiakConfig-BaseXilinxAlveoU250Config,
++ * firesim-commit 727a86ff...-dirty). Commented-out mixins in the original are dropped; every active
++ * one is carried over verbatim and in order. The chip-to-chip CTC variant is deliberately NOT ported:
++ * CTC is the multi-chip link, not the compute, and `testchipip.ctc` does not exist in this checkout.
++ *
++ * WHY THIS EXISTS. That bitstream has NO outer-product unit, and neither does the branch named
++ * `-opu-kernels`: both pin generators/saturn at a898bdc, which does not contain OuterProductUnit.scala
++ * at all, and all three Kodiak configs there pass `VectorParams.genParams`, whose `useOpu` defaults to
++ * false. The `-opu-kernels` commit only bumps the firesim/firemarshal submodules to add an
++ * `opu-m2-gemm` *workload*; it changes no RTL. So the OPU had to be added here rather than obtained.
++ * ------------------------------------------------------------------------------------------- */
++
++/** Everything in Kodiak's FireSim SoC except the vector unit, which each variant states itself.
++  *
++  * Split out this way on purpose: the geometry deriver reads a config's OWN body for its
++  * *VectorUnit mixin and refuses to follow a reference, so the line has to appear literally in
++  * KodiakOPUConfig. Keeping the shared remainder here means the OPU and no-OPU variants cannot
++  * drift apart in anything except the one parameter under test.
++  */
++class WithKodiakBase(nShuttleCores: Int = 2) extends Config(
++  new chipyard.config.WithSystemBusWidth(256) ++
++  new chipyard.harness.WithAbsoluteFreqHarnessClockInstantiator ++
++  new testchipip.soc.WithChipIdPin ++
++  new chipyard.config.WithNoDebug ++
++  new chipyard.harness.WithDriveChipIdPin ++
++  new testchipip.boot.WithNoCustomBootPin ++
++  new chipyard.config.WithNoBusErrorDevices ++
++  new freechips.rocketchip.subsystem.WithoutTLMonitors ++
++  new freechips.rocketchip.rocket.WithL1ICacheWays(2) ++
++  new freechips.rocketchip.rocket.WithL1ICacheSets(128) ++
++  new freechips.rocketchip.rocket.WithL1ICacheBlockBytes(64) ++
++  new freechips.rocketchip.rocket.WithNBigCores(1) ++
++  new freechips.rocketchip.rocket.WithL1DCacheBlockBytes(64) ++
++  new freechips.rocketchip.rocket.WithL1DCacheSets(128) ++
++  new freechips.rocketchip.rocket.WithL1DCacheWays(4) ++
++  new shuttle.common.WithShuttleTileBeatBytes(16) ++
++  new shuttle.common.WithTCM(size=256L << 10, banks=2) ++
++  new shuttle.common.WithShuttleTileBoundaryBuffers() ++
++  new shuttle.common.WithL1ICacheWays(2) ++
++  new shuttle.common.WithL1ICacheSets(64) ++
++  new shuttle.common.WithL1DCacheWays(2) ++
++  new shuttle.common.WithL1DCacheBanks(1) ++
++  new shuttle.common.WithL1DCacheTagBanks(1) ++
++  new shuttle.common.WithShuttleTileBeatBytes(16) ++
++  // Core count is a PARAMETER, not a mixin to be overridden by a later Config.
++  //
++  // WithNShuttleCores appends -- `TilesLocated` is built as `(0 until n).map{...} ++ prev` and
++  // `NumTiles => up(NumTiles) + n` (shuttle common/Configs.scala:20-37). Listing WithNShuttleCores(1)
++  // ahead of a base carrying WithNShuttleCores(2) therefore yields THREE cores, silently, with no
++  // elaboration error -- the design just comes out bigger than the one you asked for. Threading the
++  // count through here is the only spelling that cannot do that.
++  new shuttle.common.WithNShuttleCores(nShuttleCores) ++
++  new freechips.rocketchip.subsystem.WithExtMemSize((1 << 30) * 4L) ++
++  new freechips.rocketchip.subsystem.WithNMemoryChannels(1) ++
++  // The chip-to-chip link is deliberately absent.
++  //
++  // KodiakFireSimConfig carries WithSerialTL + WithOffchipBusClient(SBUS, replicationBase = 8GB) +
++  // WithOffchipBus, and that combination does not elaborate: the off-chip client's replicated,
++  // bank-interleaved view and the serial-TL manager's replicated window both claim 0x200000000, and
++  // diplomacy rejects it ("Ports cannot overlap: AddressSet(0x200000000, 0x1ffffff3f)
++  // AddressSet(0x200000000, 0x1ffffffff)"). That is not a porting error -- the config that was
++  // actually built is the CTC variant, which has the whole serial-TL block commented out and no
++  // off-chip bus at all, so this path appears never to have been elaborated standalone.
++  //
++  // Dropping it is right for this target rather than merely convenient: chip-to-chip is not compute.
++  // Cores, vector units, TCM, L1s, L2 and scratchpad are unchanged, so what the OPU sees and what a
++  // measurement on this bitstream means are unaffected. The consequence to state when citing results
++  // is that this is Kodiak's compute SoC on one chip, not a reproduction of the multi-chip target.
++  new chipyard.config.WithInclusiveCacheInteriorBuffer ++
++  new chipyard.config.WithInclusiveCacheExteriorBuffer ++
++  new freechips.rocketchip.subsystem.WithInclusiveCache(nWays=4, capacityKB=512, outerLatencyCycles=4) ++
++  new freechips.rocketchip.subsystem.WithNBanks(4) ++
++  new testchipip.soc.WithNoScratchpadMonitors ++
++  new testchipip.soc.WithScratchpad(base=0x580000000L,
++                                    size=(1L << 17),
++                                    banks=2,
++                                    partitions=1,
++                                    buffer=freechips.rocketchip.diplomacy.BufferParams.default,
++                                    outerBuffer=freechips.rocketchip.diplomacy.BufferParams.default) ++
++  new chipyard.config.AbstractConfig
++)
++
++/** Kodiak as built, with no outer-product unit. The A-side control for KodiakOPUConfig. */
++class KodiakConfig extends Config(
++  new saturn.shuttle.WithShuttleVectorUnit(512, 256, VectorParams.genParams) ++
++  new WithKodiakBase)
++
++/** Kodiak with the outer-product unit enabled.
++  *
++  * `genParams.copy(useOpu = true)` rather than `opuParams` on purpose: opuParams also changes
++  * vliqEntries, vlissqEntries and useElementwiseFP64, so it would make this a different vector unit
++  * that happens to have an OPU. useOpu is the single parameter that instantiates OuterProductUnit
++  * and OuterProductSequencer (saturn backend/Backend.scala:61,71) and adds opuInsns to the supported
++  * set (common/Parameters.scala:375); nothing else in the OPU is coupled to those other knobs. So
++  * this config differs from KodiakConfig in exactly one boolean, and an A/B between them is honest.
++  *
++  * The clock-gate passthrough is mandatory here, not optional: at vLen=512/dLen=256 each core's
++  * cluster array is 8x8 clusters of 4x4 cells (yDim = (dLen/aWidth)/clusterYdim), four times the
++  * v256d128 array that already produced 4.207 ns of clock skew and 258,620 hold-failing endpoints
++  * when its EICG gate was left in, and there are two such cores.
++  */
++class KodiakOPUConfig extends Config(
++  new WithEICGPassthrough ++
++  new saturn.shuttle.WithShuttleVectorUnit(512, 256, VectorParams.genParams.copy(useOpu = true)) ++
++  new WithKodiakBase)
++
++/* ---------------------------------------------------------------------------------------------
++ * Single-core variants.
++ *
++ * WHY. The two-core KodiakOPUConfig DOES NOT ROUTE on the U250 at 15 MHz. Measured, not predicted:
++ * post-synth 1,492,274 LUT (86.36% of 1,728,000), of which each ShuttleTile is 601,039 LUT and each
++ * vopu 348,328 LUT. Placement closed setup (WNS +0.322 ns) and the router drove overlaps down from
++ * 1.95M to ~47k, but Phase 8 ended with
++ *
++ *     CRITICAL WARNING: [Route 35-162] 23531 signals failed to route due to routing congestion
++ *
++ * and 26,865 residual node overlaps -- an illegal route that write_bitstream will not accept. Note
++ * the same report says "Number of Failed Nets = 0"; that counts only unrouted/partially-routed nets
++ * and is NOT evidence of success when Node Overlaps is nonzero. Effective congestion level 6, max
++ * ~90%, localized to INT_X96-X129 / Y64-Y159.
++ *
++ * The router named the culprit: the top contended nodes are the OPU's matrix-register-file index
++ * (`vopu_ctrl_reg_mrf_idx_7[*]`) and cell input registers (`vopu/clusters_4_5/cells_3_0/...in_l...`),
++ * i.e. a control signal fanning out to 1024 cells per unit. Frequency cannot help -- the binding
++ * clock is the shell's mmcm_clkout0, whose period fpga_frequency does not set, and congestion is not
++ * a period problem at all. Area is the only real lever, so one tile goes.
++ *
++ * WHAT THIS COSTS. Kodiak has two Shuttle cores; this has one. Everything the OPU actually sees is
++ * unchanged -- same vLen=512/dLen=256 vector unit, same TCM, L1s, L2, scratchpad and bus widths --
++ * so a datapath or whole-model number measured here is a number about Kodiak's vector unit. State it
++ * as single-core Kodiak; do not cite it for anything that depends on core count or inter-core traffic.
++ * ------------------------------------------------------------------------------------------- */
++
++/** Single-core Kodiak with no outer-product unit. The A-side control for KodiakOPU1CoreConfig. */
++class Kodiak1CoreConfig extends Config(
++  new saturn.shuttle.WithShuttleVectorUnit(512, 256, VectorParams.genParams) ++
++  new WithKodiakBase(nShuttleCores = 1))
++
++/** Single-core Kodiak with the outer-product unit enabled. */
++class KodiakOPU1CoreConfig extends Config(
++  new WithEICGPassthrough ++
++  new saturn.shuttle.WithShuttleVectorUnit(512, 256, VectorParams.genParams.copy(useOpu = true)) ++
++  new WithKodiakBase(nShuttleCores = 1))

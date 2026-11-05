@@ -39,6 +39,30 @@
       "source": "examples/board-catalog.yaml@e45205bf90d3fe7652404fd361128a062fad9d31",
       "change": "the chipyard_kodiak, kodiak_opu_2core and firesim_kodiak_opu entries, verbatim, under a new header",
       "sha256": "69ed80158bfeba59597a970ef851eb6a8d6e8ce50c66ec2bab908ed670567ce0"
+    },
+    {
+      "path": "firesim/01-saturn-OPUConfigs.patch",
+      "source": "oscar-merlin out/artifacts/delivery/kodiak-opu-firesim-config (2026-08-20)",
+      "change": "copied verbatim",
+      "sha256": "fa9e355f4879b3acc721ce79718a7ce06d792255a7794cf460496bfc54e15777"
+    },
+    {
+      "path": "firesim/02-chipyard-firechip-TargetConfigs.patch",
+      "source": "oscar-merlin out/artifacts/delivery/kodiak-opu-firesim-config (2026-08-20)",
+      "change": "copied verbatim",
+      "sha256": "293a9bc64ddc90d199ff0f3e13734d096038d9c0db86b99320ccdb0ccd02811c"
+    },
+    {
+      "path": "firesim/eicg_passthrough.v",
+      "source": "oscar-merlin out/artifacts/delivery/kodiak-opu-firesim-config (2026-08-20)",
+      "change": "copied verbatim",
+      "sha256": "a81328cbe5aaa0a2c43b480e38d9c6eb7a9db443debcb6232bb2c2b0111b2f02"
+    },
+    {
+      "path": "firesim/README.md",
+      "source": "oscar-merlin out/artifacts/delivery/kodiak-opu-firesim-config (2026-08-20)",
+      "change": "copied verbatim",
+      "sha256": "6f0cd49e485ba223bdd844979929e6d4ec6f8be3a8dcaaf2333a4dc1680417a4"
     }
   ],
   "generated": {

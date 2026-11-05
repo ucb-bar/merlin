@@ -1,0 +1,141 @@
+diff --git a/generators/firechip/chip/src/main/scala/TargetConfigs.scala b/generators/firechip/chip/src/main/scala/TargetConfigs.scala
+index 879ac198..6d906599 100644
+--- a/generators/firechip/chip/src/main/scala/TargetConfigs.scala
++++ b/generators/firechip/chip/src/main/scala/TargetConfigs.scala
+@@ -281,6 +281,114 @@ class FireSimLeanGemminiPrintfRocketConfig extends Config(
+   new WithFireSimConfigTweaks ++
+   new chipyard.LeanGemminiPrintfRocketConfig)
+ 
++// 2-tile Shuttle SoC: tile 0 = Shuttle+Gemmini, tile 1 = Shuttle+OPU(vl=128)
++class FireSimGemminiAndOPUShuttleConfig extends Config(
++  new WithDefaultFireSimBridges ++
++  new WithFireSimConfigTweaks ++
++  new chipyard.GemminiAndOPUShuttleConfig)
++
++// Multicore Saturn-vectors SoCs: EVERY Shuttle tile carries its own Saturn vector unit
++// (vLen=256, dLen=128 -- matching the SpacemiT K1, so a schedule tuned on the board transfers
++// without a re-tune). The 2-tile SoC above gives only tile 1 a vector unit, so it cannot host a
++// multi-hart RVV workload; these can.
++//
++// FireSim rather than Verilator because RTL simulation runs ~10^4 cycles/s, which cannot reach a
++// whole-model inference (~10^10 cycles); on the FPGA the same design runs at tens of MHz, which
++// makes whole-model multicore RVV cycle counts actually obtainable.
++//
++// The DUAL config is the one to build first: 2 Saturn units at vLen=256/dLen=128 are already a
++// large step up from the single vLen=128 OPU that fits today, and a placement failure only
++// surfaces after hours of synthesis.
++class FireSimDualSaturnV256D128ShuttleConfig extends Config(
++  new WithDefaultFireSimBridges ++
++  new WithFireSimConfigTweaks ++
++  new chipyard.DualSaturnV256D128ShuttleConfig)
++
++class FireSimMultiSaturnV256D128ShuttleConfig extends Config(
++  new WithDefaultFireSimBridges ++
++  new WithFireSimConfigTweaks ++
++  new chipyard.MultiSaturnV256D128ShuttleConfig)
++
++// Single Shuttle core carrying the OUTER-PRODUCT unit at vLen=256/dLen=128, i.e. a 32-lane int8 tile.
++//
++// Why this one. The two OPU bitstreams that exist are both vLen=128/dLen=64 (a 16-lane tile), and one of
++// them (shuttle_gemmini_opu) puts the unit on tile 1 only -- so an image whose kernel runs on hart 0 finds
++// no OPU there and takes an illegal instruction. This is a SINGLE core with the unit on it, so there is no
++// hart routing to get wrong, and its 32-lane tile matches the geometry the microkernel corpus is certified
++// against on Verilator -- which is the point: the same acceptance corpus and the same whole-model image run
++// here in seconds instead of hours.
++//
++// fpga_frequency is set to 25 MHz in the build recipe rather than the 30 the vLen=128 OPU closed at: one
++// vLen=256 unit is a real area step up from one vLen=128 unit, and a frequency that will not close wastes
++// the entire synthesis rather than degrading it.
++class FireSimOPUV256D128ShuttleConfig extends Config(
++  new WithDefaultFireSimBridges ++
++  new WithFireSimConfigTweaks ++
++  new chipyard.OPUV256D128ShuttleConfig)
++
++// The same target with the OPU cluster array's clock gate replaced by a passthrough.
++//
++// The gated variant does not close timing. Its gate lowers to rocket-chip's EICG_wrapper, which
++// ReplaceAbstractClockGates does not rewrite, so the gate stays combinational logic in the clock path and
++// the tools add a second global clock net for the gated domain's 131,585 loads. That net comes out 3.79 ns
++// behind its ungated parent while both ends share one clock name and are therefore hold-checked at zero
++// skew: WHS -3.972 ns over 258,620 endpoints, which phys_opt reduced by 0.7% in 34 min. Frequency does not
++// help -- the build is already at 25 MHz and the failing clock has +16.520 ns of spare SETUP slack, while
++// hold and skew are both period-independent.
++//
++// Ungating is functionally transparent on this unit but that is a measurement, not an assumption:
++// OuterProductCluster.pipe is assigned unconditionally and so does rely on the gate to hold. 14 corpus
++// cases chosen to stress it come back bit-exact against both the in-image reference and the host digest.
++class FireSimOPUV256D128ShuttleNoGateConfig extends Config(
++  new WithDefaultFireSimBridges ++
++  new WithFireSimConfigTweaks ++
++  new chipyard.OPUV256D128ShuttleNoGateConfig)
++
++// Kodiak's SoC on FireSim, with and without the outer-product unit.
++//
++// The bus frequencies are 500 MHz rather than the 1000 MHz of WithFireSimConfigTweaks because that is what
++// Kodiak's own FireSim configs use; keeping it means the DRAM model and the target clock match the design
++// this is a port of. Everything else about the target comes from chipyard.WithKodiakBase.
++//
++// The OPU variant is the larger risk of the two by a wide margin: two cores at vLen=512/dLen=256 give an
++// 8x8 cluster array each, four times the v256d128 array per core and twice as many cores, so roughly 8x
++// the OPU that measured 81,335 LUTs and 131,584 FFs. It carries the clock-gate passthrough for the reason
++// recorded on FireSimOPUV256D128ShuttleNoGateConfig -- with the gate left in, that much gated fabric is
++// what produced 258,620 hold-failing endpoints, and no frequency setting can trade against hold.
++class WithFireSim500ConfigTweaks extends Config(
++  new chipyard.config.WithSystemBusFrequency(500.0) ++
++  new chipyard.config.WithControlBusFrequency(500.0) ++
++  new chipyard.config.WithPeripheryBusFrequency(500.0) ++
++  new chipyard.config.WithMemoryBusFrequency(500.0) ++
++  new chipyard.config.WithFrontBusFrequency(500.0) ++
++  new WithFireSimDesignTweaks
++)
++
++class FireSimKodiakConfig extends Config(
++  new WithDefaultFireSimBridges ++
++  new WithFireSim500ConfigTweaks ++
++  new chipyard.KodiakConfig)
++
++class FireSimKodiakOPUConfig extends Config(
++  new WithDefaultFireSimBridges ++
++  new WithFireSim500ConfigTweaks ++
++  new chipyard.KodiakOPUConfig)
++
++// Single-core Kodiak. FireSimKodiakOPUConfig does not route on the U250 -- 86.36% post-synth LUT and
++// 23,531 signals left contending for nodes after Phase 8, with the router naming the OPU's mrf_idx
++// fanout as the congestion source. Dropping one tile removes 601,039 LUT of core plus 348,328 of OPU.
++// See the block comment on Kodiak1CoreConfig for the measurements and for what the missing core costs
++// when citing a result.
++class FireSimKodiak1CoreConfig extends Config(
++  new WithDefaultFireSimBridges ++
++  new WithFireSim500ConfigTweaks ++
++  new chipyard.Kodiak1CoreConfig)
++
++class FireSimKodiakOPU1CoreConfig extends Config(
++  new WithDefaultFireSimBridges ++
++  new WithFireSim500ConfigTweaks ++
++  new chipyard.KodiakOPU1CoreConfig)
++
+ //**********************************************************************************
+ // Supernode Configurations, base off chipyard's RocketConfig
+ //**********************************************************************************
+@@ -326,13 +434,14 @@ class FireSimLeanGemminiRocketMMIOOnlyConfig extends Config(
+   new WithFireSimConfigTweaks ++
+   new chipyard.LeanGemminiRocketConfig)
+ 
+-class FireSimRadianceClusterSynConfig extends Config(
+-  new chipyard.harness.WithHarnessBinderClockFreqMHz(500.0) ++
+-  new chipyard.config.WithNoTraceIO ++
+-  new WithDefaultFireSimBridges ++
+-  new chipyard.config.WithRadBootROM ++
+-  new WithFireSimConfigTweaks ++
+-  new chipyard.RadianceClusterSynConfig)
++// Disabled while radiance submodule is dropped from the SBT graph for the Shuttle+Gemmini+OPU bitstream build.
++// class FireSimRadianceClusterSynConfig extends Config(
++//   new chipyard.harness.WithHarnessBinderClockFreqMHz(500.0) ++
++//   new chipyard.config.WithNoTraceIO ++
++//   new WithDefaultFireSimBridges ++
++//   new chipyard.config.WithRadBootROM ++
++//   new WithFireSimConfigTweaks ++
++//   new chipyard.RadianceClusterSynConfig)
+ 
+ class FireSimLargeBoomCospikeConfig extends Config(
+   new WithCospikeBridge ++
