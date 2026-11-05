@@ -127,12 +127,16 @@ Kodiak's Saturn units carry an int8 **outer-product unit** (OPU, pin `saturn_opu
 `build`/`package` also produce images whose int8 contractions with both M and N at least one tile
 (64 on Kodiak) call the OPU kernel from the Kodiak package. Everything else stays on RVV.
 
-No simulator here executes the OPU, so each OPU image is gated through its **stand-in twin**, which is
-the same lowering (checked by digest) with a scalar tile body. The twin is what spike runs against the
-W8A8 golden. The shipped ELF is audited to contain the OPU's instructions and the twin to contain none.
+Each OPU image is gated through its **stand-in twin**, which is the same lowering (checked by digest)
+with a scalar tile body. The twin is what stock spike runs against the W8A8 golden. When setup built the
+OPU's spike model (§2c), the **shipped** image runs on it too, graded against the same golden and
+required to match the twin bit for bit (`matrix.shipped_on_simulator` in the manifest); a mismatch fails
+the image. The shipped ELF is audited to contain the OPU's instructions and the twin to contain none.
 The OPU datapath itself is certified separately on its RTL (`merlin.kernels.opu_cert`).
 
-Every OPU build writes `routing_report.json` next to the image:
+Every OPU build writes a routing report: `routing_report.json` next to the image for `op` and
+`merlin-compile`, and under `binaries[].matrix.routing_report` in the package's `manifest.json` for
+`build`/`package`:
 
 * `routed_contractions` and `opu_mac_share`: how much of the model the OPU sees. This bounds the
   speedup, and it is the first thing to read for a new model.
@@ -155,7 +159,8 @@ to a different RTL revision.
 `./run.sh setup` builds it from the vendored package (`support/spike/`) into
 `out/build/spike-ext/kodiak/` (`libsaturn_opu_model.so` + `manifest.json`) and records
 `MERLIN_KODIAK_OPU_SPIKE_EXTLIB` in `.env`, so `op` runs three legs: `rvv`, `matrix` (the twin) and
-`matrix_on_spike` (the shipped ELF). It is rebuilt only when the package's declared inputs change. To
+`matrix_on_spike` (the shipped ELF), and `build --opu`/`package --opu` and `merlin-compile --matrix-unit`
+run the shipped ELF on it as well. It is rebuilt only when the package's declared inputs change. To
 build it by hand, or from another kodiak-mlir checkout selected with `MERLIN_TARGET_PATH`:
 
 ```bash
@@ -170,15 +175,42 @@ the leg and says so. The leg grades the shipped image against the W8A8 golden an
 the twin's output bit for bit.
 
 **Bring your own model.** `./run.sh capture <model>` writes `recaptures/<model>_int8_full` and its
-W8A8 golden. Use a model2MLIR roster name, or `--loader path/to/loader.py` with a
-`get_model_and_inputs()` (see `docs/guides/model2mlir.md`). Then
-`./run.sh build --opu --models <model>`. For a single image without packaging:
+W8A8 golden. Use a model2MLIR roster name (the directories in `$MERLIN_M2M_DIR/workloads/`, which setup
+records in the repo's `.env`), or `--loader path/to/loader.py` with a `get_model_and_inputs()` (see
+`docs/guides/model2mlir.md`); `<model>` then only names the bundle. Then
+`./run.sh build --opu --models <model>`. For a single image without packaging, from the repository root:
 
 ```bash
-merlin-compile --workload <model> --dtype int8 --target rvv --board chipyard_kodiak --harts 2 \
+MERLIN_BOARD_CATALOG=examples/board-catalog.yaml:examples/kodiak/support \
+.venv/bin/merlin-compile --workload <model> --dtype int8 --target rvv --board chipyard_kodiak --harts 2 \
   --matrix-unit saturn_opu --matrix-config KodiakOPUConfig --matrix-support-target kodiak \
   --run spike --verify
 ```
+
+(`run.sh` sets the board catalog for you; a bare `merlin-compile` needs it named.) What a new model
+runs into, in the order you will meet it:
+
+* **The loader's own switches.** A roster loader may refuse to run without them. ResNet-50's wants real
+  ImageNet inputs or `M2M_RESNET_RANDOM=1` for a smoke capture; its docstring says which. They are
+  environment variables, so `M2M_RESNET_RANDOM=1 ./run.sh capture resnet50_v1_5` passes them through.
+* **Time.** The capture and the W8A8 golden both run the whole model on the host: about 5 minutes each
+  for ResNet-50. Each spike gate is one single-threaded simulation of a whole inference.
+* **Kodiak's 512 MiB.** The image holds the weights plus an activation arena sized to the sum of every
+  allocation the lowered model makes (the bound that holds whatever the allocator reclaims), plus slack.
+  A model that does not fit is refused before linking, with both sizes; ResNet-50 at 224x224 needs
+  624 MiB. Shrink the input with your own loader (at 112x112 it fits) or the model.
+* **Weight-only int8.** The int8 capture quantizes weights with torchao's default filter, which matches
+  `nn.Linear` only: a CNN's convolution weights stay f32 in the bundle. Merlin's W8A8 build still
+  quantizes those convolutions (`conv_int8`) and routes them to the OPU, but the image carries their
+  weights as f32: ResNet-50's weights blob is 96 MB, about 4x its int8 size.
+* **Not everything routes.** A contraction routes only when M and N both reach a tile (64). For a
+  convolution one of them is the output pixel count, so the deep layers of a small input (7x7 = 49
+  pixels) stay on RVV; `not_routed_by_reason` in the routing report counts them ("smaller than one tile
+  (64)") and `not_routed[]` names each one.
+* **Say what the model is.** A package's README describes every model in it. For one Merlin does not
+  know, write a paragraph (what it is, how it was captured, what to expect of it) to
+  `delivery_status.md` in its bundle directory, or `build`/`package` ends with a `NO STATUS` problem
+  and exits non-zero.
 
 ## 3. What simulation cannot tell you
 

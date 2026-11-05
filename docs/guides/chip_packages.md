@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-11-05
 related: [target_resolution, adding_a_target, zephyr, model2mlir]
-code_refs: [examples/lib/chip_setup.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, src/merlin/targetgen/rtl/matrix_isa.py, src/merlin/kernels/matrix_shim.py, src/merlin/compile_cli.py, build_tools/scripts/vendor_support.py]
+code_refs: [examples/lib/chip_setup.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, src/merlin/targetgen/rtl/matrix_isa.py, src/merlin/kernels/matrix_shim.py, src/merlin/compile_cli.py, src/merlin/compile/matrix_leg.py, src/merlin/targetgen/spike_extension.py, build_tools/scripts/vendor_support.py]
 ---
 
 # Chip packages layered on a base target
@@ -32,6 +32,9 @@ and the repo's `.env`, and never modifies a checkout it did not create. It ends 
 prerequisite and, for anything still missing, the exact commands; it exits non-zero until nothing is
 left. Paths can be passed as flags or exported; whatever is found and right is recorded in `.env`
 (the process environment still wins), and `run.sh` loads `.env`, so no later shell needs exports.
+Because the environment wins, a stale export (a `ZEPHYR_BASE` left from an old workspace) would replace
+what setup just verified in every later command; setup ends with a warning naming each such variable,
+and `preflight` says when a missing path is one your shell exports. `unset` them.
 
 **Done by setup** (cheap; downloads and builds of minutes):
 
@@ -39,7 +42,7 @@ left. Paths can be passed as flags or exported; whatever is found and right is r
 |---|---|---|
 | Merlin's venv (`uv sync`) | `.venv/` | ~150 MB, under a minute |
 | model2MLIR, cloned at its pin (`model2mlir_capture`) unless `--m2m`/`MERLIN_M2M_DIR` names one | `out/build/ext/model2MLIR/` | ~50 MB |
-| capture venv: Python 3.12, PyTorch nightly (CPU), `torch-mlir==20260531.828` (the wheel matching the LLVM pin), torchao, timm; model2MLIR on its path by a `.pth`, so a shared or read-only checkout works | `out/build/venv/model2mlir/` | ~1.3 GB, 2-5 min |
+| capture venv: Python 3.12, PyTorch nightly (CPU), `torch-mlir==20260531.828` (the wheel matching the LLVM pin), model2MLIR's own libraries (xdsl, structlog, ...) at the versions its `uv.lock` records, torchao, timm; model2MLIR on its path by a `.pth`, so a shared or read-only checkout works | `out/build/venv/model2mlir/` | ~1.3 GB, 2-5 min |
 | Zephyr west workspace: `zephyr-chipyard-sw` (`dev`), its `zephyr_ws/zephyr` submodule, `west init --mf west-riscv.yml`, `west update` (skipped when `ZEPHYR_BASE` is set) | `out/build/ext/zephyr-chipyard-sw/` | ~2 GB, 5-10 min |
 | a chip's spike model of its unit, when its package declares one (Kodiak's OPU) | `out/build/spike-ext/<chip>/` | seconds |
 | a simulator built from a verified pinned source (Iris's riscv-isa-sim with Zvt) | `out/build/<pin>/` | ~0.3 GB, ~2 min on 32 cores |
@@ -172,9 +175,19 @@ a vector unit (Rocket's DMA unit) and no matrix unit.
 
 ### Running the shipped image
 
-When the package's plugin declares `device_simulator`, `merlin-compile --matrix-unit ... --run spike` also
-runs the SHIPPED image on that simulator with the unit's ISA extensions and gates it
-(`matrix.shipped_on_simulator` in the result). Declared but absent, the leg is `not_run` with the reason;
-it never falls back to a simulator without the unit. Iris declares upstream riscv-isa-sim with Zvt (pin
-`spike_zvt`, binary `$MERLIN_SPIKE_ZVT`); Kodiak declares none, so its shipped image is gated only by the
-audit and the twin.
+A package can declare a simulator that executes its unit, in one of two ways: its plugin's
+`device_simulator(unit=, config=)` names a simulator binary and the ISA extensions that name the unit,
+or its contract's `runner.spike_extension` names a spike `--extlib` model of the unit (extension name,
+the variable holding the `.so`, and its digest or the inputs it must be built from; see
+`merlin.targetgen.spike_extension`). Iris declares the first (upstream riscv-isa-sim with Zvt, pin
+`spike_zvt`, binary `$MERLIN_SPIKE_ZVT`); Kodiak declares the second (its OPU model, built by
+`run.sh setup` and recorded as `$MERLIN_KODIAK_OPU_SPIKE_EXTLIB`).
+
+Either way, every matrix build that runs its twin on spike also runs the SHIPPED image on the declared
+simulator and gates it: `merlin-compile --matrix-unit ... --run spike`, a chip example's `op`, and
+`make_delivery.py --matrix-harts` (a chip example's `build --opu`/`package --opu`). The shipped image is
+graded against the same references and must match the twin bit for bit (`matrix.shipped_on_simulator`
+in the result and in the package manifest). A mismatch, or a shipped image that prints no output, fails
+the image. Declared but unusable (the binary or `.so` is absent, or its digest differs), the leg is
+`not_run` with the reason; it never falls back to a simulator without the unit. With no declaration it
+is `not_declared`, and the image is gated by the audit and the twin alone.
