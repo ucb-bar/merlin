@@ -152,6 +152,21 @@ REGISTRY: tuple[OptionalPass, ...] = (
         switch="MERLIN_LAYER_NORM_CHUNKED_SUMS",
     ),
     OptionalPass(
+        name="portable-transcendentals",
+        summary="erf/exp/tanh/log as Merlin's own correctly rounded functions, identical on every target",
+        changes=(
+            "calls to erff/expf/tanhf/logf become calls to merlin_erff/merlin_expf/merlin_tanhf/merlin_logf, "
+            "defined in the MLIR runtime linked into the host build and every device image, so the golden "
+            "and the device evaluate the same function bit for bit; deselected, each target's C library "
+            "supplies them and their last-ulp rounding differs between targets"
+        ),
+        exactness=NUMERICS_CHANGING,
+        default="on",
+        stage="lowering",
+        switch="MERLIN_PORTABLE_TRANSCENDENTALS",
+        on_by_default=True,
+    ),
+    OptionalPass(
         name="int-softmax",
         summary="softmax exp as the integer I-BERT exp",
         changes="math.exp in a softmax becomes a fixed-point polynomial and power-of-two shift",

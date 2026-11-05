@@ -46,6 +46,7 @@ from pathlib import Path
 import numpy as np
 
 from merlin.common.artifacts import recaptures_dir
+from merlin.llvmlower import portable_math
 from merlin.runtime.dispatch_runtime import run_model
 
 
@@ -81,6 +82,9 @@ def generate(bundle: Path, *, force: bool = False) -> tuple[bool, str]:
                 "independent_of_merlin": False,
                 "decides": "device-vs-host execution agreement",
                 "does_not_decide": "whether merlin's int8 arithmetic is correct (rel is 0 by construction)",
+                # The numeric policy the transcendentals were computed under: a device build under the
+                # other one evaluates a different erf/exp/tanh/log and cannot match this bit for bit.
+                "transcendental_math": portable_math.record(),
                 "created": time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
             },
             indent=2,

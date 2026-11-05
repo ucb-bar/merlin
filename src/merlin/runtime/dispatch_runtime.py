@@ -630,6 +630,15 @@ def execute(
         env[id(arg)] = arr
 
     cache: dict[str, Any] = {}  # kernel body text -> HostModel
+    # A cached .so is the kernel compiled under ONE transcendental policy (portable_math): keying on the
+    # kernel text alone would hand a libm-erff kernel to a run that selected the portable one.
+    from ..llvmlower.portable_math import cache_token as _transcendental_cache_token
+
+    _cache_salt = "\n// transcendental_math=" + _transcendental_cache_token()
+
+    def _kernel_digest(kernel_text: str) -> str:
+        return hashlib.sha1((kernel_text + _cache_salt).encode()).hexdigest()[:16]
+
     compiled: dict[str, Any] = {}  # symbol -> HostModel
     n_unique = 0
 
@@ -794,7 +803,7 @@ def execute(
             if cache_dir is not None:
                 import shutil
 
-                digest = hashlib.sha1(key.encode()).hexdigest()[:16]
+                digest = _kernel_digest(key)
                 so = cache_dir / f"{digest}.so"
                 if not so.is_file():
                     compile_host(km, workdir / symbol.replace("$", "_"))
@@ -846,7 +855,7 @@ def execute(
                 continue  # xnn-routed kernels are computed by XNNPACK, never compiled
             seen.add(sym)
             ktext = _ktext(sym)
-            digest = hashlib.sha1(ktext.encode()).hexdigest()[:16]
+            digest = _kernel_digest(ktext)
             if digest not in todo and not (cache_dir / f"{digest}.so").is_file():
                 todo[digest] = (ktext, sym)
         if not todo:

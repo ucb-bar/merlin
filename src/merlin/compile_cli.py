@@ -415,6 +415,16 @@ def compile_rvv(
                 _act_quant = False
         if _act_quant and w8.is_file():
             refs["w8a8"] = np.load(w8)
+            # The rule the W8A8 tier rests on: golden and device evaluate the same functions. Say so
+            # when the golden's transcendental policy is not this build's (see llvmlower.portable_math).
+            from .llvmlower import portable_math as _pm
+
+            _prov = w8.with_name("golden_w8a8.provenance.json")
+            _why = _pm.reference_disagreement(json.loads(_prov.read_text()) if _prov.is_file() else None)
+            out["transcendental_math"] = _pm.record()
+            if _why:
+                out["transcendental_math_warning"] = f"{w8.name}: {_why}"
+                print(f"[merlin-compile] WARNING: {out['transcendental_math_warning']}", file=sys.stderr)
         elif _act_quant:
             # `golden.npy` in a weight-only bundle is an f32-ACTIVATION reference; this run computes
             # W8A8. Grading one against the other measures activation-quantization error, not

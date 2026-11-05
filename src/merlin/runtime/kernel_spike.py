@@ -11,6 +11,7 @@ patterns**, never as formatted decimals. Two reasons: a freestanding harness has
 worth trusting, and a bit pattern makes "the same answer" an exact question instead of a question
 about how many digits were printed.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -20,11 +21,11 @@ from typing import Any
 
 import numpy as np
 
+from merlin.common import proc as _proc
 from merlin.common.paths import runtime_dir
 
 from .backends import spike as _spike
 from .backends.spike_model import RVV_CFLAGS
-from merlin.common import proc as _proc
 
 # Inputs are emitted as C initializers, so a large tensor becomes a pathological source file long
 # before it becomes a memory problem. Refuse early with a clear cause.
@@ -38,7 +39,7 @@ _ELEMENT = {
     "i32": ("int", np.int32, np.int32),
     "i64": ("long", np.int64, np.int64),
     "f16": ("unsigned short", np.uint16, np.float16),
-    "bf16": ("unsigned short", np.uint16, None),      # no numpy bfloat16; caller reinterprets
+    "bf16": ("unsigned short", np.uint16, None),  # no numpy bfloat16; caller reinterprets
     "f32": ("unsigned int", np.uint32, np.float32),
     "f64": ("unsigned long", np.uint64, np.float64),
 }
@@ -75,14 +76,14 @@ def _byte_literals(array: np.ndarray) -> str:
     if len(raw) > MAX_EMBEDDED_BYTES:
         raise KernelSpikeError(
             f"{len(raw)} bytes of input exceeds the {MAX_EMBEDDED_BYTES} this harness embeds in the "
-            "image; a kernel that large needs the whole-model path, which loads a weights blob")
+            "image; a kernel that large needs the whole-model path, which loads a weights blob"
+        )
     return ", ".join(str(b) for b in raw)
 
 
 def _descriptor_struct(rank: int) -> str:
     dims = max(rank, 1)
-    return (f"typedef struct {{ void *a; void *b; long off; long sizes[{dims}]; "
-            f"long strides[{dims}]; }} mr{rank};\n")
+    return f"typedef struct {{ void *a; void *b; long off; long sizes[{dims}]; long strides[{dims}]; }} mr{rank};\n"
 
 
 def _descriptor_init(name: str, buffer: str, shape: tuple[int, ...]) -> str:
@@ -91,20 +92,22 @@ def _descriptor_init(name: str, buffer: str, shape: tuple[int, ...]) -> str:
         strides[d] = strides[d + 1] * shape[d + 1]
     sizes = ", ".join(str(s) for s in shape) or "1"
     stride_text = ", ".join(str(s) for s in strides) or "1"
-    return (f"  static mr{len(shape)} {name} = {{0, 0, 0, {{{sizes}}}, {{{stride_text}}}}};\n"
-            f"  {name}.a = (void*){buffer}; {name}.b = (void*){buffer};\n")
+    return (
+        f"  static mr{len(shape)} {name} = {{0, 0, 0, {{{sizes}}}, {{{stride_text}}}}};\n"
+        f"  {name}.a = (void*){buffer}; {name}.b = (void*){buffer};\n"
+    )
 
 
-def generate_main(entry: str, inputs: list[np.ndarray], out_shapes: list[tuple[int, ...]],
-                  out_dtypes: list[str]) -> str:
+def generate_main(
+    entry: str, inputs: list[np.ndarray], out_shapes: list[tuple[int, ...]], out_dtypes: list[str]
+) -> str:
     """The C driver: embed the inputs, call the kernel, print each output's bit patterns."""
     ranks = sorted({len(a.shape) for a in inputs} | {len(s) for s in out_shapes})
     parts = ['#include "htif.h"\n\n']
     parts += [_descriptor_struct(r) for r in ranks]
 
     for i, array in enumerate(inputs):
-        parts.append(f"static unsigned char in{i}[] __attribute__((aligned(64))) = "
-                     f"{{{_byte_literals(array)}}};\n")
+        parts.append(f"static unsigned char in{i}[] __attribute__((aligned(64))) = {{{_byte_literals(array)}}};\n")
     for i, (shape, dtype) in enumerate(zip(out_shapes, out_dtypes)):
         element, _, _ = _element_of(dtype)
         count = int(np.prod(shape)) if shape else 1
@@ -127,7 +130,8 @@ def generate_main(entry: str, inputs: list[np.ndarray], out_shapes: list[tuple[i
         parts.append(
             f'  htif_puts("OUT out{i} 1 {count}");\n'
             f"  for (int k = 0; k < {count}; k++) {{ htif_putc(' '); htif_putd((long)out{i}[k]); }}\n"
-            '  htif_putc(\'\\n\');\n')
+            "  htif_putc('\\n');\n"
+        )
     parts.append('  htif_puts("DONE\\n");\n  htif_exit(0);\n  return 0;\n}\n')
     return "".join(parts)
 
@@ -143,8 +147,14 @@ def _run(cmd: list, timeout: int = 900) -> None:
     _proc.run_checked(cmd, error=KernelSpikeError, timeout=timeout, wrap_timeout=False)
 
 
-def build(module, inputs: list[np.ndarray], workdir: str | Path, *, vectorize: bool = True,
-          transform_schedule: str | None = None) -> dict[str, Any]:
+def build(
+    module,
+    inputs: list[np.ndarray],
+    workdir: str | Path,
+    *,
+    vectorize: bool = True,
+    transform_schedule: str | None = None,
+) -> dict[str, Any]:
     """Lower ``module`` to an rv64gcv ELF that runs it on ``inputs``. Returns the build record."""
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.kernel_backend import signature_of
@@ -162,28 +172,32 @@ def build(module, inputs: list[np.ndarray], workdir: str | Path, *, vectorize: b
         if tuple(array.shape) != tuple(shape):
             raise KernelSpikeError(f"input {i} has shape {array.shape}, kernel expects {shape}")
 
-    res = lower_model(text(module), work / "lower", targets=(), vectorize=vectorize,
-                      transform_schedule=transform_schedule)
-    _run([toolchain.clang(), "--target=riscv64-unknown-elf", *RVV_CFLAGS, "-c", res.ll_path,
-          "-o", work / "kernel.o"])
+    res = lower_model(
+        text(module), work / "lower", targets=(), vectorize=vectorize, transform_schedule=transform_schedule
+    )
+    _run([toolchain.clang(), "--target=riscv64-unknown-elf", *RVV_CFLAGS, "-c", res.ll_path, "-o", work / "kernel.o"])
 
     main_c = work / "main.c"
-    main_c.write_text(generate_main(entry, inputs, sig.out_shapes, sig.out_dtypes),
-                      encoding="utf-8")
+    main_c.write_text(generate_main(entry, inputs, sig.out_shapes, sig.out_dtypes), encoding="utf-8")
     harness = runtime_dir() / "baremetal/spike"
     gcc = _spike.gcc_path()
     objects = []
-    for name, src in (("main.o", main_c), ("crt.o", harness / "crt.S"),
-                      ("htif.o", harness / "htif.c"), ("libc.o", harness / "libc_min.c")):
+    # The MLIR runtime goes into every image the lowered code runs in: it defines the symbols the
+    # lowering calls (memrefCopy, rsqrtf, and the portable transcendentals; see llvmlower.portable_math).
+    for name, src in (
+        ("main.o", main_c),
+        ("crt.o", harness / "crt.S"),
+        ("htif.o", harness / "htif.c"),
+        ("libc.o", harness / "libc_min.c"),
+        ("mlir_rt.o", runtime_dir() / "abi/mlir_runtime.c"),
+    ):
         _run([gcc, *RVV_CFLAGS, "-I", harness, "-c", src, "-o", work / name])
         objects.append(work / name)
     objects.append(work / "kernel.o")
 
     elf = work / "kernel.elf"
-    _run([gcc, *RVV_CFLAGS, "-nostdlib", "-nostartfiles", "-T", harness / "link.ld",
-          *objects, "-lm", "-o", elf])
-    return {"elf": elf, "entry": entry, "signature": sig, "ll_path": res.ll_path,
-            "object": work / "kernel.o"}
+    _run([gcc, *RVV_CFLAGS, "-nostdlib", "-nostartfiles", "-T", harness / "link.ld", *objects, "-lm", "-o", elf])
+    return {"elf": elf, "entry": entry, "signature": sig, "ll_path": res.ll_path, "object": work / "kernel.o"}
 
 
 def vector_ops(object_path: str | Path) -> list[str]:
@@ -191,20 +205,41 @@ def vector_ops(object_path: str | Path) -> list[str]:
     from merlin.llvmlower.custom_isa import disassemble
 
     disassembly = disassemble(Path(object_path))
-    candidates = ("vsetvli", "vsetivli", "vle8.v", "vle32.v", "vse8.v", "vse32.v", "vadd.vv",
-                  "vmul.vv", "vfadd.vv", "vfmul.vv", "vfmacc.vv", "vwmacc.vv", "vredsum.vs",
-                  "vmv.v.i", "vmv.v.x")
+    candidates = (
+        "vsetvli",
+        "vsetivli",
+        "vle8.v",
+        "vle32.v",
+        "vse8.v",
+        "vse32.v",
+        "vadd.vv",
+        "vmul.vv",
+        "vfadd.vv",
+        "vfmul.vv",
+        "vfmacc.vv",
+        "vwmacc.vv",
+        "vredsum.vs",
+        "vmv.v.i",
+        "vmv.v.x",
+    )
     return [op for op in candidates if op in disassembly]
 
 
-def run(module, inputs: list[np.ndarray], workdir: str | Path, *, vectorize: bool = True,
-        harts: int = 1, isa: str = "rv64gcv_zfh_zvfh", timeout: int = 900,
-        transform_schedule: str | None = None) -> KernelRun:
+def run(
+    module,
+    inputs: list[np.ndarray],
+    workdir: str | Path,
+    *,
+    vectorize: bool = True,
+    harts: int = 1,
+    isa: str = "rv64gcv_zfh_zvfh",
+    timeout: int = 900,
+    transform_schedule: str | None = None,
+) -> KernelRun:
     """Build and run ``module`` on spike; return the outputs as numpy arrays."""
     from merlin.runtime.backends.base import parse_console
 
-    record = build(module, inputs, workdir, vectorize=vectorize,
-                   transform_schedule=transform_schedule)
+    record = build(module, inputs, workdir, vectorize=vectorize, transform_schedule=transform_schedule)
     console = _spike.run_elf(record["elf"], harts=harts, isa=isa, timeout=timeout)
     parsed, _ = parse_console(console, error_cls=KernelSpikeError)
 
@@ -217,8 +252,12 @@ def run(module, inputs: list[np.ndarray], workdir: str | Path, *, vectorize: boo
         _, wire, view = _element_of(dtype)
         flat = np.array(rows[0], dtype=np.int64).astype(wire)
         if view is None:
-            raise KernelSpikeError(
-                f"output {i} is {dtype}, which has no numpy view — read the raw words instead")
+            raise KernelSpikeError(f"output {i} is {dtype}, which has no numpy view — read the raw words instead")
         outputs.append(flat.view(view).reshape(shape))
-    return KernelRun(elf=record["elf"], outputs=outputs, console=console,
-                     vector_ops=vector_ops(record["object"]), workdir=Path(workdir))
+    return KernelRun(
+        elf=record["elf"],
+        outputs=outputs,
+        console=console,
+        vector_ops=vector_ops(record["object"]),
+        workdir=Path(workdir),
+    )

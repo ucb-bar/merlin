@@ -216,6 +216,13 @@ def lower_model(
 
         ll_text, ciface_inline_report = inline_wide_ciface_implementations(ll_text)
         stats["ciface_boundary_inline"] = ciface_inline_report
+        # Numeric policy for the transcendentals (portable_math): under the default `portable` policy the
+        # libm calls become Merlin's own functions, linked with the MLIR runtime into the host build and
+        # the device image alike, so a golden and a device evaluate the same erf/exp/tanh/log bit for
+        # bit. Recorded either way, including whatever transcendental still reaches the C library.
+        from .portable_math import bind as _bind_transcendentals
+
+        ll_text, stats["transcendental_math"] = _bind_transcendentals(ll_text)
         audit.stage("llvm-final", ll_text, format="llvm-ir")
         ll_path = work / "model.ll"
         ll_path.write_text(ll_text, encoding="utf-8")

@@ -1075,7 +1075,8 @@ def build(
             *h.glob("*.c"),
             *h.glob("*.h"),
             *h.glob("*.S"),
-            runtime_dir() / "abi/mlir_runtime.c",
+            *(runtime_dir() / "abi").glob("*.c"),
+            *(runtime_dir() / "abi").glob("*.h"),
         ]
     )
     _hh.update(_source_digest(_rt_srcs).encode("utf-8"))
