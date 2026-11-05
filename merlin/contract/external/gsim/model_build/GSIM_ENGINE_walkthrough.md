@@ -244,9 +244,9 @@ compute run (76% occupancy) with zero DMA, exactly as expected for an on-scratch
 matmul. Reaching a `mvin`-fed matmul (load/store buckets) is the next step and needs
 the TLB satisfied; the config+preload+compute path above deliberately avoids it.
 
-Files added this session: `gsim_gemmini_cmd_encode.py` (no-regex bit encoder),
-`gsim_gemmini_cmd_harness.cpp`. The **atlas M2** in §3 already demonstrated the
-waterfall mechanism; this closes it for gemmini specifically.
+The command encoder is `gsim_gemmini_cmd_encode.py` and the harness is
+`gsim_gemmini_cmd_harness.cpp`. Together they exercise the occupancy measurement
+used for Atlas M2 in §3 on Gemmini's compute path.
 
 ### 4b. Shape/size sweep — compute cycles scale linearly with matmul count
 
@@ -481,11 +481,9 @@ It is Chisel-emitted **FIRRTL 3.3.0, CIRCT/new-style** (`invalidate`, 10,419 of 
 :%[[ … ]]`, ends line 39999). GSIM parses it fine (the "unexpected 'is'" reject is an
 SFC-emission artifact, §2). To regenerate from scratch if ever deleted:
 `cd $CHIPYARD_ATLAS && make CONFIG=AtlasRocketConfig` (chipyard's Chisel elaboration
-emits this `.fir` before firtool lowers it to `.sv`). **This session did NOT invoke
-mill/`Elaborate`/firtool at all** — it reused the on-disk `.fir`. (The tracked edits
-under `third_party/atlas-npu/src/main/scala/atlas/*.scala` are dated 2026-07-05, five
-weeks pre-session prior-M2 WIP; the untracked `atlas/Elaborate.scala` is likewise not
-from this session — left untouched.)
+emits this `.fir` before firtool lowers it to `.sv`). The recorded measurements
+reuse the existing FIRRTL file rather than re-elaborating the Scala sources.
+Reproduction must select the recorded FIRRTL input and its source identity.
 
 ### 6.2 Re-root `TestHarness` → `ChipTop` (drop the harness plumbing)
 

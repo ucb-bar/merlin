@@ -1,17 +1,16 @@
-# Six distinct conditions for reference-assisted compiler improvement
+# Reference-kernel coverage study protocol
 
-Material Passport: experiment-agent / plan; 2026-10-29; code_plan_v2.
-Study verification status: UNVERIFIED, not launched (v3 source-ordered design below). The corpus preparation and
-offline observations below are verified separately; they are not speedup results.
+This document specifies the unlaunched source-ordered study design of 2026-10-29.
+The corpus preparation checks and offline observations below are separate from
+performance results. They do not establish an executed authoring comparison.
 
-This is operator planning material. Do not put this document, the global subset
-selection/audit, earlier gap diagnoses, or the entire corpus into author grants.
-The coordinator branch is `cc/el4-grader-throughput-20261024` in the task folder
-specified by the user. The corpus addition is signed commit `971bbc7ea`.
+Author inputs exclude this protocol, experiment-wide subset selection, audit outcomes, earlier
+gap diagnoses and the complete corpus. Each arm receives only its declared
+selection. The corpus addition is recorded at commit `971bbc7ea`.
 
 ## Current design: source-ordered banks (v3, 2026-10-29)
 
-The user replaced the Jack-only count curve below with cumulative banks in the
+This design supersedes the model-only count curve below with cumulative banks in the
 ablation order **upstream Exo, then ResNet50, then TinyLlama, then SmolVLA**.
 Every arm receives the same raw grant: the whole `originals/` folder (23 files,
 Exo included). Each bank arm also receives exactly one pinned read-only
@@ -36,13 +35,13 @@ retained as the frozen earlier design and are not used by this study.
 
 ## Earlier fixed design (superseded)
 
-The user requested no repeats. There are exactly six distinct author conditions.
+The earlier design has six distinct author conditions, with no repeats.
 Every condition starts independently from the same frozen, qualified
-`F10-FULL-NOREF-NOCCA` compiler and receives the same original Jack files:
+`F10-FULL-NOREF-NOCCA` compiler and receives the same original model files:
 `resnet50.elf`, `smolvla.elf`, `tinyllama.elf`. Exo material is excluded from this
 study in both treatments, although the larger database retains it separately.
 
-| Condition | Raw Jack files | CCA units | Distinct bodies: ResNet / SmolVLA / TinyLlama | Original occurrences |
+| Condition | Raw model files | CCA units | Distinct bodies: ResNet / SmolVLA / TinyLlama | Original occurrences |
 | --- | --- | ---: | --- | ---: |
 | Raw | All three | 0 | 0 / 0 / 0 | 0 derived |
 | C4 | Same three | 4 | 2 / 1 / 1 | 4 |
@@ -97,7 +96,7 @@ conditional on that ordering, common seed and author budget.
 
 ## What the actual raw-versus-CCA audit found
 
-The original Jack ELFs contain 451,185 listed instructions and 65,838 selected
+The original model ELFs contain 451,185 listed instructions and 65,838 selected
 accelerator sites. Raw users can disassemble and analyze them using the same
 common tools and selected target definitions. They have to identify code spans,
 recover scalar operands, interpret instruction fields and track uncertainty.

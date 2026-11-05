@@ -9,6 +9,7 @@ This source checkout includes restoration tools and manifests, but not the measu
 Use Python 3.12 or newer, `zstd`, and approximately 8 GB of free disk space for the main extracted collection. The accompanying `archives/` directory contains the files named in `archives.json`. Archive verification requires no model account or accelerator. From this source checkout, set `ARTIFACT_ARCHIVES` to that directory and `ARTIFACT_DATA` to a new directory for restored inputs:
 
 ```sh
+MERLIN_OUT_ROOT=/absolute/path/to/ae-work
 python3 build_tools/scripts/restore_paper_artifact.py \
   --manifest experiments/reference-data/paper-artifact/archives.json \
   --archive-dir "$ARTIFACT_ARCHIVES" \
