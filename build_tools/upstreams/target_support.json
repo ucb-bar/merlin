@@ -98,32 +98,32 @@
     {
       "target": "rvv",
       "url": "https://github.com/ucb-bar/rvv-mlir.git",
-      "local_worktree": "out/build/upstreams/rvv-mlir",
-      "base_ref": "stable/sol_k1_int8",
-      "base_commit": "3e48d41813ae17f6e6112ba63c741e923b0e496d",
-      "catalog_commit": "a568f412625539cfdb29484869093721b027be5c",
-      "root_role": "host_schedule",
-      "companion_commit": "d6863380d43f61dcc22ebe498c0f6b9341018e29",
+      "local_worktree": null,
+      "base_ref": "main",
+      "base_commit": "a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5",
+      "catalog_commit": null,
+      "root_role": "support",
+      "companion_commit": "a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5",
       "companion_commit_relation": "same_commit",
-      "provider_root": "merlin-support",
+      "provider_root": ".",
       "provider_role": "support",
       "vendored": {
         "path": "examples/rvv/support",
         "source_record": "examples/rvv/SOURCE.yaml",
-        "commit": "d6863380d43f61dcc22ebe498c0f6b9341018e29",
-        "tree": "cdfed452de48491da2f09a772b251b8b827e8bda",
-        "vendored_tree": "0e857f223910460294bd028998534883ca81238a",
-        "file_count": 6
+        "commit": "a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5",
+        "tree": "b1f9a45658bff26382519b6f2dcaa040dc8674ac",
+        "vendored_tree": "b1f9a45658bff26382519b6f2dcaa040dc8674ac",
+        "file_count": 7
       },
-      "copied_files": 1,
-      "file_provenance": "merlin-support/provenance.json",
+      "copied_files": 7,
+      "file_provenance": "provenance.json",
       "contract_sha256": "b08117fecc0eef967ce639ab55314d2b8a163dd1733603f11133f452dd8ec4a4",
       "schema_valid": true,
       "blockers": [
-        "Published root rvv-opt is a no-op publication skeleton; actual payload is a host schedule, not a standalone compiler.",
-        "No dialect plan exists in the source snapshot.",
-        "No hardware or schedule execution performed; historical certificate applies only to the original base revision."
-      ]
+        "Commit not yet pushed to ucb-bar/rvv-mlir main.",
+        "No hardware or schedule execution performed by this vendoring."
+      ],
+      "qualification_scope": "rvv-mlir main is the base RVV support provider at its repository root; chip packages extend it with provider.yaml extends. Schedule packages stay on the stable/* branches."
     },
     {
       "target": "atlas",
@@ -161,6 +161,60 @@
         "Program-emitter migration preserves the old model-specific ISA shim byte-for-byte; neither the shim nor full frozen model-venv execution is newly qualified.",
         "Source contract retains prototype, requires-human-review, incomplete datapath grounding and no RTL-certification claims.",
         "No compiler candidate, hardware execution or measured performance qualification."
+      ]
+    },
+    {
+      "target": "kodiak",
+      "url": "https://github.com/ucb-bar/kodiak-mlir.git",
+      "companion_commit": "693d8d512976073688b97b26c6246f4eb75e9f9e",
+      "companion_commit_relation": "same_commit",
+      "provider_root": ".",
+      "provider_role": "support",
+      "vendored": {
+        "path": "examples/kodiak/support",
+        "source_record": "examples/kodiak/SOURCE.yaml",
+        "commit": "693d8d512976073688b97b26c6246f4eb75e9f9e",
+        "tree": "ad9b46da3cc3e129226dd47eac1ded391e251b50",
+        "vendored_tree": "ad9b46da3cc3e129226dd47eac1ded391e251b50",
+        "file_count": 15
+      },
+      "file_provenance": "provenance.json",
+      "local_worktree": null,
+      "root_role": "support",
+      "extends": {
+        "target": "rvv",
+        "commit": "a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5"
+      },
+      "qualification_scope": "Layered support provider over rvv: overlay + generated effective contract (merlin-target-compose --check), OPU matrix_lowering plugin and shim, Kodiak boards.",
+      "blockers": [
+        "Repository not yet created on GitHub; this vendored copy is its tracked home until it is pushed."
+      ]
+    },
+    {
+      "target": "iris",
+      "url": "https://github.com/ucb-bar/iris-mlir.git",
+      "companion_commit": "9487b0c34797a61dbf5b92a70e2d43e3321ee3f7",
+      "companion_commit_relation": "same_commit",
+      "provider_root": ".",
+      "provider_role": "support",
+      "vendored": {
+        "path": "examples/iris/support",
+        "source_record": "examples/iris/SOURCE.yaml",
+        "commit": "9487b0c34797a61dbf5b92a70e2d43e3321ee3f7",
+        "tree": "eaae51618c94b4dc7cb17f50b1ccff7466931174",
+        "vendored_tree": "eaae51618c94b4dc7cb17f50b1ccff7466931174",
+        "file_count": 10
+      },
+      "file_provenance": "provenance.json",
+      "local_worktree": null,
+      "root_role": "support",
+      "extends": {
+        "target": "rvv",
+        "commit": "a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5"
+      },
+      "qualification_scope": "Layered support provider over rvv: overlay + generated effective contract (merlin-target-compose --check), Iris boards; no matrix unit yet.",
+      "blockers": [
+        "Repository not yet created on GitHub; this vendored copy is its tracked home until it is pushed."
       ]
     }
   ]

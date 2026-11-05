@@ -295,6 +295,7 @@ def test_a_stale_vector_ext_flag_is_refused_rather_than_built():
     produce the image again.
     """
     import dataclasses
+
     import pytest
 
     b = dataclasses.replace(boards.board("chipyard_kodiak"), zephyr_vector_ext=False)
@@ -627,9 +628,9 @@ def test_the_hart_list_reaches_the_openmp_shim():
     """Pinning is where a wrong hart set becomes a deadlock, so the shim must WALK the list rather
     than count -- and shrink the pool rather than put two workers on one hart, which would serialize
     silently and report a speed-up that never happened."""
-    from merlin.common.paths import merlin_dir
-
     import inspect
+
+    from merlin.common.paths import merlin_dir
 
     src = (merlin_dir() / "runtime/c/libomp_zephyr.c").read_text()
     assert "MERLIN_OMP_HART_IDS" in src
@@ -728,9 +729,9 @@ def test_a_second_configuration_of_a_board_keeps_the_port_and_states_its_own_fac
 
 def test_the_board_table_is_the_registry_file_not_code(tmp_path):
     """BOARDS is loaded from the registry file, so a new board is an entry there, not a shared-code edit."""
-    path = Path(os.environ[boards.BOARD_CATALOG_ENV])
-    assert path.is_file()
-    assert boards.load_boards(path) == boards.BOARDS
+    selection = os.environ[boards.BOARD_CATALOG_ENV]
+    assert all(path.is_file() for path in boards.catalog_paths(selection))
+    assert boards.load_boards(selection) == boards.BOARDS
     reg = tmp_path / "boards.yaml"
     reg.write_text("schema_version: 1\nboards:\n  a_new_tapeout:\n    dram_bytes: 1 GiB\n    harts: 3\n"
                    "    dram_base: 0x80000000\n    console: uart\n    flow: zephyr\n"

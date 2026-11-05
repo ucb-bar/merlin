@@ -41,7 +41,13 @@ _CHECKOUT_ROOT = Path(__file__).resolve().parents[2]
 _PACKAGE_ROOT = _CHECKOUT_ROOT / "src"
 # Board facts are OOT data. Tests deliberately select the example catalog before
 # importing any runtime module; an installed Merlin without that selection has none.
-os.environ.setdefault("MERLIN_BOARD_CATALOG", str(_CHECKOUT_ROOT / "examples/board-catalog.yaml"))
+os.environ.setdefault(
+    "MERLIN_BOARD_CATALOG",
+    os.pathsep.join(
+        str(_CHECKOUT_ROOT / p)
+        for p in ("examples/board-catalog.yaml", "examples/kodiak/support", "examples/iris/support")
+    ),
+)
 # Unset, MERLIN_TARGET_PATH selects every vendored examples/*/support provider at once, and the first
 # registry query loads all their plugins -- after which a test that selects one fixture provider is
 # refused for every other loaded target. The suite therefore starts with NO support selected unless

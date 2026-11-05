@@ -57,7 +57,7 @@ pins:
       The opu-int8 branch lives on the fork https://github.com/miles-rusch-berkeley/saturn-vectors.git,
       not on ucb-bar. Recorded rather than silently tolerated: anyone reproducing this needs the fork.
     commit: ea373800169ce7bbb9ca27ececf74101a7caf9d5
-    targets: [saturn_opu]
+    targets: [saturn_opu, kodiak]
     branch: opu-int8
     root_env: MERLIN_CHIPYARD
     path: generators/saturn
@@ -144,6 +144,47 @@ pins:
       "fix" the drift by switching that checkout: other sessions build from it, and provenance is
       deliberately incapable of mutating a tree. Verify this pin in a separate git worktree if a
       verification is ever actually needed.
+
+  chipyard_iris:
+    description: >-
+      The chipyard revision that elaborates Iris (IrisConfig): two Shuttle tiles with Saturn vector units
+      carrying the VME/Xsfmm matrix unit (opuMxParams) and one Rocket tile with a Saturn DMA vector unit.
+      The iris support package's board facts (examples/iris/support/boards.yaml) are read from this tree's
+      IrisConfigs.scala.
+    repo_canonical: https://github.com/ucb-bar/chipyard.git
+    commit: "b4542facf6cc9457f6e358e8f80a8b3a0ff5df19"
+    targets: [iris]
+    branch: iris-cy
+    root_env: MERLIN_CHIPYARD_IRIS
+    path: .
+    requires_paths:
+      - generators/chipyard/src/main/scala/config/IrisConfigs.scala
+    used_by:
+      - examples/iris/support/boards.yaml (iris_rtl) and contracts/overlay.yaml (rtl_source IrisConfig)
+    notes: >-
+      Its generators/saturn submodule is pinned at saturn_vme. No Iris silicon or bitstream facts are
+      claimed against this revision.
+
+  saturn_vme:
+    description: >-
+      The saturn-vectors revision that carries the VME/Xsfmm matrix unit Iris uses, and the reference
+      VME kernels (benchmarks/common/vme.h, vme_gemm.h, vme-fused-lm2-gemm-transpose). Its encodings
+      (sf.mm.s.s, sf.vtzero.t, sf.vtmv.v.t, vsettnt/vsettm/vsettk) retire the BME encodings that
+      saturn_opu_int8 (Kodiak) carries, so an OPU result against one says nothing about the other.
+    repo_canonical: https://github.com/ucb-bar/saturn-vectors.git
+    commit: "536774bd4c5e3bcd7813a4a0dc72fc87e5818532"
+    targets: [iris]
+    branch: vme
+    root_env: MERLIN_CHIPYARD_IRIS
+    path: generators/saturn
+    requires_paths:
+      - benchmarks/common/vme.h
+      - benchmarks/common/vme_gemm.h
+      - benchmarks/vme-fused-lm2-gemm-transpose/main.c
+    used_by:
+      - the planned iris VME matrix unit (not yet derived)
+    notes: >-
+      Recorded before the unit is modeled so that the first VME derivation has a revision to be read at.
 
   radiance_muon_rtl:
     description: >-
