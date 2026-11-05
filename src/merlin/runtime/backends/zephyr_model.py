@@ -793,15 +793,14 @@ class MatrixRouting:
     statements of the same fact that can disagree, and the disagreement would be silent: the selector
     would choose contractions for a geometry the compiled kernel does not have.
 
-    ``select`` overrides the default tile-filling decision, which is the seam the cost model and the
-    e-graph plug into. Nothing here decides profitability on its own.
+    ``select`` overrides the routing decision (the e-graph's seam); without it ``policy`` names one
+    (``llvmlower.matrix_route_cost.POLICIES``; default: the geometry-derived cost model).
 
-    ``support_target`` selects executable OOT support on ``MERLIN_TARGET_PATH``;
-    it is not inferred from ``unit`` or ``config``. The provider declares
-    ``plugin.matrix_lowering`` with geometry, selector, rewrite_prepared_file,
-    load_signatures and build_object callables. Rewrite reports preserve count,
-    signatures, skipped and sub_tile(); builds expose object_path, tile_edge,
-    scalar_tile, scratch_bytes, parallel_tiles and to_dict().
+    ``support_target`` selects executable OOT support on ``MERLIN_TARGET_PATH``; it is not inferred from
+    ``unit`` or ``config``. The provider declares ``plugin.matrix_lowering`` with geometry, selector,
+    rewrite_prepared_file, load_signatures and build_object callables. Rewrite reports preserve count,
+    signatures, skipped and sub_tile(); builds expose object_path, tile_edge, scalar_tile,
+    scratch_bytes, parallel_tiles and to_dict().
     """
 
     support_target: str  # explicitly selected OOT support identity
@@ -809,6 +808,7 @@ class MatrixRouting:
     config: str  # the elaborated hardware configuration
     select: Callable[[Any], bool] | None = None
     kernel: str | None = None  # merlin.kernels.matrix_kernels: a registered name or a C file; None, the default
+    policy: str | None = None
 
     def __post_init__(self) -> None:
         for name, value in self.identity().items():
@@ -839,7 +839,9 @@ class MatrixRouting:
         return self.provider().geometry(unit=self.unit, config=self.config)[0]
 
     def selector(self) -> Callable[[Any], bool]:
-        return self.select if self.select is not None else self.provider().selector(self.tile_edge())
+        from ...llvmlower.matrix_route_cost import routing_selector
+
+        return self.select if self.select is not None else routing_selector(self)
 
 
 MATRIX_ROUTING_RECORD = "matrix_routing.json"
@@ -1112,21 +1114,18 @@ def prepare_for_lowering(
             f"({matrix.config}) across {len(routed.signatures)} signature(s)"
             + (f"; declined: {[why for _w, why in routed.skipped]}" if routed.skipped else "")
         )
-        # A CUSTOM selector may route contractions the default tile-filling rule refuses. That is
-        # allowed -- it is the seam the cost model plugs into -- but it must never be SILENT.
-        # A whole-model Gemma image was built this way: `select=` dropped the M requirement, 183
-        # contractions ran at M=8 on a 64-lane unit, and neither the build log nor the sidecar nor
-        # the measurement said so. The run cost 11.6 hours before the output could be graded.
-        sub = routed.sub_tile()
+        # A sub-tile route must never be SILENT: a Gemma image once ran 183 contractions at M=8 on a
+        # 64-lane unit with nothing saying so. A priced route records its padding and estimate per
+        # contraction in the sidecar (and is counted here); one without a recorded decision is warned.
+        sub, unexplained = routed.sub_tile(), routed.unexplained_sub_tile()
         if sub:
-            worst = min(sub, key=lambda r: min(r.m, r.n))
+            worst = min(unexplained or sub, key=lambda r: min(r.m, r.n))
             print(
-                f"[matrix] WARNING: {len(sub)} of {routed.count} routed contraction(s) do NOT fill "
-                f"a {matrix.tile_edge()}-lane tile in both parallel dimensions -- the default "
-                f"tile_filling_selector would refuse them. Smallest: {worst.symbol} "
-                f"m={worst.m} n={worst.n} k={worst.k} ({worst.fqn or 'unnamed'}). "
-                f"This build supplied select= explicitly; the sidecar records it under "
-                f"`routing_rule`."
+                f"[matrix] {'WARNING: ' if unexplained else ''}{len(sub)} of {routed.count} routed "
+                f"contraction(s) do NOT fill a {matrix.tile_edge()}-lane tile in both parallel dimensions, "
+                f"{len(unexplained)} with no recorded decision. Smallest: {worst.symbol} "
+                f"m={worst.m} n={worst.n} k={worst.k} ({worst.fqn or 'unnamed'}"
+                f"{': ' + worst.decision['reason'] if worst.decision else ''}); see `routing_rule`."
             )
 
     # DEVICE OFFLOAD, for the same reason and in the same place as the matrix routing above: a

@@ -160,8 +160,38 @@ def test_synthetic_matrix_preparation_uses_explicit_provider(synthetic_matrix, t
     assert "func.call @synthetic_matrix_call_0" in text
     assert unpatched_declarations(text, signatures) == ()
     assert ("geometry", "independent_unit", "explicit_config") in provider.calls
-    assert ("selector", 32) in provider.calls
+    # The default policy prices from the provider's geometry; the provider's own threshold selector is
+    # what the historical `tile_filling` policy uses (below).
+    assert ("selector", 32) not in provider.calls
     assert ("rewrite", 32) in provider.calls
+    record = json.loads((tmp_path / "synthetic_matrix.json").read_text())
+    assert record["routing_rule"]["policy"]["policy"] == "cost_model"
+    assert record["routing_rule"]["policy"]["tile_edge"] == 32
+
+
+def test_the_historical_policy_is_the_providers_own_selector(synthetic_matrix):
+    from dataclasses import replace
+
+    matrix, _ = synthetic_matrix
+    selector = replace(matrix, policy="tile_filling").selector()
+    assert ("selector", 32) in matrix.provider().calls
+    assert selector.layouts is False  # canonical layouts only, as before
+    assert selector(SimpleNamespace(parallel=(64, 64), reduction=(32,)))
+    assert not selector(SimpleNamespace(parallel=(31, 512), reduction=(4096,)))
+
+
+def test_an_unknown_policy_is_refused(synthetic_matrix):
+    from dataclasses import replace
+
+    matrix, _ = synthetic_matrix
+    with pytest.raises(ValueError, match="not one of"):
+        replace(matrix, policy="guess").selector()
+
+
+def test_the_policy_can_be_named_by_the_environment(synthetic_matrix, monkeypatch):
+    matrix, _ = synthetic_matrix
+    monkeypatch.setenv("MERLIN_MATRIX_ROUTE_POLICY", "tile_filling")
+    assert matrix.selector().policy == "tile_filling"
 
 
 def test_matrix_provider_geometry_and_selector_are_caller_owned(synthetic_matrix):
@@ -169,7 +199,9 @@ def test_matrix_provider_geometry_and_selector_are_caller_owned(synthetic_matrix
     assert matrix.tile_edge() == 32
     selector = matrix.selector()
     assert selector(SimpleNamespace(parallel=(64, 64), reduction=(32,)))
+    # A contraction too small to repay the pack and the readout stays on the vector unit, and says why.
     assert not selector(SimpleNamespace(parallel=(8, 8), reduction=(32,)))
+    assert "cost model" in selector.decide(SimpleNamespace(parallel=(8, 8), reduction=(32,))).reason
 
 
 def test_explicit_selector_bypasses_provider_selector(synthetic_matrix):
@@ -320,8 +352,10 @@ class TestTheGeometryHasOneSource:
 
         assert replace(routing, config="OPUV512D256ShuttleConfig").tile_edge() == 64
 
-    def test_the_default_selector_declines_a_contraction_narrower_than_a_tile(self, routing):
-        select = routing.selector()
+    def test_the_tile_filling_policy_declines_a_contraction_narrower_than_a_tile(self, routing):
+        from dataclasses import replace
+
+        select = replace(routing, policy="tile_filling").selector()
 
         class _Big:
             parallel, reduction = (64, 64), (32,)
@@ -345,7 +379,9 @@ class TestTheRewriteAndTheSidecarAgree:
 
         if not _env("MERLIN_CHIPYARD"):
             pytest.skip("needs the hardware checkout ($MERLIN_CHIPYARD)")
-        matrix = MatrixRouting(support_target="kodiak", unit="saturn_opu", config="OPUV256D128ShuttleConfig")
+        matrix = MatrixRouting(
+            support_target="kodiak", unit="saturn_opu", config="OPUV256D128ShuttleConfig", policy="tile_filling"
+        )
         prepared, _feats = prepare_for_lowering(
             _model(tmp_path),
             tmp_path,

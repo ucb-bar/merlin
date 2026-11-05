@@ -116,6 +116,8 @@ def routing_report(build_dir: Path, routing: zm.MatrixRouting) -> dict[str, Any]
         reasons[key] = reasons.get(key, 0) + 1
     widest = max(routed, key=macs, default=None)
     total = routed_macs + left_macs
+    from merlin.llvmlower.matrix_route_report import by_site, priced_routes
+
     return {
         "support_target": routing.support_target,
         "unit": routing.unit,
@@ -124,6 +126,11 @@ def routing_report(build_dir: Path, routing: zm.MatrixRouting) -> dict[str, Any]
         # read later says which bytes computed the routed contractions.
         "kernel": _kernel_record(routing),
         "tile_edge": (got.get("routing_rule") or {}).get("tile_edge"),
+        "policy": (got.get("routing_rule") or {}).get("policy"),
+        # Where the MACs sit (conv / attention / linear, read from provenance) and how much of each the
+        # unit takes; and every route the rule above would have refused, with the decision that took it.
+        "macs_by_site": by_site(routed, left),
+        "priced_sub_tile_routes": priced_routes(routed),
         "routed_contractions": int(got.get("count") or len(routed)),
         "distinct_signatures": len(got.get("signatures") or {}),
         "not_routed_contractions": len(left),
