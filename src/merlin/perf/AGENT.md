@@ -177,7 +177,7 @@ traffic, placement, overlap, whole-call attainment or timing authority.
 
 ## Where the task register lives
 
-`merlin/experiments/performance_contract/TASKS.md` — every task, its state, and its blocker.
+`merlin/experiments/performance_contract/TASKS.md` — input identities, measurement validation and reporting requirements.
 Rationale for the cost and oracle decisions: `docs/design/performance_budget_unit.md`.
 
 `debug_companion` admits only byte/address/attribute-identical allocated ELF

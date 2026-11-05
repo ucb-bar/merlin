@@ -1,8 +1,8 @@
 # Lean compiler numerical loop
 
-Use this path for the Phase 2 optimization campaign. The user requested that
-historical qualification and provenance preflight no longer gate exploration.
-Compiler emission and complete-output checks still run for each candidate;
+This Phase 2 workflow uses compiler emission and complete-output checks during
+optimization without requiring historical qualification before exploration.
+Compiler emission and complete-output checks run for each candidate;
 final qualification is deferred until a compiler has been selected and frozen.
 
 `merlin_experiments.phase2.lean_authoring.run_lean_authoring` drives the existing

@@ -1,9 +1,9 @@
-# capsule_bench_v0 — A/B coordination contract (raw_baseline ⇄ merlin_assisted)
+# capsule_bench_v0 comparison protocol (raw_baseline and merlin_assisted)
 
-Purpose: both Claude sessions (this one drives **raw_baseline**; the other drives **merlin_assisted**)
-must produce the *same artifact class*, satisfy the *same interfaces*, and be *graded + measured by the
-same substrate*, so the comparison is apples-to-apples. This file is the single source of truth for
-what MUST be identical, what MAY legitimately differ, and exactly how runs are conducted.
+The **raw_baseline** and **merlin_assisted** arms produce the same artifact class,
+satisfy the same interfaces, and use the same grading and measurement substrate.
+This protocol specifies their shared conditions, permitted differences and
+execution procedure.
 
 Repo root: `/path/to/merlin` (`$REPO`).
 Experiment: `$REPO/experiments/capsule_bench/targets/gemmini` (`$EXP`).

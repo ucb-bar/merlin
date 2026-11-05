@@ -67,6 +67,7 @@ Do not execute them in place on the immutable archive. The portable command uses
 explicit artifact paths and creates a new output receipt:
 
 ```sh
+MERLIN_OUT_ROOT=/absolute/path/to/ae-work
 python3 build_tools/scripts/recompute_paper_results.py \
   --registry experiments/reference-data/paper-studies/registry.json \
   --artifact-root "$ARTIFACT_DATA" \
