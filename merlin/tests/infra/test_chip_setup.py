@@ -300,8 +300,9 @@ def test_the_shell_loads_dotenv_without_overriding_the_environment(tmp_path):
     assert out == "from_env|two words|unset"
 
 
-@pytest.mark.parametrize("chip, flags", [("kodiak", ["--verify-pin saturn_opu_int8", "--spike-model"]),
-                                         ("iris", ["--checkout-pin chipyard_iris", "--checkout-pin spike_zvt",
+@pytest.mark.parametrize("chip, flags", [("kodiak", ["--support", "--verify-pin saturn_opu_int8", "--spike-model"]),
+                                         ("iris", ["--support", "--checkout-pin chipyard_iris",
+                                                   "--checkout-pin spike_zvt",
                                                    "--build-spike spike_zvt=MERLIN_SPIKE_ZVT"])])  # fmt: skip
 def test_each_chip_setup_asks_for_its_own_prerequisites(chip, flags):
     from merlin.common import provenance as PROV

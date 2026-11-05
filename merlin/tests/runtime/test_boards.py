@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 import pytest
+from pinned_support import require_board  # a chip board ships with its fetched support package
 
 from merlin.runtime import boards
 from merlin.runtime.backends import zephyr_model as zm
@@ -60,7 +61,7 @@ def uart_facts():
 
 def test_kodiak_is_described_by_its_silicon_not_its_dts():
     """Kodiak's DTS says ram0=256MB and MP_MAX_NUM_CPUS=2; the chip has 512MB and 3 working cores."""
-    b = boards.board("chipyard_kodiak")
+    b = require_board("chipyard_kodiak")
     assert b.dram_bytes == 512 * 1024 * 1024
     assert b.harts == 3
     assert b.console == boards.CONSOLE_HTIF
@@ -233,7 +234,7 @@ def test_cpu_overlay_uses_declared_dt_count_not_board_name():
 
 
 def test_overrides_win_so_a_delivery_can_state_what_it_built_for():
-    b = boards.board("chipyard_kodiak", dram_bytes=256 * 1024 * 1024, vlen=256)
+    b = require_board("chipyard_kodiak", dram_bytes=256 * 1024 * 1024, vlen=256)
     assert b.dram_bytes == 256 * 1024 * 1024 and b.vlen == 256
 
 
@@ -287,7 +288,7 @@ def test_kodiak_lets_zephyr_manage_vector_state():
     (origin/kodiak:samples/q8_gemm_minmax/prj.conf, which ships a ref-out): ISA_EXT_V on,
     VECTOR_MAX_LEN 512, FPU_SHARING off.
     """
-    b = boards.board("chipyard_kodiak")
+    b = require_board("chipyard_kodiak")
     assert b.fpu_sharing is False and b.zephyr_vector_ext is True
     conf = zm._prj_conf(b.harts, "rvv", b)
     assert "CONFIG_MP_MAX_NUM_CPUS=3" in conf
@@ -309,7 +310,7 @@ def test_a_stale_vector_ext_flag_is_refused_rather_than_built():
 
     import pytest
 
-    b = dataclasses.replace(boards.board("chipyard_kodiak"), zephyr_vector_ext=False)
+    b = dataclasses.replace(require_board("chipyard_kodiak"), zephyr_vector_ext=False)
     if not zm._kconfig_has("RISCV_V_KERNEL_ONLY"):
         pytest.skip("this Zephyr tree genuinely cannot express V without the global -march")
     with pytest.raises(RuntimeError, match="zephyr_vector_ext"):
@@ -356,7 +357,7 @@ def test_the_vector_save_area_is_never_declared_smaller_than_the_tree_default():
 def test_htif_console_options_are_set_only_for_an_htif_board():
     """Both options default to n upstream, and unbuffered HTIF emits one char per host round-trip --
     on a ~20 MHz core that looks like the model never finishing."""
-    htif = zm._prj_conf(2, "rvv", boards.board("chipyard_kodiak"))
+    htif = zm._prj_conf(2, "rvv", require_board("chipyard_kodiak"))
     assert "CONFIG_UART_HTIF_BUFFERED_OUTPUT=y" in htif
     assert "CONFIG_UART_HTIF_SYSCALL_PRINT=y" in htif
     assert "UART_SIFIVE" not in htif
@@ -393,7 +394,7 @@ def test_a_core_clock_that_is_not_a_multiple_of_the_mtime_rate_is_refused(uart_f
 
 
 def test_the_scalar_backend_still_carries_no_vector_config():
-    conf = zm._prj_conf(2, "scalar", boards.board("chipyard_kodiak"))
+    conf = zm._prj_conf(2, "scalar", require_board("chipyard_kodiak"))
     assert "RISCV_ISA_EXT_V" not in conf
 
 
@@ -434,7 +435,7 @@ def test_a_board_declares_how_it_is_built():
     """Not every RISC-V target runs an RTOS. gemmelos-bringup is a Baremetal-IDE fork with no Zephyr
     anywhere in it, so the descriptor has to say which producer applies or the packager would try to
     build a Zephyr app for a board that has none."""
-    assert boards.board("chipyard_kodiak").flow == boards.FLOW_ZEPHYR
+    assert require_board("chipyard_kodiak").flow == boards.FLOW_ZEPHYR
     for name in ("gemmelos_bearly25", "gemmelos_dsp25"):
         b = boards.board(name)
         assert b.flow == boards.FLOW_BAREMETAL
@@ -590,7 +591,7 @@ def test_kodiak_records_the_vector_width_its_owner_confirmed():
     `riscv,isa = "rv64gc"` with no `v`, and the samples' CONFIG_RISCV_VECTOR_MAX_LEN only sizes a save
     area, so it bounds the truth from above at best. Building for 128 on a 512-bit unit is the
     documented K1 trap -- a lower LMUL leaving most of the datapath idle."""
-    assert boards.board("chipyard_kodiak").vlen == 512
+    assert require_board("chipyard_kodiak").vlen == 512
 
 
 def test_scalar_multicore_is_supported_so_a_non_vector_hart_is_reachable():
@@ -623,7 +624,7 @@ def test_which_harts_have_vectors_is_stated_not_assumed():
     """A count alone means 0..N-1. On a chip whose vector units sit on harts 0 and 2 that assumption
     deadlocks exactly like building too many harts does, and nothing readable states the mapping --
     the device tree lists identical cpu@N nodes."""
-    kodiak = boards.board("chipyard_kodiak")
+    kodiak = require_board("chipyard_kodiak")
     assert kodiak.harts == 3 and kodiak.n_vector_harts == 2
     assert kodiak.hart_ids_for("rvv") == (0, 1)
     # A scalar image may use every hart; that is the point of having one.
@@ -697,7 +698,7 @@ def test_the_cpu_count_is_one_rule_bounded_by_the_board():
     with no timeout, so a CPU the image does not need stops the boot dead if that hart does not answer --
     with nothing printed past the banner, which is exactly how Kodiak's h3 images read.
     """
-    three = boards.board("chipyard_kodiak")
+    three = require_board("chipyard_kodiak")
     assert three.harts == 3
     # Never more CPUs than the image fans out to -- this is the case the two formulas disagreed on.
     assert zm.image_cpus(three, 1) == 2
@@ -722,8 +723,8 @@ def test_a_second_configuration_of_a_board_keeps_the_port_and_states_its_own_fac
     work onto a scalar hart traps and never reaches the barrier). Pinning them here is what stops a
     later edit from quietly giving one configuration another's facts.
     """
-    two = boards.board("kodiak_opu_2core")
-    chip = boards.board("chipyard_kodiak")
+    two = require_board("kodiak_opu_2core")
+    chip = require_board("chipyard_kodiak")
     # Built against the SAME Zephyr board -- the port is unchanged, only the facts we hand it move.
     assert two.build_board == chip.name
     assert two.harts == 2 and two.n_vector_harts == 2, "both cores carry a vector unit here"

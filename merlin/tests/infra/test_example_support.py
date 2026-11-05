@@ -318,7 +318,7 @@ def test_an_explicit_selection_replaces_the_default(tmp_path, monkeypatch):
 
     monkeypatch.delenv("MERLIN_TARGET_PATH")
     spelled = target_registry.effective_target_path().split(os.pathsep)
-    assert spelled == [str(root) for root in target_registry.in_repo_support().values()]
+    assert spelled == [str(root) for root in target_registry.default_support().values()]
 
 
 def test_in_repo_support_is_keyed_by_declaration_not_directory(tmp_path, monkeypatch):

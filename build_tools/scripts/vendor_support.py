@@ -1,11 +1,24 @@
 #!/usr/bin/env python3
-"""Vendor one companion support provider into ``examples/<example>/support``, with exact provenance.
+"""Move a support pin, or vendor a provider that is still carried in-repo, with exact provenance.
 
-The vendored tree is the companion's provider root at one commit, byte for byte (no normalization), so
-``SOURCE.yaml`` can name the companion tree and ``merlin/tests/infra/test_example_support.py`` can
-recompute it. The script also upserts the matching entry in ``build_tools/upstreams/target_support.json``.
+Two jobs, one record (``build_tools/upstreams/target_support.json``):
 
-    python build_tools/scripts/vendor_support.py --repo ../<name>-mlir --example <example> \
+``pin <target> <commit>``: bump a pinned support package (``pinned_support``) to another commit. Chip
+packages are not copied into Merlin; editing one is a commit in ``<chip>-mlir`` and this one sha here.
+The commit is fetched (by commit, from the pinned repository or ``--url``) into the generated home,
+its tree is recorded beside it, and a package whose ``provider.yaml`` ``extends.commit`` is not
+Merlin's base pin is refused, since every package layers on the one base:
+
+    python build_tools/scripts/vendor_support.py pin <target> <commit> [--url file:///path/to/<chip>-mlir]
+
+``vendor``: copy a companion provider root into ``examples/<example>/support`` byte for byte, for the
+targets still carried in-repo (the base among them). The vendored tree is the companion's provider root at
+one commit (no normalization), so ``SOURCE.yaml`` can name the companion tree and
+``merlin/tests/infra/test_example_support.py`` can recompute it. It upserts the matching ``companions``
+entry and, when the provider is the pinned base, moves the base pin with it (one source of truth); a
+pinned package is never vendored.
+
+    python build_tools/scripts/vendor_support.py vendor --repo ../<name>-mlir --example <example> \
         --url https://github.com/<org>/<name>-mlir.git [--commit <rev>] [--provider-root .] [--published]
 
 It refuses a dirty companion (uncommitted bytes have no commit to cite) and a provider root without
@@ -42,8 +55,81 @@ def _git(repo: Path, *args: str, binary: bool = False) -> str | bytes:
     return out.stdout if binary else out.stdout.decode().strip()
 
 
+def pin(argv: list[str]) -> int:
+    """Move one pinned support package (or the base, when it keeps no in-repo copy) to ``commit``."""
+    from merlin.targetgen import oot_fetch, support_pins
+    from merlin.targetgen.providers import read_provider
+
+    ap = argparse.ArgumentParser(prog="vendor_support.py pin", description=pin.__doc__)
+    ap.add_argument("target")
+    ap.add_argument("commit", help="the full 40-char commit to pin (already published to the pinned repo)")
+    ap.add_argument("--url", help="fetch the commit from here instead (a mirror or a local file:// clone)")
+    args = ap.parse_args(argv)
+
+    pins = support_pins.load_pins(MANIFEST)
+    current = pins.get(args.target)
+    if current is None:
+        print(f"error: {args.target!r} is not pinned in {MANIFEST}", file=sys.stderr)
+        return 2
+    if current.in_repo is not None:
+        print(f"error: {args.target!r} keeps an in-repo copy at {current.in_repo}; re-vendor it with `vendor`, "
+              "which moves the pin with it", file=sys.stderr)  # fmt: skip
+        return 2
+    moved = support_pins.Pin(**{**current.__dict__, "commit": args.commit, "tree": None})
+    try:
+        support_pins.parse(_with_pin(json.loads(MANIFEST.read_text(encoding="utf-8")), moved, tree="0" * 40))
+        root = oot_fetch.fetch_commit(args.url or current.repo, args.commit, support_pins.pinned_root(moved))
+        tree = _git(root, "rev-parse", f"{args.commit}^{{tree}}")
+        provider = read_provider(root, materialized=False)
+        if provider is None or provider.target != args.target:
+            raise support_pins.PinError(f"{args.commit} does not declare a support provider for {args.target!r}")
+        support_pins.check_single_base(provider, pins)
+    except (oot_fetch.FetchError, support_pins.PinError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    from check_wiring import package_core_references  # a sibling script: what the package calls in the core
+
+    references = package_core_references(root) if current.extends else None
+    manifest = _with_pin(json.loads(MANIFEST.read_text(encoding="utf-8")), moved, tree=tree, references=references)
+    MANIFEST.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    print(f"pinned {args.target} @ {args.commit[:12]} (tree {tree[:12]}), was {current.short}; fetched at {root}")
+    return 0
+
+
+def _with_pin(manifest: dict, moved, *, tree: str, references: list[str] | None = None) -> dict:
+    block = manifest["pinned_support"]
+    entries = [block["base"], *block["packages"]]
+    entry = next(e for e in entries if e["target"] == moved.target)
+    entry["commit"], entry["tree"] = moved.commit, tree
+    if references is not None:
+        entry["core_references"] = references
+    return manifest
+
+
+def _move_base_pin(manifest: dict, target: str, commit: str, tree: str, rel_dest: str) -> None:
+    """A vendored copy of the pinned base IS the base pin: keep the two equal."""
+    block = manifest.get("pinned_support") or {}
+    base = block.get("base") or {}
+    if base.get("target") != target:
+        if any(p.get("target") == target for p in block.get("packages") or []):
+            raise SystemExit(f"error: {target!r} is a pinned package; it is fetched, never vendored (use `pin`)")
+        return
+    if base.get("in_repo") != rel_dest:
+        raise SystemExit(f"error: the base pin keeps its in-repo copy at {base.get('in_repo')}, not {rel_dest}")
+    base["commit"], base["tree"] = commit, tree
+
+
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "pin":
+        return pin(argv[1:])
+    if argv and argv[0] == "vendor":
+        argv = argv[1:]
+    return vendor(argv)
+
+
+def vendor(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="vendor_support.py vendor", description=__doc__.split("\n\n")[0])
     ap.add_argument("--repo", type=Path, required=True, help="companion git checkout")
     ap.add_argument("--example", required=True, help="examples/<example>/support receives the provider")
     ap.add_argument("--url", required=True, help="the companion's canonical repository URL")
@@ -63,6 +149,11 @@ def main(argv: list[str] | None = None) -> int:
     archive = _git(repo, "archive", "--format=tar", spec, binary=True)
 
     dest = REPO / "examples" / args.example / "support"
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    provider_doc = yaml.safe_load(
+        _git(repo, "show", f"{commit}:{'provider.yaml' if spec == commit else args.provider_root + '/provider.yaml'}")
+    )
+    _move_base_pin(manifest, provider_doc["target"], commit, tree, dest.relative_to(REPO).as_posix())
     if dest.exists():
         shutil.rmtree(dest)
     dest.mkdir(parents=True)
@@ -111,7 +202,6 @@ def main(argv: list[str] | None = None) -> int:
             record["tests"] = previous["tests"]  # reviewed test deselections are a property of the vendoring
     source_record.write_text(HEADER + yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
 
-    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     rel_record = source_record.relative_to(REPO).as_posix()
     vendored = {
         "path": dest.relative_to(REPO).as_posix(),

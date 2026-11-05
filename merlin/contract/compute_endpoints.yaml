@@ -227,7 +227,7 @@ endpoints:
       The outer-product matrix extension: four instructions in reserved even funct6 slots of the vector
       opcode. Command-buffer driven, NOT RoCC. Its roles are already declared in matrix_units.yaml under
       the same names, so they are referenced rather than restated. Its support provider is the Kodiak
-      chip package (examples/kodiak/support, from kodiak-mlir), the chip that carries the unit.
+      chip package (kodiak-mlir, pinned and fetched), the chip that carries the unit.
     target: kodiak
     engine: spatial
     exposure: command_buffer

@@ -6,8 +6,9 @@
 # this machine can do. See README.md for the provenance of every input.
 #
 #   ./run.sh setup [--llvm P] [--chipyard D] [--zephyr-sw D] [--zephyr-sdk D] [--m2m D]
-#                                 one-step machine setup: capture venv, Zephyr workspace, OPU spike
-#                                 model, .env; verifies the rest and prints how to get what is missing
+#                                 one-step machine setup: the kodiak-mlir support package at its pinned
+#                                 commit, capture venv, Zephyr workspace, OPU spike model, .env; verifies
+#                                 the rest and prints how to get what is missing
 #   ./run.sh preflight            what this machine can run, and what would fix the rest
 #   ./run.sh probe                build vlen_probe.elf and self-check it on spike        (no board)
 #   ./run.sh capture <model> [--loader loader.py]
@@ -39,8 +40,6 @@
 #                        without it the queue submission is only printed
 set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/common.sh"
-# Kodiak's boards ship with its support package (examples/kodiak/support, vendored from kodiak-mlir).
-export MERLIN_BOARD_CATALOG="${MERLIN_BOARD_CATALOG:-$REPO_ROOT/examples/board-catalog.yaml:$REPO_ROOT/examples/kodiak/support}"
 # The OPU route's executable support and the unit facts it derives from. The unit and config are named
 # by the kodiak package (contracts/matrix_units.yaml, contracts/overlay.yaml), never inferred.
 MATRIX_SUPPORT=kodiak
@@ -76,13 +75,15 @@ set -- ${REST[@]+"${REST[@]}"}
 STAGE="${1:-preflight}"
 
 cd "$REPO_ROOT"
+# Kodiak's support package (and its boards) is kodiak-mlir at the commit Merlin pins, fetched by setup.
+case "$STAGE" in setup|help|-h|--help) ;; *) ex_select_support "$MATRIX_SUPPORT" ;; esac
 
 case "$STAGE" in
 setup)
   # The common prerequisites, plus Kodiak's: the OPU's RTL in $MERLIN_CHIPYARD/generators/saturn (pin
   # saturn_opu_int8, verified and reported) and the package's spike model of the OPU (built here).
   shift
-  ex_setup "$BOARD" --verify-pin saturn_opu_int8 --spike-model "$MATRIX_SUPPORT" "$@"
+  ex_setup "$BOARD" --support "$MATRIX_SUPPORT" --verify-pin saturn_opu_int8 --spike-model "$MATRIX_SUPPORT" "$@"
   ;;
 
 preflight)
@@ -172,7 +173,7 @@ spike-model)
   # The OPU's functional model for spike is OWNED by the Kodiak package (its spike/ directory): the
   # instruction words and geometry are generated from the RTL at build time. Merlin only loads it when the
   # selected package's contract declares it (runner.spike_extension: name, extlib_env, sha256).
-  PKG="$("$PY" -c 'import sys; from merlin.targetgen.target_registry import resolve; print(resolve(sys.argv[1]).base)' "$MATRIX_SUPPORT")"
+  PKG="$SUPPORT_ROOT"
   if [ ! -f "$PKG/spike/build.py" ]; then
     echo "the selected Kodiak package ($PKG) has no spike/ model; select one that does with" >&2
     echo "MERLIN_TARGET_PATH=<kodiak-mlir checkout>" >&2
@@ -237,7 +238,7 @@ grade)
   ;;
 
 *)
-  sed -n '2,39p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac

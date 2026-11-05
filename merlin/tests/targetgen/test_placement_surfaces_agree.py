@@ -18,6 +18,7 @@ over one corpus of real linalg modules.
 from __future__ import annotations
 
 import pytest
+from pinned_support import require_board  # a chip board ships with its fetched support package
 
 from merlin.common import mlir_query as mq
 from merlin.common.ir_lock import IR_LOCK
@@ -187,7 +188,7 @@ def test_placement_reproduces_the_routers_lane_assignment():
         OpDemand(op="matmul", in_fmt="mxfp4", weight_fmt="mxfp4", site="mx"),
     ]
     for target in ("gemmini", "atlas"):
-        s = System(host=host_from_board("chipyard_kodiak"), devices=system_for(target).devices)
+        s = System(host=host_from_board(require_board("chipyard_kodiak").name), devices=system_for(target).devices)
         if not s.devices or not s.devices[0].kind:
             continue
         plan = route_plan(demands, target)

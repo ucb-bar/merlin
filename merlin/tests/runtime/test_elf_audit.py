@@ -10,6 +10,7 @@ instructions is a "result" that measured the scalar fallback.
 from __future__ import annotations
 
 import pytest
+from pinned_support import require_board  # a chip board ships with its fetched support package
 
 from merlin.runtime import boards, elf_audit
 
@@ -30,7 +31,7 @@ def _an_elf():
 
 
 def test_a_real_image_passes_against_its_board():
-    rep = elf_audit.audit(_an_elf(), boards.board("chipyard_kodiak"))
+    rep = elf_audit.audit(_an_elf(), require_board("chipyard_kodiak"))
     assert rep.ok, rep.render()
     assert rep.entry != 0
     assert rep.facts["load_segments"] >= 1
@@ -49,7 +50,7 @@ def test_an_image_larger_than_the_board_fails():
 
 def test_the_linked_region_is_checked_not_just_the_segments():
     """build_app can link for a region bigger than the segments occupy; that region must fit too."""
-    brd = boards.board("chipyard_kodiak")
+    brd = require_board("chipyard_kodiak")
     rep = elf_audit.audit(_an_elf(), brd, ram_bytes=brd.dram_bytes * 4)
     assert not rep.ok
     assert any("linked for" in p for p in rep.problems), rep.problems
@@ -57,13 +58,13 @@ def test_the_linked_region_is_checked_not_just_the_segments():
 
 def test_upload_time_is_reported_because_the_loader_sends_memsiz():
     """A UART loader transmits MemSiz, not file size, so a big .bss or weights blob costs minutes."""
-    rep = elf_audit.audit(_an_elf(), boards.board("chipyard_kodiak"))
+    rep = elf_audit.audit(_an_elf(), require_board("chipyard_kodiak"))
     assert rep.facts["upload_estimate_s"] > 0
     assert rep.facts["image_memsz_mb"] >= rep.facts["image_filesz_mb"]
 
 
 def test_a_missing_htif_section_is_a_failure_for_an_htif_board():
-    rep = elf_audit.audit(_an_elf(), boards.board("chipyard_kodiak"), expect_htif=True)
+    rep = elf_audit.audit(_an_elf(), require_board("chipyard_kodiak"), expect_htif=True)
     assert ".htif" in rep.sections, "the chipyard images do carry .htif; if this changes, say why"
     # and the check is real: asking for it on a board whose image lacks it must fail
     rep2 = elf_audit.audit(
@@ -77,20 +78,20 @@ def test_a_missing_htif_section_is_a_failure_for_an_htif_board():
 
 def test_vector_presence_is_audited():
     """An image with no vector ops looks like a result but measured the scalar fallback."""
-    rep = elf_audit.audit(_an_elf(), boards.board("chipyard_kodiak"), require_vector=True)
+    rep = elf_audit.audit(_an_elf(), require_board("chipyard_kodiak"), require_vector=True)
     assert rep.facts.get("vector_instructions", 0) > 0, rep.facts
 
 
 def test_a_non_elf_fails_closed():
     """An unreadable artifact must raise, never report a pass it did not earn."""
     with pytest.raises(elf_audit.ElfAuditError):
-        elf_audit.audit("/etc/hostname", boards.board("chipyard_kodiak"))
+        elf_audit.audit("/etc/hostname", require_board("chipyard_kodiak"))
     with pytest.raises(elf_audit.ElfAuditError):
-        elf_audit.audit("/nonexistent/zephyr.elf", boards.board("chipyard_kodiak"))
+        elf_audit.audit("/nonexistent/zephyr.elf", require_board("chipyard_kodiak"))
 
 
 def test_the_report_serialises_for_a_delivery_package():
-    rep = elf_audit.audit(_an_elf(), boards.board("chipyard_kodiak"))
+    rep = elf_audit.audit(_an_elf(), require_board("chipyard_kodiak"))
     d = rep.to_dict()
     import json
 

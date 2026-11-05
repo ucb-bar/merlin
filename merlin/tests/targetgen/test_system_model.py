@@ -22,6 +22,7 @@ experiments and gitignored, so a fresh checkout legitimately has none.
 from __future__ import annotations
 
 import pytest
+from pinned_support import require_board  # a chip board ships with its fetched support package
 
 from merlin.system import device_for, host_from_board, link_for, system_for
 from merlin.system.model import ADDRESS_TRANSLATIONS, COMMAND_TRANSPORTS, OPERAND_PLACEMENTS, Device, Host, Link, System
@@ -156,7 +157,7 @@ def test_vector_capability_is_tri_state():
 
 def test_a_heterogeneous_host_is_representable():
     """A chip that brings up three cores and attaches a vector unit to two of them."""
-    h = host_from_board("chipyard_kodiak")
+    h = host_from_board(require_board("chipyard_kodiak").name)
     assert h.harts and h.vector_harts is not None and h.vector_harts < h.harts
     assert h.vlen, "the board declares a VLEN; codegen must read it here, not re-pin it"
 

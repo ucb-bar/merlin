@@ -14,6 +14,7 @@ between them is exactly the failure above. And the number itself now has a singl
 from __future__ import annotations
 
 import pytest
+from pinned_support import require_board  # a chip board ships with its fetched support package
 
 _VLENS = (128, 256, 512)
 
@@ -50,7 +51,7 @@ def test_the_board_is_where_the_number_comes_from():
     caller that re-reads an env var instead can pin a different length than the image was built for."""
     from merlin.system.derive import host_from_board
 
-    h = host_from_board("chipyard_kodiak")
+    h = host_from_board(require_board("chipyard_kodiak").name)
     assert h.vlen, "this board declares a vector length; the Host must carry it"
     assert isinstance(h.vlen, int)
 

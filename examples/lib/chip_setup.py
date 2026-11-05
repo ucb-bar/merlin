@@ -2,19 +2,21 @@
 """One-step setup for the chip examples on a new machine.
 
     python examples/lib/chip_setup.py [--llvm PREFIX] [--chipyard DIR] [--zephyr-sw DIR] [--zephyr-sdk DIR]
-                                      [--m2m DIR] [--verify-pin PIN] [--checkout-pin PIN]
+                                      [--m2m DIR] [--support TARGET] [--verify-pin PIN] [--checkout-pin PIN]
                                       [--build-spike PIN=ENV] [--spike-model TARGET] [--no-fetch]
 
 Every chip example calls this through its ``run.sh setup``, which passes what that chip needs on top of
-the common prerequisites (``--verify-pin`` / ``--checkout-pin`` / ``--build-spike`` / ``--spike-model``).
-Nothing here names a chip.
+the common prerequisites (``--support`` / ``--verify-pin`` / ``--checkout-pin`` / ``--build-spike`` /
+``--spike-model``). Nothing here names a chip.
 
 It sorts the prerequisites by what they cost:
 
 * **Done here, automatically** (minutes, a few GB at most): the model2MLIR capture environment (a Python
   3.12 venv under ``out/build/venv/`` with PyTorch nightly CPU and the torch-mlir wheel that matches
   Merlin's LLVM pin, see ``TORCH_MLIR``), a model2MLIR checkout at its pinned revision when none is
-  configured, the Zephyr west workspace, a chip package's spike model of its unit, and a simulator built
+  configured, the chip's support package at the exact commit Merlin pins (``--support``, see
+  ``merlin.targetgen.support_pins``; its base comes from the same single base pin), the Zephyr west
+  workspace, a chip package's spike model of its unit, and a simulator built
   from a VERIFIED source checkout. Each step is skipped when its result is already there and still right.
 * **Found and verified, never fetched** (large, or the location is yours to choose): LLVM/MLIR 23,
   chipyard with riscv-tools, the Zephyr SDK, and the pinned hardware checkouts a chip reads its facts
@@ -596,6 +598,49 @@ def capture_item(settings: dict[str, str], m2m_arg: Path | None, *, fetch: bool)
     return Item(name=name, state=BUILT, detail=f"{venv} (versions in merlin-capture-freeze.txt){notes}", settings=keep)
 
 
+# ------------------------------------------------------------------------------- support package
+
+
+def support_item(target: str, *, fetch: bool) -> Item:
+    """``target``'s support package, at exactly the commit Merlin pins (and its base, at the base pin).
+
+    Already fetched and verified: nothing to do, no network. Absent: fetched by commit into
+    out/build/generated/pinned/<target>@<sha12>/ (``merlin-target-fetch``), unless ``--no-fetch``. A
+    checkout that disagrees with its pin (dirty, divergent, or composed against another base) is
+    reported with the reason and never moved. With ``MERLIN_TARGET_PATH`` set, that selection is used
+    as is; this only reports it.
+    """
+    from merlin.targetgen import oot_fetch
+    from merlin.targetgen import support_pins as SP
+
+    name = f"{target} support package"
+    try:
+        pins = SP.load_pins()
+        pin = pins.get(target)
+        if pin is None:
+            return Item(name=name, state=MISSING, detail=f"{target!r} is not pinned in {SP.MANIFEST}")
+        name = f"{target} support ({pin.repo_name}@{pin.short})"
+        if os.environ.get("MERLIN_TARGET_PATH") is not None:
+            from merlin.targetgen.plugins import resolve_support
+
+            root = resolve_support(target).base
+            return Item(name=name, state=WARN, detail=f"MERLIN_TARGET_PATH selects {root}",
+                        fix=["unset MERLIN_TARGET_PATH to use the pinned package"])  # fmt: skip
+        present = SP.available_root(pin)
+        if present is not None:
+            # Verified again (commit, tree, clean, base pin, submodules); no network when it holds.
+            oot_fetch.fetch_pinned(target, pins=pins)
+            return Item(name=name, state=OK, detail=str(present))
+        command = f"{sys.executable} -m merlin.targetgen.oot_fetch {target}"
+        if not fetch:
+            return Item(name=name, state=MISSING, detail="not fetched", fix=[command], cost="a few MB, seconds")
+        print(f"$ {command}", flush=True)
+        roots = oot_fetch.fetch_pinned(target, pins=pins)
+        return Item(name=name, state=BUILT, detail=str(roots[0]))
+    except Exception as exc:  # noqa: BLE001 -- every refusal is reported with its reason, never hidden
+        return Item(name=name, state=DRIFT, detail=f"{type(exc).__name__}: {exc}")
+
+
 # ------------------------------------------------------------------------------- unit spike model
 
 
@@ -695,6 +740,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--m2m", type=Path, help="model2MLIR checkout (default: $MERLIN_M2M_DIR, else fetched to out/build/ext)"
     )
+    ap.add_argument("--support", action="append", default=[], metavar="TARGET",
+                    help="fetch TARGET's support package at the commit Merlin pins (and its base)")  # fmt: skip
     ap.add_argument("--verify-pin", action="append", default=[], metavar="PIN",
                     help="verify this pin's checkout inside a configured prerequisite; report drift")  # fmt: skip
     ap.add_argument("--checkout-pin", action="append", default=[], metavar="PIN",
@@ -718,7 +765,13 @@ def main(argv: list[str] | None = None) -> int:
     items += [zephyr_item(settings, fetch=fetch), sdk_item(settings)]
     if not args.skip_capture_env:
         items.append(capture_item(settings, args.m2m, fetch=fetch))
-    items += [spike_model_item(t, settings, chipyard) for t in args.spike_model]
+    supports = {t: support_item(t, fetch=fetch) for t in args.support}
+    items += supports.values()
+    for t in args.spike_model:
+        if t in supports and not supports[t].done:
+            items.append(Item(name=f"{t} spike model", state=BLOCKED, detail="needs its support package (above)"))
+        else:
+            items.append(spike_model_item(t, settings, chipyard))
     checkouts: dict[str, Item] = {}
     for name in args.checkout_pin:
         pin = PROV.pin(name)

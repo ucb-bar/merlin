@@ -13,6 +13,8 @@ from __future__ import annotations
 import importlib.util
 import sys
 
+from pinned_support import require_board  # a chip board ships with its fetched support package
+
 from merlin.common.paths import repo_root
 from merlin.runtime import boards
 
@@ -63,7 +65,7 @@ def _matrix_binary(**over):
 
 
 def _manifest(binaries, **over):
-    brd = boards.board("kodiak_opu_2core")
+    brd = require_board("kodiak_opu_2core")
     man = {
         "board": {
             "name": brd.name,

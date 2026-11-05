@@ -1,19 +1,122 @@
 {
-  "schema": "merlin.upstream_support_migration.v2",
+  "schema": "merlin.upstream_support_migration.v3",
   "status": "examples_support_in_repo",
   "merlin_source_baseline": "6b83c05a7ea7e7eb50fc688670cfa547f16f315c",
   "branch": "refactor/merlin-phase-architecture",
   "runtime_defaults_changed": true,
   "canonical_sources_removed": true,
-  "selection": "MERLIN_TARGET_PATH selects support explicitly and always wins. Unset, each target's in-repo provider under examples/<example>/support is selected, keyed by its provider.yaml target, never by directory name; an empty value selects none. Historical companion paths are provenance, never runtime defaults.",
+  "selection": "MERLIN_TARGET_PATH selects support explicitly and always wins. Unset, each target's in-repo provider under examples/<example>/support is selected, plus each pinned_support package fetched at exactly its pinned commit (out/build/generated/pinned/<target>@<sha12>), all keyed by provider.yaml target, never by directory name; a pinned package that is not fetched is an error naming its setup command, never a fallback. An empty value selects none. Historical companion paths are provenance, never runtime defaults.",
   "qualification_scope": "Read-only provider identity, exact source SHA256 parity, plugin reference existence, schema diagnostic parity. No hardware execution or compiler qualification.",
-  "candidate_boundary": "Support plugins are experimenter-side answer-bearing code, not candidate payload. Every in-repo examples/*/support tree, canonical or vendored, is an answer surface whatever MERLIN_TARGET_PATH selects: agent sandboxes, bundle snapshots and clean rooms withhold it (only an explicit contracts/ grant can reach inside, and no bundle declares one), and publication refuses a support provider as a candidate. Existing recursive integrity policy remains unchanged.",
+  "candidate_boundary": "Support plugins are experimenter-side answer-bearing code, not candidate payload. Every in-repo examples/*/support tree, canonical or vendored, and every fetched pinned_support checkout under out/build/generated/pinned/ (any revision, its submodules included), is an answer surface whatever MERLIN_TARGET_PATH selects: agent sandboxes, bundle snapshots and clean rooms withhold it (only an explicit contracts/ grant can reach inside, and no bundle declares one), and publication refuses a support provider as a candidate. Existing recursive integrity policy remains unchanged.",
+  "pinned_support": {
+    "rule": "Chip packages are not copied into Merlin. Each is pinned here by {target, repo, commit, tree} and fetched by commit (never by branch) with merlin-target-fetch <target> or its example's run.sh setup into out/build/generated/pinned/<target>@<sha12>/, verified against commit and tree. Every package layers on the ONE base pinned below: its provider.yaml extends.commit, and the gitlink of a base it carries as a submodule, must equal base.commit, or selection and fetch refuse it. Everything chip-specific lives in the chip repository's overlay (replace:/remove: included), never in a fork of the base. Editing a package: commit in <chip>-mlir, publish it, bump its one sha here (build_tools/scripts/vendor_support.py pin <target> <sha> also records the tree).",
+    "fetch_home": "out/build/generated/pinned/<target>@<sha12>",
+    "verification": "merlin/tests/infra/test_support_pins.py: pins well formed, every package extends the base pin, the in-repo base copy records the base pin, fetch by commit, tree verification, and refusal of dirty, divergent and other-base checkouts, offline against local fixture repositories. core_references lists what each package's production code references in Merlin's core (build_tools/scripts/check_wiring.py counts it as a production caller); the test recomputes it from a fetched package.",
+    "base": {
+      "target": "rvv",
+      "repo": "https://github.com/ucb-bar/rvv-mlir.git",
+      "branch": "handwritten-implementation",
+      "commit": "a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5",
+      "tree": "b1f9a45658bff26382519b6f2dcaa040dc8674ac",
+      "in_repo": "examples/rvv/support"
+    },
+    "packages": [
+      {
+        "target": "kodiak",
+        "repo": "https://github.com/ucb-bar/kodiak-mlir.git",
+        "branch": "handwritten-implementation",
+        "commit": "fa37a1b3341b1b65e27d3557f5dab14ba51c0083",
+        "tree": "2171d41dd13d55273b55c6c58a913fe3b1a63a93",
+        "extends": "rvv",
+        "example": "examples/kodiak",
+        "core_references": [
+          "merlin.common",
+          "merlin.common.paths",
+          "merlin.common.paths::artifacts_dir",
+          "merlin.common.paths::env",
+          "merlin.common.provenance::record",
+          "merlin.common.provenance::verify",
+          "merlin.common::provenance",
+          "merlin.kernels",
+          "merlin.kernels.opu_cert::certify",
+          "merlin.kernels.opu_cert::operand_alignment_for_config",
+          "merlin.kernels.opu_cert::tile_edge_for_config",
+          "merlin.kernels.opu_corpus::select",
+          "merlin.kernels.opu_kernel",
+          "merlin.kernels.opu_kernel.KernelSpec::pad_k_max",
+          "merlin.kernels.opu_kernel::KernelSpec",
+          "merlin.kernels.opu_kernel::emit_microkernel",
+          "merlin.kernels::opu_cert",
+          "merlin.kernels::opu_corpus",
+          "merlin.llvmlower",
+          "merlin.llvmlower.int8_contractions::load_sidecar",
+          "merlin.llvmlower.int8_contractions::rewrite_prepared_file",
+          "merlin.llvmlower.int8_contractions::tile_filling_selector",
+          "merlin.llvmlower::int8_contractions",
+          "merlin.runtime.backends",
+          "merlin.runtime.backends.spike::gcc_path",
+          "merlin.runtime.backends.spike::harness_dir",
+          "merlin.runtime.backends.spike::spike_path",
+          "merlin.runtime.backends::spike",
+          "merlin.targetgen",
+          "merlin.targetgen.providers",
+          "merlin.targetgen.providers::read_provider",
+          "merlin.targetgen.rtl",
+          "merlin.targetgen.rtl.opu_isa::bit_literal_defs",
+          "merlin.targetgen.rtl.opu_isa::crosscheck",
+          "merlin.targetgen.rtl.opu_isa::derive",
+          "merlin.targetgen.rtl.opu_isa::vector_unit_params",
+          "merlin.targetgen.rtl::opu_isa",
+          "merlin.targetgen.spike_extension::declared_extension",
+          "merlin.targetgen.spike_extension::resolve",
+          "merlin.targetgen::spike_extension"
+        ]
+      },
+      {
+        "target": "iris",
+        "repo": "https://github.com/ucb-bar/iris-mlir.git",
+        "branch": "handwritten-implementation",
+        "commit": "8447703ae5805271911e8ef232d8fd1aa7b6947d",
+        "tree": "48e9f0deef16c905a83e79a1f6ae2ff46d033a37",
+        "extends": "rvv",
+        "example": "examples/iris",
+        "core_references": [
+          "merlin.common",
+          "merlin.common.paths",
+          "merlin.common.paths::env",
+          "merlin.common.provenance::record",
+          "merlin.common.provenance::verify",
+          "merlin.common::provenance",
+          "merlin.kernels",
+          "merlin.kernels.matrix_shim::emit_translation_unit",
+          "merlin.kernels.opu_cert",
+          "merlin.kernels.opu_cert::logical_tile_edge",
+          "merlin.kernels::matrix_shim",
+          "merlin.llvmlower",
+          "merlin.llvmlower.int8_contractions::load_sidecar",
+          "merlin.llvmlower.int8_contractions::rewrite_prepared_file",
+          "merlin.llvmlower.int8_contractions::tile_filling_selector",
+          "merlin.llvmlower::int8_contractions",
+          "merlin.targetgen.rtl",
+          "merlin.targetgen.rtl.matrix_isa",
+          "merlin.targetgen.rtl.matrix_isa::crosscheck_header",
+          "merlin.targetgen.rtl.matrix_isa::crosscheck_opcode_table",
+          "merlin.targetgen.rtl.matrix_isa::derive",
+          "merlin.targetgen.rtl.matrix_isa::match_case_table",
+          "merlin.targetgen.rtl.matrix_isa::matrix_unit_params",
+          "merlin.targetgen.rtl.matrix_isa::seq_int_tuples",
+          "merlin.targetgen.rtl::matrix_isa"
+        ]
+      }
+    ]
+  },
   "vendoring": {
     "root": "examples/<example>/support",
     "record": "examples/<example>/SOURCE.yaml",
     "date": "2026-10-07",
     "verification": "merlin/tests/infra/test_example_support.py recomputes each vendored tree id from the tracked bytes, and the companion tree id with each normalized file's companion blob put back",
-    "normalization": "A vendored file may differ from its companion only where SOURCE.yaml lists it under normalized, with the companion blob id and the change. Absolute vendoring-host paths in provenance records are rewritten repo-relative there."
+    "normalization": "A vendored file may differ from its companion only where SOURCE.yaml lists it under normalized, with the companion blob id and the change. Absolute vendoring-host paths in provenance records are rewritten repo-relative there.",
+    "scope": "Targets whose support is still carried in-repo. The pinned_support packages are fetched, not vendored; the pinned base keeps its in-repo copy, whose SOURCE.yaml commit must equal base.commit."
   },
   "companions": [
     {
@@ -100,7 +203,7 @@
       "target": "rvv",
       "url": "https://github.com/ucb-bar/rvv-mlir.git",
       "local_worktree": null,
-      "base_ref": "main",
+      "base_ref": "handwritten-implementation",
       "base_commit": "a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5",
       "catalog_commit": null,
       "root_role": "support",
@@ -121,10 +224,9 @@
       "contract_sha256": "b08117fecc0eef967ce639ab55314d2b8a163dd1733603f11133f452dd8ec4a4",
       "schema_valid": true,
       "blockers": [
-        "Commit not yet pushed to ucb-bar/rvv-mlir main.",
         "No hardware or schedule execution performed by this vendoring."
       ],
-      "qualification_scope": "rvv-mlir main is the base RVV support provider at its repository root; chip packages extend it with provider.yaml extends. Schedule packages stay on the stable/* branches."
+      "qualification_scope": "rvv-mlir handwritten-implementation is the base RVV support provider at its repository root and Merlin's single pinned_support base; the in-repo copy is that pin. Chip packages extend it with provider.yaml extends. Schedule packages stay on the stable/* branches."
     },
     {
       "target": "atlas",
@@ -162,60 +264,6 @@
         "Program-emitter migration preserves the old model-specific ISA shim byte-for-byte; neither the shim nor full frozen model-venv execution is newly qualified.",
         "Source contract retains prototype, requires-human-review, incomplete datapath grounding and no RTL-certification claims.",
         "No compiler candidate, hardware execution or measured performance qualification."
-      ]
-    },
-    {
-      "target": "kodiak",
-      "url": "https://github.com/ucb-bar/kodiak-mlir.git",
-      "companion_commit": "fa37a1b3341b1b65e27d3557f5dab14ba51c0083",
-      "companion_commit_relation": "same_commit",
-      "provider_root": ".",
-      "provider_role": "support",
-      "vendored": {
-        "path": "examples/kodiak/support",
-        "source_record": "examples/kodiak/SOURCE.yaml",
-        "commit": "fa37a1b3341b1b65e27d3557f5dab14ba51c0083",
-        "tree": "2171d41dd13d55273b55c6c58a913fe3b1a63a93",
-        "vendored_tree": "2171d41dd13d55273b55c6c58a913fe3b1a63a93",
-        "file_count": 26
-      },
-      "file_provenance": "provenance.json",
-      "local_worktree": null,
-      "root_role": "support",
-      "extends": {
-        "target": "rvv",
-        "commit": "a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5"
-      },
-      "qualification_scope": "Layered support provider over rvv: overlay + generated effective contract (merlin-target-compose --check), OPU matrix_lowering plugin and shim, Kodiak boards.",
-      "blockers": [
-        "Repository not yet created on GitHub; this vendored copy is its tracked home until it is pushed."
-      ]
-    },
-    {
-      "target": "iris",
-      "url": "https://github.com/ucb-bar/iris-mlir.git",
-      "companion_commit": "8447703ae5805271911e8ef232d8fd1aa7b6947d",
-      "companion_commit_relation": "same_commit",
-      "provider_root": ".",
-      "provider_role": "support",
-      "vendored": {
-        "path": "examples/iris/support",
-        "source_record": "examples/iris/SOURCE.yaml",
-        "commit": "8447703ae5805271911e8ef232d8fd1aa7b6947d",
-        "tree": "48e9f0deef16c905a83e79a1f6ae2ff46d033a37",
-        "vendored_tree": "48e9f0deef16c905a83e79a1f6ae2ff46d033a37",
-        "file_count": 15
-      },
-      "file_provenance": "provenance.json",
-      "local_worktree": null,
-      "root_role": "support",
-      "extends": {
-        "target": "rvv",
-        "commit": "a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5"
-      },
-      "qualification_scope": "Layered support provider over rvv: overlay + generated effective contract (merlin-target-compose --check), Iris boards; no matrix unit yet.",
-      "blockers": [
-        "Repository not yet created on GitHub; this vendored copy is its tracked home until it is pushed."
       ]
     }
   ]

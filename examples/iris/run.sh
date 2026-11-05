@@ -3,7 +3,8 @@
 # board. RVV on all three harts; int8 contractions routed to the VME matrix unit on harts 0-1.
 #
 #   ./run.sh setup [--llvm P] [--chipyard D] [--zephyr-sw D] [--zephyr-sdk D] [--m2m D]
-#                                 one-step machine setup: capture venv, Zephyr workspace, the pinned
+#                                 one-step machine setup: the iris-mlir support package at its pinned
+#                                 commit, capture venv, Zephyr workspace, the pinned
 #                                 chipyard iris-cy and Zvt spike checkouts (verified), the Zvt spike
 #                                 build, .env; prints how to get whatever is missing
 #   ./run.sh preflight            what this machine can run, and what would fix the rest
@@ -20,8 +21,6 @@
 # rocket_chip_iris); see README.md.
 set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/common.sh"
-# Iris's boards ship with its support package (examples/iris/support, vendored from iris-mlir).
-export MERLIN_BOARD_CATALOG="${MERLIN_BOARD_CATALOG:-$REPO_ROOT/examples/board-catalog.yaml:$REPO_ROOT/examples/iris/support}"
 BOARD=iris_rtl
 # The VME route's executable support and the unit facts it derives from, named by the iris package
 # (contracts/matrix_units.yaml, contracts/overlay.yaml), never inferred.
@@ -44,6 +43,8 @@ done
 set -- ${REST[@]+"${REST[@]}"}
 STAGE="${1:-preflight}"
 cd "$REPO_ROOT"
+# Iris's support package (and its boards) is iris-mlir at the commit Merlin pins, fetched by setup.
+case "$STAGE" in setup|help|-h|--help) ;; *) ex_select_support "$MATRIX_SUPPORT" ;; esac
 
 case "$STAGE" in
 setup)
@@ -53,7 +54,7 @@ setup)
   # out/build/ext/<pin>/, verified by content, or the commands to fetch it are printed. The Zvt spike is
   # then built from the verified source into out/build/spike_zvt/ and recorded as MERLIN_SPIKE_ZVT.
   shift
-  ex_setup "$BOARD" --checkout-pin chipyard_iris --checkout-pin spike_zvt --build-spike spike_zvt=MERLIN_SPIKE_ZVT "$@"
+  ex_setup "$BOARD" --support "$MATRIX_SUPPORT" --checkout-pin chipyard_iris --checkout-pin spike_zvt --build-spike spike_zvt=MERLIN_SPIKE_ZVT "$@"
   ;;
 preflight)
   ex_preflight "$BOARD"
@@ -88,7 +89,7 @@ op)
       ${MATRIX_ARGS[@]+"${MATRIX_ARGS[@]}"}
   ;;
 *)
-  sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac

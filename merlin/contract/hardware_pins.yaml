@@ -149,7 +149,7 @@ pins:
     description: >-
       The chipyard revision that elaborates Iris (IrisConfig): two Shuttle tiles with Saturn vector units
       carrying the VME/Xsfmm matrix unit (opuMxParams) and one Rocket tile with a Saturn DMA vector unit.
-      The iris support package's board facts (examples/iris/support/boards.yaml) are read from this tree's
+      The iris support package's board facts (iris-mlir boards.yaml) are read from this tree's
       IrisConfigs.scala.
     repo_canonical: https://github.com/ucb-bar/chipyard.git
     commit: "b4542facf6cc9457f6e358e8f80a8b3a0ff5df19"
@@ -160,8 +160,8 @@ pins:
     requires_paths:
       - generators/chipyard/src/main/scala/config/IrisConfigs.scala
     used_by:
-      - examples/iris/support/boards.yaml (iris_rtl) and contracts/overlay.yaml (rtl_source IrisConfig)
-      - examples/iris/support/contracts/matrix_units.yaml (host_config_scala: the VME unit's geometry)
+      - iris-mlir:boards.yaml (iris_rtl) and contracts/overlay.yaml (rtl_source IrisConfig)
+      - iris-mlir:contracts/matrix_units.yaml (host_config_scala: the VME unit's geometry)
     notes: >-
       Its generators/saturn submodule is pinned at saturn_vme. No Iris silicon or bitstream facts are
       claimed against this revision.
@@ -190,7 +190,7 @@ pins:
       - src/main/scala/shuttle/Configs.scala
       - src/main/scala/rocket/Configs.scala
     used_by:
-      - examples/iris/support/contracts/matrix_units.yaml (unit saturn_vme), read by the iris package's
+      - iris-mlir:contracts/matrix_units.yaml (unit saturn_vme), read by the iris package's
         vme_shim.py through merlin.targetgen.rtl.matrix_isa
     notes: >-
       The VME unit's decode table (Instructions.scala, opuInsns in Parameters.scala) is the source of its
@@ -216,7 +216,7 @@ pins:
     requires_paths:
       - src/main/scala/rocket/Matrix.scala
     used_by:
-      - examples/iris/support/contracts/matrix_units.yaml (unit saturn_vme, `core`)
+      - iris-mlir:contracts/matrix_units.yaml (unit saturn_vme, `core`)
 
   spike_zvt:
     description: >-
@@ -239,7 +239,7 @@ pins:
       - riscv/insns/msettn.h
       - riscv/vector_unit.cc
     used_by:
-      - examples/iris/support/contracts/matrix_units.yaml (unit saturn_vme, `simulator`)
+      - iris-mlir:contracts/matrix_units.yaml (unit saturn_vme, `simulator`)
     notes: >-
       A functional model, not the RTL: a shipped-image verdict on it says the instruction words and the
       kernel's use of them are right under the Zvt draft's semantics, not that Iris's RTL computes them the

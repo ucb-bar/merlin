@@ -39,15 +39,6 @@ import pytest
 # extension must not silently supply this checkout's research implementation.
 _CHECKOUT_ROOT = Path(__file__).resolve().parents[2]
 _PACKAGE_ROOT = _CHECKOUT_ROOT / "src"
-# Board facts are OOT data. Tests deliberately select the example catalog before
-# importing any runtime module; an installed Merlin without that selection has none.
-os.environ.setdefault(
-    "MERLIN_BOARD_CATALOG",
-    os.pathsep.join(
-        str(_CHECKOUT_ROOT / p)
-        for p in ("examples/board-catalog.yaml", "examples/kodiak/support", "examples/iris/support")
-    ),
-)
 # Unset, MERLIN_TARGET_PATH selects every vendored examples/*/support provider at once, and the first
 # registry query loads all their plugins -- after which a test that selects one fixture provider is
 # refused for every other loaded target. The suite therefore starts with NO support selected unless
@@ -69,6 +60,32 @@ for _source_root in reversed(_SOURCE_ROOTS):
         sys.path.insert(0, str(_source_root))
 
 from merlin.common.paths import merlin_dir  # noqa: E402  -- must follow the pin above
+
+
+def _pinned_board_catalogs() -> list[str]:
+    """The boards of every pinned support package fetched at its pin (none fetched: none).
+
+    Chip packages are fetched, not tracked (merlin.targetgen.support_pins), so a test that needs a
+    chip's board skips with the setup command where the package is absent (fixtures/pinned_support.py).
+    """
+    try:
+        from merlin.targetgen import support_pins  # noqa: PLC0415 -- after the source pin, before runtime
+    except ImportError:  # a historical replay tree that predates pinned packages: no chip boards
+        return []
+    try:
+        roots = support_pins.default_selection().roots
+    except (support_pins.PinError, OSError):
+        return []
+    return [str(root) for root in roots.values() if (root / "boards.yaml").is_file()]
+
+
+# Board facts are OOT data. Tests deliberately select the example catalog (and each fetched chip
+# package's boards) before importing any runtime module; an installed Merlin without that selection
+# has none.
+os.environ.setdefault(
+    "MERLIN_BOARD_CATALOG",
+    os.pathsep.join([str(_CHECKOUT_ROOT / "examples/board-catalog.yaml"), *_pinned_board_catalogs()]),
+)
 
 _FIXTURES = merlin_dir() / "tests" / "fixtures"
 if str(_FIXTURES) not in sys.path:

@@ -88,6 +88,24 @@ ex_preflight() {   # ex_preflight <board> [--require <stage>] [--sdk-dir <dir>]
 
 ex_note() { printf '   note: %s\n' "$*"; }
 
+# A chip's support package is not copied into Merlin: `run.sh setup` fetches it at the exact commit
+# Merlin pins (build_tools/upstreams/target_support.json, pinned_support), and the default selection
+# finds it there. `ex_select_support <target>` sets SUPPORT_ROOT to the selected package (an explicit
+# MERLIN_TARGET_PATH still wins) and, unless already set, selects the chip's boards beside the example
+# catalog. Not fetched, it stops with the setup command, except under --dry-run, where it notes it.
+ex_select_support() {   # ex_select_support <target>
+  local target="$1"
+  if ! SUPPORT_ROOT="$("$PY" -m merlin.targetgen.oot_fetch "$target" --root)"; then
+    if [ "$DRY_RUN" = "1" ]; then
+      SUPPORT_ROOT="<$target support: run setup>"
+      ex_note "the $target support package is not fetched; ./run.sh setup fetches it"
+    else
+      exit 1
+    fi
+  fi
+  export MERLIN_BOARD_CATALOG="${MERLIN_BOARD_CATALOG:-$REPO_ROOT/examples/board-catalog.yaml:$SUPPORT_ROOT}"
+}
+
 # `run.sh setup`: Merlin's own venv first (everything else runs in it), then examples/lib/chip_setup.py
 # with what this chip needs on top of the common prerequisites, then the preflight. Returns
 # chip_setup's status, so a setup that still lists something to do does not read as a success.

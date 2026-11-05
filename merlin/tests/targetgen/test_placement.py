@@ -14,6 +14,7 @@ and that making it one changed nothing about where work actually goes.
 from __future__ import annotations
 
 import pytest
+from pinned_support import require_board  # a chip board ships with its fetched support package
 
 from merlin.system.model import Device, Host, System
 from merlin.system.place import HOST_DEVICE, host_units, place, units_for
@@ -27,6 +28,7 @@ _MM_MX = OpDemand(op="matmul", in_fmt="mxfp4", weight_fmt="mxfp4", site="mx")
 
 
 def _sys(board="chipyard_kodiak", device="gemmini"):
+    require_board(board)
     from merlin.system import system_for
     from merlin.system.derive import host_from_board
 
@@ -220,7 +222,7 @@ def _two_device_system():
     b = system_for("atlas").devices
     if not a or not b or not a[0].kind or not b[0].kind:
         pytest.skip("two distinct devices not resolvable in this checkout")
-    return System(host=host_from_board("chipyard_kodiak"), devices=(a[0], b[0]))
+    return System(host=host_from_board(require_board("chipyard_kodiak").name), devices=(a[0], b[0]))
 
 
 def test_both_devices_contribute_units():

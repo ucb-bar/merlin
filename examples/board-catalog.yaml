@@ -101,8 +101,9 @@ boards:
       vLen=256/dLen=128, 25 MHz fpga_frequency (~24.9 MHz effective measured), 16 GB target DRAM.
 
   # The Kodiak boards (chipyard_kodiak, kodiak_opu_2core, firesim_kodiak_opu) are owned by the Kodiak
-  # support package: examples/kodiak/support/boards.yaml (vendored from ucb-bar/kodiak-mlir). Select it
-  # beside this catalog: MERLIN_BOARD_CATALOG=examples/board-catalog.yaml:examples/kodiak/support
+  # support package: boards.yaml in ucb-bar/kodiak-mlir, fetched at its pinned commit by
+  # `examples/kodiak/run.sh setup` (or `merlin-target-fetch kodiak`). examples/kodiak/run.sh selects it
+  # beside this catalog; by hand: MERLIN_BOARD_CATALOG=examples/board-catalog.yaml:$(merlin-target-fetch kodiak --root)
 
   # gemmelos: NOT a Zephyr target. github.com/Rakanic/gemmelos-bringup is a fork of ucb-bar/Baremetal-IDE
   # -- a bare-metal CMake SDK with no RTOS (grep -ri zephyr returns nothing) -- covering two chips
