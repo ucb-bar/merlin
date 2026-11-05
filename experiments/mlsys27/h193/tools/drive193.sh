@@ -1,7 +1,7 @@
 #!/bin/bash
 # drive193.sh R LABEL PKG P (runs on compute-1): for the 193 overloads: canonical f32 capture (c_NNN; policy host_f32 for HOST136, exact for DEVICE57 where it is only a secondary column)
 # and, for DEVICE57 with an integer form, the form (f_NNN, exact).  cores 0-23, nice 10.  CPUS env overrides the core list.
-R=$1; L=$2; PKG=$3; P=$4; PY=/scratch/loren/core-aten-snap/venvs/merlin-wtC/bin/python3
+R=$1; L=$2; PKG=$3; P=$4; PY=${H193_PY:-/scratch/loren/core-aten-snap/venvs/merlin-wtC/bin/python3}
 cd $R && rm -rf runs193/$L && mkdir -p runs193/$L
 for c in ctl-movement ctl-movement-neg; do taskset -c ${CPUS:-0-23} nice -n 10 $PY -B tools/run_case.py --pkg $PKG --case controls/$c --out runs193/$L/ctl_$c --policy exact > runs193/$L/ctl_$c.log 2>&1; done
 $PY -B -c '

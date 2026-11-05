@@ -15,13 +15,13 @@ DEVICE_FORMS).
 div.Scalar is NOT built here: its spec form is its spec_int8 form (tools/gen_spec_int8_form.py).
 Run with the frozen Merlin branch (mlsys27/test-generation-coverage) on PYTHONPATH (src + packages/*/src).
 VERIFICATION INSTRUMENT: never an author input."""
-import json, sys
+import os, json, sys
 from pathlib import Path
 
 import numpy as np
 import yaml
 
-H = Path("/scratch2/loren/backend-verify-author")
+H = Path(os.environ.get("H193_H", os.environ.get("H", "/scratch2/loren/backend-verify-author")))
 ROOT = Path(sys.argv[1])
 from merlin.targetgen import corpus_spec as SPEC  # noqa: E402
 from merlin.targetgen.capsule_golden import _recompute_golden  # noqa: E402

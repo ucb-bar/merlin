@@ -9,7 +9,8 @@
 set -uo pipefail
 export SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-/home/loren/.ssh/agent/sock}
 PKG=$(readlink -f "$1"); LABEL=${2:-$(basename $(dirname $PKG))}; P=${3:-12}
-H=/scratch2/loren/backend-verify-author; R=/scratch/loren/backend-verify-author
+export H=${H193_H:-${H:-/scratch2/loren/backend-verify-author}}
+export H193_H=$H R=${R:-/scratch/loren/backend-verify-author} H193_TAG=${H193_TAG:-m27}
 SSH=${H193_SSH:-ssh -F /scratch2/loren/aws/ssh/config -o BatchMode=yes merlin-compute-1}
 [ -f $PKG/manifest.yaml ] || { echo "no manifest.yaml in $PKG"; exit 2; }
 PID=$(cd $PKG && find . -type f ! -name '*.pyc' ! -path '*/__pycache__/*' | sort | xargs sha256sum | sha256sum | cut -c1-16)
@@ -22,7 +23,7 @@ $SSH "test -f $PK/.complete" || { tar cf - --exclude=__pycache__ -C $(dirname $P
 $SSH "CPUS=${CPUS:-0-23} bash $R/tools/drive193.sh $R $LABEL $PK/$(basename $PKG) $P"
 if [ -n "${FULL:-}" ]; then
   ls $H/forms93/*/capsule_meta.json >/dev/null 2>&1 || { echo "forms93 capsule_meta.json missing: run tools/gen_expected.py on compute-1 with the opcaps env first"; exit 3; }
-  $SSH "CPUS=${CPUS:-0-23} bash $R/tools/fullcheck_drive.sh $LABEL ${FULLW:-8}"
+  $SSH "R=$R H193_TAG=$H193_TAG CPUS=${CPUS:-0-23} bash $R/tools/fullcheck_drive.sh $LABEL ${FULLW:-8}"
 fi
 rm -rf $H/runs193/$LABEL; mkdir -p $H/runs193/$LABEL; $SSH "cd $R/runs193/$LABEL && tar cf - --exclude=prog.elf --exclude=kernel.o --exclude=kernel.ll ." | tar xf - -C $H/runs193/$LABEL
 echo "$PID" > $H/runs193/$LABEL/PACKAGE_ID

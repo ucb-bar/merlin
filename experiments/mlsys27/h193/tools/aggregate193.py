@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """aggregate193.py LABEL PKGID : runs193/LABEL + canon193.json -> RESULT-193-LABEL.md, result-193-LABEL.csv (HEADLINE=1 also RESULT-193.md/.csv)"""
 import json,csv,sys,os,re,collections
-H='/scratch2/loren/backend-verify-author'; L=sys.argv[1]; PID=sys.argv[2]; RD=f'{H}/runs193/{L}'
+H=os.environ.get('H193_H', os.environ.get('H', '/scratch2/loren/backend-verify-author')); R=os.environ.get('R', '/scratch/loren/backend-verify-author'); L=sys.argv[1]; PID=sys.argv[2]; RD=f'{H}/runs193/{L}'
 S=json.load(open(H+'/canon193.json'))
 def load(name):
     p=f'{RD}/{name}/result.json'
@@ -46,7 +46,7 @@ for s in S:
     if s['klass']=='DEVICE57' and r['result'].startswith('lowered-on-host'):
         hj=load(src) or {}; why='compiler ran it all on the host: %s, 0 RoCC retired, output exact (did not lower on device)'%('empty command buffer (whole-program host ELF)' if hj.get('host_only_program') else 'no retired RoCC')
     r['device_insns']='' if dev is None else dev; r['reason']=why[:220]
-    if os.path.exists(f'{RD}/{src}/result.json'): r['elf']=f'compute-1:/scratch/loren/backend-verify-author/runs193/{L}/{src}/prog.elf'
+    if os.path.exists(f'{RD}/{src}/result.json'): r['elf']=f'compute-1:{R}/runs193/{L}/{src}/prog.elf'
     r.update(meets_full_declared_host_ok='',numerical='',host_compute='',host_ops_per_element='',host_value_ops_per_element='',host_payload_ratio='',host_compute_why='',trace_check='',trace_requirement='',trace_reason='',meets_full='')
     if FULL:
         fj=load_full(src)

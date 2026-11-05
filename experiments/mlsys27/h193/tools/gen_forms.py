@@ -13,7 +13,7 @@ from merlin.targetgen.capsule_golden import _recompute_golden
 from merlin.targetgen.capsule_inputs import materialize_capsule_leaves
 out = Path(sys.argv[2]); out.mkdir(parents=True, exist_ok=True)
 OVS = json.load(open(sys.argv[3]))
-M2M_PY = "/scratch/loren/core-aten-snap/venvs/m2m-run10f/bin/python"
+M2M_PY = os.environ.get("M2M_PY", "/scratch/loren/core-aten-snap/venvs/m2m-run10f/bin/python")
 grp = {}
 for g in ("builders", "elementwise", "movement", "reduce_pool", "hard"):
     m = importlib.import_module(f"merlin.targetgen.core_aten_groups.{g}")
@@ -21,7 +21,7 @@ for g in ("builders", "elementwise", "movement", "reduce_pool", "hard"):
         for ov in getattr(m, a, {}): grp[(ov, a)] = g
 bd = SPEC.CorpusBinding(target="gemmini", tile_dim=16, operand_dtype="int8", accum_dtype="int32", integer=True, tiers=["L2", "L3"], compare="exact")
 bf = SPEC.CorpusBinding(target="gemmini", tile_dim=16, operand_dtype="fp32", accum_dtype="fp32", integer=False, tiers=["L2", "L3"], compare="tolerance")
-src = CS.PytorchRefSource(m2m_dir=Path("/scratch/loren/his-flow/model2mlir"), python=Path(M2M_PY))
+src = CS.PytorchRefSource(m2m_dir=Path(os.environ.get("M2M_DIR", "/scratch/loren/his-flow/model2mlir")), python=Path(M2M_PY))
 LOAD = r'''
 import json,sys,runpy,torch
 ns=runpy.run_path(sys.argv[1]); model,inputs=ns["get_model_and_inputs"](); res=model(*inputs)

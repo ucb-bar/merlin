@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.bak*
+*.pre-*
+runs193/
+runs/
+runs-forms/
+fullenv-*/
+pkgs/
+idx-*.jsonl
+result-*.csv
+RESULT-*.csv
+RESULT-*.md

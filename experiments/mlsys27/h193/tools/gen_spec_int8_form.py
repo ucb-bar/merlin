@@ -18,11 +18,11 @@ merlin.llvmlower.quantized_native.parameters, which raises on any other contract
   output  (output_boundary):    q' = clamp(RNE(y / s), -128, 127), result = q' * s   (one rounding, ties to even)
   = `quantized_native_fallback`: arithmetic exact_rational_native_family, output declared_byte_quantize_then_single_dtype_dequantize.
 VERIFICATION INSTRUMENT: never an author input."""
-import json, math, re, shutil, sys
+import os, json, math, re, shutil, sys
 from fractions import Fraction
 from pathlib import Path
 
-H = Path("/scratch2/loren/backend-verify-author")
+H = Path(os.environ.get("H193_H", os.environ.get("H", "/scratch2/loren/backend-verify-author")))
 ROOT = Path(sys.argv[1]); SLUG = sys.argv[2] if len(sys.argv) > 2 else "div_Scalar"
 CASES = {"div_Scalar": ("aten.div.Scalar", "064")}
 overload, n = CASES[SLUG]

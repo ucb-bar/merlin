@@ -2,7 +2,7 @@
 """select_193.py : materialise the CANONICAL case of all 193 core-ATen overloads (Merlin's corpus_193 captures: f32 linalg-on-tensors + inputs + PyTorch reference) into canon193/<n>/, and write canon193.json.
 VERIFICATION INSTRUMENT: lives only under backend-verify-author/ (never in an author-visible input).  Re-uses cases/ copies where already fetched; otherwise ssh-tars from the capture dirs (read-only)."""
 import csv,json,os,subprocess,sys,shutil
-H='/scratch2/loren/backend-verify-author'; SSH=['ssh','-F','/scratch2/loren/aws/ssh/config','-o','BatchMode=yes']
+H=os.environ.get('H193_H', os.environ.get('H', '/scratch2/loren/backend-verify-author')); SSH=['ssh','-F','/scratch2/loren/aws/ssh/config','-o','BatchMode=yes']
 sys.path.insert(0,'/scratch2/loren/aws/tooling/exercised'); import exercised as E
 R=list(csv.DictReader(open('/scratch2/loren/backend-verify/results-all.csv')))
 canon={r['overload']:r for r in R if r['set']=='corpus_193'}
