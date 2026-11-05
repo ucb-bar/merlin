@@ -21,6 +21,9 @@
 #                                 package (needs its spike/ dir) into out/build/spike-ext/  (no board)
 #   ./run.sh build                build + gate ONE small model at 1 and 2 harts          (no board)
 #   ./run.sh package              assemble a full delivery package + zip                 (no board)
+#   ./run.sh matrix --models a,b [--harts 1,2]
+#                                 model regression matrix: each model x harts x {RVV, RVV+OPU}, every
+#                                 image gated on spike, h2 checked bit-identical to h1   (no board)
 #   ./run.sh grade <console.txt> [model]  score a console log a board owner sent back
 #   ./run.sh firesim [--models m] [--submit]
 #                                 whole model on FireSim (firesim_kodiak_opu): OPU device leg + RVV
@@ -221,6 +224,20 @@ build|package)
       ${SCALAR:+--scalar-harts "$SCALAR"} ${MATRIX_ARGS[@]+"${MATRIX_ARGS[@]}"} --debug --out "$OUT"
   ex_note "every binary ships twice: the plain one for a number, and a _debug twin that emits STAGE"
   ex_note "lines, an ALIVE heartbeat naming the op it is inside, and one FAIL line carrying the hash"
+  ;;
+
+matrix)
+  # The regression matrix over whole models: for each captured model (recaptures/<model>_int8_full) and
+  # hart count, the plain RVV image and the OPU image (its stand-in twin, then the shipped image on the
+  # OPU's spike model, bit-exact against the twin), each graded against the W8A8 golden, plus every hart
+  # count's output against 1 hart's. Results kept per cell; a rerun builds only the missing ones.
+  if [ -z "$MODELS_OVERRIDE" ]; then echo "usage: $0 matrix --models a,b [--harts 1,2] [--rerun]" >&2; exit 2; fi
+  ex_preflight "$BOARD" --require package
+  ex_say "model matrix on $BOARD: $MODELS_OVERRIDE"
+  ex_run "$PY" "$EX_LIB_DIR/model_matrix.py" --board "$BOARD" --models "$MODELS_OVERRIDE" \
+      --harts "${HARTS_OPT:-1,2}" --matrix-unit "$MATRIX_UNIT" --matrix-config "$MATRIX_CONFIG" \
+      --matrix-support-target "$MATRIX_SUPPORT" "${@:2}"
+  ex_note "table: out/artifacts/probes/model_matrix/$BOARD/MATRIX.md (one JSON per cell beside it)"
   ;;
 
 grade)

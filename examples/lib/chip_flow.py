@@ -191,6 +191,9 @@ def _compile(name: str, args, matrix: bool) -> dict:
         "--json",
         "--no-capture",
     ]
+    if getattr(args, "timeout", None):
+        # merlin-compile's default simulation budget fits one operator, not a whole model's stand-in twin.
+        cmd += ["--timeout", str(args.timeout)]
     if matrix:
         cmd += [
             "--matrix-unit",
@@ -266,7 +269,9 @@ def matrix_on_spike(name: str, args, matrix: dict) -> dict:
         return {"status": "error", "error": str(exc)}
 
     brd = board_desc(args.board)
-    run = dict(dram_base=brd.dram_base, harts=m["spike_harts"], vlen=brd.vlen, timeout=3600)
+    run = dict(
+        dram_base=brd.dram_base, harts=m["spike_harts"], vlen=brd.vlen, timeout=getattr(args, "timeout", None) or 3600
+    )
     res = zm.run_on_spike(ship, mem_bytes=m["ship_ram_bytes"], extension=ext, **run)
     out = {
         "binary": ship,

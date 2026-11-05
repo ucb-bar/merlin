@@ -76,6 +76,7 @@ The stages:
 ./run.sh capture <model>          # any model model2MLIR can capture, + its W8A8 golden
 ./run.sh build [--opu] [--models <model>]   # add --full for the shipped matrix (hours)
 ./run.sh package [--opu] [--models <model>]
+./run.sh matrix --models <a,b> [--harts 1,2]   # regression matrix: RVV and RVV+OPU per model x harts
 ./run.sh grade <console.txt> [model]
 ./run.sh op gemm --board firesim_kodiak_opu [--submit]     # one operator on FireSim (§6)
 ./run.sh firesim [--models <model>] [--submit]             # a whole model on FireSim (§6)
@@ -233,6 +234,22 @@ sees: below one tile (64 here) nothing is routed and the OPU leg reports that in
 HF_HUB_OFFLINE=1 CAUSAL_LM_MODEL=TinyLlama/TinyLlama-1.1B-Chat-v1.0 CAUSAL_LM_LAYERS=2 CAUSAL_LM_ENTRY=embeds \
   M2M_SEQ=64 ./run.sh capture tinyllama_l2_s64 --loader ../workloads/causal_lm_section/loader.py
 ```
+
+## 2d. `matrix` — a regression matrix over whole models
+
+```bash
+./run.sh matrix --models spectformer,tinyllama_l2_s64        # --harts 1,2 by default; --rerun, --jobs N
+```
+
+For each captured model and hart count it builds the plain RVV image and the OPU image, and gates them
+the way `op` gates one operator: RVV on spike against the W8A8 golden; the OPU image through its stand-in
+twin, then the shipped image on the OPU's spike model, which must match the twin bit for bit. It then
+checks each model's 2-hart outputs are bit-identical to its 1-hart ones (per leg, both OPU images). Every
+image is simulated at the board's VLEN. The table, with each OPU image's routed contractions, MAC share
+and not-routed reasons, is `out/artifacts/probes/model_matrix/chipyard_kodiak/MATRIX.md`; each cell's
+full record (gate numbers, output digests, routing report, the unit revision it was built from) is a JSON
+beside it, kept so a rerun builds only the cells that have none. Whole models are minutes to hours of
+spike each; `--jobs` (default 2) bounds how many run at once.
 
 ## 3. What simulation cannot tell you
 
