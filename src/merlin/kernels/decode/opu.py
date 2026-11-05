@@ -72,20 +72,34 @@ class Decoded:
     fields: dict[str, int] = field(default_factory=dict)
 
 
+def _is_masked(encoding: Any) -> bool:
+    return getattr(encoding, "mask", None) is not None and getattr(encoding, "match", None) is not None
+
+
 def decode_stream(insns: Sequence[Any], encodings: Mapping[str, Any], roles_of=None) -> list[Decoded]:
     """Name every instruction in a disassembly stream, using ``encodings`` for the unnameable ones.
 
     ``insns`` are :class:`kernels.decode.objdump.RawInsn`; ``encodings`` maps a name to anything
-    carrying ``opcode`` / ``funct3`` / ``funct6`` (i.e. an :class:`targetgen.rtl.opu_isa.Encoding`).
-    Matching is on the three integers, so a spelling difference between the RTL's vocabulary and a
-    header's cannot cause a miss, and a value is never compared as a string.
+    carrying ``opcode`` / ``funct3`` / ``funct6`` (i.e. an :class:`targetgen.rtl.opu_isa.Encoding`), or a
+    decoder's ``match`` / ``mask`` pair (:class:`targetgen.rtl.matrix_isa.MaskedEncoding`). Matching is on
+    integers, so a spelling difference between the RTL's vocabulary and a header's cannot cause a miss,
+    and a value is never compared as a string.
     """
-    table = {(int(e.opcode), int(e.funct3), int(e.funct6)): name for name, e in encodings.items()}
+    # Two identity shapes. An encoding that carries a decoder's (match, mask) pair -- what
+    # targetgen.rtl.matrix_isa derives -- is matched on exactly the bits its RTL decodes; that is what
+    # tells apart instructions sharing one funct6 slot and differing in a register field. One that only
+    # carries the (opcode, funct3, funct6) triple is matched on those three integers.
+    masked = [(name, e) for name, e in encodings.items() if _is_masked(e)]
+    table = {(int(e.opcode), int(e.funct3), int(e.funct6)): name for name, e in encodings.items() if not _is_masked(e)}
     out: list[Decoded] = []
     for i, insn in enumerate(insns):
         word = word_of(getattr(insn, "hexcode", ""), width_bits=32)
         f = fields_of(word) if word is not None else {}
         name = table.get((f.get("opcode"), f.get("funct3"), f.get("funct6"))) if f else None
+        if name is None and word is not None and masked:
+            # The most specific decode wins, as in any decoder with overlapping patterns.
+            hits = [(bin(int(e.mask)).count("1"), n) for n, e in masked if (word & int(e.mask)) == int(e.match)]
+            name = max(hits)[1] if hits else None
         out.append(
             Decoded(
                 index=i,
