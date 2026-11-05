@@ -26,6 +26,8 @@ Every host fact is configuration, read from the environment or `.env`, never ass
     MERLIN_FIRESIM_QUEUE_CLIENT     the raw queue client; default $MERLIN_EXT_FIRESIM_QUEUE/bin/firesim-queue
     MERLIN_FIRESIM_WORKLOAD         the FireSim workload name the ELF is staged into (default merlin-zephyr)
     MERLIN_FIRESIM_CLIENT_DROP_ENV  variables the client must not forward to a daemon run by another account
+    MERLIN_FIRESIM_CLIENT_PATH_PREFIX  directories put first on the client's PATH for a daemon run by
+                                    another account: the queue's cwd launchers (docs/guides/firesim.md)
 The board names its bitstream (`bitstream:` in the board catalog); nothing here names a chip.
 """
 
@@ -34,6 +36,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -85,6 +88,7 @@ def host_config() -> dict[str, Any]:
     if not client and queue_root is not None:
         client = str(queue_root / "bin" / "firesim-queue")
     drop = [n for n in _env("MERLIN_FIRESIM_CLIENT_DROP_ENV").replace(",", " ").split() if n]
+    path_prefix = [Path(p) for p in _env("MERLIN_FIRESIM_CLIENT_PATH_PREFIX").split(os.pathsep) if p]
     return {
         "chipyard": chipyard,
         "deploy": deploy,
@@ -94,6 +98,7 @@ def host_config() -> dict[str, Any]:
         "queue_root": queue_root,
         "client": Path(client) if client else None,
         "client_drop_env": drop,
+        "client_path_prefix": path_prefix,
     }
 
 
@@ -267,7 +272,8 @@ def describe(job_dir: Path, manifest: dict[str, Any], host: dict[str, Any], **kw
         )
     if host["client"] is not None:
         drop = " ".join(f"-u {n}" for n in host["client_drop_env"])
-        prefix = f"env {drop} " if drop else ""
+        path = os.pathsep.join(str(p) for p in host["client_path_prefix"])
+        prefix = ("env " + drop + (f" PATH={path}:$PATH" if path else "") + " ") if (drop or path) else ""
         lines.append("  Through the shared queue (one job per leg; each waits for its turn on the FPGA):")
         for leg in manifest["legs"]:
             lines.append("    " + prefix + shlex.join(submission_argv(manifest, leg, host, **kw)))
@@ -315,7 +321,11 @@ def submit(job_dir: Path, *, priority: int = 5, project: str = "merlin-examples"
     queue_host = fc.QueueHost(
         queue_executable=host["client"], queue_state_root=host["queue_root"], chipyard=host["chipyard"]
     )
-    env = fc.client_environment(drop=host["client_drop_env"]) if host["client_drop_env"] else None
+    env = (
+        fc.client_environment(drop=host["client_drop_env"], path_prefix=host["client_path_prefix"])
+        if (host["client_drop_env"] or host["client_path_prefix"])
+        else None
+    )
     for leg, row in manifest["legs"].items():
         sub = fc.QueueSubmission(
             host=queue_host,
