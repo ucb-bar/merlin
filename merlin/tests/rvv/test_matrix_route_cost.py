@@ -155,3 +155,18 @@ class TestTheDecisionShipsInTheSidecar:
         got = IC.rewrite_contractions(parse_mlir_text(_TALL_SKINNY), select=sel, tile_edge=64, symbol_prefix="t")
         assert got.count == 0 and all(r.why.startswith("smaller than one tile") for r in got.not_routed)
         assert got.to_dict()["routing_rule"]["policy"] == {"policy": "tile_filling", "tile_edge": 64}
+
+
+class TestTheNumericPolicyIsNamed:
+    def test_the_report_names_the_quantization_the_routed_contractions_compute(self, tmp_path):
+        import json
+
+        policy = {"schema": "merlin.quantization_policy.v1", "passes": ["contraction_int8"], "selection": "default"}
+        (tmp_path / "quantization-policy.json").write_text(json.dumps(policy))
+        got = MR.numeric_policy(tmp_path)
+        assert got["passes"] == ["contraction_int8"] and got["routing_changes_numerics"] is False
+        scheme = got["schemes"]["contraction_int8"]
+        assert "activation x activation" in scheme and "per parallel row" in scheme and "amax/127" in scheme
+
+    def test_an_unrecorded_policy_is_unknown_not_assumed(self, tmp_path):
+        assert MR.numeric_policy(tmp_path)["passes"] == "UNKNOWN"

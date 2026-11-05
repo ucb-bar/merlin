@@ -116,7 +116,7 @@ def routing_report(build_dir: Path, routing: zm.MatrixRouting) -> dict[str, Any]
         reasons[key] = reasons.get(key, 0) + 1
     widest = max(routed, key=macs, default=None)
     total = routed_macs + left_macs
-    from merlin.llvmlower.matrix_route_report import by_site, priced_routes
+    from merlin.llvmlower.matrix_route_report import by_site, numeric_policy, priced_routes
 
     return {
         "support_target": routing.support_target,
@@ -131,6 +131,7 @@ def routing_report(build_dir: Path, routing: zm.MatrixRouting) -> dict[str, Any]
         # unit takes; and every route the rule above would have refused, with the decision that took it.
         "macs_by_site": by_site(routed, left),
         "priced_sub_tile_routes": priced_routes(routed),
+        "numeric_policy": numeric_policy(build_dir),
         "routed_contractions": int(got.get("count") or len(routed)),
         "distinct_signatures": len(got.get("signatures") or {}),
         "not_routed_contractions": len(left),

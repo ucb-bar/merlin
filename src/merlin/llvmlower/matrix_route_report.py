@@ -10,7 +10,34 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-__all__ = ["by_site", "priced_routes"]
+__all__ = ["by_site", "numeric_policy", "priced_routes"]
+
+
+def numeric_policy(build_dir) -> dict[str, Any]:
+    """The quantization the routed contractions compute, as the build recorded it.
+
+    Routing moves arithmetic, it never changes it: the unit and the vector path compute the same
+    i8 x i8 -> i32 sums from the same IR, so the numeric policy of a routed contraction -- including an
+    activation x activation one (attention) -- is the quantization pass's. This names it: the pass set
+    the build selected (``quantization-policy.json``) and each pass's own statement of its scheme.
+    """
+    import json
+    from pathlib import Path
+
+    path = Path(build_dir) / "quantization-policy.json"
+    if not path.is_file():
+        return {"passes": "UNKNOWN", "note": "the build recorded no quantization policy"}
+    recorded = json.loads(path.read_text(encoding="utf-8"))
+    from .quant_passes import registry
+
+    known = registry()
+    passes = list(recorded.get("passes") or [])
+    return {
+        "passes": passes,
+        "selection": recorded.get("selection"),
+        "schemes": {p: known[p].description for p in passes if p in known},
+        "routing_changes_numerics": False,
+    }
 
 
 def _routed_macs(r: dict) -> int:

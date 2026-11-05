@@ -43,9 +43,21 @@ def registry() -> dict[str, QuantPass]:
 
     passes = [
         QuantPass(
-            "contraction_int8", "contraction", lower_contraction_int8, "matmul/attention -> i8xi8->i32 + requant"
+            "contraction_int8",
+            "contraction",
+            lower_contraction_int8,
+            "matmul/attention -> i8xi8->i32 + requant. Each f32 operand (activation x weight AND activation "
+            "x activation, e.g. Q.K^T, P.V) is quantized per parallel row: symmetric int8, scale = "
+            "amax/127 over its reduction dim, computed in IR before the contraction; a calibrated i8 weight "
+            "keeps its own scale. int32 accumulation; out = f32(acc) * s_lhs[row] * s_rhs[col].",
         ),
-        QuantPass("conv_int8", "conv", lower_conv_int8, "conv2d -> i8xi8->i32 (per-tensor act-quant) + requant"),
+        QuantPass(
+            "conv_int8",
+            "conv",
+            lower_conv_int8,
+            "direct (windowed) conv2d -> i8xi8->i32: activation per-tensor (amax/127), weight per output "
+            "channel; out = f32(acc) * s_act * s_w[channel].",
+        ),
         QuantPass("softmax_int", "softmax", lower_softmax_int, "softmax exp -> integer I-BERT i-exp (no math.exp)"),
         QuantPass("gelu_int", "gelu", lower_gelu_int, "GELU erf -> integer I-BERT i-GELU (no math.erf)"),
         QuantPass("silu_int", "silu", lower_silu_int, "SiLU sigmoid -> integer i-sigmoid"),
