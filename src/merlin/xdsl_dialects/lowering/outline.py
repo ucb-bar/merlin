@@ -262,6 +262,34 @@ def _external_declarations(module, external_symbols):
     return declarations
 
 
+def _require_defined_before_use(block, fname: str) -> None:
+    """Refuse a driver block that reads a value before the op defining it.
+
+    MLIR requires a value to dominate its uses, but xDSL's verifier does not check dominance, so a
+    capture that emits a use before its definition parses and verifies cleanly. Outlining walks the
+    block in order, so such a module used to die here on a bare ``KeyError`` naming an SSA object.
+    Name the op and the value instead: it is a defect of whatever wrote the module (seen from a
+    model2MLIR revision whose Q/DQ fusion moved a dequantize above the reshape of its scale), not of
+    the model."""
+    from xdsl.ir import OpResult
+
+    def name(op) -> str:  # an op of an unloaded dialect prints as builtin.unregistered; say what it is
+        return getattr(getattr(op, "op_name", None), "data", None) or op.name
+
+    seen: set = set()
+    for index, op in enumerate(block.ops):
+        for inner in op.walk():
+            for operand in inner.operands:
+                if isinstance(operand, OpResult) and operand.owner.parent_block() is block and operand not in seen:
+                    raise OutlineError(
+                        f"@{fname}: op #{index} ({name(op)}) uses a result of {name(operand.owner)} before "
+                        "that op defines it. The module is not in SSA order, so it was written wrong (by its "
+                        "capture, or a rewrite after it), and nothing downstream can run it. Recapture with "
+                        "a model2MLIR revision whose rewrites keep definitions before uses."
+                    )
+        seen.update(op.results)
+
+
 def outline_dispatches(
     module, forward: str | None = None, *, groups=None, external_symbols: Iterable[str] = ()
 ) -> OutlineResult:
@@ -304,6 +332,7 @@ def outline_dispatches(
     if len(fn.body.blocks) != 1:
         raise OutlineError("outlining requires a single-block model driver")
     src = fn.body.blocks[0]
+    _require_defined_before_use(src, fname)
 
     arg_types = [a.type for a in src.args]
     driver = Block(arg_types=arg_types)

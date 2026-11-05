@@ -74,6 +74,38 @@ def test_outline_splits_each_compute_op_into_a_kernel():
     res.module.verify()
 
 
+#: QUANT with the scale's reshape printed AFTER the dequantize that reads it, the shape a model2MLIR
+#: revision's Q/DQ fusion emitted for every per-channel int8 Linear. xDSL parses and verifies it.
+USE_BEFORE_DEF = """
+builtin.module {
+  func.func @forward(%w: tensor<8x6xi8>, %s2: tensor<6x1xf32>, %zp: tensor<6xi32>,
+                     %x: tensor<4x8xf32>) -> tensor<4x6xf32> {
+    %wf = "quant_ext.dequantize_per_channel"(%w, %s, %zp)
+        <{axis = 1 : i64, input_dtype = "i8"}>
+        : (tensor<8x6xi8>, tensor<6xf32>, tensor<6xi32>) -> tensor<8x6xf32>
+    %e = tensor.empty() : tensor<4x6xf32>
+    %c0 = arith.constant 0.0 : f32
+    %f = linalg.fill ins(%c0 : f32) outs(%e : tensor<4x6xf32>) -> tensor<4x6xf32>
+    %y = linalg.matmul ins(%x, %wf : tensor<4x8xf32>, tensor<8x6xf32>)
+         outs(%f : tensor<4x6xf32>) -> tensor<4x6xf32>
+    %s = tensor.collapse_shape %s2 [[0, 1]] : tensor<6x1xf32> into tensor<6xf32>
+    func.return %y : tensor<4x6xf32>
+  }
+}
+"""
+
+
+def test_a_module_that_uses_a_value_before_defining_it_is_refused_by_name():
+    """It used to die inside the outliner on a bare KeyError naming an xDSL object."""
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects.lowering.outline import OutlineError, outline_dispatches
+
+    with pytest.raises(OutlineError, match=r"op #0 \(quant_ext.dequantize_per_channel\) uses a result of "
+                                           r"tensor.collapse_shape before that op defines it"):  # fmt: skip
+        outline_dispatches(parse_mlir_text(USE_BEFORE_DEF))
+    outline_dispatches(parse_mlir_text(QUANT))  # the same program in order outlines
+
+
 def test_runtime_inventory_matches_exact_outlined_symbols():
     from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.runtime.dispatch_runtime import outlined_dispatch_inventory

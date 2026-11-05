@@ -15,9 +15,12 @@ pins:
     description: >-
       The model2MLIR revision whole-model captures are made with. It carries exact signed integer
       shift and floor-division decompositions, PT2E integer-contraction capture, and literal
-      quantization-parameter lowering; missing any of these leaves supported operations opaque.
+      quantization-parameter lowering; missing any of these leaves supported operations opaque. Its
+      Q/DQ fusion keeps every definition before its uses: 8893a37's moved each per-channel dequantize
+      above the reshape of its scale, so every int8 Linear captured with it (a one-op GEMM included)
+      was not in SSA order and failed at Merlin's W8A8 reference.
     repo_canonical: https://github.com/ucb-bar/model2MLIR.git
-    commit: "8893a37480b4560f701089e5bf408644573a906f"
+    commit: "84e4c25b41a3aaa9714e163ef3ca4fde7d12fc24"
     root_env: MERLIN_M2M_DIR
     requires_paths:
       - m2m/ir/decompositions.py
@@ -27,6 +30,7 @@ pins:
       - m2m/capture/bundle.py
       - m2m/capture/provenance.py
       - m2m/capture/torchao_pipeline.py
+      - m2m/transforms/fuse_qdq.py
       - tests/test_integer_shift_floordiv.py
     content_check: true
     notes: >-
