@@ -35,6 +35,8 @@ selfcheck_out/
 # would be un-ignored too and could be swept into a commit by a plain `git add -A`. Re-ignore the
 # bulk trees wholesale — the curated skeleton never lives inside one.
 /out/build/baselines/**
+# checkouts a chip example's `run.sh setup` fetches (model2MLIR, the Zephyr workspace, pinned sources)
+/out/build/ext/**
 /out/build/python/**
 /out/build/agent-workspaces/**
 /out/build/*-install-check/**
