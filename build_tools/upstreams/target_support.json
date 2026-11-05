@@ -194,16 +194,16 @@
     {
       "target": "iris",
       "url": "https://github.com/ucb-bar/iris-mlir.git",
-      "companion_commit": "9487b0c34797a61dbf5b92a70e2d43e3321ee3f7",
+      "companion_commit": "cb88e1c8f52b16c6130765d60bb612f715589b98",
       "companion_commit_relation": "same_commit",
       "provider_root": ".",
       "provider_role": "support",
       "vendored": {
         "path": "examples/iris/support",
         "source_record": "examples/iris/SOURCE.yaml",
-        "commit": "9487b0c34797a61dbf5b92a70e2d43e3321ee3f7",
-        "tree": "eaae51618c94b4dc7cb17f50b1ccff7466931174",
-        "vendored_tree": "eaae51618c94b4dc7cb17f50b1ccff7466931174",
+        "commit": "cb88e1c8f52b16c6130765d60bb612f715589b98",
+        "tree": "27f1247bde9251a23c14b734ec93e64da4be61f0",
+        "vendored_tree": "27f1247bde9251a23c14b734ec93e64da4be61f0",
         "file_count": 10
       },
       "file_provenance": "provenance.json",
