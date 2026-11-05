@@ -190,4 +190,5 @@ def test_checked_in_tinyllama_recapture_skips_external_declarations():
     assert inventory["entry"] == "forward"
     assert inventory["args"]
     assert inventory["ops"]
-    assert inventory["ops"][0]["kind"] == "linalg.generic"
+    # Observable tensor constants and splats are payloads too, so the first op need not be a generic.
+    assert "linalg.generic" in {op["kind"] for op in inventory["ops"]}

@@ -405,6 +405,25 @@ def run_source(*, tag_bmm_tails: bool = False) -> str:
     (forms the resident accumulator + lowers the contraction to vector.fma with f32 A-extracts), run
     the A-scalarization rewrite, then run stage 2 (bufferize -> LLVM). Mirrors the act_poly runner
     splice; executes in the m2m venv."""
+    # This transport splits the same scalar pipeline as the ordinary runners.
+    # Keep its host and ownership markers executable too; otherwise the native
+    # pass manager receives private marker names as unregistered MLIR passes.
+    from .pipeline import (
+        _AUTOMATIC_HOST_FEATURES_PRELUDE,
+        _BROADCAST_MATH_HOIST_PRELUDE,
+        _FMA_INTRINSIC_PRELUDE,
+        _MASKED_CONTRACTION_PRELUDE,
+        _MASKED_CONTRACTION_STAGE_RUNNER,
+        _SCALAR_POINTWISE_PACKET_PRELUDE,
+        _SCALAR_SQUARED_SUM_PRELUDE,
+        DEALLOC_CHECK_PRELUDE,
+        DEALLOC_CHECK_RUNNER,
+        SLICED_OUTPUT_PRELUDE,
+        SLICED_OUTPUT_RUNNER,
+        SPLIT_FRESH_DEALLOCS_PRELUDE,
+        SPLIT_FRESH_DEALLOCS_RUNNER,
+    )
+
     return (
         "import sys\n"
         "from torch_mlir import ir\n"
@@ -431,7 +450,20 @@ def run_source(*, tag_bmm_tails: bool = False) -> str:
         + _ROUND_INTRINSIC_PRELUDE
         + _INT_SOFTMAX_TABLE_PRELUDE
         + _SCALAR_CONTRACTION_PRELUDE
+        + _FMA_INTRINSIC_PRELUDE
+        + _MASKED_CONTRACTION_PRELUDE
+        + _MASKED_CONTRACTION_STAGE_RUNNER
+        + _SCALAR_SQUARED_SUM_PRELUDE
         + _SCALAR_POINTWISE_UNROLL_PRELUDE
+        + _SCALAR_POINTWISE_PACKET_PRELUDE
+        + _BROADCAST_MATH_HOIST_PRELUDE
+        + _AUTOMATIC_HOST_FEATURES_PRELUDE
+        + DEALLOC_CHECK_PRELUDE
+        + DEALLOC_CHECK_RUNNER
+        + SPLIT_FRESH_DEALLOCS_PRELUDE
+        + SPLIT_FRESH_DEALLOCS_RUNNER
+        + SLICED_OUTPUT_PRELUDE
+        + SLICED_OUTPUT_RUNNER
         + f"\nMARKER = {SCALARIZE_MARKER!r}\n"
         "src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]\n"
         "passes = pipeline.split(',')\n"

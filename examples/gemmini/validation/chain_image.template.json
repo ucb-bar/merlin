@@ -1,0 +1,30 @@
+{
+  "schema": "merlin.chain_image.selection.v1",
+  "phase": "phase1",
+  "model": "resnet50",
+  "compiler": {"path": "FROZEN_COMPILER_ABSOLUTE_PATH", "sha256": "FROZEN_COMPILER_TREE_SHA256"},
+  "models": {"path": "SELECTED_MODELS_ABSOLUTE_PATH", "sha256": "SELECTED_MODELS_SHA256"},
+  "inputs": {"path": "SEALED_VISIBLE_INPUT_ABSOLUTE_PATH", "sha256": "SELECTED_INPUT_SHA256"},
+  "programs": {
+    "model": {"path": "COMPLETED_PROGRAM_RECEIPT_ABSOLUTE_PATH", "sha256": "COMPLETED_PROGRAM_RECEIPT_SHA256"}
+  },
+  "transport": "all_element_comparison_v1",
+  "reference": {"path": "ADMITTED_ALL_OUTPUT_SUPPLEMENT_ABSOLUTE_PATH", "sha256": "SUPPLEMENT_SHA256"},
+  "reference_identity": {
+    "bundle_manifest_sha256": "ORIGINAL_SELECTED_BUNDLE_MANIFEST_SHA256",
+    "bundle_sums_sha256": "ORIGINAL_SELECTED_BUNDLE_SUMS_SHA256",
+    "models_config_sha256": "ORIGINAL_SELECTED_MODELS_CONFIG_SHA256"
+  },
+  "bundle": "ORIGINAL_SEALED_BUNDLE_ABSOLUTE_PATH",
+  "workload_contract": {"path": "SELECTED_WORKLOAD_CONTRACT_ABSOLUTE_PATH", "sha256": "WORKLOAD_CONTRACT_SHA256"},
+  "layout": {"weights": [null], "inputs": null, "references": null, "arena": {"begin": null, "bytes": null}},
+  "memory_map": {"path": "SELECTED_DECODED_MAP_ABSOLUTE_PATH", "sha256": "DECODED_MAP_SHA256"},
+  "execution_identity": "EXACT_SELECTED_PROVIDER_EXECUTION_IDENTITY",
+  "counter": {
+    "program": 0,
+    "symbol": "merlin_group_profile_now",
+    "contract": {"path": "SELECTED_COUNTER_CONTRACT_ABSOLUTE_PATH", "sha256": "COUNTER_CONTRACT_SHA256"}
+  },
+  "boot": {"entry_symbol": "_start", "mailbox_symbols": ["tohost", "fromhost"]},
+  "command_timeout_s": 120
+}

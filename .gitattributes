@@ -19,3 +19,9 @@ CMakeLists.txt text eol=lf
 # Archived evidence is content-addressed. Preserve original bytes (including CSV CRLF)
 # across relocation and checkout rather than silently changing recorded hashes.
 experiments/reference-data/** -text -eol
+
+# Patch context and archived scientific inputs retain their exact bytes.
+*.patch -whitespace
+*.diff -whitespace
+*.patch.disabled -whitespace
+experiments/reference-data/** -whitespace

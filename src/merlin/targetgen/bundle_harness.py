@@ -872,12 +872,9 @@ def emitted_entry_arity(artifact_text: str, *, entry_symbol: str | None = None) 
         return None
     try:
         from xdsl.dialects import llvm
-        from xdsl.parser import Parser
+        from merlin.targetgen.oot_starterkit.llvm_context import parse_llvm_module
 
-        from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
-
-        module = Parser(make_llvm_context(), artifact_text).parse_module()
-        module.verify()
+        module = parse_llvm_module(artifact_text)
         functions = [op for op in module.body.block.ops if isinstance(op, llvm.FuncOp)]
         definitions = [
             op for op in functions if op.body.blocks and (entry_symbol is None or op.sym_name.data == entry_symbol)

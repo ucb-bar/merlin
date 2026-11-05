@@ -1,5 +1,7 @@
 """Versioned source-body evidence is exact before and after linking."""
 
+# ruff: noqa: E501 - emitted MLIR lines retain the producer's operation form.
+
 from __future__ import annotations
 
 import json
@@ -9,6 +11,7 @@ from hashlib import sha256
 
 import pytest
 from merlin_experiments.phase1.feedback import private_linalg_support as support
+from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 
 from merlin.common import mlir_query as mq
 from merlin.compile.model_execution_inputs import strict_tree_sha256
@@ -17,6 +20,106 @@ from merlin.frontends.linalg_composite_math import recognize_static_composite_ma
 from merlin.targetgen.host_capabilities import admit_host_operation
 from merlin.targetgen.host_linkage_contract import SCHEMA as LINKAGE_SCHEMA
 from merlin.targetgen.host_linkage_contract import SUPPLIER
+
+
+def _scoped_composite(tmp_path):
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    model, receipt = capture / "model.mlir", capture / "capture_receipt.json"
+    model.write_text(_source("clamp_upper_literal"))
+    receipt.write_text('{"scope":"neutral fixture"}')
+    normalized, _ = normalize_capture_mlir(model.read_text())
+    ops = tuple(mq.walk(mq.parse(normalized)))
+    ordinal = next(i for i, op in enumerate(ops) if op.name == "linalg.generic")
+    item = asdict(recognize_static_composite_math_body(ops[ordinal]))
+    item.update(schema="merlin.static_composite_math_body.v1", ordinal=ordinal)
+    raw, norm = sha256(model.read_bytes()).hexdigest(), sha256(normalized.encode()).hexdigest()
+    witness = {
+        "raw_source_sha256": raw,
+        "normalized_source_sha256": norm,
+        "n_source_operations": len(ops),
+        "occurrences": [item],
+    }
+    source = {
+        "source_sha256": raw,
+        "normalized_source_sha256": norm,
+        "capture_receipt_sha256": sha256(receipt.read_bytes()).hexdigest(),
+    }
+    linked = {"capture_tree_sha256": strict_tree_sha256(capture)["sha256"]}
+    return capture, witness, source, linked
+
+
+def test_composite_completion_reuses_only_scoped_preparation(tmp_path, monkeypatch):
+    from merlin.frontends import capture_normalization as normalization
+
+    capture, witness, source, linked = _scoped_composite(tmp_path)
+    normalized, normalization_work, parsed, recognized = [], [], [], []
+    original_normalize, original_parse = preparation.normalize_capture_mlir, mq.parse
+    original_work = normalization._normalize_capture_mlir_uncached
+    original_recognize = support.recognize_static_composite_math_body
+
+    def normalize(*args, **kwargs):
+        normalized.append(None)
+        return original_normalize(*args, **kwargs)
+
+    def parse(*args, **kwargs):
+        parsed.append(None)
+        return original_parse(*args, **kwargs)
+
+    def uncached(*args, **kwargs):
+        normalization_work.append(None)
+        return original_work(*args, **kwargs)
+
+    def recognize(*args, **kwargs):
+        recognized.append(None)
+        return original_recognize(*args, **kwargs)
+
+    monkeypatch.setattr(preparation, "normalize_capture_mlir", normalize)
+    monkeypatch.setattr(normalization, "_normalize_capture_mlir_uncached", uncached)
+    monkeypatch.setattr(mq, "parse", parse)
+    monkeypatch.setattr(support, "recognize_static_composite_math_body", recognize)
+    normalization._normalize_capture_mlir_cached.cache_clear()
+    with preparation.validation_scope():
+        for _ in range(4):
+            assert support._composite_source_matches(witness, source, linked, capture)
+            # The prepared scope must work even when other programs evict the
+            # small process-wide immutable normalization LRU between witnesses.
+            normalization._normalize_capture_mlir_cached.cache_clear()
+        assert len(normalized) == len(normalization_work) == len(parsed) == 1
+        assert len(recognized) == 4
+        forged = deepcopy(witness)
+        forged["occurrences"][0]["literal_bits"] = ["0x00000000"]
+        assert not support._composite_source_matches(forged, source, linked, capture)
+        assert len(recognized) == 5
+    assert support._composite_source_matches(witness, source, linked, capture)
+    assert len(normalized) == len(normalization_work) == len(parsed) == 2
+
+
+@pytest.mark.parametrize("changed", ["model", "receipt", "tree"])
+def test_composite_preparation_keeps_fresh_tree_raw_and_receipt_checks(tmp_path, changed):
+    capture, witness, source, linked = _scoped_composite(tmp_path)
+    path = capture / {"model": "model.mlir", "receipt": "capture_receipt.json", "tree": "new-file"}[changed]
+    with preparation.validation_scope():
+        assert support._composite_source_matches(witness, source, linked, capture)
+        before = path.read_bytes() if path.exists() else None
+        path.write_bytes(b"changed")
+        assert not support._composite_source_matches(witness, source, linked, capture)
+        if before is None:
+            path.unlink()
+        else:
+            path.write_bytes(before)
+
+
+def test_composite_preparation_rejects_mutated_cached_ir(tmp_path):
+    from xdsl.dialects.builtin import StringAttr
+
+    capture, witness, source, linked = _scoped_composite(tmp_path)
+    with pytest.raises(preparation.PreparationChanged):
+        with preparation.validation_scope():
+            assert support._composite_source_matches(witness, source, linked, capture)
+            module = preparation.source(capture / "model.mlir")[3]
+            module.attributes["changed"] = StringAttr("different")
+            assert not support._composite_source_matches(witness, source, linked, capture)
 
 
 def _source(
@@ -62,6 +165,20 @@ def _source(
             "f32",
             "f32",
             '%v = "math.cos"(%a) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32',
+        ),
+        "math.exp": (
+            "tensor<2x3xf32>",
+            None,
+            "f32",
+            "f32",
+            '%v = "math.exp"(%a) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32',
+        ),
+        "math.roundeven": (
+            "tensor<2x3xf32>",
+            None,
+            "f32",
+            "f32",
+            '%v = "math.roundeven"(%a) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32',
         ),
         "clamp_upper_literal": (
             "tensor<2x3xf32>",
@@ -159,6 +276,8 @@ def _case(schema: str, operation: str, *, scalar_first: bool = False):
         "arith.cmpf": ["f32", "f32", "i1"],
         "math.sin": ["f32", "f32"],
         "math.cos": ["f32", "f32"],
+        "math.exp": ["f32", "f32"],
+        "math.roundeven": ["f32", "f32"],
         "clamp_upper_literal": ["f32", "f32"],
         "literal_base_pow_f32": ["f32", "f32"],
         "i1_not": ["i1", "i1"],
@@ -169,7 +288,16 @@ def _case(schema: str, operation: str, *, scalar_first: bool = False):
         "i64"
         if operation == "arith.addi"
         else "f32"
-        if operation in {"arith.addf", "math.sin", "math.cos", "clamp_upper_literal", "literal_base_pow_f32"}
+        if operation
+        in {
+            "arith.addf",
+            "math.sin",
+            "math.cos",
+            "math.exp",
+            "math.roundeven",
+            "clamp_upper_literal",
+            "literal_base_pow_f32",
+        }
         else "i1"
     )
     parsed = (_op(operation, scalar_first=scalar_first), _op(operation, scalar_first=scalar_first))
@@ -282,6 +410,8 @@ def _index_lowering(bits: int):
         ("merlin.static_pointwise_source_body.v1", "arith.addf"),
         ("merlin.static_f32_math_source_body.v1", "math.sin"),
         ("merlin.static_f32_math_source_body.v1", "math.cos"),
+        ("merlin.static_f32_math_source_body.v1", "math.exp"),
+        ("merlin.static_f32_math_source_body.v1", "math.roundeven"),
         ("merlin.static_boolean_body.v1", "i1_not"),
         ("merlin.static_boolean_body.v1", "f32_nonzero_to_i1"),
         ("merlin.static_boolean_body.v1", "i1_mul_singleton_projected"),
@@ -293,6 +423,8 @@ def test_every_occurrence_recomputed_and_linked(schema, operation):
     occurrences = source["linalg_host_support"]["occurrences"]
     assert [item["ordinal"] for item in occurrences] == row["ordinals"]
     assert {item["schema"] for item in occurrences} == {schema}
+    if operation in {"math.exp", "math.roundeven"}:
+        assert all(item["linkage_requirement"] is None for item in occurrences)
     assert support.linked_complete(json.loads(json.dumps(source)), json.loads(json.dumps(entry)), "d" * 64)
     assert not support.linked_complete(source, entry, "f" * 64)
     source["linalg_host_support"]["occurrences"] = occurrences[:-1]
@@ -392,6 +524,8 @@ def test_projected_pointwise_source_body_requires_exact_map_roster_and_link(oper
 
 
 def test_projected_rank_zero_scalar_input_and_selected_byte_bounds():
+    from merlin_experiments.phase1.feedback.private_program_checks import ProgramCheckFailure
+
     source, entry = _linked(*_case("merlin.static_projected_pointwise_body.v1", "arith.addi", scalar_first=True))
     occurrence = source["linalg_host_support"]["occurrences"][0]
     assert occurrence["input_shapes"][0] == ()
@@ -400,7 +534,7 @@ def test_projected_rank_zero_scalar_input_and_selected_byte_bounds():
     proof = support.begin("a" * 64, "a" * 64, 2, selected)
     parsed, row, joined, _, admission = _case("merlin.static_projected_pointwise_body.v1", "arith.addi")
     support.record(proof, row, admission, parsed, joined)
-    with pytest.raises(ValueError, match="signed index address span"):
+    with pytest.raises(ProgramCheckFailure, match="signed index address span") as refusal:
         support.link(
             {"selected_index_observation": selected, "linalg_host_support": proof},
             actual,
@@ -410,6 +544,31 @@ def test_projected_rank_zero_scalar_input_and_selected_byte_bounds():
                 "elf_sha256": "e" * 64,
             },
         )
+    assert refusal.value.check == "linalg_span"
+
+
+@pytest.mark.parametrize(
+    "shape,index_bits,expected",
+    [
+        ([1, 32, 32, 64], 64, True),
+        ([7], 6, True),
+        ([8], 6, False),
+        ([256], 11, False),
+        ([0], 64, False),
+        ([-1], 64, False),
+        ([True], 64, False),
+    ],
+)
+def test_i32_to_float_source_obeys_actual_four_byte_signed_index_span(shape, index_bits, expected):
+    occurrence = {
+        "schema": support.MIXED_SCHEMA,
+        "shape": shape,
+        "ordered_types": ["i32", "f32", "f32"],
+        "input_shapes": [shape],
+    }
+    assert support._all_shapes_fit([occurrence], index_bits) is expected
+    occurrence["ordered_types"][0] = "i24"
+    assert not support._all_shapes_fit([occurrence], index_bits)
 
 
 def test_math_witness_refuses_changed_body_roster_schema_and_linked_identity():
@@ -630,3 +789,113 @@ def test_boolean_input_bytes_and_scalar_projection_are_bounded():
     )
     assert scalar["linalg_host_support"]["occurrences"][0]["input_shapes"][0] == ()
     assert support.linked_complete(scalar, scalar_entry, "d" * 64)
+
+
+_IDENTITY = (
+    "indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], "
+    "iterator_types = [#linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>], "
+    "operandSegmentSizes = array<i32: 1, 1>"
+)
+
+
+def _int8_quantize_source(low: int = -127) -> str:
+    fm = "<{fastmath = #arith.fastmath<none>}>"
+    return f"""builtin.module {{
+  func.func @forward(%x: tensor<2x3xf32>) -> tensor<2x3xi8> {{
+    %e0 = "tensor.empty"() : () -> tensor<2x3xf32>
+    %rounded = "linalg.generic"(%x, %e0) <{{{_IDENTITY}}}> ({{
+      ^bb0(%a: f32, %b: f32):
+        %r = "math.roundeven"(%a) {fm} : (f32) -> f32
+        "linalg.yield"(%r) : (f32) -> ()
+    }}) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+    %e1 = "tensor.empty"() : () -> tensor<2x3xf32>
+    %clamped = "linalg.generic"(%rounded, %e1) <{{{_IDENTITY}}}> ({{
+      ^bb0(%input: f32, %acc: f32):
+        %low = "arith.constant"() <{{value = {low} : i64}}> : () -> i64
+        %lowf = "arith.sitofp"(%low) : (i64) -> f32
+        %below = "arith.cmpf"(%input, %lowf) <{{predicate = 4 : i64, fastmath = #arith.fastmath<none>}}> : (f32, f32) -> i1
+        %raised = "arith.select"(%below, %lowf, %input) : (i1, f32, f32) -> f32
+        %high = "arith.constant"() <{{value = 127 : i64}}> : () -> i64
+        %highf = "arith.sitofp"(%high) : (i64) -> f32
+        %above = "arith.cmpf"(%raised, %highf) <{{predicate = 2 : i64, fastmath = #arith.fastmath<none>}}> : (f32, f32) -> i1
+        %value = "arith.select"(%above, %highf, %raised) : (i1, f32, f32) -> f32
+        "linalg.yield"(%value) : (f32) -> ()
+    }}) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+    %e2 = "tensor.empty"() : () -> tensor<2x3xi8>
+    %q = "linalg.generic"(%clamped, %e2) <{{{_IDENTITY}}}> ({{
+      ^bb0(%v: f32, %w: i8):
+        %c = "arith.fptosi"(%v) : (f32) -> i8
+        "linalg.yield"(%c) : (i8) -> ()
+    }}) : (tensor<2x3xf32>, tensor<2x3xi8>) -> tensor<2x3xi8>
+    func.return %q : tensor<2x3xi8>
+  }}
+}}"""
+
+
+def test_int8_cast_producer_domain_is_reproved_on_reparse_and_linked(tmp_path):
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    model = capture / "model.mlir"
+    model.write_text(_int8_quantize_source())
+    receipt = capture / "capture_receipt.json"
+    receipt.write_text('{"scope":"neutral fixture"}')
+    raw = sha256(model.read_bytes()).hexdigest()
+    normalized, _ = normalize_capture_mlir(model.read_text())
+    normalized_digest = sha256(normalized.encode()).hexdigest()
+    all_ops = tuple(mq.walk(mq.parse(normalized)))
+    ordinal = [i for i, op in enumerate(all_ops) if op.name == "linalg.generic"][-1]
+    row = {"mlir_operation": "linalg.generic", "count": 1, "ordinals": [ordinal]}
+    selected_host = {
+        "host": {
+            "package_sha256": "a" * 64,
+            "capability_spec_sha256": "b" * 64,
+            "dtype_strategy": "int8_w8a8",
+            "capability_spec": {
+                "schema": "merlin.host_capabilities.v1",
+                "status": "reviewed",
+                "compiler": {"package_sha256": "a" * 64, "dtype_strategy": "int8_w8a8"},
+                "operations": [
+                    {
+                        "id": "neutral_int8_cast",
+                        "ops": ["linalg.generic"],
+                        "placement": "host",
+                        "signature": {"ordered_operand_dtypes": ["f32", "i8"], "ordered_result_dtypes": ["i8"]},
+                        "source_body": {
+                            "schema": "merlin.static_composite_math_body.v1",
+                            "operation": "fptosi_i8_of_rounded_int8_grid_clamp",
+                        },
+                    }
+                ],
+                "evidence": {"scope": "neutral placement declaration only"},
+            },
+        }
+    }
+    signature = {
+        "family": "elementwise_map",
+        "ordered_operand_dtypes": ["f32", "i8"],
+        "ordered_result_dtypes": ["i8"],
+        "rank": 2,
+    }
+    admission = admit_host_operation(selected_host, row, signature, source_operations=(all_ops[ordinal],))
+    assert admission["status"] == "admitted"
+    selected, actual = _index_lowering(32)
+    proof = support.begin(raw, normalized_digest, len(all_ops), selected)
+    support.record(proof, row, admission, all_ops, {ordinal: row})
+    tree = strict_tree_sha256(capture)["sha256"]
+    source = {
+        "source_sha256": raw,
+        "normalized_source_sha256": normalized_digest,
+        "capture_receipt_sha256": sha256(receipt.read_bytes()).hexdigest(),
+        "n_source_operations": len(all_ops),
+        "selected_index_observation": selected,
+        "linalg_host_support": proof,
+    }
+    entry = {"source_sha256": raw, "capture_tree_sha256": tree, "elf_sha256": "e" * 64, "index_lowering": actual}
+    linked_build = {"candidate_tree_sha256": "d" * 64, "capture_tree_sha256": tree, "elf_sha256": "e" * 64}
+    support.link(source, actual, linked_build, capture_path=capture)
+    occurrence = source["linalg_host_support"]["occurrences"][0]
+    assert occurrence["operation"] == "fptosi_i8_of_rounded_int8_grid_clamp"
+    assert support.linked_complete(json.loads(json.dumps(source)), entry, "d" * 64)
+    # A producer outside the int8 grid no longer proves the cast on the post-link reparse.
+    model.write_text(_int8_quantize_source(low=-129))
+    assert not support.linked_complete(source, entry, "d" * 64)

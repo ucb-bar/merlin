@@ -4,9 +4,7 @@ source_role: derived_sweep
 source_reference: 'synthesized for the convolution-window axis: window k3x3/s1x1/d1x1/pad1x1,
   recovered structurally from 8 region(s) of [''deepjscc_int8'', ''lstmnetvit_fp8'',
   ''lstmnetvit_int8'', ''lstmnetvit_int8_pretransposed'', ''lstmnetvit_int8_w8a8''].
-  torch-mlir emits im2col, so a captured convolution carries no padding/stride/dilation
-  attribute at all and the geometry comes from the gather''s affine map and its padding
-  producer'
+  A captured convolution carries no padding/stride/dilation attribute, so the geometry comes from the indexing of its windows and the producer of its padding'
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
@@ -47,7 +45,7 @@ operation:
     layout: nhwc
     epilogue: []
     output_dtype: f32
-    semantic: conv2d_im2col
+    semantic: conv2d
 numeric_policy:
   compare: tolerance_float
   dtype: f32

@@ -76,7 +76,17 @@ class EmittedControlFlow:
 
 
 def observe_emitted_control_flow(
-    text, *, entry_symbol, pointer_bits, max_blocks=256, max_operations=4096, max_source_bytes=2000000, max_nesting=64
+    text,
+    *,
+    entry_symbol,
+    pointer_bits,
+    max_blocks=256,
+    max_operations=4096,
+    max_source_bytes=2000000,
+    max_nesting=64,
+    max_values=None,
+    max_edges=None,
+    max_integer_bits=256,
 ):
     """Retain every supported block, phi edge, typed definition and operation.
 
@@ -106,6 +116,9 @@ def observe_emitted_control_flow(
         or not 1 <= max_blocks <= 1024
         or type(max_operations) is not int
         or not 1 <= max_operations <= 100000
+        or any(value is not None and (type(value) is not int or value <= 0) for value in (max_values, max_edges))
+        or type(max_integer_bits) is not int
+        or not 1 <= max_integer_bits <= 256
     ):
         raise DataflowUnavailable("CFG observation needs explicit bounded source/entry/pointer selections")
     try:
@@ -113,7 +126,7 @@ def observe_emitted_control_flow(
             text,
             max_source_bytes=max_source_bytes,
             max_nesting=max_nesting,
-            max_integer_bits=256,
+            max_integer_bits=max_integer_bits,
             allow_dense=False,
             allow_dense_resource=False,
         )
@@ -149,6 +162,13 @@ def observe_emitted_control_flow(
     operations = tuple(op for block in blocks for op in block.ops)
     if not blocks or len(blocks) > max_blocks or not operations or len(operations) > max_operations:
         raise DataflowUnavailable("CFG block/operation roster exceeds the selected observation bound")
+    if (
+        max_values is not None
+        and sum(len(block.args) for block in blocks) + sum(len(op.results) for op in operations) > max_values
+        or max_edges is not None
+        and sum(len(op.successors) for op in operations) > max_edges
+    ):
+        raise DataflowUnavailable("CFG value/edge roster exceeds the selected observation bound")
     block_ids = {block: index for index, block in enumerate(blocks)}
     op_ids = {op: index for index, op in enumerate(operations)}
     definitions, values, locations = {}, [], {}
@@ -157,7 +177,7 @@ def observe_emitted_control_flow(
         if value in definitions:
             raise DataflowUnavailable("CFG SSA definition repeats")
         type_ = value.type
-        if type(type_) is builtin.IntegerType and 1 <= type_.width.data <= 256:
+        if type(type_) is builtin.IntegerType and 1 <= type_.width.data <= max_integer_bits:
             width = type_.width.data
         elif type(type_) is llvm.LLVMPointerType and type(type_.addr_space) is builtin.NoneAttr:
             width = pointer_bits

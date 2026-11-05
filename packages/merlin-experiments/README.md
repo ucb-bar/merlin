@@ -35,6 +35,25 @@ select both the sealed descriptor and its `corpus_seal` input. Combined phase 0/
 selection remains refused: automation cannot supply the human review. Phase 2 catalog templates require operator
 inputs and are not runnable examples with fabricated compiler certificates.
 
+To stop an ordinary Phase 1 session after its native startup checks, select the
+reviewed inputs explicitly:
+
+```sh
+python -m merlin_experiments.phase1 \
+  --descriptor /absolute/sealed/target_experiment.yaml --repo /absolute/operator-root \
+  --bundle BUNDLE_ID --bundle-manifest /absolute/sealed/input_bundles/BUNDLE_ID/input_bundle_manifest.yaml \
+  --corpus-seal /absolute/reviewed/corpus-seal.json --oracle-timing /absolute/target-timing.json \
+  --level EL4 --sandbox bwrap --run-id fresh-preflight --preflight-only
+```
+
+This uses the same source, snapshot, mask, oracle and admitted-tool preparation as
+ordinary authoring, then rechecks the prepared inputs. It launches no author or
+submission qualification. The private `preflight_result.json` records startup
+completion only; it does not establish fresh-client isolation or compiler/runtime
+qualification. A candidate, resume, copy sandbox, oracle/hidden bypass or missing
+seal is refused. Existing environment and explicit seal selections must agree.
+Independently selected target tools, support and verified timing remain prerequisites.
+
 The Phase 0 engine lives in `merlin_experiments.phase0`, partitioned into profile
 loading, sweep expansion, independent numerics, caching, writing and provenance.
 Installed invocation needs explicit external profiles, descriptor and output:
@@ -80,3 +99,70 @@ refuses unknown declared engines, missing callbacks, or unproved inference safet
 error; it never guesses tiers or substitutes ARC for a missing declared plugin.
 An existing plugin can add metadata or the corpus author can declare explicit
 required tiers. Metadata callbacks are trusted support code, not candidate grants.
+
+Formal private-model runs may explicitly select `--instruction-selection FILE`
+beside `--private-full-model-spec FILE`. The ordinary sandboxed launcher privately
+freezes the source-bound declaration, reopens its selected dependency pins, rejects
+changed or removed selections on resume, and passes the frozen path to formal
+grading. Catalog definitions accept the corresponding `instruction_selection` and
+`private_full_model_spec` input fields. No selection is discovered from candidate
+metadata, and the declaration alone establishes no instruction or runtime authority.
+
+### Phase 1 model and capsule execution scope
+
+The official model gate runs sealed full-chain Spike checks, including their fast
+kernel checks and host-twin differential. Model-kernel gSIM replays are off by
+default and are recorded as `rtl_required: false`, `rtl_complete: false`, and
+`rtl_status: not_requested`. The visible model broker accepts Spike replay only.
+The standalone model-check CLI retains its gSIM replay tool for separately
+authorized measurements. Capsule L3 gSIM qualification and cycle archives remain
+enabled and are graded separately.
+
+### Sealed fresh Codex client check
+
+The installed Phase 1 command accepts an explicit client runtime for both the
+canary and ordinary authoring. Supply operator-reviewed inputs and paths:
+
+```sh
+python -m merlin_experiments.phase1 --run-id startup-preflight \
+  --descriptor "$DESCRIPTOR" --repo "$REPO" --level "$LEVEL" --sandbox bwrap \
+  --bundle-manifest "$MANIFEST" --bundle "$BUNDLE" --corpus-seal "$CORPUS_SEAL" \
+  --oracle-timing "$TIMING" --driver codex --model "$MODEL" \
+  --codex-binary "$CODEX_BINARY" --codex-auth-source "$AUTH_SOURCE" \
+  --codex-home-root "$FRESH_CLIENT_ROOT" --preflight-only
+
+python -m merlin_experiments.phase1 --run-id client-canary \
+  --descriptor "$DESCRIPTOR" --repo "$REPO" --level "$LEVEL" --sandbox bwrap \
+  --bundle-manifest "$MANIFEST" --bundle "$BUNDLE" --corpus-seal "$CORPUS_SEAL" \
+  --oracle-timing "$TIMING" --driver codex --model "$MODEL" \
+  --codex-binary "$CODEX_BINARY" --codex-auth-source "$AUTH_SOURCE" \
+  --codex-home-root "$FRESH_CLIENT_ROOT" --codex-canary --round-timeout 300
+
+python -m merlin_experiments.phase1 --run-id ordinary-author \
+  --descriptor "$DESCRIPTOR" --repo "$REPO" --level "$LEVEL" --sandbox bwrap \
+  --bundle-manifest "$MANIFEST" --bundle "$BUNDLE" --corpus-seal "$CORPUS_SEAL" \
+  --oracle-timing "$TIMING" --driver codex --model "$MODEL" \
+  --codex-binary "$CODEX_BINARY" --codex-auth-source "$AUTH_SOURCE" \
+  --codex-home-root "$FRESH_CLIENT_ROOT"
+```
+
+Use distinct fresh run IDs; individual round homes cannot already exist. The parent
+home root may be reused. Hold the reviewed bundle, treatment, executable, credential
+path and tooling selections constant. The credential is mounted for the CLI client
+and denied to candidate tools; it is never copied or hashed. Both commands require
+normal admission, masks and native permission checks. The canary uses an immutable
+single-command public/tool and synthetic protected-read probe, requiring actual raw
+provider command completion. It stops before authoring/grading and writes a private
+`client_canary_result.json`; failure retains provider evidence. No source fake test or
+canary result grants compiler correctness, target runtime or phase qualification.
+The outer catalog's legacy default client is not covered by these explicit commands.
+Select `LEVEL` from the reviewed experiment definition and retain the same optional
+tool, accuracy and budget selections through startup, canary and authoring.
+
+The explicit runtime binds the pinned Codex executable at its
+`codex-linux-sandbox` helper alias and grants that exact path read access.
+The selected helper search path is recorded and rechecked. Session startup uses
+a read-only empty `tmp/arg0` directory to select the pinned executable fallback;
+its nested Bubblewrap must support `--argv0`. The selected Bubblewrap executable
+and installed sibling code-mode host are pinned and mounted explicitly. Client
+credentials and other client-home state retain their candidate-tool denials.

@@ -1,0 +1,25 @@
+{
+  "schema": "merlin.curated_evidence_manifest.v1",
+  "members": [
+    {
+      "path": "identity_scale_completion.fir.txt",
+      "sha256": "25acee980ed1483c3902ace138a1ed0ad78855b1d14748fc04eea86f240aae67",
+      "bytes": 928
+    },
+    {
+      "path": "review.json",
+      "sha256": "ea7c97c316142b0ccb84ba3222c6ede3b029cf4b550f0c6852d6e2a4d9ddc480",
+      "bytes": 7280
+    },
+    {
+      "path": "single_port_write_conflict.fir.txt",
+      "sha256": "f0e06ce0c6c0294b9577cfd138267194f34595abc5f082222b20eb25887416aa",
+      "bytes": 301
+    },
+    {
+      "path": "write_acceptance.fir.txt",
+      "sha256": "5c7e9aaf56cb2cefd1a5ce4b56e7fcc0cd1c8f32a55f6f52284da82d0d2db5e7",
+      "bytes": 926
+    }
+  ]
+}

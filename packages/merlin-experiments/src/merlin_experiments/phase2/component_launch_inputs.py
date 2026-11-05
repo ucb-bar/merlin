@@ -4,6 +4,7 @@ The declaration selects no compiler, observer, backend or calibration authority.
 Every input path must identify the fresh compiler and measured development cohort
 already held by issued owners. Assembly never runs an author or mints qualification.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,23 +23,60 @@ from .component_runtime_authority import IndependentComponentRuntime, require_in
 from .component_variants import ComponentVariantSnapshot
 from .component_workflow import ComponentOnlyPolicy
 
-_FIELDS = frozenset({
-    "schema", "candidate", "view", "corpus", "descriptor", "source_root", "contract_root",
-    "stage_root", "qualification_root", "edit_authority_root", "edit_contract", "runtime",
-    "control_runtime", "readiness", "codex_binary", "codex_destination", "auth_source",
-    "price_table", "analytical",
-})
-_ANALYTICAL_FIELDS = frozenset({
-    "calibration_adapter", "qualification", "objective", "max_workers",
-    "memory_per_worker_bytes", "engine_slots", "output", "lease_path",
-})
+_FIELDS = frozenset(
+    {
+        "schema",
+        "candidate",
+        "view",
+        "corpus",
+        "descriptor",
+        "source_root",
+        "contract_root",
+        "stage_root",
+        "qualification_root",
+        "edit_authority_root",
+        "edit_contract",
+        "runtime",
+        "control_runtime",
+        "readiness",
+        "codex_binary",
+        "codex_destination",
+        "auth_source",
+        "price_table",
+        "analytical",
+    }
+)
+_ANALYTICAL_FIELDS = frozenset(
+    {
+        "calibration_adapter",
+        "qualification",
+        "objective",
+        "max_workers",
+        "memory_per_worker_bytes",
+        "engine_slots",
+        "output",
+        "lease_path",
+    }
+)
+_RTL_FIELDS = frozenset(
+    {
+        "certificate_path",
+        "certificate_sha256",
+        "rtl_facts_path",
+        "rtl_facts_sha256",
+        "work_root",
+    }
+)
 
 
 def read_component_launch_declaration(configuration: Path) -> dict:
     """Decode data only; never resolve providers, grade a compiler or create output."""
     document = C.mapping_file(Path(configuration))
-    if set(document) != _FIELDS or document["schema"] != "merlin.component_launch_inputs.v1":
-        raise C.StageGateError("component launch configuration must use the complete closed v1 schema")
+    if not (
+        (set(document) == _FIELDS and document["schema"] == "merlin.component_launch_inputs.v1")
+        or (set(document) == _FIELDS | {"rtl"} and document["schema"] == "merlin.component_launch_inputs.v2")
+    ):
+        raise C.StageGateError("component launch configuration must use a complete closed v1 or v2 schema")
     return document
 
 
@@ -46,8 +84,12 @@ def _path(value, *, field):
     if not isinstance(value, str) or not value or "\0" in value:
         raise C.StageGateError("component launch needs an explicit canonical path: " + field)
     path = Path(value)
-    if (not path.is_absolute() or str(path) != value or path.resolve() != path
-        or any(member.is_symlink() for member in (path, *path.parents))):
+    if (
+        not path.is_absolute()
+        or str(path) != value
+        or path.resolve() != path
+        or any(member.is_symlink() for member in (path, *path.parents))
+    ):
         raise C.StageGateError("component launch refuses indirect or relative paths: " + field)
     return path
 
@@ -80,13 +122,18 @@ def _owners(phase1_origin, measurement_support):
         raise C.StageGateError("component launch baseline differs from the exact fresh Phase 1 origin")
     phase1_origin.verify(candidate=admission.baseline)
     measured.verify_component_binding(admission)
-    if (measured.functional_runtime is not qualification.runtime_authority
+    if (
+        measured.functional_runtime is not qualification.runtime_authority
         or measured.functional_runtime is not phase1_origin.inputs.execution_support
-        or runtime.hardware_intake is not phase1_origin.inputs.hardware):
+        or runtime.hardware_intake is not phase1_origin.inputs.hardware
+    ):
         raise C.StageGateError("component launch functional, measurement and fresh hardware owners disagree")
     variants = measured.variants
-    if (not isinstance(variants, tuple) or not variants
-        or any(type(row) is not ComponentVariantSnapshot for row in variants)):
+    if (
+        not isinstance(variants, tuple)
+        or not variants
+        or any(type(row) is not ComponentVariantSnapshot for row in variants)
+    ):
         raise C.StageGateError("component launch lacks independently issued compiler variants")
     execution = variants[0].execution
     if type(execution) is not ComponentIndependentExecution:
@@ -96,10 +143,14 @@ def _owners(phase1_origin, measurement_support):
         if variant.execution is not execution:
             raise C.StageGateError("component launch variants belong to different candidate edit owners")
     execution.verify()
-    if (execution.baseline_admission is not admission
+    if (
+        execution.baseline_admission is not admission
         or execution.independent_runtime is not measured.functional_runtime
-        or execution.scope != measured.scope or execution.view != qualification.view
-        or execution.runtime != qualification.runtime or execution.contract_root != qualification.contract_root):
+        or execution.scope != measured.scope
+        or execution.view != qualification.view
+        or execution.runtime != qualification.runtime
+        or execution.contract_root != qualification.contract_root
+    ):
         raise C.StageGateError("component launch execution differs from its fresh baseline or measurement scope")
     qualification.verify(candidate=execution.candidate)
     return runtime, measured, admission, execution
@@ -111,8 +162,11 @@ def _grant_records(grants):
 
 def _tools(document, origin, execution):
     original = origin.inputs
-    if (execution.runtime != original.runtime or document["runtime"] != _grant_records(execution.runtime)
-        or document["control_runtime"] != _grant_records(original.control_runtime)):
+    if (
+        execution.runtime != original.runtime
+        or document["runtime"] != _grant_records(execution.runtime)
+        or document["control_runtime"] != _grant_records(original.control_runtime)
+    ):
         raise C.StageGateError("component launch tool grants differ from the exact fresh authoring closure")
     for field in ("codex_binary", "auth_source"):
         _same_path(document, field, getattr(original, field))
@@ -127,8 +181,11 @@ def _tools(document, origin, execution):
     for row in rows:
         if not isinstance(row, dict) or set(row) != {"capability", "command", "stdout_sha256"}:
             raise C.StageGateError("component readiness probe must use the closed declaration")
-        if (not isinstance(row["capability"], str) or not isinstance(row["stdout_sha256"], str)
-            or not isinstance(row["command"], list)):
+        if (
+            not isinstance(row["capability"], str)
+            or not isinstance(row["stdout_sha256"], str)
+            or not isinstance(row["command"], list)
+        ):
             raise C.StageGateError("component readiness command must use explicit argv")
         probe = ComponentReadinessProbe(row["capability"], tuple(row["command"]), row["stdout_sha256"])
         probe.verify()
@@ -145,16 +202,28 @@ def _stage(document, origin, measured, execution):
     if stage.exists():
         raise C.StageGateError("component launch requires a fresh private stage root")
     qualification = execution.baseline_admission.qualification
-    private_roots = (origin.inputs.output, measured.receipt.parent, execution.output,
-                     execution.edit_authority.output, qualification.receipt.parent)
-    public_roots = (execution.candidate, execution.view.root, execution.baseline_admission.baseline,
-                    execution.baseline_admission.corpus.root, qualification.corpus_root,
-                    qualification.source_root, execution.contract_root)
+    private_roots = (
+        origin.inputs.output,
+        measured.receipt.parent,
+        execution.output,
+        execution.edit_authority.output,
+        qualification.receipt.parent,
+    )
+    public_roots = (
+        execution.candidate,
+        execution.view.root,
+        execution.baseline_admission.baseline,
+        execution.baseline_admission.corpus.root,
+        qualification.corpus_root,
+        qualification.source_root,
+        execution.contract_root,
+    )
     if any(stage.is_relative_to(root) or root.is_relative_to(stage) for root in (*private_roots, *public_roots)):
         raise C.StageGateError("component launch private stage overlaps an admitted input or private evidence owner")
     price = _path(document["price_table"], field="price_table")
-    if (not price.is_file()
-        or any(price.is_relative_to(root) for root in (execution.candidate, execution.view.root, stage))):
+    if not price.is_file() or any(
+        price.is_relative_to(root) for root in (execution.candidate, execution.view.root, stage)
+    ):
         raise C.StageGateError("component launch price table must remain an explicit private host input")
     return stage, price
 
@@ -176,19 +245,34 @@ def _analytical(document, runtime, measured, admission, stage):
     for field in ("max_workers", "memory_per_worker_bytes", "engine_slots"):
         if type(selected[field]) is not int or selected[field] < 1:
             raise C.StageGateError("component analytical resource budgets must be positive integers")
-    measured.verify_feedback_binding(baseline_admission=admission, scope=measured.scope,
-                                    calibration_adapter=adapter, qualification=report, objective=objective)
+    measured.verify_feedback_binding(
+        baseline_admission=admission,
+        scope=measured.scope,
+        calibration_adapter=adapter,
+        qualification=report,
+        objective=objective,
+    )
     return build_independent_component_analytical_provider(
-        independent_runtime=runtime, baseline_admission=admission, dependencies={},
-        calibration_adapter=adapter, scope=measured.scope, qualification=report,
-        output=output, lease_path=lease, objective=objective,
-        max_workers=selected["max_workers"], memory_per_worker_bytes=selected["memory_per_worker_bytes"],
+        independent_runtime=runtime,
+        baseline_admission=admission,
+        dependencies={},
+        calibration_adapter=adapter,
+        scope=measured.scope,
+        qualification=report,
+        output=output,
+        lease_path=lease,
+        objective=objective,
+        max_workers=selected["max_workers"],
+        memory_per_worker_bytes=selected["memory_per_worker_bytes"],
         engine_slots=selected["engine_slots"],
     )
 
 
 def load_component_launch_inputs(
-    configuration: Path, *, phase1_origin=None, measurement_support=None,
+    configuration: Path,
+    *,
+    phase1_origin=None,
+    measurement_support=None,
 ) -> ComponentLaunchInputs:
     """Assemble already issued owners; never grade a compiler or run an author.
 
@@ -202,10 +286,15 @@ def load_component_launch_inputs(
     runtime, measured, admission, execution = _owners(phase1_origin, measurement_support)
     qualification, authority = admission.qualification, execution.edit_authority
     expected = {
-        "candidate": execution.candidate, "view": execution.view.root, "corpus": admission.corpus.root,
-        "descriptor": admission.target_descriptor, "source_root": qualification.source_root,
-        "contract_root": execution.contract_root, "qualification_root": qualification.receipt.parent,
-        "edit_authority_root": authority.output, "edit_contract": authority.output / "compiler_edit_authority.json",
+        "candidate": execution.candidate,
+        "view": execution.view.root,
+        "corpus": admission.corpus.root,
+        "descriptor": admission.target_descriptor,
+        "source_root": qualification.source_root,
+        "contract_root": execution.contract_root,
+        "qualification_root": qualification.receipt.parent,
+        "edit_authority_root": authority.output,
+        "edit_contract": authority.output / "compiler_edit_authority.json",
     }
     for field, path in expected.items():
         _same_path(document, field, path)
@@ -216,16 +305,48 @@ def load_component_launch_inputs(
     target = phase1_origin.inputs.target_experiment
     if target.path != admission.target_descriptor:
         raise C.StageGateError("component launch target differs from fresh authoring descriptor ownership")
+    rtl = None
+    if document["schema"] == "merlin.component_launch_inputs.v2":
+        from .component_providers import build_independent_component_rtl_provider
+
+        selected = document["rtl"]
+        if not isinstance(selected, dict) or set(selected) != _RTL_FIELDS:
+            raise C.StageGateError("component RTL selection requires its complete closed declaration")
+        rtl = build_independent_component_rtl_provider(
+            independent_runtime=runtime,
+            baseline_admission=admission,
+            target_experiment=target,
+            certificate_path=_path(selected["certificate_path"], field="certificate_path"),
+            certificate_sha256=selected["certificate_sha256"],
+            rtl_facts_path=_path(selected["rtl_facts_path"], field="rtl_facts_path"),
+            rtl_facts_sha256=selected["rtl_facts_sha256"],
+            work_root=_same_path(selected, "work_root", stage / "rtl-feedback"),
+        )
     policy = ComponentOnlyPolicy(
-        candidate=execution.candidate, target_experiment=target,
-        receipt_path=stage / "receipts" / "private.jsonl", component_corpus=admission.corpus,
-        baseline_admission=admission, independent_runtime=runtime,
-        component_analytical=analytical, component_cca=cca,
+        candidate=execution.candidate,
+        target_experiment=target,
+        receipt_path=stage / "receipts" / "private.jsonl",
+        component_corpus=admission.corpus,
+        baseline_admission=admission,
+        independent_runtime=runtime,
+        component_analytical=analytical,
+        component_cca=cca,
+        component_rtl=rtl,
     )
     inputs = ComponentLaunchInputs(
-        execution.view, execution.candidate, policy, authority, qualification, execution.runtime,
-        control_runtime, readiness, phase1_origin.inputs.codex_binary, phase1_origin.inputs.codex_destination,
-        phase1_origin.inputs.auth_source, stage, price,
+        execution.view,
+        execution.candidate,
+        policy,
+        authority,
+        qualification,
+        execution.runtime,
+        control_runtime,
+        readiness,
+        phase1_origin.inputs.codex_binary,
+        phase1_origin.inputs.codex_destination,
+        phase1_origin.inputs.auth_source,
+        stage,
+        price,
     )
     inputs.verify(require_baseline=True)
     if C.sha256_file(configuration) != digest:

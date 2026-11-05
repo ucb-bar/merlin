@@ -3,7 +3,7 @@ title: Building the pinned LLVM/MLIR toolchain (third_party/llvm-install)
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-08-10
+last_verified: 2026-10-14
 related: [getting_started, llvm_integration, reproducibility, model2mlir, zephyr, targetgen]
 code_refs: [src/merlin/llvmlower/toolchain.py, src/merlin/llvmlower/pipeline.py,
             src/merlin/targetgen/contract/toolchain.py, src/merlin/runtime/backends/zephyr_model.py]
@@ -28,7 +28,7 @@ examples need two of them.
 |---|---|---|
 | `bin/clang-23` | `llvmlower.toolchain.clang()` — override `MERLIN_CLANG` | Every compile to a RISC-V object. The Zephyr backend takes it directly (`runtime/backends/zephyr_model.py:1199`), as do the K1 and spike backends. |
 | `bin/mlir-translate` | `llvmlower.toolchain.mlir_translate()` — override `MERLIN_MLIR_TRANSLATE` | The **OpenMP/multicore** path only. `llvmlower/pipeline.py:572` runs it `--mlir-to-llvmir` out-of-process, because the torch-mlir wheel's in-process bridge segfaults on whole-model `omp` IR. Single-hart images do not reach it; every multi-hart image does. |
-| `bin/llvm-objdump` | `kernels/decode/objdump.py:18` | Kernel mining and the ELF audits that read back emitted code. |
+| `bin/llvm-objdump` | `compile/analysis/disassembly.py:20` | Kernel mining and the ELF audits that read back emitted code. |
 | `bin/llvm-mc`, `bin/llvm-objcopy` | `targetgen/program_oracle.py` | Assembling target-ISA directives for the targetgen oracle. |
 | `lib/`, `include/`, MLIR CMake config | `MERLIN_MLIR_INSTALL` (`targetgen/contract/toolchain.py:19`) | Building out-of-tree C++ MLIR packages (`gemmini-opt`). This is why the install is 4 GB and cannot be pruned to a `bin/` directory. |
 | `FileCheck` | `targetgen/rtl_check_runner.py:47` | RTL-check screening. Note it looks in the **build** tree, not the install — see [What is deliberately absent](#what-is-deliberately-absent). |
@@ -164,6 +164,30 @@ RISCV target compiled in; a host-only clang configures fine and then fails at th
 The single-model Python paths are more forgiving, but there is no version check that will tell you politely.
 
 ## Verify it
+
+### Scalar compilation without Python MLIR bindings
+
+The scalar host pipeline can explicitly use the selected installation's
+`mlir-opt` and `mlir-translate`:
+
+```sh
+export MERLIN_MLIR_INSTALL=/path/to/llvm-install
+export MERLIN_COMPILER_DRIVER=stock-cli
+export MERLIN_FUSION_GUARD=0
+```
+
+This route uses the ordinary scalar upstream pass pipeline and shared host
+object/link/runtime code. It records the actual native lowering and translation
+commands and their products. It does not import Python MLIR bindings.
+
+The Python driver remains the default. Stock CLI selection refuses runner-only
+features, guarded fusion, checked deallocation sinking, vector/parallel schedules,
+per-pass inspection, proof callbacks and serial product-retention requests.
+Fusion requires the explicit deselection above; no check is silently omitted.
+An unsupported request or failed native build is an error. A missing explicitly
+selected LLVM installation never falls back to a different clang installation.
+
+### Resolve and compile
 
 ```bash
 # what merlin will actually resolve, which is the only question that matters

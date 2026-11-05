@@ -17,6 +17,27 @@ from merlin.targetgen import readout_facet, target_registry
 from merlin.targetgen.rtl import facts, source_selection
 
 
+def test_selected_views_decode_once_without_sharing_mutable_values(monkeypatch):
+    raw = json.dumps({"software_spec": {"nested": [1]}, "contract": {"dtype": "f32"}}).encode()
+    selected = evidence.EvidenceSelection("test-target", (), raw, None)
+    original = json.loads
+    decoded_selection = []
+
+    def counted(value, *args, **kwargs):
+        if value is raw:
+            decoded_selection.append(value)
+        return original(value, *args, **kwargs)
+
+    monkeypatch.setattr(evidence.json, "loads", counted)
+    selected.software_spec["nested"].append(2)
+    assert selected.software_spec == {"nested": [1]}
+    assert selected.contract == {"dtype": "f32"}
+    with pytest.raises(AttributeError):
+        selected.absent_view
+    assert len(decoded_selection) == 1
+    assert selected.views_json is raw
+
+
 def test_specir_source_inventory_excludes_unrelated_generated_project_files(tmp_path):
     package = tmp_path / "specir"
     package.mkdir()
@@ -346,6 +367,214 @@ def test_explicit_capability_contract_does_not_require_executable_provider(monke
         evidence.select_evidence("fixture", capability_contract_path=contract)
 
 
+@pytest.mark.parametrize("selection", ["missing", "rtl", "host"])
+def test_neutral_evidence_never_reads_provider_hooks_headers_or_lowering(monkeypatch, tmp_path, selection):
+    from merlin.common.tree_hash import hash_tree
+    from merlin.targetgen import aten_coverage, capability_derive, isa_taxonomy
+    from merlin.targetgen.rtl import mlc_bridge
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    selected_facts = selection != "missing"
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("neutral evidence touched provider/compiler evidence")
+
+    monkeypatch.setattr(target_registry, "resolve", forbidden)
+    monkeypatch.setattr(readout_facet, "capture_inputs", forbidden)
+    monkeypatch.setattr(isa_taxonomy, "taxonomy_for_target", forbidden)
+    monkeypatch.setattr(isa_taxonomy, "derive_isa_taxonomy", forbidden)
+    monkeypatch.setattr(capability_derive, "_from_lowering", forbidden)
+    monkeypatch.setattr(aten_coverage, "observe_opset", lambda **kwargs: {"status": "unavailable"})
+    monkeypatch.setattr(mlc_bridge, "toolchain_identity", lambda: {})
+    contract = {
+        "name": "fixture",
+        "runner": {"backend": "chipyard_rocc"},
+        "compute_units": [{"name": "mesh", "kind": "systolic", "dtypes": ["int8"]}],
+    }
+    body = {
+        "arrays": [{"name": "mesh", "rows": 4, "cols": 4, "corroborated": True}],
+        "datapaths": [{"name": "input", "dtype": "i8"}],
+    }
+    raw = tmp_path / "facts.json"
+    raw.write_text(json.dumps({"facts": body}))
+    if not selected_facts:
+        monkeypatch.setattr(facts, "find_facts", forbidden)
+    descriptor = tmp_path / "descriptor.yaml"
+    descriptor_doc = {"target": "fixture", "isa_headers": ["never-open-provider-header.h"]}
+    if selection == "host":
+        package = tmp_path / "host-package"
+        package.mkdir()
+        (package / "manifest.yaml").write_text(yaml.safe_dump({
+            "target": "fixture",
+            "run_id": "owned",
+            "family": "scalar",
+            "authoring": {"mode": "deterministic_generated_from_spec"},
+            "outputs": {"knobs": "knobs.yaml"},
+        }))
+        (package / "knobs.yaml").write_text(yaml.safe_dump({
+            "backend": "scalar",
+            "cflags": ["-march=rv64gc"],
+            "dtype_strategy": "int8_w8a8",
+        }))
+        package_sha256 = hash_tree(package)["sha256"]
+        capabilities = tmp_path / "host-capabilities.yaml"
+        capabilities.write_text(yaml.safe_dump({
+            "schema": "merlin.host_capabilities.v1",
+            "status": "unreviewed",
+            "operations": [],
+            "compiler": {"package_sha256": package_sha256, "dtype_strategy": "int8_w8a8"},
+            "evidence": {"scope": "owned data-only metadata", "unknowns": ["execution not attempted"]},
+        }))
+        descriptor_doc["host_lane"] = {
+            "description": "owned generic scalar fixture",
+            "repo_canonical": "https://example.invalid/public",
+            "provenance": "in_tree_minted",
+            "package": "host-package",
+            "requires_paths": ["manifest.yaml", "knobs.yaml"],
+            "read_only": ["host-package"],
+            "deny_modification": [],
+            "dtype_strategy": "int8_w8a8",
+            "capability_spec": "host-capabilities.yaml",
+        }
+    descriptor.write_text(yaml.safe_dump(descriptor_doc))
+    selected_descriptor = load_target_experiment(descriptor, source_root=tmp_path)
+    software = {
+        "schema": "merlin.software_spec.v1",
+        "target": "fixture",
+        "status": "reviewed",
+        "numerical_semantics": {
+            "operand_dtype": "int8",
+            "accumulator_dtype": "int32",
+            "readout_dtype": "int32",
+            "subnormal_operand_flush": False,
+            "model": {"engine": "integer_reference"},
+        },
+        "operations": [
+            {"id": "contraction", "families": ["contraction"], "hardware": "standalone"},
+            {"id": "reduction", "families": ["reduction"], "hardware": "standalone"},
+        ],
+    }
+    observed = evidence.select_evidence(
+        "fixture",
+        capability_contract_path=contract,
+        facts_path=raw if selected_facts else None,
+        software_spec=software,
+        descriptor=selected_descriptor,
+    )
+    assert not any(
+        source.role.startswith("support-") or source.role == "isa-source" for source in observed.source_snapshots
+    )
+    assert observed.residual == {}
+    assert observed.readout_inputs == {"taxonomy": {}}
+    assert observed.readout_facets[0]["rounding"] is None
+    assert observed.readout_facets[0]["operand_sum"] is None
+    assert observed.readout_facets[0]["readouts"] == []
+    rows = {row["id"]: row for row in observed.software_spec["operations"]}
+    assert rows["reduction"]["placement"] == "unknown"
+    assert rows["contraction"]["placement"] == ("accelerator" if selected_facts else "unknown")
+    if selected_facts:
+        assert observed.loaded_facts["facts"] == body
+        derived = capability_derive.derive("fixture", contract, observed.loaded_facts, data_only=True)
+        assert derived.supported["contraction"].ranks == (2,)
+        assert derived.supported["contraction"].source == "rtl_facts"
+    else:
+        assert observed.loaded_facts == {}
+    if selection == "host":
+        assert observed.host_capabilities["int8_w8a8"]["status"] == "unreviewed", observed.host_capabilities
+        assert observed.host_capabilities["int8_w8a8"]["package_sha256"] == package_sha256
+        assert observed.host_capabilities["int8_w8a8"]["capability_spec"]["status"] == "unreviewed"
+        members = {
+            source.path: source.content
+            for source in observed.source_snapshots
+            if source.role == "host-package:int8_w8a8"
+        }
+        assert members == {path: path.read_bytes() for path in package.iterdir()}
+        assert any(
+            source.path == capabilities and source.role == "host-capability-spec:int8_w8a8"
+            for source in observed.source_snapshots
+        )
+
+
+def _neutral_readout_selection(monkeypatch, tmp_path, readout, *, project=True):
+    from merlin.runtime.backends import chipyard_rocc, chipyard_rocc_bound
+    from merlin.targetgen import capability_derive, isa_taxonomy
+    from merlin.targetgen.rtl import mlc_bridge
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("selected readout metadata discovered executable support")
+
+    monkeypatch.setattr(target_registry, "resolve", forbidden)
+    monkeypatch.setattr(base, "get_backend", forbidden)
+    monkeypatch.setattr(readout_facet, "capture_inputs", forbidden)
+    monkeypatch.setattr(readout_facet, "_backend_hook", forbidden)
+    monkeypatch.setattr(isa_taxonomy, "taxonomy_for_target", forbidden)
+    monkeypatch.setattr(capability_derive, "_from_lowering", forbidden)
+    monkeypatch.setattr(chipyard_rocc_bound, "_check_pin", forbidden)
+    monkeypatch.setattr(chipyard_rocc_bound, "_validate_toolchain", forbidden)
+    monkeypatch.setattr(chipyard_rocc_bound, "_validate_engine", forbidden)
+    monkeypatch.setattr(mlc_bridge, "toolchain_identity", lambda: {})
+    # Unrelated execution metadata has no selected execution contract in this fixture.
+    monkeypatch.setattr(base, "execution_capability_facts", lambda *args, **kwargs: {})
+    selected = {
+        "name": "fixture",
+        "runner": {"backend": "chipyard_rocc", "chipyard_rocc": {"readout": readout}},
+        "compute_units": [{"name": "mesh", "kind": "systolic", "dtypes": ["int8"]}],
+    }
+    raw = tmp_path / "selected-facts.json"
+    raw.write_text(json.dumps({"facts": {"arrays": [{"rows": 4, "cols": 4}]}}))
+    projected = None
+    if project:
+        with monkeypatch.context() as direct:
+            direct.setattr(chipyard_rocc, "bind", forbidden)
+            projected = chipyard_rocc.readout_metadata(selected)
+    observed = evidence.select_evidence("fixture", capability_contract_path=selected, facts_path=raw)
+    return selected, projected, observed
+
+
+def test_neutral_selected_readout_metadata_reaches_all_facet_inputs(monkeypatch, tmp_path):
+    declaration = {
+        "scalar_abi": {"schema": readout_facet.SCALAR_ABI_SCHEMA},
+        "epilogue_capability": [{"selector": "selected", "applies": ["bias"], "evidence": "owned data"}],
+        "operand_sum": {"schema": readout_facet.OPERAND_SUM_SCHEMA},
+        "stage_routes": [
+            {
+                "stages": ["bias"],
+                "site": "accumulator_seed",
+                "composed_with": "selected_composition",
+                "readouts": ["selected"],
+                "producer_opcodes": ["selected_producer"],
+                "consumer_opcodes": ["selected_consumer"],
+                "operand_attribute": "selected_attribute",
+                "operand_role": "selected_operand",
+                "evidence": "owned data",
+            }
+        ],
+    }
+    selected, projected, observed = _neutral_readout_selection(monkeypatch, tmp_path, declaration)
+    expected = {
+        "scalar_abi": declaration["scalar_abi"],
+        "readouts": declaration["epilogue_capability"],
+        "operand_sum": declaration["operand_sum"],
+        "stage_routes": declaration["stage_routes"],
+    }
+    assert projected == expected
+    assert observed.readout_inputs == {**expected, "taxonomy": {}}
+    assert observed.readout_facets[0]["readouts"] == expected["readouts"]
+    assert observed.readout_facets[0]["stage_routes"] == expected["stage_routes"]
+    projected["scalar_abi"]["schema"] = "changed"
+    assert selected["runner"]["chipyard_rocc"]["readout"] == declaration
+    assert observed.readout_inputs["scalar_abi"]["schema"] == readout_facet.SCALAR_ABI_SCHEMA
+    assert observed.readout_numerics[0]["readout_facts"] == declaration["scalar_abi"]
+
+
+@pytest.mark.parametrize("malformed", [{"scalar_abi": []}, {"epilogue_capability": [None]}, {"stage_routes": {}}])
+def test_neutral_selected_readout_metadata_refuses_malformed_data(monkeypatch, tmp_path, malformed):
+    from merlin.runtime.backends.chipyard_rocc import RoCCExecutionError
+
+    with pytest.raises(RoCCExecutionError, match="readout observation"):
+        _neutral_readout_selection(monkeypatch, tmp_path, malformed, project=False)
+
+
 def test_selected_readout_scale_conflict_is_a_bound_diagnostic(monkeypatch, tmp_path):
     body = {
         "arrays": [{"rows": 4, "cols": 4}],
@@ -427,7 +656,10 @@ def test_export_and_reload_never_reopen_original_inputs(monkeypatch, tmp_path):
     assert selected.contract["encoding"]["corpus_issue_order"] == ["LOAD", "COMPUTE", "STORE"]
     assert any(source.path == code for source in selected.source_snapshots)
     output = tmp_path / "run"
+    artifacts = evidence.evidence_artifacts(selected)
+    assert not output.exists()
     manifest = evidence.export_evidence(selected, output)
+    assert all((output / name).read_bytes() == payload for name, payload in artifacts.items())
     raw.unlink()
     explicit.unlink()
     code.write_text("# changed live provider\n")
@@ -438,6 +670,7 @@ def test_export_and_reload_never_reopen_original_inputs(monkeypatch, tmp_path):
     assert restored.source_snapshots == selected.source_snapshots
     assert manifest["raw_facts_sha256"] == selected.raw_facts_sha256
     assert (output / "hardware/circt/facts.json").read_bytes() == selected.raw_facts
+    assert evidence.evidence_artifacts(restored) == artifacts
     assert evidence.export_evidence(restored, output) == manifest
 
 

@@ -125,6 +125,11 @@ def _numeric_context(operation):
 
 def _scalar_attributes(operation, *, observer=False):
     _numeric_context(operation)
+    if observer:
+        from .bounded_rne_maps import _roundeven_intrinsic
+
+        if _roundeven_intrinsic(operation):
+            return
     if any(not str(key).startswith("prov.") for key in operation.attributes):
         raise ValueError("unsupported scalar expression attribute")
     allowed = {"value", "fastmath", "overflowFlags"}
@@ -205,7 +210,7 @@ def close_scalar_i8_observer(cut, endpoint, *, effects: IntervalEffectContract):
     from xdsl.ir import Block, Region
     from xdsl.traits import Pure
 
-    from .bounded_rne_maps import prove_scalar_bounded_rne
+    from .bounded_rne_maps import _roundeven_intrinsic, prove_scalar_bounded_rne
 
     effects.validate()
     expression, operations = extract_scalar_expression(cut, endpoint)
@@ -274,7 +279,7 @@ def close_scalar_i8_observer(cut, endpoint, *, effects: IntervalEffectContract):
         publication_witnesses = prove_closed_tensor_insert(observation)
 
     def source_pure(operation):
-        if operation.has_trait(Pure):
+        if operation.has_trait(Pure) or _roundeven_intrinsic(operation):
             return True
         if publication_witnesses:
             from .closed_tensor_insert import pure_tensor_control

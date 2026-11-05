@@ -1,0 +1,42 @@
+{
+  "author_grants": false,
+  "base_adapter": {
+    "path": "/work/merlin/tasks/el4-joint-integration-20261021/merlin/packages/merlin-experiments/src/merlin_experiments/phase2/retained_memory_observation.py",
+    "sha256": "291605ca15fe1f429b3f41725057d31fa79bf697c578abfde8ac20153516f586"
+  },
+  "diagnostic_adapter": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/.tmp/arrival-deepk-trace-v1/adapter.py",
+    "sha256": "3b6680e9e1e1679fdd499c408b1ff556c1c3b81f1de83a097d624cac821e8dac"
+  },
+  "elf_sha256": "851c0bbaff87d4d8e3bc7529bcd6c71276087f074347e063adc9c9a4317965ab",
+  "exact_output_bytes": 1024,
+  "fit_eligible": false,
+  "model_sha256": "01971a26e8b367fe22361a294785be31969ec3473735025608d22399b0ac96b6",
+  "new_annotated_runs": 1,
+  "new_functional_runs": 0,
+  "not_packaged": [
+    "ELF",
+    "input/output/golden values",
+    "functional signature bytes"
+  ],
+  "parent": "../public-arrival-unused-source-replays-20261022/index.json",
+  "physical_runs": 0,
+  "qualifies_model": false,
+  "raw_artifacts": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/.tmp/arrival-deepk-trace-v1"
+  },
+  "runtime": {
+    "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/runtime-selection-v2.json",
+    "sha256": "318f9a631735b6e31481de4d406a32d3af3df6a667af6a658479a4a49560ddb9"
+  },
+  "schema": "operator.public_deepk_trace_evidence.v1",
+  "status": "inactive_diagnostic",
+  "trace_events": 24744,
+  "trace_limits": {
+    "max_bytes": 16777216,
+    "max_events": 32768
+  },
+  "trace_sha256": "c3188256f6363d6ce1cae5569582865013a2b3da0ee8d3886eae25cc13d428ff",
+  "trace_truncated": false,
+  "unchanged_estimated_cycles": 39404
+}

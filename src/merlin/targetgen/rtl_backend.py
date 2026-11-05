@@ -174,7 +174,7 @@ def _endpoint_levers(target: str) -> list[str]:
     accepts a loop descriptor, and on gemmini that descriptor is the single biggest expert win.
     """
     try:
-        from ..kernels import endpoints as _ep
+        from merlin.compile.analysis import compute_endpoints as _ep
 
         eps = _ep.endpoints_for(target)
     except Exception:  # noqa: BLE001 — no endpoint declared / unreadable: derive nothing, claim nothing

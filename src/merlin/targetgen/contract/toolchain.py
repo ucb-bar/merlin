@@ -11,10 +11,10 @@ reused from :mod:`merlin.llvmlower.toolchain`.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from merlin.common.paths import repo_root
+from merlin.llvmlower import toolchain as host_toolchain
 
 # repo root = .../merlin (this file: merlin/python/merlin/targetgen/contract/toolchain.py)
 _REPO = repo_root()
@@ -26,9 +26,8 @@ LLVM_COMMIT = "a47bddccec30"
 
 
 def mlir_install() -> Path:
-    """Prefix of the standalone MLIR install (Phase 0 output)."""
-    env = os.environ.get("MERLIN_MLIR_INSTALL")
-    return Path(env) if env else DEFAULT_MLIR_INSTALL
+    """The same selected LLVM/MLIR prefix as host and device object compilation."""
+    return host_toolchain.llvm_install()
 
 
 def mlir_bin(tool: str) -> Path:

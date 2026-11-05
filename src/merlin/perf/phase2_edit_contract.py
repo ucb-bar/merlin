@@ -133,7 +133,7 @@ def load(target: str, package_id: str, *, body: Mapping[str, Any] | None = None)
         body = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(body, Mapping):
         raise Phase2EditContractError("a phase-2 edit contract must be a mapping")
-    if body.get("schema") != "compiler_edit_contract_v1":
+    if body.get("schema") not in ("compiler_edit_contract_v1", "compiler_edit_contract_v2"):
         raise Phase2EditContractError(
             f"schema is {body.get('schema')!r}; this must be the schema compiler_edit_scope validates, "
             "so that a declaration and the enforcement it is checked by cannot drift apart"

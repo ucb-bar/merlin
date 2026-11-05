@@ -1,0 +1,3 @@
+[UART] UART0 is here (stdin/stdout).
+WS_BOUNDARY arm=0 submit=83 drain=130 readout=1521 checked=2048 mismatches=0
+WS_BOUNDARY arm=1 submit=683 drain=3 readout=1603 checked=2048 mismatches=0

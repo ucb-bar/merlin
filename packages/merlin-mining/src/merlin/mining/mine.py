@@ -85,7 +85,7 @@ def _has_lane_engine(target: str) -> bool:
     delete every divergence on it.
     """
     try:
-        from merlin.kernels import engines as _eng
+        from merlin.compile.analysis import engine_facets as _eng
         engines = _eng.engines_for(target)
     except Exception:  # noqa: BLE001
         return True
@@ -143,7 +143,7 @@ def endpoint_for_target(target: str):
     endpoint to decode and its CCA comes from the vector lifter.
     """
     try:
-        from merlin.kernels import endpoints as _ep
+        from merlin.compile.analysis import compute_endpoints as _ep
         eps = [e for e in _ep.endpoints_for(target) if e.roles]
     except Exception:  # noqa: BLE001 — no endpoint data: the vector path, honestly
         return None

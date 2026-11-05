@@ -18,13 +18,26 @@ from pathlib import Path
 
 import yaml
 
+#: Names a grade's snapshot copy never carries (``shutil.ignore_patterns``: any depth, file or directory).
+SNAPSHOT_IGNORED = ("build", "__pycache__", ".git")
+#: Build-state names :func:`strip_build_state` deletes from a snapshot copy.
+BUILD_STATE = ("CMakeCache.txt", "CMakeFiles", "build.ninja", ".ninja_deps", ".ninja_log", "cmake_install.cmake")
+
+
+def outside_snapshot(relative_parts) -> bool:
+    """Whether a submission-relative path is one a grade's snapshot copy omits or strips.
+
+    The grader never sees such bytes, so they cannot be what a graded command read.
+    """
+    return any(part in SNAPSHOT_IGNORED or part in BUILD_STATE for part in relative_parts)
+
 
 def strip_build_state(root: Path) -> None:
     """Delete all cmake/ninja build state under `root` so a graded copy builds from scratch in its OWN
     path. Excluding a dir named 'build' is not enough — a stale CMakeCache / ninja state elsewhere pins the
     original source dir and makes cmake error ('source does not match cache'). The abc9 baseline L3-0/20
     'build' bug. Guarantees a clean, relocatable build for every grade."""
-    for pat in ("CMakeCache.txt", "CMakeFiles", "build.ninja", ".ninja_deps", ".ninja_log", "cmake_install.cmake"):
+    for pat in BUILD_STATE:
         for p in list(Path(root).rglob(pat)):
             try:
                 shutil.rmtree(p) if p.is_dir() else p.unlink()
@@ -119,6 +132,34 @@ def _seed_content(root: Path) -> dict:
     return {"content_sha256": content.hexdigest(), "n_files": n_files, "n_bytes": n_bytes}
 
 
+def _source_lineage(source: Path) -> dict:
+    """Accept only the frozen final output of a previous run in this lineage."""
+    from merlin.common import oot_repo as oot
+
+    if source.name != "submission":
+        raise RuntimeError("authoring seed must be a prior run's final submission")
+    previous = source.parent
+    environment = previous / "environment.yaml"
+    if not environment.is_file():
+        raise RuntimeError("authoring seed has no prior run environment")
+    record = yaml.safe_load(environment.read_text(encoding="utf-8")) or {}
+    run_id, lineage_id = record.get("run_id"), record.get("lineage_id")
+    if not isinstance(run_id, str) or not run_id or not isinstance(lineage_id, str) or not lineage_id:
+        raise RuntimeError("authoring seed has no recorded lineage")
+    try:
+        repo = previous / "oot"
+        final = oot.resolve(repo, "HEAD")
+        if oot.resolve(repo, oot.FROZEN_TAG) != final:
+            raise RuntimeError("authoring seed is not the prior run's final oot commit")
+        digest = oot.tree_digest(repo, final)
+        if digest != oot.package_digest(source):
+            raise RuntimeError("authoring seed bytes differ from the final oot commit tree")
+    except oot.OotRepoError as exc:
+        raise RuntimeError(f"authoring seed lacks a verified final oot commit: {exc}") from exc
+    return {"lineage_id": lineage_id, "source_run_id": run_id,
+            "source_commit": final, "source_tree_sha256": digest}
+
+
 def verify_seed_submission(ws: Path, run_dir: Path, expected: Mapping) -> None:
     """Require the staged candidate and its run-owned seed receipt to match."""
     receipt = Path(run_dir) / "seed_submission.json"
@@ -130,6 +171,10 @@ def verify_seed_submission(ws: Path, run_dir: Path, expected: Mapping) -> None:
         raise RuntimeError("unpaid qualification seed receipt is unreadable") from exc
     if not isinstance(expected, Mapping) or recorded != dict(expected) or expected.get("version") != 1:
         raise RuntimeError("unpaid qualification seed receipt differs from the environment")
+    if expected.get("authoring_seed") is True:
+        source = validate_seed_submission_source(expected.get("source", ""), Path(ws) / "submission")
+        if expected.get("lineage") != _source_lineage(source):
+            raise RuntimeError("authoring seed lineage changed after selection")
     observed = _seed_content(Path(ws) / "submission")
     if any(expected.get(key) != value for key, value in observed.items()):
         raise RuntimeError("unpaid qualification submission changed after selection")
@@ -172,7 +217,8 @@ def snapshot_seed_for_grade(ws: Path, run_dir: Path, expected: Mapping) -> Path:
     return destination
 
 
-def seed_submission(ws: Path, source: str | Path, run_dir: Path, *, require_stable_source: bool = False) -> dict:
+def seed_submission(ws: Path, source: str | Path, run_dir: Path, *, require_stable_source: bool = False,
+                    require_lineage: bool = False) -> dict:
     """Seed a *fresh* workspace from a preserved candidate and record its exact bytes.
 
     A changed public contract requires a new sealed run rather than a resume.  This copies only the
@@ -181,6 +227,7 @@ def seed_submission(ws: Path, source: str | Path, run_dir: Path, *, require_stab
     """
     seeded = Path(ws).resolve(strict=True) / "submission"
     source_dir = validate_seed_submission_source(source, seeded)
+    lineage = _source_lineage(source_dir) if require_lineage else None
     if require_stable_source:
         from merlin.common.tree_hash import hash_tree
 
@@ -207,6 +254,7 @@ def seed_submission(ws: Path, source: str | Path, run_dir: Path, *, require_stab
         "source": str(source_dir),
         **_seed_content(seeded),
         **({"selected_source_tree_sha256": source_before} if require_stable_source else {}),
+        **({"authoring_seed": True, "lineage": lineage} if require_lineage else {}),
     }
     record_path = Path(run_dir) / "seed_submission.json"
     record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -317,6 +365,27 @@ def treatment_snapshot_record(ws: Path, run_dir: Path, bundle_dir: Path, resolve
         authored_name = "archived_bundle/authored_input_bundle_manifest.yaml"
         specs.append((authored_name, authored, True))
     specs.extend((f"served/{name}", ws / name, False) for name in MERLIN_WS_DOCS)
+    # Fresh corpus guidance is sealed alongside TASK.md. Historical treatments
+    # without it retain their original record shape; never regenerate on resume.
+    capability_docs = ("PUBLIC_CAPABILITIES.json", "PUBLIC_CAPABILITIES.md", "capability_query.py")
+    if any((root / name).exists() or (root / name).is_symlink()
+           for root in (ws, run_dir) for name in capability_docs):
+        specs.extend((f"{kind}/{name}", root / name, True)
+                     for kind, root in (("served", ws), ("archived", run_dir))
+                     for name in capability_docs)
+    for name in ("construction_actions.py", "CONSTRUCTION_ACTIONS.json", "OPTIMIZATION_BY_OPERATION.json",
+                 "COMMAND_ORDERING_SELECTION.json", "REFERENCE_EXPERIMENTS.json", "REFERENCE_MAP.json"):
+        if any((root / name).exists() or (root / name).is_symlink() for root in (ws, run_dir)):
+            specs.extend((f"{kind}/{name}", root / name, True)
+                         for kind, root in (("served", ws), ("archived", run_dir)))
+    # Staged task-section skills (and their record) are served instructions too. A run without them
+    # keeps its historical record shape.
+    from .task_disclosure import staged_paths
+
+    specs.extend((name, path, True) for name, path in staged_paths(ws, run_dir))
+    from .skill_staging import staged_paths as staged_author_skills
+
+    specs.extend((name, path, True) for name, path in staged_author_skills(ws, run_dir))
     specs.extend(
         (f"source_bundle/{name}", bundle_dir / name, name == "input_bundle_manifest.yaml")
         for name in _TREATMENT_BUNDLE_DECLARATIONS

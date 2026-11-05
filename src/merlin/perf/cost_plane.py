@@ -574,6 +574,88 @@ def require_within(verdict: Mapping[str, Any]) -> None:
         raise CostCeilingExceeded(str(verdict.get("reason")))
 
 
+_MEMORY_PATHS: dict[str, dict[str, Any]] = {}
+
+
+def engine_memory_path(record: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The memory-path widths of the elaboration the timing tier's engine was built from: the engine
+    binary's own build receipt names its FIRRTL, which is hash-checked and read structurally
+    (:func:`merlin.targetgen.rtl.introspect.memory_path`). UNKNOWN with the reason otherwise."""
+    import hashlib
+    import json
+    from pathlib import Path
+
+    provenance = (record or {}).get("sim_provenance") if isinstance(record, Mapping) else None
+    binary = (provenance or {}).get("binary") if isinstance(provenance, Mapping) else None
+    if not isinstance(binary, str) or not binary:
+        return {"status": "unknown", "reason": "the timing tier names no engine binary"}
+    receipt_path = Path(binary).parent / "build_receipt.json"
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"status": "unknown", "reason": "the engine binary has no readable build receipt"}
+    firrtl = ((receipt.get("artifacts") or {}).get("firrtl") or {}) if isinstance(receipt, Mapping) else {}
+    path, declared = str(firrtl.get("path") or ""), firrtl.get("sha256") or receipt.get("firrtl_sha256")
+    if not path or not declared:
+        return {"status": "unknown", "reason": "the engine's build receipt names no elaboration"}
+    if declared not in _MEMORY_PATHS:
+        try:
+            digest = hashlib.sha256()
+            with open(path, "rb") as handle:
+                for chunk in iter(lambda: handle.read(1 << 20), b""):
+                    digest.update(chunk)
+        except OSError:
+            return {"status": "unknown", "reason": "the engine's elaboration is unreadable"}
+        if digest.hexdigest() != declared:
+            return {"status": "unknown", "reason": "the elaboration does not hash to the engine receipt's digest"}
+        from merlin.targetgen.rtl import introspect
+
+        _MEMORY_PATHS[declared] = introspect.memory_path(path)
+    return dict(_MEMORY_PATHS[declared])
+
+
+def movement_fields(row: Mapping[str, Any], memory: Mapping[str, Any], *, compute_floor: Any) -> dict[str, Any]:
+    from merlin.common.path_scrub import scrub_host_paths
+
+    return {
+        key: scrub_host_paths(value) if key == "movement_basis" and isinstance(value, str) else value
+        for key, value in _movement_fields(row, memory, compute_floor=compute_floor).items()
+    }
+
+
+def _movement_fields(row: Mapping[str, Any], memory: Mapping[str, Any], *, compute_floor: Any) -> dict[str, Any]:
+    """REPORTED beside the issue floor, never part of the verdict: the movement floor of the bytes this
+    program's own command buffer declares, over the engine's derived memory-path widths, and which of
+    the two floors is larger. A declared volume that is a lower bound keeps this a floor."""
+    volume = row.get("movement_volume") if isinstance(row.get("movement_volume"), Mapping) else {}
+    read, write = volume.get("known_bytes_in"), volume.get("known_bytes_out")
+    if memory.get("status") != "derived":
+        return {
+            "movement_floor_cycles": None,
+            "movement_basis": str(memory.get("reason") or "no memory path"),
+            "limiter": None,
+        }
+    if not all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in (read, write)):
+        return {
+            "movement_floor_cycles": None,
+            "movement_basis": "the command buffer declares no byte volume",
+            "limiter": None,
+        }
+    floor = max(read / memory["read_bytes_per_cycle"], write / memory["write_bytes_per_cycle"])
+    limiter = None
+    if not is_unknown(compute_floor) and isinstance(compute_floor, (int, float)):
+        limiter = "movement" if floor > compute_floor else "compute"
+    return {
+        "movement_floor_cycles": round(floor, 1),
+        "movement_basis": (
+            f"declared bytes ({read} in, {write} out) over the engine's memory path "
+            f"({memory['read_bytes_per_cycle']} B/cycle read, {memory['write_bytes_per_cycle']} B/cycle write)"
+            + ("; the declared volume is a lower bound" if volume.get("is_lower_bound") else "")
+        ),
+        "limiter": limiter,
+    }
+
+
 def apply_gate(
     results: Sequence[Mapping[str, Any]],
     capsules: Sequence[Mapping[str, Any]],
@@ -619,6 +701,14 @@ def apply_gate(
             # Not a row on this axis. Recording a verdict here would pad it with a field that does not
             # apply, which a structural gate on result shape refuses -- correctly.
             continue
+        if outcome.get("measured_cycles") is not None:
+            tier_record = (result.get("tiers") or {}).get(outcome["timing_tier"])
+            floor = outcome.get("floor_cycles")
+            outcome.update(
+                movement_fields(
+                    result, engine_memory_path(tier_record), compute_floor=floor if floor is not None else UNKNOWN
+                )
+            )
         result[PLANE] = outcome
         judged.append({"capsule": name, **outcome})
         try:

@@ -1,0 +1,160 @@
+{
+  "schema": "merlin.phase0.public_architecture_operating_envelope.v1",
+  "scope": "public_development",
+  "selection": "architecture-informed development; no held-out claim",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/pytorch/vision/main/torchvision/models/resnet.py",
+      "sha256": "9faf2f321fdaf7edbd791aedc6e3610c7edf9c892112cbd75861beae1e9518d1",
+      "source_kind": "public_pytorch_architecture_source"
+    }
+  ],
+  "convolution_transitions": [
+    [
+      224,
+      3,
+      64,
+      64,
+      7,
+      2,
+      3
+    ],
+    [
+      112,
+      64,
+      64,
+      256,
+      3,
+      2,
+      1
+    ],
+    [
+      56,
+      256,
+      64,
+      256,
+      1,
+      1,
+      0
+    ],
+    [
+      56,
+      64,
+      64,
+      256,
+      3,
+      1,
+      1
+    ],
+    [
+      56,
+      256,
+      128,
+      512,
+      1,
+      1,
+      0
+    ],
+    [
+      56,
+      128,
+      128,
+      512,
+      3,
+      2,
+      1
+    ],
+    [
+      28,
+      128,
+      256,
+      1024,
+      3,
+      2,
+      1
+    ],
+    [
+      14,
+      256,
+      512,
+      2048,
+      3,
+      2,
+      1
+    ],
+    [
+      7,
+      512,
+      2048,
+      1000,
+      1,
+      1,
+      0
+    ],
+    [
+      280,
+      3,
+      80,
+      80,
+      7,
+      2,
+      3
+    ],
+    [
+      225,
+      3,
+      63,
+      65,
+      7,
+      2,
+      3
+    ],
+    [
+      7,
+      640,
+      2560,
+      1250,
+      1,
+      1,
+      0
+    ]
+  ],
+  "convolution_scope": "Public stage-width/kernel/stride/padding envelopes plus explicit skew, upper and tail controls; not a list of exact observed model sites",
+  "kernel_controls": [
+    {
+      "M": 1,
+      "K": 1,
+      "N": 1
+    },
+    {
+      "M": 7,
+      "K": 17,
+      "N": 31
+    },
+    {
+      "M": 127,
+      "K": 63,
+      "N": 9
+    },
+    {
+      "M": 2048,
+      "K": 32,
+      "N": 16
+    },
+    {
+      "M": 3,
+      "K": 8192,
+      "N": 5
+    }
+  ],
+  "operator_points": {
+    "decoder_prefill": 32,
+    "decoder_decode": 1,
+    "decoder_decode_calls": 32,
+    "camera_count": 1,
+    "camera_pixels": 512,
+    "action_chunk": 50,
+    "denoising_steps": 10,
+    "reduced_steps": 2
+  }
+}

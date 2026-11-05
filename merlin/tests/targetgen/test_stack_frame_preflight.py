@@ -50,10 +50,11 @@ def _object_build(tmp_path, monkeypatch, report: str | None, *, budget: int = 40
 
 
 def test_target_bound_object_records_hash_bound_static_frame(tmp_path, monkeypatch):
+    raw_report = f"{tmp_path}/kernel.ll:helper\t32\tstatic\n{tmp_path}/kernel.ll:fixture_entry\t384\tstatic\n"
     obj, calls = _object_build(
         tmp_path,
         monkeypatch,
-        f"{tmp_path}/kernel.ll:helper\t32\tstatic\n{tmp_path}/kernel.ll:fixture_entry\t384\tstatic\n",
+        raw_report,
     )
 
     assert obj == tmp_path / "kernel.o"
@@ -61,7 +62,8 @@ def test_target_bound_object_records_hash_bound_static_frame(tmp_path, monkeypat
         (tmp_path / "kernel.ll", tmp_path / "kernel.o", "riscv", ("-march=rv64gc", "-mabi=lp64d", "-fstack-usage"))
     ]
     canonical_report = "kernel.ll:helper\t32\tstatic\nkernel.ll:fixture_entry\t384\tstatic\n"
-    assert (tmp_path / "kernel.su").read_text() == canonical_report
+    assert (tmp_path / "kernel.su").read_text() == raw_report
+    assert (tmp_path / "kernel.measured.su").read_text() == canonical_report
     receipt = json.loads((tmp_path / "kernel.stack_frame.json").read_text())
     assert receipt == {
         "schema": "merlin_kernel_stack_frame_preflight_v1",
@@ -73,7 +75,12 @@ def test_target_bound_object_records_hash_bound_static_frame(tmp_path, monkeypat
         "report_rows": 2,
         "llvm_ir_sha256": hashlib.sha256(b"; fixture llvm\n").hexdigest(),
         "object_sha256": hashlib.sha256(b"fixture object").hexdigest(),
-        "stack_usage_report_sha256": hashlib.sha256(canonical_report.encode()).hexdigest(),
+        "stack_usage_report_sha256": hashlib.sha256(raw_report.encode()).hexdigest(),
+        "stack_usage_measurement_view": {
+            "name": "kernel.measured.su",
+            "sha256": hashlib.sha256(canonical_report.encode()).hexdigest(),
+            "raw_source_sha256": hashlib.sha256(raw_report.encode()).hexdigest(),
+        },
         "diagnostic": None,
         # A frame that fit exactly as emitted. The key is always present so that "nothing was done
         # to make this fit" and "the field was not recorded" cannot read the same.
@@ -107,6 +114,36 @@ def test_nondefault_recipe_abi_reaches_kernel_and_harness_commands(tmp_path, mon
     )
     assert "-mabi=lp64" in recipe.with_effective_abi().link_command(objects=(obj,), output=tmp_path / "model.elf")
     assert json.loads((tmp_path / "kernel.abi.json").read_text())["abi"] == "lp64"
+
+
+def test_measurement_preserves_raw_invocation_and_changed_report_is_rejected(tmp_path):
+    from merlin.common import invocation_record
+    from merlin.targetgen.contract.stack_usage import measure_entrypoint
+
+    llvm, obj, report = (tmp_path / name for name in ("kernel.ll", "kernel.o", "kernel.su"))
+    llvm.write_text("; actual observed source\n")
+
+    def producer():
+        obj.write_bytes(b"observed object")
+        report.write_text(f"{llvm}:fixture_entry\t64\tstatic\n")
+
+    with invocation_record.observe_call(
+        tmp_path,
+        stage="object",
+        function=producer,
+        arguments={},
+        inputs=(llvm,),
+        outputs=(obj, report),
+    ) as observed:
+        producer()
+        observed.returned()
+    before = report.read_bytes()
+    result = measure_entrypoint(report, llvm_path=llvm, entry_symbol="fixture_entry", max_static_bytes=128)
+    assert result.frame_bytes == 64 and report.read_bytes() == before
+    invocation_record.verify(observed.path)
+    report.write_text("kernel.ll:fixture_entry\t32\tstatic\n")
+    with pytest.raises(ValueError, match="product changed"):
+        invocation_record.verify(observed.path)
 
 
 def test_module_abi_mismatch_refuses_before_object_compile(tmp_path, monkeypatch):

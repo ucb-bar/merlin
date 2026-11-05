@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -11,6 +13,17 @@ from merlin.compile.model_execution_inputs import file_sha256
 from merlin_experiments.phase1.feedback.private_group_provenance import (
     join_routed_source_groups as _join_routed_source_groups,
 )
+
+
+def require_linked_symbols(elf: Path, symbols: set[str]) -> None:
+    from merlin.llvmlower import toolchain
+
+    command = [str(toolchain.nm()), "--defined-only", "--extern-only", str(elf)]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=120, check=True)
+    defined = {line.split()[-1] for line in result.stdout.splitlines() if line.split()}
+    missing = sorted(symbols - defined)
+    if missing:
+        raise ValueError(f"linked ELF omits {len(missing)} routed device symbol(s): {missing[:8]}")
 
 
 def require_static_build_inputs(
@@ -32,7 +45,14 @@ def require_static_build_inputs(
 
 
 def audit_built_device_host_compute(
-    build: Path, assigned: Sequence[Mapping[str, Any]], source: Mapping[str, Any], target: str
+    build: Path,
+    assigned: Sequence[Mapping[str, Any]],
+    source: Mapping[str, Any],
+    target: str,
+    *,
+    diagnostics: Path | None = None,
+    host_artifacts=None,
+    source_composition=None,
 ) -> list[dict[str, Any]]:
     """Audit the package's actual per-group build inputs, not a fresh diagnostic emission.
 
@@ -48,17 +68,29 @@ def audit_built_device_host_compute(
     from xdsl.dialects import builtin, func, llvm
     from xdsl.parser import Parser
 
-    from merlin.llvmlower.device_shim import kernel_abi_for
+    from merlin.llvmlower.device_build import executable_kernel_entry
     from merlin.verify import host_compute_audit as HA
+    from merlin.verify.llvm_symbols import defined_function
 
-    abi = kernel_abi_for(target)
-    if abi is None:
-        raise ValueError("selected device has no readable kernel ABI for host-compute audit")
+    entry_symbol = executable_kernel_entry(target)
     device_dir = build / "device"
     if device_dir.is_symlink() or not device_dir.is_dir():
         raise ValueError("linked build has no ordinary device-artifact directory")
-    metrics = source["eligible_group_metrics"]
-    source_groups = _join_routed_source_groups(assigned, source)
+    metrics = {**source.get("optional_group_metrics", {}), **source["eligible_group_metrics"]}
+    if source_composition is None:
+        source_groups = _join_routed_source_groups(assigned, source)
+    else:
+        # This is the separately rederived original-source projection, never
+        # an assertion from the emitted program. Keep all original members in
+        # the report and audit the one physical object with its full raw output.
+        source_groups, composition_metrics = _composed_source_metrics(assigned, source, source_composition)
+        metrics = composition_metrics
+    preparations = source.get("conv_input_preparation", {})
+    host_alignments, alignment_record = {}, None
+    if preparations and host_artifacts is not None:
+        from merlin.verify.host_call_alignment import inspect
+
+        host_alignments, alignment_record = inspect(host_artifacts, assigned, preparations, diagnostics=diagnostics)
     records = []
     completed = {}
     for entry in assigned:
@@ -66,7 +98,7 @@ def audit_built_device_host_compute(
         if not isinstance(symbol, str) or not symbol or Path(symbol).name != symbol or symbol in {".", ".."}:
             raise ValueError("routed group has no safe built-artifact stem")
         source_group = source_groups[index]
-        metric = metrics.get(source_group)
+        metric = metrics.get(source_group if source_composition is None else index)
         if not isinstance(metric, Mapping):
             raise ValueError(f"routed group {index} has no source-derived output extent")
         artifact, llvm_ir, obj = (
@@ -80,15 +112,21 @@ def audit_built_device_host_compute(
         digests = tuple(file_sha256(path) for path in (artifact, llvm_ir, obj))
         key = (symbol, metric["elements"], metric["element_bytes"], *digests)
         if key in completed:
-            records.append({**completed[key], "group": index, "source_group": source_group})
+            records.append({
+                **completed[key], "group": index,
+                "source_group": source_group if source_composition is None else None,
+                **({"source_groups": list(source_group)} if source_composition is not None else {}),
+            })
             continue
         context = Context(allow_unregistered=True)
         for dialect in (builtin.Builtin, llvm.LLVM, func.Func):
             context.load_dialect(dialect)
         module = Parser(context, artifact.read_text(encoding="utf-8")).parse_module()
         functions = HA._functions(module)  # noqa: PLC2701 -- shared independent host-code reader
-        if abi.symbol not in functions:
-            raise ValueError(f"linked group {index} has no body for its target ABI kernel")
+        try:
+            kernel = defined_function(module, entry_symbol)
+        except ValueError as error:
+            raise ValueError(f"linked group {index} has no body for its target ABI kernel") from error
         sites = [
             HA.GroupSite(
                 group=index,
@@ -99,10 +137,62 @@ def audit_built_device_host_compute(
             )
             for name in functions
         ]
-        report = HA.audit(module, sites)
+        preparation = preparations.get(symbol)
+        if preparation is not None and symbol in host_alignments:
+            preparation = {**preparation, "argument_alignments": host_alignments[symbol]}
+        # The ABI may alias the real body. Scope proven transport to that one
+        # resolved function; every other helper retains the ordinary veto.
+        report = HA.audit(
+            module,
+            sites,
+            input_preparation={kernel.sym_name.data: preparation} if preparation is not None else None,
+            target=target,
+        )
+        # Retain the instrument's complete reasons on the exact built artifact.
+        # A short exception alone used to discard unsupported-CFG diagnostics.
+        # Revalidation of a sealed build remains read-only. Only the builder's
+        # explicitly provided mutable diagnostic directory receives a report.
+        if diagnostics is not None and report.get("proven_clean") is not True:
+            diagnostics.mkdir(parents=True, exist_ok=True)
+            diagnostic = {
+                "schema": "merlin.built_device.host_compute_audit.v1",
+                "group": index,
+                "source_group": source_group if source_composition is None else None,
+                **({"source_groups": list(source_group)} if source_composition is not None else {}),
+                "symbol": symbol,
+                "artifacts": {"llvm_mlir": digests[0], "llvm_ir": digests[1], "object": digests[2]},
+                "report": report,
+            }
+            raw = (json.dumps(diagnostic, sort_keys=True, indent=2) + "\n").encode()
+            diagnostic_path = diagnostics / f"{symbol}.host-compute-audit-{hashlib.sha256(raw).hexdigest()}.json"
+            try:
+                with diagnostic_path.open("xb") as stream:
+                    stream.write(raw)
+            except FileExistsError:
+                if diagnostic_path.is_symlink() or diagnostic_path.read_bytes() != raw:
+                    raise ValueError("built device audit diagnostic changed")
+        if report.get("proven_clean") is not True or report.get("accelerator_groups_clean") != len(sites):
+            if tuple(file_sha256(path) for path in (artifact, llvm_ir, obj)) != digests:
+                raise ValueError("built device artifacts changed during host-compute audit")
+            if alignment_record is not None and any(
+                file_sha256(Path(host_artifacts[role]["path"])) != digest
+                for role, digest in alignment_record["host_artifacts"].items()
+            ):
+                raise ValueError("compiled host alignment inputs changed during device audit")
         HA.require_clean(report)
         if report.get("proven_clean") is not True or report.get("accelerator_groups_clean") != len(sites):
-            raise ValueError(f"linked group {index} host-compute audit is unknown, not clean")
+            reasons = []
+            for group in report.get("groups", []):
+                if group.get("verdict") == "clean":
+                    continue
+                problems = group.get("activity_problems") or [group.get("why", "no proof detail")]
+                reasons.append(str(group.get("symbol")) + ": " + "; ".join(map(str, problems[-8:])))
+            from .private_program_checks import ProgramCheckFailure
+
+            raise ProgramCheckFailure(
+                f"linked group {index} host-compute audit is unknown, not clean; " + "; ".join(reasons)[:1600],
+                check="host_compute",
+            )
         from merlin.llvmlower import toolchain
 
         undefined = subprocess.run(
@@ -117,7 +207,8 @@ def audit_built_device_host_compute(
         records.append(
             {
                 "group": index,
-                "source_group": source_group,
+                "source_group": source_group if source_composition is None else None,
+                **({"source_groups": list(source_group)} if source_composition is not None else {}),
                 "symbol": symbol,
                 "defined_functions_audited": len(sites),
                 "artifact_sha256": digests[0],
@@ -126,7 +217,8 @@ def audit_built_device_host_compute(
                 "verdict": "clean_static_host_compute_audit",
                 "audit": {
                     "scope": (
-                        "all defined LLVM functions of the exact built device artifact; command-scale static budget"
+                        "all defined LLVM functions of the exact built device artifact; "
+                        "command-scale budget with independently proven byte transport"
                     ),
                     "budget": report["budget"],
                     "groups": [
@@ -139,6 +231,9 @@ def audit_built_device_host_compute(
                                 "host_arithmetic",
                                 "host_value_arithmetic",
                                 "host_payload_bytes",
+                                "host_total_arithmetic",
+                                "host_raw_payload_bytes",
+                                "input_preparation",
                                 "arithmetic_per_element",
                                 "value_arithmetic_per_element",
                                 "payload_ratio",
@@ -151,5 +246,90 @@ def audit_built_device_host_compute(
         )
         if tuple(file_sha256(path) for path in (artifact, llvm_ir, obj)) != digests:
             raise ValueError("built device artifacts changed during host-compute audit")
+        if alignment_record is not None:
+            records[-1]["host_argument_alignment"] = (
+                {
+                    "alignment_bytes": host_alignments[symbol],
+                    "observation": alignment_record,
+                }
+                if symbol in host_alignments
+                else None
+            )
         completed[key] = records[-1]
+    if alignment_record is not None and any(
+        file_sha256(Path(host_artifacts[role]["path"])) != digest
+        for role, digest in alignment_record["host_artifacts"].items()
+    ):
+        raise ValueError("compiled host alignment inputs changed during device audit")
     return records
+
+
+def _composed_source_metrics(assigned, source, composition):
+    """Budget one actual object from every independently rederived raw product."""
+    if isinstance(composition, Mapping) and composition.get("schema") == "merlin.original_head_source_composition.v1":
+        from .private_head_provenance import source_metrics
+
+        return source_metrics(assigned, source, composition)
+    if isinstance(composition, Mapping) and composition.get("schema") == "merlin.original_sibling_source_components.v1":
+        from .private_component_provenance import source_subset
+
+        groups, metrics, covered = {}, {}, set()
+        for component in composition["components"]:
+            members = set(component["covered_source_groups"])
+            if covered.intersection(members):
+                raise ValueError("component audit duplicates original work")
+            covered.update(members)
+            subsource = source_subset(source, set(source["eligible_groups"] + source.get("optional_groups", [])) - members)
+            rows = [r for r in assigned if r["symbol"] == component["physical_symbol"]]
+            subgroups, submetrics = _composed_source_metrics(rows, subsource, component)
+            if set(groups).intersection(subgroups):
+                raise ValueError("component audit duplicates physical work")
+            groups.update(subgroups)
+            metrics.update(submetrics)
+        ordinary = [r for r in assigned if r["symbol"] not in {c["physical_symbol"] for c in composition["components"]}]
+        joined = _join_routed_source_groups(ordinary, source_subset(source, covered))
+        if joined != composition["ordinary_joined_groups"] or set(groups).intersection(joined):
+            raise ValueError("unmatched original source join changed")
+        original_metrics = {**source.get("optional_group_metrics", {}), **source["eligible_group_metrics"]}
+        for physical, original in joined.items():
+            groups[physical] = (original,)
+            metrics[physical] = original_metrics[original]
+        if not set(source["eligible_groups"]) <= covered | set(joined.values()):
+            raise ValueError("component audit omits original required work")
+        return groups, metrics
+    if (not isinstance(composition, Mapping)
+        or composition.get("schema") != "merlin.original_sibling_source_composition.v1"
+        or composition.get("original_source_denominator_unchanged") is not True
+        or len(assigned) != 1 or assigned[0].get("group") != composition.get("physical_group")
+        or assigned[0].get("symbol") != composition.get("physical_symbol")):
+        raise ValueError("device audit needs its independently rederived original source composition")
+    members = composition.get("members")
+    if not isinstance(members, list) or len(members) < 2:
+        raise ValueError("source composition has no complete original member roster")
+    indices, elements = [], 0
+    for member in members:
+        if not isinstance(member, Mapping):
+            raise ValueError("source composition member is absent")
+        index = member.get("source_group")
+        original = source.get("source_group_contractions", {}).get(index)
+        if (not isinstance(original, Mapping) or original.get("dtypes") != ["i8", "i8", "i32"]
+            or len(original.get("parallel", [])) != 2 or len(original.get("reduction", [])) != 1):
+            raise ValueError("composed device audit lacks original raw product geometry")
+        m, n = original["parallel"]
+        k = original["reduction"][0]
+        if (any(type(v) is not int or v <= 0 for v in (m, n, k))
+            or member.get("geometry_m_k_n") != [m, k, n]
+            or member.get("raw_output_elements") != m * n
+            or member.get("raw_output_element_bytes") != 4
+            or member.get("source_useful_macs") != m * k * n):
+            raise ValueError("composed device budget differs from original product")
+        indices.append(index)
+        elements += m * n
+    if (len(set(indices)) != len(indices) or not set(source["eligible_groups"]) <= set(indices)
+        or composition.get("required_source_groups") != source["eligible_groups"]
+        or composition.get("covered_source_groups") != indices
+        or composition.get("raw_output_elements") != elements
+        or composition.get("raw_output_element_bytes") != 4):
+        raise ValueError("composed device budget omits or duplicates original source work")
+    physical = composition["physical_group"]
+    return {physical: tuple(indices)}, {physical: {"elements": elements, "element_bytes": 4}}

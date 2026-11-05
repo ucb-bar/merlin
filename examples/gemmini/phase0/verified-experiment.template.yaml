@@ -1,0 +1,47 @@
+# Operator-only wiring template. Replace every /REVIEWED_* path and SELECTED_*
+# value; review actual input evidence before execution. These placeholders
+# cannot supply an input closure or qualify the diagnostic example.
+schema_version: 1
+kind: template
+id: gemmini-reviewed
+target: gemmini
+description: Verified ordinary corpus derivation and fresh compiler experiment.
+inputs:
+  target: /REVIEWED_INPUTS/descriptor.yaml
+policy:
+  prohibited_instruction_roles: [loop_descriptor]
+phases:
+  0:
+    adapter: capsule_derivation
+    config:
+      descriptor: /REVIEWED_INPUTS/descriptor.yaml
+      recipe: /REVIEWED_INPUTS/recipe.yaml
+      software_spec: /REVIEWED_INPUTS/software-spec.yaml
+      capability_contract: /REVIEWED_INPUTS/neutral-target-contract.json
+      hardware_spec: /REVIEWED_INPUTS/hardware.yaml
+      rtl_facts: /REVIEWED_INPUTS/facts.json
+      conformance_spec: /REVIEWED_DERIVATION/requirements.yaml
+      synth_profile: /REVIEWED_DERIVATION/synthesis.yaml
+      performance_template: /REVIEWED_INPUTS/performance.yaml
+      hidden_profile: /REVIEWED_PRIVATE/hidden-profile.yaml
+      evidence_mode: verified
+  1:
+    adapter: capsule_bench
+    config:
+      descriptor: /REVIEWED_INPUTS/descriptor.yaml
+      require_reviewed_corpus: true
+      level: EL4
+      arm: merlin_assisted
+      treatment: rtlchecks
+      driver: codex
+      provider: subscription
+      model: SELECTED_MODEL
+      effort: SELECTED_EFFORT
+      # Select the regenerated release manifest and identity at handoff.
+      bundle: SELECTED_RELEASE_BUNDLE
+      bundle_manifest: /REVIEWED_RELEASE/payload/experiment/input_bundles/SELECTED_RELEASE_BUNDLE/input_bundle_manifest.yaml
+      oracle_timing: /REVIEWED_PRIVATE/oracle-timing.json
+      max_wall_s: 43200
+      round_timeout: 43200
+      grade_interval: 900
+      sim_max_jobs: 5

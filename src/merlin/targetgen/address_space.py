@@ -510,9 +510,27 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
             and mem.get("source") != "firrtl_port_geometry"
             else None
         )
+        declared_width_conflict = (
+            bits is not None
+            and declared_row_elems == space.array_cols
+            and isinstance(mem.get("elem_bits"), int)
+            and mem["elem_bits"] > 0
+            and mem["elem_bits"] != bits
+        )
+        if declared_width_conflict:
+            unknowns.append(
+                Unknown(
+                    "element_bits",
+                    f"the linked datapath dtype {dtype!r} has {bits}-bit elements, but this "
+                    f"store's SRAM declares {mem['elem_bits']}-bit elements on the same row lanes",
+                    name,
+                )
+            )
+            dtype, bits = None, None
         if (
             bits is None
             and dtype is None
+            and not declared_width_conflict
             and declared_row_elems is not None
             and declared_row_elems == space.array_cols
             and isinstance(mem.get("elem_bits"), int)

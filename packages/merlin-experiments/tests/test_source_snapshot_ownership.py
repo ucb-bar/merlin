@@ -73,6 +73,32 @@ def test_fresh_snapshot_refuses_modified_source_bytes(snapshot):
         SNAP.verify(snapshot)
 
 
+@pytest.mark.parametrize("relative", ["python_sibling/escape.py", "unowned/escape.py"])
+def test_import_layout_refuses_files_outside_the_exact_declared_root(snapshot, relative):
+    receipt = SNAP.verify(snapshot)
+    receipt["files"][relative] = "0" * 64
+    with pytest.raises(SNAP.SnapshotError, match="files outside declared source roots"):
+        SNAP.import_layout(snapshot, receipt)
+
+
+@pytest.mark.parametrize("roots", [["python", "python/toy"], ["python/toy", "python"]])
+def test_import_layout_refuses_overlapping_roots_in_either_order(snapshot, roots):
+    receipt = SNAP.verify(snapshot)
+    receipt["source_roots"] = roots
+    with pytest.raises(SNAP.SnapshotError, match="overlapping snapshot source roots"):
+        SNAP.import_layout(snapshot, receipt)
+
+
+def test_import_layout_preserves_alias_parents_but_refuses_nested_aliases(snapshot):
+    receipt = SNAP.verify(snapshot)
+    receipt["directories"] = sorted([*receipt["directories"], "shortcuts", "shortcuts/deep"])
+    receipt["internal_aliases"]["shortcuts/deep/toy"] = "python/toy"
+    assert SNAP.import_layout(snapshot, receipt)["python_roots"] == ["python"]
+    receipt["internal_aliases"]["shortcuts"] = "python/toy"
+    with pytest.raises(SNAP.SnapshotError, match="invalid snapshot internal aliases"):
+        SNAP.import_layout(snapshot, receipt)
+
+
 @pytest.mark.parametrize("version", [1, 2, 3])
 def test_legacy_bytes_remain_inspectable_but_cannot_authorize_execution(snapshot, version):
     marker, receipt = SNAP.load_seal(snapshot, "snapshot")

@@ -53,28 +53,9 @@ if HAS_XDSL:
         """Print a module; generic form preserves every attribute and property."""
         import io
 
-        from xdsl.printer import Printer
+        from ..common.dense_float_ir import DenseFloatPrinter
 
-        class PortablePrinter(Printer):
-            def print_attribute(self, attribute):
-                from xdsl.dialects.builtin import AnyFloat, DenseIntOrFPElementsAttr
-
-                if isinstance(attribute, DenseIntOrFPElementsAttr) and isinstance(
-                    attribute.get_element_type(), AnyFloat
-                ):
-                    # xDSL parses unquoted dense float hex literals as numeric
-                    # integers (e.g. -inf becomes 4286578688.0). Raw-byte strings
-                    # round-trip through both parsers and retain NaN payloads and
-                    # signed zeros. Detect splats by bytes, not float equality.
-                    data = attribute.data.data
-                    width = attribute.get_element_type().compile_time_size
-                    if data and data == data[:width] * (len(data) // width):
-                        data = data[:width]
-                    self.print_string(f'dense<"0x{data.hex().upper()}"> : ')
-                    self.print_attribute(attribute.type)
-                    return
-                super().print_attribute(attribute)
-
+        class PortablePrinter(DenseFloatPrinter):
             def print_op(self, op):
                 # xDSL's custom yield format puts attributes before operands,
                 # which upstream MLIR rejects. Generic syntax retains provenance
@@ -100,9 +81,9 @@ if HAS_XDSL:
 
     def roundtrip(module, *dialects):
         """Print and re-parse a module; returns the parsed module."""
-        from xdsl.parser import Parser
+        from ..common.dense_float_ir import DenseFloatParser
 
-        return Parser(make_context(*dialects), text(module)).parse_module()
+        return DenseFloatParser(make_context(*dialects), text(module)).parse_module()
 
 else:  # pragma: no cover - exercised only when xDSL is absent
     Visibility = None

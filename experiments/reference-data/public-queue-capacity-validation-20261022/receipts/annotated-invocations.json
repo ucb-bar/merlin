@@ -1,0 +1,1153 @@
+{
+  "schema": "merlin.retained_annotated_invocations.v1",
+  "representation": "portable_json_projection_with_original_digests",
+  "rows": [
+    {
+      "occurrence": 0,
+      "original_invocation_sha256": "5a18d906de3e71e2866353eec78fc9baf249d065627c6c7a6fab16a8885617bb",
+      "original_invocation_bytes": 1833,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/00.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/00.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/00.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.557767536025494,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/00.json",
+          "sha256": "064c2de23d35abb6e9e8ea1ee4938897f023dcdfe10f6e0c9be16547161f36cc"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/00.json",
+          "sha256": "43ad434c35101163bae7f08a8ce361ece73c2f3c341b4015d3da8691d1d0d937"
+        },
+        "all_output_semantics_match": true
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 1,
+      "original_invocation_sha256": "f08d5e7883b5ae244fcf25cd6ea129092490bfb6918cc63ee377e1f4575e2326",
+      "original_invocation_bytes": 1905,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/01.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/01.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/01.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.549725900986232,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/01.json",
+          "sha256": "254b7fc17e910b5886afe6d29261012e43c3367cdd720e5be40574a8aa6f2111"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/01.json",
+          "sha256": "80f30656b9a2b008767c9de618441514b769b4e7034d6d2b33054f781eb81a03"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 2,
+      "original_invocation_sha256": "ce6b31ff4d18f74bdb813beb4fc6cc8c145417d303f2d8e1288647f894d3afa0",
+      "original_invocation_bytes": 1905,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/02.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/02.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/02.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.578415783005767,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/02.json",
+          "sha256": "4528c5496175937d23b66d2b730d4af267b1bff504a4491773010b615f21cf88"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/02.json",
+          "sha256": "ea3b169221823ff826da058f0ecc939954cd5b05c974b24972a04a8797ec1195"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 3,
+      "original_invocation_sha256": "3ca1a32593061802d972e8dbff09020c58e6f07877e98265876d184014453fa9",
+      "original_invocation_bytes": 1905,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/03.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/03.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/03.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.608840305998456,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/03.json",
+          "sha256": "bded7e7dcf171f6ecfb3f8d9792cbdb89d4bcd41d003a39f3ca57271729f3eb2"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/03.json",
+          "sha256": "12d544a6e296e571e453ddc886c1fae0c81a21d73de6e7bd5490fbb9d8812ffd"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 4,
+      "original_invocation_sha256": "fe173aead4295d45f713e7a2ef6fc0afe2fe23913a59e604051f77edf82a4efb",
+      "original_invocation_bytes": 1905,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/04.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/04.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/04.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.589879194973037,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/04.json",
+          "sha256": "3a300e377936cf1b7503011fb31d1048de0b94bec23e2d149e81e1b0484c2600"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/04.json",
+          "sha256": "3e8bf7682ad903de422fc07ec8988ca79e130fb29518392b04bb6f2c54018d4b"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 5,
+      "original_invocation_sha256": "efb1186dcce50286b6d9dd4858f84b368fea3b3593ec501c1fb9f8b7f259bd00",
+      "original_invocation_bytes": 1905,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/05.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/05.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/05.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.881631716969423,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/05.json",
+          "sha256": "d520246b29bf71f36462f08d6fe06131c321dcf81f19b251c119c56b033e581c"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/05.json",
+          "sha256": "150943a593743c8bf1d017f2baee363a7801dc89d717b290a3d774e2c9ba7ec1"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 6,
+      "original_invocation_sha256": "f8e176f82bfdc0f7f77885302eb75c1dd6039abaa337ce2dad7e27d4057c1cd5",
+      "original_invocation_bytes": 1905,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/06.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/06.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/06.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.551632620976306,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/06.json",
+          "sha256": "108f5b99acfef1e8bf77341c694ccb1b2495655816139ed292a7da501a81cc4a"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/06.json",
+          "sha256": "73030336449dd1c00fe395ad36e4bb9d51536281eecac61452060864d25ca473"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 7,
+      "original_invocation_sha256": "4c33978fbf87877ad84297a5dce2beed113a81a3d8655b8775e7180ca923e1ff",
+      "original_invocation_bytes": 1904,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/07.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/07.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/07.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.60786195495166,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/07.json",
+          "sha256": "1d88f7711c741068d9e827f8083b046d0ddcbc9adef3c7a9366623de8b0dad0e"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/07.json",
+          "sha256": "d3bf65422bd4fcfdfd2f36731a7601facef0095b7e30a4f2e07aef675096089d"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 8,
+      "original_invocation_sha256": "9ddaf47f386d2a15717c4e311afba7c858904404d1948b3ef90c94dbbadec2b0",
+      "original_invocation_bytes": 1904,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/08.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/08.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/08.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.55358878505649,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/08.json",
+          "sha256": "c85fe8b96bd611d31202ac601ea1a6b0679215e019df9093d308abc5e17c667a"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/08.json",
+          "sha256": "8a18074add38f47adcae60b1e7e1cb8db616a5ec4b18c30cf8ff3f00a4cc1435"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 9,
+      "original_invocation_sha256": "cc868dc76ae4f37d9aea0496779e4ea7aa2b8747d0cdd9e0a34f8a12bab5f7c1",
+      "original_invocation_bytes": 1905,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/09.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/09.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/09.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.654992269002832,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/09.json",
+          "sha256": "7b736dec95113d1b756b89211960fe7b6387323c548b623041c5e8741981e954"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/09.json",
+          "sha256": "e57f5948d560030d307c196f8b27d8a12cf6dfb58a3350f6ab45c70381931413"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 10,
+      "original_invocation_sha256": "4b2d03fe5aa33375ff59355ed877823ff47c0e86a84211e8d6d91791fcca4cb9",
+      "original_invocation_bytes": 1904,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/10.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/10.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/10.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.88842257700162,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/10.json",
+          "sha256": "e4fc0ff6e174cedab5f236ce59fb1ebab16cf051e406acf5b7a24977b45f27d9"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/10.json",
+          "sha256": "7ee08c2897f982fe2a3df1be6eb8d3d4bade90a7a6d1be9a4b56a05109603978"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 11,
+      "original_invocation_sha256": "aa37da7453905ef4420413fc0110f38333a920fd29974512297a5fb59942a3b0",
+      "original_invocation_bytes": 1905,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/11.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/11.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/11.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.682058907987084,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/11.json",
+          "sha256": "8241d526ddb0675bd7d8828c33f51199147a6a0ce6864c985e133b1ec0bda2ba"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/11.json",
+          "sha256": "4600e89649f1a41760e938e5432c0af572239010e62d4a118ca365e3736b84b7"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 12,
+      "original_invocation_sha256": "33b43b73723e9176d8058800ec48f496c9e9b45b0ee483b3af0f1f39bf3dddce",
+      "original_invocation_bytes": 1904,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/12.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/12.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/12.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.46863438899163,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/12.json",
+          "sha256": "9c5e4e9f407b63ca48b50b587330cb607be22d2f78a8467929693e61ff3257cf"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/12.json",
+          "sha256": "5675dc771cc0431c452cf795968d2d9cbf5fb5af629ac306db440b847947c1d0"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 13,
+      "original_invocation_sha256": "5cae8d7b3bffddea8b14ccacaeccf12593686dc6228af53b315e404dbd16b217",
+      "original_invocation_bytes": 1905,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/13.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/13.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/13.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.681678488035686,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/13.json",
+          "sha256": "43d385e92829c9fa2c9e9c27e988dd574ea7348a2700538ffc7ac5d6cf57fedb"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/13.json",
+          "sha256": "8d43ac6651fa8eabeb8cb795a6cadf85655be039ff31cdd58e6b04c2780b4075"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 14,
+      "original_invocation_sha256": "dfb42f39ca777fd86858414328aec552322a15405568783fd9f54e4027b47e28",
+      "original_invocation_bytes": 1905,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/14.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/14.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/14.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.791007505031303,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/14.json",
+          "sha256": "a36ff45504c058064bbc09809ab7b859f6a06f7ef618edd92ab32a906706fb2b"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/14.json",
+          "sha256": "8139f89952ce38cd4238a921c0923d532d2cf8030e4be49a62f3ecf13355085c"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 15,
+      "original_invocation_sha256": "016f3dc1070397f54cf0dad6780770d71394b3fb2a0aae759018df2d1219b417",
+      "original_invocation_bytes": 1904,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/15.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/15.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/15.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.49757301300997,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/15.json",
+          "sha256": "1aeea1612d48049cd6dc70b654a638834088737669d71ca73808ba168d8a16cc"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/15.json",
+          "sha256": "43146e21da012dfc56dceb3b7c965998b419a3bff403b23739b333e48bd21062"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 16,
+      "original_invocation_sha256": "d2f3acdf027dd61c37223da994e9648cdd11702842d12fd243fbd06f7e145118",
+      "original_invocation_bytes": 1905,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/16.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/16.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/16.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.645255883981008,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/16.json",
+          "sha256": "4e687f20a0f6cda612a67f7c93d676b15188bbe5b59825567673eebb6dde3768"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/16.json",
+          "sha256": "54e2f172b3d277dc85fc5bcfb88828b8297a4cd824ace2e7d7ce47d8bc51439d"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 17,
+      "original_invocation_sha256": "24a4d9f654fd8e5cef1cb75e5a55e4b41380a8ba9a459f1ac786227479fe8158",
+      "original_invocation_bytes": 1904,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/17.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/17.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/17.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.55121995799709,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/17.json",
+          "sha256": "5d63f2792fc4b19bf82308db01f651cb352cf0dd9cb0f99e3f3455f976f5d261"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/17.json",
+          "sha256": "43b468fa3fa82a9a1baebb25f324a96f4fdf0187f87fae367f74f2bf0095020d"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 18,
+      "original_invocation_sha256": "ea2899cf41f7d936d99ea3a2bfa79e204efea43b41c975b5b3753d1e9db88e20",
+      "original_invocation_bytes": 1904,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/18.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/18.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/18.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.56989468401298,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/18.json",
+          "sha256": "cc40d0d1c428441c333d36180a0cb540c9abdc231be09d027fca7d32e3e7479d"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/18.json",
+          "sha256": "43f3b152251bc8fdb0160ddaefd431da83207174f051df5158f09b085e4cb58f"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 19,
+      "original_invocation_sha256": "4f84f96c5b0fb061c8b9a21d2cd40e5c24a13cda2ca5f178c692fd82454ae72a",
+      "original_invocation_bytes": 1905,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/19.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/19.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/19.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.828990416019224,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/19.json",
+          "sha256": "f8b1e8b13057284d430f2c21807c4f3f77869aac098ad80a5799a04ca56f6073"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/19.json",
+          "sha256": "14a10c3d2084b0554c85c40685214837c2ff6b4f77c5b483d3991b9ddcc5b75e"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 20,
+      "original_invocation_sha256": "36579b08543a6687096fa53793b5d76c65d293c5d2f3020b715e0bd0851fa89b",
+      "original_invocation_bytes": 1904,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/20.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/20.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/20.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 18.27582900703419,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/20.json",
+          "sha256": "5ab51839152b7218c88673da2fd8fcafd6f9114c0154da8b39f0e98c51f945f7"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/20.json",
+          "sha256": "dd8e2c9f1f52a35d31417115b663c7850b80c532c963391685e88057465776f2"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 21,
+      "original_invocation_sha256": "eeb60be8fc58cfb2b10e02d3aa9d041c1230a2eb0aedd2f851d5e970de492485",
+      "original_invocation_bytes": 1905,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/21.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/21.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/21.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.592731134034693,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/21.json",
+          "sha256": "da68dc33132c74f644a3c4e04e255cda8e9666c06fae3fb79a97b33f66c0e562"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/21.json",
+          "sha256": "a55347f24a9cdc797dfe9074d83531bd536f23ff6d21b388640c549c9032dcba"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 22,
+      "original_invocation_sha256": "8ae89599957bae3f63deb1ad3f6d89b763b37a3afa368c0f1595869a85228bf3",
+      "original_invocation_bytes": 1904,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/22.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/22.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/22.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.56089385499945,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/22.json",
+          "sha256": "a0aff0f50dcc520abe44ac8d4f5f180a723c45b550f959890a797f5bdf49f3a2"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/22.json",
+          "sha256": "44eb48b9c2ef99b3e01b981c59a10119dc031bbb21335a89c95da42fc4b1a50c"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "occurrence": 23,
+      "original_invocation_sha256": "7bf27f34db365f9f459b623db6df7cdbd2f2df78b9f4ed59e04c8538232a6d7d",
+      "original_invocation_bytes": 1904,
+      "original_archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/23.invocation.json",
+      "receipt": {
+        "argv": [
+          "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/spike",
+          "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+          "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+          "--extension=gemmini",
+          "-p1",
+          "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+          "-m0x80000000:0x400000000",
+          "--instructions=1000000000",
+          "--timing-model=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+          "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/23.json",
+          "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/23.json",
+          "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+          "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+        ],
+        "wall_s": 17.52061715000309,
+        "scope": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/23.json",
+          "sha256": "23daec538dd33c3e323cfd484a508d02264aa4fae2700431a08525eaf9f9baad"
+        },
+        "report": {
+          "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/23.json",
+          "sha256": "5c091d0bed5ec67d64f4dd2d35372fbd85c30eb4c38875db606fc019d68d0e9d"
+        },
+        "all_output_semantics_match": true,
+        "warmup_semantics_match": true,
+        "cpu_affinity": [
+          1,
+          2
+        ]
+      },
+      "stdout": {
+        "path": "functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "original_stdout_sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "deduplicated_byte_identical": true
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ]
+}

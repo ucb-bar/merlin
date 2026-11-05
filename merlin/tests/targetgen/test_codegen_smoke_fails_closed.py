@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import selected_driver
 
 from merlin.runtime.backends import base as backends
 from merlin.targetgen import capsule_runner as CR
@@ -135,6 +136,7 @@ def test_invalid_explicit_backend_cannot_fall_back_to_target(monkeypatch, select
     assert ok is False and "backend target" in reason
 
 
+@selected_driver.requires_package_owned_support("gemmini")
 def test_gemmini_production_smoke_uses_the_shared_l3_engine_selection(monkeypatch):
     """A required GSIM run must not secretly execute a Verilator-only production smoke first."""
     from merlin.runtime.backends import base as backends

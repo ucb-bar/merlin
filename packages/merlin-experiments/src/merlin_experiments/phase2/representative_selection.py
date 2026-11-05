@@ -20,7 +20,10 @@ SCHEMA = "merlin.phase2.representative_selection.v1"
 
 def derive(test_justification: Mapping, selected_scope: Mapping | None) -> dict:
     """Select a deterministic family-closed diagnostic subset from a full receipt."""
-    if test_justification.get("schema") != "merlin.phase2.test_justification.v1":
+    if test_justification.get("schema") not in {
+        "merlin.phase2.test_justification.v1",
+        "merlin.phase2.test_justification.v2",
+    }:
         raise StageGateError("representative selection requires the full Phase 2 test justification")
     members = test_justification.get("members")
     if not isinstance(members, list) or not members:
@@ -46,6 +49,13 @@ def derive(test_justification: Mapping, selected_scope: Mapping | None) -> dict:
                     axes.add((field, str(purpose[field])))
             for trait in (row.get("hardware_basis") or {}).get("traits") or {}:
                 axes.add(("rtl_trait", str(trait)))
+            if test_justification.get("schema") == "merlin.phase2.test_justification.v2":
+                source_basis = (row.get("source_execution_basis") or {}).get("selection") or {}
+                for operation in source_basis.get("operations") or []:
+                    axes.add(("source_operation", str(operation)))
+                boundary = (row.get("curriculum") or {}).get("resource_boundary")
+                if isinstance(boundary, Mapping):
+                    axes.add(("source_resource_boundary", json.dumps(boundary, sort_keys=True, separators=(",", ":"))))
             for match in (row.get("workload_need") or {}).get("matched_demands") or []:
                 if (match.get("form_match") or {}).get("status") == "exact_arithmetic_form":
                     axes.add(("exact_form", f"{match.get('application')}:{match.get('signature_index')}"))

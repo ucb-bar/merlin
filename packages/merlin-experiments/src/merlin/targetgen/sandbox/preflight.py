@@ -34,6 +34,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -166,6 +167,32 @@ def _classify_stderr(stderr: str) -> str:
     return sandbox_failure_reason(stderr) or "nonzero_exit"
 
 
+#: Waits before re-running a probe that timed out. A timeout is no answer: creating a namespace
+#: blocks while the kernel tears down many others (stopping a run with dozens of sandboxes held a
+#: fresh launch's probe past its timeout for about a minute), so the probe asks again before saying so.
+PROBE_TIMEOUT_RETRY_WAITS_S = (10.0, 30.0)
+
+
+def _run_probe(argv, timeout):
+    """Run the probe, re-running it after each wait in :data:`PROBE_TIMEOUT_RETRY_WAITS_S` while it
+    times out; the last timeout propagates. Any completed run, success or refusal, is the answer."""
+    for wait in (*PROBE_TIMEOUT_RETRY_WAITS_S, None):
+        try:
+            return subprocess.run(  # noqa: S603 — fixed argv, no shell
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+                env={**os.environ, "LC_ALL": "C"},
+            )
+        except subprocess.TimeoutExpired:
+            if wait is None:
+                raise
+            time.sleep(wait)
+    raise AssertionError("unreachable")
+
+
 def probe_sandbox(
     binary: str | Path | None = None,
     *,
@@ -193,14 +220,7 @@ def probe_sandbox(
         return _CACHE[key]
 
     try:
-        completed = subprocess.run(  # noqa: S603 — fixed argv, no shell
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-            env={**os.environ, "LC_ALL": "C"},
-        )
+        completed = _run_probe(argv, timeout)
     except subprocess.TimeoutExpired:
         probe = SandboxProbe(status=SANDBOX_UNKNOWN, reason="probe_timed_out", binary=resolved, argv=tuple(argv))
     except OSError as exc:
@@ -260,6 +280,133 @@ def reset_probe_cache() -> None:
     _CACHE.clear()
 
 
+def _inotify_pressure() -> dict:
+    """Best-effort reference counts, not an atomic capacity reservation.
+
+    Duplicated/inherited descriptors can refer to one instance; unreadable
+    processes make the census incomplete. Only the live allocation probe decides
+    operability. No process state or descriptors are changed.
+    """
+    limits = {}
+    for name in ("max_user_instances", "max_user_watches", "max_queued_events"):
+        try:
+            limits[name] = int(Path("/proc/sys/fs/inotify", name).read_text())
+        except (OSError, ValueError):
+            limits[name] = None
+    descriptors = watches = inaccessible = processes = 0
+    try:
+        candidates = tuple(Path("/proc").iterdir())
+    except OSError:
+        candidates = ()
+        inaccessible += 1
+    for process in candidates:
+        if not process.name.isdecimal():
+            continue
+        try:
+            if process.stat().st_uid != os.getuid():
+                continue
+            for descriptor in (process / "fd").iterdir():
+                try:
+                    if "inotify" not in os.readlink(descriptor):
+                        continue
+                    descriptors += 1
+                    watches += sum(line.startswith("inotify ") for line in
+                                   (process / "fdinfo" / descriptor.name).read_text().splitlines())
+                except FileNotFoundError:
+                    continue  # A concurrent close is not an inaccessible owner.
+                except OSError:
+                    inaccessible += 1
+            processes += 1
+        except FileNotFoundError:
+            continue
+        except OSError:
+            inaccessible += 1
+    return {"limits": limits, "visible_inotify_descriptor_refs": descriptors,
+            "visible_watch_refs": watches, "processes_inspected": processes,
+            "inaccessible_observations": inaccessible,
+            "scope": "non-atomic visible references; not unique instances or reserved capacity"}
+
+
+def probe_snapshot_guards(*, scratch_parent: Path | None = None, include_pressure: bool = True) -> dict:
+    """Exercise the selected guard before costly preparation, without any input grant.
+
+    One private tiny fixture checks allocation AND actual mutation invalidation.
+    No guard, lease or digest is exported. A success cannot predict the future
+    watch demand of a large corpus or concurrent processes. The probe is never
+    cached: capacity can change between attempts in the same process.
+    """
+    import errno
+    import tempfile
+    import time
+
+    from merlin.common import bundle_snapshot as snapshots, read_lease_digest
+
+    selected = os.environ.get("MERLIN_SNAPSHOT_LEASE_CACHE") == "1"
+    record = {
+        "schema": "merlin.snapshot_guard_preflight.v1", "observed_at_ns": time.time_ns(),
+        "selected": selected, "status": "disabled", "reason": "reuse_not_selected",
+        "fallback": "Full independent snapshot payload and path verification remains required; no checks are skipped.",
+        "scope": "one tiny guard, point-in-time; no snapshot qualification or campaign resource reservation",
+    }
+    if not selected:
+        return record
+    if include_pressure:
+        record["pressure"] = _inotify_pressure()
+    if not read_lease_digest.enabled():
+        record.update(status="unavailable", reason="selected_reuse_unsupported_on_host")
+        return record
+    guard = None
+    try:
+        with tempfile.TemporaryDirectory(prefix="merlin-guard-probe-", dir=scratch_parent) as directory:
+            root = Path(directory)
+            leaf = root / "probe"
+            leaf.write_bytes(b"original public probe")
+            guard = snapshots._RosterGuard(root, snapshots._scanned_members(root))
+            number = guard.resource_errno
+            record["resource_errno"] = number
+            record["resource_error"] = errno.errorcode.get(number) if number is not None else None
+            if not guard.unchanged():
+                reason = {
+                    errno.EMFILE: "inotify_instances_or_process_fd_limit",
+                    errno.ENOSPC: "inotify_watch_limit",
+                    errno.ENFILE: "system_open_file_limit",
+                    errno.ENOMEM: "kernel_memory_pressure",
+                }.get(number, "guard_could_not_be_armed")
+                record.update(status="unavailable", reason=reason)
+            else:
+                leaf.write_bytes(b"changed public probe")
+                invalidated = not guard.unchanged()
+                record.update(status="ready" if invalidated else "unavailable",
+                              reason="allocated_and_mutation_invalidated" if invalidated else "mutation_not_observed")
+            guard.close()
+            guard = None
+    except (OSError, RuntimeError) as error:
+        record.update(status="unavailable", reason="guard_probe_failed", diagnostic=f"{type(error).__name__}: {error}")
+    finally:
+        if guard is not None:
+            guard.close()
+    return record
+
+
+class SnapshotGuardUnavailable(RuntimeError):
+    def __init__(self, record):
+        self.record = record
+        pressure = record.get("pressure") or {}
+        super().__init__(
+            f"selected snapshot guard unavailable ({record['reason']}, errno={record.get('resource_errno')}); "
+            f"{record['fallback']} Inspect fs.inotify limits {pressure.get('limits', {})} and process FD capacity; "
+            "restore capacity before relaunching. No host setting was changed."
+        )
+
+
+def require_snapshot_guards() -> dict:
+    """Early performance-readiness gate only when guarded reuse is selected."""
+    record = probe_snapshot_guards()
+    if record["selected"] and record["status"] != "ready":
+        raise SnapshotGuardUnavailable(record)
+    return record
+
+
 def _main() -> int:
     """``python -m merlin.targetgen.sandbox.preflight`` — is the sandbox usable here, right now?
 
@@ -269,6 +416,16 @@ def _main() -> int:
     answer -- 0 usable, 1 not -- so it also drops straight into a launch script, and the reason code is
     printed so a failure names a condition rather than a mood.
     """
+    import argparse
+    import json
+
+    parser = argparse.ArgumentParser(description="Check native sandbox or snapshot guard operability")
+    parser.add_argument("--snapshot-guards", action="store_true", help="probe selected guard allocation and report inotify pressure")
+    args = parser.parse_args()
+    if args.snapshot_guards:
+        record = probe_snapshot_guards()
+        print(json.dumps(record, sort_keys=True, indent=2))
+        return int(record["selected"] and record["status"] != "ready")
     probe = probe_sandbox(use_cache=False)
     print(probe.describe())
     return 0 if probe.usable else 1

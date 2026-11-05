@@ -6,9 +6,11 @@ lowering or compile acceptance; raw and normalized identities are retained separ
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
+import weakref
 from collections import Counter
 from pathlib import Path
 
@@ -117,7 +119,16 @@ def verify_capture_receipt(path: str | Path) -> dict:
     metadata = None
     metadata_identity = None
     if doc.get("schema") != "m2m.capture-receipt.v1":
-        errors.append("unsupported capture receipt schema")
+        from merlin.targetgen.native_reference_composition import SCHEMA, validate
+
+        try:
+            validate(doc)
+        except (KeyError, TypeError, ValueError):
+            errors.append(
+                "invalid capture receipt composition"
+                if doc.get("schema") == SCHEMA
+                else "unsupported capture receipt schema"
+            )
     if (doc.get("materialized_abi") or {}).get("complete") is not True:
         errors.append("capture receipt does not declare a complete materialized ABI")
     artifacts = doc.get("artifacts")
@@ -207,15 +218,55 @@ def verify_capture_receipt(path: str | Path) -> dict:
         reference = artifacts.get("integer-reference.json")
         source = agreement.get("source") or {}
         tool_sources = (doc.get("tool") or {}).get("source_sha256") or {}
+        reference_key = "m2m/capture/pt2e_integer_reference.py"
+        if (metadata.get("integerization_receipt") or {}).get("schema") == "merlin.dynamic_integer_reference.v1":
+            reference_key = "merlin/targetgen/_dynamic_integer_reference.py"
+            tool_sources = (doc.get("tool") or {}).get("reference_sources") or {}
         if (
             not isinstance(pointer, dict)
             or pointer.get("path") != "integer-reference.json"
             or not isinstance(reference, dict)
             or pointer.get("sha256") != reference.get("sha256")
             or not isinstance(source, dict)
-            or source.get("sha256") != tool_sources.get("m2m/capture/pt2e_integer_reference.py")
+            or not is_sha256(source.get("sha256"))
+            or source.get("sha256") != tool_sources.get(reference_key)
         ):
             errors.append("independent integer reference or its source is not bound by the capture receipt")
+    dynamic_evidence = None
+    stats = metadata.get("quantization_stats") if isinstance(metadata, dict) else None
+    if not errors and isinstance(stats, dict) and stats.get("dynamic_contractions") is not None:
+        try:
+            from merlin.capture.integerization import dynamic_integerization_projection
+            from merlin.targetgen.frontend_trace import loads_frontend_trace
+
+            trace_record = artifacts.get("frontend-trace.json")
+            trace_path = capture.parent / "frontend-trace.json"
+            if not isinstance(trace_record, dict) or trace_path.is_symlink():
+                raise ValueError("dynamic contraction census lacks the receipt-bound frontend trace")
+            raw_trace = trace_path.read_bytes()
+            if (
+                len(raw_trace) != trace_record["bytes"]
+                or hashlib.sha256(raw_trace).hexdigest() != trace_record["sha256"]
+            ):
+                raise ValueError("frontend trace changed during observation")
+            integer = metadata.get("integerization_receipt") or {}
+            dynamic_evidence = dynamic_integerization_projection(
+                metadata,
+                stats,
+                trace=loads_frontend_trace(raw_trace),
+                trace_identity=trace_record,
+                program_sha256=artifacts["model.mlir"]["sha256"],
+                emitted=integer.get("integer_mm_emitted"),
+                exported=integer.get("exported_integer_mm_count"),
+            )
+            if integer.get("schema") == "merlin.dynamic_integer_reference.v1":
+                from merlin.targetgen._dynamic_integer_reference import validate_receipt
+
+                validate_receipt(integer, annotated=stats.get("annotated_contractions"),
+                                 dynamic_calls=stats["dynamic_contractions"]["device_calls"],
+                                 exported=integer.get("exported_integer_mm_count"))
+        except (ValueError, TypeError, KeyError, OSError) as exc:
+            errors.append(f"dynamic integerization evidence is invalid: {exc}")
     result = {
         "status": "verified_materialized" if not errors else "unverified",
         "receipt_sha256": digest,
@@ -245,6 +296,8 @@ def verify_capture_receipt(path: str | Path) -> dict:
             "reference_artifact": artifacts.get("integer-reference.json"),
             "integerization_receipt": metadata.get("integerization_receipt"),
         }
+        if dynamic_evidence is not None:
+            result["capture_integerization"]["dynamic_integerization"] = dynamic_evidence
     return result
 
 
@@ -279,6 +332,25 @@ def verified_static_integerization(projection: dict | None, *, receipt_sha256: s
     ):
         return False
     receipt = projection.get("integerization_receipt") or {}
+    if isinstance(receipt, dict) and receipt.get("schema") == "merlin.dynamic_integer_reference.v1":
+        from merlin.capture.integerization import dynamic_integerization_count
+        from merlin.targetgen._dynamic_integer_reference import validate_receipt
+
+        try:
+            calls = dynamic_integerization_count(projection.get("dynamic_integerization"), emitted=0,
+                exported=receipt.get("exported_integer_mm_count"), program_sha256=capture["sha256"])
+            validate_receipt(receipt, annotated=0, dynamic_calls=calls,
+                             exported=receipt.get("exported_integer_mm_count"))
+            agreement = receipt["golden_agreement"]
+            pointer, reference = agreement.get("output") or {}, projection.get("reference_artifact") or {}
+            source = agreement.get("source") or {}
+            return (projection.get("software_numerical_engine") == "integer_reference"
+                    and pointer.get("path") == "integer-reference.json"
+                    and is_sha256(source.get("sha256")) and isinstance(source.get("path"), str)
+                    and is_sha256(pointer.get("sha256")) and pointer.get("sha256") == reference.get("sha256")
+                    and type(reference.get("bytes")) is int and reference["bytes"] > 0)
+        except (ValueError, TypeError, KeyError):
+            return False
     if not isinstance(receipt, dict) or receipt.get("schema") != "m2m.pt2e-integerize.v1":
         return False
     count = receipt.get("quantized_contractions_seen")
@@ -294,9 +366,25 @@ def verified_static_integerization(projection: dict | None, *, receipt_sha256: s
         or type(receipt.get("exported_integer_mm_count")) is not int
         or receipt["exported_integer_mm_count"] <= 0
         or type(receipt.get("integer_mm_emitted")) is not int
-        or receipt.get("integer_mm_emitted") != receipt["exported_integer_mm_count"]
+        or receipt["integer_mm_emitted"] <= 0
     ):
         return False
+    dynamic = projection.get("dynamic_integerization")
+    if dynamic is None:
+        if receipt["integer_mm_emitted"] != receipt["exported_integer_mm_count"]:
+            return False
+    else:
+        from merlin.capture.integerization import dynamic_integerization_count
+
+        try:
+            dynamic_integerization_count(
+                dynamic,
+                emitted=receipt["integer_mm_emitted"],
+                exported=receipt["exported_integer_mm_count"],
+                program_sha256=capture["sha256"],
+            )
+        except (ValueError, TypeError, KeyError):
+            return False
     agreement = receipt.get("golden_agreement") or {}
     if not isinstance(agreement, dict):
         return False
@@ -525,6 +613,46 @@ def _reduction_provenance_hint(op, mq) -> tuple[dict, dict | None]:
     }
 
 
+_PREPARED_APPLICATION_SOURCES = weakref.WeakKeyDictionary()
+
+
+class PreparedApplicationSource:
+    """One program's parsed source, with exact byte and IR mutation checks.
+
+    This is a call-local parsing optimization. Independent source witnesses
+    still reopen and reprove their complete original source before acceptance.
+    """
+
+    def __init__(self, path: Path, normalized: str):
+        from merlin.common import mlir_query as mq
+        from merlin.frontends.capture_normalization import normalize_capture_mlir
+
+        path = Path(path)
+        raw = path.read_bytes()
+        actual, normalization = normalize_capture_mlir(raw.decode("utf-8"))
+        if actual != normalized:
+            raise ValueError("prepared application source differs from normalized capture bytes")
+        self.module = mq.parse(actual)
+        # Weak ownership retains no program after its call-local carrier dies.
+        # Original issued values are not mutable attributes on the carrier.
+        _PREPARED_APPLICATION_SOURCES[self] = (path, raw, actual, normalization, self.module, str(self.module))
+
+    def reopen(self, path):
+        """Refuse changed bytes, another path, or mutation of the parsed IR."""
+        original = _PREPARED_APPLICATION_SOURCES.get(self)
+        if original is None:
+            raise ValueError("application source has no original issued preparation")
+        selected, raw, normalized, normalization, module, rendered = original
+        if (
+            Path(path) != selected
+            or selected.read_bytes() != raw
+            or self.module is not module
+            or str(module) != rendered
+        ):
+            raise ValueError("prepared application source or parsed module changed")
+        return raw, normalized, copy.deepcopy(normalization), module
+
+
 def _application_operation_inventory(
     path: str | Path,
     target: str,
@@ -534,6 +662,7 @@ def _application_operation_inventory(
     capability_contract: dict | None = None,
     software_spec: dict | None = None,
     host_capabilities: dict | None = None,
+    prepared_source: PreparedApplicationSource | None = None,
 ) -> dict:
     """Answer-free, operation-complete inventory for one application capture.
 
@@ -543,6 +672,7 @@ def _application_operation_inventory(
     not a second independent accelerator demand. Unknowns remain rows, never disappear from a count.
     """
     from merlin.common import mlir_query as mq
+    from merlin.compile.analysis import contraction_shapes
     from merlin.frontends.capture_normalization import normalize_capture_mlir
     from merlin.targetgen import model_coverage as mc
     from merlin.targetgen import semantic_families as sf
@@ -551,15 +681,20 @@ def _application_operation_inventory(
 
     p = Path(path)
     try:
-        data = p.read_bytes()
-        normalized, normalization = normalize_capture_mlir(data.decode("utf-8"))
-        module = mq.parse(normalized)
+        if prepared_source is None:
+            data = p.read_bytes()
+            normalized, normalization = normalize_capture_mlir(data.decode("utf-8"))
+            module = mq.parse(normalized)
+        elif type(prepared_source) is PreparedApplicationSource:
+            data, normalized, normalization, module = prepared_source.reopen(p)
+        else:
+            raise ValueError("application inventory needs an original prepared source")
     except Exception as exc:
         raise ValueError(
             f"declared application capture {p}: cannot inventory MLIR: {type(exc).__name__}: {exc}"
         ) from exc
     try:
-        extents = mc._contraction_extents(module)  # noqa: PLC2701 -- region-coverage shape authority
+        extents = contraction_shapes.contraction_extents(module)  # region-coverage shape authority
     except Exception as exc:
         raise ValueError(
             f"declared application capture {p}: cannot inventory shapes: {type(exc).__name__}: {exc}"
@@ -753,7 +888,8 @@ def _application_operation_inventory(
         if disposition == "unclassified" and software_spec is not None and host_capabilities is not None:
             # Independent hardware eligibility remains unknown for dtype-changing operations.
             # A separately pinned and reviewed host declaration can nevertheless resolve their
-            # placement. Use the same exact-signature screen as whole-program admission.
+            # placement without duplication in accelerator software semantics. Use the same
+            # exact-signature screen as whole-program admission.
             from merlin.targetgen.operation_accounting import admit_operation_row
 
             admission = admit_operation_row(
@@ -768,13 +904,9 @@ def _application_operation_inventory(
                 admission["host_admission"]["status"] == "admitted"
                 and admission["host_admission"]["reviewed"]
                 and admission["accelerator_admission"]["status"] != "admitted"
-                and any(
-                    row["status"] == "admitted" and row["placement"] == "host"
-                    for row in admission["software_admissions"]
-                )
             ):
                 disposition = signature["disposition"] = "host_required"
-                signature["reason"] = "exact reviewed software and pinned host declarations admit this signature"
+                signature["reason"] = "exact reviewed pinned host declaration admits this signature"
         key = json.dumps(signature, sort_keys=True, separators=(",", ":"))
         slot = grouped.setdefault(key, {**signature, "count": 0, "ordinals": []})
         slot["count"] += 1
@@ -817,6 +949,8 @@ def _application_operation_inventory(
         result["capture_integerization"] = integerization
     if include_graph:
         result["operation_graph"] = application_graph_inventory(p)
+    if prepared_source is not None:
+        prepared_source.reopen(p)
     return result
 
 

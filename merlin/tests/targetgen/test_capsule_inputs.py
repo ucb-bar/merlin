@@ -137,6 +137,24 @@ def test_decoders_preserve_distinct_tuple_rules_and_dtype_override(monkeypatch):
     assert inputs._encode_leaf({}, "undeclared", [1.0]) == struct.pack("<f", 1.0)
 
 
+def test_decoded_inputs_preserves_large_row_major_operands_without_mutation():
+    row = list(range(131072))
+    nested = [[], row, [[-3, -2], [], [-1]], (7, 8)]
+    assert inputs._decoded_inputs({"A": {"decoded": nested}}) == {
+        "A": row + [-3, -2, -1, (7, 8)]
+    }
+    assert nested[1] is row and row == list(range(131072))
+
+
+def test_decoded_inputs_handles_deep_and_empty_lists_without_recursion():
+    decoded = [1, [], 2]
+    for _ in range(4096):
+        decoded = [decoded]
+    assert inputs._decoded_inputs({"A": {"decoded": decoded}, "empty": {"decoded": []}}) == {
+        "A": [1, 2], "empty": []
+    }
+
+
 def test_leaf_materializer_preserves_range_tensor_and_public_overrides(monkeypatch, capsule):
     calls = []
 

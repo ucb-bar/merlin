@@ -35,8 +35,47 @@ def operation_contract_for_target(target: str, manifest: Mapping[str, Any]) -> d
     return merge_operation_contracts(
         derive_dialect_operation_contract(plan),
         derive_isa_operation_contract(taxonomy_for_target(str(target)), dialect=str(plan["dialect_name"])),
+        derive_readout_operation_contract(manifest, dialect=str(plan["dialect_name"])),
         manifest.get("operation_capabilities") or {},
     )
+
+
+def derive_readout_operation_contract(manifest: Mapping[str, Any], *, dialect: str) -> dict[str, Any]:
+    """Project existing readout declarations into the common operation registry.
+
+    The projection carries configuration, numerical rules and seed routes as
+    data. Its status remains unknown until a matching behavioral observation
+    qualifies it. It does not promote register presence or a declaration into
+    executable fusion support, nor infer stage order from an unordered set.
+    """
+    selected = (manifest.get("runner") or {}).get("chipyard_rocc") or {}
+    readout = selected.get("readout") or manifest.get("readout_semantics") or {}
+    if not isinstance(readout, Mapping):
+        raise ValueError("readout composition declarations must be a mapping")
+    rows = readout.get("epilogue_capability") or readout.get("readouts") or ()
+    operations = []
+    for row in rows:
+        if not isinstance(row, Mapping) or not isinstance(row.get("selector"), str) or not row["selector"]:
+            raise ValueError("readout composition requires an explicit selector")
+        stages = row.get("applies")
+        if not isinstance(stages, (list, tuple)) or any(not isinstance(s, str) or not s for s in stages):
+            raise ValueError("readout composition stages must be explicit strings")
+        operations.append({
+            "domain": "composition", "dialect": dialect, "operation": "readout:" + row["selector"],
+            "effects": ["movement"], "status": "unknown",
+            "semantics": {
+                "kind": "readout_composition", "producer_family": "contraction",
+                "selector": row["selector"], "applies": list(stages),
+                "configuration": copy.deepcopy(selected.get("config")),
+                "numerical_rules": copy.deepcopy(readout.get("scalar_abi")),
+                "stage_routes": copy.deepcopy(readout.get("stage_routes") or []),
+                "ordered_stage_templates": copy.deepcopy(row.get("ordered_stage_templates")),
+                "evidence_header": copy.deepcopy(readout.get("evidence_header")),
+            },
+            "evidence": [{"kind": "declaration", "detail": str(row.get("evidence") or
+                         "selected readout declaration; order and executable support require independent evidence")}],
+        })
+    return {"version": 1, "operations": operations}
 
 
 def _evidence(value: Any) -> dict[str, str]:
@@ -224,6 +263,13 @@ def merge_operation_observations(
         if status not in _STATUSES:
             raise ValueError(f"operation status must be one of {sorted(_STATUSES)}, got {status!r}")
         op = by_id[ident]
+        if ident[0] == "composition" and status == "supported":
+            configuration = (op.get("semantics") or {}).get("configuration")
+            if configuration is None or observation.get("configuration") != configuration:
+                raise ValueError("composition observation must match the explicitly selected configuration")
+            evidence = _evidence(observation.get("evidence"))
+            if evidence["kind"] != "probe":
+                raise ValueError("composition support requires executable probe evidence")
         op["status"] = status
         if observation.get("evidence") is not None:
             op.setdefault("evidence", []).append(_evidence(observation["evidence"]))

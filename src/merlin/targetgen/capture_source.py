@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 import struct
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -91,6 +91,16 @@ def manifest_key_for(index: int, tensor: str, weight_manifest: Mapping[str, Any]
     return tensor
 
 
+def _record_encoding(array, tensor, declared_dtype, report):
+    import numpy as np
+
+    if report is not None and (
+        declared_dtype == "bf16" and array.dtype != np.uint16
+        or declared_dtype == "i1" and array.dtype != np.uint8
+    ):
+        report.re_encoded.append((tensor, str(array.dtype), declared_dtype))
+
+
 def encode_as_declared(array: Any, *, tensor: str, declared_dtype: str, report: SourceReport | None = None) -> bytes:
     """The array's bytes in the dtype the COMPILER declared, re-encoding when they differ.
 
@@ -103,13 +113,10 @@ def encode_as_declared(array: Any, *, tensor: str, declared_dtype: str, report: 
     from merlin.llvmlower.c_runtime import _bf16_bits
 
     contiguous = np.ascontiguousarray(array)
+    _record_encoding(contiguous, tensor, declared_dtype, report)
     if declared_dtype == "bf16" and contiguous.dtype != np.uint16:
-        if report is not None:
-            report.re_encoded.append((tensor, str(contiguous.dtype), declared_dtype))
         return _bf16_bits(contiguous).tobytes()
     if declared_dtype == "i1" and contiguous.dtype != np.uint8:
-        if report is not None:
-            report.re_encoded.append((tensor, str(contiguous.dtype), declared_dtype))
         return contiguous.astype(np.uint8).tobytes()
     return contiguous.tobytes()
 
@@ -127,12 +134,15 @@ def _safetensors_index(path: Path) -> tuple[Any, Mapping[str, Any], int]:
 
 
 def capture_tensor_source(
-    capture_dir: Any, plan: PackPlan, *, weight_manifest: Mapping[str, Any]
-) -> tuple[Callable[[str], bytes], SourceReport]:
+    capture_dir: Any, plan: PackPlan, *, weight_manifest: Mapping[str, Any], streamed: bool = False
+) -> tuple[Callable, SourceReport]:
     """``(source, report)`` for :func:`bundle_pack.write_const_blob` over one capture directory.
 
     The returned callable takes the manifest's own key for a tensor -- which is what the packer asks
     with -- and returns its bytes in the dtype the command buffer declared.
+    Explicit ``streamed=True`` returns lazy WeightPayload storage instead. Raw
+    file spans additionally require exact captured shape and dtype; lifted/input
+    arrays keep the same encoding. This changes no layout or numerical policy.
     """
     import numpy as np
 
@@ -141,7 +151,15 @@ def capture_tensor_source(
         raise CaptureSourceError(f"{root} is not a capture directory")
 
     weights = root / "weights.safetensors"
-    raw, header, payload_at = _safetensors_index(weights) if weights.is_file() else (None, {}, 0)
+    if type(streamed) is not bool:
+        raise CaptureSourceError("capture storage selection must be explicit")
+    if streamed and weights.is_file():
+        from merlin.capture.safetensors import load_header
+
+        header, payload_at = load_header(weights)
+        raw = None
+    else:
+        raw, header, payload_at = _safetensors_index(weights) if weights.is_file() else (None, {}, 0)
 
     extra_path = root / "extra.npz"
     extra = np.load(extra_path) if extra_path.is_file() else None
@@ -160,9 +178,11 @@ def capture_tensor_source(
 
     report = SourceReport()
     declared: dict[str, tuple[str, str]] = {}
+    shapes = {}
     for row in plan.const:
         key = manifest_key_for(row.index, row.tensor, weight_manifest)
         declared[key] = (row.tensor, row.dtype)
+        shapes[key] = tuple(row.shape)
     known = set(declared)
     report.unused_manifest_keys = sorted(
         str(value)
@@ -172,20 +192,51 @@ def capture_tensor_source(
         if value and value not in known
     )
 
-    def source(key: str) -> bytes:
+    def array_bytes(load, *, tensor, dtype, key):
+        if not streamed:
+            return encode_as_declared(load(), tensor=tensor, declared_dtype=dtype, report=report)
+        from math import prod
+
+        from merlin.common.quant_formats import get
+        from merlin.llvmlower.weight_payload import WeightPayload
+
+        width = get(dtype).element_bits
+        if width not in (8, 16, 32, 64):
+            raise CaptureSourceError("streamed capture needs byte-aligned scalar storage")
+        inspected = load()
+        if tuple(inspected.shape) != shapes[key]:
+            raise CaptureSourceError("streamed captured array changes the logical tensor shape")
+        _record_encoding(inspected, tensor, dtype, report)
+        del inspected
+        return WeightPayload.array(
+            prod(shapes[key]) * (width // 8),
+            lambda: np.frombuffer(encode_as_declared(load(), tensor=tensor, declared_dtype=dtype), dtype=np.uint8),
+        )
+
+    def source(key: str):
         tensor, dtype = declared.get(key, (key, ""))
         if key in header:
             low, high = header[key]["data_offsets"]
             report.origin[tensor] = "safetensors"
+            if streamed:
+                from merlin.common.quant_formats import get
+                from merlin.llvmlower.weight_payload import WeightPayload
+
+                stored = header[key]
+                if (
+                    type(low) is not int or type(high) is not int or low < 0 or high <= low
+                    or tuple(stored.get("shape", ())) != shapes[key]
+                    or get(str(stored.get("dtype", "")).lower()).name != get(dtype).name
+                ):
+                    raise CaptureSourceError("streamed capture differs from the declared raw scalar tensor")
+                return WeightPayload.file(weights, payload_at + low, high - low)
             return bytes(raw[payload_at + low : payload_at + high])
         if key in by_manifest_spelling and extra is not None:
             report.origin[tensor] = "lifted_buffer"
-            return encode_as_declared(
-                extra[by_manifest_spelling[key]], tensor=tensor, declared_dtype=dtype, report=report
-            )
+            return array_bytes(lambda: extra[by_manifest_spelling[key]], tensor=tensor, dtype=dtype, key=key)
         if extra is not None and key in lifted:
             report.origin[tensor] = "lifted_buffer"
-            return encode_as_declared(extra[key], tensor=tensor, declared_dtype=dtype, report=report)
+            return array_bytes(lambda: extra[key], tensor=tensor, dtype=dtype, key=key)
         # Defect (3): a runtime input is keyed positionally, via input_order.json.
         if key in order and inputs is not None:
             index = order[key]
@@ -198,7 +249,7 @@ def capture_tensor_source(
                     f"{positional!r} (it holds {sorted(inputs.files)[:8]})"
                 )
             report.origin[tensor] = "runtime_input"
-            return encode_as_declared(inputs[positional], tensor=tensor, declared_dtype=dtype, report=report)
+            return array_bytes(lambda: inputs[positional], tensor=tensor, dtype=dtype, key=key)
         raise CaptureSourceError(
             f"no bytes for {key!r} (tensor {tensor!r}) in {root}: it is not a safetensors entry, "
             f"not a lifted buffer under either spelling, and not a declared runtime input. Packing "

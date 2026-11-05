@@ -38,9 +38,11 @@ def _build_spec(args) -> Spec:
 
 def _load_versioned(path: Path):
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if isinstance(raw, dict) and int(raw.get("version", 1)) == 2:
+    if isinstance(raw, dict) and int(raw.get("version", 1)) in {2, 3}:
         from .paper import PaperStudySpec
         return PaperStudySpec.parse(raw, source_path=path.resolve())
+    if isinstance(raw, dict) and "contraction_format_requirements" in raw:
+        raise ValueError("Declared contraction format membership is incomplete.")
     return Spec.parse(raw)
 
 
@@ -73,7 +75,21 @@ def main(argv: list[str] | None = None) -> int:
                     help="externally reviewed paper toolchain authority JSON (required with --freeze)")
     ap.add_argument("--frozen-out", type=Path,
                     help="where to write the frozen spec (default canonical paper-study artifact)")
+    ap.add_argument(
+        "--contraction-originals", type=Path, help="explicit original-program file/SHA selection descriptor (data only)"
+    )
+    ap.add_argument("--contraction-originals-sha256", help="independently selected SHA-256 of that descriptor")
     args = ap.parse_args(argv)
+    originals = None
+    if (args.contraction_originals is None) != (args.contraction_originals_sha256 is None):
+        ap.error("Declared contraction format selection is unavailable.")
+    if args.contraction_originals is not None:
+        from merlin.common.pinned_files import PinnedFile
+
+        from .capture_format_policy import load_original_format_selections
+
+        descriptor = PinnedFile(args.contraction_originals, args.contraction_originals_sha256)
+        originals = load_original_format_selections(descriptor)
 
     spec = _load_versioned(args.spec) if args.spec else _build_spec(args)
     from .paper import PaperStudySpec
@@ -87,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
                 ap.error("--freeze requires --toolchain-authority")
             from merlin.common.artifacts import new_product
             from merlin.common.paths import merlin_dir
-            from merlin.mining import k1 as board
+
             from .freeze import freeze_study
             product = None
             frozen_out = args.frozen_out
@@ -95,16 +111,25 @@ def main(argv: list[str] | None = None) -> int:
                 product = new_product("paper-study", version=2, target=spec.target,
                                       sources=[str(spec.source_path)] if spec.source_path else [])
                 frozen_out = product.add_artifact("frozen-study.yaml")
-            runtime_paths = args.runtime_path or [
-                merlin_dir() / "runtime",
-                merlin_dir() / "python" / "merlin" / "runtime",
-                merlin_dir() / "python" / "merlin" / "llvmlower" / "c_runtime.py",
-                # the board adapter the implemented substrate is measured through
-                merlin_dir() / "python" / Path(*board.__name__.split(".")).with_suffix(".py"),
-            ]
+            runtime_paths = args.runtime_path
+            if not runtime_paths:
+                from merlin.mining import k1 as board
+
+                runtime_paths = [
+                    merlin_dir() / "runtime",
+                    merlin_dir() / "python" / "merlin" / "runtime",
+                    merlin_dir() / "python" / "merlin" / "llvmlower" / "c_runtime.py",
+                    # the board adapter the implemented substrate is measured through
+                    merlin_dir() / "python" / Path(*board.__name__.split(".")).with_suffix(".py"),
+                ]
             frozen = freeze_study(
-                spec, policy_path=args.policy, runtime_paths=runtime_paths,
-                toolchain_authority_path=args.toolchain_authority, output_path=frozen_out)
+                spec,
+                policy_path=args.policy,
+                runtime_paths=runtime_paths,
+                toolchain_authority_path=args.toolchain_authority,
+                output_path=frozen_out,
+                contraction_originals=originals,
+            )
             if product:
                 product.notes = f"frozen study sha256={frozen.sha256()}"
                 product.write_manifest()
@@ -123,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {out_dir / 'preflight.yaml'}")
         return 0
     if args.freeze:
-        ap.error("--freeze requires a version: 2 paper study spec")
+        ap.error("--freeze requires a version: 2 or 3 paper study spec")
     out_dir = run(spec, out_root=args.out_root, run_board=args.run)
     print(f"merlin-compare: wrote {out_dir}")
     print(f"  {out_dir / 'compare.md'}")

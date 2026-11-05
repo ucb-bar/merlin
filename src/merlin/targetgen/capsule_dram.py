@@ -176,9 +176,19 @@ def layout(capsule: dict, *, base: int = DEFAULT_BASE, align: int = DEFAULT_ALIG
     return out
 
 
-def inject_bases(cb: dict, capsule: dict, *, base: int = DEFAULT_BASE, align: int = DEFAULT_ALIGN) -> dict:
+def inject_bases(
+    cb: dict,
+    capsule: dict,
+    *,
+    base: int = DEFAULT_BASE,
+    align: int = DEFAULT_ALIGN,
+    contract: dict | None = None,
+) -> dict:
     """Fill in a canonical DRAM base for any command-buffer tensor that DIDN'T declare one, matched by
     name, from :func:`layout`. In-place on ``cb`` (also returned).
+
+    A selected logical-pointer contract instead keeps the original storage
+    declaration: its harness allocates buffers and passes their actual pointers.
 
     The agent's kernel owns its memory map, so a ``base`` the agent DECLARED on a tensor is authoritative
     and left untouched (the oracle preloads inputs / reads the output at exactly the agent's addresses).
@@ -186,6 +196,15 @@ def inject_bases(cb: dict, capsule: dict, *, base: int = DEFAULT_BASE, align: in
     non-declaring) submission still grades against a consistent layout instead of crashing on a missing
     base. A cb tensor whose name is not in the capsule layout is left as-is (the oracle raises an
     actionable error if a required base is still missing) — never a silent guess."""
+    if contract is not None:
+        abi = contract.get("harness_abi")
+        if isinstance(abi, dict) and abi.get("kind") == "logical_pointer":
+            from merlin.runtime.harness_render import validate_contract
+
+            # Pointer storage is allocated by the selected logical harness. Do
+            # not add a competing fixed-address ABI or strip candidate metadata.
+            validate_contract(contract)
+            return cb
     lay = layout(capsule, base=base, align=align)
     for name, t in (cb.get("tensors") or {}).items():
         if t.get("base") is None and name in lay:

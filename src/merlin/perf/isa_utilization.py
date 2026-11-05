@@ -153,7 +153,7 @@ def capability_utilization_for_target(artifact_text: str, *, target: str) -> dic
     case is recorded as ``UNKNOWN`` with the reason, and the caller can say the measurement did not
     run rather than that the compiler used everything the machine offers.
     """
-    from merlin.kernels.decode.rocc import funct_table_for
+    from merlin.compile.analysis.rocc_commands import funct_table_for
 
     table = funct_table_for(target)
     names = table.get("names") if isinstance(table, Mapping) else None

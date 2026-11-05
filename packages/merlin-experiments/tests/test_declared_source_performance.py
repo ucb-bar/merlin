@@ -54,6 +54,46 @@ def test_explicit_source_performance_request_keeps_old_versions_closed(performan
             D.validate(request)
 
 
+def test_automatic_policy_selection_uses_the_same_declared_caller(performance_request, tmp_path):
+    from merlin_experiments.phase0.component_source_performance import CURRICULUM_SCHEMA, SCHEMA_V2
+
+    request, _ = performance_request
+    policy = {"schema": CURRICULUM_SCHEMA, "probe_extents": [2, 3], "max_members": 128, "max_extent_bits": 32}
+    path = tmp_path / "curriculum-policy.json"
+    path.write_text(json.dumps(policy))
+    request["source_performance"] = {"schema": SCHEMA_V2, "policy": pin(path)}
+    assert D.validate(request) == request
+    paths, objectives, selected = D._source_performance_inputs(request["source_performance"], forbidden=())
+    assert paths == {"policy": path} and objectives is None and selected == policy
+    request["source_performance"]["factory"] = "arbitrary.module:callback"
+    with pytest.raises(ValueError, match="versioned source pins"):
+        D.validate(request)
+
+
+def test_automatic_policy_query_hints_refuse_before_live_issuer(performance_request, tmp_path, monkeypatch):
+    from merlin_experiments.phase0.component_source_performance import CURRICULUM_SCHEMA, SCHEMA_V2
+
+    request, request_path = performance_request
+    path = tmp_path / "curriculum-policy.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": CURRICULUM_SCHEMA,
+                "probe_extents": [2, 3],
+                "max_members": 128,
+                "max_extent_bits": 32,
+                "workload": "private_selector",
+            }
+        )
+    )
+    request["source_performance"] = {"schema": SCHEMA_V2, "policy": pin(path)}
+    request_path.write_text(json.dumps(request))
+    monkeypatch.setattr(D, "issue_independent_hardware_intake", lambda **_: pytest.fail("query reached issuer"))
+    with pytest.raises(ValueError, match="teaching extents"):
+        D.run(request_path, output=tmp_path / "query-run")
+    assert not (tmp_path / "query-run").exists()
+
+
 @pytest.mark.parametrize(
     "change", ["absent_purpose", "other_purpose", "absent_mode", "wrong_mode", "saved_authority", "extra_factory"]
 )

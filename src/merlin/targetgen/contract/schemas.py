@@ -78,6 +78,30 @@ def _declared_dtypes(cap: Any):
     pol = cap.get("numeric_policy") if isinstance(cap, dict) else None
     if isinstance(pol, dict) and "dtype" in pol:
         yield "numeric_policy/dtype", pol["dtype"]
+    if isinstance(pol, dict) and pol.get("schema") == "merlin.numeric_policy.per_output.v1":
+        for name, leaf in pol["outputs"].items():
+            yield f"numeric_policy/outputs/{name}/dtype", leaf["dtype"]
+
+
+def _check_output_policy_roster(cap: dict) -> None:
+    """Join the explicit versioned policy to every declared output, without defaults."""
+    policy = cap["numeric_policy"]
+    if policy.get("schema") != "merlin.numeric_policy.per_output.v1":
+        return
+    attrs = cap["operation"].get("attributes", {})
+    names = attrs.get("outs")
+    if (
+        not isinstance(names, list)
+        or not names
+        or any(not isinstance(name, str) or not name for name in names)
+        or len(set(names)) != len(names)
+        or set(names) != set(policy["outputs"])
+        or ("out" in attrs and attrs["out"] != names[0])
+    ):
+        raise ContractViolation(
+            "per-output numeric policy requires the complete unique operation.attributes.outs "
+            "roster, exactly one policy per output, and a consistent first out"
+        )
 
 
 def _tier_availability_conflicts(cap: Any, schema: dict[str, Any]) -> list[str]:
@@ -132,6 +156,7 @@ def validate_capsule(cap: Any, *, contract: str | Path | None = None) -> None:
     here, so an unrecognized token still fails closed with the ContractViolation the enum used to raise.
     """
     validate(cap, "capsule", contract=contract)
+    _check_output_policy_roster(cap)
     conflicts = _tier_availability_conflicts(cap, load_schema("capsule", contract=contract))
     if conflicts:
         raise ContractViolation("capsule contract violation: " + "; ".join(conflicts))
@@ -155,9 +180,24 @@ def validate_command_buffer(cb: Any, *, contract: str | Path | None = None) -> N
     expressed; it spent its session guessing spellings. A validator the submitter is told to run must fail
     on what the runner will refuse, or it is not the contract."""
     validate(cb, "command_buffer", contract=contract)
+    for name, tensor in (cb.get("tensors") or {}).items():
+        if "storage_encoding" not in tensor:
+            continue
+        from merlin.perf.storage_encoding import GroupedAxesStorage
+
+        try:
+            encoding = GroupedAxesStorage.from_dict(tensor["storage_encoding"])
+            if list(encoding.physical_shape) != tensor["shape"] or encoding.dtype != tensor["dtype"]:
+                raise ValueError("physical tensor shape or element type differs from its storage map")
+        except (TypeError, ValueError) as exc:
+            raise ContractViolation(f"command_buffer storage encoding for {name}: {exc}") from exc
     from merlin.runtime.commandbuffer import validate_command_buffer as _structural
 
-    problems = [p for p in _structural(cb) if "declares no 'tensors'" in p or "whole-program kernel_abi" in p]
+    problems = [
+        p
+        for p in _structural(cb)
+        if "declares no 'tensors'" in p or "whole-program kernel_abi" in p or "acc_scale_by_column" in p
+    ]
     if problems:
         raise ContractViolation("command_buffer contract violation: " + "; ".join(problems))
 
@@ -192,14 +232,25 @@ def _resolve_target(obj: Any, target: str) -> Any:
     return obj
 
 
-def render_backend_contract(target: str, *, contract: str | Path | None = None) -> dict[str, Any]:
-    """The OOT backend contract resolved for ``target`` — ``kernel_abi.symbol`` becomes ``f"{target}_
-    kernel"`` and the entrypoint argv templates resolve ``--convert-iface-to-{target}``, exactly the value
-    ``generate_prompt`` derives. The first target resolves byte-identically to the former hand-authored literals."""
+#: The version-1 resident kernel ABI, kept apart from the candidate-facing OOT backend contract.
+LEGACY_KERNEL_ABI = ("legacy", "kernel_abi_v1.yaml")
+
+
+def legacy_kernel_abi_path(*, contract: str | Path | None = None) -> Path:
+    """Where the version-1 kernel ABI (``kernel_abi``) lives under the selected contract dir."""
+    return contract_dir(contract).joinpath(*LEGACY_KERNEL_ABI)
+
+
+def render_legacy_kernel_abi(target: str, *, contract: str | Path | None = None) -> dict[str, Any]:
+    """The version-1 ``kernel_abi`` block resolved for ``target`` (``symbol`` -> ``f"{target}_kernel"``).
+
+    Read by Merlin's own device shim and by version-1 harness certification only; a runner-owned
+    harness follows ``logical_kernel_abi`` in the OOT backend contract."""
     import yaml
 
-    text = (contract_dir(contract) / "mlir_oot_backend_contract.yaml").read_text(encoding="utf-8")
-    return _resolve_target(yaml.safe_load(text), target)
+    document = yaml.safe_load(legacy_kernel_abi_path(contract=contract).read_text(encoding="utf-8"))
+    block = document.get("kernel_abi") if isinstance(document, dict) else None
+    return _resolve_target(block if isinstance(block, dict) else {}, target)
 
 
 def render_oracle_runner_contract(target: str, *, contract: str | Path | None = None) -> dict[str, Any]:

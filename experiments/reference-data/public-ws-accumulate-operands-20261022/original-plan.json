@@ -1,0 +1,44 @@
+{
+  "at": 1792679788.2731261,
+  "cases": [
+    {
+      "capsule": "SY_kdepth_fits_double",
+      "native_result": {
+        "path": "workspace/tasks/el4-joint-campaign-20261021/merlin/out/runs/gemmini/phase1/gemmini-joint-clean-20261022-v10/_qa_work/selfchecks/selfcheck_mybqoiro/runs/gemmini-capsule-bench/SY_kdepth_fits_double/capsule_result.json",
+        "sha256": "546b7a1d655b9645fb187a37c6b7c61466024c98af53a70fbabc34876b032a66"
+      }
+    },
+    {
+      "capsule": "SY_contraction_i8_aligned",
+      "native_result": {
+        "path": "workspace/tasks/el4-joint-campaign-20261021/merlin/out/runs/gemmini/phase1/gemmini-joint-clean-20261022-v10/_qa_work/selfchecks/selfcheck_v_rqz6wa/runs/gemmini-capsule-bench/SY_contraction_i8_aligned/capsule_result.json",
+        "sha256": "7e41ec0495e4f414f58bc8fa8f893b4f5a541383ee835905b214ec966d0e2a69"
+      }
+    }
+  ],
+  "fitting_allowed": false,
+  "physical_runs": 0,
+  "qualified": false,
+  "resource_override": {
+    "authority": "root explicit operatorCPU0 authorization after preexecution EINVAL",
+    "campaign_cpu_use": false,
+    "cpu": 0,
+    "namespace": "workspace/tasks/el4-joint-campaign-20261021/.tmp/gemmini-joint-clean-20261022-v2/compute-slots",
+    "physical_runs": 0,
+    "previous_attempt": "../arrival-unused-replays-v1/results.json"
+  },
+  "roles": {
+    "SY_contraction_i8_aligned": "existing development regression; unaffected overwrite WS path",
+    "SY_kdepth_fits_double": "development after earlier residual/trace investigation; no longer independent validation"
+  },
+  "roster": {
+    "path": "workspace/tasks/el4-joint-control-20261021/.tmp/v10-progress-audit/retained-pairs.json",
+    "sha256": "e1be035cf44234f953b5f63e46f3c01a14ff46a6838bc30f4454df4049e9c1fb"
+  },
+  "runtime": {
+    "path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/runtime.json",
+    "sha256": "df2c2bf35cd33353e2f6c7e92c317ad44f1b85089bba3846dd46e6f442dfa6e9"
+  },
+  "schema": "operator.accumulating_ws_replay.v1",
+  "seconds_per_case": 120
+}

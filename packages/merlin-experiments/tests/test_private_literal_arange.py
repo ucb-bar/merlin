@@ -395,3 +395,23 @@ def test_linked_two_range_roster_refuses_omitted_host_admission(tmp_path):
     assert admission.linked_complete(source, entry, "b" * 64)
     witness["admissions"].pop()
     assert not admission.linked_complete(source, entry, "b" * 64)
+
+
+def test_unrelated_global_trace_diagnostic_does_not_replace_scoped_range_proof(tmp_path):
+    def diagnostic(trace):
+        trace['status'] = 'diagnostic'
+        trace['blockers'] = ['quantized -> prepared correspondence incomplete']
+    capture = _write_capture(tmp_path, change_trace=diagnostic)
+    proof = prove_literal_arange_source(capture, index_bits=64)
+    assert proof['frontend_trace_status'] == 'diagnostic'
+    assert proof['source_correspondence_scope'] == 'all captured prepared i64 literal ranges'
+    assert proof['occurrences'][0]['original_to_prepared_equivalence'] == 'not_proved'
+
+
+def test_diagnostic_trace_still_refuses_missing_range_join(tmp_path):
+    def missing_range(trace):
+        trace['status'] = 'diagnostic'
+        trace['mlir']['source_correspondence'] = []
+    capture = _write_capture(tmp_path, change_trace=missing_range)
+    with pytest.raises(ValueError, match='range source join is ambiguous'):
+        prove_literal_arange_source(capture, index_bits=64)

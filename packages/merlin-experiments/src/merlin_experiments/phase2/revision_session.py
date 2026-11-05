@@ -20,6 +20,7 @@ from merlin.perf.mechanism_probe import ProbeBinding
 from merlin_experiments.phase2 import authoring as AUTHORING
 from merlin_experiments.phase2 import contracts as P2_CONTRACTS
 from merlin_experiments.phase2 import portfolio_checkpoint as CHECKPOINT
+from merlin_experiments.phase2.capsule_iteration import checkpoint_scope
 from merlin_experiments.phase2.edit_authority import FrozenEditAuthority
 from merlin_experiments.phase2.global_inputs import GlobalExperimentInputs
 from merlin_experiments.phase2.mechanism_program import MechanismProgram
@@ -320,6 +321,7 @@ class RevisionSession:
                 "iteration": row["iteration"],
                 "candidate_read_only": True,
                 "phase1_qualification": self.inputs.phase1_binding,
+                **checkpoint_scope(self.inputs.phase1_binding),
                 "host_verification_policy": self.inputs.host_policy,
                 "source_snapshot": (
                     str(self.inputs.source_snapshot_root) if self.inputs.source_snapshot_root is not None else None
@@ -408,6 +410,7 @@ class RevisionSession:
                 "portfolio_members_total": row["portfolio"]["members_total"],
                 "historical_reference": copy.deepcopy(self.inputs.historical_reference),
                 "phase1_qualification": self.inputs.phase1_binding,
+                **checkpoint_scope(self.inputs.phase1_binding),
                 "host_verification_policy": self.inputs.host_policy,
                 "source_snapshot": (
                     str(self.inputs.source_snapshot_root) if self.inputs.source_snapshot_root is not None else None

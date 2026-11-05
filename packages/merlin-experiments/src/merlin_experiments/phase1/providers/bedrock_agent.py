@@ -702,8 +702,10 @@ def run_round(
                         te,
                         ws,
                         bundle,
-                        f"python3 agent_selfcheck.py --submission submission --sim spike "
-                        f'--capsules "{caps}" --timeout 600',
+                        # No --sim: every tier the official grade runs, so the tool's "real target
+                        # oracle" verdict is a certified one. The shim bounds its own wait and
+                        # prints a resume command when the RTL tier outlasts it.
+                        f'python3 agent_selfcheck.py --submission submission --capsules "{caps}"',
                         sandbox,
                         max(cmd_timeout, 700),
                         private_run_dir=run_dir,

@@ -314,6 +314,103 @@ def scan_elf(elf: str | Path, *, target: str, roles: Sequence[str], max_hits: in
     }
 
 
+#: Schema of the executed-command-stream verdict (:func:`stream_report`), beside the whole-ELF one.
+STREAM_SCHEMA = "merlin_isa_prohibition_stream_v1"
+#: The stream verdict when the rule could not be decided: never clean, never a pass.
+UNKNOWN = "UNKNOWN"
+
+
+def stream_report(trace: Mapping[str, Any], *, target: str, roles: Sequence[str], max_hits: int = 32) -> dict:
+    """Which commands of a decoded EXECUTED command stream carry one of the prohibited ``roles``.
+
+    ``trace`` is the runner's own decode of the emitted program (:mod:`merlin.targetgen.rocc.decode`):
+    one row per static site, its ``funct`` the selector the target's decoder recognised and its
+    ``executions`` how often the site runs per kernel call (``None`` when the counted-loop proof did not
+    settle it). A site counts as executed unless its count is PROVED zero, so a loop body whose trip
+    count is unknown is held to the rule rather than excused from it. Which selectors carry a role is
+    the target's derived instruction facts, the same table the whole-ELF scan reads.
+
+    ``status`` is ``measured`` (``clean`` True or False) or :data:`UNKNOWN` (``clean`` None): the
+    target's facts cannot be derived, give none of ``roles`` to any instruction, or the stream holds a
+    command whose role cannot be told (an undecoded instruction, or a selector the facts do not
+    declare) while no prohibited command was found. A prohibited command found is a verdict whatever
+    else the stream holds.
+    """
+    base = {"schema": STREAM_SCHEMA, "scope": "executed_command_stream", "roles": sorted({str(r) for r in roles})}
+    try:
+        declared = _declared_by_selector(target)
+    except Exception as exc:  # noqa: BLE001 -- an underivable fact is UNKNOWN, never clean
+        detail = f"the target's instruction roles could not be derived: {type(exc).__name__}: {exc}"
+        return {**base, "status": UNKNOWN, "clean": None, "detail": detail}
+    wanted = set(base["roles"])
+    prohibited = {
+        selector: {"name": entry["name"], "roles": sorted(wanted & set(entry["roles"]))}
+        for selector, entry in declared.items()
+        if wanted & set(entry["roles"])
+    }
+    if not prohibited:
+        detail = f"the target's instruction facts give no instruction any of the roles {base['roles']}"
+        return {**base, "status": UNKNOWN, "clean": None, "detail": detail}
+    hits: list[dict[str, Any]] = []
+    unexecuted: list[dict[str, Any]] = []
+    undecided: list[dict[str, Any]] = []
+    for position, row in enumerate(trace.get("instructions") or ()):
+        index = row.get("index", position)
+        funct = row.get("funct")
+        if funct is None:
+            if row.get("class") == "UNKNOWN":
+                undecided.append({"index": index, "why": "an instruction the decoder could not read"})
+            continue
+        try:
+            selector = int(str(funct), 0)
+        except ValueError:
+            undecided.append({"index": index, "why": f"an unreadable selector {funct!r}"})
+            continue
+        entry = prohibited.get(selector)
+        if entry is None:
+            if selector not in declared:
+                undecided.append({"index": index, "why": f"selector {selector} is not in the target's facts"})
+            continue
+        executions = row.get("executions")
+        site = {"index": index, "instruction": entry["name"], "roles": entry["roles"], "executions": executions}
+        (unexecuted if type(executions) is int and executions == 0 else hits).append(site)
+    status = "measured" if hits or not undecided else UNKNOWN
+    report = {
+        **base,
+        "status": status,
+        "clean": False if hits else (True if status == "measured" else None),
+        "prohibited": {str(k): v["name"] for k, v in sorted(prohibited.items())},
+        "hit_count": len(hits),
+        "hits": hits[:max_hits],
+        "unexecuted_sites": unexecuted[:max_hits],
+        "undecided": undecided[:max_hits],
+    }
+    if status == UNKNOWN:
+        report["detail"] = (
+            f"{len(undecided)} command(s) of the stream have no derivable role (first at command index "
+            f"{undecided[0]['index']}: {undecided[0]['why']}), so the prohibited roles cannot be ruled out"
+        )
+    return report
+
+
+def stream_reason(report: Mapping[str, Any]) -> str:
+    """``uses prohibited instruction role R: NAME at command index I ...`` for a failing stream report."""
+    hits = list(report.get("hits") or ())
+    if not hits:
+        return ""
+    first = hits[0]
+    runs = "executions unproved" if first.get("executions") is None else f"executed {first['executions']}x"
+    line = (
+        f"uses prohibited instruction role {', '.join(first['roles'])}: {first['instruction']} at command "
+        f"index {first['index']} ({runs})"
+    )
+    more = int(report.get("hit_count") or len(hits)) - 1
+    if more > 0:
+        others = sorted({str(h["instruction"]) for h in hits[1:]})
+        line += f"; {more} more prohibited command site(s): {', '.join(others)}"
+    return line
+
+
 def refusal_line(report: Mapping[str, Any]) -> str:
     """``isa_prohibited: <instr> in g<N>[, ...]`` -- the one line a refused candidate leads with."""
     return "isa_prohibited: " + ", ".join(sorted(report.get("summary") or {})[:12])
@@ -350,10 +447,14 @@ def check_build(build: Mapping[str, Any], *, target: str, roles: Sequence[str]) 
 
 __all__ = [
     "SCHEMA",
+    "STREAM_SCHEMA",
+    "UNKNOWN",
     "check_build",
     "check_program",
     "custom_instructions",
     "prohibited_instructions",
     "refusal_line",
     "scan_elf",
+    "stream_reason",
+    "stream_report",
 ]

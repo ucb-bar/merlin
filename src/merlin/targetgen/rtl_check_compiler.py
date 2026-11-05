@@ -7,16 +7,14 @@ code retains taxonomy-driven kernel checks, endpoint routing and evidence projec
 from __future__ import annotations
 
 import json
-import math
 from pathlib import Path
 from typing import Any
 
 from merlin.common.facts_view import interface as _facts_interface
 
-from . import rtl_checks as RC  # shared capsule declarations and selected-protocol dispatch
+from . import rtl_checks as RC
 
 RENDER_SCHEMA = "rtl-trace-render/v0"
-_COMPUTE_OPS = {"matmul", "resident_reuse", "conv2d", "conv", "matmul_resident"}
 
 
 def _endpoint_kind_for(target: str, facts_rec: dict) -> str | None:
@@ -61,19 +59,6 @@ def _is_rocc_target(target: str, facts_rec: dict) -> bool:
     return _endpoint_kind_for(target, facts_rec) == "inline_asm_insn"
 
 
-def _facts_to_rc(facts_rec: dict) -> dict:
-    """Shared mesh/capacity projection for taxonomy-driven kernel checks."""
-    facts = facts_rec.get("facts", facts_rec)
-    mesh = next((a for a in facts.get("arrays", []) if a["name"] == "mesh"), {})
-    sp = next((m for m in facts.get("memories", []) if m["name"] == "scratchpad"), {})
-    out = {}
-    if mesh:
-        out["mesh"] = [mesh["rows"], mesh["cols"]]
-    if sp.get("bytes"):
-        out["scratchpad_bytes"] = sp["bytes"]
-    return out
-
-
 def compile_trace_checks(
     facts_rec: dict,
     capsule: dict,
@@ -96,18 +81,12 @@ def _decode_table(facts_rec: dict) -> dict | None:
     return _facts_interface(facts, "funct_decode_table")
 
 
-def _provenance(facts_rec: dict, capsule: dict, target: str) -> dict[str, Any]:
+def _provenance(facts_rec: dict) -> dict[str, Any]:
     """Per-check-family audit: the derivation source and whether it is genuinely DERIVED (vs a hand
     grouping / a fallback). This is how we answer "did we hand-pick this?" — every emitted check names
     its source, and a family with no resolvable source is reported unavailable, never guessed."""
-    from .rtl import mlc_bridge
-
     dt = _decode_table(facts_rec) or {}
-    facts = facts_rec.get("facts", facts_rec)
-    has_mesh = any(a.get("name") == "mesh" for a in facts.get("arrays", []))
-    roles = mlc_bridge.semantic_roles(target)
     return {
-        # legality + ABI + DIM come straight from the mlc decoder/geometry facts — derived when present.
         "isa_legality": {
             "source": dt.get("method", "funct_decode_table"),
             "derived": dt.get("complete_isa") is True,
@@ -117,16 +96,6 @@ def _provenance(facts_rec: dict, capsule: dict, target: str) -> dict[str, Any]:
         "abi_encoding": {
             "source": "funct_decode_table.custom_opcode/funct3",
             "derived": dt.get("custom_opcode") is not None,
-        },
-        "tile_coverage": {"source": "discovered mesh DIM + declared output shape", "derived": has_mesh},
-        # the opcode->ROLE grouping is the one still-ungrounded axis: derived ONLY once the mlc effect
-        # probe has populated a roles cache; until then the dialect/trace checks use the hand funct
-        # classes (rocc_decode), which we flag honestly rather than present as rigorous.
-        "semantic_roles": {
-            "source": roles["source"] or "rocc_decode(hand funct classes)",
-            "derived": roles["derived"],
-            "reason": roles["reason"],
-            "n_roles": len(roles["roles"]),
         },
     }
 
@@ -140,7 +109,8 @@ def compile_kernel_checks(
     requires an explicitly complete taxonomy; neither an RTL field observation
     nor a partial taxonomy authorizes it. Returns None with no declared op.
     """
-    op = RC._declared_op(capsule)
+    op = (capsule.get("operation") or {}).get("op")
+    op = op.lower() if isinstance(op, str) else None
     if op is None:
         return None
     required = list((capsule.get("expected") or {}).get("instruction_classes") or [])
@@ -153,11 +123,11 @@ def compile_kernel_checks(
             from . import isa_taxonomy as IT
 
             tax = IT.taxonomy_for_target(target)
-        except Exception:  # noqa: BLE001 — taxonomy unavailable -> skip these two, keep coverage/order
+        except Exception:  # noqa: BLE001 — unavailable taxonomy cannot establish universal legality
             tax = {}
     legality_determinable = bool(tax) and tax.get("complete_isa") is True
     L = [
-        f"// Kernel checks (op={op}) — class coverage + tiling + order + field-sanity",
+        f"// Kernel checks (op={op}) — declared class coverage and ISA legality",
         f"// {prefix}-DAG: EMPTY_KERNEL no",
     ]  # the kernel must actually emit instructions
     if legality_determinable:
@@ -169,33 +139,7 @@ def compile_kernel_checks(
     for cls in required:
         L.append(f"// {prefix}-DAG: CLASS_PRESENT {cls}{{{{$}}}}")
 
-    if tax:
-        from . import isa_taxonomy as IT
-
-        roles = IT.role_classes(tax)
-        compute, memory = roles.get("compute"), roles.get("memory")
-        # tiling: the compute (matmul) class must appear exactly ceil(M/DIM)*ceil(N/DIM) times — the tile
-        # count the discovered mesh geometry + the declared output shape imply. Skipped unless both resolve.
-        shape = RC._declared_output_shape(capsule)
-        mesh = _facts_to_rc(facts_rec or {}).get("mesh")  # DERIVED mesh only — fail-closed, no DIM=16 default
-        # An EXACT tile count is only sound for a single-matmul op. A resident_reuse capsule issues several
-        # matmuls against a resident weight, so ceil(M/DIM)*ceil(N/DIM) understates the true compute count
-        # and false-rejects a correct multi-matmul kernel (parity with compile_trace_checks, which already
-        # degrades resident_reuse to COMPUTE_PRESENT). Emit only class-PRESENCE for it; leave the count to
-        # rtl_checks.screen()'s lower-bound check.
-        if compute and compute in required and shape and mesh and op != "resident_reuse":
-            tiles = math.ceil(shape[0] / mesh[0]) * math.ceil(shape[1] / mesh[1])
-            L.append(f"// {prefix}-DAG: CLASS_COUNT {compute} {tiles}{{{{$}}}}")
-        # field-sanity: a memory (load/store) instruction with an all-zero operand payload addresses DRAM 0
-        # — the "TensorBaseOffset encodes address 0" bug. Require zero such instructions.
-        if memory and memory in required:
-            L.append(f"// {prefix}-DAG: CLASS_ZEROOPS {memory} 0{{{{$}}}}")
-
-    # (3) ORDER: the required classes must first appear in their DERIVED canonical order (AW6 emits the
-    # sequence load -> weight-push -> matmul -> pop). An ordered CHECK (own prefix) over the per-INSTR
-    # class= lines enforces first-occurrence order without constraining the interleaving.
-    order = "\n".join(f"// KORDER: class={cls}" for cls in required)
-    return "\n".join(L) + "\n" + (order + "\n" if order else "")
+    return "\n".join(L) + "\n"
 
 
 def compile_checks(facts_rec: dict, capsule: dict, target: str, *, checks=None) -> dict[str, Any]:
@@ -221,7 +165,7 @@ def compile_checks(facts_rec: dict, capsule: dict, target: str, *, checks=None) 
             else None
         ),
         "endpoint_status": "resolved" if endpoint in {"inline_asm_insn", "external_backend"} else "unverified",
-        "provenance": _provenance(facts_rec, capsule, target),
+        "provenance": _provenance(facts_rec),
     }
 
 

@@ -10,8 +10,10 @@ code_refs: [src/merlin, packages, experiments/catalog.yaml]
 
 # Architecture
 
-Merlin generates target compilers through three phases: derive capsules (0), create and certify
-a functional compiler (1), and optimize its performance (2). Start at
+Merlin derives capsules and develops target compilers through shared authoring,
+evaluation and optimization infrastructure. The joint experiment combines
+correctness and performance development in one evolving compiler using the Phase 1
+engine; separate Phase 1/Phase 2 workflows and module names remain available. Start at
 [`experiments/catalog.yaml`](../../experiments/catalog.yaml) through `merlin experiment`.
 Shared artifacts (schemas) connect those phases and the supporting research workstreams.
 Two compiler planes remain: xDSL for prototyping and MLIR/C++ for stable code.

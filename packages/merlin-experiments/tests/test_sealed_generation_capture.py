@@ -116,11 +116,14 @@ def test_requests_the_seal_cannot_express_fail_closed(tmp_path):
     assert source._cache_slot("op") is None
 
 
-def test_a_sealed_capture_is_copied_with_its_attestation(tmp_path, monkeypatch):
+@pytest.mark.parametrize("timeout", [None, 900])
+def test_a_sealed_capture_is_copied_with_its_attestation(tmp_path, monkeypatch, timeout):
     from merlin_experiments.phase0 import capture_execution_attestation as attestation_module
     from merlin_experiments.phase0 import capture_selection
 
     source = _source(tmp_path)
+    if timeout is not None:
+        source.config["execution_timeout_seconds"] = timeout
     loader = tmp_path / "loader.py"
     loader.write_text("def get_model_and_inputs():\n    pass\n")
     calls = {}
@@ -169,6 +172,18 @@ def test_a_sealed_capture_is_copied_with_its_attestation(tmp_path, monkeypatch):
         "stage_fp32": True,
     }
     assert (Path(calls["select"]["workload_root"]) / "loader.py").read_text() == loader.read_text()
+    # Every generation capture is selected with the run's frozen timeout; none keeps the historical 120 s.
+    assert calls["select"]["execution_timeout_seconds"] == timeout
+
+
+@pytest.mark.parametrize("timeout", [119, 14_401, "900", True])
+def test_an_unbounded_generation_capture_timeout_is_refused(monkeypatch, timeout):
+    base = {"m2m_root": "/m2m", "venv": "/venv", "runs_root": "/runs"}
+    monkeypatch.setenv(SG.CONFIG_ENV, json.dumps({**base, "execution_timeout_seconds": timeout}))
+    with pytest.raises(ValueError, match="between 120 and 14400"):
+        SG.configured()
+    monkeypatch.setenv(SG.CONFIG_ENV, json.dumps({**base, "execution_timeout_seconds": 3600}))
+    assert SG.configured()["execution_timeout_seconds"] == 3600
 
 
 def test_verified_generation_requires_an_attested_capture(monkeypatch):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import sysconfig
@@ -24,6 +25,7 @@ from merlin.mining import registry, from_strategy
 from merlin.compile import host_lane
 assert importlib.util.find_spec('merlin.mining.beam') is None
 assert importlib.util.find_spec('merlin.mining.tuning_agent') is None
+assert importlib.util.find_spec('merlin.mining.reconstruction_learning') is None
 assert 'transform.named_sequence' in from_strategy.render_schedule({})
 assert registry.DTYPE_STRATEGIES
 assert 'merlin.mining.fork' not in sys.modules
@@ -41,6 +43,7 @@ else:
         capture_output=True,
         text=True,
         timeout=30,
+        env={key: value for key, value in os.environ.items() if key != "PYTHONPATH"},
     )
     assert done.returncode == 0, done.stderr
 
@@ -63,7 +66,8 @@ def test_mining_commands_have_exactly_one_distribution_owner():
     core = tomllib.loads((root / "pyproject.toml").read_text())
     extension = tomllib.loads((root / "packages" / "merlin-mining" / "pyproject.toml").read_text())
     commands = extension["project"]["scripts"]
-    assert len(commands) == 11
+    assert len(commands) == 12
+    assert commands["merlin-kernel-reconstruct"] == "merlin.mining.reconstruction_cli:main"
     assert not set(commands).intersection(core["project"]["scripts"])
     assert all(value.startswith("merlin.mining.") for value in commands.values())
     source = root / "packages" / "merlin-mining" / "src" / "merlin"

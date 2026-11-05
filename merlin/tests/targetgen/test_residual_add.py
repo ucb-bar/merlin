@@ -41,6 +41,22 @@ def _built(**over):
     return capsule, cb
 
 
+def test_original_ordered_scales_survive_normal_builder_and_interface_roundtrip():
+    scales = [0.5, 0.25, 0.125]
+    cap, text = CS.build_residual_add(_entry(source_scales=scales), _binding())
+    cb = IE.parse_interface_mlir(text)
+    assert cap["operation"]["attributes"]["source_scales"] == scales
+    assert cb["commands"][0]["attributes"]["source_scales"] == scales
+    assert IE.parse_interface_mlir(IE.emit_interface_mlir(cb)) == cb
+    assert "source_scales" not in CS.build_residual_add(_entry(), _binding())[1]
+
+
+@pytest.mark.parametrize("scales", [[0.5], [0.5, 0.25, 0], [True, 0.25, 1], [0.5, float("nan"), 1]])
+def test_original_ordered_scale_record_refuses_malformed_values(scales):
+    with pytest.raises(ValueError, match="three positive finite"):
+        CS.build_residual_add(_entry(source_scales=scales), _binding())
+
+
 def test_the_three_engines_are_one_definition() -> None:
     capsule, cb = _built()
     golden = capsule_golden.golden(capsule, None)["Y0"]

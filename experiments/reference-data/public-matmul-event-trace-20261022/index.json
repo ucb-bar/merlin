@@ -1,0 +1,83 @@
+{
+  "actual": {
+    "events": 210,
+    "trace_bytes": 149503,
+    "truncated": false
+  },
+  "capsule": "SY_contraction_i8_aligned",
+  "constraints": {
+    "path": "constraints.json",
+    "sha256": "f9cd11cdd443aa4e437ce696c42c11d37c71380fe019dbda14c3e1c91dcdb362"
+  },
+  "diagnostic_model_sha256": "7f8228b441a7ca5e3b17ac3b120c4d74b6847fee9a58c12827de475ead48a6b6",
+  "estimated_cycles": 807,
+  "event_trace": {
+    "path": "events.jsonl",
+    "sha256": "a827f96a2f632b0785bf971568f0d01d12f14cf972236d2558d160726526e74b"
+  },
+  "limits": {
+    "bytes": 16777216,
+    "events": 32768
+  },
+  "model_changed_fields": [
+    "libraries[-1]"
+  ],
+  "not_packaged": [
+    "ELFs",
+    "input/output/golden values",
+    "candidate source",
+    "private benchmarks"
+  ],
+  "observation_projection": {
+    "path": "observation.json",
+    "sha256": "509c1ce1f5e03987ee0b4b495218f4673b6b6a55efc4c411b24db60cb82d033b"
+  },
+  "original_model_sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869",
+  "output_proof": {
+    "all_declared_outputs": true,
+    "guards": "no separate guard objects declared",
+    "matched_bytes": 1024,
+    "matched_values": 256,
+    "signature_sha256": [
+      "73b3d2a72cb35ac0d2819562d8e8536cbeb22e3fd68a2b7aa2a2247ef241f24a",
+      "73b3d2a72cb35ac0d2819562d8e8536cbeb22e3fd68a2b7aa2a2247ef241f24a"
+    ]
+  },
+  "parent_evidence": "../public-native-model-comparison-20261022/index.json",
+  "physical_cycles": 564,
+  "report": {
+    "path": "report.json",
+    "sha256": "27a534d69f840f231232bbe419c979ebb9c409330db247462b10ff0b60f4cd0a"
+  },
+  "report_changed_fields": [
+    "domain_sha256",
+    "domain",
+    "model_sha256",
+    "loaded_library_sha256",
+    "scope_binding_sha256",
+    "scope_binding"
+  ],
+  "schema": "merlin.public_modeled_event_diagnostic.v1",
+  "semantic_identity": "Feature-engine semantic manifest retained; changed diagnostic implementation and provider ABI/source/build are pinned separately, not asserted byte-identical.",
+  "source_rules_of_interest": [
+    {
+      "lines": [
+        541,
+        557,
+        559
+      ],
+      "meaning": "controller occupancy plus conservative local-store hold=max(latency,occupancy) for unsplit transfers; explains same-bank load reservation.",
+      "member": "staged.hpp",
+      "sha256": "0a5a81dcd8b83ceaa5d711e90e7bd87cc4e00bbd716e31137c778a06f9ef8c9b"
+    }
+  ],
+  "spike_commit": "70b87a4",
+  "status": "operator public-evidence diagnostic only; no qualification, fit, physical rerun, live activation, price or scheduling change",
+  "unchanged_estimate": true,
+  "unchanged_report_claim": "All nonidentity report fields are byte-equivalent as decoded JSON, including resource totals, scoped counts,807cycles and empty unresolved reasons. Scope counter PCs/occurrence unchanged; disassembly evidence digest differs due artifact path.",
+  "unresolved": [
+    "No physical event timeline;243cycle discrepancy cannot be assigned to an individual component.",
+    "Provider-derived earliest/admission arithmetic has no automatic causal edge; matching timestamps alone are not treated as proof.",
+    "Outside-window origins and equal critical constraints remain explicit."
+  ]
+}

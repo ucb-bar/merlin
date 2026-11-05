@@ -1,0 +1,101 @@
+{
+  "schema": "merlin.public_frontend_structure_review.v1",
+  "status": "source_review_only_no_execution_or_parameter_changes",
+  "related_analysis": {
+    "path": "first-use-attribution.json",
+    "sha256": "d5837b984a9e7a72200fdef28e97698eb1bdc271ce06517c79cdb3d3ba155972"
+  },
+  "selected_rtl": {
+    "archive_locator": "chipyard-fire-aligned/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig.fir",
+    "sha256": "6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149",
+    "bytes": 50137114,
+    "whole_file_hash_verified": true
+  },
+  "extracted_module_digests": [
+    {
+      "module": "Frontend",
+      "sha256": "051d3cb094fabd39ef887a7c5209a0dfb1d185f0c743e937d56368fd25e2b858",
+      "extraction": "Exact module declaration through before next module; UTF-8 bytes retained in operator audit."
+    },
+    {
+      "module": "ICache",
+      "sha256": "777a9bec9a9375bdbf843f96d6400564a735c2eff504d7a60b38a5444846ed00",
+      "extraction": "Exact module declaration through before next module; UTF-8 bytes retained in operator audit."
+    },
+    {
+      "module": "Rocket",
+      "sha256": "a59665be130c82e7cbc124aba8e5ed31baa53b1a40a4c59ad9f1f8549b184cce",
+      "extraction": "Exact module declaration through before next module; UTF-8 bytes retained in operator audit."
+    }
+  ],
+  "observer_engine_header": {
+    "archive_locator": "spike-timing/timing/core/include/merlin_timing/engine.hpp",
+    "sha256": "452f82eaeb9c23044a49b8704d4301ad3613076037cbc18d2943918a41dee5ff",
+    "verified_against_frozen_incremental_manifest": true
+  },
+  "selected_hardware_facts": [
+    {
+      "mechanism": "Pipelined frontend with queue space admission",
+      "evidence": "Frontend module instantiates fq ShiftQueue, s1_valid/s2_valid; s0_fq_has_space reads queue mask bits2,3,4 and stage valids; s0_valid=io.cpu.req.valid OR s0_fq_has_space; icache.io.req.valid=s0_valid.",
+      "source_annotations": "Frontend.scala91,107-114,173-174",
+      "implication": "Fetch admission can continue from frontend queue capacity without a retired-instruction event."
+    },
+    {
+      "mechanism": "Predicted sequential and branch-directed fetch",
+      "evidence": "s1_base_pc aligns down to4bytes; ntpc=s1_base_pc+4; predicted_npc defaults to ntpc; replay/BTB redirect paths select nextPC.",
+      "source_annotations": "Frontend.scala128-135 and BTB path",
+      "implication": "Fetch addresses can include future or ultimately uncommitted instructions. The actual probe path and refills require observation to establish."
+    },
+    {
+      "mechanism": "Conditional speculative refill",
+      "evidence": "s2_can_speculatively_refill=s2_tlb_resp.cacheable AND NOT customCSRbit3; icache.s2_kill=(s2_speculative AND NOT permission) OR s2_xcpt. ICache s2_miss=s2_valid AND NOT s2_hit AND NOT io.s2_kill.",
+      "source_annotations": "Frontend.scala179-180; ICache.scala378",
+      "implication": "The selected implementation permits speculative cacheable refills under its declared CSR condition; this review does not infer every actual speculative request."
+    },
+    {
+      "mechanism": "Demand refill and frontend response",
+      "evidence": "ICache response valid=s2_valid AND s2_hit; A-channel valid=s2_request_refill, with block-aligned refill address. Refill availability tracks s2_miss/refill_valid.",
+      "source_annotations": "ICache.scala378-385,659,766-769",
+      "implication": "A cache refill is a frontend state transition; its admission is not tied to instruction retirement."
+    },
+    {
+      "mechanism": "No selected explicit next-line Hint prefetch",
+      "evidence": "Elaborated ICache contains reset-only send_hint/hint_outstanding and no connect assignment to enable them; no generated optional next-line Hint branch between default demand Get and refill completion.",
+      "source_annotations": "ICache.scala772-808 optional source branch is absent in selected elaboration",
+      "implication": "Do not attribute this probe to an enabled next-line Hint prefetcher."
+    }
+  ],
+  "frozen_model_facts": [
+    {
+      "mechanism": "Committed-PC-only fetch input",
+      "evidence": "record_memory ignores FETCH; finish_instruction returns on !committed before fetch handling, then MemorySystem.access uses exactly current pc and2/4 instruction bytes.",
+      "source": "private-probe-observer-v2/source/riscv/annotated_timing.cc",
+      "implication": "There is no independent predicted/wrong-path frontend stream or queue in this observer input."
+    },
+    {
+      "mechanism": "Fetch-to-instruction dependency",
+      "evidence": "Each fetch writes token64; the CPU event reads token64; a branch also writes token64. Engine.submit waits current issue frontier plus read/write dependencies.",
+      "source": "annotated_timing.cc and pinned engine.hpp::Engine::submit",
+      "implication": "Demand fill latency delays its corresponding CPU instruction; subsequent fetches are emitted from committed instruction order and share the global issue frontier."
+    },
+    {
+      "mechanism": "Fence ordering collapses frontend runahead",
+      "evidence": "For decoded.fence, target.fence and engine.barrier execute BEFORE the fence instruction fetch is modeled. Only decoded.icache_fence invalidates instruction cache.",
+      "source": "annotated_timing.cc::finish_instruction",
+      "implication": "Ordinary fence does not flush cache, but the observer cannot represent frontend fetching ahead through a backend fence stall."
+    },
+    {
+      "mechanism": "Some asynchronous overlap remains",
+      "evidence": "Engine.submit separates issue/start/ready; target commands publish asynchronous readiness and independent resource reservations. Fetch events can overlap prior target work unless dependencies/barriers prevent it.",
+      "source": "pinned engine.hpp::Engine::submit and target command dispatch",
+      "implication": "It would be false to claim every I-cache fill is globally serialized against all accelerator work. Missing independent frontend execution is the narrower supported finding."
+    }
+  ],
+  "known_missing_mechanisms": [
+    "Independent fetch queue and speculative/fallthrough PC stream.",
+    "Cache refill initiation/ready history before committed consumers, including while backend waits at ordinary fences.",
+    "Physical frontend stalls/refills/branch recovery observation; current CPU taken/not-taken pricing is not that state machine."
+  ],
+  "causal_limit": "These omissions are established by exact selected RTL versus frozen observer. Their actual contribution to the first-use53cycle residual is unmeasured. Do not subtract51cycles, change cache/queue prices, or qualify the model from this audit.",
+  "next_design_boundary": "A future frontend abstraction would need selected fetch width/queue/redirect/refill rules and independent fetch timing, with explicit unsupported prediction states. It must preserve actual instruction/target dependency and fence semantics. This report proposes no code change, simulation, retuning, or weakened acceptance."
+}

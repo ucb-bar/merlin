@@ -62,6 +62,17 @@ def test_preparation_is_nonmutating_and_base_wins(inputs):
         got.environment["X"] = "change"
 
 
+def test_compiler_boundary_requires_operator_selection_and_isolation(inputs):
+    ambient = {"MERLIN_COMPILER_EXECUTION_MODE": "snapshot_external_v1"}
+    assert prepare(inputs, ambient).environment["MERLIN_COMPILER_EXECUTION_MODE"] == "profile_strict_v1"
+    selected = prepare(inputs, compiler_execution="snapshot_external_v1", sandbox="bwrap")
+    assert selected.refusal is None
+    assert selected.environment["MERLIN_COMPILER_EXECUTION_MODE"] == "snapshot_external_v1"
+    refused = prepare(inputs, compiler_execution="snapshot_external_v1", sandbox="none")
+    assert refused.refusal == 7
+    assert "bwrap" in refused.message
+
+
 @pytest.mark.parametrize("driver", ["auto", "converse", "claudecode", "opencode", "codex"])
 @pytest.mark.parametrize("provider", ["subscription", "bedrock"])
 @pytest.mark.parametrize("sandbox", ["bwrap", "none"])

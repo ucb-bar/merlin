@@ -66,6 +66,24 @@ def test_nothing_is_announced_when_the_bytes_did_not_move(broker):
     assert "graded_newer_bytes" not in doc and "graded_newer_note" not in doc
 
 
+def test_a_workspace_without_a_submission_is_not_announced_as_edited(shim, tmp_path):
+    """No submission/ (a reference-analysis-only workspace): the client and the broker hash the same
+    absent tree identically, so a request served at claim time carries no edited-while-queued note."""
+    from merlin_experiments.phase1.brokers import selfcheck as broker
+
+    requested = shim._submission_digest(tmp_path / "submission")
+    graded = broker._submission_digest(tmp_path / "submission")
+    assert requested == graded
+    doc = broker._decorate_response('{"status": "analyzed"}', {"submission_sha256": requested}, "rid", graded,
+                                    started_ns=2, completed_ns=3)
+    assert "graded_newer_bytes" not in doc and "graded_newer_note" not in doc
+    (tmp_path / "submission").mkdir()
+    (tmp_path / "submission" / "kernel.c").write_text("int x;\n")
+    moved = broker._decorate_response('{"status": "analyzed"}', {"submission_sha256": requested}, "rid",
+                                      broker._submission_digest(tmp_path / "submission"), started_ns=2, completed_ns=3)
+    assert moved["graded_newer_bytes"] is True
+
+
 def test_a_moved_digest_is_no_longer_refused(broker):
     """The livelock itself. The broker must not treat 'you edited while queued' as an error."""
     src = (feedback_source("selfcheck_broker")).read_text()

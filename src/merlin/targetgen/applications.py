@@ -165,7 +165,7 @@ def classify_capture(capture: str | Path, target: str, *, dtype_hint: str | None
     neither for nor against a requirement, the same rule ``conformance.observed`` follows.
     """
     from merlin.capture.shape_taxonomy import classify_geometry
-    from merlin.kernels.shapes import observe_contractions
+    from merlin.compile.analysis.contraction_shapes import observe_contractions
     from merlin.targetgen.corpus_spec import _tile_dim  # noqa: PLC2701 -- one tile-edge derivation
     from merlin.targetgen.model_coverage import load_module
 
@@ -232,7 +232,7 @@ def _capture_audit(capture: str | Path) -> dict:
     Region counts are not MACs. Noncontractions and unobserved contractions stay in the report rather
     than being assigned zero work, so no represented-MAC subtotal can be called whole-model coverage.
     """
-    from merlin.kernels.shapes import observe_contractions
+    from merlin.compile.analysis.contraction_shapes import observe_contractions
     from merlin.targetgen import model_coverage as mc
     from merlin.xdsl_dialects.lowering import compute_groups as CG
 

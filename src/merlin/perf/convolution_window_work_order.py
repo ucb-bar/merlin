@@ -37,6 +37,7 @@ from merlin.perf.rank_general_contraction_work_order import (
     _ordered_analyses,
     _pin,
 )
+from merlin.targetgen import legacy_labels as LL
 
 MECHANISM_ID = "t01_03_convolution_window_materialization_elimination"
 INVENTORY_SCHEMA = "portfolio_convolution_window_inventory_v1"
@@ -475,7 +476,7 @@ def _classify_materialized_region(
         if (
             not isinstance(provenance, Mapping)
             or provenance.get("prov.role") is not None
-            or provenance.get("prov.conv_path") != "im2col_matmul"
+            or not LL.is_gathered_conv_path(provenance.get("prov.conv_path"))
         ):
             continue
         inputs, outputs = node.get("inputs"), node.get("outputs")
@@ -634,9 +635,9 @@ def _member_inventory(
         provenance = node.get("prov") if isinstance(node, Mapping) else None
         if not isinstance(provenance, Mapping):
             continue
-        path = provenance.get("prov.conv_path")
+        path = LL.conv_path(provenance.get("prov.conv_path"))
         region = provenance.get("prov.region_id")
-        if path not in {"direct_contraction", "im2col_matmul"}:
+        if path not in {"direct_contraction", LL.CONV_PATH_GATHERED}:
             hint = provenance.get("prov._pattern_hint")
             if isinstance(hint, str) and "conv" in hint.lower():
                 member["uncaptured"].append(

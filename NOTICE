@@ -9,16 +9,45 @@ Portions are subject to the LLVM Exceptions and the Assets/Artwork terms in LICE
 Third-party components
 -------------------------------------------------------------------------------
 
-Vendored in-tree:
+In-tree third-party source adaptations:
 
-* gemmini-rocc-tests / rocc-software
-  (merlin/experiments/capsule_bench/targets/gemmini/contracts/harness_curated/gemmini-rocc-tests/)
-  Licensed under the Apache License, Version 2.0; see the LICENSE file within that directory.
-  (The bundled riscv-tests subset is BSD-licensed upstream.)
+* Arm Optimized Routines:
+  src/merlin/runtime/portable_exp.c, portable_pow.c, and portable_trig.c.
+  MIT OR Apache-2.0 WITH LLVM-exception. See
+  src/merlin/runtime/portable_trig.LICENSE and portable_math.provenance.json
+  for the preserved license, source revision, and file provenance.
 
-Consumed via git submodules under third_party/ (NOT vendored; each retains its own license in its
-own repository): LLVM/MLIR, and the cross-framework baselines TVM, ExecuTorch, buddy-mlir, EXO,
-llama.cpp, and the Merlin-IREE baseline.
+* OpenLibm / FDLIBM:
+  src/merlin/runtime/portable_tanh.c.
+  Sun permission notices are retained in the adapted source. See
+  src/merlin/runtime/portable_tanh.LICENSE and portable_math.provenance.json.
+
+* LLVM MLIR TextMate grammar:
+  build_tools/plots/snippet2svg/grammar.json.
+  Apache-2.0 WITH LLVM-exception. See the adjacent UPSTREAM.md and
+  LICENSE.llvm.txt for source identity and license text.
+
+* Optional Atlas LSTMNetViT model loader:
+  merlin/contract/capsules/atlas/model/M1_lstmnetvit_atlas/capsule.loader_deps/.
+  Copyright (c) 2024 Anish Bhattacharya, Nishanth Rao, and Dhruv Parikh.
+  Its adjacent LICENSE is titled "MIT License with Commercial Use
+  Restriction" and prohibits commercial use without prior permission.
+  This component is not offered under Merlin's Apache license.
+
+Git submodules:
+
+The source tree records LLVM/MLIR at third_party/llvm-project. That external
+repository retains its own license and notices. External compiler baselines
+and optional toolchains are not licensed by this NOTICE.
+
+Separate evaluation artifacts:
+
+Historical test/runtime sources, toolchain installations, external expert
+implementations, and generated evaluation binaries are separate artifacts.
+Their own license and attribution records apply. In particular, the
+preserved Gemmini test root and riscv-tests have BSD notices, while
+rocc-software has Apache-2.0 terms. These artifacts are not vendored at the
+former harness_curated path.
 
 -------------------------------------------------------------------------------
 Source-compatible SLEEF exponential schedule

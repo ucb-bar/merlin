@@ -493,6 +493,24 @@ def test_offset_bounds_are_independent_of_a_matching_trace(tmp_path):
         index_source.prove_index_source(capture, index_bits=64)
 
 
+@pytest.mark.parametrize("offset", [0, 1])
+def test_literal_rank_zero_offset_preserves_index_bounds(tmp_path, offset):
+    source = (_source(offset=offset)
+        .replace(": (i64) -> tensor<3xi64>", ": (i64) -> tensor<i64>")
+        .replace("affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>",
+                 "affine_map<(d0) -> (d0)>, affine_map<(d0) -> ()>, affine_map<(d0) -> (d0)>")
+        .replace("(tensor<3xi64>, tensor<3xi64>, tensor<3xi64>)",
+                 "(tensor<3xi64>, tensor<i64>, tensor<3xi64>)"))
+    capture = _capture(tmp_path, source=source)
+    if offset:
+        with pytest.raises(ValueError, match="out of bounds"):
+            index_source.prove_index_source(capture, index_bits=64)
+    else:
+        proof = index_source.prove_index_source(capture, index_bits=64)
+        assert proof["records"][0]["kind"] == "literal_indexed_extract"
+        assert proof["original_to_prepared_equivalence"] == "not_proved"
+
+
 def test_boolean_mask_count_is_a_separate_closed_reduction():
     source = """"builtin.module"() ({
   "func.func"() <{sym_name = "count", function_type = (tensor<7xi1>) -> i64}> ({

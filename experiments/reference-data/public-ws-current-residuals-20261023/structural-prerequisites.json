@@ -1,0 +1,15 @@
+{
+  "schema": "merlin.public_ws_model_prerequisites.v1",
+  "rocket_cache_source": {
+    "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip/src/main/scala/rocket/DCache.scala",
+    "sha256": "05c07b22f5a0795d9c54dc6b035b4bdcbba63af8518943a26490a1f3dbd5dc78"
+  },
+  "readout_observation": "Both instrumented arms have identical modeled counts and 1473 cycles, but physical labels differ by 82 cycles. Aggregate byte counts alone cannot represent that difference.",
+  "source_conditions": [
+    "DCache B.ready depends on metaArb readiness, releaseInFlight, pending_release_ack, grantInProgress, s1_valid, s2_valid and core-progress state.",
+    "Current private-cache probe service models a no-backpressure floor; inclusive-cache directory/TileLink arbitration and these changing readiness states are not reproduced."
+  ],
+  "next_structural_change": "Explicit stateful probe/release/ack admission timeline shared with CPU and DMA, preserving release ordering and queue capacity; source-derived service floor plus observed handshakes. Do not add a per-arm correction constant.",
+  "next_discriminating_public_probe": "Reuse the existing dirty-versus-clean ownership probe and bind selected cache/TileLink handshake trace to its exact ELF and counter windows before changing cache service. No new physical run performed in this work.",
+  "candidate_pairing_status": "Source correction and focused tests complete; no held-out qualification or selected-runtime activation."
+}

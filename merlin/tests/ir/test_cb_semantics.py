@@ -391,7 +391,7 @@ def test_an_op_spelled_combine_abstains_instead_of_silently_meaning_add():
 
 
 def test_the_contract_sanctioned_src_spelling_is_accepted_for_movement():
-    """`mlir_oot_backend_contract.yaml` defines the movement source as `src` OR `lhs`.
+    """The version-1 kernel ABI (`legacy/kernel_abi_v1.yaml`) defines the movement source as `src` OR `lhs`.
 
     Neither engine implemented the alternative, so a buffer written to the published contract crashed
     the encoder with a bare KeyError and was counted as OUR defect. Both spellings must reach the same
@@ -401,7 +401,7 @@ def test_the_contract_sanctioned_src_spelling_is_accepted_for_movement():
     from merlin.common.paths import merlin_dir
     from merlin.verify.cb_semantics import CommandBufferEncoder
 
-    contract = (merlin_dir() / "contract" / "mlir_oot_backend_contract.yaml").read_text()
+    contract = (merlin_dir() / "contract" / "legacy" / "kernel_abi_v1.yaml").read_text()
     assert "`src` (or `lhs`)" in contract, (
         "the contract no longer sanctions the src/lhs alias; this test is now asserting invention"
     )

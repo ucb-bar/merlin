@@ -1,0 +1,46 @@
+{
+  "schema": "merlin.optional_scoped_ws_runtime.v1",
+  "parent_runtime": {
+    "path": "<machine-path-025>",
+    "sha256": "df2c2bf35cd33353e2f6c7e92c317ad44f1b85089bba3846dd46e6f442dfa6e9"
+  },
+  "parent_model": {
+    "path": "<machine-path-023>",
+    "sha256": "9ce62bab015df550d3849f501672dc9a9a1c4ea0c04233029caecf86bb7a56dd"
+  },
+  "parent_selection": {
+    "path": "<machine-path-018>",
+    "sha256": "3eedfef7379894e6c393396436b9e5851decd7e6d4191d1d09196d47f295ad19"
+  },
+  "runtime": {
+    "path": "<machine-path-038>",
+    "sha256": "f04d9d81da5643a65188c9b63a18c2204e30922fa7153f3fe6d566ad33f77131"
+  },
+  "model": {
+    "path": "<machine-path-032>",
+    "sha256": "8089fb9a2ea325ff2e61508ad9a78a23b92a9620099839cbcba0a221470e7c1c"
+  },
+  "performance_selection": {
+    "path": "<machine-path-037>",
+    "sha256": "6482f0fd5aac7b3a701719bcd85d7fc2cd5015f0bc3a3b389308609cc178d9dd"
+  },
+  "observer": {
+    "path": "<machine-path-029>",
+    "sha256": "e4e90609f3a2d907c7244322d7f96c5fd0e0dd74e30137177a97fd750157e87f"
+  },
+  "model_delta": [
+    "domain.feature_engine_sha256",
+    "diagnostics.scoped_resources"
+  ],
+  "functional_argv_unchanged": true,
+  "libraries_unchanged": true,
+  "timing_selection_unchanged": true,
+  "parameters_unchanged": true,
+  "provider_unchanged": true,
+  "timing_qualification": false,
+  "new_physical_runs": 0,
+  "default_correctness_grading_unchanged": true,
+  "environment": {
+    "MERLIN_JOINT_PERFORMANCE_SELECTION": "{\"path\": \"<machine-path-037>\", \"sha256\": \"6482f0fd5aac7b3a701719bcd85d7fc2cd5015f0bc3a3b389308609cc178d9dd\"}"
+  }
+}

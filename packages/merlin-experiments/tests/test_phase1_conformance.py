@@ -129,12 +129,13 @@ conformance.main(['--help'])
     assert list(tmp_path.iterdir()) == []
 
 
-def test_conformance_owner_has_nonvacuous_candidate_mask(tmp_path, monkeypatch):
+@pytest.mark.parametrize("owner", ["conformance", "authoring_conformance"])
+def test_conformance_owner_has_nonvacuous_candidate_mask(tmp_path, monkeypatch, owner):
     from merlin.common import access
     from merlin.targetgen.sandbox import bwrap
 
     surfaces_module = importlib.import_module("merlin.targetgen.sandbox.answer_surfaces")
-    private = tmp_path / "packages/merlin-experiments/src/merlin_experiments/phase1/conformance.py"
+    private = tmp_path / f"packages/merlin-experiments/src/merlin_experiments/phase1/{owner}.py"
     private.parent.mkdir(parents=True)
     private.write_text("# private treatment grading\n")
     context = private.with_name("context.py")
@@ -152,7 +153,7 @@ def test_conformance_owner_has_nonvacuous_candidate_mask(tmp_path, monkeypatch):
         prior_backends=(),
         backend_package=None,
     )
-    assert "merlin_experiments.phase1.conformance" in access.declared_modules("grader")
+    assert f"merlin_experiments.phase1.{owner}" in access.declared_modules("grader")
     surfaces = surfaces_module.answer_surfaces(policy)
     unmasked = ["--ro-bind", str(tmp_path), str(tmp_path)]
     assert {surface.path for surface in bwrap.coverage_gap(unmasked, surfaces)} == {private}

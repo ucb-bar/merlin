@@ -5,26 +5,37 @@
 <h1 align="center">merlin</h1>
 
 <p align="center">
-  A compiler-generation framework: <b>derive tests, build a functional target compiler,
-  then optimize its performance</b> — with shared compiler tooling and out-of-tree target support.
+  A compiler-generation framework: <b>derive tests and develop correct, efficient target compilers</b>
+  with shared transformations and out-of-tree target support.
 </p>
 
 > **Early development.** merlin is under active development; expect rough edges and APIs that may
 > change. Bugfixes and PRs are welcome — please discuss significant changes in the
 > [issue tracker](https://github.com/ucb-bar/merlin/issues) before starting work.
 
-Start with the [experiment catalog](experiments/README.md) for the three-phase workflow,
+Start with the [contributor guide](docs/guides/compiler_contributions.md) for code entry points,
+the [experiment catalog](experiments/README.md) for available workflows,
 the [repository map](docs/reference/repo_structure.md) to find code, or the
 [docs hub](docs/README.md) for compiler, mining, DSE and hardware-specific guides.
 Hardware results apply to their recorded revisions and prerequisites, not every fresh installation.
 
-For the main implementation, follow the same three phases as the paper:
+For the reported paper studies, start with the [paper artifact](experiments/reference-data/paper-artifact/README.md). It provides checksum-verified restoration, seven saved-result recipes and exact compiler snapshot identities.
+
+For the joint correctness/performance experiment, see the
+[artifact evaluation guide](docs/guides/artifact_evaluation.md) and
+[compiler optimization surfaces](docs/reference/compiler_optimization_workflow.md).
+The artifact branch is a release candidate; clean-machine and hardware reproduction
+are not yet qualified.
+
+The current joint experiment combines correctness and performance development in
+one evolving compiler session using the native Phase 1 infrastructure. Historical
+Phase 1/Phase 2 names remain in the module layout and standalone workflows:
 
 | Work on | Code |
 | --- | --- |
 | Hardware-guided test generation (Phase 0) | [Test generation](packages/merlin-experiments/src/merlin_experiments/phase0/) |
-| Functional compiler generation (Phase 1) | [Compiler-generation workflow](packages/merlin-experiments/src/merlin_experiments/phase1/) |
-| Performance optimization (Phase 2) | [Optimization workflow](packages/merlin-experiments/src/merlin_experiments/phase2/) |
+| Compiler authoring and joint evaluation (Phase 1 infrastructure) | [Compiler-generation workflow](packages/merlin-experiments/src/merlin_experiments/phase1/) |
+| Separate retained-compiler optimization workflow (Phase 2) | [Optimization workflow](packages/merlin-experiments/src/merlin_experiments/phase2/) |
 | Shared compiler infrastructure | [Compiler core](src/merlin/) |
 
 The [catalog](experiments/catalog.yaml) indexes target definitions in
@@ -144,6 +155,10 @@ prerequisites; documentation alone does not make these self-contained examples.
 Every directory carries an `AGENT.md` describing its purpose and constraints — read it before
 working there. Contributors: see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
+## Paper results
+
+The [paper artifact guide](experiments/reference-data/paper-artifact/README.md) maps reported studies to frozen compiler snapshots, pinned measurements, and analysis commands. Saved-result analysis, rebuilding a compiler, and repeating hardware execution are separate checks. Measurement archives and toolchain binaries are distributed separately from this source checkout.
+
 ## License
 
-Apache-2.0 — see [`LICENSE`](LICENSE). Logos and artwork are separately licensed (LICENSE appendix).
+Merlin code is licensed under Apache-2.0, except for components with their own notices. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE). The optional Atlas LSTMNetViT loader retains its upstream commercial-use restriction. Logos and artwork have separate terms in the LICENSE appendix.

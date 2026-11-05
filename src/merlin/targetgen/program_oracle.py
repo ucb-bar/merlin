@@ -35,9 +35,9 @@ import os
 import subprocess
 import sys
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from merlin.common.paths import data_path, ext_path
 from merlin.integrations import modelir
@@ -1042,7 +1042,7 @@ def run_command_buffer_debug(target: str, *, cb: dict, capsule_dir) -> dict[str,
             raise OracleUnavailable(f"{target} arc command-buffer run failed: {type(e).__name__}: {e}")
     # REDACT the answer-bearing keys; keep only the RTL-derived effect counts + provenance.
     safe = {k: v for k, v in res.items() if k not in _CB_DEBUG_REDACTED_KEYS}
-    n_out = len((res.get("outputs") or {}))
+    n_out = len(res.get("outputs") or {})
     return {
         "halted": True,
         "metrics": safe.get("metrics"),
@@ -1070,7 +1070,7 @@ def run_command_buffer_debug(target: str, *, cb: dict, capsule_dir) -> dict[str,
 # --------------------------------------------------------------------------------------------------
 
 
-def _timing_block(res: Any) -> "tuple[list[dict] | None, dict | None]":
+def _timing_block(res: Any) -> tuple[list[dict] | None, dict | None]:
     """``(timing_observations, timing_capability)`` an oracle result carries, VALIDATED -- or
     ``(None, None)`` when the oracle has no timing capability at all.
 
@@ -1154,7 +1154,7 @@ def run_program_verilator_oracle(
     max_cycles: int = 20000,
     workdir,
     timeout: int = 600,
-    per_cycle_csv: "str | Path | None" = None,
+    per_cycle_csv: str | Path | None = None,
     engine: str = "verilator",
 ) -> dict[str, Any]:
     """Assemble (model venv / stock LLVM) → run on the target's program-driven Verilator RTL sim → read
@@ -1207,11 +1207,9 @@ def run_program_verilator_oracle(
         _derived_trace = Path(workdir) / "per_cycle_trace.csv"
         _derived_trace.parent.mkdir(parents=True, exist_ok=True)
         _kw["per_cycle_csv"] = str(_derived_trace)
-    from contextlib import nullcontext
+    from merlin.targetgen.rtl_engine_policy import simulation_runtime_slot
 
-    from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
-
-    slot = gsim_runtime_slot(wait_timeout_s=timeout) if engine == "gsim" else nullcontext()
+    slot = simulation_runtime_slot(engine, wait_timeout_s=timeout)
     with slot:
         _t0 = time.monotonic()
         res = runner.run_program(
@@ -1275,7 +1273,7 @@ def run_program_verilator_oracle(
     return out
 
 
-def _engine_provenance(target: str, engine: str, engine_dir: "Path | None" = None) -> dict[str, Any]:
+def _engine_provenance(target: str, engine: str, engine_dir: Path | None = None) -> dict[str, Any]:
     """Identify the engine BUILD that produced a number: its directory, its wrapper, and the digest of
     whatever binary sits beside the wrapper.
 

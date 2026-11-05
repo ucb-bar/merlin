@@ -129,14 +129,18 @@ def validate_source_workspace_pool(module, source_contracts):
         _common_owner(module, selected, callers)
 
 
-def pool_private_writer_workspaces(module, writer_reports):
+def pool_private_writer_workspaces(module, writer_reports, *, stack_budget_bytes=None):
     """Own one reusable pool at a common public function's single block scope.
 
     Every selected use is synchronous, initializes before read and borrows without
     escape. The normal upstream deallocation pass owns terminal release. Private
     C descriptors become dynamic rank-one byte views of the proved capacity;
     their callee must accept capacity >= its required bytes. No allocator reuse,
-    numerical permission or asynchronous completion is inferred.
+    numerical permission or asynchronous completion is inferred. An explicit
+    ``stack_budget_bytes`` selects per-invocation stack storage instead. Its
+    bound includes worst-case alignment padding, not the rest of the frame;
+    final object stack/resource admission remains mandatory. Such storage is
+    reclaimed at owner return and needs no process-global/reentrancy premise.
     """
     import hashlib
 
@@ -147,10 +151,11 @@ def pool_private_writer_workspaces(module, writer_reports):
         DictionaryAttr,
         FunctionType,
         MemRefType,
-        StringAttr,
         i8,
     )
 
+    if stack_budget_bytes is not None and (type(stack_budget_bytes) is not int or not 0 < stack_budget_bytes < 1 << 63):
+        raise ValueError("private stack storage requires an explicit positive bounded byte budget")
     reports = tuple(report for report in writer_reports if report.get("private_workspaces"))
     if not reports:
         return dict(
@@ -211,6 +216,9 @@ def pool_private_writer_workspaces(module, writer_reports):
     helper_functions, owner, root_calls = _common_owner(module, selected, callers)
     positions = {operation: index for index, operation in enumerate(owner.body.block.ops)}
     sizes, alignments = _pooled_capacity(contracts for contracts, _ in selected.values())
+    padded_bytes = sum(size + alignment - 1 for size, alignment in zip(sizes, alignments, strict=True))
+    if stack_budget_bytes is not None and padded_bytes > stack_budget_bytes:
+        raise ValueError("private stack pool exceeds the original caller's byte budget")
     count = len(sizes)
     dynamic_type = MemRefType(i8, [DYNAMIC_INDEX])
     previous_types = {function: function.function_type for function in helper_functions}
@@ -218,7 +226,8 @@ def pool_private_writer_workspaces(module, writer_reports):
     pools = []
     first = min(root_calls, key=positions.__getitem__)
     for size, alignment in zip(sizes, alignments, strict=True):
-        allocation = memref.AllocOp.get(i8, shape=[size], alignment=alignment)
+        allocation_type = memref.AllocOp if stack_budget_bytes is None else memref.AllocaOp
+        allocation = allocation_type.get(i8, shape=[size], alignment=alignment)
         cast = memref.CastOp.get(allocation.memref, dynamic_type)
         owner.body.block.insert_ops_before([allocation, cast], first)
         pools.append(cast.dest)
@@ -270,8 +279,15 @@ def pool_private_writer_workspaces(module, writer_reports):
             for function in sorted(helper_functions, key=lambda f: f.sym_name.data)
         ],
         contracts=[asdict(contract) for contracts, _ in selected.values() for contract in contracts],
-        release="normal_upstream_owner_deallocation",
+        release="normal_upstream_owner_deallocation" if stack_budget_bytes is None else "owner_return_stack_lifetime",
+        storage="heap" if stack_budget_bytes is None else "invocation_stack",
+        stack_budget_bytes=stack_budget_bytes,
+        maximum_storage_bytes_including_alignment=padded_bytes,
+        final_frame_admission="not_established",
         data_cache=False,
-        scope="Explicit synchronous initialized-before-read/noescape storage sharing; no cached contents or allocator/numeric/target qualification inferred",
+        scope=(
+            "Explicit synchronous initialized-before-read/noescape storage sharing; "
+            "no cached contents or allocator/numeric/target qualification inferred"
+        ),
     )
     return result

@@ -1,0 +1,45 @@
+{
+  "members": [
+    {
+      "bytes": 8344,
+      "path": "SY_kdepth_fits_double/observation.json",
+      "sha256": "0f8d30fb8891182159726a33de73be7c2942fa69e731b4dab6ff6cdb338691b6"
+    },
+    {
+      "bytes": 9094,
+      "path": "SY_kdepth_fits_double/report.json",
+      "sha256": "2d992cc34823b97f17b7a42b02221641c557cff0c2d75dd831fe32d1d8ac405d"
+    },
+    {
+      "bytes": 8351,
+      "path": "SY_movement_i8_aligned/observation.json",
+      "sha256": "b22ebd7201b9bbd4a6256c8eb687db511edcdfb18f3f8fa07260acc5c82b3ec7"
+    },
+    {
+      "bytes": 8990,
+      "path": "SY_movement_i8_aligned/report.json",
+      "sha256": "f33cc735de30bb6f17f86338201ddacd6d10be26d6342d704a3356670d9f843e"
+    },
+    {
+      "bytes": 10458,
+      "path": "index.json",
+      "sha256": "173c54bfa04b3e7a5d855e95e34ec9b791043e6a4fd3d78a232da0ef98967537"
+    },
+    {
+      "bytes": 149,
+      "path": "initial-resource-refusal.json",
+      "sha256": "8a6290e0cc0e9b0639fbe39de24561734b4c1558b3ff19d0741dadeed6ab5f57"
+    },
+    {
+      "bytes": 1917,
+      "path": "plan.json",
+      "sha256": "9e149dabcc3d64466bcdfc9de5532ac131e0d9f2c2efdc0d946a4ec242180432"
+    },
+    {
+      "bytes": 334,
+      "path": "resource-override.json",
+      "sha256": "1c4589895bcc12445d65dd81b53087ec69c38d1381a2165526b737243b5425a9"
+    }
+  ],
+  "schema": "operator.retained_reference_manifest.v1"
+}

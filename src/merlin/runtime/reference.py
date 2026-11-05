@@ -12,15 +12,16 @@ from typing import Any
 
 from .commandbuffer import (
     BIAS_STAGES,
+    apply_declared_acc_scale,
     apply_pool_stage,
     batched_matmul_geometry,
     bias_tensor_name,
     conv_im2col,
     conv_out_dims,
-    declared_acc_scale,
     materialize_inputs,
     pool_params,
     residual_add_params,
+    row_major_view_shape,
 )
 from .tensor import Tensor
 
@@ -43,6 +44,8 @@ MODELED_OPCODES = frozenset(
         "ATTENTION_PV",
         "CONV2D",
         "MOVEMENT",
+        "MAXPOOL2D",
+        "ROW_MAJOR_VIEW",
         "BATCHED_MATMUL",
     }
 )
@@ -83,6 +86,7 @@ _CONV2D_ATTRS = frozenset(
         "epilogue",
         "output_dtype",
         "acc_scale",
+        "acc_scale_by_column",
         "requant_shift",
         "semantic",
         "pool_in_dims",
@@ -94,7 +98,9 @@ _CONV2D_ATTRS = frozenset(
     }
 )
 
-_ATTENTION_ATTRS = frozenset({"epilogue", "output_dtype", "acc_scale", "requant_shift", "semantic"})
+_ATTENTION_ATTRS = frozenset(
+    {"epilogue", "output_dtype", "acc_scale", "acc_scale_by_column", "requant_shift", "semantic"}
+)
 
 
 def _conv_geom(attrs: dict[str, Any], key: str, arity: int, default: list[int]) -> tuple[int, ...]:
@@ -130,7 +136,7 @@ def _attention_epilogue(t: Tensor, attrs: dict[str, Any], default_shift: int, op
         raise ValueError(f"{op} does not implement attribute(s) {unknown}; it implements {sorted(_ATTENTION_ATTRS)}")
     for stage in attrs.get("epilogue", []):
         if stage == "acc_scale":
-            t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
+            t = apply_declared_acc_scale(t, attrs, op="acc_scale")
         elif stage == "requant":
             t = t.requant(int(attrs.get("requant_shift", default_shift)))
         elif stage == "relu":
@@ -217,7 +223,7 @@ def _conv2d(
                 raise ValueError(f"CONV2D {dst!r}: a bias stage is declared and no bias tensor was resolved")
             result = result.add_bias(bias)
         elif stage == "acc_scale":
-            result = result.requant_acc_scale(declared_acc_scale(attrs, op=f"CONV2D {dst!r}"))
+            result = apply_declared_acc_scale(result, attrs, op=f"CONV2D {dst!r}")
         elif stage == "requant":
             result = result.requant(int(attrs.get("requant_shift", default_shift)))
         elif stage == "relu":
@@ -263,7 +269,7 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
             elif stage == "requant":
                 t = t.requant(shift)
             elif stage == "acc_scale":
-                t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
+                t = apply_declared_acc_scale(t, attrs, op="acc_scale")
             elif stage == "relu":
                 t = t.relu()
             elif stage == "maxpool":
@@ -445,6 +451,24 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
             t = Tensor(geometry.output_shape, flat, output_dtype)
             env[dst] = t
             outputs[dst] = t.to_list()
+        elif op == "ROW_MAJOR_VIEW":
+            name = ops.get("src")
+            if name not in env:
+                raise ValueError("ROW_MAJOR_VIEW source is undefined")
+            value = env[name]
+            shape = row_major_view_shape(cb, ops, attrs, value.shape, value.dtype, produced=outputs)
+            viewed = Tensor(shape, list(value.data), value.dtype)
+            env[name] = viewed
+            outputs[name] = viewed.to_list()
+
+        elif op == "MAXPOOL2D":
+            value = env[ops["src"]]
+            if attrs.get("epilogue") != ["acc_scale", "maxpool"] or attrs.get("output_dtype") != "i8":
+                raise ValueError("MAXPOOL2D requires explicit acc_scale then maxpool")
+            value = apply_declared_acc_scale(Tensor(value.shape, list(value.data), "i32"), attrs, op=op).to_i8()
+            value = apply_pool_stage(value, "maxpool", attrs, op=op)
+            env[ops["dst"]] = value
+            outputs[ops["dst"]] = value.to_list()
         elif op == "MOVEMENT":
             if "src" not in ops:
                 raise ValueError("MOVEMENT needs operands src/dst")
@@ -465,6 +489,19 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
     return outputs
 
 
+def _row_major(value) -> list:
+    if isinstance(value, (list, tuple)):
+        return [item for element in value for item in _row_major(element)]
+    return [value]
+
+
 def outputs_match(a: dict[str, list], b: dict[str, list]) -> bool:
-    """Exact equality of two output maps."""
-    return a == b
+    """Exact equality of two output maps, per output in row-major element order.
+
+    A console reports a tensor as ``OUT <name> <rows> <cols>`` with its leading dimensions flattened
+    into rows, so a rank-1 or rank-3+ reference and a correct device result differ in NESTING only.
+    Values and their count must still agree exactly; only the bracket structure is not compared.
+    """
+    if set(a) != set(b):
+        return False
+    return all(_row_major(a[name]) == _row_major(b[name]) for name in a)

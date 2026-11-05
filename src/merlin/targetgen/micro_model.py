@@ -468,7 +468,7 @@ _STATEMENT: dict[str, tuple[str | None, str]] = {
     # operation real captures contain. Each is shape-preserving like every other statement here.
     "mul": (None, "x = x * 0.5"),
     "layer_norm": ("self.ln{i} = nn.LayerNorm(E)", "x = self.ln{i}(x)"),
-    "reduce_mean": (None, "x = x * x.mean(-1, keepdim=True)"),
+    "reduce_mean": (None, "x = x + x.mean(-1, keepdim=True)"),
     "permute": (None, "x = x.permute(1, 0).contiguous().permute(1, 0)"),
     "movement": (None, "x = x.transpose(-1, -2).contiguous().transpose(-1, -2)"),
     # THE ATTENTION FAMILY IS `attention_full`. Two near misses are worth naming, because both look

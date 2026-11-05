@@ -117,6 +117,15 @@ class PassInfo:
 
 NORMALIZATION_CATALOG: tuple[PassInfo, ...] = (
     PassInfo(
+        "merlin-column-reduction-layout",
+        "normalize",
+        "preserve trailing-channel storage through exact single-column integer contractions",
+        "merlin.transforms.dense_reduction_layout.rewrite_module",
+        input_dialect="linalg",
+        output_dialect="linalg",
+        obligation=UNKNOWN,
+    ),
+    PassInfo(
         "merlin-lower-quant-ext",
         "normalize",
         "dequantize_per_channel -> linalg.generic (i8 weights stay i8 in memory)",

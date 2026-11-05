@@ -340,7 +340,7 @@ class Oracle:
         declared = ({"selector": "out", "applies": list(self.applies)},) if self.applies is not None else ()
         return RF.TargetReadout((RF.ReadoutFacet(target=self.target, readouts=declared),))
 
-    def ask(self, *, op, family, in_dtype, weight_dtype=None, rank=None, attached, granularity=None):
+    def ask(self, *, op, family, in_dtype, weight_dtype=None, rank=None, attached, granularity=None, form=None):
         self.asked.append({"op": op, "family": family, "in_dtype": in_dtype, "attached": attached})
         if family not in self.families:
             return CG.Admission(False, "undeclared_family", f"no capability for {family}")

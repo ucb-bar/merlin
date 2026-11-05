@@ -11,7 +11,6 @@ import argparse
 import json
 import os
 import secrets
-import select
 import signal
 import socket
 import subprocess
@@ -165,7 +164,7 @@ class Supervisor:
                 if time.monotonic() >= deadline:
                     raise TimeoutError("guardian did not complete its admission or cleanup")
                 readers = [control] if cancelled else [control, worker]
-                available = select.select(readers, [], [], 0.02)[0]
+                available = protocol.readable(readers, 0.02)
                 if control in available:
                     response, attachments = protocol.receive(control)
                     protocol.close_fds(attachments)

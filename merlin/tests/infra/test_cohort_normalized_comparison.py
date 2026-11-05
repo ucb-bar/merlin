@@ -26,6 +26,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -433,7 +434,9 @@ def _grade(monkeypatch, results):
     so the score-assembly under test is the shipped one."""
     from merlin.targetgen import capsule_grade as CG
 
-    monkeypatch.setattr(CG, "load_package", lambda *a, **k: type("P", (), {"integrity_exempt": False})())
+    monkeypatch.setattr(CG, "load_package", lambda *a, **k: type(
+        "P", (), {"integrity_exempt": False, "tool": Path(__file__)}
+    )())
     monkeypatch.setattr(CG, "integrity_scan", lambda *a, **k: None)
     monkeypatch.setattr(CG, "build_package", lambda *a, **k: None)
     monkeypatch.setattr(CG.CR, "discover_capsules", lambda *a, **k: [{"name": r["capsule"]} for r in results])

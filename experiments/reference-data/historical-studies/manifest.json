@@ -1,0 +1,2759 @@
+{
+  "schema": "merlin.reference_archive.v1",
+  "scope": "Exact historical study configurations, delivered prompts, recorded results and deployment documents. These are data artifacts, not active launch configuration.",
+  "source_commit": "3401569b8bd18975a8692ae34050b945e5495f60",
+  "archive": {
+    "filename": "historical-study-records-20261028.tar.gz",
+    "format": "tar.gz",
+    "bytes": 1434835,
+    "sha256": "37702ea94c6777738c14ef8df8f58f5e793f02f3e8af85084fb6aecebfbd7807",
+    "distribution": "accompanying artifact package",
+    "availability": "Prepared locally. Release packaging must include this archive."
+  },
+  "files": [
+    {
+      "path": "docs/compiler/panel_tile_loads.md",
+      "member": "docs/compiler/panel_tile_loads.md",
+      "bytes": 1911,
+      "mode": "0o664",
+      "sha256": "e13e1666e6f0f7f178b3c14b391b6b2473b0a286eca83bc0fb082cf5ead45085"
+    },
+    {
+      "path": "docs/design/optimization_api_extension_review.json",
+      "member": "docs/design/optimization_api_extension_review.json",
+      "bytes": 7359,
+      "mode": "0o664",
+      "sha256": "3c201b7f22995514972e1389b3cfae812da123b59faecc99b1013636871597d1"
+    },
+    {
+      "path": "docs/guides/performance_contribution_handoff.md",
+      "member": "docs/guides/performance_contribution_handoff.md",
+      "bytes": 4612,
+      "mode": "0o664",
+      "sha256": "92d77b0643d6300fc5dcf98a6c3ba636f55d9002a29cd0599f93d3b15403b2f3"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/EXPERIMENTS.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/EXPERIMENTS.md",
+      "bytes": 20611,
+      "mode": "0o664",
+      "sha256": "e4582800672a8a0ddf28b6098254ff879e6731661d64af6ac0b530ccdc5cbbe4"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/FRESH10_TOOLING.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/FRESH10_TOOLING.md",
+      "bytes": 9945,
+      "mode": "0o664",
+      "sha256": "59d87d4ee2a8d12e01474cb3bbf798be7413e75aeda30e086f213ca7cd3bd276"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/TOOLING_ABLATIONS.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/TOOLING_ABLATIONS.md",
+      "bytes": 6776,
+      "mode": "0o664",
+      "sha256": "53839caa6c656edac9672c195787fe83b107a787b1da4b867418b59f9fb65d3d"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/XS_ABLATION.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/XS_ABLATION.md",
+      "bytes": 9550,
+      "mode": "0o664",
+      "sha256": "f17e7a56f7a577a62fd5bf0699376e948820635e4674010670c481f3431bafec"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/PROTOCOL_CORRECTION_NO_EXPERT.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/PROTOCOL_CORRECTION_NO_EXPERT.md",
+      "bytes": 2830,
+      "mode": "0o664",
+      "sha256": "f008a5a0d93a343e86e1943e26111a840f451c9eae73c288a61d8ff544820c96"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/RAW_RTL_LEVELS_V2.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/RAW_RTL_LEVELS_V2.md",
+      "bytes": 3920,
+      "mode": "0o664",
+      "sha256": "db62120f40f03006a0b6219e8d57b30f8e0a09003a86118ee22dbdefdd7aa501"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/README.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/README.md",
+      "bytes": 13061,
+      "mode": "0o664",
+      "sha256": "d425c795df59b9a05d9aa58e5b149c91f3f3fa19b108f12cfe208003007ff127"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/REFERENCE_MAP_DISCLOSURE.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/REFERENCE_MAP_DISCLOSURE.md",
+      "bytes": 6318,
+      "mode": "0o664",
+      "sha256": "ecb29ed34c916dbb03d8fd30db27d3ccc4191bdaad1c2dd33f13e81429390f2c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/SHA256SUMS",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/SHA256SUMS",
+      "bytes": 42205,
+      "mode": "0o664",
+      "sha256": "d545fa2fb7576c33c250231ee9a7be3d9a6e046ddeea382dc5548ad0a20dbc3d"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el1/configuration.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el1/configuration.json",
+      "bytes": 7276,
+      "mode": "0o664",
+      "sha256": "6b74f93fde6158051fd314c9e922eddcd7c36feef40cbe52bfbf97593a2fe289"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el1/native-plan.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el1/native-plan.json",
+      "bytes": 23580,
+      "mode": "0o664",
+      "sha256": "b4ddd6e5af02f080c98ebee10f910c12ade713951e5a90af84ef0a898861ff74"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el1/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el1/policy.json",
+      "bytes": 18641,
+      "mode": "0o664",
+      "sha256": "4360e29720f773355fd5ebdfe69c2f7eaa33b0e183ad2599545715344a647480"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el1/receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el1/receives.json",
+      "bytes": 13069,
+      "mode": "0o664",
+      "sha256": "940bd5c573b1dac332a76b3813f78441729181f58eef25da1da916e4029b0dd1"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el1/served-TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el1/served-TASK.md",
+      "bytes": 3604,
+      "mode": "0o664",
+      "sha256": "ed72aed1bfad8f5e49ea6cd6647ef3912be18827fd9839542b534cdb963506fe"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el1/specs/el1.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el1/specs/el1.yaml",
+      "bytes": 17085,
+      "mode": "0o664",
+      "sha256": "4de8408589f6de57dfc0b9128730b0e35b1c82a67b50f985b77d0989244d55f2"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/DO_NOT_LAUNCH.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/DO_NOT_LAUNCH.json",
+      "bytes": 864,
+      "mode": "0o664",
+      "sha256": "7da0a733c8a03279ee5b39b7a705df27825cb774ffebeb810347c9e0ffb929bb"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/HANDOFF.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/HANDOFF.md",
+      "bytes": 4984,
+      "mode": "0o664",
+      "sha256": "c6eacf14455495b79c895920d10a3cc53ce4421f0c40bb2f36ab578168d410a6"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/actual-input-summary.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/actual-input-summary.json",
+      "bytes": 463,
+      "mode": "0o664",
+      "sha256": "f68305bff32bc1524d8680ebd63fd48e34e9611c00076bb3d9069147efc4141d"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/archive.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/archive.json",
+      "bytes": 3744,
+      "mode": "0o664",
+      "sha256": "7d7f5b5ea25d55c24d6374efbe2dc9bc004b33b19cd3e2c3d87b826c662bf097"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/base-policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/base-policy.json",
+      "bytes": 18557,
+      "mode": "0o664",
+      "sha256": "2f959a363bd9c820d05341c94781055123fbc1cf1bebb9be826998389847b2d4"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/boundary-canary-prepared-only.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/boundary-canary-prepared-only.json",
+      "bytes": 5138,
+      "mode": "0o664",
+      "sha256": "1abac3f158eeb827694f8960a56fb816e930bcde750eb55c6ce2094976bfced8"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el1-native-plan.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el1-native-plan.json",
+      "bytes": 23577,
+      "mode": "0o664",
+      "sha256": "643e4165d8c8da047b76b93984c049031aefb525edaffab7f6a5a291e2323db9"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el1-receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el1-receives.json",
+      "bytes": 108669,
+      "mode": "0o664",
+      "sha256": "f84a11b998d45826e0b5688287c46359a16a523f29f7bf256f7732157daad431"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el1.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el1.yaml",
+      "bytes": 16085,
+      "mode": "0o664",
+      "sha256": "91c398ecccbd4d8476424efd73d9ca5a5b95e91e95218d58f0b7e16ce188f54a"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el2-native-plan.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el2-native-plan.json",
+      "bytes": 24926,
+      "mode": "0o664",
+      "sha256": "a128d54976e57ad3a8a4c7ca65bbe23a9e4215264f4f5e9906d8ea2d1262f24e"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el2-receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el2-receives.json",
+      "bytes": 109859,
+      "mode": "0o664",
+      "sha256": "9c4587ff58793e4acc8a487461fcee6d327e0e1904fb20390652293d351577d3"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el2.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el2.yaml",
+      "bytes": 16082,
+      "mode": "0o664",
+      "sha256": "5bba66f6f52f2e6e0a2d3c8db8d836bfa0f8e0375a09cbb379f4245d034b3683"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el3-native-plan.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el3-native-plan.json",
+      "bytes": 25212,
+      "mode": "0o664",
+      "sha256": "bfb624e65bf258df00e6035a2fa58dc5f71a50321eeee4edfffc79bab01d8f8e"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el3-receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el3-receives.json",
+      "bytes": 110145,
+      "mode": "0o664",
+      "sha256": "85328b3904fb9f69558ec3f4a735a5910831256bfb7438c6d81a28fa995242bc"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el3.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/el3.yaml",
+      "bytes": 16082,
+      "mode": "0o664",
+      "sha256": "454d2499f8b2100e17cf9aad430852afd4cc087a1fcec1fcb4265eba878eae36"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/expert-exo-scope.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/expert-exo-scope.json",
+      "bytes": 657,
+      "mode": "0o664",
+      "sha256": "cfb372407cb64994bd95cecc9c05cfb0207ae946de614cfc26ac92c944e7a89d"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/framework-export.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/framework-export.json",
+      "bytes": 635,
+      "mode": "0o664",
+      "sha256": "d51ca17570d09815a23549ff5c11e7ac254a046a81690c90da39f0652931495e"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/guidance.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/guidance.md",
+      "bytes": 1099,
+      "mode": "0o664",
+      "sha256": "74322cee22bd6c76431668df861613e25ebd89bd4594fcb038afec761a5d6295"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/independent-input-audit.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/independent-input-audit.json",
+      "bytes": 22189,
+      "mode": "0o664",
+      "sha256": "6fecf42c01cf3b8c3f4c89e7dbc6bbb63e3b2c0f6e1f62f739cf8384288dd917"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/readiness.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/readiness.json",
+      "bytes": 2720,
+      "mode": "0o664",
+      "sha256": "a06f909d17681b17c1ed46c93941f6714762ae54cef11748004d5d7c5cfa6117"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/source-freeze.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/source-freeze.json",
+      "bytes": 5495,
+      "mode": "0o664",
+      "sha256": "3726e889b89560ff68168906074807c1262becf49b3f7536f82adf0bf50fd8b2"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/static-audit.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/static-audit.json",
+      "bytes": 2906,
+      "mode": "0o664",
+      "sha256": "914c3210e63432d88f7043269d2b9213009e1146d4b311c9233a6bb4066cee46"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/study.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/study.json",
+      "bytes": 3835,
+      "mode": "0o664",
+      "sha256": "6340dea3ec2fe3112d96dfbdd821c4185202bcda1fb9e35adf87dc2b6ce6344e"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/test-qualification.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-no-expert/test-qualification.json",
+      "bytes": 536,
+      "mode": "0o664",
+      "sha256": "8771a723a6cd3a0b47de1509a49d83d4bf9311d2bb4d8342301d75ebcda470ca"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/README.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/README.md",
+      "bytes": 3820,
+      "mode": "0o664",
+      "sha256": "09e66a0f49c3a082308ab3b2217220495b961fe974c725310db3809358998b46"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/archive.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/archive.json",
+      "bytes": 29471,
+      "mode": "0o664",
+      "sha256": "14a2578c0d541c80b3796985f52da6e4dc3f179465edd1d1268372e6e29f266d"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/base-policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/base-policy.json",
+      "bytes": 18557,
+      "mode": "0o664",
+      "sha256": "2f959a363bd9c820d05341c94781055123fbc1cf1bebb9be826998389847b2d4"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/cpu-custody/handoff.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/cpu-custody/handoff.json",
+      "bytes": 1702,
+      "mode": "0o664",
+      "sha256": "8a5643ac3a826244547626db021e0c0d3e3c23e62293a30210fefddfd182fc8a"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el1-receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el1-receives.json",
+      "bytes": 1925,
+      "mode": "0o664",
+      "sha256": "3596313c726fa796d1597ba7d78ebc0d0842fb3c4527c2dd1f021787aa6e0093"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el1.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el1.yaml",
+      "bytes": 16481,
+      "mode": "0o664",
+      "sha256": "a39015bb827895900892816a7159ca6a5933befcb7675253ba61829ca753bca7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el1/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el1/policy.json",
+      "bytes": 18641,
+      "mode": "0o664",
+      "sha256": "4360e29720f773355fd5ebdfe69c2f7eaa33b0e183ad2599545715344a647480"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el1/proposed-launch.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el1/proposed-launch.json",
+      "bytes": 24100,
+      "mode": "0o664",
+      "sha256": "cea4ccd93dcfca373b56a37210d6f0ebe23b45975d444a532e67b3522c853038"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el2-receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el2-receives.json",
+      "bytes": 1958,
+      "mode": "0o664",
+      "sha256": "17567681c2c44b1d15bbfd53227c7d745e8b434acd2d264d9760b3fdfe38052f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el2.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el2.yaml",
+      "bytes": 16482,
+      "mode": "0o664",
+      "sha256": "efd33b45aa49372a35789570f293ea8a18b00e1c4961248a3c167325cb0f1976"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el2/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el2/policy.json",
+      "bytes": 18641,
+      "mode": "0o664",
+      "sha256": "4360e29720f773355fd5ebdfe69c2f7eaa33b0e183ad2599545715344a647480"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el2/proposed-launch.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el2/proposed-launch.json",
+      "bytes": 25435,
+      "mode": "0o664",
+      "sha256": "16c55a03d20ec0c25aaece5daf5ce0c5829f34f0924e0fdb5a68ade2214f256a"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el3-receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el3-receives.json",
+      "bytes": 1913,
+      "mode": "0o664",
+      "sha256": "811924e71e08af0271bc0fdc5136908eceef83e2f0b8edf1f6a739cb2f1d9a0c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el3.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el3.yaml",
+      "bytes": 16478,
+      "mode": "0o664",
+      "sha256": "81b6dda6e5d6ec097b7e03da2adb173ce6a61b0d376b3ad9329990b538bab406"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el3/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el3/policy.json",
+      "bytes": 18641,
+      "mode": "0o664",
+      "sha256": "4360e29720f773355fd5ebdfe69c2f7eaa33b0e183ad2599545715344a647480"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el3/proposed-launch.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/el3/proposed-launch.json",
+      "bytes": 25727,
+      "mode": "0o664",
+      "sha256": "76b859bd5667b1daa657f251201755b918774bfff9d1c01dcdc1db2199a8a207"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/framework-export.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/framework-export.json",
+      "bytes": 633,
+      "mode": "0o664",
+      "sha256": "94ad3a9b3e71534d0d972b0d9706da89d06670cebe9e9de92df8c824598655d7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/freeze/patches.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/freeze/patches.json",
+      "bytes": 566,
+      "mode": "0o664",
+      "sha256": "380945c6397f5fff79df8f3f829464f74d3b6bdafa939073bacf447d5c7167d8"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/freeze/raw-rtl-boundaries-source.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/freeze/raw-rtl-boundaries-source.json",
+      "bytes": 20146,
+      "mode": "0o664",
+      "sha256": "d69da0e812c977c0bcd6420ef94e4c77c7354155ea7d511c99918a9bfa9ac3ce"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/freeze/source.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/freeze/source.json",
+      "bytes": 3815,
+      "mode": "0o664",
+      "sha256": "c64a26617c54be46d9f7d783e74404c08cdb6549c04ea501a534716ceb3fdafb"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/grading-infrastructure-incident.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/grading-infrastructure-incident.json",
+      "bytes": 3216,
+      "mode": "0o664",
+      "sha256": "27a126fcff41baa1cdbb1ea2a11c3df6628310d204f7e9735f0fc8f10942ba01"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/guidance.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/guidance.md",
+      "bytes": 2351,
+      "mode": "0o664",
+      "sha256": "53f7f7aa21f78dc278ef8987c38360970e5ca04e6062480ca7c9590689c92821"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/health-at-archive.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/health-at-archive.json",
+      "bytes": 17555,
+      "mode": "0o664",
+      "sha256": "fec824d772cc36ad1525ef1d11d1479f09d92e76c3362159901f719a85a14eff"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/health-watcher.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/health-watcher.json",
+      "bytes": 540,
+      "mode": "0o664",
+      "sha256": "fbca5f86ec62246bde2b6b2f5c532d425654be2426a3706b8b57848593ea2629"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/launch-authorization.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/launch-authorization.json",
+      "bytes": 1182,
+      "mode": "0o664",
+      "sha256": "f5f5690156d56f639e6bfb361362c24998d4176df76f49c8810231df72d716fa"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/launched.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/launched.json",
+      "bytes": 4675,
+      "mode": "0o664",
+      "sha256": "d29dc3df666287dbd3d948b4c152d5235f2318c4eab529546afb81bc05f75522"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el1/AUTHOR_PROFILE.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el1/AUTHOR_PROFILE.json",
+      "bytes": 625,
+      "mode": "0o664",
+      "sha256": "5301073c9bb575f5940dc17443670252f24f1962f44795b81bea1cd7182de998"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el1/TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el1/TASK.md",
+      "bytes": 3317,
+      "mode": "0o664",
+      "sha256": "8f60a34759561c3393cf1b15fb2e8aebef975c14bd788be1dc0555b1a1a4939e"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el1/rounds/round_00.prompt.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el1/rounds/round_00.prompt.txt",
+      "bytes": 4147,
+      "mode": "0o664",
+      "sha256": "ad54eaad254632192374d45f95d2671e8753abd849cbda8fc21d88ec6e0b8744"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el2/AUTHOR_PROFILE.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el2/AUTHOR_PROFILE.json",
+      "bytes": 1527,
+      "mode": "0o664",
+      "sha256": "8328f8955b97aec165503265efac956a35c87946f0bb8f5a3e63d8ba2a933cb8"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el2/TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el2/TASK.md",
+      "bytes": 3527,
+      "mode": "0o664",
+      "sha256": "1c6ad43127a67c8e9b8acddb95811fb7ef563ac670a035b3adf06ac9029fd103"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el2/rounds/round_00.prompt.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el2/rounds/round_00.prompt.txt",
+      "bytes": 4147,
+      "mode": "0o664",
+      "sha256": "ad54eaad254632192374d45f95d2671e8753abd849cbda8fc21d88ec6e0b8744"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el3/AUTHOR_PROFILE.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el3/AUTHOR_PROFILE.json",
+      "bytes": 2073,
+      "mode": "0o664",
+      "sha256": "902f0899a00dd5c19df44d7a29039acf55f5cb2b07896f1cd6459975ff572eb2"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el3/TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el3/TASK.md",
+      "bytes": 3762,
+      "mode": "0o664",
+      "sha256": "c1e515b081b73ce96fc357ae87e5b8f4f062e69b741ea0427a6eb3999d57d635"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el3/rounds/round_00.prompt.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/live-startup/el3/rounds/round_00.prompt.txt",
+      "bytes": 4147,
+      "mode": "0o664",
+      "sha256": "ad54eaad254632192374d45f95d2671e8753abd849cbda8fc21d88ec6e0b8744"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/cohort-handoff.py",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/cohort-handoff.py",
+      "bytes": 13898,
+      "mode": "0o664",
+      "sha256": "fbca49ffa457bb170eaf85be640cb591f0075e293dd9048e20e22b9bfe689ac0"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/host-input-tools/README.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/host-input-tools/README.md",
+      "bytes": 6787,
+      "mode": "0o664",
+      "sha256": "b965bd6bcf801e8112f83acdb6e0342cf46e09ac2dc14c707e5772de3c84158e"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/host-input-tools/independent-host-build-inputs-v2.patch",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/host-input-tools/independent-host-build-inputs-v2.patch",
+      "bytes": 17212,
+      "mode": "0o664",
+      "sha256": "55426accb9d98c1f34bbed45998932784e35a6223b3ec27cdc16acf1caa9f348"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/host-input-tools/public_owned_host_inputs.py",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/host-input-tools/public_owned_host_inputs.py",
+      "bytes": 6285,
+      "mode": "0o664",
+      "sha256": "f10fad54c2e8f42b00ed12030e9300024e4b7007e67e5db1ad701828b302ecb0"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/host-input-tools/receipt-v2.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/host-input-tools/receipt-v2.json",
+      "bytes": 3047,
+      "mode": "0o664",
+      "sha256": "3139232a1f8c3a81d6364e98f02649e4d512529ade4cb317c2a10dedde539adb"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/launch_qualified.py",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/launch_qualified.py",
+      "bytes": 6380,
+      "mode": "0o664",
+      "sha256": "0c878165f56f3439e2aabb0bc7b0fe77a25cb79bda8838a569b5d9c01a753c6c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/monitor.py",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/monitor.py",
+      "bytes": 12809,
+      "mode": "0o664",
+      "sha256": "3570089729fba958caa2cc5047dbdfda7a5b67aad7f1faf1c75f1b7cc08c1801"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/regrade-provided-host.py",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/regrade-provided-host.py",
+      "bytes": 3104,
+      "mode": "0o664",
+      "sha256": "914660f9d6e57b258dc838a3a3e3176d77d08ad15bcf9094dcd6240763a85f43"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/review-source-inventory.patch",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/operator/review-source-inventory.patch",
+      "bytes": 895,
+      "mode": "0o664",
+      "sha256": "bc36a2cce5c279e940c0a568fe01225f4b781cbb3708a9723eea692cb72d837f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/payload-deletion.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/payload-deletion.json",
+      "bytes": 2690,
+      "mode": "0o664",
+      "sha256": "fe09493bfca08738247e060f15bec3a406070079aba61e44b069e42f1ba40635"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/preparation/native-preflight-executed-el1.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/preparation/native-preflight-executed-el1.json",
+      "bytes": 2326,
+      "mode": "0o664",
+      "sha256": "4ad1f336edbb84f3df18ef866074e43c0d05558b582c5171728bba3d1f08621a"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/preparation/native-preflight-executed-el2.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/preparation/native-preflight-executed-el2.json",
+      "bytes": 2327,
+      "mode": "0o664",
+      "sha256": "b898cc8be916b805dc5d21c06bd946e6eec379c719f232dda586b37ea39c7a3f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/preparation/native-preflight-executed-el3.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/preparation/native-preflight-executed-el3.json",
+      "bytes": 2327,
+      "mode": "0o664",
+      "sha256": "9e4698baf3a7e1080fd1a1c87a8afeb1df62cf78d265690a5cf8d75e02e8d649"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/preparation/native-preparation-el1.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/preparation/native-preparation-el1.json",
+      "bytes": 5515,
+      "mode": "0o664",
+      "sha256": "c5e6462de15dda8c698412f95c97c4822b92281a199139c9163252dc4b0807e9"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/preparation/native-preparation-el2.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/preparation/native-preparation-el2.json",
+      "bytes": 5516,
+      "mode": "0o664",
+      "sha256": "c79f40815cb29ef416b316e415e2a290c08894007141262b4b0dd7252ed87192"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/preparation/native-preparation-el3.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/preparation/native-preparation-el3.json",
+      "bytes": 5517,
+      "mode": "0o664",
+      "sha256": "badd4a1c171f0746c4bec7e9e41a337261c2f685b012ef70dc066d229d3b1780"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/early-health-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/early-health-receipt.json",
+      "bytes": 12245,
+      "mode": "0o664",
+      "sha256": "135cd6d13ed7a639ce2d12e4e11cf9ddd88fb072662cb9d2a6bc0197f5a87df7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/el1-prompt-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/el1-prompt-receipt.json",
+      "bytes": 9299,
+      "mode": "0o664",
+      "sha256": "a3b8c52db73ea10692a2a80d4a18ac53896ba2d615a3dc99d7df69b468950941"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/el1-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/el1-receipt.json",
+      "bytes": 29240,
+      "mode": "0o664",
+      "sha256": "fa9aecd1e3d90a4d16055a15db45ca88a71041c9cb2276d4288e47d3bb2d143b"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/el2-prompt-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/el2-prompt-receipt.json",
+      "bytes": 9481,
+      "mode": "0o664",
+      "sha256": "f87578165f10b16f2b3832e7cdeaa224c8e9cc8b1f3a1f72b4510bb0e73320c9"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/el2-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/el2-receipt.json",
+      "bytes": 29246,
+      "mode": "0o664",
+      "sha256": "06a4515189a43f38e486890327865b5db6c9661573c6979af7df6e9094095e00"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/el3-prompt-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/el3-prompt-receipt.json",
+      "bytes": 9778,
+      "mode": "0o664",
+      "sha256": "6c3392491614441cf4b03fb6a140de09a63087e8bfddbc1951dc52db7c704411"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/el3-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/el3-receipt.json",
+      "bytes": 29248,
+      "mode": "0o664",
+      "sha256": "4fa9913194e647d499b5b21dca289b4ebd7ebcb37881ebaf16f46e1f8cc23126"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/host-only-replay-plan.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/host-only-replay-plan.json",
+      "bytes": 1031,
+      "mode": "0o664",
+      "sha256": "c6bc41bcbc143e67efa568a425364fa4eeca585812ade34adaeb4fb8f556cfec"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/independent-host-inputs-ready.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/independent-host-inputs-ready.json",
+      "bytes": 2000,
+      "mode": "0o664",
+      "sha256": "ee94817b416b40705023abf93d71de5b71c3d14e31d66b6aef65f8608ec039bd"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/live-startup-profile-comparison.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/live-startup-profile-comparison.json",
+      "bytes": 638,
+      "mode": "0o664",
+      "sha256": "66b4e93f570e2bd3bdf65eb82e39d0807b073ee0690758b5188cd9bb35e0e49c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/prompt-summary.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/prompt-summary.json",
+      "bytes": 2472,
+      "mode": "0o664",
+      "sha256": "58dad7a436e61ec7277d60c2b3745715df342c15616fb4c1c21fe37b94d9433f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/source-corpus-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/qualification/source-corpus-receipt.json",
+      "bytes": 3560,
+      "mode": "0o664",
+      "sha256": "eaff1ca66c127a42efd12ce5cd49206ed1be75fde0f909d0fa146e2c854d15ce"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/readiness.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/readiness.json",
+      "bytes": 430,
+      "mode": "0o664",
+      "sha256": "1187140732abb1b9c7cad03776dd432079d62ddc82c2dfa03b7c01d9c4576f6f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/retirement.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/retirement.json",
+      "bytes": 853,
+      "mode": "0o664",
+      "sha256": "2727b1591e05e4dd20b1da2d8e965183437f068736ae261ba1525fd74a8d790f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/runtime-index.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/runtime-index.json",
+      "bytes": 2029,
+      "mode": "0o664",
+      "sha256": "d2952ae5728997ab6e96c42570d3b768637467f56cefaf68a85b58420495ced9"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/static-audit.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/static-audit.json",
+      "bytes": 3749,
+      "mode": "0o664",
+      "sha256": "6039ad39678caebde46112fde888537be147908d846e7741c0062e29675c085e"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/study.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r4/study.json",
+      "bytes": 4155,
+      "mode": "0o664",
+      "sha256": "0498468f6949692686a89cb0cfe1b8e014e9d4c99fb39e124e5dd01687d7b189"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/HANDOFF.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/HANDOFF.md",
+      "bytes": 1625,
+      "mode": "0o664",
+      "sha256": "b4bfcfe2eea64a89f91b4b2e38276accfa4a4e5994a445402b98e6fa46949e99"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/RELAUNCH_FIXES.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/RELAUNCH_FIXES.md",
+      "bytes": 1896,
+      "mode": "0o664",
+      "sha256": "77845c470fb11d6988f7aa251245e462f32c0ac798d1da85072889f0cdcaf4a4"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/analysis-20261029.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/analysis-20261029.json",
+      "bytes": 2659,
+      "mode": "0o664",
+      "sha256": "38211fdd0b447c33078530c1b2b84e1272d41c60dddee1c6c8ce1cdfd4702c2b"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/archive.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/archive.json",
+      "bytes": 42966,
+      "mode": "0o664",
+      "sha256": "a51c9f51bba26c0b6dcc2b56aea7976441f3f3a34a1a66558514c09b155d6a5d"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/base-policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/base-policy.json",
+      "bytes": 18557,
+      "mode": "0o664",
+      "sha256": "2f959a363bd9c820d05341c94781055123fbc1cf1bebb9be826998389847b2d4"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el1/execution.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el1/execution.json",
+      "bytes": 1384,
+      "mode": "0o664",
+      "sha256": "673fefbdd8dc37d3285d3d6dd7a580880eb5bab45b02514aa5f86fa6a3d25668"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el1/negative-inventory.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el1/negative-inventory.json",
+      "bytes": 50531,
+      "mode": "0o664",
+      "sha256": "c888241e8d0061c22676611bf6594249a499a32d656d28258f508de460da1bae"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el1/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el1/receipt.json",
+      "bytes": 118135,
+      "mode": "0o664",
+      "sha256": "177844b0d17b8900647716681cdcf20f57a2f77dd1e565e7c7af6516334a699f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el2/execution.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el2/execution.json",
+      "bytes": 1384,
+      "mode": "0o664",
+      "sha256": "33f6b5c441b800545f7311dfcc18193c4fbeb94f0e33205679f9003992e3fc48"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el2/negative-inventory.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el2/negative-inventory.json",
+      "bytes": 50531,
+      "mode": "0o664",
+      "sha256": "c888241e8d0061c22676611bf6594249a499a32d656d28258f508de460da1bae"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el2/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el2/receipt.json",
+      "bytes": 123060,
+      "mode": "0o664",
+      "sha256": "4922dbb0fbbc6b939b05e6d21cae8851feef713ec84e7f0f79f2e326e5d9d9f9"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el3/execution.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el3/execution.json",
+      "bytes": 1384,
+      "mode": "0o664",
+      "sha256": "05230ca724c2b409dfa84277fa0722e12f36f1917fc2fccd96bf6c399e2fca6f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el3/negative-inventory.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el3/negative-inventory.json",
+      "bytes": 50531,
+      "mode": "0o664",
+      "sha256": "c888241e8d0061c22676611bf6594249a499a32d656d28258f508de460da1bae"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el3/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/boundary-audit/el3/receipt.json",
+      "bytes": 121690,
+      "mode": "0o664",
+      "sha256": "73525dc165842991a17b0c942599b2436e97864dcc0e349c81a2421fb2a7e006"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/cpu-custody/cohort-only-reviewed-proposal.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/cpu-custody/cohort-only-reviewed-proposal.json",
+      "bytes": 9012,
+      "mode": "0o664",
+      "sha256": "5b450cef59976411b368ee372a07f79db628e548675fa7849ccdf5d81789d002"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/cpu-custody/handoff.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/cpu-custody/handoff.json",
+      "bytes": 599,
+      "mode": "0o664",
+      "sha256": "e32b16d0a606040eae635aa4083cd717a44fac256dc2f958947aac9bd1ed81c5"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/cpu-custody/known-peer-handoff-retired.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/cpu-custody/known-peer-handoff-retired.json",
+      "bytes": 611,
+      "mode": "0o664",
+      "sha256": "c7253075aeed143e62a1706b970f9fd6247554fc4ed3011318972440a8bd6f3c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/cpu-custody/multi-peer-reviewed-proposal.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/cpu-custody/multi-peer-reviewed-proposal.json",
+      "bytes": 18275,
+      "mode": "0o664",
+      "sha256": "29946eb4888709e5dc208d35700ced6dc158bf5f429c85097b7d821aa682e116"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/cpu-custody/reviewed-proposal.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/cpu-custody/reviewed-proposal.json",
+      "bytes": 13042,
+      "mode": "0o664",
+      "sha256": "1d6c4e0879d7c8fc4657a12daca3740124c4c9a2ebbd5b3d8e4f6cdf89de741c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/e4-parent-comparison-20261029.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/e4-parent-comparison-20261029.json",
+      "bytes": 803,
+      "mode": "0o664",
+      "sha256": "9731889fa97d8dd25cae42485ecf8b84915feab6aa348c33a1d37b8d2423051d"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el1-receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el1-receives.json",
+      "bytes": 1980,
+      "mode": "0o664",
+      "sha256": "c903cedc5cc0eacf21fe1ab15c1a200d5465c68504aecf4864121a80bd2a9472"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el1.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el1.yaml",
+      "bytes": 16736,
+      "mode": "0o664",
+      "sha256": "32147f38dee763cce73362be01bfe16dc4ac2f974e09558cda99c7093af6b245"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el1/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el1/policy.json",
+      "bytes": 18641,
+      "mode": "0o664",
+      "sha256": "4360e29720f773355fd5ebdfe69c2f7eaa33b0e183ad2599545715344a647480"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el1/proposed-launch.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el1/proposed-launch.json",
+      "bytes": 24712,
+      "mode": "0o664",
+      "sha256": "51c645a9d3f32d2025956224d6bddb1df213bc651c829b736e0b9b3b4752bfd9"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el1/supplied-source-manifest.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el1/supplied-source-manifest.json",
+      "bytes": 28,
+      "mode": "0o664",
+      "sha256": "eac18570fc2c97fa3513dcedba6f9096a1d0b337ed1a8d68e52fb0165ec966e8"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el123-figure-20261029.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el123-figure-20261029.json",
+      "bytes": 2974,
+      "mode": "0o664",
+      "sha256": "aaa6d67d79add1593df7bc38c09057a8a7c6a577bbefdbaf79e8cd3d45d7e66d"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el2-receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el2-receives.json",
+      "bytes": 2013,
+      "mode": "0o664",
+      "sha256": "c8cb53cee419abcba629a05900956057884b0907d708d14b0fadc11818c7d764"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el2.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el2.yaml",
+      "bytes": 16737,
+      "mode": "0o664",
+      "sha256": "73f25b5cd32b4b751ca7fccf8f87b817b97b3c1370f225e213d9788b9b64b9c7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el2/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el2/policy.json",
+      "bytes": 18641,
+      "mode": "0o664",
+      "sha256": "4360e29720f773355fd5ebdfe69c2f7eaa33b0e183ad2599545715344a647480"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el2/proposed-launch.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el2/proposed-launch.json",
+      "bytes": 26047,
+      "mode": "0o664",
+      "sha256": "512960c3727a258ef63969c9498586ae98e7646afcf88f1dea492149af6a7f2a"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el2/supplied-source-manifest.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el2/supplied-source-manifest.json",
+      "bytes": 4558,
+      "mode": "0o664",
+      "sha256": "c935c00bf5f64dacd9120bbeebf41ad6baec833b62808d1fc652b9d91714d941"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el3-receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el3-receives.json",
+      "bytes": 1968,
+      "mode": "0o664",
+      "sha256": "79b13f4183f6cc658064426a83db6fb99faec0063f4d410e4ca04f4c9c378094"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el3.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el3.yaml",
+      "bytes": 16733,
+      "mode": "0o664",
+      "sha256": "2f4aae7d48f7b85dd3bfd53cd12b1037703824c8e863b6b8c6f7777c00a1e078"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el3/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el3/policy.json",
+      "bytes": 18641,
+      "mode": "0o664",
+      "sha256": "4360e29720f773355fd5ebdfe69c2f7eaa33b0e183ad2599545715344a647480"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el3/proposed-launch.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el3/proposed-launch.json",
+      "bytes": 26339,
+      "mode": "0o664",
+      "sha256": "8d8982c571f7264061d1dbb7668c7d0716eac5d593111f4eaa04cf3c9710ca75"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el3/supplied-source-manifest.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/el3/supplied-source-manifest.json",
+      "bytes": 9136,
+      "mode": "0o664",
+      "sha256": "bbf3c425e2035784898cb0011eba4fb94860562dca7f62f3ada7b3681ecf0a44"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/framework-export.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/framework-export.json",
+      "bytes": 633,
+      "mode": "0o664",
+      "sha256": "b2c4ed09ea39adac14974d450b3d2c317375c8bfb7270383ba4a7bceddd0601c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5-final-qualified/patches.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5-final-qualified/patches.json",
+      "bytes": 380,
+      "mode": "0o664",
+      "sha256": "ee2379a7cd2643718e81c0fe542103b0473f7404ad28b9ec4f35507faa744c9f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5-final-qualified/source.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5-final-qualified/source.json",
+      "bytes": 1993,
+      "mode": "0o664",
+      "sha256": "aad73ed37bb97d9de3f419e357b8abc963cdd77344bb63927e01c33a51355e78"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5-final/patches.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5-final/patches.json",
+      "bytes": 246,
+      "mode": "0o664",
+      "sha256": "ec72b875c9b0a5c53aa4e52e3a7e35140fa5e1640404e4380ee2976f55f4879b"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5-final/source.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5-final/source.json",
+      "bytes": 2017,
+      "mode": "0o664",
+      "sha256": "6358d2393dffad5a258def3499edb58f4a5810d3da1fcf3c03576c12c993dfa0"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5-launch/patches.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5-launch/patches.json",
+      "bytes": 121,
+      "mode": "0o664",
+      "sha256": "af4f4c8cb63f970804ca226062af9ded9368ba7545f02b6902377b97c4115e3b"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5-launch/source.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5-launch/source.json",
+      "bytes": 1158,
+      "mode": "0o664",
+      "sha256": "a66cc87505c355d57d579568ce305cf33c957dcbeb8190089e117b44b67146b8"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5/patches.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5/patches.json",
+      "bytes": 623,
+      "mode": "0o664",
+      "sha256": "6179b7f1859702e01be8979a3f9dc55d8cc92074b28380ec6c34c0b5289c57a7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5/source.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/r5/source.json",
+      "bytes": 3336,
+      "mode": "0o664",
+      "sha256": "d58b93ad9a5e97d61bfc1dad7a7a3c49d2649be17e2bdb910c8802a05d3d56b1"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/raw-rtl-boundaries-source.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/freeze/raw-rtl-boundaries-source.json",
+      "bytes": 20146,
+      "mode": "0o664",
+      "sha256": "d69da0e812c977c0bcd6420ef94e4c77c7354155ea7d511c99918a9bfa9ac3ce"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/guidance.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/guidance.md",
+      "bytes": 2351,
+      "mode": "0o664",
+      "sha256": "53f7f7aa21f78dc278ef8987c38360970e5ca04e6062480ca7c9590689c92821"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/health-at-archive.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/health-at-archive.json",
+      "bytes": 20581,
+      "mode": "0o664",
+      "sha256": "58bbde2f8e61826ed263e814d6e1498d73a3a31e3ccbec0c8d5ec33927a41b60"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/health-watcher.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/health-watcher.json",
+      "bytes": 709,
+      "mode": "0o664",
+      "sha256": "1a426870d3ecc7f7d1a2af424ec9f8ffeb82a2de10ff0a51f922a0acecafb78c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/README.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/README.md",
+      "bytes": 1851,
+      "mode": "0o664",
+      "sha256": "e4bd702d2d891e1c3692c2b02f8c188aa9f014d4119db5d6f94a01ab6178cfaa"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/deployment-audit.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/deployment-audit.json",
+      "bytes": 9837,
+      "mode": "0o664",
+      "sha256": "ad7107c7c23b67f77a1049a8661711dc9bd308e532018c84e8b50fb96d221ada"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/framework-export.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/framework-export.json",
+      "bytes": 750,
+      "mode": "0o664",
+      "sha256": "22730bd579cc4975dbcbda3072522297e24e815d606041e19fdbcb20ffad7897"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/full-source-gate-replay.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/full-source-gate-replay.json",
+      "bytes": 8840,
+      "mode": "0o664",
+      "sha256": "1eea0d262debf4ca9cdf1c96fb205a1fb526981d95ac11ce1c1825541155b397"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/impact-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/impact-receipt.json",
+      "bytes": 11077,
+      "mode": "0o664",
+      "sha256": "a6d2159a1d8f0fccef9d93fa8405b07650ee5ed39b8aea738ac07027f43f3a8c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/selection.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/selection.json",
+      "bytes": 1865,
+      "mode": "0o664",
+      "sha256": "dfb7088bc52dc99dce19a7e7c052aa82a7e05b496fe25981510674c50f3c054b"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/source.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/source.json",
+      "bytes": 1207,
+      "mode": "0o664",
+      "sha256": "568e75cece6a6aaf6e88942308a178c26b44ba5e3c5ccae817668891e9216e1b"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/tests.xml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/tests.xml",
+      "bytes": 26116,
+      "mode": "0o664",
+      "sha256": "b3325197319c43104a07bb092ab7dc678ba70e43cf9c0b3653562343f6b14dc4"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/third-case-full-gate-replay.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/third-case-full-gate-replay.json",
+      "bytes": 9022,
+      "mode": "0o664",
+      "sha256": "fce9eac265b6d8b9bc78a4e0d70803a8d5d4e55e96fc2ecba80b881af76c3d89"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/volatile-reader-fix.patch",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/hotfixes/volatile-load-v1/volatile-reader-fix.patch",
+      "bytes": 7720,
+      "mode": "0o664",
+      "sha256": "6a9a8951d51abf8437a2d1fad66bb9cc44650ad744b5d559ba6e064269093222"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/launch-authorization.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/launch-authorization.json",
+      "bytes": 1182,
+      "mode": "0o664",
+      "sha256": "f0949676656c2f4c8f7c855b110f6eabf0766ec033907e3a45ce74a520340e39"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/launched.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/launched.json",
+      "bytes": 6259,
+      "mode": "0o664",
+      "sha256": "d33bb888a094325996ae98afe9f3438d479c1198c71e0deef22a4a38c1b526a5"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el1/AUTHOR_PROFILE.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el1/AUTHOR_PROFILE.json",
+      "bytes": 625,
+      "mode": "0o664",
+      "sha256": "5301073c9bb575f5940dc17443670252f24f1962f44795b81bea1cd7182de998"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el1/TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el1/TASK.md",
+      "bytes": 3317,
+      "mode": "0o664",
+      "sha256": "8f60a34759561c3393cf1b15fb2e8aebef975c14bd788be1dc0555b1a1a4939e"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el1/rounds/round_00.prompt.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el1/rounds/round_00.prompt.txt",
+      "bytes": 4147,
+      "mode": "0o664",
+      "sha256": "ad54eaad254632192374d45f95d2671e8753abd849cbda8fc21d88ec6e0b8744"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el2/AUTHOR_PROFILE.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el2/AUTHOR_PROFILE.json",
+      "bytes": 1527,
+      "mode": "0o664",
+      "sha256": "806df02269f5c1fa50967f13b4e9e1b7a2493144e005326ef3bb82582aeee90d"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el2/TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el2/TASK.md",
+      "bytes": 3527,
+      "mode": "0o664",
+      "sha256": "1c6ad43127a67c8e9b8acddb95811fb7ef563ac670a035b3adf06ac9029fd103"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el2/rounds/round_00.prompt.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el2/rounds/round_00.prompt.txt",
+      "bytes": 4147,
+      "mode": "0o664",
+      "sha256": "ad54eaad254632192374d45f95d2671e8753abd849cbda8fc21d88ec6e0b8744"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el3/AUTHOR_PROFILE.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el3/AUTHOR_PROFILE.json",
+      "bytes": 2073,
+      "mode": "0o664",
+      "sha256": "c841254f30244498362210eb4a708aa8eb77d14d269673e03f959a0849e0a448"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el3/TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el3/TASK.md",
+      "bytes": 3762,
+      "mode": "0o664",
+      "sha256": "0d0656db8323ef75b3510d6dc1b3b4e64c5f252e2f60119c5705984e324c018a"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el3/rounds/round_00.prompt.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/live-startup/el3/rounds/round_00.prompt.txt",
+      "bytes": 4147,
+      "mode": "0o664",
+      "sha256": "ad54eaad254632192374d45f95d2671e8753abd849cbda8fc21d88ec6e0b8744"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/operator/cohort-only-resume.py",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/operator/cohort-only-resume.py",
+      "bytes": 11171,
+      "mode": "0o664",
+      "sha256": "2ddea252be6ff635beeb0ee9911c6478abc3108fae83fae2c55a7b158cf51649"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/operator/known-peer-resume.py",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/operator/known-peer-resume.py",
+      "bytes": 14465,
+      "mode": "0o664",
+      "sha256": "c7e58105bd634ff25e889e3ef223bc719bc4b4f1e8384014210dce9696aee77a"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/operator/launch_qualified.py",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/operator/launch_qualified.py",
+      "bytes": 8232,
+      "mode": "0o664",
+      "sha256": "344e32236d678104ef99c17405b14f293cea406c0fc3201391c6860929c81fda"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/operator/monitor.py",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/operator/monitor.py",
+      "bytes": 13780,
+      "mode": "0o664",
+      "sha256": "b0161f655f719fafe152f03f53da9e8dddaf6a6ed15fa4b49a9b67d44692f836"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/operator/prepare_arm.py",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/operator/prepare_arm.py",
+      "bytes": 4236,
+      "mode": "0o664",
+      "sha256": "b3bb667a4f662c3e21ec7b17b6c99482845c0630cb1f434be6ce1ba87ba508c1"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/operator/prepare_host_inputs.py",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/operator/prepare_host_inputs.py",
+      "bytes": 3298,
+      "mode": "0o664",
+      "sha256": "194234943fc852bb7337714b16c5445555ac22295105686a3f53852298c39c30"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/operator/qualify_preflight.py",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/operator/qualify_preflight.py",
+      "bytes": 2637,
+      "mode": "0o664",
+      "sha256": "49ac0c88497109bdbfe88021dad9038e647b934dca55b194eb39db3f8dbc281b"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/preparation/native-preflight-executed-el1.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/preparation/native-preflight-executed-el1.json",
+      "bytes": 3557,
+      "mode": "0o664",
+      "sha256": "45e5fa117a04ce5014286025c9d1275bf5a89634065d0b273464a99cacf2be55"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/preparation/native-preflight-executed-el2.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/preparation/native-preflight-executed-el2.json",
+      "bytes": 3557,
+      "mode": "0o664",
+      "sha256": "04f42220d8c0c667c88bb9ae0404b19efc04e8ef9aeb7b53070f0f22e263f2c1"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/preparation/native-preflight-executed-el3.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/preparation/native-preflight-executed-el3.json",
+      "bytes": 3556,
+      "mode": "0o664",
+      "sha256": "62946402c21ceb620faba76a573b657f480d46c39ba8fb622479b9c4586970c6"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/preparation/native-preparation-el1.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/preparation/native-preparation-el1.json",
+      "bytes": 7486,
+      "mode": "0o664",
+      "sha256": "cc4c8e6318f648c4e6f02b925f6e5dea823a7d4f4f08ddfabe5bd431fc21b252"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/preparation/native-preparation-el2.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/preparation/native-preparation-el2.json",
+      "bytes": 7486,
+      "mode": "0o664",
+      "sha256": "be501e613f49c40dea9c5da12e4d98ac979c954aa326d192d927eb76345d2cf0"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/preparation/native-preparation-el3.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/preparation/native-preparation-el3.json",
+      "bytes": 7485,
+      "mode": "0o664",
+      "sha256": "cc4717f9fdaa4817a61e0956b6535e48a5ca7d759f2873be963c34f34a40efc4"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/prompt-audit/el1/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/prompt-audit/el1/receipt.json",
+      "bytes": 15461,
+      "mode": "0o664",
+      "sha256": "539f4bda9f42d627ed4093558ca64f0364afb2be4f8b433d5276592ef545f9da"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/prompt-audit/el2/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/prompt-audit/el2/receipt.json",
+      "bytes": 16440,
+      "mode": "0o664",
+      "sha256": "becef8559465408cdff02bb979b94db85e89fd0be667c58986c9d7480781c997"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/prompt-audit/el3/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/prompt-audit/el3/receipt.json",
+      "bytes": 17003,
+      "mode": "0o664",
+      "sha256": "870fa824b995f4f9c2a3000b5d29f82b371d3cb0b48cf6e79db8f9e86834d7c7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/candidate-independent-host-checks.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/candidate-independent-host-checks.json",
+      "bytes": 839,
+      "mode": "0o664",
+      "sha256": "1208c9fb2720a5639627a329285138ecdaa97c7e89559ed77b0dfea6cda09d49"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el1-native-runtime-link.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el1-native-runtime-link.json",
+      "bytes": 3288,
+      "mode": "0o664",
+      "sha256": "3cd5f75931d2dc7b53342de60a7b26c065ab580098021a07f1a5d905bb3b7bdb"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el1-prompt-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el1-prompt-receipt.json",
+      "bytes": 15461,
+      "mode": "0o664",
+      "sha256": "539f4bda9f42d627ed4093558ca64f0364afb2be4f8b433d5276592ef545f9da"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el1-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el1-receipt.json",
+      "bytes": 30309,
+      "mode": "0o664",
+      "sha256": "5f9592ce8bd821564555359a892f362994305873de7dab76a6a5d79a371df5da"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el2-native-runtime-link.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el2-native-runtime-link.json",
+      "bytes": 3296,
+      "mode": "0o664",
+      "sha256": "8fe06d9354e7ad21088d7d125dcf39ac2ec475dca77550af7bd614545282e6f4"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el2-prompt-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el2-prompt-receipt.json",
+      "bytes": 16440,
+      "mode": "0o664",
+      "sha256": "becef8559465408cdff02bb979b94db85e89fd0be667c58986c9d7480781c997"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el2-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el2-receipt.json",
+      "bytes": 30321,
+      "mode": "0o664",
+      "sha256": "d2053b0ab9aa05427cbb8d2da22256f5190162a1e4514f577452423c3f01b187"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el3-native-runtime-link.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el3-native-runtime-link.json",
+      "bytes": 3296,
+      "mode": "0o664",
+      "sha256": "de3a84d9879594f105badc981850c9e2616ad07729fd941a863891072922de57"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el3-prompt-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el3-prompt-receipt.json",
+      "bytes": 17003,
+      "mode": "0o664",
+      "sha256": "870fa824b995f4f9c2a3000b5d29f82b371d3cb0b48cf6e79db8f9e86834d7c7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el3-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/el3-receipt.json",
+      "bytes": 30320,
+      "mode": "0o664",
+      "sha256": "59adcaaca1db4516dc6fcaa9c6d916c4999fefa3c24132d2b36b32245aeb27bb"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/prompt-summary.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/prompt-summary.json",
+      "bytes": 2424,
+      "mode": "0o664",
+      "sha256": "e81f78134dfdf977df6b5fd3428274bb3e7d5aa25b590211714276e306dc4eac"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/resource-admission-before-launch.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/resource-admission-before-launch.json",
+      "bytes": 15182,
+      "mode": "0o664",
+      "sha256": "7002251b334db58041f50b338b0a13ec76ad0366e7c40fac82f11381d1daf205"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/source-corpus-receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/qualification/source-corpus-receipt.json",
+      "bytes": 2891,
+      "mode": "0o664",
+      "sha256": "32e4d4fe1580806ad08cea7f6ec8bcc339aa42b2ac7206043ba2bf96b9cf565f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/readiness.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/readiness.json",
+      "bytes": 1466,
+      "mode": "0o664",
+      "sha256": "693d7129c807f7644b1c11d691724aeba53a2c820ecd4b102ac566f7a3646f9b"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/recent-raw-comparison-20261029.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/recent-raw-comparison-20261029.json",
+      "bytes": 806,
+      "mode": "0o664",
+      "sha256": "843f818274da9ef21c0298279c81877d197c4dbf9d7a951f7460361c67d6923e"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/runtime-index.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/runtime-index.json",
+      "bytes": 2025,
+      "mode": "0o664",
+      "sha256": "d6249a1dc46619b976fd58d5e93d82ba705c5ae8457dc354eeb947c7a7898faa"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/static-audit.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/static-audit.json",
+      "bytes": 3749,
+      "mode": "0o664",
+      "sha256": "0e948ac75c24abce2f1f9ea2f6869fa3574c4f96ad8b7fe792d2106f825a93c5"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/study.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-r5/study.json",
+      "bytes": 4155,
+      "mode": "0o664",
+      "sha256": "68e5f3d26d77596623e5039c62d30cc9dd3399d6c632ce01bb3e209cd5d59fd0"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/DO_NOT_LAUNCH.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/DO_NOT_LAUNCH.json",
+      "bytes": 287,
+      "mode": "0o664",
+      "sha256": "4e11a99a28d5992bed6190e4ed6d37d91cf4794d8bf38fc690620c59ec8c082c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/README.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/README.md",
+      "bytes": 2226,
+      "mode": "0o664",
+      "sha256": "b0470660cd0e690e1e4a3146e79a9051e3277aa910fffb3a1f9f1841143395e3"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/archive.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/archive.json",
+      "bytes": 25891,
+      "mode": "0o664",
+      "sha256": "863965f992a08d5c462c73177c172ff32135733cc6c1ae4410bffd259e968bfa"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/audits/r2-machine-admission-el1-final.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/audits/r2-machine-admission-el1-final.json",
+      "bytes": 8767,
+      "mode": "0o664",
+      "sha256": "bd0b12f901d9449a9c86901b14b44d5ba0010047c9f3fbfd3915be9554a0b6f8"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/audits/r2-machine-admission-el3-final.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/audits/r2-machine-admission-el3-final.json",
+      "bytes": 4410,
+      "mode": "0o664",
+      "sha256": "22554fb95e315c18835c69d3b4bbbb72b726d6af6c7fce86ca465819e778cbb3"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/audits/r2-machine-admission-prelaunch.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/audits/r2-machine-admission-prelaunch.json",
+      "bytes": 3509,
+      "mode": "0o664",
+      "sha256": "7313f0378317df67d2e3fc067ff2526df46bc6dee2c6f0499855c48649052937"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/audits/r2-prepared-inputs.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/audits/r2-prepared-inputs.json",
+      "bytes": 5277,
+      "mode": "0o664",
+      "sha256": "5ea55f2b0e8537093a21e75a109efed74458627ec4c30083f80f832d0d9ffc16"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/audits/r2-source-byte-equivalence.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/audits/r2-source-byte-equivalence.json",
+      "bytes": 300,
+      "mode": "0o664",
+      "sha256": "524d184487b8f793bd55541f6dd68be15469e0a1db2e8a55f803a79535d1a7e3"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/base-policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/base-policy.json",
+      "bytes": 18557,
+      "mode": "0o664",
+      "sha256": "2f959a363bd9c820d05341c94781055123fbc1cf1bebb9be826998389847b2d4"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el1/pass-summary.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el1/pass-summary.json",
+      "bytes": 1085,
+      "mode": "0o664",
+      "sha256": "3f35159701f8bdccb8be663aa8120d31ee989347a4f57899f82916824001a860"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el1/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el1/receipt.json",
+      "bytes": 109584,
+      "mode": "0o664",
+      "sha256": "69ca3c75b61900f5af9dd4f7c565cd7be38daf7a744aaa6cc467071470f0beca"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el2/execution.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el2/execution.json",
+      "bytes": 1303,
+      "mode": "0o664",
+      "sha256": "e26d16d2872a70ca18695ae02eef38ed7ffbe6c5d049f6a1cee8f098763d7c9e"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el2/negative-inventory.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el2/negative-inventory.json",
+      "bytes": 49709,
+      "mode": "0o664",
+      "sha256": "41a3e5c19c34d5dc286cd870377b9f06959948d9a63cafcda28d7fe19601bd5e"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el2/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el2/receipt.json",
+      "bytes": 114519,
+      "mode": "0o664",
+      "sha256": "e3e598680febd7a04e806e14e0e7ab6a61f0bf5db01adccdb0a5e14dbe38d1fe"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el3/execution.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el3/execution.json",
+      "bytes": 1303,
+      "mode": "0o664",
+      "sha256": "89e0c3dbdda4881b000f4f32bbf1333dd623926905daa064f1d2dddf184920c2"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el3/negative-inventory.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el3/negative-inventory.json",
+      "bytes": 49709,
+      "mode": "0o664",
+      "sha256": "41a3e5c19c34d5dc286cd870377b9f06959948d9a63cafcda28d7fe19601bd5e"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el3/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/boundary-audit/el3/receipt.json",
+      "bytes": 112665,
+      "mode": "0o664",
+      "sha256": "c39dd2879fdcb06e5e7c1ca62fc95dba2d0247f9a799f33e255399fa2f06a69f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el1-receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el1-receives.json",
+      "bytes": 1925,
+      "mode": "0o664",
+      "sha256": "a7b9cd03f70c513e389cbe0651f39ba9408a10cf0e4fdf1b14e93c8e5603a2a4"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el1.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el1.yaml",
+      "bytes": 16428,
+      "mode": "0o664",
+      "sha256": "0d8510bebb31088ed1017c8af70f2c210c2ff842d81b047ae361211867e74460"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el1/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el1/policy.json",
+      "bytes": 18641,
+      "mode": "0o664",
+      "sha256": "4360e29720f773355fd5ebdfe69c2f7eaa33b0e183ad2599545715344a647480"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el1/proposed-launch.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el1/proposed-launch.json",
+      "bytes": 24100,
+      "mode": "0o664",
+      "sha256": "c9215a52114ec91b3dcaca4b980b4a3cf66dfbef7c56e97d553dcb0b24712b7e"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el2-receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el2-receives.json",
+      "bytes": 1958,
+      "mode": "0o664",
+      "sha256": "c738d96a0467b11d08e67c3d106970aa15c62eba8fdf4c54b161226ba30edb3a"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el2.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el2.yaml",
+      "bytes": 16429,
+      "mode": "0o664",
+      "sha256": "d2e7088ea3fdf3746831f010142b736d09d4a63863ab7c5d09464207453f853a"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el2/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el2/policy.json",
+      "bytes": 18641,
+      "mode": "0o664",
+      "sha256": "4360e29720f773355fd5ebdfe69c2f7eaa33b0e183ad2599545715344a647480"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el2/proposed-launch.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el2/proposed-launch.json",
+      "bytes": 25435,
+      "mode": "0o664",
+      "sha256": "7ae128240f685a038d21d1f056a6615ab9ef78e7210392e9a63fa193fba52877"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el3-receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el3-receives.json",
+      "bytes": 1913,
+      "mode": "0o664",
+      "sha256": "dfcf335debbe0f0e6e8c73564cc2512e2e877499a565ffbc47f65214c8ddb8f6"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el3.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el3.yaml",
+      "bytes": 16425,
+      "mode": "0o664",
+      "sha256": "2d5027160fd5f753658a25c3a4e64e50a9ecf14313c3a36fd7eefffc8c3bf149"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el3/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el3/policy.json",
+      "bytes": 18641,
+      "mode": "0o664",
+      "sha256": "4360e29720f773355fd5ebdfe69c2f7eaa33b0e183ad2599545715344a647480"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el3/proposed-launch.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/el3/proposed-launch.json",
+      "bytes": 25727,
+      "mode": "0o664",
+      "sha256": "0843e35cdbc80b1b3eb49abf447017911fae4ab81c9051c08ecb15aeb6589c01"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/framework-export.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/framework-export.json",
+      "bytes": 633,
+      "mode": "0o664",
+      "sha256": "2de4e3c3b925492e0734837ea7823158b0a12dff42f6c5da396ba53f9da49f79"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/freeze/overlay.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/freeze/overlay.json",
+      "bytes": 184,
+      "mode": "0o664",
+      "sha256": "6b3cea31498f9de031875bf280335b44ffb1b753c72240ec5182b406cc6091fc"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/freeze/raw-rtl-boundaries-source.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/freeze/raw-rtl-boundaries-source.json",
+      "bytes": 20146,
+      "mode": "0o664",
+      "sha256": "d69da0e812c977c0bcd6420ef94e4c77c7354155ea7d511c99918a9bfa9ac3ce"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/freeze/source.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/freeze/source.json",
+      "bytes": 1808,
+      "mode": "0o664",
+      "sha256": "74717380462287e7f06bd33e14088f6c53734920ea501228d9e7fa5819b43e51"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/guidance.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/guidance.md",
+      "bytes": 2351,
+      "mode": "0o664",
+      "sha256": "53f7f7aa21f78dc278ef8987c38360970e5ca04e6062480ca7c9590689c92821"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/health-at-archive.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/health-at-archive.json",
+      "bytes": 5577,
+      "mode": "0o664",
+      "sha256": "cb2a577644347044097372b9fd33911a61c2b84e1aa1db81e2e7ec8ba1615059"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/health-watcher.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/health-watcher.json",
+      "bytes": 227,
+      "mode": "0o664",
+      "sha256": "9fa6004c3ba0d684cfe43fef5580f7efe4529c2bced350e9804ee7f028d65c36"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/information-boundary-incident.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/information-boundary-incident.json",
+      "bytes": 1207,
+      "mode": "0o664",
+      "sha256": "0778dafa026f724d09deb585dd522f2be6cc1fa5b199047ee0c8cc430ff96f86"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/launch-authorization.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/launch-authorization.json",
+      "bytes": 851,
+      "mode": "0o664",
+      "sha256": "e765ad02297df4cc60b25fea576aad78b4f787e80599e35de32649b833d010bb"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/launched.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/launched.json",
+      "bytes": 3418,
+      "mode": "0o664",
+      "sha256": "5c438c5ba837a46c4d4d4ac8a14fa1fc43f7eb34f9aa83c311d45ace725d13d9"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/preparation/native-preflight-executed-el1.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/preparation/native-preflight-executed-el1.json",
+      "bytes": 2325,
+      "mode": "0o664",
+      "sha256": "b32cd165c3276550689f5c5f60391584eff57a837658573daee614c685ca1fa0"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/preparation/native-preflight-executed-el2.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/preparation/native-preflight-executed-el2.json",
+      "bytes": 2327,
+      "mode": "0o664",
+      "sha256": "e3867fe4c2c00784a3b00a7f9045ca48ba3062093400acba87bdb66065cb10d7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/preparation/native-preflight-executed-el3.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/preparation/native-preflight-executed-el3.json",
+      "bytes": 2327,
+      "mode": "0o664",
+      "sha256": "a23cf4076c00e298b57f62027a1893ec637e66fb3d3b90acec8c773d8362fe2f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/preparation/native-preparation-el1.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/preparation/native-preparation-el1.json",
+      "bytes": 5514,
+      "mode": "0o664",
+      "sha256": "121d1febf507b2dac2b649307e39d578c3e35236351163f6662c96655ecfe5b4"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/preparation/native-preparation-el2.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/preparation/native-preparation-el2.json",
+      "bytes": 5515,
+      "mode": "0o664",
+      "sha256": "16d4a863b42d7521d0da612a6c3271c6d3fa65c4e158d84b55ddda15b25e67d2"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/preparation/native-preparation-el3.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/preparation/native-preparation-el3.json",
+      "bytes": 5517,
+      "mode": "0o664",
+      "sha256": "4ffa887c15ac29c357e8d52b9258d3cd0cb485b0a02b0e47c8f54fdf884f9299"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el1/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el1/receipt.json",
+      "bytes": 7953,
+      "mode": "0o664",
+      "sha256": "56e4cae7da08d4c68b42c615ee3c394ea73443b0c7f3abbd1dbacbc12f62892c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el2/TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el2/TASK.md",
+      "bytes": 3527,
+      "mode": "0o664",
+      "sha256": "1c6ad43127a67c8e9b8acddb95811fb7ef563ac670a035b3adf06ac9029fd103"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el2/operator-guidance.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el2/operator-guidance.md",
+      "bytes": 2351,
+      "mode": "0o664",
+      "sha256": "53f7f7aa21f78dc278ef8987c38360970e5ca04e6062480ca7c9590689c92821"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el2/provider-continuation.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el2/provider-continuation.txt",
+      "bytes": 3004,
+      "mode": "0o664",
+      "sha256": "40ef4e3004a174c7cbffcde0f053a580990ca78ce2f4c43717fc1db27fac5fc8"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el2/provider-startup.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el2/provider-startup.txt",
+      "bytes": 4147,
+      "mode": "0o664",
+      "sha256": "ad54eaad254632192374d45f95d2671e8753abd849cbda8fc21d88ec6e0b8744"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el2/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el2/receipt.json",
+      "bytes": 13029,
+      "mode": "0o664",
+      "sha256": "a828e1d2270768f8c729762c285bf7bb4f601f1bea14296d0bb5cb40db5c1763"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el3/TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el3/TASK.md",
+      "bytes": 3772,
+      "mode": "0o664",
+      "sha256": "69db1bcbd2fd2c3a89269f3efc3b88217deeb737d48a10e0017a28aa8701ab2d"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el3/operator-guidance.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el3/operator-guidance.md",
+      "bytes": 2351,
+      "mode": "0o664",
+      "sha256": "53f7f7aa21f78dc278ef8987c38360970e5ca04e6062480ca7c9590689c92821"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el3/provider-continuation.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el3/provider-continuation.txt",
+      "bytes": 3004,
+      "mode": "0o664",
+      "sha256": "40ef4e3004a174c7cbffcde0f053a580990ca78ce2f4c43717fc1db27fac5fc8"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el3/provider-startup.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el3/provider-startup.txt",
+      "bytes": 4147,
+      "mode": "0o664",
+      "sha256": "ad54eaad254632192374d45f95d2671e8753abd849cbda8fc21d88ec6e0b8744"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el3/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/prompt-audit/el3/receipt.json",
+      "bytes": 14299,
+      "mode": "0o664",
+      "sha256": "4664359c507df6aa74c05defa69f92974ef63109b5931bd89bd58e5e71c98cae"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/readiness.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/readiness.json",
+      "bytes": 287,
+      "mode": "0o664",
+      "sha256": "4e11a99a28d5992bed6190e4ed6d37d91cf4794d8bf38fc690620c59ec8c082c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/retirement.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/retirement.json",
+      "bytes": 5189,
+      "mode": "0o664",
+      "sha256": "115585e58ee38998abfa10202118d59c453eeafa9e57a679237a2cfd69a5b262"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/runtime-index.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/runtime-index.json",
+      "bytes": 3534,
+      "mode": "0o664",
+      "sha256": "c46fc5e48d77dc985d4eb17a55cb0758623f14417136f3481c37c6edd3e3301c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/static-audit.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/static-audit.json",
+      "bytes": 3749,
+      "mode": "0o664",
+      "sha256": "67fbea720c5b6183e07aac23ec62b0d1514b3966b7c651af7c9db47f3c86af93"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/study.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el123-raw-rtl-v2/study.json",
+      "bytes": 4155,
+      "mode": "0o664",
+      "sha256": "aa0550e55aceecd3a4759531839278dfacbd2affe86c0cf945963379ec6752ea"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el2/configuration.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el2/configuration.json",
+      "bytes": 7276,
+      "mode": "0o664",
+      "sha256": "8fbced33c80f3bcaed093a87d95a2261314b860951e8cacb3d1a76b25b649dc9"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el2/native-plan.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el2/native-plan.json",
+      "bytes": 24893,
+      "mode": "0o664",
+      "sha256": "5ec81003734baf3e20456808913dec6185b8b838de3a46108234fa212aa3f8a6"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el2/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el2/policy.json",
+      "bytes": 18641,
+      "mode": "0o664",
+      "sha256": "4360e29720f773355fd5ebdfe69c2f7eaa33b0e183ad2599545715344a647480"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el2/receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el2/receives.json",
+      "bytes": 14269,
+      "mode": "0o664",
+      "sha256": "d96cb2e1292716e65ee4cc1a733f2586cd4df425eecb812cf6ce821eb27dbaa5"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el2/served-TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el2/served-TASK.md",
+      "bytes": 3749,
+      "mode": "0o664",
+      "sha256": "ae4bd01ea30f08475ea3b018a9561f66908331fed5bd31f43e2fae4e5967c4d7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el2/specs/el2.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el2/specs/el2.yaml",
+      "bytes": 17082,
+      "mode": "0o664",
+      "sha256": "46d8bf851afb382780423d4313496732cf40312429941a9f715a38091380ac5c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el3/configuration.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el3/configuration.json",
+      "bytes": 7277,
+      "mode": "0o664",
+      "sha256": "b9e39b075acfc595307706aa77a3934cd6a941ed75e7c27b3a219807b7eb11ec"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el3/native-plan.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el3/native-plan.json",
+      "bytes": 25179,
+      "mode": "0o664",
+      "sha256": "1c8ef2d715529ceee5997e7a43003775bed9a51342c457457cf25e95f9a36497"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el3/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el3/policy.json",
+      "bytes": 18641,
+      "mode": "0o664",
+      "sha256": "4360e29720f773355fd5ebdfe69c2f7eaa33b0e183ad2599545715344a647480"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el3/receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el3/receives.json",
+      "bytes": 14555,
+      "mode": "0o664",
+      "sha256": "ae5bb63a70b5c52738fd675a6d51725e636111622e14b80e52c7cf31fbe6b625"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el3/served-TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el3/served-TASK.md",
+      "bytes": 4218,
+      "mode": "0o664",
+      "sha256": "873c21c6a654b2dc7dd8ab09602c10b285452778742bf3ee49515b24e69629e5"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el3/specs/el3.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/el3/specs/el3.yaml",
+      "bytes": 17082,
+      "mode": "0o664",
+      "sha256": "051d04a3b43ebe640ead892aa4017e62aed6a82e62668b3f3f7b51519aafc783"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/configuration.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/configuration.json",
+      "bytes": 22939,
+      "mode": "0o664",
+      "sha256": "16421bfb6c5ca036a1c227b9bcd151bfddaffc74c5eff5b3ed9ab059fda54939"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/entry-modules-and-unavailable-routes.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/entry-modules-and-unavailable-routes.json",
+      "bytes": 12420,
+      "mode": "0o664",
+      "sha256": "276df93d03aba598e6480341208bf26d88ecbbfd139e7f898e620f440f1ec411"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/full-source-members.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/full-source-members.json",
+      "bytes": 59690,
+      "mode": "0o664",
+      "sha256": "e1589e65b7093dc40b2abd1a9504bd7ad3246cdb820d6752fd3b8b561e931dc2"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/provider-continuation-prompt.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/provider-continuation-prompt.txt",
+      "bytes": 1645,
+      "mode": "0o664",
+      "sha256": "24b4eae1235c481a8246747519289d4fe2b9a8a2b27cdd9274effc04f2d865f7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/provider-first-common-after-catalog-removal.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/provider-first-common-after-catalog-removal.txt",
+      "bytes": 13496,
+      "mode": "0o664",
+      "sha256": "7326168f0e0a3565d7a6148f70c451aa4e1c6ca9dc4d7e14635082e1a10efecf"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/provider-first-prompt.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/provider-first-prompt.txt",
+      "bytes": 13496,
+      "mode": "0o664",
+      "sha256": "7326168f0e0a3565d7a6148f70c451aa4e1c6ca9dc4d7e14635082e1a10efecf"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/receipt.json",
+      "bytes": 22298,
+      "mode": "0o664",
+      "sha256": "d35029ab568f5aed1ea975420020d3424f45d09ac4689453f6e83a725a56db75"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/selected-additional-sdk-contract.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/selected-additional-sdk-contract.json",
+      "bytes": 26810,
+      "mode": "0o664",
+      "sha256": "79d6071bea60319aa9ba33893981694ec539ff35a14c10ccd36c4bd90fa0aae7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/staged-skill-files.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/staged-skill-files.json",
+      "bytes": 27673,
+      "mode": "0o664",
+      "sha256": "7a5411ffcd38fd228b0aa62fe77cafeefe0b51a285fdecf6ea247112ddaa563d"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/task-capability-disclosure.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/task-capability-disclosure.txt",
+      "bytes": 2909,
+      "mode": "0o664",
+      "sha256": "f2ea52a8667deb1d267bf24abc1a36e8235d31ef273e212ec9368d60cc8b6810"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/task-common-core-normalized.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/task-common-core-normalized.txt",
+      "bytes": 24399,
+      "mode": "0o664",
+      "sha256": "2dcedac5eb7743ce5202f50032377bcac0d7386730a534233121a502360eb7dd"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/task-common-core.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-disclosure/task-common-core.txt",
+      "bytes": 24623,
+      "mode": "0o664",
+      "sha256": "0d6e923d21d8fdf8d2fe90ab33e6720dfbd20fcb0f07175e0d6872be09eb07af"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-plan.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/native-plan.json",
+      "bytes": 41800,
+      "mode": "0o664",
+      "sha256": "46cbc7530afaa24a500d0a08500e6fd3ad211e2a1762f0c6cb301f718691d8de"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/policy.json",
+      "bytes": 18419,
+      "mode": "0o664",
+      "sha256": "d856435814597c504dcc9d175266521a2dc28cb397c11f2f3ed29fbef6cc00d1"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/preflight-TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/preflight-TASK.md",
+      "bytes": 27532,
+      "mode": "0o664",
+      "sha256": "f8a2d32dc53e90fdba5ac4f01cdd78abfe2008d53cb4ed2e8d44fa8f552940a5"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/receives.json",
+      "bytes": 306351,
+      "mode": "0o664",
+      "sha256": "f52d478d55faa949f25d7c8d4d99f241bfff6dc2a5eaf963ecfcb7d35b3807cd"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/specs/infra.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-infra/specs/infra.yaml",
+      "bytes": 17848,
+      "mode": "0o664",
+      "sha256": "5559e15b6824cb511bd8ba9d3a31ed5fe02e2d52dcc2cae2d20907d3eae787ec"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/configuration.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/configuration.json",
+      "bytes": 22914,
+      "mode": "0o664",
+      "sha256": "0627d2fa6879c4e4dcac0a1a794690022ddba27c1d59725543201e28e35f3b29"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/entry-modules-and-unavailable-routes.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/entry-modules-and-unavailable-routes.json",
+      "bytes": 45995,
+      "mode": "0o664",
+      "sha256": "6d0633afa9a998f1cef0df00d99c0ed02fc27cc21773ae4bcacbe1ef6f718e85"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/full-source-members.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/full-source-members.json",
+      "bytes": 214013,
+      "mode": "0o664",
+      "sha256": "bded4c409099d515fb81bf884846df20093b58335e2d7b59e77698d329ff3004"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/provider-continuation-prompt.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/provider-continuation-prompt.txt",
+      "bytes": 1645,
+      "mode": "0o664",
+      "sha256": "24b4eae1235c481a8246747519289d4fe2b9a8a2b27cdd9274effc04f2d865f7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/provider-first-common-after-catalog-removal.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/provider-first-common-after-catalog-removal.txt",
+      "bytes": 13496,
+      "mode": "0o664",
+      "sha256": "7326168f0e0a3565d7a6148f70c451aa4e1c6ca9dc4d7e14635082e1a10efecf"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/provider-first-prompt.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/provider-first-prompt.txt",
+      "bytes": 14530,
+      "mode": "0o664",
+      "sha256": "442cbfb6fb6af8ac5246c5a752134dcbfd7572bd787b7e1d173406017d4dd610"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/receipt.json",
+      "bytes": 58386,
+      "mode": "0o664",
+      "sha256": "00d91b0cb6f4c032e62a2b43947a25d07beb839570f5221bb33f888f900ddd4f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/selected-additional-sdk-contract.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/selected-additional-sdk-contract.json",
+      "bytes": 120974,
+      "mode": "0o664",
+      "sha256": "0dd61dd2aa2e71b3c44c1021ea99e7cf6595365378e292833824e5efd1225d08"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/staged-skill-files.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/staged-skill-files.json",
+      "bytes": 87671,
+      "mode": "0o664",
+      "sha256": "c78a44d4341d8a2c2eb8c49c5ecb23af47f14e7ea482c1fac12f53b2fa35db33"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/task-capability-disclosure.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/task-capability-disclosure.txt",
+      "bytes": 2267,
+      "mode": "0o664",
+      "sha256": "ca66931af0d64d68fa8e67e1be80d0e85d1d1752f1452e0f671a2bdb1d684ff7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/task-common-core-normalized.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/task-common-core-normalized.txt",
+      "bytes": 24399,
+      "mode": "0o664",
+      "sha256": "2dcedac5eb7743ce5202f50032377bcac0d7386730a534233121a502360eb7dd"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/task-common-core.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-disclosure/task-common-core.txt",
+      "bytes": 24653,
+      "mode": "0o664",
+      "sha256": "a542b0eb086ddcd762a03b5b2df1b446a471a2f642a1d09289d498129a767ea5"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-plan.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/native-plan.json",
+      "bytes": 76795,
+      "mode": "0o664",
+      "sha256": "625005e0239b989287a9519c03a01a590ac63deb536a28ca13dea2d4e587041c"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/policy.json",
+      "bytes": 18419,
+      "mode": "0o664",
+      "sha256": "d856435814597c504dcc9d175266521a2dc28cb397c11f2f3ed29fbef6cc00d1"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/preflight-TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/preflight-TASK.md",
+      "bytes": 26920,
+      "mode": "0o664",
+      "sha256": "7d5fbb40e7ea7f0b5ddb2535b90d55563fc3046475bc283dfa778b00a0049f6a"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/receives.json",
+      "bytes": 1076431,
+      "mode": "0o664",
+      "sha256": "d3f5936a242bbb4518a9e74f1cabf437deadfaa37f4b1436fc9620ec7224e125"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/specs/no-reference-kernels.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-no-reference-kernels/specs/no-reference-kernels.yaml",
+      "bytes": 17773,
+      "mode": "0o664",
+      "sha256": "cc98e32a1571810fedd2bba49348a6566cb3d0f14cd327fdc3e0dd86bccfaaee"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/configuration.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/configuration.json",
+      "bytes": 23259,
+      "mode": "0o664",
+      "sha256": "cb610fbf22f99282c06eb98ca59911588ae1f8c9fb376bfe2a163443b42f8f3a"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/entry-modules-and-unavailable-routes.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/entry-modules-and-unavailable-routes.json",
+      "bytes": 13066,
+      "mode": "0o664",
+      "sha256": "f1e98021e6c128df645d0cf2f21636e511f6f4bc24b7f995a47127587ca75b70"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/full-source-members.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/full-source-members.json",
+      "bytes": 63247,
+      "mode": "0o664",
+      "sha256": "57b1a8dfa8d6fef965c4207180703814de821d9129735526b19e0a7dc78cfe65"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/provider-continuation-prompt.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/provider-continuation-prompt.txt",
+      "bytes": 1645,
+      "mode": "0o664",
+      "sha256": "24b4eae1235c481a8246747519289d4fe2b9a8a2b27cdd9274effc04f2d865f7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/provider-first-common-after-catalog-removal.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/provider-first-common-after-catalog-removal.txt",
+      "bytes": 13496,
+      "mode": "0o664",
+      "sha256": "7326168f0e0a3565d7a6148f70c451aa4e1c6ca9dc4d7e14635082e1a10efecf"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/provider-first-prompt.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/provider-first-prompt.txt",
+      "bytes": 13496,
+      "mode": "0o664",
+      "sha256": "7326168f0e0a3565d7a6148f70c451aa4e1c6ca9dc4d7e14635082e1a10efecf"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/receipt.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/receipt.json",
+      "bytes": 23123,
+      "mode": "0o664",
+      "sha256": "b8d7c482056b5cf1e1fe67cb5b751106dd6af1bc14b13a6b33f14cc1b9184139"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/selected-additional-sdk-contract.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/selected-additional-sdk-contract.json",
+      "bytes": 30849,
+      "mode": "0o664",
+      "sha256": "08a6b9b5297b98de9fe6a34cc9bc1e94b0a1bb30149a2c4b37d32aafaa32ac48"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/staged-skill-files.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/staged-skill-files.json",
+      "bytes": 28003,
+      "mode": "0o664",
+      "sha256": "7b59345b06bb0bb9f03e93ac2d3f213b43c7890ef5515dc69e3240ed6a49d3de"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/task-capability-disclosure.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/task-capability-disclosure.txt",
+      "bytes": 3152,
+      "mode": "0o664",
+      "sha256": "dcca9da02295a2c560d911e4593565dd9aca713d02c7f297e22d6134b30989e5"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/task-common-core-normalized.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/task-common-core-normalized.txt",
+      "bytes": 24399,
+      "mode": "0o664",
+      "sha256": "2dcedac5eb7743ce5202f50032377bcac0d7386730a534233121a502360eb7dd"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/task-common-core.txt",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-disclosure/task-common-core.txt",
+      "bytes": 24633,
+      "mode": "0o664",
+      "sha256": "6d9d5647cceebb534d87d7860d0342af0a33a29d3e40e84e1d4231b079a91b28"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-plan.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/native-plan.json",
+      "bytes": 42790,
+      "mode": "0o664",
+      "sha256": "6091744445375d20983d63e51b0419f6a9b8239e6adf6791f42844e8db4fc909"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/policy.json",
+      "bytes": 18419,
+      "mode": "0o664",
+      "sha256": "d856435814597c504dcc9d175266521a2dc28cb397c11f2f3ed29fbef6cc00d1"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/preflight-TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/preflight-TASK.md",
+      "bytes": 27785,
+      "mode": "0o664",
+      "sha256": "9fe92716d91c69924edff4e7493a211860cb9310e4b9cf877e100b470750fc62"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/receives.json",
+      "bytes": 328907,
+      "mode": "0o664",
+      "sha256": "c03184200dca2fa791d87a49e0d0d2f179487e56c2c787eecfeb815941f64ed4"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/specs/scheduling.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling-scheduling/specs/scheduling.yaml",
+      "bytes": 17873,
+      "mode": "0o664",
+      "sha256": "b8b0ccde46ecfc025e0f71e80ee96e1cde20debd86475a69d0d07f052fbde6ee"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/qualification/dispatch-envelope-correction.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/qualification/dispatch-envelope-correction.json",
+      "bytes": 833,
+      "mode": "0o664",
+      "sha256": "08b4abd06a7d777fa1d24e8b35364d0bb33af673fd5842535a62bdf78d4b37fc"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/qualification/launch-record.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/qualification/launch-record.json",
+      "bytes": 2300,
+      "mode": "0o664",
+      "sha256": "19ee981430991f493697439d806be2a72c1ce29575c994d12dd3b6597aadd96b"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/qualification/launch-review.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/qualification/launch-review.json",
+      "bytes": 9342,
+      "mode": "0o664",
+      "sha256": "afe3f9bae7343e2cdf38679ceb0d7ea230e033746610154c3c6bfd9285e914ff"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/qualification/native-canaries.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/qualification/native-canaries.json",
+      "bytes": 3808,
+      "mode": "0o664",
+      "sha256": "d6870a8fe3dd577bdb2883f663013992809cdc1c4d262dde8650249ee61bb28b"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/qualification/native-inputs-audit.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/qualification/native-inputs-audit.json",
+      "bytes": 198118,
+      "mode": "0o664",
+      "sha256": "f6a47613d9a05032cce47ef17d4d3d7ea6b3b4634d8be79160b68b64c4ea80a9"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/qualification/native-prompt-audit.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/qualification/native-prompt-audit.json",
+      "bytes": 113625,
+      "mode": "0o664",
+      "sha256": "6eda99702b41f966de0d29520871667c4697e5a5c3b12011d949512e2b7fb60f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/qualification/runtime-audit.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/qualification/runtime-audit.json",
+      "bytes": 30335,
+      "mode": "0o664",
+      "sha256": "2afd7b73f821dd3a2ad6fdc2f421e78ee43277c5cd0848f01c9062bea7298591"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/source-freeze.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10-tooling/source-freeze.json",
+      "bytes": 7769,
+      "mode": "0o664",
+      "sha256": "f8ba7cd4f7b2a8931e4b3b5baeaaa91444ba2c28e9ef5ae7c3481775b6fd1c4e"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/configuration.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/configuration.json",
+      "bytes": 13035,
+      "mode": "0o664",
+      "sha256": "e6d41e7be14e422a06b0e9aa7d6736b844d92f6463df30454dd357921bc21bca"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/native-plan.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/native-plan.json",
+      "bytes": 30186,
+      "mode": "0o664",
+      "sha256": "b08a61a40918f9c9019b57c88649f135b48cd559b15686af90d5f8e485242cb1"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/policy.json",
+      "bytes": 18387,
+      "mode": "0o664",
+      "sha256": "d3e1a0f557b3932e027c6b7be6655a2ab20df783a22f4e82df989e9ed8df32f8"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/receives.json",
+      "bytes": 86430,
+      "mode": "0o664",
+      "sha256": "88116c5d38fbf73709e7ea0d680036680c97c9fe5d4abcdb404f1ebef774b1f7"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/served-TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/served-TASK.md",
+      "bytes": 71459,
+      "mode": "0o664",
+      "sha256": "317f217f7e50dae3dad5039852a3c4660e6e0d9901b7aba0c8e34ede863c34ac"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh10-cca.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh10-cca.yaml",
+      "bytes": 1596,
+      "mode": "0o664",
+      "sha256": "ea7f9e0aa324c5648ba89bf7a6a33feba9c505f1e16eb7b36dc9d006d8153844"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh10-common.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh10-common.yaml",
+      "bytes": 1727,
+      "mode": "0o664",
+      "sha256": "e482ad0afad2548e06426dfba83220b449113e82484db666633d191ef76c2e98"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh10-resources.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh10-resources.yaml",
+      "bytes": 2508,
+      "mode": "0o664",
+      "sha256": "1642c197b676853813b6b9e9246aca56313826bcd78cd1109d0f966e117c3d17"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh10-sdk-v24.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh10-sdk-v24.yaml",
+      "bytes": 2862,
+      "mode": "0o664",
+      "sha256": "a2766faf7f7ae4c4927f3071c4abc9411a53928487030fea7f31ea9e54c75a22"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh2.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh2.yaml",
+      "bytes": 16694,
+      "mode": "0o664",
+      "sha256": "ca80a9cb697e8f8f8d1c6874d4c6e8f1436513c6d0243081577b7a41b58b85af"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh7-paired.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh7-paired.yaml",
+      "bytes": 1048,
+      "mode": "0o664",
+      "sha256": "d5612d8a75445f60edbb1f7e32aab92c882020dcbf7a28325badf94740f40519"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh7-reference.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh7-reference.yaml",
+      "bytes": 595,
+      "mode": "0o664",
+      "sha256": "15e381df469cbd231f429e087251da709d3fb3ee2b24b547c944d777645b128f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh7.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh7.yaml",
+      "bytes": 1243,
+      "mode": "0o664",
+      "sha256": "aba751c46a07b3a5092b091b5367c49b1a35baf4f525001e8315f6e758a98d69"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh7ref-paired.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh7ref-paired.yaml",
+      "bytes": 1092,
+      "mode": "0o664",
+      "sha256": "446df2d2766fea472c6a47f8819732fd5cae2be3d146d4e7704b7c7bea6b24ff"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh8ref-paired.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-fresh8ref-paired.yaml",
+      "bytes": 2619,
+      "mode": "0o664",
+      "sha256": "4f8007e8da51ba42919bc715c7b0d40ed78eb1a4215573c0da69e53c005b4cf1"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-next.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-next.yaml",
+      "bytes": 6849,
+      "mode": "0o664",
+      "sha256": "0a1e6e5c42025403e9f51c88340de2757571cb07cccfc68bc2b422f363664bc3"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-xs_capsules-overrides.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10cca/specs/fresh-campaign-xs_capsules-overrides.yaml",
+      "bytes": 1607,
+      "mode": "0o664",
+      "sha256": "ff10bb83db381a48445f5fbdcd4627da2ba0b13436b18f0a41979ab625c99e56"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/configuration.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/configuration.json",
+      "bytes": 13066,
+      "mode": "0o664",
+      "sha256": "2c8fba11ab1b60eb127741579823f6100363902f55505f085e810cb4de1cfb64"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/native-plan.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/native-plan.json",
+      "bytes": 54365,
+      "mode": "0o664",
+      "sha256": "5178d07846d3878acb7d1eadd296aa9463d38c075ce3400a5182c65ee89e9e0f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/policy.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/policy.json",
+      "bytes": 19703,
+      "mode": "0o664",
+      "sha256": "e19afdd1245dccb8752c6143114748c3d0a9bbbfc036f4e561a1c26d7ffc2119"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/receives.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/receives.json",
+      "bytes": 85294,
+      "mode": "0o664",
+      "sha256": "f5e8a1e213f295304608bd7a0ac1c883b48ce6cd8ab20f8e5b99f2068db31bf8"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/served-TASK.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/served-TASK.md",
+      "bytes": 71452,
+      "mode": "0o664",
+      "sha256": "195b9bc02f439cd8db208279bf365a79f9dd0664935e45829ecfd83ad90dde85"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh10-common.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh10-common.yaml",
+      "bytes": 1727,
+      "mode": "0o664",
+      "sha256": "e482ad0afad2548e06426dfba83220b449113e82484db666633d191ef76c2e98"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh10-resources.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh10-resources.yaml",
+      "bytes": 2508,
+      "mode": "0o664",
+      "sha256": "1642c197b676853813b6b9e9246aca56313826bcd78cd1109d0f966e117c3d17"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh10-sdk-v24.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh10-sdk-v24.yaml",
+      "bytes": 2862,
+      "mode": "0o664",
+      "sha256": "a2766faf7f7ae4c4927f3071c4abc9411a53928487030fea7f31ea9e54c75a22"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh10-seeded.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh10-seeded.yaml",
+      "bytes": 4377,
+      "mode": "0o664",
+      "sha256": "8ddec7dcd532c45aadc6bd74ee977fcd17bdfa503a9df3dedc7301c15dc85d7f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh2.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh2.yaml",
+      "bytes": 16694,
+      "mode": "0o664",
+      "sha256": "ca80a9cb697e8f8f8d1c6874d4c6e8f1436513c6d0243081577b7a41b58b85af"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh7-paired.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh7-paired.yaml",
+      "bytes": 1048,
+      "mode": "0o664",
+      "sha256": "d5612d8a75445f60edbb1f7e32aab92c882020dcbf7a28325badf94740f40519"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh7-reference.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh7-reference.yaml",
+      "bytes": 595,
+      "mode": "0o664",
+      "sha256": "15e381df469cbd231f429e087251da709d3fb3ee2b24b547c944d777645b128f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh7.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh7.yaml",
+      "bytes": 1243,
+      "mode": "0o664",
+      "sha256": "aba751c46a07b3a5092b091b5367c49b1a35baf4f525001e8315f6e758a98d69"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh7ref-paired.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh7ref-paired.yaml",
+      "bytes": 1092,
+      "mode": "0o664",
+      "sha256": "446df2d2766fea472c6a47f8819732fd5cae2be3d146d4e7704b7c7bea6b24ff"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh8ref-paired.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-fresh8ref-paired.yaml",
+      "bytes": 2619,
+      "mode": "0o664",
+      "sha256": "4f8007e8da51ba42919bc715c7b0d40ed78eb1a4215573c0da69e53c005b4cf1"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-next.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-next.yaml",
+      "bytes": 6849,
+      "mode": "0o664",
+      "sha256": "0a1e6e5c42025403e9f51c88340de2757571cb07cccfc68bc2b422f363664bc3"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-xs_capsules-overrides.yaml",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/fresh10seed/specs/fresh-campaign-xs_capsules-overrides.yaml",
+      "bytes": 1607,
+      "mode": "0o664",
+      "sha256": "ff10bb83db381a48445f5fbdcd4627da2ba0b13436b18f0a41979ab625c99e56"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/registry.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/registry.json",
+      "bytes": 127355,
+      "mode": "0o664",
+      "sha256": "3d257c8c8d16ac13e541eb88b54dc8ad68eee4d1ccd179ddb0e8b1f2fe443183"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/run-names.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/run-names.json",
+      "bytes": 2722,
+      "mode": "0o664",
+      "sha256": "6bdb75349d9ec81ee0537c4cd7d90583d99f0efc0e652e972feb6a5d8426f21a"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/COMPARATOR_ERRATUM_20261028.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/COMPARATOR_ERRATUM_20261028.md",
+      "bytes": 4136,
+      "mode": "0o664",
+      "sha256": "b6ccafc72a8127149929a1e893f89d749e685273c26ebc1e93da48dbe9025ec8"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/FIGURE_SELECTION_20261028.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/FIGURE_SELECTION_20261028.md",
+      "bytes": 6360,
+      "mode": "0o664",
+      "sha256": "53582bd23d10ba30eaba2af2114818e01795f4692940b591fe7a8acdeafe4281"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/FIGURE_SELECTION_EL123_20261028.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/FIGURE_SELECTION_EL123_20261028.md",
+      "bytes": 6336,
+      "mode": "0o664",
+      "sha256": "896350a2b0746d9f896c4153f2bd9cac969622b161488bc6001e65dd179000b4"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/README.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/README.md",
+      "bytes": 8250,
+      "mode": "0o664",
+      "sha256": "b3646a157f7232057d11d71ad36e25cb185ef5217f91ea9e3e4faaf0221c9663"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/RESULTS_20261028.md",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/RESULTS_20261028.md",
+      "bytes": 18429,
+      "mode": "0o664",
+      "sha256": "e6748a55d74eb718b12ea325809a0997124938713e4c94028c94194ffbf99c95"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/data-index.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/data-index.json",
+      "bytes": 10235,
+      "mode": "0o664",
+      "sha256": "565030035086e7e652b8fda1047be929dcaaf2494b4b5ab71bdb2c750a4a39f9"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/focused-fresh6-protocol.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/focused-fresh6-protocol.json",
+      "bytes": 7769,
+      "mode": "0o664",
+      "sha256": "e04aeb744c0408409f8f139588e8a439277701cf81a5610dc059246f81369067"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/metric-availability.json",
+      "member": "examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/metric-availability.json",
+      "bytes": 1920,
+      "mode": "0o664",
+      "sha256": "a006478668970e595124d9374235d10bc9c0e83bd4d2c1eaa9897a874e051de1"
+    },
+    {
+      "path": "examples/gemmini/validation/FsimRunElf.provenance.yaml",
+      "member": "examples/gemmini/validation/FsimRunElf.provenance.yaml",
+      "bytes": 2506,
+      "mode": "0o664",
+      "sha256": "a142ff723433b0a5a322a3843db46bfa8fb68d01e01e6b0b696fc14e07ca50eb"
+    },
+    {
+      "path": "examples/gemmini/validation/manager-provenance.md",
+      "member": "examples/gemmini/validation/manager-provenance.md",
+      "bytes": 14731,
+      "mode": "0o664",
+      "sha256": "913f5e5e70d456732a539ae53519823d4c3f3d3ba1f6a9718c47053bc3d0a17f"
+    }
+  ]
+}

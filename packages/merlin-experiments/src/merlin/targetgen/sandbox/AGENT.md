@@ -20,6 +20,7 @@ views even after original aliases or selected providers change.
   not import-time constants. Explicit universal paths do not qualify simulator-family
   configuration, sandbox operability or native tool execution.
 - `bwrap.py` — Deny-by-default argv assembly + the hermetic mount-table replay that PROVES no answer surface is reachable (coverage guard), without launching bwrap.
+- `claude_home.py` — The Claude CLI home an agent sandbox mounts: staged fresh for each launch, never the operator's.
 - `host_surfaces.py` — The answer surfaces host inputs create: private host files and every hardlink or bind alias that reaches them (`host_input_surfaces`, `private_file_surfaces`), masked last by `bwrap.apply_final_answer_masks`.
 - `__init__.py` — `build_sandbox(descriptor, ws, bundle)` → a `Sandbox` facade (argv / env / wrap / coverage_gap); `resolve_kind` for family routing.
 - `build_dependencies.py` — One-call host-owned pure-build source grants, preserving the existing answer masks and exact worker/request/tool pins. Never an agent mount API.
@@ -33,6 +34,16 @@ views even after original aliases or selected providers change.
 
 ## Invariants / notes
 
+- `guarded_inventory` indexes immutable observed members by path components so
+  subtree projection visits only matching members. The index confers no custody:
+  canonical-root, live guard, symlink and final mask checks remain mandatory.
+  A changed guard invalidates every derived view, including its lexical indexes.
+- Example/golden origin labels use a fresh declared-root set and strict lexical
+  ancestry. Classification neither resolves aliases nor retains a mask policy.
+- Capsule reference masks come from `capsule_privacy` roles as well as historical
+  answer names. Reopen frozen declarations under the verified snapshot owner;
+  removing the original capture cannot make a copied reference public. Operand
+  data stays available, and privacy classification is not a numerical verdict.
 - DERIVE, never per-target-branch. The mask set comes from the descriptor's corpus/`answer_surfaces` + the declared `ORACLE_MODULES`/`GRADER_MODULES` registry; the toolchain routes on `sim_via` (declarative `SIM_TOOLCHAINS` table) + `kind`. There is no `if target ==` anywhere.
 - Selected support-provider roots are withheld as whole packages, including sibling
   conformance, build-helper, tool and data files. Metadata discovery must not import
@@ -40,6 +51,7 @@ views even after original aliases or selected providers change.
   schedule roles are not support. Only the existing explicit `contracts/` exemption
   survives; the descriptor's historical backend location remains withheld too.
 - The coverage guard is the drift/cheat gate: `bwrap.coverage_gap(argv, surfaces)` replays the ordered mount table and returns any answer surface still reachable — it MUST be empty. The historical cheat gap (a hard-coded slug that left the `~/.claude` memory dir unmasked) is exactly a non-empty gap; the memory dir is derived from the current repo path so it can never go stale.
+- Agent sandboxes never mount the operator's `~/.claude` or `~/.claude.json`: it holds every host session's history, plans, file-history backups, transcripts, settings/hooks and global instructions, and masking `projects/` alone left the rest readable. `full_argv` and the Phase 1 composer pass `include_claude_home=False` and drop operator state from `claude_runtime_binds()`; a `claude` launch gets `claude_home.stage(...)` (empty `.claude/`, minimal `.claude.json`) whose only operator bind is the OAuth credential file, writable for token rotation. `base_argv`'s legacy whole-tree bind remains for callers outside Phase 1 that still opt in.
 - `apply_answer_masks` only masks a surface a bind would otherwise RE-EXPOSE (so it never `/dev/null`-overlays a path whose parent is an empty tmpfs — that mount would fail). Surfaces already hidden by deny-by-default need no overlay.
 - `apply_final_answer_masks` is the shared final policy for complete runtime bind lists: descriptor
   answers plus verified host-input mappings, including live/frozen aliases and private snapshot
@@ -51,6 +63,12 @@ views even after original aliases or selected providers change.
   private child must bypass shared CAS, and the copied child must be masked at its frozen
   snapshot path too. Existing private file referents are checked without following
   unbounded directory symlinks. Do not convert validation denials into `host_inputs`.
+- Prior-backend names may be absent from a frozen source namespace. Record each
+  such absence with `absent_declaration_coverage`; retain the descriptor-derived
+  whole target package namespace in `answer_surfaces` even when absent. Original
+  final mount replay must mask fresh binds and deeper aliases before execution.
+  This is a deny policy, never a missing-provider exemption. Invalid or dangling
+  aliases, discovery failures and absent declared exemptions still refuse.
 - The coverage guard cannot see a rule that was DROPPED, so `answer_surfaces.dropped_declarations(te)` is its required companion for required paths and plugin discovery. `answer_surfaces()` filters to paths that exist because masking an absent path is a no-op mount that fails. A caller making a fairness claim checks BOTH (`Sandbox.containment_record()` returns them together); the registry-driven eviction sweep returns its failure instead of swallowing it. Logical module identities in `merlin.common.access` are different: historical OOT and optional research implementations may be absent, and `unresolved_modules` records them for migration audits while `module_locations` masks every installed physical copy.
 - A target's codegen packages are withheld by DIRECTORY (`out/artifacts/targets/<target>/`), not by the descriptor's list of names — an enumeration is stale the next time a mining/autotune/targetgen run mints a package, not the next time somebody edits the descriptor (measured on gemmini: 4 of 40 named, hand-authored `hand_v0` uncovered). A way in exists only where the descriptor's `answer_surfaces.prior_backend_exemptions` declares one, and an exemption naming a package that does not exist is itself a dropped declaration. Only THIS target's subdir is withheld: another target's packages are legitimately granted as cross-target baselines.
 - Continuously guarded by `merlin/tests/infra/test_sandbox_isolation.py` (hermetic policy assertions for every roster target + a guarded live bwrap probe).
@@ -82,3 +100,34 @@ Widening containment is therefore a reviewed edit to `answer_surfaces.py`, not a
 ### The audit's three outcomes
 
 Hits are advisory (the protection worked, or nothing was read), violations (withheld content demonstrably reached the agent), or INDETERMINATE — a withheld path was named and the outcome is not recoverable, typically because the captured output belongs to a whole compound pipeline. Indeterminate hits drive UNKNOWN rather than being guessed either way. Token matching is by shape, not bare substring: a bare module stem must BE a path component, because substring-matching `decode` against shell text flagged every `jq` filter mentioning a `decoded` field (30 of 34 accusations on the archived transcripts, all false).
+
+`mount_visibility` owns ordered mount parsing and per-call visibility indexing.
+`bwrap` retains its parser/class aliases and local override point. New phase-1
+source selections pin both owners; no frozen selection is silently rewritten.
+
+### Guard capacity and preparation concurrency
+
+`CapsuleMetadata.derived` coalesces only matching classification keys. Unsupported
+or exhausted watches keep fresh readers; they must not hold a global callback
+lock. Frozen declarations may reuse a per-call path resolution only when watches
+armed before resolution remain unchanged. This is not payload-byte authority.
+
+When preparation repeatedly hashes an immutable snapshot, inspect actual
+`_RosterGuard.resource_errno`, not only the lease-enabled flag. Linux inotify
+`EMFILE` can mean the user's `max_user_instances` is exhausted even when the new
+process has few file descriptors; `ENOSPC` can mean `max_user_watches` is full.
+Count user-owned inotify descriptors/watches and inspect `/proc/sys/fs/inotify/`
+before concluding that the snapshot is too large. An operator may increase these
+runtime limits for the workload; never close another owner's guards or silently
+skip verification. The existing inventory and compiler executor retry resource
+failures after 30 seconds with a fresh scan/verification. No digest survives an
+unwatched interval, and restored capacity alone does not qualify old observations.
+
+The existing preflight CLI also supports `--snapshot-guards`. When
+`MERLIN_SNAPSHOT_LEASE_CACHE=1`, ordinary Phase 1 preparation first exercises a
+small real guard and mutation invalidation, before materializing the corpus.
+Unavailable selected guards refuse early with errno, runtime inotify limits and
+visible descriptor/watch reference counts; no host settings or checks change.
+Each admitted preparation writes an attempt-specific `snapshot_guard_preflight.*.json`.
+A successful tiny probe is point-in-time operability, not capacity reserved for
+all future workers. Census counts are non-atomic references, not unique instances.

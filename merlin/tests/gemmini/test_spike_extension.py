@@ -102,12 +102,12 @@ def test_the_reference_target_declares_no_extension():
 
 def test_the_reference_targets_spike_resolution_is_byte_identical_to_the_status_quo():
     """THE LIVE-RUN SAFETY ASSERTION. The reference backend's spike invocation must be exactly what it
-    was before the resolver existed: one `--extension=<name>` flag and `libgemmini_dir()` as the
+    was before the resolver existed: one `--extension=<name>` flag and `spike_library_dir()` as the
     library directory — the two values `run_elf` used to build inline."""
     gem = _reference_backend()
     flags, libdir = gem.spike_extension()
     assert flags == (f"--extension={gem.SPIKE_EXTENSION_NAME}",)
-    assert libdir == gem.libgemmini_dir()
+    assert libdir == gem.spike_library_dir()
     # Spelled out independently of the backend's own constants, so a rename cannot make this vacuous:
     assert flags == ("--extension=gemmini",)
     assert libdir == gem.chipyard_root() / ".conda-env/riscv-tools/lib"
@@ -225,7 +225,7 @@ def test_run_elf_builds_the_same_spike_argv_it_always_did(monkeypatch, tmp_path)
     and read the argv and the environment the backend actually hands spike.
 
     The expectation is spelled as the pre-change line's own output: ``[spike, --extension=gemmini,
-    elf]`` with ``libgemmini_dir()`` prepended to LD_LIBRARY_PATH.
+    elf]`` with ``spike_library_dir()`` prepended to LD_LIBRARY_PATH.
     """
     gem = _reference_backend()
     seen = {}
@@ -246,4 +246,4 @@ def test_run_elf_builds_the_same_spike_argv_it_always_did(monkeypatch, tmp_path)
     gem.run_elf(elf, simulator="spike", timeout=5)
 
     assert seen["cmd"] == [str(gem.spike_path()), "--extension=gemmini", str(elf)]
-    assert seen["env"]["LD_LIBRARY_PATH"].startswith(str(gem.libgemmini_dir()) + ":")
+    assert seen["env"]["LD_LIBRARY_PATH"].startswith(str(gem.spike_library_dir()) + ":")

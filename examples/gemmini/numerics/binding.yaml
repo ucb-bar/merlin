@@ -1,0 +1,229 @@
+# Which files bind Spike to the RTL and to the FPGA build for this target: the inputs of
+# `python -m merlin.model_check binding` (contract: docs/reference/model_check.md section 7).
+#
+# Paths are relative to the RTL source checkout the selected target contract names
+# (rtl_source.ext_root, resolved through MERLIN_EXT_<ROOT>); {repo: P} is relative to this repository.
+# Nothing here states a compared value: every number and type the receipt compares is read at run time
+# from the files named below. What this file does assert -- which file plays which role, which config
+# names and keys the FPGA build uses -- is cited under `citations`, and the receipt re-reads every
+# citation and fails closed when a cited source is missing or no longer says what it is cited for.
+schema: merlin.model_check.binding_spec.v1
+target: gemmini
+
+board_catalog: {repo: examples/gemmini/platform/board-catalog.yaml}
+# The same 16 GiB FireSim board selected for the Phase 1 whole-model Spike images.
+board: firesim_gemmini_rocket_u250_30mhz
+
+spike:
+  # The header the Spike extension library is compiled with (citations: libgemmini gemmini.h:8,
+  # Makefile:11), and that build's output; the receipt checks the installed library is this build.
+  params_header: generators/gemmini/software/libgemmini/gemmini_params.h
+  extension_build: generators/gemmini/software/libgemmini/libgemmini.so
+
+elaboration:
+  # The generated-src directory of the elaboration behind the selected FIRRTL. Bound by content at run
+  # time: its FIRRTL must equal the selected FIRRTL byte for byte, its DTS the board's pinned sha256.
+  directory: {repo: out/artifacts/probes/gemmini/fire-aligned-30mhz/firesim-target/elaboration}
+  firrtl: firechip.chip.FireSim.FireSimGemminiRocketConfig.fir
+  dts: firechip.chip.FireSim.FireSimGemminiRocketConfig.dts
+  # The header the generator writes while elaborating (citations: Controller.scala:29,
+  # GemminiConfigs.scala:103 and :512).
+  params_header: generators/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h
+
+fpga:
+  # FireSim. The receipt checks `config` and `platform_config` against the bitstream's pin: its `config`
+  # key and the deploy quintuplet (<platform>-<project>-<design>-<config>-<platform config>) of its path.
+  pin:
+    file: {repo: merlin/contract/hardware_pins.yaml}
+    key: [artifacts, firesim_gemmini_rocket_30mhz]
+  board: firesim_gemmini_rocket_u250_30mhz
+  config: FireSimGemminiRocketConfig
+  platform_config: BaseXilinxAlveoU250Config
+  sources:
+    roots: [generators, sims/firesim/sim]
+    config_class: Config
+    interpolators: {x: 16}
+  # What the target sees: the external memory port; FASED serves it from host DRAM channels.
+  target_memory: {key: ExtMem, base: base, bytes: size}
+  host_memory: {channel_key: HostMemChannelKey, channel_bytes: size, channels_key: HostMemNumChannels}
+  # The FireSim build's own DTS, pinned by the board entry. Missing bytes refuse this receipt.
+  dts: sims/firesim-staging/generated-src/firechip.chip.FireSim.FireSimGemminiRocketConfig/firechip.chip.FireSim.FireSimGemminiRocketConfig.dts
+  # The parameter header the FPGA build's elaboration generated, as the machine registry records it.
+  params_header_sha256:
+    file: {repo: examples/gemmini/phase2/whole-model-machines.yaml}
+    key: [machines, full_u250_board, program_header_sha256]
+
+# Extensions the CPU implements in part, so its DTS riscv,isa leaves them out while the functional model
+# enables them. An ISA check accepts one only while every citation holds, and every image the receipt
+# checks must then touch none of the CSRs the hardware leaves out (they trap on the FPGA).
+partial_extensions:
+  zicntr:
+    absent_csrs: [time, timeh]
+    citations:
+      - claim: Rocket implements the cycle and instret counters
+        file: generators/rocket-chip/src/main/scala/tile/BaseTile.scala
+        line: 136
+        contains: rdcycle[h], rdinstret[h] is implemented
+      - claim: Rocket does not implement the time counter
+        file: generators/rocket-chip/src/main/scala/tile/BaseTile.scala
+        line: 137
+        contains: rdtime[h] is not implemented
+      - claim: so the DTS ISA string deliberately omits zicntr
+        file: generators/rocket-chip/src/main/scala/tile/BaseTile.scala
+        line: 139
+        contains: //Some(Seq("zicntr"))
+      - claim: the CSR file reads cycle
+        file: generators/rocket-chip/src/main/scala/rocket/CSR.scala
+        line: 731
+        contains: read_mapping += CSRs.cycle -> reg_cycle
+      - claim: the CSR file reads instret
+        file: generators/rocket-chip/src/main/scala/rocket/CSR.scala
+        line: 732
+        contains: read_mapping += CSRs.instret -> reg_instret
+      - claim: the CSR file maps neither time nor timeh
+        file: generators/rocket-chip/src/main/scala/rocket/CSR.scala
+        absent: CSRs.time
+
+citations:
+  - claim: the Spike extension library includes gemmini_params.h from its own directory
+    file: generators/gemmini/software/libgemmini/gemmini.h
+    line: 8
+    contains: '#include "gemmini_params.h"'
+  - claim: libgemmini.so is built from that directory's sources
+    file: generators/gemmini/software/libgemmini/Makefile
+    line: 11
+    contains: "libgemmini.so: gemmini.cc"
+  - claim: the generator writes its parameter header while elaborating
+    file: generators/gemmini/src/main/scala/gemmini/Controller.scala
+    line: 29
+    contains: Files.write(Paths.get(config.headerFilePath), config.generateHeader()
+  - claim: the default header name is gemmini_params.h
+    file: generators/gemmini/src/main/scala/gemmini/GemminiConfigs.scala
+    line: 103
+    contains: 'headerFileName: String = "gemmini_params.h"'
+  - claim: inside a chipyard checkout the header lands in gemmini-rocc-tests/include
+    file: generators/gemmini/src/main/scala/gemmini/GemminiConfigs.scala
+    line: 512
+    contains: val chipyard_directory = "./generators/gemmini/software/gemmini-rocc-tests/include"
+  - claim: Spike decodes a move's columns at bit ADDR_LEN (the ADDR_LEN parameter's RTL facts)
+    file: generators/gemmini/software/libgemmini/gemmini.h
+    line: 13
+    contains: static const uint64_t addr_len = ADDR_LEN;
+  - claim: Spike decodes a move's columns at bit ADDR_LEN (the ADDR_LEN parameter's RTL facts)
+    file: generators/gemmini/software/libgemmini/gemmini.cc
+    line: 123
+    contains: auto const cols = (sp_addr >> addr_len) & 0xFFFF;
+  - claim: the FPGA board entry is the pinned bitstream
+    file: {repo: merlin/contract/hardware_pins.yaml}
+    key: [artifacts, firesim_gemmini_rocket_30mhz, path]
+    contains: alveo_u250_firesim_gemmini_rocket_30mhz
+  - claim: the FPGA board entry is the pinned bitstream
+    file: {repo: examples/gemmini/platform/board-catalog.yaml}
+    key: [boards, firesim_gemmini_rocket_u250_30mhz, bitstream]
+    equals: alveo_u250_firesim_gemmini_rocket_30mhz
+  - claim: the machine registry's header digest is that bitstream's
+    file: {repo: examples/gemmini/phase2/whole-model-machines.yaml}
+    key: [machines, full_u250_board, hw_config]
+    equals: alveo_u250_firesim_gemmini_rocket_30mhz
+  - claim: FireSimGemminiRocketConfig is declared in the FireSim target configurations
+    file: generators/firechip/chip/src/main/scala/TargetConfigs.scala
+    line: 283
+    contains: class FireSimGemminiRocketConfig extends Config(
+  - claim: BaseXilinxAlveoU250Config is declared in the FireSim platform configurations
+    file: sims/firesim/sim/midas/src/main/scala/configs/CompilerConfigs.scala
+    line: 110
+    contains: class BaseXilinxAlveoU250Config
+  - claim: the composition base class is CDE's Config
+    file: tools/cde/cde/src/chipsalliance/rocketchip/config.scala
+    line: 151
+    contains: "class Config(p: Parameters) extends Parameters"
+  - claim: x"..." spells a base-16 BigInt with underscores removed
+    file: generators/rocket-chip/src/main/scala/resources/package.scala
+    line: 10
+    contains: BigInt(orig.replace("_", ""), 16)
+  - claim: ExtMem is the external memory port's key
+    file: generators/rocket-chip/src/main/scala/subsystem/Ports.scala
+    line: 47
+    contains: case object ExtMem extends Field[Option[MemoryPortParams]]
+  - claim: the port's span is its base and size fields
+    file: generators/rocket-chip/src/main/scala/subsystem/Ports.scala
+    line: 35
+    contains: "base: BigInt,"
+  - claim: the port's span is its base and size fields
+    file: generators/rocket-chip/src/main/scala/subsystem/Ports.scala
+    line: 36
+    contains: "size: BigInt,"
+  - claim: FASED's host capacity is the channel count times the channel size
+    file: sims/firesim/sim/midas/src/main/scala/midas/core/FPGATop.scala
+    line: 178
+    contains: val dramBytesPerChannel  = p(HostMemChannelKey).size
+  - claim: FASED's host capacity is the channel count times the channel size
+    file: sims/firesim/sim/midas/src/main/scala/midas/core/FPGATop.scala
+    line: 179
+    contains: val availableDRAM        = p(HostMemNumChannels) * dramBytesPerChannel
+  - claim: the elaboration refuses target DRAM beyond the host capacity
+    file: sims/firesim/sim/midas/src/main/scala/midas/core/FPGATop.scala
+    line: 181
+    contains: totalDRAMAllocated <= availableDRAM
+
+# Each accelerator parameter: the name Spike's header gives it (read at run time; gemmini_params.h
+# lines 8-12, 17, 20, 24-25, 30-31, 77-78 in this checkout), and every RTL-side fact (keys of the
+# selected FIRRTL extraction) and contract declaration (key paths) that must agree with it. A fact the
+# extraction does not record is listed as not recorded; the parameter still needs one RTL-side source.
+# `as` reads a fact as a bit width or a signedness; a dtype string (i8, i32, f32) compares kind and width.
+params:
+  DIM:
+    header: {define: DIM}
+    rtl_facts:
+      - {collection: arrays, name: mesh, field: rows}
+      - {collection: arrays, name: mesh, field: cols}
+      - {collection: memories, name: scratchpad.mem, field: row_elems}
+      - {collection: memory_address_spaces, name: accumulator, field: lanes}
+  BANK_NUM:
+    header: {define: BANK_NUM}
+    rtl_facts:
+      - {collection: memories, name: scratchpad.mem, field: banks}
+  BANK_ROWS:
+    header: {define: BANK_ROWS}
+    rtl_facts:
+      - {collection: memories, name: scratchpad.mem, field: depth}
+  ACC_ROWS:
+    header: {define: ACC_ROWS}
+    rtl_facts:
+      - {collection: memory_address_spaces, name: accumulator, product: [banks, depth]}
+  ADDR_LEN:
+    header: {define: ADDR_LEN}
+    rtl_facts:
+      - {collection: interfaces, name: register_bundle_layouts, field: bundles.MvinRs2.fields.local_addr.slot_width}
+      - {collection: interfaces, name: register_bundle_layouts, field: bundles.MvinRs2.fields.num_cols.offset}
+      - {collection: interfaces, name: register_bundle_layouts, field: bundles.MvoutRs2.fields.local_addr.slot_width}
+      - {collection: interfaces, name: register_bundle_layouts, field: bundles.MvoutRs2.fields.num_cols.offset}
+      - {collection: interfaces, name: register_bundle_layouts, field: bundles.ComputeRs.fields.num_cols.offset}
+  elem_t:
+    header: {typedef: elem_t}
+    rtl_facts:
+      - {collection: storage_datapaths, name: input, field: dtype}
+      - {collection: memories, name: scratchpad.mem, field: elem_bits, as: bits}
+      - {collection: compute_datapaths, name: input, field: elem_bits, as: bits}
+      - {collection: compute_datapaths, name: input, field: declared_carrier.signedness, as: signedness}
+    contract:
+      - {path: [runner, chipyard_rocc, readout, scalar_abi, output_dtype]}
+      - {path: [runner, chipyard_rocc, readout, operand_sum, operand_dtype]}
+  acc_t:
+    header: {typedef: acc_t}
+    rtl_facts:
+      - {collection: storage_datapaths, name: accumulator, field: dtype}
+      - {collection: memory_address_spaces, name: accumulator, field: lane_bits, as: bits}
+    contract:
+      - {path: [runner, chipyard_rocc, readout, scalar_abi, accumulator_dtype]}
+  acc_scale_t:
+    header: {typedef: acc_scale_t, carrier: acc_scale_t_bits, exp_bits: ACC_SCALE_EXP_BITS, sig_bits: ACC_SCALE_SIG_BITS}
+    rtl_facts:
+      - {collection: interfaces, name: register_bundle_layouts, field: bundles.ConfigExRs1.fields.acc_scale.width, as: bits}
+      - {collection: interfaces, name: register_bundle_layouts, field: bundles.ConfigMvoutRs2.fields.acc_scale.width, as: bits}
+    contract:
+      - {path: [runner, chipyard_rocc, readout, scalar_abi, scale_dtype]}
+  scale_t:
+    header: {typedef: scale_t, carrier: scale_t_bits}
+    rtl_facts:
+      - {collection: interfaces, name: register_bundle_layouts, field: bundles.ConfigMvinRs1.fields.scale.width, as: bits}

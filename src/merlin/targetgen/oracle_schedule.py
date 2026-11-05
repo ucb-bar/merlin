@@ -77,6 +77,13 @@ CERT_LEDGER = "<certs>"
 # tooling failed, and read as "fresh" it would let a stale certificate stand.
 CHANGED, UNDETERMINABLE, NO_VERDICT = "changed", "undeterminable", "no_verdict"
 
+# A recorded STATUS (not a verdict) for a cert-tier record whose own job finished but whose result could
+# not be attributed to it. A ``pending`` record is rightly treated as known -- its job is in flight and
+# must not be bought twice -- but once that job has come back unattributable nothing else will resolve
+# it, and counting it as known forever is how a run stranded 101 capsules at "pending" and stopped asking
+# for their cert tier. This status reads as NO verdict, so the capsule re-queues, and the reason names it.
+UNATTRIBUTED_RESULT = "unattributed"
+
 
 @dataclass(frozen=True)
 class Staleness:
@@ -164,6 +171,9 @@ class CapsuleState:
         v = self.verdicts.get(tier)
         if v is None:
             return (Staleness(WHOLE_SUBMISSION, NO_VERDICT),)
+        if v.status == UNATTRIBUTED_RESULT:
+            return (Staleness(EXECUTION_ARTIFACT if valid_execution_digest(v.execution_digest)
+                              else WHOLE_SUBMISSION, UNATTRIBUTED_RESULT),)
         # The executable is the narrowest safe identity for a HARDWARE verdict, and the only one that is
         # per capsule. Source bytes may change without changing the program the cert tier executes;
         # conversely each capsule emits its own executable, so one capsule's changed artifact must not

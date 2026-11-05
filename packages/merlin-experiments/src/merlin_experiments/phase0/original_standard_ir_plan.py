@@ -16,6 +16,8 @@ from .original_call_sources import required_source_cohorts
 
 SCHEMA = "merlin.original_standard_ir_selection.v1"
 POINTWISE_SCHEMA = "merlin.original_standard_ir_selection.v2"
+TRANSPOSE_SCHEMA = "merlin.original_standard_ir_selection.v3"
+BROADCAST_SCHEMA = "merlin.original_standard_ir_selection.v4"
 _BUDGET = {
     "max_members",
     "max_source_bytes",
@@ -43,7 +45,13 @@ def validate(selected, references):
             "execution_budget",
         }
         or selected["schema"]
-        != (POINTWISE_SCHEMA if references.record_without_verification()["schema"] == R.POINTWISE_SCHEMA else SCHEMA)
+        != {
+            R.SCHEMA: SCHEMA,
+            R.BATCH_SCHEMA: SCHEMA,
+            R.POINTWISE_SCHEMA: POINTWISE_SCHEMA,
+            R.TRANSPOSE_SCHEMA: TRANSPOSE_SCHEMA,
+            R.BROADCAST_SCHEMA: BROADCAST_SCHEMA,
+        }.get(references.record_without_verification()["schema"])
         or selected["reference_roster_sha256"] != references.sha256
         or type(selected["capture_commit"]) is not str
         or len(selected["capture_commit"]) != 40

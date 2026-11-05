@@ -172,3 +172,68 @@ def test_named_command_epilogue_is_observed_as_a_fused_stage():
     )
     assert [row["operation"] for row in convolution] == ["conv2d", "relu"]
     assert convolution[1]["composed_observation"]["composed_with"] == ["contraction"]
+
+
+def test_a_convolutions_geometry_is_not_mistaken_for_a_per_channel_scale():
+    """CONV2D (and a pooled commit) carry integer geometry lists; their readout still scales by one value
+    for the whole tensor. A list-valued multiplier is what would make it per-channel."""
+    conv = {
+        "opcode": "CONV2D",
+        "operands": {"ifm": "IFM", "weight": "W_res", "dst": "Y0"},
+        "attributes": {
+            "kernel": [3, 3, 4, 8],
+            "stride": [1, 1],
+            "padding": [1, 1, 1, 1],
+            "dilation": [1, 1],
+            "pool_size": [2, 2],
+            "pool_stride": [2, 2],
+            "epilogue": ["bias_add", "acc_scale", "relu"],
+            "output_dtype": "i8",
+            "acc_scale": 0.25,
+            "bias": "B",
+        },
+    }
+    tensors = {
+        "IFM": {"shape": [1, 8, 8, 4], "dtype": "i8", "role": "input"},
+        "W": {"shape": [36, 8], "dtype": "i8", "role": "weight"},
+        "B": {"shape": [8], "dtype": "i32", "role": "bias"},
+    }
+    pack = {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}, "attributes": {"layout": "packed_conv_rhs"}}
+    rows = command_rows(_cb([pack, conv], tensors))
+    stages = [row for row in rows if row.get("composed_observation", {}).get("epilogues")]
+    assert [row["operation"] for row in stages] == ["bias_add", "acc_scale", "relu"]
+    assert all(row["composed_observation"]["scale_granularity"] == "tensor" for row in stages)
+    assert all(row["composed_observation"]["composed_with"] == ["contraction"] for row in stages)
+    per_channel = dict(conv, attributes={**conv["attributes"], "acc_scale": [0.25, 0.5]})
+    rows = command_rows(_cb([pack, per_channel], tensors))
+    stages = [row for row in rows if row.get("composed_observation", {}).get("epilogues")]
+    assert all(row["composed_observation"]["scale_granularity"] is None for row in stages)
+
+
+def test_a_residual_sums_ordered_source_scales_are_per_tensor():
+    """The builder records a residual sum's quantizer scales as ``source_scales = [lhs, rhs, out]``: one
+    scalar per tensor the command names. That array is over tensors, not a tensor's channels, so the sum
+    and its fused stage are still observed per-tensor; any other form of the record is not."""
+    from merlin.targetgen import corpus_spec as CS
+    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+
+    binding = CS.CorpusBinding(
+        target="fixture", tile_dim=16, operand_dtype="int8", accum_dtype="int32", integer=True,
+        tiers=["L2", "L3"], compare="exact",
+    )  # fmt: skip
+    entry = {
+        "name": "T_residual", "kind": "layer", "source_role": "derived_sweep", "source_reference": "test",
+        "op": "residual_add", "M": 9, "N": 24, "lhs_scale": 0.57, "rhs_scale": 1.03, "bound_lsb": 2,
+        "epilogue": ["relu"], "source_scales": [0.0072, 0.0130, 0.0126],
+    }  # fmt: skip
+    _capsule, text = CS.build_residual_add(entry, binding)
+    program = parse_interface_mlir(text)
+    rows = command_rows(program)
+    assert [row["operation"] for row in rows] == ["residual_add", "relu"]
+    assert [row["composed_observation"]["scale_granularity"] for row in rows] == ["tensor", "tensor"]
+
+    command = program["commands"][0]
+    for malformed in ([0.0072, 0.0130], [[0.0072, 0.0072], 0.0130, 0.0126], [True, 0.0130, 0.0126]):
+        written = {**command, "attributes": {**command["attributes"], "source_scales": malformed}}
+        rows = command_rows({**program, "commands": [written]})
+        assert [row["composed_observation"]["scale_granularity"] for row in rows] == [None, None]

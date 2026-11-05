@@ -83,3 +83,24 @@ def test_exact_golden_computes_the_host_map_between_the_two_contractions() -> No
     assert CG.golden(island) == {"Y0": expected_island}
     assert CG.golden(control) == {"Y0": expected_control}
     assert expected_island != expected_control
+
+
+def test_generated_direct_ir_has_complete_unique_source_join_identities() -> None:
+    from xdsl.dialects.builtin import ArrayAttr, StringAttr
+
+    for role, expected in (("island", 4), ("no_island", 3)):
+        _, source = CS.build(_entry(role), _binding())
+        module = Parser(make_linalg_context(), source).parse_module()
+        module.verify()
+        identities = []
+        for op in module.walk():
+            region = op.attributes.get("prov.region_id")
+            if region is None:
+                continue
+            assert isinstance(region, StringAttr)
+            nodes = op.attributes.get("prov.source_node_ids")
+            assert isinstance(nodes, ArrayAttr)
+            assert tuple(node.data for node in nodes) == ("direct_ir." + region.data,)
+            identities.append((region.data, tuple(node.data for node in nodes)))
+        assert len(identities) == expected
+        assert len(set(identities)) == expected

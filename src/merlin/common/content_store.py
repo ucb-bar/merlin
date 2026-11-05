@@ -19,9 +19,12 @@ Two properties make the store safe to keep under the declared-purgeable cache ro
 * **A link is a claim.** The bytes live for as long as any name references them, so removing a store
   object with one remaining link cannot take data from a live snapshot. ``orphans()`` finds exactly
   those, which is what ``merlin-storage prune`` acts on.
-* **A reused object is re-digested before it is handed out.** Trusting the file name would let a
+* **A reused object is checked before it is handed out.** Trusting the file name would let a
   corrupted or truncated object silently become a run's input, and that run's own digest would then
   certify the wrong bytes as the frozen treatment -- a result attributed to inputs it never ran on.
+  The explicit snapshot lease opt-in may reuse its digest under a freshly checked Linux read lease;
+  unsupported objects and ordinary callers retain full hashing. Placement closes its final lease
+  check before returning, and later snapshot checks bind the same actual inode independently.
 
 ``MERLIN_BUNDLE_CAS`` relocates the store (a hard link cannot cross a filesystem, so point it at the
 volume holding an out-of-tree workspace); setting it **empty** disables sharing and every consumer
@@ -32,13 +35,16 @@ to a copy, so the store is an optimization and never a dependency.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import hashlib
 import os
 import shutil
 import tempfile
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Iterator
 from pathlib import Path
 
+from merlin.common import read_lease_digest
 from merlin.common.paths import artifacts_dir
 
 # ``shutil.copytree``'s ignore contract: (directory, entry names) -> names to skip.
@@ -47,6 +53,24 @@ IgnoreRule = Callable[[str, list[str]], Collection[str]]
 NAMESPACE = "bundle-inputs-cas"
 LOCATION_ENV = "MERLIN_BUNDLE_CAS"
 _CHUNK = 8 * 1024 * 1024
+_READ_LEASES = contextvars.ContextVar("content_store_read_leases", default=True)
+
+
+@contextlib.contextmanager
+def without_read_leases() -> Iterator[None]:
+    """Digest store objects in full within this scope; never take a read lease or a CPU slot for one.
+
+    A lease's custody recheck leases a shared compute slot. A caller that already holds its slot
+    while it waits on this placement -- a grade capturing its compiler source in a worker -- would
+    otherwise queue behind every other such caller for each leased file: measured, 20 grading
+    threads each holding a slot and waiting on workers that waited for a slot, one capsule in 15
+    minutes. Full hashing of a bounded tree costs milliseconds and needs no slot.
+    """
+    token = _READ_LEASES.set(False)
+    try:
+        yield
+    finally:
+        _READ_LEASES.reset(token)
 
 
 def default_root() -> Path:
@@ -54,13 +78,29 @@ def default_root() -> Path:
     return artifacts_dir() / "cache" / NAMESPACE
 
 
-def store_root() -> Path | None:
-    """The store to use, or ``None`` when sharing is disabled and consumers must copy."""
+def store_root(namespace: str | None = None) -> Path | None:
+    """The store to use, or ``None`` when sharing is disabled and consumers must copy.
+
+    ``namespace`` selects a sibling store on the same volume for a consumer whose links must not
+    land on another consumer's inodes. Frozen run inputs are watched by inode: every hard link a
+    different consumer adds or removes on the same bytes changes their link count, which the
+    snapshot guard rightly treats as an event (link counts are part of its aliasing checks). A
+    consumer that links the same bytes very often (one compiler-source capture per test case)
+    therefore keeps its own objects, so the run's frozen inputs stay quiet.
+    """
     override = os.environ.get(LOCATION_ENV)
     if override is not None:
-        return Path(override) if override.strip() else None
-    root = default_root()
-    root.mkdir(parents=True, exist_ok=True)
+        if not override.strip():
+            return None
+        root = Path(override)
+    else:
+        root = default_root()
+    if namespace is not None:
+        if not namespace or "/" in namespace or namespace in {".", ".."}:
+            raise ValueError("content store namespace must be a plain name")
+        root = root.with_name(f"{root.name}.{namespace}")
+    if override is None or namespace is not None:
+        root.mkdir(parents=True, exist_ok=True)
     return root
 
 
@@ -76,13 +116,33 @@ def digest_file(path: Path) -> tuple[str, int]:
 
 
 def object_for(root: Path, source: Path) -> Path | None:
+    """Validate an original store object before handing its identity to a consumer."""
+    if not _READ_LEASES.get():
+        return _object_for(root, source)
+    with read_lease_digest.verification():
+        return _object_for(root, source)
+
+
+def _object_digest(path: Path) -> str:
+    # Only the public store object participates: source reads and private copy
+    # policy remain unchanged. Canonical aliases may reuse the same leased inode.
+    if _READ_LEASES.get() and read_lease_digest.enabled():
+        canonical = path.absolute()
+        if canonical.resolve() == canonical and canonical.stat().st_size >= read_lease_digest.MIN_BYTES:
+            selected = read_lease_digest.digest(canonical)
+            if selected is not None:
+                return selected
+    return digest_file(path)[0]
+
+
+def _object_for(root: Path, source: Path) -> Path | None:
     """The store object holding ``source``'s bytes, created on first sight. ``None`` if unavailable.
 
     The key is the content AND whether the file is executable, because a mode is a property of the
     inode and two grants sharing one would fight over it -- a granted compiler or script has to stay
     runnable inside a sandbox, and a plain file with the same bytes must not become runnable.
 
-    A reused object is RE-DIGESTED before it is handed out. Trusting the file name would let a
+    A reused object is byte-verified before it is handed out. Trusting the file name would let a
     corrupted or truncated object silently become a consumer's input, and that consumer's own seal
     would then certify the wrong bytes as the frozen treatment -- a result attributed to inputs it
     never ran on, which is the failure the freeze exists to prevent.
@@ -104,7 +164,7 @@ def object_for(root: Path, source: Path) -> Path | None:
                 return None  # never repair modes through a foreign cache alias
             if obj.is_file():
                 stat = obj.stat()
-                if stat.st_size == size and digest_file(obj)[0] == sha:
+                if stat.st_size == size and _object_digest(obj) == sha:
                     # Cleanup of a read-only consumer can chmod a shared inode.
                     # Revalidate bytes first, then restore the store's typed mode
                     # before handing out another link (or trusting old aliases).
@@ -171,6 +231,21 @@ def place_file(
     observe: Callable[[Path, Path, Path], None] | None = None,
     preserve_permissions: bool = False,
 ) -> bool:
+    """Freeze a file and finish any selected immutable-object checks before returning."""
+    if not _READ_LEASES.get():
+        return _place_file(source, dst, root, observe=observe, preserve_permissions=preserve_permissions)
+    with read_lease_digest.verification():
+        return _place_file(source, dst, root, observe=observe, preserve_permissions=preserve_permissions)
+
+
+def _place_file(
+    source: Path,
+    dst: Path,
+    root: Path | None,
+    *,
+    observe: Callable[[Path, Path, Path], None] | None = None,
+    preserve_permissions: bool = False,
+) -> bool:
     """Put ``source``'s bytes at ``dst``. Returns whether the store's inode is now shared.
 
     Falls back to a copy whenever the link cannot be made -- no store, a cross-filesystem
@@ -216,6 +291,7 @@ def place_tree(
     *,
     observe: Callable[[Path, Path, Path], None] | None = None,
     preserve_permissions: bool = False,
+    ignore: IgnoreRule | None = None,
 ) -> None:
     """Deep-freeze a directory, dereferencing symlinks.
 
@@ -232,6 +308,7 @@ def place_tree(
     applies the independent, read/execute-only policy to files and directories.
     That opt-in tree requires new destination directories and never follows a
     pre-existing destination alias. Default directory modes remain caller-owned.
+    ``ignore`` is ``shutil.copytree``'s rule: entry names it returns for a directory are not frozen.
     """
     if preserve_permissions and root is not None:
         raise ValueError("permission-preserving inputs cannot use the shared content store")
@@ -248,7 +325,11 @@ def place_tree(
             raise RuntimeError(f"refusing to freeze a symlink cycle at {current}")
         _observe_source(current, canonical, out, observe)
         out.mkdir(parents=True, exist_ok=True, mode=0o700 if preserve_permissions else 0o777)
-        for entry in sorted(canonical.iterdir()):
+        entries = sorted(canonical.iterdir())
+        skipped = set(ignore(str(canonical), [entry.name for entry in entries])) if ignore is not None else set()
+        for entry in entries:
+            if entry.name in skipped:
+                continue
             target = out / entry.name
             if entry.is_dir():  # follows links, as a dereferencing copy would
                 walk(current / entry.name, target, ancestry + (key,), entry.resolve(strict=True))
@@ -305,6 +386,12 @@ def orphans(root: Path | None = None) -> tuple[list[Path], int]:
 
 
 def adopt(path: Path, root: Path | None, *, before_replace: Callable[[], None] | None = None) -> int:
+    """Adopt a caller-owned file, with final selected store custody before returning."""
+    with read_lease_digest.verification():
+        return _adopt(path, root, before_replace=before_replace)
+
+
+def _adopt(path: Path, root: Path | None, *, before_replace: Callable[[], None] | None = None) -> int:
     """Re-point ``path`` at the store object holding its bytes. Returns the bytes this freed.
 
     ``place_file`` gets the saving at the moment a tree is frozen. This gets it afterwards, for the

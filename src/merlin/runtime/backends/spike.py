@@ -15,7 +15,6 @@ or explicit ``MERLIN_RISCV_GCC`` / ``MERLIN_SPIKE`` overrides.
 
 from __future__ import annotations
 
-import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -24,7 +23,6 @@ from typing import Any
 from merlin.common.paths import runtime_dir
 
 from ...common import paths as _paths
-from ...common.paths import repo_root
 from ..metrics import COMMON_METRIC_NAMES
 from ..reference import outputs_match, reference_outputs
 from .rvv_codegen import generate_driver
@@ -95,7 +93,10 @@ def compile_command_buffer(cb: dict[str, Any], workdir: str | Path, harts: int =
         "-o",
         str(elf),
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    from merlin.common.cpu_pool import shared_compute_pool
+
+    with shared_compute_pool():
+        proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise SpikeError(f"riscv gcc failed:\n{proc.stderr}")
     return elf
@@ -104,7 +105,10 @@ def compile_command_buffer(cb: dict[str, Any], workdir: str | Path, harts: int =
 def run_elf(elf: str | Path, harts: int = 4, isa: str = DEFAULT_ISA, timeout: int = 300) -> str:
     """Run the ELF on spike; returns raw console output."""
     cmd = [str(spike_path()), f"--isa={isa}", f"-p{harts}", str(elf)]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    from merlin.targetgen.rtl_engine_policy import simulation_runtime_slot
+
+    with simulation_runtime_slot("spike", wait_timeout_s=timeout):
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0:
         raise SpikeError(f"spike exited {proc.returncode}:\n{proc.stdout}\n{proc.stderr}")
     return proc.stdout

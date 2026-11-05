@@ -122,6 +122,10 @@ def _source(form, extent, budget):
     factory = {"aten.matmul.default": S.matmul_source, "aten.conv2d.default": S.conv2d_source}.get(form["target"])
     if form["target"] == "aten.add.Tensor":
         factory = getattr(S, "add_source", None)
+        if form.get("form_schema") == "merlin.original_broadcast_add_form.v1":
+            from .original_broadcast_add_sources import broadcast_add_source
+
+            factory = broadcast_add_source
     from .original_pointwise_reference import OPERATIONS
 
     if form["target"] in OPERATIONS:
@@ -145,12 +149,14 @@ def _costs(metadata):
         products = count * inputs[0]["shape"][1]
     elif metadata["target"] == "aten.conv2d.default":
         products = count * math.prod(inputs[1]["shape"][1:])
-    elif metadata["target"] in OPERATIONS:
+    elif metadata["target"] in OPERATIONS or metadata["target"] == "aten.transpose.int":
         products = 0
     else:
         products = count
     steps = (
-        reference_steps(metadata)
+        count
+        if metadata["target"] == "aten.transpose.int"
+        else reference_steps(metadata)
         if metadata["target"] in OPERATIONS
         else 2 * products + (count if metadata["parameters"].get("bias") else 0)
     )
@@ -413,7 +419,29 @@ def _evaluate(metadata, values, arithmetic, byteorder):
             for j in range(n)
         ]
     elif metadata["target"] == "aten.add.Tensor":
-        result = [arithmetic.add(a, arithmetic.product(1, b)) for a, b in zip(*values, strict=True)]
+        if metadata["parameters"].get("broadcasting") == "right_aligned":
+            shape = metadata["outputs"][0]["shape"]
+
+            def index(operand_shape, flat):
+                selected, stride = 0, 1
+                offset = len(shape) - len(operand_shape)
+                for axis in reversed(range(len(shape))):
+                    coordinate, flat = flat % shape[axis], flat // shape[axis]
+                    if axis >= offset:
+                        width = operand_shape[axis - offset]
+                        selected += (coordinate if width != 1 else 0) * stride
+                        stride *= width
+                return selected
+
+            result = [
+                arithmetic.add(
+                    values[0][index(metadata["inputs"][0]["shape"], flat)],
+                    arithmetic.product(1, values[1][index(metadata["inputs"][1]["shape"], flat)]),
+                )
+                for flat in range(math.prod(shape))
+            ]
+        else:
+            result = [arithmetic.add(a, arithmetic.product(1, b)) for a, b in zip(*values, strict=True)]
     elif metadata["target"] in OPERATIONS:
         result = [arithmetic.pointwise(metadata["target"], value, metadata["parameters"]) for value in values[0]]
     else:
@@ -476,6 +504,14 @@ def _conv(metadata, values, arithmetic):
 def prepare_original_reference(form, source, *, extent, policy, budget, output_byteorder):
     """Bind one independently selected source/policy, never mint phase authority."""
     from .original_pointwise_reference import OriginalPointwiseReferencePolicy
+
+    if getattr(policy, "operation", None) == "aten.transpose.int":
+        from .original_transpose_reference import OriginalTransposeReferencePolicy, prepare_transpose_reference
+
+        if type(policy) is OriginalTransposeReferencePolicy:
+            return prepare_transpose_reference(
+                form, source, extent=extent, policy=policy, budget=budget, output_byteorder=output_byteorder
+            )
 
     if (
         type(policy) not in {OriginalReferencePolicy, OriginalPointwiseReferencePolicy}

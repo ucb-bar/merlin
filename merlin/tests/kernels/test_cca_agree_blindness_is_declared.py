@@ -28,7 +28,9 @@ pytestmark = pytest.mark.target("gemmini")
 
 #: The facets `cca_agree` does not look at, as measured. Not a wish list: a change to either side of
 #: this equality is a change to what an agreement report means.
-KNOWN_BLIND = {"communication", "coverage"}
+#: ``operand_fields`` holds target-declared static field value sets; agreement reports compare
+#: semantic facets, and those value sets are compared through the instruction observations.
+KNOWN_BLIND = {"communication", "coverage", "operand_fields"}
 
 
 def _iterated_facets() -> tuple[str, ...]:
@@ -77,10 +79,10 @@ def test_the_blind_facets_are_not_empty_of_content():
     for name in sorted(KNOWN_BLIND):
         # Found by matching the dataclass, not by assuming the class is the field name capitalised --
         # the naming convention holds today and is not a thing this test should depend on.
-        cls = next(
-            (c for c in vars(cca).values() if dataclasses.is_dataclass(c) and c.__name__.lower().startswith(name)),
-            None,
-        )
+        import typing
+
+        hint = typing.get_type_hints(cca.CCA).get(name)
+        cls = next((c for c in typing.get_args(hint) or (hint,) if dataclasses.is_dataclass(c)), None)
         assert cls is not None, f"no facet class found for {name!r}"
         fields = [f.name for f in dataclasses.fields(cls)]
         assert fields, f"{name} has no fields; its absence from cca_agree would cost nothing"

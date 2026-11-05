@@ -25,7 +25,7 @@ import sys
 import sysconfig
 from collections import UserDict
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from merlin.common.paths import compat_lib_dir, env, ext_path, python_source_dir, repo_root
@@ -33,6 +33,18 @@ from merlin.targetgen.target_experiment import TargetExperiment
 
 # --------------------------------------------------------------------------- universal toolchain
 RESOLVE_DIR = "/run/systemd/resolve"  # /etc/resolv.conf -> here; else DNS fails in bwrap
+
+
+def _interpreter_prefix() -> Path:
+    """Retain a selected venv when pre-3.14 Python runs without site init.
+
+    Resolve the lexical executable's environment before following its usual
+    symlink to the base interpreter. No ambient VIRTUAL_ENV selects tools.
+    """
+    if sys.prefix != sys.base_prefix:
+        return Path(sys.prefix).resolve()
+    candidate = Path(sys.executable).absolute().parent.parent
+    return candidate.resolve() if (candidate / "pyvenv.cfg").is_file() else Path(sys.prefix).resolve()
 
 
 # clang-23 = the ABI's MERLIN_CLANG (rv64_compiler). LLVM-23 ABI-matched to llvm-install; bind ONLY the
@@ -89,9 +101,10 @@ class ToolchainPaths:
         # Binding that checkout venv would make the frozen, granted Merlin files
         # import through an interpreter missing their declared dependencies.
         active_install = python_source_dir().resolve() == Path(sysconfig.get_path("purelib")).resolve()
+        interpreter_prefix = _interpreter_prefix()
         selected_venv = (
-            Path(sys.prefix).resolve()
-            if active_install or (not checkout_venv.is_dir() and sys.prefix != sys.base_prefix)
+            interpreter_prefix
+            if active_install or (not checkout_venv.is_dir() and interpreter_prefix != Path(sys.base_prefix).resolve())
             else checkout_venv
         )
         clang_default = (
@@ -99,14 +112,20 @@ class ToolchainPaths:
             if selected_llvm != repo / "third_party/llvm-install"
             else repo / "build/host-merlin-release/install"
         )
-        # Historical bundle manifests grant the package at merlin/python/merlin,
-        # while new releases grant the selected installed source at src/merlin.
-        # Both roots remain hidden by bwrap until exact grants are replayed;
-        # searching both makes the legacy and selected manifests executable
-        # without exposing an ungranted checkout tree.
+        # A frozen bundle may name a different checkout from the implementation
+        # running this manager. Search that declared checkout's curated source
+        # closure as well as the implementation source; bwrap still exposes only
+        # files admitted by the bundle.
         legacy_source = repo / "merlin/python"
-        import_roots = (
-            (str(legacy_source), str(python_source_dir())) if legacy_source.is_dir() else (str(python_source_dir()),)
+        import_roots = tuple(
+            dict.fromkeys(
+                str(path)
+                for path in (
+                    *((legacy_source,) if legacy_source.is_dir() else ()),
+                    repo / "src",
+                    python_source_dir(),
+                )
+            )
         )
         return cls(
             repo=repo,
@@ -144,6 +163,40 @@ NESTED_SESSION_VARS = (
     "AI_AGENT",
     "CLAUDE_EFFORT",
 )
+
+
+def paths_for_bundle(ws: Path, bundle: dict, *, paths: ToolchainPaths | None = None) -> ToolchainPaths:
+    """Select an already granted public SDK import root from its frozen profile."""
+    from merlin.common.digest import sha256_file
+    from merlin.targetgen.tool_profile import verify_tool_profile
+
+    from . import bwrap
+
+    paths = paths if paths is not None else ToolchainPaths.from_checkout()
+    profile = verify_tool_profile(bundle)
+    author = bundle.get("author_profile")
+    if author is not None:
+        from merlin_experiments.phase1.author_profiles import resolve, verify_bundle
+
+        verify_bundle(resolve(author.get("name")), bundle)
+        # The legacy SDK remains a host-only judge input. Its metadata cannot
+        # select an author import root; the exact staged profile supplies one.
+        return paths
+    resources = (profile or {}).get("shared_scheduling_resources")
+    if resources is None:
+        return paths
+    root = Path(resources[0]["path"]).parent
+    namespace = next(row for row in profile["common_sources"] if row["module"] == "merlin.__init__")
+    pins = [*resources, {"path": str(root / "merlin/__init__.py"), "sha256": namespace["sha256"]}]
+    _, grants = bwrap._snapshot_grants(ws, bundle, paths.repo)
+    for pin in pins:
+        sources = [source for _, destination, source in grants if destination == Path(pin["path"])]
+        if len(sources) != 1 or not sources[0].is_file() or sha256_file(sources[0]) != pin["sha256"]:
+            raise ValueError("public SDK import root lacks its exact frozen public grant bytes")
+    original = paths.python_import_roots
+    if original is None:
+        original = (str(paths.repo / "merlin/python"),)
+    return replace(paths, python_import_roots=tuple(dict.fromkeys((str(root), *original))))
 
 
 @dataclass(frozen=True)
@@ -312,6 +365,7 @@ def sandbox_env(
     paths: ToolchainPaths | None = None,
     sim: SimToolchain | None = None,
     harness: str | None = None,
+    bundle: dict | None = None,
 ) -> str:
     """Shell ``export``s prepended to the in-sandbox command.
 
@@ -329,6 +383,8 @@ def sandbox_env(
     the descriptor resource, while an empty string explicitly omits it.
     """
     paths = paths if paths is not None else ToolchainPaths.from_checkout()
+    if bundle is not None:
+        paths = paths_for_bundle(ws, bundle, paths=paths)
     sim = sim if sim is not None else _sim(te)
     path = ":".join((f"{paths.venv}/bin", f"{paths.llvm}/bin", paths.clang_bin, *sim.path_dirs))
     ld = ":".join((paths.compat_lib, *sim.ld_dirs))

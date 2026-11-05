@@ -3,8 +3,8 @@
 This is the bridge that makes "the CCA is expressed in MLIR" real: the deterministic analyzers produce
 a ``CCA`` dataclass (from asm decode / flat-graph inspection), and ``to_mlir`` emits it as a ``cca.kernel``
 MLIR artifact; ``from_mlir`` parses it back. All analyzer facets, scope, tuple fields and provenance
-round-trip without losing unknown values. Lives on the analysis side (``kernels``) so the dialect (``xdsl_dialects.cca``) never depends on
-``kernels``. No LLM in this path — pure, deterministic (de)serialization.
+round-trip without losing unknown values. Lives on the analysis side (``kernels``) so the dialect
+(``xdsl_dialects.cca``) never depends on ``kernels``. No LLM in this path — pure, deterministic (de)serialization.
 """
 
 from __future__ import annotations
@@ -69,7 +69,11 @@ def _facet_classes() -> dict:
 
 
 def _json(value) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    def nested(item):
+        if dataclasses.is_dataclass(item) and not isinstance(item, type):
+            return dataclasses.asdict(item)
+        raise TypeError("CCA data requires declared dataclass or JSON values")
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False, default=nested)
 
 
 def _typed_value(value, hint):
@@ -85,6 +89,12 @@ def _typed_value(value, hint):
     if hint is type(None):
         if value is None:
             return None
+    elif isinstance(hint, type) and dataclasses.is_dataclass(hint):
+        if isinstance(value, hint):
+            value = dataclasses.asdict(value)
+        hints = typing.get_type_hints(hint)
+        if isinstance(value, dict) and set(value) == {f.name for f in dataclasses.fields(hint)}:
+            return hint(**{key: _typed_value(item, hints[key]) for key, item in value.items()})
     elif origin is tuple or hint is tuple:
         if isinstance(value, (list, tuple)):
             args = typing.get_args(hint)

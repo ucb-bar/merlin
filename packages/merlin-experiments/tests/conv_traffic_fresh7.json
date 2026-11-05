@@ -1,0 +1,430 @@
+{
+ "entries": [
+  {
+   "test_case": "CH_conv_pool_resnet50_model_c3h224w224k7s2n64_p3s2",
+   "cycles": 26710079,
+   "roofline_bound_cycles": 460992,
+   "bound_by": "compute",
+   "gap_ratio": 57.94,
+   "headroom_cycles": 26249087,
+   "evidence": "modeled: Spike timing model (provisional)",
+   "evidence_kind": "provisional_model",
+   "fence_overlap": {
+    "fences": 32936,
+    "output_tiles": 3360,
+    "count_kind": "executed",
+    "tiles_per_fence": 0.1,
+    "fence_per_tile": true,
+    "reading": "a full-device fence after every output tile (32936 fences, 0.1 tile/fence, executed): loads cannot overlap compute across tiles; the timing model spends 38.3% of cycles waiting on fences",
+    "dynamic": {
+     "basis": "timing model command census (executed commands)",
+     "fences": 32936,
+     "output_stores": 3360,
+     "loads": 415652
+    }
+   },
+   "capacity_use": {
+    "operand_reads": {
+     "device_read_bytes": 51278016,
+     "compulsory_bytes": 160192
+    }
+   }
+  },
+  {
+   "test_case": "ZA_conv_3x3x14x14x256x256x4_native_i8",
+   "cycles": 5742438,
+   "roofline_bound_cycles": 1806336,
+   "bound_by": "compute",
+   "gap_ratio": 3.18,
+   "headroom_cycles": 3936102,
+   "evidence": "modeled: Spike timing model (provisional)",
+   "evidence_kind": "provisional_model",
+   "fence_overlap": {
+    "fences": 17035,
+    "output_tiles": 896,
+    "count_kind": "executed",
+    "tiles_per_fence": 0.05,
+    "fence_per_tile": true,
+    "reading": "a full-device fence after every output tile (17035 fences, 0.05 tile/fence, executed): loads cannot overlap compute across tiles; the timing model spends 74.5% of cycles waiting on fences",
+    "dynamic": {
+     "basis": "timing model command census (executed commands)",
+     "fences": 17035,
+     "output_stores": 896,
+     "loads": 27392
+    }
+   },
+   "capacity_use": {
+    "operand_reads": {
+     "device_read_bytes": 6066176,
+     "compulsory_bytes": 852992
+    }
+   }
+  },
+  {
+   "test_case": "ZA_conv_3x3x28x28x128x128x4_native_i8",
+   "cycles": 5269539,
+   "roofline_bound_cycles": 1806336,
+   "bound_by": "compute",
+   "gap_ratio": 2.92,
+   "headroom_cycles": 3463203,
+   "evidence": "modeled: Spike timing model (provisional)",
+   "evidence_kind": "provisional_model",
+   "fence_overlap": {
+    "fences": 17926,
+    "output_tiles": 1792,
+    "count_kind": "executed",
+    "tiles_per_fence": 0.1,
+    "fence_per_tile": true,
+    "reading": "a full-device fence after every output tile (17926 fences, 0.1 tile/fence, executed): loads cannot overlap compute across tiles; the timing model spends 84.0% of cycles waiting on fences",
+    "dynamic": {
+     "basis": "timing model command census (executed commands)",
+     "fences": 17926,
+     "output_stores": 1792,
+     "loads": 18496
+    }
+   },
+   "capacity_use": {
+    "operand_reads": {
+     "device_read_bytes": 3874816,
+     "compulsory_bytes": 608768
+    }
+   }
+  }
+ ],
+ "mechanisms": [
+  {
+   "id": "strided_tile_loads",
+   "status": "supported",
+   "requirements": {
+    "memory.explicit_dma": "supported",
+    "memory.strided_local_rows": "supported",
+    "compiler.api:merlin.compile.scheduling.tile_load_coalescing": "supported"
+   },
+   "mechanism": "Coalesce contiguous columns into strided local tiles",
+   "api": "merlin.compile.scheduling.tile_load_coalescing",
+   "symbol": "TileLoadCoalescing",
+   "family": "movement",
+   "legality": "Declared local stride and load geometry",
+   "evidence": "Decoded extents, stride and local overlap checks",
+   "implementation_status": "existing_generic_mechanism_target_realization_conditional",
+   "adapter_requirements": "Target encoding/capability binding required",
+   "registry_metadata": "unknown until supplied by the concrete registered PassSpec; requires, produces, invalidates and ir_level are not inferred from imports"
+  },
+  {
+   "id": "convolution_compute_epochs",
+   "status": "unknown",
+   "requirements": {
+    "workload.convolution": "unknown",
+    "memory.scratchpad": "supported",
+    "memory.accumulator": "supported",
+    "compiler.api:merlin.compile.scheduling.convolution_exploration": "supported"
+   },
+   "mechanism": "Group convolution computes into epochs that drain the device only at epoch boundaries and stores instead of after every compute",
+   "api": "merlin.compile.scheduling.convolution_exploration",
+   "symbol": "convolution_pass_space",
+   "family": "synchronization",
+   "legality": "A counted convolution whose dispatch orders a load before the compute that reads its rows, a later write after the compute or readout that read them, and accumulator results before their readout, each taken from RTL command-ordering facts; any flag without such a fact keeps its drain",
+   "evidence": "Fences per compute and commands before and after, completion-order verdict with zero hazard pairs, exact outputs and cycles on the same cases",
+   "implementation_status": "existing_generic_mechanism_target_realization_conditional",
+   "adapter_requirements": "Map every ConvolutionComputeEpochLaw and ConvolutionLoadIssueLaw flag to an ordering fact or UNKNOWN (heavy-pass-recipes conv_epoch_recipe.py prints the table), route complete() to a real full drain, and run the completion-order check on the emitted stream",
+   "registry_metadata": "unknown until supplied by the concrete registered PassSpec; requires, produces, invalidates and ir_level are not inferred from imports"
+  },
+  {
+   "id": "convolution_readout_epochs",
+   "status": "unknown",
+   "requirements": {
+    "workload.convolution": "unknown",
+    "memory.scratchpad": "supported",
+    "memory.accumulator": "supported",
+    "compiler.api:merlin.compile.scheduling.convolution_exploration": "supported"
+   },
+   "mechanism": "Order a convolution final producer and original readouts by selected dependencies, retaining a full drain at each private column-block boundary",
+   "api": "merlin.compile.scheduling.convolution_exploration",
+   "symbol": "emit_convolution_schedule",
+   "family": "synchronization",
+   "legality": "Counted convolution with issued compute epochs and disjoint original output/ACC intervals; separate selected ACC RAW/result visibility, ordered store snapshots and finite queue progress, private ownership and real final completion",
+   "evidence": "Actual consumer receipt and emitted source/operand/store/final-drain sequence, all original outputs, complete-call same-domain cycles and modeled source activity; source calls and drain counts do not establish overlap or speedup",
+   "implementation_status": "existing_generic_mechanism_target_realization_conditional",
+   "adapter_requirements": "Bind every ConvolutionReadoutEpochLaw premise to selected source or UNKNOWN, distinguish finite pending store slots from issued work, and explicitly pass readout_law. conv_epoch_recipe.emit_checked_readout_epoch verifies actual consumer source/schedule/law/final-drain receipt; a default call or driver-local option is not application. Checked dense result objects are not convolution effect adapters.",
+   "registry_metadata": "unknown until supplied by the concrete registered PassSpec; requires, produces, invalidates and ir_level are not inferred from imports"
+  },
+  {
+   "id": "array_weight_retention",
+   "status": "supported",
+   "requirements": {
+    "compute.systolic": "supported",
+    "memory.scratchpad": "supported",
+    "memory.resident_operands": "supported",
+    "compiler.api:merlin.compile.scheduling.dense_array_retention": "supported"
+   },
+   "mechanism": "Retain the array-resident weight operand across consecutive output tiles that reuse it",
+   "api": "merlin.compile.scheduling.dense_array_retention",
+   "symbol": "propose_dense_array_retention",
+   "family": "storage",
+   "legality": "Pure K,N,M paired run with invariant RHS identity, depth and width and continued scratch residency",
+   "evidence": "Weight preload count, array-load cycles and exact outputs",
+   "implementation_status": "existing_generic_mechanism_target_realization_conditional",
+   "adapter_requirements": "Target adapter declares array preload persistence; fresh captures and output descriptors stay separate",
+   "registry_metadata": "unknown until supplied by the concrete registered PassSpec; requires, produces, invalidates and ir_level are not inferred from imports"
+  }
+ ],
+ "declarations": [
+  {
+   "name": "CH_conv_pool_resnet50_model_c3h224w224k7s2n64_p3s2",
+   "kind": "model_slice",
+   "label": "public",
+   "semantic": {
+    "semantic_family": "contraction",
+    "generalization_axis": "composition",
+    "must_accelerate": true,
+    "eligible": "auto",
+    "composed_families": [
+     "reduction"
+    ]
+   },
+   "inputs": [
+    {
+     "name": "W",
+     "role": "weight",
+     "shape": [
+      147,
+      64
+     ],
+     "dtype": "i8"
+    },
+    {
+     "name": "IFM",
+     "role": "input",
+     "shape": [
+      1,
+      224,
+      224,
+      3
+     ],
+     "dtype": "i8"
+    },
+    {
+     "name": "B",
+     "role": "bias",
+     "shape": [
+      64
+     ],
+     "dtype": "i32"
+    }
+   ],
+   "operation": {
+    "op": "conv2d",
+    "attributes": {
+     "ifm": "IFM",
+     "weight": "W",
+     "out": "Y0",
+     "ci": 3,
+     "kh": 7,
+     "kw": 7,
+     "stride": [
+      2,
+      2
+     ],
+     "padding": [
+      3,
+      3,
+      3,
+      3
+     ],
+     "dilation": [
+      1,
+      1
+     ],
+     "layout": "nhwc",
+     "epilogue": [
+      "bias_add",
+      "acc_scale",
+      "relu",
+      "maxpool"
+     ],
+     "output_dtype": "i8",
+     "semantic": "conv2d",
+     "pool_in_dims": [
+      112,
+      112
+     ],
+     "pool_size": [
+      3,
+      3
+     ],
+     "pool_stride": [
+      2,
+      2
+     ],
+     "pool_padding": [
+      1,
+      1,
+      1,
+      1
+     ],
+     "pool_pad_value": -128,
+     "bias": "B",
+     "acc_scale": 0.25
+    }
+   }
+  },
+  {
+   "name": "ZA_conv_3x3x14x14x256x256x4_native_i8",
+   "kind": "layer",
+   "label": "public",
+   "semantic": {
+    "semantic_family": "contraction",
+    "generalization_axis": "shape",
+    "must_accelerate": true,
+    "eligible": "auto"
+   },
+   "inputs": [
+    {
+     "name": "W",
+     "role": "weight",
+     "shape": [
+      2304,
+      256
+     ],
+     "dtype": "i8"
+    },
+    {
+     "name": "IFM",
+     "role": "input",
+     "shape": [
+      4,
+      16,
+      16,
+      256
+     ],
+     "dtype": "i8"
+    },
+    {
+     "name": "B",
+     "role": "bias",
+     "shape": [
+      256
+     ],
+     "dtype": "i32"
+    }
+   ],
+   "operation": {
+    "op": "conv2d",
+    "attributes": {
+     "ifm": "IFM",
+     "weight": "W",
+     "out": "Y0",
+     "ci": 256,
+     "kh": 3,
+     "kw": 3,
+     "stride": [
+      1,
+      1
+     ],
+     "padding": [
+      0,
+      0,
+      0,
+      0
+     ],
+     "dilation": [
+      1,
+      1
+     ],
+     "layout": "nhwc",
+     "epilogue": [
+      "bias_add"
+     ],
+     "output_dtype": "i8",
+     "semantic": "conv2d",
+     "kernel": [
+      3,
+      3,
+      256,
+      256
+     ],
+     "bias": "B"
+    }
+   }
+  },
+  {
+   "name": "ZA_conv_3x3x28x28x128x128x4_native_i8",
+   "kind": "layer",
+   "label": "public",
+   "semantic": {
+    "semantic_family": "contraction",
+    "generalization_axis": "shape",
+    "must_accelerate": true,
+    "eligible": "auto"
+   },
+   "inputs": [
+    {
+     "name": "W",
+     "role": "weight",
+     "shape": [
+      1152,
+      128
+     ],
+     "dtype": "i8"
+    },
+    {
+     "name": "IFM",
+     "role": "input",
+     "shape": [
+      4,
+      30,
+      30,
+      128
+     ],
+     "dtype": "i8"
+    },
+    {
+     "name": "B",
+     "role": "bias",
+     "shape": [
+      128
+     ],
+     "dtype": "i32"
+    }
+   ],
+   "operation": {
+    "op": "conv2d",
+    "attributes": {
+     "ifm": "IFM",
+     "weight": "W",
+     "out": "Y0",
+     "ci": 128,
+     "kh": 3,
+     "kw": 3,
+     "stride": [
+      1,
+      1
+     ],
+     "padding": [
+      0,
+      0,
+      0,
+      0
+     ],
+     "dilation": [
+      1,
+      1
+     ],
+     "layout": "nhwc",
+     "epilogue": [
+      "bias_add"
+     ],
+     "output_dtype": "i8",
+     "semantic": "conv2d",
+     "kernel": [
+      3,
+      3,
+      128,
+      128
+     ],
+     "bias": "B"
+    }
+   }
+  }
+ ]
+}

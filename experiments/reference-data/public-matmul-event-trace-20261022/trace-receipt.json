@@ -1,0 +1,30 @@
+{
+  "original_sha256": "7ab8e5f97f2d7fddd0dd2938863059e7e23399dc710d2e817783dbc4168727bb",
+  "projection": "historical path roles only; raw byte hash retained",
+  "record": {
+    "diagnostic_driver": {
+      "path": "${TASK}/.tmp/event-trace-v1/run.py",
+      "sha256": "6b8dc393d382e960dfb8c1b0ac9ea40b8edc56cbaa1403f21acc3a8e4c4c7c72"
+    },
+    "no_physical_runs": true,
+    "observation": {
+      "path": "${TASK}/.tmp/event-trace-v1/observed/receipt.json",
+      "sha256": "bede08ab460aa3124739e52e7ec0dac9fd7566dd8b858cc68178efdaa947f9e5"
+    },
+    "runtime": {
+      "path": "${TASK}/merlin/out/build/modeled-event-observer-v1/runtime.json",
+      "sha256": "5638b628ea91dcb060e3f09f876647880ca81d7f507edde356aea80a3d30b14d"
+    },
+    "summary": {
+      "events": 210,
+      "execution_completed": true,
+      "summary": true,
+      "truncated": false
+    },
+    "trace": {
+      "path": "${TASK}/.tmp/event-trace-v1/observed/workspace/events.jsonl",
+      "sha256": "a827f96a2f632b0785bf971568f0d01d12f14cf972236d2558d160726526e74b"
+    },
+    "unchanged_estimate": 807
+  }
+}

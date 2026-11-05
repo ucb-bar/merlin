@@ -1,0 +1,2282 @@
+{
+ "schema": "merlin.test_fixture.codex_multi_agent_capture.v1",
+ "provenance": {
+  "cli_version": "codex-cli 0.162.0",
+  "model": "gpt-6.1-sol",
+  "reasoning_effort": "low",
+  "captured_at": "2026-10-17T15:33:59Z",
+  "config": {
+   "features.multi_agent": true,
+   "agents.enabled": true,
+   "agents.max_concurrent_threads_per_session": 2
+  },
+  "invocation": "codex exec --json --strict-config --sandbox workspace-write -c approval_policy=never -",
+  "prompt": "First run `printenv CODEX_THREAD_ID` yourself. Then spawn exactly two sub-agents in parallel. Sub-agent one runs `printenv CODEX_THREAD_ID` and then creates file one.txt containing alpha with apply_patch. Sub-agent two runs `printenv CODEX_THREAD_ID` and then creates file two.txt containing beta with apply_patch. Each replies with only the id it printed. Wait for both, then reply with the three ids, one per line. Do no other work.\n",
+  "sanitized": "account identifiers, base instructions, encrypted content, rate limits, git metadata and message bodies removed; the workspace path replaced by /fixture/workspace; ids, ordinals, timestamps, usage and item fields kept"
+ },
+ "exec_stream": [
+  {
+   "type": "thread.started",
+   "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926"
+  },
+  {
+   "type": "turn.started"
+  },
+  {
+   "type": "item.completed",
+   "item": {
+    "id": "item_0",
+    "type": "agent_message",
+    "text": "I\u2019ll print the parent ID, then run the two sub-agents in parallel and wait for their IDs.\n"
+   }
+  },
+  {
+   "type": "item.started",
+   "item": {
+    "id": "item_1",
+    "type": "command_execution",
+    "command": "/bin/bash -lc 'printenv CODEX_THREAD_ID'",
+    "aggregated_output": "",
+    "exit_code": null,
+    "status": "in_progress"
+   }
+  },
+  {
+   "type": "item.completed",
+   "item": {
+    "id": "item_1",
+    "type": "command_execution",
+    "command": "/bin/bash -lc 'printenv CODEX_THREAD_ID'",
+    "aggregated_output": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926\n",
+    "exit_code": 0,
+    "status": "completed"
+   }
+  },
+  {
+   "type": "item.started",
+   "item": {
+    "id": "item_2",
+    "type": "collab_tool_call",
+    "tool": "wait",
+    "sender_thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+    "receiver_thread_ids": [],
+    "prompt": null,
+    "agents_states": {},
+    "status": "in_progress"
+   }
+  },
+  {
+   "type": "item.completed",
+   "item": {
+    "id": "item_2",
+    "type": "collab_tool_call",
+    "tool": "wait",
+    "sender_thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+    "receiver_thread_ids": [],
+    "prompt": null,
+    "agents_states": {},
+    "status": "completed"
+   }
+  },
+  {
+   "type": "item.started",
+   "item": {
+    "id": "item_3",
+    "type": "collab_tool_call",
+    "tool": "wait",
+    "sender_thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+    "receiver_thread_ids": [],
+    "prompt": null,
+    "agents_states": {},
+    "status": "in_progress"
+   }
+  },
+  {
+   "type": "item.completed",
+   "item": {
+    "id": "item_3",
+    "type": "collab_tool_call",
+    "tool": "wait",
+    "sender_thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+    "receiver_thread_ids": [],
+    "prompt": null,
+    "agents_states": {},
+    "status": "completed"
+   }
+  },
+  {
+   "type": "item.completed",
+   "item": {
+    "id": "item_4",
+    "type": "agent_message",
+    "text": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926\n01a14a7f-b0d1-7121-b977-83225f4fba52\n01a14a7f-bb58-7853-80bb-49b375f616ec"
+   }
+  },
+  {
+   "type": "turn.completed",
+   "usage": {
+    "input_tokens": 90231,
+    "cached_input_tokens": 86272,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 297,
+    "reasoning_output_tokens": 0
+   }
+  }
+ ],
+ "rollouts": {
+  "2026/10/17/rollout-2026-10-17T15-33-59-01a14a7f-9a32-7d50-9a5f-e1c96b57a926.jsonl": [
+   {
+    "timestamp": "2026-10-17T15:33:59.423Z",
+    "ordinal": 0,
+    "type": "session_meta",
+    "payload": {
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "timestamp": "2026-10-17T15:33:59.404Z",
+     "cwd": "/fixture/workspace",
+     "originator": "codex_exec",
+     "cli_version": "0.162.0",
+     "source": "exec",
+     "thread_source": "user",
+     "model_provider": "openai",
+     "history_mode": "paginated"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:33:59.423Z",
+    "ordinal": 1,
+    "type": "event_msg",
+    "payload": {
+     "type": "task_started",
+     "turn_attribution": {
+      "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+      "turn_trigger": "exec",
+      "parent_turn_id": null,
+      "initiating_agent_path": null,
+      "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32"
+     },
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "started_at": 1792251239,
+     "model_context_window": 475000,
+     "collaboration_mode_kind": "default"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:00.635Z",
+    "ordinal": 2,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:00.635Z",
+    "ordinal": 3,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:00.635Z",
+    "ordinal": 4,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:00.636Z",
+    "ordinal": 5,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:00.637Z",
+    "ordinal": 6,
+    "type": "world_state",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:00.637Z",
+    "ordinal": 7,
+    "type": "turn_context",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:00.639Z",
+    "ordinal": 8,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:00.640Z",
+    "ordinal": 9,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "item": {
+      "type": "UserMessage",
+      "id": "01a14a7f-a0bf-7a33-9843-35549e10b561",
+      "content": [
+       {
+        "type": "text",
+        "text": "First run `printenv CODEX_THREAD_ID` yourself. Then spawn exactly two sub-agents in parallel. Sub-agent one runs `printenv CODEX_THREAD_ID` and then creates file one.txt containing alpha with apply_patch. Sub-agent two runs `printenv CODEX_THREAD_ID` and then creates file two.txt containing beta with apply_patch. Each replies with only the id it printed. Wait for both, then reply with the three ids, one per line. Do no other work.\n",
+        "text_elements": []
+       }
+      ]
+     },
+     "started_at_ms": 1792251240640,
+     "completed_at_ms": 1792251240640
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:02.517Z",
+    "ordinal": 10,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "item": {
+      "type": "AgentMessage",
+      "id": "msg_0525c0fc6b3ab0ea016ad39569bd8c81969a4fc5dabe199391",
+      "content": [
+       {
+        "type": "Text",
+        "text": "I\u2019ll print the parent ID, then run the two sub-agents in parallel and wait for their IDs.\n"
+       }
+      ],
+      "phase": "commentary"
+     },
+     "started_at_ms": 1792251241805,
+     "completed_at_ms": 1792251242517
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:02.518Z",
+    "ordinal": 11,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "assistant",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:02.798Z",
+    "ordinal": 12,
+    "type": "response_item",
+    "payload": {
+     "type": "custom_tool_call",
+     "id": "ctc_0525c0fc6b3ab0ea016ad3956a69ac8196910530e37fe5141e",
+     "status": "completed",
+     "call_id": "call_28c9fb9b46ac4075b0bff2c46d854fae",
+     "name": "exec",
+     "input": "text(await tools.exec_command({cmd:\"printenv CODEX_THREAD_ID\",max_output_tokens:1000}));\n"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:02.862Z",
+    "ordinal": 13,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "item": {
+      "type": "CommandExecution",
+      "id": "exec-bd1671bf-8397-4911-9bed-7c734dacd863",
+      "process_id": "83137",
+      "command": [
+       "/bin/bash",
+       "-lc",
+       "printenv CODEX_THREAD_ID"
+      ],
+      "cwd": "file:///fixture/workspace",
+      "parsed_cmd": [
+       {
+        "type": "unknown",
+        "cmd": "printenv CODEX_THREAD_ID"
+       }
+      ],
+      "source": "unified_exec_startup",
+      "status": "completed",
+      "aggregated_output": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926\n",
+      "exit_code": 0,
+      "duration": {
+       "secs": 0,
+       "nanos": 3640
+      }
+     },
+     "started_at_ms": 1792251242861,
+     "completed_at_ms": 1792251242861
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:02.866Z",
+    "ordinal": 14,
+    "type": "token_usage_record",
+    "payload": {
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "response_id": "resp_0525c0fc6b3ab0ea016ad39568ccbc8196aaffaf1b8f3f5b96",
+     "usage": {
+      "input_tokens": 14775,
+      "cached_input_tokens": 12288,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 61,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 14836
+     },
+     "turn_token_usage": {
+      "input_tokens": 14775,
+      "cached_input_tokens": 12288,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 61,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 14836
+     },
+     "thread_token_usage": {
+      "input_tokens": 14775,
+      "cached_input_tokens": 12288,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 61,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 14836
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:02.867Z",
+    "ordinal": 15,
+    "type": "response_item",
+    "payload": {
+     "type": "custom_tool_call_output",
+     "id": "ctco_01a14a7f-a973-7281-88e5-82e4830805aa",
+     "call_id": "call_28c9fb9b46ac4075b0bff2c46d854fae",
+     "output": [
+      {
+       "type": "input_text",
+       "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"
+      },
+      {
+       "type": "input_text",
+       "text": "{\"chunk_id\":\"43bef8\",\"wall_time_seconds\":0.00000364,\"exit_code\":0,\"original_token_count\":10,\"output\":\"01a14a7f-9a32-7d50-9a5f-e1c96b57a926\\n\"}"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:02.867Z",
+    "ordinal": 16,
+    "type": "event_msg",
+    "payload": {
+     "type": "token_count",
+     "info": {
+      "total_token_usage": {
+       "input_tokens": 14775,
+       "cached_input_tokens": 12288,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 61,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 14836
+      },
+      "last_token_usage": {
+       "input_tokens": 14775,
+       "cached_input_tokens": 12288,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 61,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 14836
+      },
+      "model_context_window": 475000
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.749Z",
+    "ordinal": 17,
+    "type": "response_item",
+    "payload": {
+     "type": "function_call",
+     "name": "spawn_agent",
+     "namespace": "collaboration",
+     "call_id": "call_5e545250eb7c4500baa1efd785205ee6",
+     "arguments": "{\"task_name\": \"one\", \"message\": \"[encrypted message omitted]\"}"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.763Z",
+    "ordinal": 18,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "item": {
+      "type": "SubAgentActivity",
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "low",
+      "id": "call_5e545250eb7c4500baa1efd785205ee6",
+      "kind": "started",
+      "agent_thread_id": "01a14a7f-b0d1-7121-b977-83225f4fba52",
+      "agent_path": "/root/one"
+     },
+     "started_at_ms": 1792251244763,
+     "completed_at_ms": 1792251244763
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.800Z",
+    "ordinal": 19,
+    "type": "token_usage_record",
+    "payload": {
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "response_id": "resp_0525c0fc6b3ab0ea016ad3956b24b081969190dccf82c0de77",
+     "usage": {
+      "input_tokens": 14919,
+      "cached_input_tokens": 14592,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 58,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 14977
+     },
+     "turn_token_usage": {
+      "input_tokens": 29694,
+      "cached_input_tokens": 26880,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 119,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 29813
+     },
+     "thread_token_usage": {
+      "input_tokens": 29694,
+      "cached_input_tokens": 26880,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 119,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 29813
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.801Z",
+    "ordinal": 20,
+    "type": "response_item",
+    "payload": {
+     "type": "function_call_output",
+     "id": "fco_01a14a7f-b101-7740-8028-38bb96a161c8",
+     "call_id": "call_5e545250eb7c4500baa1efd785205ee6",
+     "output": "{\"task_name\":\"/root/one\"}"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.801Z",
+    "ordinal": 21,
+    "type": "event_msg",
+    "payload": {
+     "type": "token_count",
+     "info": {
+      "total_token_usage": {
+       "input_tokens": 29694,
+       "cached_input_tokens": 26880,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 119,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 29813
+      },
+      "last_token_usage": {
+       "input_tokens": 14919,
+       "cached_input_tokens": 14592,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 58,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 14977
+      },
+      "model_context_window": 475000
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.805Z",
+    "ordinal": 22,
+    "type": "world_state",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.444Z",
+    "ordinal": 23,
+    "type": "response_item",
+    "payload": {
+     "type": "function_call",
+     "name": "spawn_agent",
+     "namespace": "collaboration",
+     "call_id": "call_f8a09689e15742cea6a3ee595cfd2f1d",
+     "arguments": "{\"task_name\": \"two\", \"message\": \"[encrypted message omitted]\"}"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.458Z",
+    "ordinal": 24,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "item": {
+      "type": "SubAgentActivity",
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "low",
+      "id": "call_f8a09689e15742cea6a3ee595cfd2f1d",
+      "kind": "started",
+      "agent_thread_id": "01a14a7f-bb58-7853-80bb-49b375f616ec",
+      "agent_path": "/root/two"
+     },
+     "started_at_ms": 1792251247458,
+     "completed_at_ms": 1792251247458
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.495Z",
+    "ordinal": 25,
+    "type": "token_usage_record",
+    "payload": {
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "response_id": "resp_0525c0fc6b3ab0ea016ad3956d4c308196a5d1639010f8165b",
+     "usage": {
+      "input_tokens": 14998,
+      "cached_input_tokens": 14720,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 58,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 15056
+     },
+     "turn_token_usage": {
+      "input_tokens": 44692,
+      "cached_input_tokens": 41600,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 177,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 44869
+     },
+     "thread_token_usage": {
+      "input_tokens": 44692,
+      "cached_input_tokens": 41600,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 177,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 44869
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.496Z",
+    "ordinal": 26,
+    "type": "response_item",
+    "payload": {
+     "type": "function_call_output",
+     "id": "fco_01a14a7f-bb88-7173-b1fd-86015e21d1e1",
+     "call_id": "call_f8a09689e15742cea6a3ee595cfd2f1d",
+     "output": "{\"task_name\":\"/root/two\"}"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.496Z",
+    "ordinal": 27,
+    "type": "event_msg",
+    "payload": {
+     "type": "token_count",
+     "info": {
+      "total_token_usage": {
+       "input_tokens": 44692,
+       "cached_input_tokens": 41600,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 177,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 44869
+      },
+      "last_token_usage": {
+       "input_tokens": 14998,
+       "cached_input_tokens": 14720,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 58,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 15056
+      },
+      "model_context_window": 475000
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.500Z",
+    "ordinal": 28,
+    "type": "world_state",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:09.017Z",
+    "ordinal": 29,
+    "type": "response_item",
+    "payload": {
+     "type": "function_call",
+     "name": "wait_agent",
+     "namespace": "collaboration",
+     "call_id": "call_bedb53f482574ee9aa6baca66aa8a0dd",
+     "arguments": "{\"timeout_ms\": 10000}"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:09.117Z",
+    "ordinal": 30,
+    "type": "token_usage_record",
+    "payload": {
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "response_id": "resp_0525c0fc6b3ab0ea016ad3956fcc9881969de48ecab13f37a6",
+     "usage": {
+      "input_tokens": 15077,
+      "cached_input_tokens": 14848,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 21,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 15098
+     },
+     "turn_token_usage": {
+      "input_tokens": 59769,
+      "cached_input_tokens": 56448,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 198,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 59967
+     },
+     "thread_token_usage": {
+      "input_tokens": 59769,
+      "cached_input_tokens": 56448,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 198,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 59967
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.991Z",
+    "ordinal": 31,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "item": {
+      "type": "SubAgentActivity",
+      "model": null,
+      "reasoning_effort": null,
+      "id": "subagent-completed-01a14a7f-b0db-7c73-a239-09b201a3090b",
+      "kind": "completed",
+      "agent_thread_id": "01a14a7f-b0d1-7121-b977-83225f4fba52",
+      "agent_path": "/root/one"
+     },
+     "started_at_ms": 1792251250991,
+     "completed_at_ms": 1792251250991
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.991Z",
+    "ordinal": 32,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "item": {
+      "type": "CollabAgentToolCall",
+      "id": "call_bedb53f482574ee9aa6baca66aa8a0dd",
+      "tool": "wait",
+      "status": "completed",
+      "sender_thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+      "receiver_thread_ids": [],
+      "receiver_agents": [],
+      "agents_states": {}
+     },
+     "started_at_ms": 1792251249019,
+     "completed_at_ms": 1792251250991
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.992Z",
+    "ordinal": 33,
+    "type": "response_item",
+    "payload": {
+     "type": "function_call_output",
+     "id": "fco_01a14a7f-c930-7b50-8073-cb2111fa3382",
+     "call_id": "call_bedb53f482574ee9aa6baca66aa8a0dd",
+     "output": "{\"message\":\"Wait completed.\",\"timed_out\":false}"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.993Z",
+    "ordinal": 34,
+    "type": "event_msg",
+    "payload": {
+     "type": "token_count",
+     "info": {
+      "total_token_usage": {
+       "input_tokens": 59769,
+       "cached_input_tokens": 56448,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 198,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 59967
+      },
+      "last_token_usage": {
+       "input_tokens": 15077,
+       "cached_input_tokens": 14848,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 21,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 15098
+      },
+      "model_context_window": 475000
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.993Z",
+    "ordinal": 35,
+    "type": "inter_agent_communication_metadata",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.993Z",
+    "ordinal": 36,
+    "type": "response_item",
+    "payload": {
+     "type": "agent_message",
+     "author": "/root/one",
+     "recipient": "/root",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:12.276Z",
+    "ordinal": 37,
+    "type": "response_item",
+    "payload": {
+     "type": "function_call",
+     "name": "wait_agent",
+     "namespace": "collaboration",
+     "call_id": "call_d9c652da15a14f4b97b16c592d136c81",
+     "arguments": "{\"timeout_ms\": 10000}"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:12.340Z",
+    "ordinal": 38,
+    "type": "token_usage_record",
+    "payload": {
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "response_id": "resp_0525c0fc6b3ab0ea016ad395733c108196951c8083bf3746c6",
+     "usage": {
+      "input_tokens": 15180,
+      "cached_input_tokens": 14848,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 21,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 15201
+     },
+     "turn_token_usage": {
+      "input_tokens": 74949,
+      "cached_input_tokens": 71296,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 219,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 75168
+     },
+     "thread_token_usage": {
+      "input_tokens": 74949,
+      "cached_input_tokens": 71296,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 219,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 75168
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:13.897Z",
+    "ordinal": 39,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "item": {
+      "type": "SubAgentActivity",
+      "model": null,
+      "reasoning_effort": null,
+      "id": "subagent-completed-01a14a7f-bb62-7820-bac5-2a5c14f7852d",
+      "kind": "completed",
+      "agent_thread_id": "01a14a7f-bb58-7853-80bb-49b375f616ec",
+      "agent_path": "/root/two"
+     },
+     "started_at_ms": 1792251253897,
+     "completed_at_ms": 1792251253897
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:13.897Z",
+    "ordinal": 40,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "item": {
+      "type": "CollabAgentToolCall",
+      "id": "call_d9c652da15a14f4b97b16c592d136c81",
+      "tool": "wait",
+      "status": "completed",
+      "sender_thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+      "receiver_thread_ids": [],
+      "receiver_agents": [],
+      "agents_states": {}
+     },
+     "started_at_ms": 1792251252277,
+     "completed_at_ms": 1792251253897
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:13.898Z",
+    "ordinal": 41,
+    "type": "response_item",
+    "payload": {
+     "type": "function_call_output",
+     "id": "fco_01a14a7f-d48a-7fb1-ab9f-64ad17a396a7",
+     "call_id": "call_d9c652da15a14f4b97b16c592d136c81",
+     "output": "{\"message\":\"Wait completed.\",\"timed_out\":false}"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:13.898Z",
+    "ordinal": 42,
+    "type": "event_msg",
+    "payload": {
+     "type": "token_count",
+     "info": {
+      "total_token_usage": {
+       "input_tokens": 74949,
+       "cached_input_tokens": 71296,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 219,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 75168
+      },
+      "last_token_usage": {
+       "input_tokens": 15180,
+       "cached_input_tokens": 14848,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 21,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 15201
+      },
+      "model_context_window": 475000
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:13.899Z",
+    "ordinal": 43,
+    "type": "inter_agent_communication_metadata",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:13.899Z",
+    "ordinal": 44,
+    "type": "response_item",
+    "payload": {
+     "type": "agent_message",
+     "author": "/root/two",
+     "recipient": "/root",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:16.015Z",
+    "ordinal": 45,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "item": {
+      "type": "AgentMessage",
+      "id": "msg_0525c0fc6b3ab0ea016ad39576e76081968f3a0e4a102b60f9",
+      "content": [
+       {
+        "type": "Text",
+        "text": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926\n01a14a7f-b0d1-7121-b977-83225f4fba52\n01a14a7f-bb58-7853-80bb-49b375f616ec"
+       }
+      ],
+      "phase": "final_answer"
+     },
+     "started_at_ms": 1792251254953,
+     "completed_at_ms": 1792251256015
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:16.016Z",
+    "ordinal": 46,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "assistant",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:16.019Z",
+    "ordinal": 47,
+    "type": "token_usage_record",
+    "payload": {
+     "thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "response_id": "resp_0525c0fc6b3ab0ea016ad39576128c8196bb4008a45cf20480",
+     "usage": {
+      "input_tokens": 15282,
+      "cached_input_tokens": 14976,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 78,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 15360
+     },
+     "turn_token_usage": {
+      "input_tokens": 90231,
+      "cached_input_tokens": 86272,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 297,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 90528
+     },
+     "thread_token_usage": {
+      "input_tokens": 90231,
+      "cached_input_tokens": 86272,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 297,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 90528
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:16.019Z",
+    "ordinal": 48,
+    "type": "event_msg",
+    "payload": {
+     "type": "token_count",
+     "info": {
+      "total_token_usage": {
+       "input_tokens": 90231,
+       "cached_input_tokens": 86272,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 297,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 90528
+      },
+      "last_token_usage": {
+       "input_tokens": 15282,
+       "cached_input_tokens": 14976,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 78,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 15360
+      },
+      "model_context_window": 475000
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:16.021Z",
+    "ordinal": 49,
+    "type": "event_msg",
+    "payload": {
+     "type": "task_complete",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "last_agent_message": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926\n01a14a7f-b0d1-7121-b977-83225f4fba52\n01a14a7f-bb58-7853-80bb-49b375f616ec",
+     "started_at": 1792251239,
+     "completed_at": 1792251256,
+     "duration_ms": 16611,
+     "time_to_first_token_ms": 2396
+    }
+   }
+  ],
+  "2026/10/17/rollout-2026-10-17T15-34-04-01a14a7f-b0d1-7121-b977-83225f4fba52.jsonl": [
+   {
+    "timestamp": "2026-10-17T15:34:04.758Z",
+    "ordinal": 0,
+    "type": "session_meta",
+    "payload": {
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "id": "01a14a7f-b0d1-7121-b977-83225f4fba52",
+     "forked_from_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "parent_thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "timestamp": "2026-10-17T15:34:04.756Z",
+     "cwd": "/fixture/workspace",
+     "originator": "codex_exec",
+     "cli_version": "0.162.0",
+     "source": {
+      "subagent": {
+       "thread_spawn": {
+        "parent_thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+        "depth": 1,
+        "agent_path": "/root/one",
+        "agent_nickname": "Avicenna",
+        "agent_role": null
+       }
+      }
+     },
+     "thread_source": "subagent",
+     "agent_nickname": "Avicenna",
+     "agent_path": "/root/one",
+     "model_provider": "openai",
+     "history_mode": "paginated",
+     "subagent_history_start_ordinal": 9,
+     "multi_agent_version": "v2"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.758Z",
+    "ordinal": 1,
+    "type": "session_meta",
+    "payload": {
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "timestamp": "2026-10-17T15:33:59.404Z",
+     "cwd": "/fixture/workspace",
+     "originator": "codex_exec",
+     "cli_version": "0.162.0",
+     "source": "exec",
+     "thread_source": "user",
+     "model_provider": "openai",
+     "history_mode": "paginated"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.758Z",
+    "ordinal": 2,
+    "type": "event_msg",
+    "payload": {
+     "type": "task_started",
+     "turn_attribution": {
+      "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+      "turn_trigger": "exec",
+      "parent_turn_id": null,
+      "initiating_agent_path": null,
+      "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32"
+     },
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "started_at": 1792251239,
+     "model_context_window": 475000,
+     "collaboration_mode_kind": "default"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.758Z",
+    "ordinal": 3,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.758Z",
+    "ordinal": 4,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.758Z",
+    "ordinal": 5,
+    "type": "world_state",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.758Z",
+    "ordinal": 6,
+    "type": "turn_context",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.758Z",
+    "ordinal": 7,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.758Z",
+    "ordinal": 8,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.761Z",
+    "ordinal": 9,
+    "type": "event_msg",
+    "payload": {
+     "type": "thread_settings_applied",
+     "thread_id": "01a14a7f-b0d1-7121-b977-83225f4fba52"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:04.765Z",
+    "ordinal": 10,
+    "type": "event_msg",
+    "payload": {
+     "type": "task_started",
+     "turn_attribution": {
+      "turn_id": "01a14a7f-b0db-7c73-a239-09b201a3090b",
+      "turn_trigger": "exec",
+      "parent_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+      "initiating_agent_path": "/root",
+      "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32"
+     },
+     "turn_id": "01a14a7f-b0db-7c73-a239-09b201a3090b",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "started_at": 1792251244,
+     "model_context_window": 475000,
+     "collaboration_mode_kind": "default"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:05.700Z",
+    "ordinal": 11,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:05.700Z",
+    "ordinal": 12,
+    "type": "world_state",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:05.701Z",
+    "ordinal": 13,
+    "type": "turn_context",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:05.703Z",
+    "ordinal": 14,
+    "type": "inter_agent_communication_metadata",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:05.703Z",
+    "ordinal": 15,
+    "type": "response_item",
+    "payload": {
+     "type": "agent_message",
+     "author": "/root",
+     "recipient": "/root/one",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.557Z",
+    "ordinal": 16,
+    "type": "response_item",
+    "payload": {
+     "type": "custom_tool_call",
+     "id": "ctc_09d219db92fa1285016ad3956f27208190a21f178665cc1990",
+     "status": "completed",
+     "call_id": "call_be0e008c486948e7ae776c222db8d3cd",
+     "name": "exec",
+     "input": "text(await tools.exec_command({cmd:\"printenv CODEX_THREAD_ID\",max_output_tokens:1000}));\n"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.607Z",
+    "ordinal": 17,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-b0d1-7121-b977-83225f4fba52",
+     "turn_id": "01a14a7f-b0db-7c73-a239-09b201a3090b",
+     "item": {
+      "type": "CommandExecution",
+      "id": "exec-76864c00-b594-48f7-be4c-9badbf9c5c77",
+      "process_id": "62194",
+      "command": [
+       "/bin/bash",
+       "-lc",
+       "printenv CODEX_THREAD_ID"
+      ],
+      "cwd": "file:///fixture/workspace",
+      "parsed_cmd": [
+       {
+        "type": "unknown",
+        "cmd": "printenv CODEX_THREAD_ID"
+       }
+      ],
+      "source": "unified_exec_startup",
+      "status": "completed",
+      "aggregated_output": "01a14a7f-b0d1-7121-b977-83225f4fba52\n",
+      "exit_code": 0,
+      "duration": {
+       "secs": 0,
+       "nanos": 3280
+      }
+     },
+     "started_at_ms": 1792251247607,
+     "completed_at_ms": 1792251247607
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.608Z",
+    "ordinal": 18,
+    "type": "token_usage_record",
+    "payload": {
+     "thread_id": "01a14a7f-b0d1-7121-b977-83225f4fba52",
+     "turn_id": "01a14a7f-b0db-7c73-a239-09b201a3090b",
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "response_id": "resp_09d219db92fa1285016ad3956ded2081908e8d818f4bc55eb6",
+     "usage": {
+      "input_tokens": 14615,
+      "cached_input_tokens": 12032,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 32,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 14647
+     },
+     "turn_token_usage": {
+      "input_tokens": 14615,
+      "cached_input_tokens": 12032,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 32,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 14647
+     },
+     "thread_token_usage": {
+      "input_tokens": 14615,
+      "cached_input_tokens": 12032,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 32,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 14647
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.609Z",
+    "ordinal": 19,
+    "type": "response_item",
+    "payload": {
+     "type": "custom_tool_call_output",
+     "id": "ctco_01a14a7f-bbf9-7ee1-9fcf-92a3cde1b9b5",
+     "call_id": "call_be0e008c486948e7ae776c222db8d3cd",
+     "output": [
+      {
+       "type": "input_text",
+       "text": "Script completed\nWall time 0.0 seconds\nOutput:\n"
+      },
+      {
+       "type": "input_text",
+       "text": "{\"chunk_id\":\"79965e\",\"wall_time_seconds\":0.00000328,\"exit_code\":0,\"original_token_count\":10,\"output\":\"01a14a7f-b0d1-7121-b977-83225f4fba52\\n\"}"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.609Z",
+    "ordinal": 20,
+    "type": "event_msg",
+    "payload": {
+     "type": "token_count",
+     "info": {
+      "total_token_usage": {
+       "input_tokens": 14615,
+       "cached_input_tokens": 12032,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 32,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 14647
+      },
+      "last_token_usage": {
+       "input_tokens": 14615,
+       "cached_input_tokens": 12032,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 32,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 14647
+      },
+      "model_context_window": 475000
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:09.233Z",
+    "ordinal": 21,
+    "type": "response_item",
+    "payload": {
+     "type": "custom_tool_call",
+     "id": "ctc_09d219db92fa1285016ad39570e8fc819080f25dc39fb1f103",
+     "status": "completed",
+     "call_id": "call_3ddbd86d2dcc4396826a9ff5aa8538e9",
+     "name": "exec",
+     "input": "text(await tools.apply_patch(\"*** Begin Patch\\n*** Add File: one.txt\\n+alpha\\n*** End Patch\"));\n"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:09.260Z",
+    "ordinal": 22,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-b0d1-7121-b977-83225f4fba52",
+     "turn_id": "01a14a7f-b0db-7c73-a239-09b201a3090b",
+     "item": {
+      "type": "FileChange",
+      "id": "exec-18724354-f219-4cd9-9d7a-a1777e480411",
+      "changes": {
+       "/fixture/workspace/one.txt": {
+        "type": "add",
+        "content": "alpha\n"
+       }
+      },
+      "status": "completed",
+      "stdout": "Success. Updated the following files:\nA one.txt\n",
+      "stderr": ""
+     },
+     "started_at_ms": 1792251249240,
+     "completed_at_ms": 1792251249260
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:09.267Z",
+    "ordinal": 23,
+    "type": "token_usage_record",
+    "payload": {
+     "thread_id": "01a14a7f-b0d1-7121-b977-83225f4fba52",
+     "turn_id": "01a14a7f-b0db-7c73-a239-09b201a3090b",
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "response_id": "resp_09d219db92fa1285016ad3956fd8e08190a4da67e953b14070",
+     "usage": {
+      "input_tokens": 14726,
+      "cached_input_tokens": 14464,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 33,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 14759
+     },
+     "turn_token_usage": {
+      "input_tokens": 29341,
+      "cached_input_tokens": 26496,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 65,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 29406
+     },
+     "thread_token_usage": {
+      "input_tokens": 29341,
+      "cached_input_tokens": 26496,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 65,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 29406
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:09.267Z",
+    "ordinal": 24,
+    "type": "response_item",
+    "payload": {
+     "type": "custom_tool_call_output",
+     "id": "ctco_01a14a7f-c273-7ca3-94d0-fadd134eed94",
+     "call_id": "call_3ddbd86d2dcc4396826a9ff5aa8538e9",
+     "output": [
+      {
+       "type": "input_text",
+       "text": "Script completed\nWall time 0.0 seconds\nOutput:\n"
+      },
+      {
+       "type": "input_text",
+       "text": "{}"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:09.267Z",
+    "ordinal": 25,
+    "type": "event_msg",
+    "payload": {
+     "type": "token_count",
+     "info": {
+      "total_token_usage": {
+       "input_tokens": 29341,
+       "cached_input_tokens": 26496,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 65,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 29406
+      },
+      "last_token_usage": {
+       "input_tokens": 14726,
+       "cached_input_tokens": 14464,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 33,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 14759
+      },
+      "model_context_window": 475000
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.984Z",
+    "ordinal": 26,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-b0d1-7121-b977-83225f4fba52",
+     "turn_id": "01a14a7f-b0db-7c73-a239-09b201a3090b",
+     "item": {
+      "type": "AgentMessage",
+      "id": "msg_09d219db92fa1285016ad3957273148190a58b353192a9cb5f",
+      "content": [
+       {
+        "type": "Text",
+        "text": "01a14a7f-b0d1-7121-b977-83225f4fba52"
+       }
+      ],
+      "phase": "final_answer"
+     },
+     "started_at_ms": 1792251250496,
+     "completed_at_ms": 1792251250984
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.985Z",
+    "ordinal": 27,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "assistant",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.988Z",
+    "ordinal": 28,
+    "type": "token_usage_record",
+    "payload": {
+     "thread_id": "01a14a7f-b0d1-7121-b977-83225f4fba52",
+     "turn_id": "01a14a7f-b0db-7c73-a239-09b201a3090b",
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "response_id": "resp_09d219db92fa1285016ad3957183f08190af125118008fd843",
+     "usage": {
+      "input_tokens": 14783,
+      "cached_input_tokens": 14592,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 27,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 14810
+     },
+     "turn_token_usage": {
+      "input_tokens": 44124,
+      "cached_input_tokens": 41088,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 92,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 44216
+     },
+     "thread_token_usage": {
+      "input_tokens": 44124,
+      "cached_input_tokens": 41088,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 92,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 44216
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.989Z",
+    "ordinal": 29,
+    "type": "event_msg",
+    "payload": {
+     "type": "token_count",
+     "info": {
+      "total_token_usage": {
+       "input_tokens": 44124,
+       "cached_input_tokens": 41088,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 92,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 44216
+      },
+      "last_token_usage": {
+       "input_tokens": 14783,
+       "cached_input_tokens": 14592,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 27,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 14810
+      },
+      "model_context_window": 475000
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.991Z",
+    "ordinal": 30,
+    "type": "event_msg",
+    "payload": {
+     "type": "task_complete",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "turn_id": "01a14a7f-b0db-7c73-a239-09b201a3090b",
+     "last_agent_message": "01a14a7f-b0d1-7121-b977-83225f4fba52",
+     "started_at": 1792251244,
+     "completed_at": 1792251250,
+     "duration_ms": 6226,
+     "time_to_first_token_ms": 2435
+    }
+   }
+  ],
+  "2026/10/17/rollout-2026-10-17T15-34-07-01a14a7f-bb58-7853-80bb-49b375f616ec.jsonl": [
+   {
+    "timestamp": "2026-10-17T15:34:07.453Z",
+    "ordinal": 0,
+    "type": "session_meta",
+    "payload": {
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "id": "01a14a7f-bb58-7853-80bb-49b375f616ec",
+     "forked_from_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "parent_thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "timestamp": "2026-10-17T15:34:07.451Z",
+     "cwd": "/fixture/workspace",
+     "originator": "codex_exec",
+     "cli_version": "0.162.0",
+     "source": {
+      "subagent": {
+       "thread_spawn": {
+        "parent_thread_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+        "depth": 1,
+        "agent_path": "/root/two",
+        "agent_nickname": "Gibbs",
+        "agent_role": null
+       }
+      }
+     },
+     "thread_source": "subagent",
+     "agent_nickname": "Gibbs",
+     "agent_path": "/root/two",
+     "model_provider": "openai",
+     "history_mode": "paginated",
+     "subagent_history_start_ordinal": 10,
+     "multi_agent_version": "v2"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.453Z",
+    "ordinal": 1,
+    "type": "session_meta",
+    "payload": {
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "timestamp": "2026-10-17T15:33:59.404Z",
+     "cwd": "/fixture/workspace",
+     "originator": "codex_exec",
+     "cli_version": "0.162.0",
+     "source": "exec",
+     "thread_source": "user",
+     "model_provider": "openai",
+     "history_mode": "paginated"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.453Z",
+    "ordinal": 2,
+    "type": "event_msg",
+    "payload": {
+     "type": "task_started",
+     "turn_attribution": {
+      "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+      "turn_trigger": "exec",
+      "parent_turn_id": null,
+      "initiating_agent_path": null,
+      "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32"
+     },
+     "turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "started_at": 1792251239,
+     "model_context_window": 475000,
+     "collaboration_mode_kind": "default"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.453Z",
+    "ordinal": 3,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.453Z",
+    "ordinal": 4,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.453Z",
+    "ordinal": 5,
+    "type": "world_state",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.453Z",
+    "ordinal": 6,
+    "type": "turn_context",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.453Z",
+    "ordinal": 7,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.453Z",
+    "ordinal": 8,
+    "type": "world_state",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.453Z",
+    "ordinal": 9,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.456Z",
+    "ordinal": 10,
+    "type": "event_msg",
+    "payload": {
+     "type": "thread_settings_applied",
+     "thread_id": "01a14a7f-bb58-7853-80bb-49b375f616ec"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:07.459Z",
+    "ordinal": 11,
+    "type": "event_msg",
+    "payload": {
+     "type": "task_started",
+     "turn_attribution": {
+      "turn_id": "01a14a7f-bb62-7820-bac5-2a5c14f7852d",
+      "turn_trigger": "exec",
+      "parent_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+      "initiating_agent_path": "/root",
+      "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32"
+     },
+     "turn_id": "01a14a7f-bb62-7820-bac5-2a5c14f7852d",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "started_at": 1792251247,
+     "model_context_window": 475000,
+     "collaboration_mode_kind": "default"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:08.342Z",
+    "ordinal": 12,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:08.343Z",
+    "ordinal": 13,
+    "type": "world_state",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:08.344Z",
+    "ordinal": 14,
+    "type": "turn_context",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:08.345Z",
+    "ordinal": 15,
+    "type": "inter_agent_communication_metadata",
+    "payload": {}
+   },
+   {
+    "timestamp": "2026-10-17T15:34:08.345Z",
+    "ordinal": 16,
+    "type": "response_item",
+    "payload": {
+     "type": "agent_message",
+     "author": "/root",
+     "recipient": "/root/two",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.055Z",
+    "ordinal": 17,
+    "type": "response_item",
+    "payload": {
+     "type": "custom_tool_call",
+     "id": "ctc_07c3954c26f55957016ad39571a4588190a28cd8b3ca903818",
+     "status": "completed",
+     "call_id": "call_3dbd521058f248cca46966054a01f327",
+     "name": "exec",
+     "input": "const r = await tools.exec_command({cmd:\"printenv CODEX_THREAD_ID\"}); text(r.output);\n"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.076Z",
+    "ordinal": 18,
+    "type": "token_usage_record",
+    "payload": {
+     "thread_id": "01a14a7f-bb58-7853-80bb-49b375f616ec",
+     "turn_id": "01a14a7f-bb62-7820-bac5-2a5c14f7852d",
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "response_id": "resp_07c3954c26f55957016ad395709c5c8190aae0ad0707c8f7c4",
+     "usage": {
+      "input_tokens": 14615,
+      "cached_input_tokens": 12032,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 32,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 14647
+     },
+     "turn_token_usage": {
+      "input_tokens": 14615,
+      "cached_input_tokens": 12032,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 32,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 14647
+     },
+     "thread_token_usage": {
+      "input_tokens": 14615,
+      "cached_input_tokens": 12032,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 32,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 14647
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.109Z",
+    "ordinal": 19,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-bb58-7853-80bb-49b375f616ec",
+     "turn_id": "01a14a7f-bb62-7820-bac5-2a5c14f7852d",
+     "item": {
+      "type": "CommandExecution",
+      "id": "exec-791f92aa-5793-4dda-be18-3fd682daa790",
+      "process_id": "99078",
+      "command": [
+       "/bin/bash",
+       "-lc",
+       "printenv CODEX_THREAD_ID"
+      ],
+      "cwd": "file:///fixture/workspace",
+      "parsed_cmd": [
+       {
+        "type": "unknown",
+        "cmd": "printenv CODEX_THREAD_ID"
+       }
+      ],
+      "source": "unified_exec_startup",
+      "status": "completed",
+      "aggregated_output": "01a14a7f-bb58-7853-80bb-49b375f616ec\n",
+      "exit_code": 0,
+      "duration": {
+       "secs": 0,
+       "nanos": 3190
+      }
+     },
+     "started_at_ms": 1792251250109,
+     "completed_at_ms": 1792251250109
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.111Z",
+    "ordinal": 20,
+    "type": "response_item",
+    "payload": {
+     "type": "custom_tool_call_output",
+     "id": "ctco_01a14a7f-c5bf-7f62-9d00-fa22f8e98302",
+     "call_id": "call_3dbd521058f248cca46966054a01f327",
+     "output": [
+      {
+       "type": "input_text",
+       "text": "Script completed\nWall time 0.0 seconds\nOutput:\n"
+      },
+      {
+       "type": "input_text",
+       "text": "01a14a7f-bb58-7853-80bb-49b375f616ec\n"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:10.111Z",
+    "ordinal": 21,
+    "type": "event_msg",
+    "payload": {
+     "type": "token_count",
+     "info": {
+      "total_token_usage": {
+       "input_tokens": 14615,
+       "cached_input_tokens": 12032,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 32,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 14647
+      },
+      "last_token_usage": {
+       "input_tokens": 14615,
+       "cached_input_tokens": 12032,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 32,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 14647
+      },
+      "model_context_window": 475000
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:12.273Z",
+    "ordinal": 22,
+    "type": "response_item",
+    "payload": {
+     "type": "custom_tool_call",
+     "id": "ctc_07c3954c26f55957016ad39573fb208190bbf754117b976377",
+     "status": "completed",
+     "call_id": "call_3837e1b722624625ab31bdc9239882bf",
+     "name": "exec",
+     "input": "text(await tools.apply_patch(\"*** Begin Patch\\n*** Add File: two.txt\\n+beta\\n*** End Patch\"));\n"
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:12.301Z",
+    "ordinal": 23,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-bb58-7853-80bb-49b375f616ec",
+     "turn_id": "01a14a7f-bb62-7820-bac5-2a5c14f7852d",
+     "item": {
+      "type": "FileChange",
+      "id": "exec-afdac355-442c-4933-8103-f919c756e17a",
+      "changes": {
+       "/fixture/workspace/two.txt": {
+        "type": "add",
+        "content": "beta\n"
+       }
+      },
+      "status": "completed",
+      "stdout": "Success. Updated the following files:\nA two.txt\n",
+      "stderr": ""
+     },
+     "started_at_ms": 1792251252282,
+     "completed_at_ms": 1792251252301
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:12.311Z",
+    "ordinal": 24,
+    "type": "token_usage_record",
+    "payload": {
+     "thread_id": "01a14a7f-bb58-7853-80bb-49b375f616ec",
+     "turn_id": "01a14a7f-bb62-7820-bac5-2a5c14f7852d",
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "response_id": "resp_07c3954c26f55957016ad395726f148190be91f9c91afb8f21",
+     "usage": {
+      "input_tokens": 14693,
+      "cached_input_tokens": 14464,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 33,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 14726
+     },
+     "turn_token_usage": {
+      "input_tokens": 29308,
+      "cached_input_tokens": 26496,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 65,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 29373
+     },
+     "thread_token_usage": {
+      "input_tokens": 29308,
+      "cached_input_tokens": 26496,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 65,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 29373
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:12.311Z",
+    "ordinal": 25,
+    "type": "response_item",
+    "payload": {
+     "type": "custom_tool_call_output",
+     "id": "ctco_01a14a7f-ce57-7602-a642-399a4844efec",
+     "call_id": "call_3837e1b722624625ab31bdc9239882bf",
+     "output": [
+      {
+       "type": "input_text",
+       "text": "Script completed\nWall time 0.0 seconds\nOutput:\n"
+      },
+      {
+       "type": "input_text",
+       "text": "{}"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:12.311Z",
+    "ordinal": 26,
+    "type": "event_msg",
+    "payload": {
+     "type": "token_count",
+     "info": {
+      "total_token_usage": {
+       "input_tokens": 29308,
+       "cached_input_tokens": 26496,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 65,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 29373
+      },
+      "last_token_usage": {
+       "input_tokens": 14693,
+       "cached_input_tokens": 14464,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 33,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 14726
+      },
+      "model_context_window": 475000
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:13.877Z",
+    "ordinal": 27,
+    "type": "event_msg",
+    "payload": {
+     "type": "item_completed",
+     "thread_id": "01a14a7f-bb58-7853-80bb-49b375f616ec",
+     "turn_id": "01a14a7f-bb62-7820-bac5-2a5c14f7852d",
+     "item": {
+      "type": "AgentMessage",
+      "id": "msg_07c3954c26f55957016ad39575775481908aa25c03d254829b",
+      "content": [
+       {
+        "type": "Text",
+        "text": "01a14a7f-bb58-7853-80bb-49b375f616ec"
+       }
+      ],
+      "phase": "final_answer"
+     },
+     "started_at_ms": 1792251253511,
+     "completed_at_ms": 1792251253877
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:13.878Z",
+    "ordinal": 28,
+    "type": "response_item",
+    "payload": {
+     "type": "message",
+     "role": "assistant",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "[omitted]"
+      }
+     ]
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:13.894Z",
+    "ordinal": 29,
+    "type": "token_usage_record",
+    "payload": {
+     "thread_id": "01a14a7f-bb58-7853-80bb-49b375f616ec",
+     "turn_id": "01a14a7f-bb62-7820-bac5-2a5c14f7852d",
+     "session_id": "01a14a7f-9a32-7d50-9a5f-e1c96b57a926",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "response_id": "resp_07c3954c26f55957016ad3957498e481908e85afdcd61bf735",
+     "usage": {
+      "input_tokens": 14750,
+      "cached_input_tokens": 12032,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 26,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 14776
+     },
+     "turn_token_usage": {
+      "input_tokens": 44058,
+      "cached_input_tokens": 38528,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 91,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 44149
+     },
+     "thread_token_usage": {
+      "input_tokens": 44058,
+      "cached_input_tokens": 38528,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 91,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 44149
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:13.895Z",
+    "ordinal": 30,
+    "type": "event_msg",
+    "payload": {
+     "type": "token_count",
+     "info": {
+      "total_token_usage": {
+       "input_tokens": 44058,
+       "cached_input_tokens": 38528,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 91,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 44149
+      },
+      "last_token_usage": {
+       "input_tokens": 14750,
+       "cached_input_tokens": 12032,
+       "cache_write_input_tokens": 0,
+       "output_tokens": 26,
+       "reasoning_output_tokens": 0,
+       "total_tokens": 14776
+      },
+      "model_context_window": 475000
+     }
+    }
+   },
+   {
+    "timestamp": "2026-10-17T15:34:13.897Z",
+    "ordinal": 31,
+    "type": "event_msg",
+    "payload": {
+     "type": "task_complete",
+     "root_turn_id": "01a14a7f-9bf0-7763-99ea-e2c81608cb32",
+     "turn_id": "01a14a7f-bb62-7820-bac5-2a5c14f7852d",
+     "last_agent_message": "01a14a7f-bb58-7853-80bb-49b375f616ec",
+     "started_at": 1792251247,
+     "completed_at": 1792251253,
+     "duration_ms": 6438,
+     "time_to_first_token_ms": 2226
+    }
+   }
+  ]
+ }
+}

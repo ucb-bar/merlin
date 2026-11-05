@@ -55,11 +55,29 @@ static inline int merlin_out_bin_memory_append(merlin_out_bin_memory *sink,
     return 0;
   }
   const unsigned char *source = (const unsigned char *)data;
+  const size_t used = sink->used;
+  unsigned char *destination = sink->arena + used;
   /* A source alias into the destination would need memmove semantics. Refuse
    * it instead: callers stage model values separately from this arena. */
   if (length) {
     uintptr_t source_address = (uintptr_t)source;
-    uintptr_t destination_address = (uintptr_t)(sink->arena + sink->used);
+    uintptr_t destination_address = (uintptr_t)destination;
+    uintptr_t control_address = (uintptr_t)sink;
+    uintptr_t publication_address = (uintptr_t)sink->published_used;
+    /* Hoisted cursor/state must remain stable while copying this span. Refuse
+     * storage that would overwrite the sink or its publication word. */
+    if ((destination_address <= control_address &&
+         control_address - destination_address < length) ||
+        (control_address < destination_address &&
+         destination_address - control_address < sizeof(*sink)) ||
+        (sink->published_used &&
+         ((destination_address <= publication_address &&
+           publication_address - destination_address < length) ||
+          (publication_address < destination_address &&
+           destination_address - publication_address < sizeof(*sink->published_used))))) {
+      merlin_out_bin_memory_invalidate(sink);
+      return 0;
+    }
     if ((source_address <= destination_address &&
          destination_address - source_address < length) ||
         (destination_address < source_address &&
@@ -69,8 +87,8 @@ static inline int merlin_out_bin_memory_append(merlin_out_bin_memory *sink,
     }
   }
   for (size_t i = 0; i < length; ++i)
-    sink->arena[sink->used + i] = source[i];
-  sink->used += length;
+    destination[i] = source[i];
+  sink->used = used + length;
   return 1;
 }
 

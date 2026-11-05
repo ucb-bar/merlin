@@ -36,8 +36,45 @@ from merlin.targetgen import capsule_runner as CR  # noqa: E402
 from merlin.targetgen import tier_integrity as _TI  # noqa: E402
 from merlin_experiments.phase1.context import InvocationContext, add_context_arguments, readback_kwargs, resolve_context
 
+from . import certification_gates
+from .qualification_summary import summarize as qualification_summary
+
 # Allowed (answer-free) numeric fields. Everything else in the numeric block is dropped.
 _SAFE_NUMERIC = {"status", "policy", "mismatch_count"}
+
+
+def _original_cohort_complete(score: dict) -> bool:
+    """A measured denominator cannot discard an original required obligation."""
+    from merlin.targetgen.expected_refusal import execution_denominator
+
+    admission = score.get("cohort_admission")
+    if not isinstance(admission, dict):
+        return False
+    admitted = admission.get("n_admitted_capsules")
+    if type(admitted) is not int or admitted <= 0 or score.get("n_capsules") != admitted:
+        return False
+    if type(score.get("n_capsules")) is not int or type(score.get("n_passed")) is not int:
+        return False
+    if score["n_passed"] != admitted or execution_denominator(score)[1]:
+        return False
+    for field in (
+        "n_not_measured", "n_cert_not_measured", "n_infrastructure_fault", "n_gated_deferred",
+        "n_screened_only", "n_budget_exhausted", "n_incomplete", "n_not_gradeable_no_oracle",
+        "n_not_graded_ineligible",
+    ):
+        if type(score.get(field, 0)) is not int or score.get(field, 0) != 0:
+            return False
+    rows = score.get("per_capsule")
+    if type(rows) is not list or len(rows) != admitted:
+        return False
+    names = []
+    for row in rows:
+        if (not isinstance(row, dict) or row.get("status") != "pass"
+                or type(row.get("capsule")) is not str or not row["capsule"]):
+            return False
+        names.append(row["capsule"])
+    return (len(set(names)) == admitted
+            and admission.get("admitted_name_set_sha256") == CG._name_set_sha256(names))
 
 
 # Process-exit metadata is NOT capsule data and must survive the numeric scrub. MEASURED (gemmini arm-4,
@@ -244,6 +281,10 @@ def _scrub_numbers(text: str) -> str:
     return "".join(out)
 
 
+#: Length of a redacted failure detail; readers that compare details know where one was cut.
+DETAIL_LIMIT = 800
+
+
 def _redact_detail(detail: str | None) -> str | None:
     if not detail:
         return None
@@ -253,10 +294,10 @@ def _redact_detail(detail: str | None) -> str | None:
     # disassembler / instruction_trace.json and check each op's operands" — runs past ~240 chars. Cutting it
     # left the agent told WHERE (the encoding) but not the self-inspection METHOD. 800 fits the full hint
     # while still bounding a pathological dump.
-    return _scrub_numbers(detail)[:800]
+    return _scrub_numbers(detail)[:DETAIL_LIMIT]
 
 
-def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
+def _per_capsule_from_results(runs_root: Path, *, only_capsule: str | None = None) -> dict[str, dict]:
     """Read each capsule_result.json from the operator-only work tree and redact it."""
     out: dict[str, dict] = {}
     # The runner writes under <target>-capsule-bench (target-derived), NOT the one default baked into
@@ -267,6 +308,8 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
     if not rr.exists():
         return out
     for cr in sorted(rr.glob("*/*/capsule_result.json")):
+        if only_capsule is not None and cr.parent.name != only_capsule:
+            continue
         try:
             r = json.loads(cr.read_text())
         except Exception:
@@ -307,6 +350,13 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
             )
         out[r.get("capsule", cr.parent.name)] = {
             "status": r.get("status"),
+            "expected_refusal": (
+                {"status": "met"}
+                if r.get("status") == "pass" and r.get("failure") is None
+                and (r.get("expected_refusal") or {}).get("status") == "met"
+                and isinstance(r.get("declined"), dict) and bool(r["declined"])
+                else None
+            ),
             # Opaque content address of the exact executable plus target/RTL identity. It reveals no
             # answer-bearing value; promotion uses it solely to retain a still-applicable certificate.
             "execution_digest": _execution_digest_from_result(cr) if candidate_feedback is None else None,
@@ -322,6 +372,13 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
                 else None
             ),
             "trace_status": (r.get("trace_check") or {}).get("status") if candidate_feedback is None else None,
+            "trace_requirement_status": (
+                (r.get("trace_check") or {}).get("trace_requirement_status") if candidate_feedback is None else None
+            ),
+            "trace_unavailable_requirements": (
+                list((r.get("trace_check") or {}).get("unavailable_requirements") or [])[:16]
+                if candidate_feedback is None else []
+            ),
             "trace_violations": (
                 list((r.get("trace_check") or {}).get("violations") or []) if candidate_feedback is None else []
             ),
@@ -377,6 +434,12 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
                     else None
                 )
             )(r.get("tier_reuse") if candidate_feedback is None else None),
+            # A seeded grade's pass carried in full from its seed run (merlin.targetgen.seeded_grade):
+            # "carried from <run>", an operator run name. Nothing else can ride the field.
+            **(
+                lambda v: {"carried_from": v} if isinstance(v, str) and v.startswith("carried from ") and len(v) <= 160
+                else {}
+            )((r.get("tier_reuse") or {}).get("carried_from") if isinstance(r.get("tier_reuse"), dict) else None),
             "failure_plane": fail.get("plane"),
             "failure_category": fail.get("category"),
             # The tier LABEL survives redaction. It is a harness constant ("L2"), never capsule data, and
@@ -415,6 +478,27 @@ def _candidate_native_feedback(result: dict) -> dict | None:
     This projection does not grade or upgrade the underlying result.
     """
     owner = result
+    owned = result.get("model_execution_check")
+    if isinstance(owned, dict) and owned.get("kind") == "owned_host_model_execution":
+        # Project only the independently reopened owned audit, never its raw
+        # runtime receipt or the legacy host graph's numeric observations.
+        source = owned.get("candidate_source_placement")
+        dispatch = owned.get("candidate_completed_dispatch")
+        owner = {"candidate_native_model_check": {
+            "schema": "merlin_candidate_native_model_check_v1",
+            "status": owned.get("status"),
+            "violations": owned.get("violations"),
+            "emitted_host_compute": (
+                {"status": "violation"}
+                if owned.get("status") == "fail"
+                and "candidate_host_tensor_compute_violation" in (owned.get("violations") or [])
+                else {"status": "clean"} if isinstance(source, dict) and source.get("status") == "clean" else {}
+            ),
+            "source_placement": source,
+            "completed_dispatch": dispatch,
+            "candidate_source_coverage": owned.get("candidate_source_coverage"),
+            "candidate_required_tiers": owned.get("candidate_required_tiers"),
+        }}
     top_level_candidate = "candidate_native_model_check" in owner
     if not top_level_candidate:
         owner = result.get("model_execution_check")
@@ -795,6 +879,10 @@ def run(
     context: InvocationContext,
     contract: Path | None = None,
     additional_forbidden: tuple[str, ...] = (),
+    defer_pending=None,
+    defer_running=True,
+    on_capsule_complete=None,
+    max_workers: int = 0,
 ) -> dict:
     # Loop gate = L0+L1+trace + the target's full reachable oracle ladder, screened cheapest-first. The
     # adapters are resolved from the descriptor's target+sim_via via the shared factory, so a non-chipyard
@@ -822,7 +910,13 @@ def run(
     # Grading the round on the screen alone is unsound in exactly one direction, and it was measured:
     # one submission passed the cheap functional tier on 20 of 20 capsules while the RTL tier passed 1.
     # A screen may eliminate; it may never certify (see merlin.targetgen.tier_policy).
-    _loop_adapters = {} if no_oracle else CR.qa_checkpoint_adapters(_target, _sim_via, **readback_kwargs(context))
+    from .. import joint_control
+    _loop_adapters = {} if no_oracle else (
+        CR.qa_loop_adapters(_target, _sim_via, declared_tiers={"L2"}, **readback_kwargs(context))
+        if joint_control.selected() else CR.qa_checkpoint_adapters(_target, _sim_via, **readback_kwargs(context))
+    )
+    if joint_control.selected() and set(_loop_adapters) - {"L0", "L1", "L2"}:
+        raise ValueError("joint background grade selected a physical tier")
     # Refuse ONLY when the endpoint exposes tiers but none of them is declared — substituting one there is
     # the defect. An endpoint that reaches nothing at all is an honestly ABSENT oracle: leave the adapter
     # set empty and let each capsule report its missing tier as unavailable, exactly as before.
@@ -834,9 +928,33 @@ def run(
                 f"target {_target!r} reaches {_reach} — no declared tier is reachable, so this loop "
                 f"cannot grade. Refusing to substitute a tier the capsules never declared."
             )
+    if joint_control.selected() is not None:
+        previous_defer = defer_pending
+        def joint_defer():
+            if joint_control.remaining() <= 0:
+                return "joint campaign deadline reached"
+            # A development grade still in flight at the freeze would otherwise run on inside the
+            # final window that the frozen-compiler coverage needs.
+            if joint_control.remaining(drain=True) <= 0:
+                return "joint campaign freeze/drain boundary reached"
+            return previous_defer() if previous_defer is not None else None
+        defer_pending = joint_defer
+
+    def completed(result):
+        name = result.get('capsule')
+        projected = _per_capsule_from_results(runs_root, only_capsule=name).get(name)
+        if projected is not None:
+            fields = ('status', 'numeric_status', 'mismatch_count', 'tiers', 'trace_status',
+                      'trace_requirement_status', 'trace_violations', 'failure_plane',
+                      'failure_category', 'failure_detail', 'execution_digest', 'tier_cycles',
+                      'tier_engines', 'tier_reuse', 'expected_refusal', 'candidate_native_verification')
+            on_capsule_complete({'capsule': name, **{k: projected.get(k) for k in fields}})
+
+    from . import joint_test_scope
+    selected_roots, test_scope = joint_test_scope.select(capsules_root, submission=submission)
     score = CG.grade(
         submission,
-        capsules_root=capsules_root,
+        capsules_root=selected_roots,
         runs_root=str(runs_root),
         model_snapshot_root=runs_root.resolve() / ".private_model_sources",
         labels=labels,
@@ -846,6 +964,9 @@ def run(
         target=_target,
         no_oracle=no_oracle,
         additional_forbidden=additional_forbidden,
+        **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
+        **({'on_capsule_complete': completed} if on_capsule_complete is not None else {}),
+        **({'max_workers': max_workers} if max_workers else {}),
     )
     redacted = _per_capsule_from_results(runs_root)
 
@@ -861,6 +982,8 @@ def run(
                 "numeric_status": rich.get("numeric_status", pc.get("numeric")),
                 "mismatch_count": rich.get("mismatch_count"),
                 "trace_status": rich.get("trace_status", pc.get("trace")),
+                "trace_requirement_status": rich.get("trace_requirement_status"),
+                "trace_unavailable_requirements": rich.get("trace_unavailable_requirements", []),
                 "trace_violations": rich.get("trace_violations", []),
                 "tiers": rich.get("tiers", {})
                 if rich.get("candidate_native_verification") is not None
@@ -875,6 +998,9 @@ def run(
                 "execution_digest": rich.get("execution_digest"),
             }
         )
+        if not rich.get("failure_plane"):
+            # A deferred test case writes no result file, so its reason lives only in the grade row.
+            per_capsule[-1].update(certification_gates.gated_row_fields(pc, _redact_detail))
         if rich.get("placement_coverage"):
             per_capsule[-1]["placement_coverage"] = rich["placement_coverage"]
         if rich.get("candidate_native_verification") is not None:
@@ -900,11 +1026,16 @@ def run(
                     "floor_basis",
                     "ceiling_cycles",
                     "array_efficiency",
+                    "movement_floor_cycles",
+                    "movement_basis",
+                    "limiter",
                     "blocking",
                 )
             }
         if rich.get("declined"):
             per_capsule[-1]["declined"] = rich["declined"]
+        if rich.get("expected_refusal"):
+            per_capsule[-1]["expected_refusal"] = rich["expected_refusal"]
 
     n_caps = score.get("n_capsules", 0)
     n_pass = score.get("n_passed", 0)
@@ -946,8 +1077,14 @@ def run(
             "qa_gate": "capsule_bench_v0_pilot",
             "gradeable": True,
             "labels_graded": score.get("labels_graded"),
-            "all_pass": bool(n_caps > 0 and n_pass == n_caps),
+            "all_pass": bool(_original_cohort_complete(score) and score.get("structural_evidence_all_pass") is True),
+            "original_cohort_complete": _original_cohort_complete(score),
+            "structural_evidence_complete": score.get("structural_evidence_all_pass") is True,
+            "structural_evidence_scope": score.get("structural_evidence_scope"),
+            "trace_requirement_summary": score.get("trace_requirement_summary"),
             "n_passed": n_pass,
+            "n_execution_passed": qualification_summary(per_capsule)["execution_passed"],
+            "qualification_summary": qualification_summary(per_capsule),
             "n_capsules": n_caps,
             "integrity_status": score.get("integrity_status"),
             "highest_tier": score.get("highest_tier"),
@@ -967,6 +1104,9 @@ def run(
             "not_measured_status": score.get("not_measured_status"),
             "note": (
                 "This is a QA pass/fail signal only. It contains NO reference output values — there is no answer key. "
+                "Numerical/native pass counts are screens until applicable structural evidence is complete. "
+                "Unavailable original operand/schedule evidence is an infrastructure requirement, "
+                "not a numerical defect. "
                 "Fix failures by capsule + failure_plane + trace_violations; never hardcode outputs."
                 + (
                     f" {score['n_declined']} capsule(s) were DECLINED by your backend: it emitted no "
@@ -1009,7 +1149,7 @@ def run(
             "category": score["failure"]["category"],
             "detail": _redact_detail(score["failure"]["detail"]),
         }
-    return verdict
+    return joint_test_scope.annotate(verdict, test_scope)
 
 
 def main(argv: list[str] | None = None, *, context=None) -> int:

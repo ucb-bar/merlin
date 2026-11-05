@@ -83,7 +83,7 @@ def _mod():
     """Import the shared promotion module by path -- it is a harness script, not installed."""
     if str(HARNESS) not in sys.path:
         sys.path.insert(0, str(HARNESS))
-    spec = importlib.util.spec_from_file_location("tier_promote", feedback_source("tier_promote"))
+    spec = importlib.util.spec_from_file_location("merlin_experiments.phase1.feedback.promotion", feedback_source("tier_promote"))
     mod = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(mod)

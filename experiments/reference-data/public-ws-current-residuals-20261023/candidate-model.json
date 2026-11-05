@@ -1,0 +1,527 @@
+{
+  "cpu": {
+    "fp_operand_timing": {
+      "schema": "merlin.rocket_divsqrt_operand_timing.v1"
+    },
+    "fpu_pipeline_facts": {
+      "fma_d_stages": 4,
+      "fma_s_stages": 3,
+      "fp_to_fp_stages": 2,
+      "fp_to_int_stages": 1,
+      "int_to_fp_stages": 2,
+      "significand_d_bits": 53,
+      "significand_s_bits": 24
+    },
+    "isa": "rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr"
+  },
+  "cpu_execution_resources": {
+    "cpu.bitmanip": "cpu.integer_alu",
+    "cpu.branch": "cpu.integer_alu",
+    "cpu.csr": "cpu.control",
+    "cpu.custom": "cpu.rocc_dispatch",
+    "cpu.divide": "cpu.muldiv",
+    "cpu.fence": "cpu.control",
+    "cpu.fp_add": "cpu.fpu_conservative_serial",
+    "cpu.fp_classify": "cpu.fpu_conservative_serial",
+    "cpu.fp_compare": "cpu.fpu_conservative_serial",
+    "cpu.fp_convert": "cpu.fpu_conservative_serial",
+    "cpu.fp_divide": "cpu.fpu_conservative_serial",
+    "cpu.fp_fma": "cpu.fpu_conservative_serial",
+    "cpu.fp_load": "cpu.integer_alu",
+    "cpu.fp_minmax": "cpu.fpu_conservative_serial",
+    "cpu.fp_move_from_int": "cpu.fpu_conservative_serial",
+    "cpu.fp_move_to_int": "cpu.fpu_conservative_serial",
+    "cpu.fp_multiply": "cpu.fpu_conservative_serial",
+    "cpu.fp_sign": "cpu.fpu_conservative_serial",
+    "cpu.fp_sqrt": "cpu.fpu_conservative_serial",
+    "cpu.fp_store": "cpu.integer_alu",
+    "cpu.fp_subtract": "cpu.fpu_conservative_serial",
+    "cpu.fp_to_int": "cpu.fpu_conservative_serial",
+    "cpu.int_to_fp": "cpu.fpu_conservative_serial",
+    "cpu.integer": "cpu.integer_alu",
+    "cpu.load": "cpu.integer_alu",
+    "cpu.multiply": "cpu.muldiv",
+    "cpu.store": "cpu.integer_alu"
+  },
+  "domain": {
+    "device_sha256": "12a1a0b45fe7767f03f1b277349b7600c7c68243f7161aba52242df1921721e0",
+    "feature_engine_sha256": "986bea3e9c4110a7404123f42ec0b4ef74722978c4e9e495ce0576fd1eaf9fbd",
+    "feature_schema_sha256": "6e5f95729a8a794474bce584be73ec86589aa7f80203ed0a85364b6a02b2cca8",
+    "label_engine": "gsim",
+    "label_engine_sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651",
+    "memory_regime_sha256": "ca14c17022cd298ef7f516cae39c4418558fddc2ba97090f9dca41c11199a73a",
+    "scope_sha256": "82dae761bda30488a6760c9ae51764069a6ed9e60544661e90f883477d273525"
+  },
+  "libraries": [
+    "2dbd8445376cdda0df63abcf217c7a19f974d34a16ada21b549ed82fffd718eb",
+    "524f9ec01affbb2a1ebf93fe3edc4f06fc906a7127a2b48c889a5d10a41ee498"
+  ],
+  "memory": {
+    "caches": {
+      "l1d": {
+        "coherence_probe_service": {
+          "beat_bytes": 16,
+          "data_pipeline_cycles": 2,
+          "dirty_enter_cycles": 1,
+          "lookup_cycles": 2,
+          "metadata_cycles": 1,
+          "resource": "memory.l1d.probe",
+          "schema": "merlin.private_cache_probe_service.v1"
+        },
+        "line_bytes": 64,
+        "policy": "write_back_write_allocate",
+        "sets": 64,
+        "ways": 8
+      },
+      "l1i": {
+        "line_bytes": 64,
+        "policy": "write_back_write_allocate",
+        "sets": 64,
+        "ways": 8
+      },
+      "l2": {
+        "line_bytes": 64,
+        "policy": "write_back_write_allocate",
+        "sets": 1024,
+        "ways": 8
+      }
+    },
+    "coherence_granule": 64,
+    "coherence_policy": "writeback_invalidate",
+    "fetch_refill_timeline": {
+      "assumptions": "demand_only_immediate_replay_no_backpressure",
+      "beat_bytes": 16,
+      "beat_interval_cycles": 1,
+      "first_response_cycles": 6,
+      "line_visible_after_last_cycles": 1,
+      "lookup_response_cycles": 2,
+      "request_accept_cycles": 2,
+      "schema": "merlin.provisional_fetch_refill.v1"
+    },
+    "paths": {
+      "cpu_data": [
+        "l1d",
+        "l2"
+      ],
+      "cpu_fetch": [
+        "l1i",
+        "l2"
+      ],
+      "device": [
+        "l2"
+      ]
+    },
+    "transaction_accounting": "coherence_request_separate_v1"
+  },
+  "parameters": {
+    "cpu.branch.latency_cycles": 1,
+    "cpu.branch.not_taken_penalty_cycles": 0,
+    "cpu.branch.occupancy_cycles": 1,
+    "cpu.branch.taken_penalty_cycles": 0.0,
+    "cpu.csr.latency_cycles": 1,
+    "cpu.csr.occupancy_cycles": 1,
+    "cpu.custom.latency_cycles": 1,
+    "cpu.custom.occupancy_cycles": 1,
+    "cpu.fence.latency_cycles": 1,
+    "cpu.fence.occupancy_cycles": 1,
+    "cpu.fp_add.f32.latency_cycles": 5,
+    "cpu.fp_add.f32.occupancy_cycles": 5,
+    "cpu.fp_add.f64.latency_cycles": 6,
+    "cpu.fp_add.f64.occupancy_cycles": 6,
+    "cpu.fp_classify.f32.latency_cycles": 3,
+    "cpu.fp_classify.f32.occupancy_cycles": 3,
+    "cpu.fp_classify.f64.latency_cycles": 3,
+    "cpu.fp_classify.f64.occupancy_cycles": 3,
+    "cpu.fp_compare.f32.latency_cycles": 3,
+    "cpu.fp_compare.f32.occupancy_cycles": 3,
+    "cpu.fp_compare.f64.latency_cycles": 3,
+    "cpu.fp_compare.f64.occupancy_cycles": 3,
+    "cpu.fp_convert.f32_to_f64.latency_cycles": 4,
+    "cpu.fp_convert.f32_to_f64.occupancy_cycles": 4,
+    "cpu.fp_convert.f64_to_f32.latency_cycles": 4,
+    "cpu.fp_convert.f64_to_f32.occupancy_cycles": 4,
+    "cpu.fp_divide.f32.latency_cycles": 28,
+    "cpu.fp_divide.f32.occupancy_cycles": 28,
+    "cpu.fp_divide.f32.special.latency_cycles": 3,
+    "cpu.fp_divide.f32.special.occupancy_cycles": 3,
+    "cpu.fp_divide.f64.latency_cycles": 57,
+    "cpu.fp_divide.f64.occupancy_cycles": 57,
+    "cpu.fp_divide.f64.special.latency_cycles": 3,
+    "cpu.fp_divide.f64.special.occupancy_cycles": 3,
+    "cpu.fp_fma.f32.latency_cycles": 5,
+    "cpu.fp_fma.f32.occupancy_cycles": 5,
+    "cpu.fp_fma.f64.latency_cycles": 6,
+    "cpu.fp_fma.f64.occupancy_cycles": 6,
+    "cpu.fp_load.f32.latency_cycles": 2,
+    "cpu.fp_load.f32.occupancy_cycles": 1,
+    "cpu.fp_load.f64.latency_cycles": 2,
+    "cpu.fp_load.f64.occupancy_cycles": 1,
+    "cpu.fp_minmax.f32.latency_cycles": 4,
+    "cpu.fp_minmax.f32.occupancy_cycles": 4,
+    "cpu.fp_minmax.f64.latency_cycles": 4,
+    "cpu.fp_minmax.f64.occupancy_cycles": 4,
+    "cpu.fp_move_from_int.f32.latency_cycles": 4,
+    "cpu.fp_move_from_int.f32.occupancy_cycles": 4,
+    "cpu.fp_move_from_int.f64.latency_cycles": 4,
+    "cpu.fp_move_from_int.f64.occupancy_cycles": 4,
+    "cpu.fp_move_to_int.f32.latency_cycles": 3,
+    "cpu.fp_move_to_int.f32.occupancy_cycles": 3,
+    "cpu.fp_move_to_int.f64.latency_cycles": 3,
+    "cpu.fp_move_to_int.f64.occupancy_cycles": 3,
+    "cpu.fp_multiply.f32.latency_cycles": 5,
+    "cpu.fp_multiply.f32.occupancy_cycles": 5,
+    "cpu.fp_multiply.f64.latency_cycles": 6,
+    "cpu.fp_multiply.f64.occupancy_cycles": 6,
+    "cpu.fp_sign.f32.latency_cycles": 4,
+    "cpu.fp_sign.f32.occupancy_cycles": 4,
+    "cpu.fp_sign.f64.latency_cycles": 4,
+    "cpu.fp_sign.f64.occupancy_cycles": 4,
+    "cpu.fp_sqrt.f32.latency_cycles": 27,
+    "cpu.fp_sqrt.f32.occupancy_cycles": 27,
+    "cpu.fp_sqrt.f32.special.latency_cycles": 3,
+    "cpu.fp_sqrt.f32.special.occupancy_cycles": 3,
+    "cpu.fp_sqrt.f64.latency_cycles": 56,
+    "cpu.fp_sqrt.f64.occupancy_cycles": 56,
+    "cpu.fp_sqrt.f64.special.latency_cycles": 3,
+    "cpu.fp_sqrt.f64.special.occupancy_cycles": 3,
+    "cpu.fp_store.f32.latency_cycles": 1,
+    "cpu.fp_store.f32.occupancy_cycles": 1,
+    "cpu.fp_store.f64.latency_cycles": 1,
+    "cpu.fp_store.f64.occupancy_cycles": 1,
+    "cpu.fp_subtract.f32.latency_cycles": 5,
+    "cpu.fp_subtract.f32.occupancy_cycles": 5,
+    "cpu.fp_subtract.f64.latency_cycles": 6,
+    "cpu.fp_subtract.f64.occupancy_cycles": 6,
+    "cpu.fp_to_int.f32.latency_cycles": 3,
+    "cpu.fp_to_int.f32.occupancy_cycles": 3,
+    "cpu.fp_to_int.f64.latency_cycles": 3,
+    "cpu.fp_to_int.f64.occupancy_cycles": 3,
+    "cpu.int_to_fp.f32.latency_cycles": 4,
+    "cpu.int_to_fp.f32.occupancy_cycles": 4,
+    "cpu.int_to_fp.f64.latency_cycles": 4,
+    "cpu.int_to_fp.f64.occupancy_cycles": 4,
+    "cpu.integer.latency_cycles": 1,
+    "cpu.integer.occupancy_cycles": 1,
+    "cpu.issue_cycles": 1,
+    "cpu.load.latency_cycles": 2,
+    "cpu.load.occupancy_cycles": 1,
+    "cpu.multiply.latency_cycles": 8,
+    "cpu.multiply.occupancy_cycles": 8,
+    "cpu.store.latency_cycles": 1,
+    "cpu.store.occupancy_cycles": 1,
+    "memory.dram_latency_cycles": 12,
+    "memory.dram_per_byte_cycles": 0.0625,
+    "memory.immutable_access_cycles": 1,
+    "memory.l1d.hit_cycles": 1.0,
+    "memory.l1d.miss_cycles": 1,
+    "memory.l1i.hit_cycles": 1,
+    "memory.l1i.miss_cycles": 1,
+    "memory.l2.hit_cycles": 1.0,
+    "memory.l2.miss_cycles": 1,
+    "memory.snoop_cycles": 1
+  },
+  "profile": "phase1-public",
+  "resources": [
+    {
+      "capacity": 1,
+      "id": 0,
+      "name": "cpu.issue",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 1,
+      "name": "cpu.integer_alu",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 2,
+      "name": "cpu.muldiv",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 3,
+      "name": "accelerator.issue.load",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 4,
+      "name": "accelerator.issue.execute",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 5,
+      "name": "accelerator.issue.store",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 6,
+      "name": "accelerator.controller.load",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 7,
+      "name": "accelerator.controller.execute",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 8,
+      "name": "accelerator.controller.store",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 9,
+      "name": "cpu.control",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 10,
+      "name": "cpu.rocc_dispatch",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 11,
+      "name": "memory.shared",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 12,
+      "name": "accelerator.storage.scratchpad.0",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 13,
+      "name": "accelerator.storage.scratchpad.1",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 14,
+      "name": "accelerator.storage.scratchpad.2",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 15,
+      "name": "accelerator.storage.scratchpad.3",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 16,
+      "name": "accelerator.storage.accumulator.all",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 17,
+      "name": "cpu.fpu_conservative_serial",
+      "queue_capacity": 0
+    },
+    {
+      "capacity": 1,
+      "id": 18,
+      "name": "memory.l1d.probe",
+      "queue_capacity": 0
+    }
+  ],
+  "schema": "merlin.annotated_spike_model.v1",
+  "scope": {
+    "kind": "counter_pc_pair"
+  },
+  "target": {
+    "assumptions": {
+      "accumulator_readout_translation_hits": 1,
+      "reader_a_ready_with_transaction_credit": 1,
+      "scratchpad_load_fifo_responses": 1,
+      "scratchpad_load_translation_hits": 1
+    },
+    "hardware": {
+      "accumulator_bytes": 4,
+      "accumulator_read_response_cycles": 1,
+      "accumulator_rows": 1024,
+      "accumulator_scale_pipeline_stages": 8,
+      "address_bits": 32,
+      "custom_opcode": 123,
+      "custom_opcode_mask": 127,
+      "dim": 16,
+      "element_bytes": 1,
+      "execute_command_lookahead_heads": 3,
+      "execute_completion_pending_register": 1,
+      "first_layer_optimizations": 1,
+      "full_width_accumulator_readout": 1,
+      "identity_scale_input_stages": 1,
+      "identity_scale_output_stages": 1,
+      "identity_scale_queue_entries": 3,
+      "normalizations": 0,
+      "normalizer_passthrough_queue_entries": 2,
+      "reader_beat_bytes": 16,
+      "reader_beat_merger_stages": 1,
+      "reader_tlb_queue_entries": 1,
+      "reader_transaction_entries": 16,
+      "reader_translation_queue_entries": 1,
+      "relu_same_accumulator_scale_pipeline": 1,
+      "reset_accumulator_activation": 0,
+      "scratchpad_rows": 16384,
+      "scratchpad_singleported": 1,
+      "write_dispatch_queue_entries": 2,
+      "write_issue_queue_entries": 5,
+      "write_norm_queue_entries": 6,
+      "write_scale_queue_entries": 6,
+      "writer_beat_bytes": 16,
+      "writer_max_request_bytes": 64,
+      "writer_tlb_queue_entries": 1,
+      "writer_transaction_entries": 16,
+      "writer_translation_queue_entries": 1,
+      "writer_translation_queue_pipe": 1
+    },
+    "prices": {
+      "compute_os": {
+        "latency_cycles": 94,
+        "latency_per_byte_cycles": 0,
+        "latency_per_mac_cycles": 0,
+        "occupancy_cycles": 94,
+        "occupancy_per_byte_cycles": 0,
+        "occupancy_per_mac_cycles": 0
+      },
+      "compute_ws": {
+        "latency_cycles": 40.0,
+        "latency_per_byte_cycles": 0,
+        "latency_per_mac_cycles": 0.00390625,
+        "occupancy_cycles": 1,
+        "occupancy_per_byte_cycles": 0,
+        "occupancy_per_mac_cycles": 0.00390625
+      },
+      "config": {
+        "latency_cycles": 1,
+        "latency_per_byte_cycles": 0,
+        "latency_per_mac_cycles": 0,
+        "occupancy_cycles": 1,
+        "occupancy_per_byte_cycles": 0,
+        "occupancy_per_mac_cycles": 0
+      },
+      "fence": {
+        "latency_cycles": 0,
+        "latency_per_byte_cycles": 0,
+        "latency_per_mac_cycles": 0,
+        "occupancy_cycles": 0,
+        "occupancy_per_byte_cycles": 0,
+        "occupancy_per_mac_cycles": 0
+      },
+      "flush": {
+        "latency_cycles": 1,
+        "latency_per_byte_cycles": 0,
+        "latency_per_mac_cycles": 0,
+        "occupancy_cycles": 1,
+        "occupancy_per_byte_cycles": 0,
+        "occupancy_per_mac_cycles": 0
+      },
+      "load": {
+        "latency_cycles": 10.0,
+        "latency_per_byte_cycles": 0.0625,
+        "latency_per_mac_cycles": 0,
+        "occupancy_cycles": 1,
+        "occupancy_per_byte_cycles": 0.0625,
+        "occupancy_per_mac_cycles": 0
+      },
+      "pool_store": {
+        "latency_cycles": 16,
+        "latency_per_byte_cycles": 0.0625,
+        "latency_per_mac_cycles": 0,
+        "occupancy_cycles": 1,
+        "occupancy_per_byte_cycles": 0.0625,
+        "occupancy_per_mac_cycles": 0
+      },
+      "preload": {
+        "latency_cycles": 12.0,
+        "latency_per_byte_cycles": 0,
+        "latency_per_mac_cycles": 0,
+        "occupancy_cycles": 16,
+        "occupancy_per_byte_cycles": 0,
+        "occupancy_per_mac_cycles": 0
+      },
+      "store": {
+        "latency_cycles": 20.0,
+        "latency_per_byte_cycles": 0.0625,
+        "latency_per_mac_cycles": 0,
+        "occupancy_cycles": 1,
+        "occupancy_per_byte_cycles": 0.0625,
+        "occupancy_per_mac_cycles": 0
+      },
+      "store_act1": {
+        "latency_cycles": 16,
+        "latency_per_byte_cycles": 0.0625,
+        "latency_per_mac_cycles": 0,
+        "occupancy_cycles": 1,
+        "occupancy_per_byte_cycles": 0.0625,
+        "occupancy_per_mac_cycles": 0
+      }
+    },
+    "scheduling": {
+      "accumulator_readout_arrival": 1,
+      "accumulator_streamed_readout": 1,
+      "allow_dependency_ordered_phases": 1,
+      "conservative_local_store_holds": 1,
+      "controller_entries": {
+        "execute": 10,
+        "load": 8,
+        "store": 2
+      },
+      "dma_commands": {
+        "load": 2,
+        "store": 2
+      },
+      "issue_latency_cycles": 1,
+      "issue_occupancy_cycles": 1,
+      "pool_relu_shared_scale_pipeline": 1,
+      "require_fenced_phases": 1,
+      "reservations": {
+        "execute": 16,
+        "load": 8,
+        "store": 4
+      },
+      "scratchpad_bank_count": 4,
+      "scratchpad_bank_rows": 4096,
+      "scratchpad_request_admission": 1,
+      "scratchpad_row_loads": 1,
+      "serialized_execute_epochs": 1,
+      "serialized_output_stationary_epochs": 1,
+      "split_ws_accumulate_operands": 1,
+      "split_ws_feed_lifetimes": 1,
+      "version": 5,
+      "ws_feed_queue_release": 1,
+      "ws_resident_mul_pre_pairing": 1
+    }
+  },
+  "diagnostics": {
+    "scoped_resources": {
+      "enabled": true,
+      "pairs": [
+        {
+          "left": 6,
+          "right": 7
+        },
+        {
+          "left": 7,
+          "right": 8
+        },
+        {
+          "left": 6,
+          "right": 8
+        }
+      ]
+    }
+  }
+}

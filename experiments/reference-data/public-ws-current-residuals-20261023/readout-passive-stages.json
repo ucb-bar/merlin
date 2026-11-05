@@ -1,0 +1,234 @@
+{
+  "schema": "merlin.passive_readout_stage_evidence.v1",
+  "trace": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-passive-v2/trace.csv",
+    "sha256": "4fe43bdc72b9fb74b0b2a0f62326aec7a5d2e81444ebaa5a3a7655533aff85a3"
+  },
+  "run_receipt": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-passive-v2/run.json",
+    "sha256": "6c6184dad9dc4b6f7a8092df5753adedd9d032b93f25e60f0f5916c20e7f9bfc"
+  },
+  "build_receipt": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/public-readout-passive-v2/build-receipt.json",
+    "sha256": "9d076df980766b44816621df7ac51790b14309847814b62cd230f22f875388db"
+  },
+  "rtl_sources": [
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala",
+      "sha256": "8ba731bba0564b9b384efca606ca8fc137937b37842d319d8caee7e8051f756d"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SourceD.scala",
+      "sha256": "bf9be5fdf99a95bc7f268447cdca668b92e2c5adac8106cedaaae776e6cb856d"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SinkC.scala",
+      "sha256": "1babadaba57bf6e4a233e9222a02ffbfecc45214edff6e2fc55a39fb82134bd6"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/Scheduler.scala",
+      "sha256": "8828f6baeab5d27288f8a04c9b2464b84651c5316aa674f781ffa64829710dd1"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/DMA.scala",
+      "sha256": "db6d9d61f8794f6d60508c5844a2b287ffab0cd795a662b84b970dd9615e5dc1"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip/src/main/scala/rocket/DCache.scala",
+      "sha256": "05c07b22f5a0795d9c54dc6b035b4bdcbba63af8518943a26490a1f3dbd5dc78"
+    }
+  ],
+  "rows": [
+    {
+      "arm": 0,
+      "dirty": true,
+      "cycles": 1627,
+      "first_command": 5,
+      "first_writer_a": 26,
+      "first_probe": 32,
+      "probe_count": 128,
+      "accepted_a_beats": 512,
+      "c_beats": 512,
+      "credit_releases": 128,
+      "probe_to_first_c": {
+        "5": 128
+      },
+      "probe_to_last_c": {
+        "8": 128
+      },
+      "first_c_to_credit_release": {
+        "9": 128
+      },
+      "last_c_to_credit_release": {
+        "6": 128
+      },
+      "adjacent_b_spacing": {
+        "10": 120,
+        "50": 1,
+        "53": 6
+      },
+      "store_groups": [
+        {
+          "command": 5,
+          "first_b": 32,
+          "last_b": 182,
+          "last_release": 196
+        },
+        {
+          "command": 208,
+          "first_b": 235,
+          "last_b": 385,
+          "last_release": 399
+        },
+        {
+          "command": 411,
+          "first_b": 438,
+          "last_b": 588,
+          "last_release": 602
+        },
+        {
+          "command": 614,
+          "first_b": 641,
+          "last_b": 791,
+          "last_release": 805
+        },
+        {
+          "command": 817,
+          "first_b": 844,
+          "last_b": 994,
+          "last_release": 1008
+        },
+        {
+          "command": 1020,
+          "first_b": 1047,
+          "last_b": 1197,
+          "last_release": 1211
+        },
+        {
+          "command": 1220,
+          "first_b": 1247,
+          "last_b": 1397,
+          "last_release": 1411
+        },
+        {
+          "command": 1423,
+          "first_b": 1450,
+          "last_b": 1600,
+          "last_release": 1614
+        }
+      ],
+      "cpu_blocker_cycles": {
+        "s1_cpu": 0,
+        "s2_cpu": 0,
+        "release_ack_wait": 0,
+        "grant_in_progress": 0,
+        "core_progress_block": 0
+      }
+    },
+    {
+      "arm": 1,
+      "dirty": false,
+      "cycles": 872,
+      "first_command": 5,
+      "first_writer_a": 26,
+      "first_probe": 32,
+      "probe_count": 128,
+      "accepted_a_beats": 512,
+      "c_beats": 128,
+      "credit_releases": 128,
+      "probe_to_first_c": {
+        "2": 128
+      },
+      "probe_to_last_c": {
+        "2": 128
+      },
+      "first_c_to_credit_release": {
+        "9": 128
+      },
+      "last_c_to_credit_release": {
+        "9": 128
+      },
+      "adjacent_b_spacing": {
+        "4": 117,
+        "5": 3,
+        "47": 5,
+        "48": 1,
+        "50": 1
+      },
+      "store_groups": [
+        {
+          "command": 5,
+          "first_b": 32,
+          "last_b": 93,
+          "last_release": 104
+        },
+        {
+          "command": 113,
+          "first_b": 140,
+          "last_b": 200,
+          "last_release": 211
+        },
+        {
+          "command": 220,
+          "first_b": 247,
+          "last_b": 307,
+          "last_release": 318
+        },
+        {
+          "command": 330,
+          "first_b": 357,
+          "last_b": 418,
+          "last_release": 429
+        },
+        {
+          "command": 438,
+          "first_b": 465,
+          "last_b": 526,
+          "last_release": 537
+        },
+        {
+          "command": 546,
+          "first_b": 573,
+          "last_b": 633,
+          "last_release": 644
+        },
+        {
+          "command": 653,
+          "first_b": 680,
+          "last_b": 740,
+          "last_release": 751
+        },
+        {
+          "command": 760,
+          "first_b": 788,
+          "last_b": 848,
+          "last_release": 859
+        }
+      ],
+      "cpu_blocker_cycles": {
+        "s1_cpu": 0,
+        "s2_cpu": 0,
+        "release_ack_wait": 0,
+        "grant_in_progress": 0,
+        "core_progress_block": 0
+      }
+    }
+  ],
+  "parameter_proposal": {
+    "name": "first_response_to_writer_credit_release_cycles",
+    "value": 9,
+    "basis": "Measured public no-backpressure pipeline latency shared by both arms, 256 responses total; not statically derived or independent held-out qualification",
+    "scope": "same selected RTL/config; offset-zero full-row writes, one fenced store group at a time"
+  },
+  "interpretation": {
+    "wormhole": "MSHR.scala permits SourceD after first C beat when request.offset == 0; nonzero offset waits last C. Explains 6 dirty/9 clean cycles after last C with one shared first-C+9 pipeline.",
+    "accelerator_a": "A valid AND translation queue enq.ready AND no retry. Selected one-entry pipe queue plus A-valid implies translate-full, making enq.ready equal deq.ready; retries observed zero.",
+    "accelerator_d": "Writer xactBusy bits clearing at register edge; no same-cycle reallocation of a still-busy ID. This observes credit visibility, not the raw D-valid wire.",
+    "limitations": [
+      "No new physical runs beyond the two approved passive copies",
+      "No deployed FireSim equivalence",
+      "A-admission versus private-probe queue remains approximate",
+      "No concurrent-group, CPU-contention, or nonzero-offset physical qualification"
+    ]
+  }
+}

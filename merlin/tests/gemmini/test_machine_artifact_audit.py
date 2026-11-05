@@ -6,6 +6,13 @@ from types import SimpleNamespace
 import pytest
 
 from merlin.runtime.backends.base import get_backend
+from merlin.targetgen import target_registry
+
+
+@pytest.fixture(autouse=True)
+def selected_companion():
+    if target_registry.explicit_targets().get("gemmini") is None:
+        pytest.skip("requires explicit companion support on MERLIN_TARGET_PATH")
 
 
 def test_machine_audit_requires_a_runner(tmp_path):

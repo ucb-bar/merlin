@@ -23,7 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from merlin.runtime.commandbuffer import batched_matmul_geometry
@@ -174,6 +174,30 @@ def movement_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramMo
         ).hexdigest()
     except (TypeError, ValueError):
         artifact_sha256 = ""
+    params = command_buffer.get("params") if isinstance(command_buffer, Mapping) else None
+    projection = params.get("source_owned_host_projection") if isinstance(params, Mapping) else None
+    if projection is not None:
+        # An original-source host exposes a pointer roster with no arithmetic
+        # commands. Its retained device projection does not describe host
+        # transport/epilogues, so neither empty roster nor projection is exact
+        # whole-program traffic.
+        device = projection.get("device_command_buffer") if isinstance(projection, Mapping) else None
+        if not isinstance(device, Mapping) or (
+            isinstance(device.get("params"), Mapping) and "source_owned_host_projection" in device["params"]
+        ):
+            return ProgramMovement(
+                (), 0, 0, True,
+                ("source-owned host has no bounded device traffic projection",),
+                artifact_sha256=artifact_sha256,
+            )
+        movement = movement_from_command_buffer(device)
+        return replace(
+            movement,
+            is_lower_bound=True,
+            refusals=(*movement.refusals, "original host traffic outside the device projection is uncounted"),
+            artifact_sha256=artifact_sha256,
+            basis="source_owned_device_projection",
+        )
     tensors = command_buffer.get("tensors") if isinstance(command_buffer, Mapping) else None
     instructions = command_buffer.get("commands") if isinstance(command_buffer, Mapping) else None
     if (

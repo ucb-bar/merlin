@@ -1,0 +1,4917 @@
+{
+  "accumulating_output_readwrite_tokens_each": 16,
+  "compute_commands": 256,
+  "findings": [
+    "All256 compute events retain16 ACC output read/write tokens. Current selected provider explicitly excludes accumulation from split_ws feed-lifetime path.",
+    "All255 following load pairs have earliest equal to previous compute result ready, because source SP readers are conservatively held until result; load bank ports also retain56-cycle reservation.",
+    "141-cycle repetition occurs192times;187-cycle repetition occurs63times. Recorded modeled memory demands in these intervals have4 or20 latency17 responses respectively. This is modeled memory-state cadence, not observed physical stall timing.",
+    "Conditional fetch response mechanism is inactive in this scope. Final readout is175modeledcycles; it cannot explain most11,494-cycle residual.",
+    "Keep real ACC accumulation RAW dependencies. A proposed extension must separate SP operand-consumption from ACC read/write availability using selected RTL; removing whole ACC dependence or subtracting39cycles per tile would be unproved.",
+    "No new gSIM/physical runs, no coefficient fitting, no active model change."
+  ],
+  "intervals": [
+    {
+      "duration": 141,
+      "from_compute": 206,
+      "from_start": 2592,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        2648,
+        2648
+      ],
+      "next_load_issue_events": [
+        218,
+        257
+      ],
+      "previous_ready": 2648,
+      "to_compute": 302,
+      "to_start": 2733
+    },
+    {
+      "duration": 141,
+      "from_compute": 302,
+      "from_start": 2733,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        2789,
+        2789
+      ],
+      "next_load_issue_events": [
+        314,
+        353
+      ],
+      "previous_ready": 2789,
+      "to_compute": 398,
+      "to_start": 2874
+    },
+    {
+      "duration": 141,
+      "from_compute": 398,
+      "from_start": 2874,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        2930,
+        2930
+      ],
+      "next_load_issue_events": [
+        410,
+        449
+      ],
+      "previous_ready": 2930,
+      "to_compute": 494,
+      "to_start": 3015
+    },
+    {
+      "duration": 187,
+      "from_compute": 494,
+      "from_start": 3015,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        3071,
+        3071
+      ],
+      "next_load_issue_events": [
+        506,
+        545
+      ],
+      "previous_ready": 3071,
+      "to_compute": 590,
+      "to_start": 3202
+    },
+    {
+      "duration": 141,
+      "from_compute": 590,
+      "from_start": 3202,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        3258,
+        3258
+      ],
+      "next_load_issue_events": [
+        602,
+        641
+      ],
+      "previous_ready": 3258,
+      "to_compute": 686,
+      "to_start": 3343
+    },
+    {
+      "duration": 141,
+      "from_compute": 686,
+      "from_start": 3343,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        3399,
+        3399
+      ],
+      "next_load_issue_events": [
+        698,
+        737
+      ],
+      "previous_ready": 3399,
+      "to_compute": 782,
+      "to_start": 3484
+    },
+    {
+      "duration": 141,
+      "from_compute": 782,
+      "from_start": 3484,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        3540,
+        3540
+      ],
+      "next_load_issue_events": [
+        794,
+        833
+      ],
+      "previous_ready": 3540,
+      "to_compute": 878,
+      "to_start": 3625
+    },
+    {
+      "duration": 187,
+      "from_compute": 878,
+      "from_start": 3625,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        3681,
+        3681
+      ],
+      "next_load_issue_events": [
+        890,
+        929
+      ],
+      "previous_ready": 3681,
+      "to_compute": 974,
+      "to_start": 3812
+    },
+    {
+      "duration": 141,
+      "from_compute": 974,
+      "from_start": 3812,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        3868,
+        3868
+      ],
+      "next_load_issue_events": [
+        986,
+        1025
+      ],
+      "previous_ready": 3868,
+      "to_compute": 1070,
+      "to_start": 3953
+    },
+    {
+      "duration": 141,
+      "from_compute": 1070,
+      "from_start": 3953,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        4009,
+        4009
+      ],
+      "next_load_issue_events": [
+        1082,
+        1121
+      ],
+      "previous_ready": 4009,
+      "to_compute": 1166,
+      "to_start": 4094
+    },
+    {
+      "duration": 141,
+      "from_compute": 1166,
+      "from_start": 4094,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        4150,
+        4150
+      ],
+      "next_load_issue_events": [
+        1178,
+        1217
+      ],
+      "previous_ready": 4150,
+      "to_compute": 1262,
+      "to_start": 4235
+    },
+    {
+      "duration": 187,
+      "from_compute": 1262,
+      "from_start": 4235,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        4291,
+        4291
+      ],
+      "next_load_issue_events": [
+        1274,
+        1313
+      ],
+      "previous_ready": 4291,
+      "to_compute": 1358,
+      "to_start": 4422
+    },
+    {
+      "duration": 141,
+      "from_compute": 1358,
+      "from_start": 4422,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        4478,
+        4478
+      ],
+      "next_load_issue_events": [
+        1370,
+        1409
+      ],
+      "previous_ready": 4478,
+      "to_compute": 1454,
+      "to_start": 4563
+    },
+    {
+      "duration": 141,
+      "from_compute": 1454,
+      "from_start": 4563,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        4619,
+        4619
+      ],
+      "next_load_issue_events": [
+        1466,
+        1505
+      ],
+      "previous_ready": 4619,
+      "to_compute": 1550,
+      "to_start": 4704
+    },
+    {
+      "duration": 141,
+      "from_compute": 1550,
+      "from_start": 4704,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        4760,
+        4760
+      ],
+      "next_load_issue_events": [
+        1562,
+        1601
+      ],
+      "previous_ready": 4760,
+      "to_compute": 1646,
+      "to_start": 4845
+    },
+    {
+      "duration": 187,
+      "from_compute": 1646,
+      "from_start": 4845,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        4901,
+        4901
+      ],
+      "next_load_issue_events": [
+        1658,
+        1697
+      ],
+      "previous_ready": 4901,
+      "to_compute": 1742,
+      "to_start": 5032
+    },
+    {
+      "duration": 141,
+      "from_compute": 1742,
+      "from_start": 5032,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        5088,
+        5088
+      ],
+      "next_load_issue_events": [
+        1754,
+        1793
+      ],
+      "previous_ready": 5088,
+      "to_compute": 1838,
+      "to_start": 5173
+    },
+    {
+      "duration": 141,
+      "from_compute": 1838,
+      "from_start": 5173,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        5229,
+        5229
+      ],
+      "next_load_issue_events": [
+        1850,
+        1889
+      ],
+      "previous_ready": 5229,
+      "to_compute": 1934,
+      "to_start": 5314
+    },
+    {
+      "duration": 141,
+      "from_compute": 1934,
+      "from_start": 5314,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        5370,
+        5370
+      ],
+      "next_load_issue_events": [
+        1946,
+        1985
+      ],
+      "previous_ready": 5370,
+      "to_compute": 2030,
+      "to_start": 5455
+    },
+    {
+      "duration": 187,
+      "from_compute": 2030,
+      "from_start": 5455,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        5511,
+        5511
+      ],
+      "next_load_issue_events": [
+        2042,
+        2081
+      ],
+      "previous_ready": 5511,
+      "to_compute": 2126,
+      "to_start": 5642
+    },
+    {
+      "duration": 141,
+      "from_compute": 2126,
+      "from_start": 5642,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        5698,
+        5698
+      ],
+      "next_load_issue_events": [
+        2138,
+        2177
+      ],
+      "previous_ready": 5698,
+      "to_compute": 2222,
+      "to_start": 5783
+    },
+    {
+      "duration": 141,
+      "from_compute": 2222,
+      "from_start": 5783,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        5839,
+        5839
+      ],
+      "next_load_issue_events": [
+        2234,
+        2273
+      ],
+      "previous_ready": 5839,
+      "to_compute": 2318,
+      "to_start": 5924
+    },
+    {
+      "duration": 141,
+      "from_compute": 2318,
+      "from_start": 5924,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        5980,
+        5980
+      ],
+      "next_load_issue_events": [
+        2330,
+        2369
+      ],
+      "previous_ready": 5980,
+      "to_compute": 2414,
+      "to_start": 6065
+    },
+    {
+      "duration": 187,
+      "from_compute": 2414,
+      "from_start": 6065,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        6121,
+        6121
+      ],
+      "next_load_issue_events": [
+        2426,
+        2465
+      ],
+      "previous_ready": 6121,
+      "to_compute": 2510,
+      "to_start": 6252
+    },
+    {
+      "duration": 141,
+      "from_compute": 2510,
+      "from_start": 6252,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        6308,
+        6308
+      ],
+      "next_load_issue_events": [
+        2522,
+        2561
+      ],
+      "previous_ready": 6308,
+      "to_compute": 2606,
+      "to_start": 6393
+    },
+    {
+      "duration": 141,
+      "from_compute": 2606,
+      "from_start": 6393,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        6449,
+        6449
+      ],
+      "next_load_issue_events": [
+        2618,
+        2657
+      ],
+      "previous_ready": 6449,
+      "to_compute": 2702,
+      "to_start": 6534
+    },
+    {
+      "duration": 141,
+      "from_compute": 2702,
+      "from_start": 6534,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        6590,
+        6590
+      ],
+      "next_load_issue_events": [
+        2714,
+        2753
+      ],
+      "previous_ready": 6590,
+      "to_compute": 2798,
+      "to_start": 6675
+    },
+    {
+      "duration": 187,
+      "from_compute": 2798,
+      "from_start": 6675,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        6731,
+        6731
+      ],
+      "next_load_issue_events": [
+        2810,
+        2849
+      ],
+      "previous_ready": 6731,
+      "to_compute": 2894,
+      "to_start": 6862
+    },
+    {
+      "duration": 141,
+      "from_compute": 2894,
+      "from_start": 6862,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        6918,
+        6918
+      ],
+      "next_load_issue_events": [
+        2906,
+        2945
+      ],
+      "previous_ready": 6918,
+      "to_compute": 2990,
+      "to_start": 7003
+    },
+    {
+      "duration": 141,
+      "from_compute": 2990,
+      "from_start": 7003,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        7059,
+        7059
+      ],
+      "next_load_issue_events": [
+        3002,
+        3041
+      ],
+      "previous_ready": 7059,
+      "to_compute": 3086,
+      "to_start": 7144
+    },
+    {
+      "duration": 141,
+      "from_compute": 3086,
+      "from_start": 7144,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        7200,
+        7200
+      ],
+      "next_load_issue_events": [
+        3098,
+        3137
+      ],
+      "previous_ready": 7200,
+      "to_compute": 3182,
+      "to_start": 7285
+    },
+    {
+      "duration": 187,
+      "from_compute": 3182,
+      "from_start": 7285,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        7341,
+        7341
+      ],
+      "next_load_issue_events": [
+        3194,
+        3233
+      ],
+      "previous_ready": 7341,
+      "to_compute": 3278,
+      "to_start": 7472
+    },
+    {
+      "duration": 141,
+      "from_compute": 3278,
+      "from_start": 7472,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        7528,
+        7528
+      ],
+      "next_load_issue_events": [
+        3290,
+        3329
+      ],
+      "previous_ready": 7528,
+      "to_compute": 3374,
+      "to_start": 7613
+    },
+    {
+      "duration": 141,
+      "from_compute": 3374,
+      "from_start": 7613,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        7669,
+        7669
+      ],
+      "next_load_issue_events": [
+        3386,
+        3425
+      ],
+      "previous_ready": 7669,
+      "to_compute": 3470,
+      "to_start": 7754
+    },
+    {
+      "duration": 141,
+      "from_compute": 3470,
+      "from_start": 7754,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        7810,
+        7810
+      ],
+      "next_load_issue_events": [
+        3482,
+        3521
+      ],
+      "previous_ready": 7810,
+      "to_compute": 3566,
+      "to_start": 7895
+    },
+    {
+      "duration": 187,
+      "from_compute": 3566,
+      "from_start": 7895,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        7951,
+        7951
+      ],
+      "next_load_issue_events": [
+        3578,
+        3617
+      ],
+      "previous_ready": 7951,
+      "to_compute": 3662,
+      "to_start": 8082
+    },
+    {
+      "duration": 141,
+      "from_compute": 3662,
+      "from_start": 8082,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        8138,
+        8138
+      ],
+      "next_load_issue_events": [
+        3674,
+        3713
+      ],
+      "previous_ready": 8138,
+      "to_compute": 3758,
+      "to_start": 8223
+    },
+    {
+      "duration": 141,
+      "from_compute": 3758,
+      "from_start": 8223,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        8279,
+        8279
+      ],
+      "next_load_issue_events": [
+        3770,
+        3809
+      ],
+      "previous_ready": 8279,
+      "to_compute": 3854,
+      "to_start": 8364
+    },
+    {
+      "duration": 141,
+      "from_compute": 3854,
+      "from_start": 8364,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        8420,
+        8420
+      ],
+      "next_load_issue_events": [
+        3866,
+        3905
+      ],
+      "previous_ready": 8420,
+      "to_compute": 3950,
+      "to_start": 8505
+    },
+    {
+      "duration": 187,
+      "from_compute": 3950,
+      "from_start": 8505,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        8561,
+        8561
+      ],
+      "next_load_issue_events": [
+        3962,
+        4001
+      ],
+      "previous_ready": 8561,
+      "to_compute": 4046,
+      "to_start": 8692
+    },
+    {
+      "duration": 141,
+      "from_compute": 4046,
+      "from_start": 8692,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        8748,
+        8748
+      ],
+      "next_load_issue_events": [
+        4058,
+        4097
+      ],
+      "previous_ready": 8748,
+      "to_compute": 4142,
+      "to_start": 8833
+    },
+    {
+      "duration": 141,
+      "from_compute": 4142,
+      "from_start": 8833,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        8889,
+        8889
+      ],
+      "next_load_issue_events": [
+        4154,
+        4193
+      ],
+      "previous_ready": 8889,
+      "to_compute": 4238,
+      "to_start": 8974
+    },
+    {
+      "duration": 141,
+      "from_compute": 4238,
+      "from_start": 8974,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        9030,
+        9030
+      ],
+      "next_load_issue_events": [
+        4250,
+        4289
+      ],
+      "previous_ready": 9030,
+      "to_compute": 4334,
+      "to_start": 9115
+    },
+    {
+      "duration": 187,
+      "from_compute": 4334,
+      "from_start": 9115,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        9171,
+        9171
+      ],
+      "next_load_issue_events": [
+        4346,
+        4385
+      ],
+      "previous_ready": 9171,
+      "to_compute": 4430,
+      "to_start": 9302
+    },
+    {
+      "duration": 141,
+      "from_compute": 4430,
+      "from_start": 9302,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        9358,
+        9358
+      ],
+      "next_load_issue_events": [
+        4442,
+        4481
+      ],
+      "previous_ready": 9358,
+      "to_compute": 4526,
+      "to_start": 9443
+    },
+    {
+      "duration": 141,
+      "from_compute": 4526,
+      "from_start": 9443,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        9499,
+        9499
+      ],
+      "next_load_issue_events": [
+        4538,
+        4577
+      ],
+      "previous_ready": 9499,
+      "to_compute": 4622,
+      "to_start": 9584
+    },
+    {
+      "duration": 141,
+      "from_compute": 4622,
+      "from_start": 9584,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        9640,
+        9640
+      ],
+      "next_load_issue_events": [
+        4634,
+        4673
+      ],
+      "previous_ready": 9640,
+      "to_compute": 4718,
+      "to_start": 9725
+    },
+    {
+      "duration": 187,
+      "from_compute": 4718,
+      "from_start": 9725,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        9781,
+        9781
+      ],
+      "next_load_issue_events": [
+        4730,
+        4769
+      ],
+      "previous_ready": 9781,
+      "to_compute": 4814,
+      "to_start": 9912
+    },
+    {
+      "duration": 141,
+      "from_compute": 4814,
+      "from_start": 9912,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        9968,
+        9968
+      ],
+      "next_load_issue_events": [
+        4826,
+        4865
+      ],
+      "previous_ready": 9968,
+      "to_compute": 4910,
+      "to_start": 10053
+    },
+    {
+      "duration": 141,
+      "from_compute": 4910,
+      "from_start": 10053,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        10109,
+        10109
+      ],
+      "next_load_issue_events": [
+        4922,
+        4961
+      ],
+      "previous_ready": 10109,
+      "to_compute": 5006,
+      "to_start": 10194
+    },
+    {
+      "duration": 141,
+      "from_compute": 5006,
+      "from_start": 10194,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        10250,
+        10250
+      ],
+      "next_load_issue_events": [
+        5018,
+        5057
+      ],
+      "previous_ready": 10250,
+      "to_compute": 5102,
+      "to_start": 10335
+    },
+    {
+      "duration": 187,
+      "from_compute": 5102,
+      "from_start": 10335,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        10391,
+        10391
+      ],
+      "next_load_issue_events": [
+        5114,
+        5153
+      ],
+      "previous_ready": 10391,
+      "to_compute": 5198,
+      "to_start": 10522
+    },
+    {
+      "duration": 141,
+      "from_compute": 5198,
+      "from_start": 10522,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        10578,
+        10578
+      ],
+      "next_load_issue_events": [
+        5210,
+        5249
+      ],
+      "previous_ready": 10578,
+      "to_compute": 5294,
+      "to_start": 10663
+    },
+    {
+      "duration": 141,
+      "from_compute": 5294,
+      "from_start": 10663,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        10719,
+        10719
+      ],
+      "next_load_issue_events": [
+        5306,
+        5345
+      ],
+      "previous_ready": 10719,
+      "to_compute": 5390,
+      "to_start": 10804
+    },
+    {
+      "duration": 141,
+      "from_compute": 5390,
+      "from_start": 10804,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        10860,
+        10860
+      ],
+      "next_load_issue_events": [
+        5402,
+        5441
+      ],
+      "previous_ready": 10860,
+      "to_compute": 5486,
+      "to_start": 10945
+    },
+    {
+      "duration": 187,
+      "from_compute": 5486,
+      "from_start": 10945,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        11001,
+        11001
+      ],
+      "next_load_issue_events": [
+        5498,
+        5537
+      ],
+      "previous_ready": 11001,
+      "to_compute": 5582,
+      "to_start": 11132
+    },
+    {
+      "duration": 141,
+      "from_compute": 5582,
+      "from_start": 11132,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        11188,
+        11188
+      ],
+      "next_load_issue_events": [
+        5594,
+        5633
+      ],
+      "previous_ready": 11188,
+      "to_compute": 5678,
+      "to_start": 11273
+    },
+    {
+      "duration": 141,
+      "from_compute": 5678,
+      "from_start": 11273,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        11329,
+        11329
+      ],
+      "next_load_issue_events": [
+        5690,
+        5729
+      ],
+      "previous_ready": 11329,
+      "to_compute": 5774,
+      "to_start": 11414
+    },
+    {
+      "duration": 141,
+      "from_compute": 5774,
+      "from_start": 11414,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        11470,
+        11470
+      ],
+      "next_load_issue_events": [
+        5786,
+        5825
+      ],
+      "previous_ready": 11470,
+      "to_compute": 5870,
+      "to_start": 11555
+    },
+    {
+      "duration": 187,
+      "from_compute": 5870,
+      "from_start": 11555,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        11611,
+        11611
+      ],
+      "next_load_issue_events": [
+        5882,
+        5921
+      ],
+      "previous_ready": 11611,
+      "to_compute": 5966,
+      "to_start": 11742
+    },
+    {
+      "duration": 141,
+      "from_compute": 5966,
+      "from_start": 11742,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        11798,
+        11798
+      ],
+      "next_load_issue_events": [
+        5978,
+        6017
+      ],
+      "previous_ready": 11798,
+      "to_compute": 6062,
+      "to_start": 11883
+    },
+    {
+      "duration": 141,
+      "from_compute": 6062,
+      "from_start": 11883,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        11939,
+        11939
+      ],
+      "next_load_issue_events": [
+        6074,
+        6113
+      ],
+      "previous_ready": 11939,
+      "to_compute": 6158,
+      "to_start": 12024
+    },
+    {
+      "duration": 141,
+      "from_compute": 6158,
+      "from_start": 12024,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        12080,
+        12080
+      ],
+      "next_load_issue_events": [
+        6170,
+        6209
+      ],
+      "previous_ready": 12080,
+      "to_compute": 6254,
+      "to_start": 12165
+    },
+    {
+      "duration": 187,
+      "from_compute": 6254,
+      "from_start": 12165,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        12221,
+        12221
+      ],
+      "next_load_issue_events": [
+        6266,
+        6305
+      ],
+      "previous_ready": 12221,
+      "to_compute": 6350,
+      "to_start": 12352
+    },
+    {
+      "duration": 141,
+      "from_compute": 6350,
+      "from_start": 12352,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        12408,
+        12408
+      ],
+      "next_load_issue_events": [
+        6362,
+        6401
+      ],
+      "previous_ready": 12408,
+      "to_compute": 6446,
+      "to_start": 12493
+    },
+    {
+      "duration": 141,
+      "from_compute": 6446,
+      "from_start": 12493,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        12549,
+        12549
+      ],
+      "next_load_issue_events": [
+        6458,
+        6497
+      ],
+      "previous_ready": 12549,
+      "to_compute": 6542,
+      "to_start": 12634
+    },
+    {
+      "duration": 141,
+      "from_compute": 6542,
+      "from_start": 12634,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        12690,
+        12690
+      ],
+      "next_load_issue_events": [
+        6554,
+        6593
+      ],
+      "previous_ready": 12690,
+      "to_compute": 6638,
+      "to_start": 12775
+    },
+    {
+      "duration": 187,
+      "from_compute": 6638,
+      "from_start": 12775,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        12831,
+        12831
+      ],
+      "next_load_issue_events": [
+        6650,
+        6689
+      ],
+      "previous_ready": 12831,
+      "to_compute": 6734,
+      "to_start": 12962
+    },
+    {
+      "duration": 141,
+      "from_compute": 6734,
+      "from_start": 12962,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        13018,
+        13018
+      ],
+      "next_load_issue_events": [
+        6746,
+        6785
+      ],
+      "previous_ready": 13018,
+      "to_compute": 6830,
+      "to_start": 13103
+    },
+    {
+      "duration": 141,
+      "from_compute": 6830,
+      "from_start": 13103,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        13159,
+        13159
+      ],
+      "next_load_issue_events": [
+        6842,
+        6881
+      ],
+      "previous_ready": 13159,
+      "to_compute": 6926,
+      "to_start": 13244
+    },
+    {
+      "duration": 141,
+      "from_compute": 6926,
+      "from_start": 13244,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        13300,
+        13300
+      ],
+      "next_load_issue_events": [
+        6938,
+        6977
+      ],
+      "previous_ready": 13300,
+      "to_compute": 7022,
+      "to_start": 13385
+    },
+    {
+      "duration": 187,
+      "from_compute": 7022,
+      "from_start": 13385,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        13441,
+        13441
+      ],
+      "next_load_issue_events": [
+        7034,
+        7073
+      ],
+      "previous_ready": 13441,
+      "to_compute": 7118,
+      "to_start": 13572
+    },
+    {
+      "duration": 141,
+      "from_compute": 7118,
+      "from_start": 13572,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        13628,
+        13628
+      ],
+      "next_load_issue_events": [
+        7130,
+        7169
+      ],
+      "previous_ready": 13628,
+      "to_compute": 7214,
+      "to_start": 13713
+    },
+    {
+      "duration": 141,
+      "from_compute": 7214,
+      "from_start": 13713,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        13769,
+        13769
+      ],
+      "next_load_issue_events": [
+        7226,
+        7265
+      ],
+      "previous_ready": 13769,
+      "to_compute": 7310,
+      "to_start": 13854
+    },
+    {
+      "duration": 141,
+      "from_compute": 7310,
+      "from_start": 13854,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        13910,
+        13910
+      ],
+      "next_load_issue_events": [
+        7322,
+        7361
+      ],
+      "previous_ready": 13910,
+      "to_compute": 7406,
+      "to_start": 13995
+    },
+    {
+      "duration": 187,
+      "from_compute": 7406,
+      "from_start": 13995,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        14051,
+        14051
+      ],
+      "next_load_issue_events": [
+        7418,
+        7457
+      ],
+      "previous_ready": 14051,
+      "to_compute": 7502,
+      "to_start": 14182
+    },
+    {
+      "duration": 141,
+      "from_compute": 7502,
+      "from_start": 14182,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        14238,
+        14238
+      ],
+      "next_load_issue_events": [
+        7514,
+        7553
+      ],
+      "previous_ready": 14238,
+      "to_compute": 7598,
+      "to_start": 14323
+    },
+    {
+      "duration": 141,
+      "from_compute": 7598,
+      "from_start": 14323,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        14379,
+        14379
+      ],
+      "next_load_issue_events": [
+        7610,
+        7649
+      ],
+      "previous_ready": 14379,
+      "to_compute": 7694,
+      "to_start": 14464
+    },
+    {
+      "duration": 141,
+      "from_compute": 7694,
+      "from_start": 14464,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        14520,
+        14520
+      ],
+      "next_load_issue_events": [
+        7706,
+        7745
+      ],
+      "previous_ready": 14520,
+      "to_compute": 7790,
+      "to_start": 14605
+    },
+    {
+      "duration": 187,
+      "from_compute": 7790,
+      "from_start": 14605,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        14661,
+        14661
+      ],
+      "next_load_issue_events": [
+        7802,
+        7841
+      ],
+      "previous_ready": 14661,
+      "to_compute": 7886,
+      "to_start": 14792
+    },
+    {
+      "duration": 141,
+      "from_compute": 7886,
+      "from_start": 14792,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        14848,
+        14848
+      ],
+      "next_load_issue_events": [
+        7898,
+        7937
+      ],
+      "previous_ready": 14848,
+      "to_compute": 7982,
+      "to_start": 14933
+    },
+    {
+      "duration": 141,
+      "from_compute": 7982,
+      "from_start": 14933,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        14989,
+        14989
+      ],
+      "next_load_issue_events": [
+        7994,
+        8033
+      ],
+      "previous_ready": 14989,
+      "to_compute": 8078,
+      "to_start": 15074
+    },
+    {
+      "duration": 141,
+      "from_compute": 8078,
+      "from_start": 15074,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        15130,
+        15130
+      ],
+      "next_load_issue_events": [
+        8090,
+        8129
+      ],
+      "previous_ready": 15130,
+      "to_compute": 8174,
+      "to_start": 15215
+    },
+    {
+      "duration": 187,
+      "from_compute": 8174,
+      "from_start": 15215,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        15271,
+        15271
+      ],
+      "next_load_issue_events": [
+        8186,
+        8225
+      ],
+      "previous_ready": 15271,
+      "to_compute": 8270,
+      "to_start": 15402
+    },
+    {
+      "duration": 141,
+      "from_compute": 8270,
+      "from_start": 15402,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        15458,
+        15458
+      ],
+      "next_load_issue_events": [
+        8282,
+        8321
+      ],
+      "previous_ready": 15458,
+      "to_compute": 8366,
+      "to_start": 15543
+    },
+    {
+      "duration": 141,
+      "from_compute": 8366,
+      "from_start": 15543,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        15599,
+        15599
+      ],
+      "next_load_issue_events": [
+        8378,
+        8417
+      ],
+      "previous_ready": 15599,
+      "to_compute": 8462,
+      "to_start": 15684
+    },
+    {
+      "duration": 141,
+      "from_compute": 8462,
+      "from_start": 15684,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        15740,
+        15740
+      ],
+      "next_load_issue_events": [
+        8474,
+        8513
+      ],
+      "previous_ready": 15740,
+      "to_compute": 8558,
+      "to_start": 15825
+    },
+    {
+      "duration": 187,
+      "from_compute": 8558,
+      "from_start": 15825,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        15881,
+        15881
+      ],
+      "next_load_issue_events": [
+        8570,
+        8609
+      ],
+      "previous_ready": 15881,
+      "to_compute": 8654,
+      "to_start": 16012
+    },
+    {
+      "duration": 141,
+      "from_compute": 8654,
+      "from_start": 16012,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        16068,
+        16068
+      ],
+      "next_load_issue_events": [
+        8666,
+        8705
+      ],
+      "previous_ready": 16068,
+      "to_compute": 8750,
+      "to_start": 16153
+    },
+    {
+      "duration": 141,
+      "from_compute": 8750,
+      "from_start": 16153,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        16209,
+        16209
+      ],
+      "next_load_issue_events": [
+        8762,
+        8801
+      ],
+      "previous_ready": 16209,
+      "to_compute": 8846,
+      "to_start": 16294
+    },
+    {
+      "duration": 141,
+      "from_compute": 8846,
+      "from_start": 16294,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        16350,
+        16350
+      ],
+      "next_load_issue_events": [
+        8858,
+        8897
+      ],
+      "previous_ready": 16350,
+      "to_compute": 8942,
+      "to_start": 16435
+    },
+    {
+      "duration": 187,
+      "from_compute": 8942,
+      "from_start": 16435,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        16491,
+        16491
+      ],
+      "next_load_issue_events": [
+        8954,
+        8993
+      ],
+      "previous_ready": 16491,
+      "to_compute": 9038,
+      "to_start": 16622
+    },
+    {
+      "duration": 141,
+      "from_compute": 9038,
+      "from_start": 16622,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        16678,
+        16678
+      ],
+      "next_load_issue_events": [
+        9050,
+        9089
+      ],
+      "previous_ready": 16678,
+      "to_compute": 9134,
+      "to_start": 16763
+    },
+    {
+      "duration": 141,
+      "from_compute": 9134,
+      "from_start": 16763,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        16819,
+        16819
+      ],
+      "next_load_issue_events": [
+        9146,
+        9185
+      ],
+      "previous_ready": 16819,
+      "to_compute": 9230,
+      "to_start": 16904
+    },
+    {
+      "duration": 141,
+      "from_compute": 9230,
+      "from_start": 16904,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        16960,
+        16960
+      ],
+      "next_load_issue_events": [
+        9242,
+        9281
+      ],
+      "previous_ready": 16960,
+      "to_compute": 9326,
+      "to_start": 17045
+    },
+    {
+      "duration": 187,
+      "from_compute": 9326,
+      "from_start": 17045,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        17101,
+        17101
+      ],
+      "next_load_issue_events": [
+        9338,
+        9377
+      ],
+      "previous_ready": 17101,
+      "to_compute": 9422,
+      "to_start": 17232
+    },
+    {
+      "duration": 141,
+      "from_compute": 9422,
+      "from_start": 17232,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        17288,
+        17288
+      ],
+      "next_load_issue_events": [
+        9434,
+        9473
+      ],
+      "previous_ready": 17288,
+      "to_compute": 9518,
+      "to_start": 17373
+    },
+    {
+      "duration": 141,
+      "from_compute": 9518,
+      "from_start": 17373,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        17429,
+        17429
+      ],
+      "next_load_issue_events": [
+        9530,
+        9569
+      ],
+      "previous_ready": 17429,
+      "to_compute": 9614,
+      "to_start": 17514
+    },
+    {
+      "duration": 141,
+      "from_compute": 9614,
+      "from_start": 17514,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        17570,
+        17570
+      ],
+      "next_load_issue_events": [
+        9626,
+        9665
+      ],
+      "previous_ready": 17570,
+      "to_compute": 9710,
+      "to_start": 17655
+    },
+    {
+      "duration": 187,
+      "from_compute": 9710,
+      "from_start": 17655,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        17711,
+        17711
+      ],
+      "next_load_issue_events": [
+        9722,
+        9761
+      ],
+      "previous_ready": 17711,
+      "to_compute": 9806,
+      "to_start": 17842
+    },
+    {
+      "duration": 141,
+      "from_compute": 9806,
+      "from_start": 17842,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        17898,
+        17898
+      ],
+      "next_load_issue_events": [
+        9818,
+        9857
+      ],
+      "previous_ready": 17898,
+      "to_compute": 9902,
+      "to_start": 17983
+    },
+    {
+      "duration": 141,
+      "from_compute": 9902,
+      "from_start": 17983,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        18039,
+        18039
+      ],
+      "next_load_issue_events": [
+        9914,
+        9953
+      ],
+      "previous_ready": 18039,
+      "to_compute": 9998,
+      "to_start": 18124
+    },
+    {
+      "duration": 141,
+      "from_compute": 9998,
+      "from_start": 18124,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        18180,
+        18180
+      ],
+      "next_load_issue_events": [
+        10010,
+        10049
+      ],
+      "previous_ready": 18180,
+      "to_compute": 10094,
+      "to_start": 18265
+    },
+    {
+      "duration": 187,
+      "from_compute": 10094,
+      "from_start": 18265,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        18321,
+        18321
+      ],
+      "next_load_issue_events": [
+        10106,
+        10145
+      ],
+      "previous_ready": 18321,
+      "to_compute": 10190,
+      "to_start": 18452
+    },
+    {
+      "duration": 141,
+      "from_compute": 10190,
+      "from_start": 18452,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        18508,
+        18508
+      ],
+      "next_load_issue_events": [
+        10202,
+        10241
+      ],
+      "previous_ready": 18508,
+      "to_compute": 10286,
+      "to_start": 18593
+    },
+    {
+      "duration": 141,
+      "from_compute": 10286,
+      "from_start": 18593,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        18649,
+        18649
+      ],
+      "next_load_issue_events": [
+        10298,
+        10337
+      ],
+      "previous_ready": 18649,
+      "to_compute": 10382,
+      "to_start": 18734
+    },
+    {
+      "duration": 141,
+      "from_compute": 10382,
+      "from_start": 18734,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        18790,
+        18790
+      ],
+      "next_load_issue_events": [
+        10394,
+        10433
+      ],
+      "previous_ready": 18790,
+      "to_compute": 10478,
+      "to_start": 18875
+    },
+    {
+      "duration": 187,
+      "from_compute": 10478,
+      "from_start": 18875,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        18931,
+        18931
+      ],
+      "next_load_issue_events": [
+        10490,
+        10529
+      ],
+      "previous_ready": 18931,
+      "to_compute": 10574,
+      "to_start": 19062
+    },
+    {
+      "duration": 141,
+      "from_compute": 10574,
+      "from_start": 19062,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        19118,
+        19118
+      ],
+      "next_load_issue_events": [
+        10586,
+        10625
+      ],
+      "previous_ready": 19118,
+      "to_compute": 10670,
+      "to_start": 19203
+    },
+    {
+      "duration": 141,
+      "from_compute": 10670,
+      "from_start": 19203,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        19259,
+        19259
+      ],
+      "next_load_issue_events": [
+        10682,
+        10721
+      ],
+      "previous_ready": 19259,
+      "to_compute": 10766,
+      "to_start": 19344
+    },
+    {
+      "duration": 141,
+      "from_compute": 10766,
+      "from_start": 19344,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        19400,
+        19400
+      ],
+      "next_load_issue_events": [
+        10778,
+        10817
+      ],
+      "previous_ready": 19400,
+      "to_compute": 10862,
+      "to_start": 19485
+    },
+    {
+      "duration": 187,
+      "from_compute": 10862,
+      "from_start": 19485,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        19541,
+        19541
+      ],
+      "next_load_issue_events": [
+        10874,
+        10913
+      ],
+      "previous_ready": 19541,
+      "to_compute": 10958,
+      "to_start": 19672
+    },
+    {
+      "duration": 141,
+      "from_compute": 10958,
+      "from_start": 19672,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        19728,
+        19728
+      ],
+      "next_load_issue_events": [
+        10970,
+        11009
+      ],
+      "previous_ready": 19728,
+      "to_compute": 11054,
+      "to_start": 19813
+    },
+    {
+      "duration": 141,
+      "from_compute": 11054,
+      "from_start": 19813,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        19869,
+        19869
+      ],
+      "next_load_issue_events": [
+        11066,
+        11105
+      ],
+      "previous_ready": 19869,
+      "to_compute": 11150,
+      "to_start": 19954
+    },
+    {
+      "duration": 141,
+      "from_compute": 11150,
+      "from_start": 19954,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        20010,
+        20010
+      ],
+      "next_load_issue_events": [
+        11162,
+        11201
+      ],
+      "previous_ready": 20010,
+      "to_compute": 11246,
+      "to_start": 20095
+    },
+    {
+      "duration": 187,
+      "from_compute": 11246,
+      "from_start": 20095,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        20151,
+        20151
+      ],
+      "next_load_issue_events": [
+        11258,
+        11297
+      ],
+      "previous_ready": 20151,
+      "to_compute": 11342,
+      "to_start": 20282
+    },
+    {
+      "duration": 141,
+      "from_compute": 11342,
+      "from_start": 20282,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        20338,
+        20338
+      ],
+      "next_load_issue_events": [
+        11354,
+        11393
+      ],
+      "previous_ready": 20338,
+      "to_compute": 11438,
+      "to_start": 20423
+    },
+    {
+      "duration": 141,
+      "from_compute": 11438,
+      "from_start": 20423,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        20479,
+        20479
+      ],
+      "next_load_issue_events": [
+        11450,
+        11489
+      ],
+      "previous_ready": 20479,
+      "to_compute": 11534,
+      "to_start": 20564
+    },
+    {
+      "duration": 141,
+      "from_compute": 11534,
+      "from_start": 20564,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        20620,
+        20620
+      ],
+      "next_load_issue_events": [
+        11546,
+        11585
+      ],
+      "previous_ready": 20620,
+      "to_compute": 11630,
+      "to_start": 20705
+    },
+    {
+      "duration": 187,
+      "from_compute": 11630,
+      "from_start": 20705,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        20761,
+        20761
+      ],
+      "next_load_issue_events": [
+        11642,
+        11681
+      ],
+      "previous_ready": 20761,
+      "to_compute": 11726,
+      "to_start": 20892
+    },
+    {
+      "duration": 141,
+      "from_compute": 11726,
+      "from_start": 20892,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        20948,
+        20948
+      ],
+      "next_load_issue_events": [
+        11738,
+        11777
+      ],
+      "previous_ready": 20948,
+      "to_compute": 11822,
+      "to_start": 21033
+    },
+    {
+      "duration": 141,
+      "from_compute": 11822,
+      "from_start": 21033,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        21089,
+        21089
+      ],
+      "next_load_issue_events": [
+        11834,
+        11873
+      ],
+      "previous_ready": 21089,
+      "to_compute": 11918,
+      "to_start": 21174
+    },
+    {
+      "duration": 141,
+      "from_compute": 11918,
+      "from_start": 21174,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        21230,
+        21230
+      ],
+      "next_load_issue_events": [
+        11930,
+        11969
+      ],
+      "previous_ready": 21230,
+      "to_compute": 12014,
+      "to_start": 21315
+    },
+    {
+      "duration": 187,
+      "from_compute": 12014,
+      "from_start": 21315,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        21371,
+        21371
+      ],
+      "next_load_issue_events": [
+        12026,
+        12065
+      ],
+      "previous_ready": 21371,
+      "to_compute": 12110,
+      "to_start": 21502
+    },
+    {
+      "duration": 141,
+      "from_compute": 12110,
+      "from_start": 21502,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        21558,
+        21558
+      ],
+      "next_load_issue_events": [
+        12122,
+        12161
+      ],
+      "previous_ready": 21558,
+      "to_compute": 12206,
+      "to_start": 21643
+    },
+    {
+      "duration": 141,
+      "from_compute": 12206,
+      "from_start": 21643,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        21699,
+        21699
+      ],
+      "next_load_issue_events": [
+        12218,
+        12257
+      ],
+      "previous_ready": 21699,
+      "to_compute": 12302,
+      "to_start": 21784
+    },
+    {
+      "duration": 141,
+      "from_compute": 12302,
+      "from_start": 21784,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        21840,
+        21840
+      ],
+      "next_load_issue_events": [
+        12314,
+        12353
+      ],
+      "previous_ready": 21840,
+      "to_compute": 12398,
+      "to_start": 21925
+    },
+    {
+      "duration": 187,
+      "from_compute": 12398,
+      "from_start": 21925,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        21981,
+        21981
+      ],
+      "next_load_issue_events": [
+        12410,
+        12449
+      ],
+      "previous_ready": 21981,
+      "to_compute": 12494,
+      "to_start": 22112
+    },
+    {
+      "duration": 141,
+      "from_compute": 12494,
+      "from_start": 22112,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        22168,
+        22168
+      ],
+      "next_load_issue_events": [
+        12506,
+        12545
+      ],
+      "previous_ready": 22168,
+      "to_compute": 12590,
+      "to_start": 22253
+    },
+    {
+      "duration": 141,
+      "from_compute": 12590,
+      "from_start": 22253,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        22309,
+        22309
+      ],
+      "next_load_issue_events": [
+        12602,
+        12641
+      ],
+      "previous_ready": 22309,
+      "to_compute": 12686,
+      "to_start": 22394
+    },
+    {
+      "duration": 141,
+      "from_compute": 12686,
+      "from_start": 22394,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        22450,
+        22450
+      ],
+      "next_load_issue_events": [
+        12698,
+        12737
+      ],
+      "previous_ready": 22450,
+      "to_compute": 12782,
+      "to_start": 22535
+    },
+    {
+      "duration": 187,
+      "from_compute": 12782,
+      "from_start": 22535,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        22591,
+        22591
+      ],
+      "next_load_issue_events": [
+        12794,
+        12833
+      ],
+      "previous_ready": 22591,
+      "to_compute": 12878,
+      "to_start": 22722
+    },
+    {
+      "duration": 141,
+      "from_compute": 12878,
+      "from_start": 22722,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        22778,
+        22778
+      ],
+      "next_load_issue_events": [
+        12890,
+        12929
+      ],
+      "previous_ready": 22778,
+      "to_compute": 12974,
+      "to_start": 22863
+    },
+    {
+      "duration": 141,
+      "from_compute": 12974,
+      "from_start": 22863,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        22919,
+        22919
+      ],
+      "next_load_issue_events": [
+        12986,
+        13025
+      ],
+      "previous_ready": 22919,
+      "to_compute": 13070,
+      "to_start": 23004
+    },
+    {
+      "duration": 141,
+      "from_compute": 13070,
+      "from_start": 23004,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        23060,
+        23060
+      ],
+      "next_load_issue_events": [
+        13082,
+        13121
+      ],
+      "previous_ready": 23060,
+      "to_compute": 13166,
+      "to_start": 23145
+    },
+    {
+      "duration": 187,
+      "from_compute": 13166,
+      "from_start": 23145,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        23201,
+        23201
+      ],
+      "next_load_issue_events": [
+        13178,
+        13217
+      ],
+      "previous_ready": 23201,
+      "to_compute": 13262,
+      "to_start": 23332
+    },
+    {
+      "duration": 141,
+      "from_compute": 13262,
+      "from_start": 23332,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        23388,
+        23388
+      ],
+      "next_load_issue_events": [
+        13274,
+        13313
+      ],
+      "previous_ready": 23388,
+      "to_compute": 13358,
+      "to_start": 23473
+    },
+    {
+      "duration": 141,
+      "from_compute": 13358,
+      "from_start": 23473,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        23529,
+        23529
+      ],
+      "next_load_issue_events": [
+        13370,
+        13409
+      ],
+      "previous_ready": 23529,
+      "to_compute": 13454,
+      "to_start": 23614
+    },
+    {
+      "duration": 141,
+      "from_compute": 13454,
+      "from_start": 23614,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        23670,
+        23670
+      ],
+      "next_load_issue_events": [
+        13466,
+        13505
+      ],
+      "previous_ready": 23670,
+      "to_compute": 13550,
+      "to_start": 23755
+    },
+    {
+      "duration": 187,
+      "from_compute": 13550,
+      "from_start": 23755,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        23811,
+        23811
+      ],
+      "next_load_issue_events": [
+        13562,
+        13601
+      ],
+      "previous_ready": 23811,
+      "to_compute": 13646,
+      "to_start": 23942
+    },
+    {
+      "duration": 141,
+      "from_compute": 13646,
+      "from_start": 23942,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        23998,
+        23998
+      ],
+      "next_load_issue_events": [
+        13658,
+        13697
+      ],
+      "previous_ready": 23998,
+      "to_compute": 13742,
+      "to_start": 24083
+    },
+    {
+      "duration": 141,
+      "from_compute": 13742,
+      "from_start": 24083,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        24139,
+        24139
+      ],
+      "next_load_issue_events": [
+        13754,
+        13793
+      ],
+      "previous_ready": 24139,
+      "to_compute": 13838,
+      "to_start": 24224
+    },
+    {
+      "duration": 141,
+      "from_compute": 13838,
+      "from_start": 24224,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        24280,
+        24280
+      ],
+      "next_load_issue_events": [
+        13850,
+        13889
+      ],
+      "previous_ready": 24280,
+      "to_compute": 13934,
+      "to_start": 24365
+    },
+    {
+      "duration": 187,
+      "from_compute": 13934,
+      "from_start": 24365,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        24421,
+        24421
+      ],
+      "next_load_issue_events": [
+        13946,
+        13985
+      ],
+      "previous_ready": 24421,
+      "to_compute": 14030,
+      "to_start": 24552
+    },
+    {
+      "duration": 141,
+      "from_compute": 14030,
+      "from_start": 24552,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        24608,
+        24608
+      ],
+      "next_load_issue_events": [
+        14042,
+        14081
+      ],
+      "previous_ready": 24608,
+      "to_compute": 14126,
+      "to_start": 24693
+    },
+    {
+      "duration": 141,
+      "from_compute": 14126,
+      "from_start": 24693,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        24749,
+        24749
+      ],
+      "next_load_issue_events": [
+        14138,
+        14177
+      ],
+      "previous_ready": 24749,
+      "to_compute": 14222,
+      "to_start": 24834
+    },
+    {
+      "duration": 141,
+      "from_compute": 14222,
+      "from_start": 24834,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        24890,
+        24890
+      ],
+      "next_load_issue_events": [
+        14234,
+        14273
+      ],
+      "previous_ready": 24890,
+      "to_compute": 14318,
+      "to_start": 24975
+    },
+    {
+      "duration": 187,
+      "from_compute": 14318,
+      "from_start": 24975,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        25031,
+        25031
+      ],
+      "next_load_issue_events": [
+        14330,
+        14369
+      ],
+      "previous_ready": 25031,
+      "to_compute": 14414,
+      "to_start": 25162
+    },
+    {
+      "duration": 141,
+      "from_compute": 14414,
+      "from_start": 25162,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        25218,
+        25218
+      ],
+      "next_load_issue_events": [
+        14426,
+        14465
+      ],
+      "previous_ready": 25218,
+      "to_compute": 14510,
+      "to_start": 25303
+    },
+    {
+      "duration": 141,
+      "from_compute": 14510,
+      "from_start": 25303,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        25359,
+        25359
+      ],
+      "next_load_issue_events": [
+        14522,
+        14561
+      ],
+      "previous_ready": 25359,
+      "to_compute": 14606,
+      "to_start": 25444
+    },
+    {
+      "duration": 141,
+      "from_compute": 14606,
+      "from_start": 25444,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        25500,
+        25500
+      ],
+      "next_load_issue_events": [
+        14618,
+        14657
+      ],
+      "previous_ready": 25500,
+      "to_compute": 14702,
+      "to_start": 25585
+    },
+    {
+      "duration": 187,
+      "from_compute": 14702,
+      "from_start": 25585,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        25641,
+        25641
+      ],
+      "next_load_issue_events": [
+        14714,
+        14753
+      ],
+      "previous_ready": 25641,
+      "to_compute": 14798,
+      "to_start": 25772
+    },
+    {
+      "duration": 141,
+      "from_compute": 14798,
+      "from_start": 25772,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        25828,
+        25828
+      ],
+      "next_load_issue_events": [
+        14810,
+        14849
+      ],
+      "previous_ready": 25828,
+      "to_compute": 14894,
+      "to_start": 25913
+    },
+    {
+      "duration": 141,
+      "from_compute": 14894,
+      "from_start": 25913,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        25969,
+        25969
+      ],
+      "next_load_issue_events": [
+        14906,
+        14945
+      ],
+      "previous_ready": 25969,
+      "to_compute": 14990,
+      "to_start": 26054
+    },
+    {
+      "duration": 141,
+      "from_compute": 14990,
+      "from_start": 26054,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        26110,
+        26110
+      ],
+      "next_load_issue_events": [
+        15002,
+        15041
+      ],
+      "previous_ready": 26110,
+      "to_compute": 15086,
+      "to_start": 26195
+    },
+    {
+      "duration": 187,
+      "from_compute": 15086,
+      "from_start": 26195,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        26251,
+        26251
+      ],
+      "next_load_issue_events": [
+        15098,
+        15137
+      ],
+      "previous_ready": 26251,
+      "to_compute": 15182,
+      "to_start": 26382
+    },
+    {
+      "duration": 141,
+      "from_compute": 15182,
+      "from_start": 26382,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        26438,
+        26438
+      ],
+      "next_load_issue_events": [
+        15194,
+        15233
+      ],
+      "previous_ready": 26438,
+      "to_compute": 15278,
+      "to_start": 26523
+    },
+    {
+      "duration": 141,
+      "from_compute": 15278,
+      "from_start": 26523,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        26579,
+        26579
+      ],
+      "next_load_issue_events": [
+        15290,
+        15329
+      ],
+      "previous_ready": 26579,
+      "to_compute": 15374,
+      "to_start": 26664
+    },
+    {
+      "duration": 141,
+      "from_compute": 15374,
+      "from_start": 26664,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        26720,
+        26720
+      ],
+      "next_load_issue_events": [
+        15386,
+        15425
+      ],
+      "previous_ready": 26720,
+      "to_compute": 15470,
+      "to_start": 26805
+    },
+    {
+      "duration": 187,
+      "from_compute": 15470,
+      "from_start": 26805,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        26861,
+        26861
+      ],
+      "next_load_issue_events": [
+        15482,
+        15521
+      ],
+      "previous_ready": 26861,
+      "to_compute": 15566,
+      "to_start": 26992
+    },
+    {
+      "duration": 141,
+      "from_compute": 15566,
+      "from_start": 26992,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        27048,
+        27048
+      ],
+      "next_load_issue_events": [
+        15578,
+        15617
+      ],
+      "previous_ready": 27048,
+      "to_compute": 15662,
+      "to_start": 27133
+    },
+    {
+      "duration": 141,
+      "from_compute": 15662,
+      "from_start": 27133,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        27189,
+        27189
+      ],
+      "next_load_issue_events": [
+        15674,
+        15713
+      ],
+      "previous_ready": 27189,
+      "to_compute": 15758,
+      "to_start": 27274
+    },
+    {
+      "duration": 141,
+      "from_compute": 15758,
+      "from_start": 27274,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        27330,
+        27330
+      ],
+      "next_load_issue_events": [
+        15770,
+        15809
+      ],
+      "previous_ready": 27330,
+      "to_compute": 15854,
+      "to_start": 27415
+    },
+    {
+      "duration": 187,
+      "from_compute": 15854,
+      "from_start": 27415,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        27471,
+        27471
+      ],
+      "next_load_issue_events": [
+        15866,
+        15905
+      ],
+      "previous_ready": 27471,
+      "to_compute": 15950,
+      "to_start": 27602
+    },
+    {
+      "duration": 141,
+      "from_compute": 15950,
+      "from_start": 27602,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        27658,
+        27658
+      ],
+      "next_load_issue_events": [
+        15962,
+        16001
+      ],
+      "previous_ready": 27658,
+      "to_compute": 16046,
+      "to_start": 27743
+    },
+    {
+      "duration": 141,
+      "from_compute": 16046,
+      "from_start": 27743,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        27799,
+        27799
+      ],
+      "next_load_issue_events": [
+        16058,
+        16097
+      ],
+      "previous_ready": 27799,
+      "to_compute": 16142,
+      "to_start": 27884
+    },
+    {
+      "duration": 141,
+      "from_compute": 16142,
+      "from_start": 27884,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        27940,
+        27940
+      ],
+      "next_load_issue_events": [
+        16154,
+        16193
+      ],
+      "previous_ready": 27940,
+      "to_compute": 16238,
+      "to_start": 28025
+    },
+    {
+      "duration": 187,
+      "from_compute": 16238,
+      "from_start": 28025,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        28081,
+        28081
+      ],
+      "next_load_issue_events": [
+        16250,
+        16289
+      ],
+      "previous_ready": 28081,
+      "to_compute": 16334,
+      "to_start": 28212
+    },
+    {
+      "duration": 141,
+      "from_compute": 16334,
+      "from_start": 28212,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        28268,
+        28268
+      ],
+      "next_load_issue_events": [
+        16346,
+        16385
+      ],
+      "previous_ready": 28268,
+      "to_compute": 16430,
+      "to_start": 28353
+    },
+    {
+      "duration": 141,
+      "from_compute": 16430,
+      "from_start": 28353,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        28409,
+        28409
+      ],
+      "next_load_issue_events": [
+        16442,
+        16481
+      ],
+      "previous_ready": 28409,
+      "to_compute": 16526,
+      "to_start": 28494
+    },
+    {
+      "duration": 141,
+      "from_compute": 16526,
+      "from_start": 28494,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        28550,
+        28550
+      ],
+      "next_load_issue_events": [
+        16538,
+        16577
+      ],
+      "previous_ready": 28550,
+      "to_compute": 16622,
+      "to_start": 28635
+    },
+    {
+      "duration": 187,
+      "from_compute": 16622,
+      "from_start": 28635,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        28691,
+        28691
+      ],
+      "next_load_issue_events": [
+        16634,
+        16673
+      ],
+      "previous_ready": 28691,
+      "to_compute": 16718,
+      "to_start": 28822
+    },
+    {
+      "duration": 141,
+      "from_compute": 16718,
+      "from_start": 28822,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        28878,
+        28878
+      ],
+      "next_load_issue_events": [
+        16730,
+        16769
+      ],
+      "previous_ready": 28878,
+      "to_compute": 16814,
+      "to_start": 28963
+    },
+    {
+      "duration": 141,
+      "from_compute": 16814,
+      "from_start": 28963,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        29019,
+        29019
+      ],
+      "next_load_issue_events": [
+        16826,
+        16865
+      ],
+      "previous_ready": 29019,
+      "to_compute": 16910,
+      "to_start": 29104
+    },
+    {
+      "duration": 141,
+      "from_compute": 16910,
+      "from_start": 29104,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        29160,
+        29160
+      ],
+      "next_load_issue_events": [
+        16922,
+        16961
+      ],
+      "previous_ready": 29160,
+      "to_compute": 17006,
+      "to_start": 29245
+    },
+    {
+      "duration": 187,
+      "from_compute": 17006,
+      "from_start": 29245,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        29301,
+        29301
+      ],
+      "next_load_issue_events": [
+        17018,
+        17057
+      ],
+      "previous_ready": 29301,
+      "to_compute": 17102,
+      "to_start": 29432
+    },
+    {
+      "duration": 141,
+      "from_compute": 17102,
+      "from_start": 29432,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        29488,
+        29488
+      ],
+      "next_load_issue_events": [
+        17114,
+        17153
+      ],
+      "previous_ready": 29488,
+      "to_compute": 17198,
+      "to_start": 29573
+    },
+    {
+      "duration": 141,
+      "from_compute": 17198,
+      "from_start": 29573,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        29629,
+        29629
+      ],
+      "next_load_issue_events": [
+        17210,
+        17249
+      ],
+      "previous_ready": 29629,
+      "to_compute": 17294,
+      "to_start": 29714
+    },
+    {
+      "duration": 141,
+      "from_compute": 17294,
+      "from_start": 29714,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        29770,
+        29770
+      ],
+      "next_load_issue_events": [
+        17306,
+        17345
+      ],
+      "previous_ready": 29770,
+      "to_compute": 17390,
+      "to_start": 29855
+    },
+    {
+      "duration": 187,
+      "from_compute": 17390,
+      "from_start": 29855,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        29911,
+        29911
+      ],
+      "next_load_issue_events": [
+        17402,
+        17441
+      ],
+      "previous_ready": 29911,
+      "to_compute": 17486,
+      "to_start": 30042
+    },
+    {
+      "duration": 141,
+      "from_compute": 17486,
+      "from_start": 30042,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        30098,
+        30098
+      ],
+      "next_load_issue_events": [
+        17498,
+        17537
+      ],
+      "previous_ready": 30098,
+      "to_compute": 17582,
+      "to_start": 30183
+    },
+    {
+      "duration": 141,
+      "from_compute": 17582,
+      "from_start": 30183,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        30239,
+        30239
+      ],
+      "next_load_issue_events": [
+        17594,
+        17633
+      ],
+      "previous_ready": 30239,
+      "to_compute": 17678,
+      "to_start": 30324
+    },
+    {
+      "duration": 141,
+      "from_compute": 17678,
+      "from_start": 30324,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        30380,
+        30380
+      ],
+      "next_load_issue_events": [
+        17690,
+        17729
+      ],
+      "previous_ready": 30380,
+      "to_compute": 17774,
+      "to_start": 30465
+    },
+    {
+      "duration": 187,
+      "from_compute": 17774,
+      "from_start": 30465,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        30521,
+        30521
+      ],
+      "next_load_issue_events": [
+        17786,
+        17825
+      ],
+      "previous_ready": 30521,
+      "to_compute": 17870,
+      "to_start": 30652
+    },
+    {
+      "duration": 141,
+      "from_compute": 17870,
+      "from_start": 30652,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        30708,
+        30708
+      ],
+      "next_load_issue_events": [
+        17882,
+        17921
+      ],
+      "previous_ready": 30708,
+      "to_compute": 17966,
+      "to_start": 30793
+    },
+    {
+      "duration": 141,
+      "from_compute": 17966,
+      "from_start": 30793,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        30849,
+        30849
+      ],
+      "next_load_issue_events": [
+        17978,
+        18017
+      ],
+      "previous_ready": 30849,
+      "to_compute": 18062,
+      "to_start": 30934
+    },
+    {
+      "duration": 141,
+      "from_compute": 18062,
+      "from_start": 30934,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        30990,
+        30990
+      ],
+      "next_load_issue_events": [
+        18074,
+        18113
+      ],
+      "previous_ready": 30990,
+      "to_compute": 18158,
+      "to_start": 31075
+    },
+    {
+      "duration": 187,
+      "from_compute": 18158,
+      "from_start": 31075,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        31131,
+        31131
+      ],
+      "next_load_issue_events": [
+        18170,
+        18209
+      ],
+      "previous_ready": 31131,
+      "to_compute": 18254,
+      "to_start": 31262
+    },
+    {
+      "duration": 141,
+      "from_compute": 18254,
+      "from_start": 31262,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        31318,
+        31318
+      ],
+      "next_load_issue_events": [
+        18266,
+        18305
+      ],
+      "previous_ready": 31318,
+      "to_compute": 18350,
+      "to_start": 31403
+    },
+    {
+      "duration": 141,
+      "from_compute": 18350,
+      "from_start": 31403,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        31459,
+        31459
+      ],
+      "next_load_issue_events": [
+        18362,
+        18401
+      ],
+      "previous_ready": 31459,
+      "to_compute": 18446,
+      "to_start": 31544
+    },
+    {
+      "duration": 141,
+      "from_compute": 18446,
+      "from_start": 31544,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        31600,
+        31600
+      ],
+      "next_load_issue_events": [
+        18458,
+        18497
+      ],
+      "previous_ready": 31600,
+      "to_compute": 18542,
+      "to_start": 31685
+    },
+    {
+      "duration": 187,
+      "from_compute": 18542,
+      "from_start": 31685,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        31741,
+        31741
+      ],
+      "next_load_issue_events": [
+        18554,
+        18593
+      ],
+      "previous_ready": 31741,
+      "to_compute": 18638,
+      "to_start": 31872
+    },
+    {
+      "duration": 141,
+      "from_compute": 18638,
+      "from_start": 31872,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        31928,
+        31928
+      ],
+      "next_load_issue_events": [
+        18650,
+        18689
+      ],
+      "previous_ready": 31928,
+      "to_compute": 18734,
+      "to_start": 32013
+    },
+    {
+      "duration": 141,
+      "from_compute": 18734,
+      "from_start": 32013,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        32069,
+        32069
+      ],
+      "next_load_issue_events": [
+        18746,
+        18785
+      ],
+      "previous_ready": 32069,
+      "to_compute": 18830,
+      "to_start": 32154
+    },
+    {
+      "duration": 141,
+      "from_compute": 18830,
+      "from_start": 32154,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        32210,
+        32210
+      ],
+      "next_load_issue_events": [
+        18842,
+        18881
+      ],
+      "previous_ready": 32210,
+      "to_compute": 18926,
+      "to_start": 32295
+    },
+    {
+      "duration": 187,
+      "from_compute": 18926,
+      "from_start": 32295,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        32351,
+        32351
+      ],
+      "next_load_issue_events": [
+        18938,
+        18977
+      ],
+      "previous_ready": 32351,
+      "to_compute": 19022,
+      "to_start": 32482
+    },
+    {
+      "duration": 141,
+      "from_compute": 19022,
+      "from_start": 32482,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        32538,
+        32538
+      ],
+      "next_load_issue_events": [
+        19034,
+        19073
+      ],
+      "previous_ready": 32538,
+      "to_compute": 19118,
+      "to_start": 32623
+    },
+    {
+      "duration": 141,
+      "from_compute": 19118,
+      "from_start": 32623,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        32679,
+        32679
+      ],
+      "next_load_issue_events": [
+        19130,
+        19169
+      ],
+      "previous_ready": 32679,
+      "to_compute": 19214,
+      "to_start": 32764
+    },
+    {
+      "duration": 141,
+      "from_compute": 19214,
+      "from_start": 32764,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        32820,
+        32820
+      ],
+      "next_load_issue_events": [
+        19226,
+        19265
+      ],
+      "previous_ready": 32820,
+      "to_compute": 19310,
+      "to_start": 32905
+    },
+    {
+      "duration": 187,
+      "from_compute": 19310,
+      "from_start": 32905,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        32961,
+        32961
+      ],
+      "next_load_issue_events": [
+        19322,
+        19361
+      ],
+      "previous_ready": 32961,
+      "to_compute": 19406,
+      "to_start": 33092
+    },
+    {
+      "duration": 141,
+      "from_compute": 19406,
+      "from_start": 33092,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        33148,
+        33148
+      ],
+      "next_load_issue_events": [
+        19418,
+        19457
+      ],
+      "previous_ready": 33148,
+      "to_compute": 19502,
+      "to_start": 33233
+    },
+    {
+      "duration": 141,
+      "from_compute": 19502,
+      "from_start": 33233,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        33289,
+        33289
+      ],
+      "next_load_issue_events": [
+        19514,
+        19553
+      ],
+      "previous_ready": 33289,
+      "to_compute": 19598,
+      "to_start": 33374
+    },
+    {
+      "duration": 141,
+      "from_compute": 19598,
+      "from_start": 33374,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        33430,
+        33430
+      ],
+      "next_load_issue_events": [
+        19610,
+        19649
+      ],
+      "previous_ready": 33430,
+      "to_compute": 19694,
+      "to_start": 33515
+    },
+    {
+      "duration": 187,
+      "from_compute": 19694,
+      "from_start": 33515,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        33571,
+        33571
+      ],
+      "next_load_issue_events": [
+        19706,
+        19745
+      ],
+      "previous_ready": 33571,
+      "to_compute": 19790,
+      "to_start": 33702
+    },
+    {
+      "duration": 141,
+      "from_compute": 19790,
+      "from_start": 33702,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        33758,
+        33758
+      ],
+      "next_load_issue_events": [
+        19802,
+        19841
+      ],
+      "previous_ready": 33758,
+      "to_compute": 19886,
+      "to_start": 33843
+    },
+    {
+      "duration": 141,
+      "from_compute": 19886,
+      "from_start": 33843,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        33899,
+        33899
+      ],
+      "next_load_issue_events": [
+        19898,
+        19937
+      ],
+      "previous_ready": 33899,
+      "to_compute": 19982,
+      "to_start": 33984
+    },
+    {
+      "duration": 141,
+      "from_compute": 19982,
+      "from_start": 33984,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        34040,
+        34040
+      ],
+      "next_load_issue_events": [
+        19994,
+        20033
+      ],
+      "previous_ready": 34040,
+      "to_compute": 20078,
+      "to_start": 34125
+    },
+    {
+      "duration": 187,
+      "from_compute": 20078,
+      "from_start": 34125,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        34181,
+        34181
+      ],
+      "next_load_issue_events": [
+        20090,
+        20129
+      ],
+      "previous_ready": 34181,
+      "to_compute": 20174,
+      "to_start": 34312
+    },
+    {
+      "duration": 141,
+      "from_compute": 20174,
+      "from_start": 34312,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        34368,
+        34368
+      ],
+      "next_load_issue_events": [
+        20186,
+        20225
+      ],
+      "previous_ready": 34368,
+      "to_compute": 20270,
+      "to_start": 34453
+    },
+    {
+      "duration": 141,
+      "from_compute": 20270,
+      "from_start": 34453,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        34509,
+        34509
+      ],
+      "next_load_issue_events": [
+        20282,
+        20321
+      ],
+      "previous_ready": 34509,
+      "to_compute": 20366,
+      "to_start": 34594
+    },
+    {
+      "duration": 141,
+      "from_compute": 20366,
+      "from_start": 34594,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        34650,
+        34650
+      ],
+      "next_load_issue_events": [
+        20378,
+        20417
+      ],
+      "previous_ready": 34650,
+      "to_compute": 20462,
+      "to_start": 34735
+    },
+    {
+      "duration": 187,
+      "from_compute": 20462,
+      "from_start": 34735,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        34791,
+        34791
+      ],
+      "next_load_issue_events": [
+        20474,
+        20513
+      ],
+      "previous_ready": 34791,
+      "to_compute": 20558,
+      "to_start": 34922
+    },
+    {
+      "duration": 141,
+      "from_compute": 20558,
+      "from_start": 34922,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        34978,
+        34978
+      ],
+      "next_load_issue_events": [
+        20570,
+        20609
+      ],
+      "previous_ready": 34978,
+      "to_compute": 20654,
+      "to_start": 35063
+    },
+    {
+      "duration": 141,
+      "from_compute": 20654,
+      "from_start": 35063,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        35119,
+        35119
+      ],
+      "next_load_issue_events": [
+        20666,
+        20705
+      ],
+      "previous_ready": 35119,
+      "to_compute": 20750,
+      "to_start": 35204
+    },
+    {
+      "duration": 141,
+      "from_compute": 20750,
+      "from_start": 35204,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        35260,
+        35260
+      ],
+      "next_load_issue_events": [
+        20762,
+        20801
+      ],
+      "previous_ready": 35260,
+      "to_compute": 20846,
+      "to_start": 35345
+    },
+    {
+      "duration": 187,
+      "from_compute": 20846,
+      "from_start": 35345,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        35401,
+        35401
+      ],
+      "next_load_issue_events": [
+        20858,
+        20897
+      ],
+      "previous_ready": 35401,
+      "to_compute": 20942,
+      "to_start": 35532
+    },
+    {
+      "duration": 141,
+      "from_compute": 20942,
+      "from_start": 35532,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        35588,
+        35588
+      ],
+      "next_load_issue_events": [
+        20954,
+        20993
+      ],
+      "previous_ready": 35588,
+      "to_compute": 21038,
+      "to_start": 35673
+    },
+    {
+      "duration": 141,
+      "from_compute": 21038,
+      "from_start": 35673,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        35729,
+        35729
+      ],
+      "next_load_issue_events": [
+        21050,
+        21089
+      ],
+      "previous_ready": 35729,
+      "to_compute": 21134,
+      "to_start": 35814
+    },
+    {
+      "duration": 141,
+      "from_compute": 21134,
+      "from_start": 35814,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        35870,
+        35870
+      ],
+      "next_load_issue_events": [
+        21146,
+        21185
+      ],
+      "previous_ready": 35870,
+      "to_compute": 21230,
+      "to_start": 35955
+    },
+    {
+      "duration": 187,
+      "from_compute": 21230,
+      "from_start": 35955,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        36011,
+        36011
+      ],
+      "next_load_issue_events": [
+        21242,
+        21281
+      ],
+      "previous_ready": 36011,
+      "to_compute": 21326,
+      "to_start": 36142
+    },
+    {
+      "duration": 141,
+      "from_compute": 21326,
+      "from_start": 36142,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        36198,
+        36198
+      ],
+      "next_load_issue_events": [
+        21338,
+        21377
+      ],
+      "previous_ready": 36198,
+      "to_compute": 21422,
+      "to_start": 36283
+    },
+    {
+      "duration": 141,
+      "from_compute": 21422,
+      "from_start": 36283,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        36339,
+        36339
+      ],
+      "next_load_issue_events": [
+        21434,
+        21473
+      ],
+      "previous_ready": 36339,
+      "to_compute": 21518,
+      "to_start": 36424
+    },
+    {
+      "duration": 141,
+      "from_compute": 21518,
+      "from_start": 36424,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        36480,
+        36480
+      ],
+      "next_load_issue_events": [
+        21530,
+        21569
+      ],
+      "previous_ready": 36480,
+      "to_compute": 21614,
+      "to_start": 36565
+    },
+    {
+      "duration": 187,
+      "from_compute": 21614,
+      "from_start": 36565,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        36621,
+        36621
+      ],
+      "next_load_issue_events": [
+        21626,
+        21665
+      ],
+      "previous_ready": 36621,
+      "to_compute": 21710,
+      "to_start": 36752
+    },
+    {
+      "duration": 141,
+      "from_compute": 21710,
+      "from_start": 36752,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        36808,
+        36808
+      ],
+      "next_load_issue_events": [
+        21722,
+        21761
+      ],
+      "previous_ready": 36808,
+      "to_compute": 21806,
+      "to_start": 36893
+    },
+    {
+      "duration": 141,
+      "from_compute": 21806,
+      "from_start": 36893,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        36949,
+        36949
+      ],
+      "next_load_issue_events": [
+        21818,
+        21857
+      ],
+      "previous_ready": 36949,
+      "to_compute": 21902,
+      "to_start": 37034
+    },
+    {
+      "duration": 141,
+      "from_compute": 21902,
+      "from_start": 37034,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        37090,
+        37090
+      ],
+      "next_load_issue_events": [
+        21914,
+        21953
+      ],
+      "previous_ready": 37090,
+      "to_compute": 21998,
+      "to_start": 37175
+    },
+    {
+      "duration": 187,
+      "from_compute": 21998,
+      "from_start": 37175,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        37231,
+        37231
+      ],
+      "next_load_issue_events": [
+        22010,
+        22049
+      ],
+      "previous_ready": 37231,
+      "to_compute": 22094,
+      "to_start": 37362
+    },
+    {
+      "duration": 141,
+      "from_compute": 22094,
+      "from_start": 37362,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        37418,
+        37418
+      ],
+      "next_load_issue_events": [
+        22106,
+        22145
+      ],
+      "previous_ready": 37418,
+      "to_compute": 22190,
+      "to_start": 37503
+    },
+    {
+      "duration": 141,
+      "from_compute": 22190,
+      "from_start": 37503,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        37559,
+        37559
+      ],
+      "next_load_issue_events": [
+        22202,
+        22241
+      ],
+      "previous_ready": 37559,
+      "to_compute": 22286,
+      "to_start": 37644
+    },
+    {
+      "duration": 141,
+      "from_compute": 22286,
+      "from_start": 37644,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        37700,
+        37700
+      ],
+      "next_load_issue_events": [
+        22298,
+        22337
+      ],
+      "previous_ready": 37700,
+      "to_compute": 22382,
+      "to_start": 37785
+    },
+    {
+      "duration": 187,
+      "from_compute": 22382,
+      "from_start": 37785,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        37841,
+        37841
+      ],
+      "next_load_issue_events": [
+        22394,
+        22433
+      ],
+      "previous_ready": 37841,
+      "to_compute": 22478,
+      "to_start": 37972
+    },
+    {
+      "duration": 141,
+      "from_compute": 22478,
+      "from_start": 37972,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        38028,
+        38028
+      ],
+      "next_load_issue_events": [
+        22490,
+        22529
+      ],
+      "previous_ready": 38028,
+      "to_compute": 22574,
+      "to_start": 38113
+    },
+    {
+      "duration": 141,
+      "from_compute": 22574,
+      "from_start": 38113,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        38169,
+        38169
+      ],
+      "next_load_issue_events": [
+        22586,
+        22625
+      ],
+      "previous_ready": 38169,
+      "to_compute": 22670,
+      "to_start": 38254
+    },
+    {
+      "duration": 141,
+      "from_compute": 22670,
+      "from_start": 38254,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        38310,
+        38310
+      ],
+      "next_load_issue_events": [
+        22682,
+        22721
+      ],
+      "previous_ready": 38310,
+      "to_compute": 22766,
+      "to_start": 38395
+    },
+    {
+      "duration": 187,
+      "from_compute": 22766,
+      "from_start": 38395,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        38451,
+        38451
+      ],
+      "next_load_issue_events": [
+        22778,
+        22817
+      ],
+      "previous_ready": 38451,
+      "to_compute": 22862,
+      "to_start": 38582
+    },
+    {
+      "duration": 141,
+      "from_compute": 22862,
+      "from_start": 38582,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        38638,
+        38638
+      ],
+      "next_load_issue_events": [
+        22874,
+        22913
+      ],
+      "previous_ready": 38638,
+      "to_compute": 22958,
+      "to_start": 38723
+    },
+    {
+      "duration": 141,
+      "from_compute": 22958,
+      "from_start": 38723,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        38779,
+        38779
+      ],
+      "next_load_issue_events": [
+        22970,
+        23009
+      ],
+      "previous_ready": 38779,
+      "to_compute": 23054,
+      "to_start": 38864
+    },
+    {
+      "duration": 141,
+      "from_compute": 23054,
+      "from_start": 38864,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        38920,
+        38920
+      ],
+      "next_load_issue_events": [
+        23066,
+        23105
+      ],
+      "previous_ready": 38920,
+      "to_compute": 23150,
+      "to_start": 39005
+    },
+    {
+      "duration": 187,
+      "from_compute": 23150,
+      "from_start": 39005,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        39061,
+        39061
+      ],
+      "next_load_issue_events": [
+        23162,
+        23201
+      ],
+      "previous_ready": 39061,
+      "to_compute": 23246,
+      "to_start": 39192
+    },
+    {
+      "duration": 141,
+      "from_compute": 23246,
+      "from_start": 39192,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        39248,
+        39248
+      ],
+      "next_load_issue_events": [
+        23258,
+        23297
+      ],
+      "previous_ready": 39248,
+      "to_compute": 23342,
+      "to_start": 39333
+    },
+    {
+      "duration": 141,
+      "from_compute": 23342,
+      "from_start": 39333,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        39389,
+        39389
+      ],
+      "next_load_issue_events": [
+        23354,
+        23393
+      ],
+      "previous_ready": 39389,
+      "to_compute": 23438,
+      "to_start": 39474
+    },
+    {
+      "duration": 141,
+      "from_compute": 23438,
+      "from_start": 39474,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        39530,
+        39530
+      ],
+      "next_load_issue_events": [
+        23450,
+        23489
+      ],
+      "previous_ready": 39530,
+      "to_compute": 23534,
+      "to_start": 39615
+    },
+    {
+      "duration": 187,
+      "from_compute": 23534,
+      "from_start": 39615,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        39671,
+        39671
+      ],
+      "next_load_issue_events": [
+        23546,
+        23585
+      ],
+      "previous_ready": 39671,
+      "to_compute": 23630,
+      "to_start": 39802
+    },
+    {
+      "duration": 141,
+      "from_compute": 23630,
+      "from_start": 39802,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        39858,
+        39858
+      ],
+      "next_load_issue_events": [
+        23642,
+        23681
+      ],
+      "previous_ready": 39858,
+      "to_compute": 23726,
+      "to_start": 39943
+    },
+    {
+      "duration": 141,
+      "from_compute": 23726,
+      "from_start": 39943,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        39999,
+        39999
+      ],
+      "next_load_issue_events": [
+        23738,
+        23777
+      ],
+      "previous_ready": 39999,
+      "to_compute": 23822,
+      "to_start": 40084
+    },
+    {
+      "duration": 141,
+      "from_compute": 23822,
+      "from_start": 40084,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        40140,
+        40140
+      ],
+      "next_load_issue_events": [
+        23834,
+        23873
+      ],
+      "previous_ready": 40140,
+      "to_compute": 23918,
+      "to_start": 40225
+    },
+    {
+      "duration": 187,
+      "from_compute": 23918,
+      "from_start": 40225,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        40281,
+        40281
+      ],
+      "next_load_issue_events": [
+        23930,
+        23969
+      ],
+      "previous_ready": 40281,
+      "to_compute": 24014,
+      "to_start": 40412
+    },
+    {
+      "duration": 141,
+      "from_compute": 24014,
+      "from_start": 40412,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        40468,
+        40468
+      ],
+      "next_load_issue_events": [
+        24026,
+        24065
+      ],
+      "previous_ready": 40468,
+      "to_compute": 24110,
+      "to_start": 40553
+    },
+    {
+      "duration": 141,
+      "from_compute": 24110,
+      "from_start": 40553,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        40609,
+        40609
+      ],
+      "next_load_issue_events": [
+        24122,
+        24161
+      ],
+      "previous_ready": 40609,
+      "to_compute": 24206,
+      "to_start": 40694
+    },
+    {
+      "duration": 141,
+      "from_compute": 24206,
+      "from_start": 40694,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        40750,
+        40750
+      ],
+      "next_load_issue_events": [
+        24218,
+        24257
+      ],
+      "previous_ready": 40750,
+      "to_compute": 24302,
+      "to_start": 40835
+    },
+    {
+      "duration": 187,
+      "from_compute": 24302,
+      "from_start": 40835,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "next_load_earliest": [
+        40891,
+        40891
+      ],
+      "next_load_issue_events": [
+        24314,
+        24353
+      ],
+      "previous_ready": 40891,
+      "to_compute": 24398,
+      "to_start": 41022
+    },
+    {
+      "duration": 141,
+      "from_compute": 24398,
+      "from_start": 41022,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        41078,
+        41078
+      ],
+      "next_load_issue_events": [
+        24410,
+        24449
+      ],
+      "previous_ready": 41078,
+      "to_compute": 24494,
+      "to_start": 41163
+    },
+    {
+      "duration": 141,
+      "from_compute": 24494,
+      "from_start": 41163,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        41219,
+        41219
+      ],
+      "next_load_issue_events": [
+        24506,
+        24545
+      ],
+      "previous_ready": 41219,
+      "to_compute": 24590,
+      "to_start": 41304
+    },
+    {
+      "duration": 141,
+      "from_compute": 24590,
+      "from_start": 41304,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "next_load_earliest": [
+        41360,
+        41360
+      ],
+      "next_load_issue_events": [
+        24602,
+        24641
+      ],
+      "previous_ready": 41360,
+      "to_compute": 24686,
+      "to_start": 41445
+    }
+  ],
+  "limitations": [
+    "Event trace models constraints; physical per-event correspondence is absent.",
+    "Global resources remain whole-trace/nonadditive; this partition uses actual in-window event times instead.",
+    "Adapter earliest provenance uses source-backed repeated equality and preserved events; no counterfactual improvement prediction is claimed."
+  ],
+  "partition": [
+    {
+      "cycles": 310,
+      "meaning": "opening counter to first compute start"
+    },
+    {
+      "cycles": 38853,
+      "meaning": "first to final compute start"
+    },
+    {
+      "cycles": 56,
+      "meaning": "final compute result"
+    },
+    {
+      "cycles": 175,
+      "meaning": "final result to completed readout"
+    },
+    {
+      "cycles": 10,
+      "meaning": "return and closing counter"
+    }
+  ],
+  "periods": [
+    {
+      "cycles": 141,
+      "memory_demand_latency_counts": {
+        "17": 4
+      },
+      "occurrences": 192
+    },
+    {
+      "cycles": 187,
+      "memory_demand_latency_counts": {
+        "17": 20
+      },
+      "occurrences": 63
+    }
+  ],
+  "schema": "operator.deep_reduction_modeled_path.v1",
+  "scope": {
+    "causal_physical_attribution": false,
+    "estimated_cycles": 39404,
+    "physical_cycles": 27910,
+    "residual_cycles": 11494
+  },
+  "selected_staged_source": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/scratchpad-request-admission-v2/source/staged.hpp",
+    "sha256": "bc9a6973d72e3fe0efd9cc466f3b225457668b40f18e19feb5eb207f481f10e4"
+  },
+  "trace": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/.tmp/arrival-deepk-trace-v1/observed/workspace/events.jsonl",
+    "sha256": "c3188256f6363d6ce1cae5569582865013a2b3da0ee8d3886eae25cc13d428ff"
+  }
+}

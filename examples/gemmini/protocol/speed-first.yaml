@@ -1,0 +1,76 @@
+schema: merlin.gemmini.speed_first_profile.v1
+status: prospective_requires_fresh_capture_reference_and_execution
+selected_by_default: false
+baseline: experiment.yaml
+numerical_contract: ../numerics/models-speed-first.yaml
+generator: speed_first_recipes.py
+selection:
+  schema: numerical_recipe_policy_v1
+  weight_granularity: tensor
+  float_quality: report_only
+  native_outputs: existing_explicit_native_speed_dataflow_policy
+  dynamic_activation_planes: 1_where_existing_dynamic_activation_contract_is_present
+recipes:
+  resnet50: recipes/resnet50-speed-first.json
+  tiny_llama: recipes/tiny_llama-speed-first.json
+  smolvla: recipes/smolvla-speed-first.json
+arithmetic:
+  weights: existing_symmetric_static_int8_per_tensor_minmax_observer
+  activations: original_static_int8_observer_range_and_calibration
+  accumulators: int32
+  epilogues: original_capability_derived_native_int8_exits_and_bias_rounding
+  residuals_and_mean: original_explicit_integer_extensions_with_their_existing_bounds
+  max_pool: existing_exact_native_pattern_only_no_unknown_padding_assumptions
+  dynamic_attention:
+    scales: original_selected_static_heads
+    softmax_output_planes: 1
+    partner_or_residual_operand_planes: 1
+    static_activation_digit_planes: not_selected_and_never_reinterpreted
+    inherited_float_site_bars: removed_only_in_these_successor_recipes
+  packing:
+    max_nonuniform_readout_blocks: 64
+    physical_input_dma_reuse: unmeasured
+    large_uniform_scalar_gain: existing_fastpath_legality_only_not_a_speed_claim
+references:
+  capture: fresh_preselected_canonical_sealed_M2M_issue_and_independent_replay
+  preparation: prepared_ungrouped_quantized_IR_with_selected_host_math
+  execution: merlin.model_check.chain.run_reference
+  state: every_next_step_binds_the_actual_selected_quantized_previous_output
+  tiny_llama:
+    layers: 22
+    batch: 1
+    prefill_tokens: 32
+    teacher_forced_decode_steps: 32
+    cache_capacity: 64
+    steps: 33
+    arrays: 99
+    fp_prefill_initialized_decode_session_is_continuous_chain_reference: false
+  smolvla:
+    batch: 1
+    cameras: 1
+    image_shape: [1, 3, 512, 512]
+    action_horizon: 50
+    denoise_steps: 10
+    steps: 12
+    arrays: 33
+    state: [prefix_cache, actions, time]
+  resnet50:
+    input_shape: [1, 3, 224, 224]
+    steps: 1
+    arrays: 1
+  declared_arrays_total: 133
+  retained_reuse: exact_source_recipe_input_checkpoint_calibration_evaluator_and_policy_identities_only
+  capture_session_goldens_are_not_continuous_chain_references: true
+  compiled_comparison: all_elements_all_declared_outputs_all_steps
+  floating_tolerance: ../numerics/models-speed-first.yaml#numerics.functional
+  integer_boolean_comparison: exact
+  nonfinite: refuse
+quality:
+  fp_metrics: report_only_without_acceptance_claim
+  missing_fp_metrics: unavailable_never_pass
+  compilation_correctness: strict_selected_quantized_reference_and_independent_exact_kernel_checks
+execution:
+  fpga: full_model_validation_only_separately_owned
+  captures_and_references: cpu_only_no_F_compiler_or_target_execution
+  timings: actual_observed_windows_only
+results: null

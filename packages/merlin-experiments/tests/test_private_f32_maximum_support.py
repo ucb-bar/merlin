@@ -151,6 +151,22 @@ def test_reviewed_maximum_requires_exact_source_profile_and_linked_capture(tmp_p
     assert support.linked_complete(source, entry, linked["candidate_tree_sha256"])
 
 
+def test_prepared_parse_never_reuses_a_maximum_decision_or_capture_receipt(tmp_path):
+    from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
+
+    source, entry, linked, capture = _linked(tmp_path)
+    candidate = linked["candidate_tree_sha256"]
+    with preparation.validation_scope():
+        assert support.linked_complete(source, entry, candidate)
+        changed = deepcopy(source)
+        changed[support.FIELD]["occurrences"][0]["pattern"]["axis"] = 0
+        changed[support.FIELD]["occurrences_sha256"] = support._digest(changed[support.FIELD]["occurrences"])
+        assert not support.linked_complete(changed, entry, candidate)
+        assert support.linked_complete(source, entry, candidate)
+        (capture / "capture_receipt.json").write_text('{"schema":"changed"}')
+        assert not support.linked_complete(source, entry, candidate)
+
+
 def test_maximum_cannot_disappear_into_an_empty_host_roster(tmp_path):
     capture, _parsed, ordinal, _row, _decision, _selected_index, witness = _prepared(tmp_path)
     assert witness["expected_ordinals"] == [ordinal]

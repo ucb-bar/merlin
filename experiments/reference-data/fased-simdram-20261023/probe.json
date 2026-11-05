@@ -1,0 +1,428 @@
+{
+  "schema": "merlin.fased_mm_probe.v1",
+  "target_cycles": 756,
+  "completed_reads": 28,
+  "completed_writes": 12,
+  "peak_outstanding_reads": 10,
+  "peak_outstanding_writes": 3,
+  "read_backpressure_cycles": 95,
+  "write_backpressure_cycles": 56,
+  "w_before_aw_cycles": 6,
+  "signal_mismatches": 0,
+  "mismatch_samples": [],
+  "completions": [
+    {
+      "kind": "read",
+      "cycle": 59,
+      "request": {
+        "address": 2148007936,
+        "id": 8,
+        "size": 3,
+        "beats": 8,
+        "index": 0
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 80,
+      "request": {
+        "address": 2148016128,
+        "id": 9,
+        "size": 3,
+        "beats": 8,
+        "index": 1
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 91,
+      "request": {
+        "address": 2148024320,
+        "id": 10,
+        "size": 3,
+        "beats": 8,
+        "index": 2
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 111,
+      "request": {
+        "address": 2148032512,
+        "id": 8,
+        "size": 3,
+        "beats": 8,
+        "index": 3
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 123,
+      "request": {
+        "address": 2148040704,
+        "id": 9,
+        "size": 3,
+        "beats": 8,
+        "index": 4
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 142,
+      "request": {
+        "address": 2148048896,
+        "id": 10,
+        "size": 3,
+        "beats": 8,
+        "index": 5
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 166,
+      "request": {
+        "address": 2148057088,
+        "id": 8,
+        "size": 3,
+        "beats": 8,
+        "index": 6
+      }
+    },
+    {
+      "kind": "write",
+      "cycle": 168,
+      "index": 0
+    },
+    {
+      "kind": "read",
+      "cycle": 176,
+      "request": {
+        "address": 2148065280,
+        "id": 9,
+        "size": 3,
+        "beats": 8,
+        "index": 7
+      }
+    },
+    {
+      "kind": "write",
+      "cycle": 202,
+      "index": 1
+    },
+    {
+      "kind": "read",
+      "cycle": 273,
+      "request": {
+        "address": 2148081664,
+        "id": 8,
+        "size": 3,
+        "beats": 8,
+        "index": 9
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 297,
+      "request": {
+        "address": 2148089856,
+        "id": 9,
+        "size": 3,
+        "beats": 8,
+        "index": 10
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 305,
+      "request": {
+        "address": 2148073472,
+        "id": 10,
+        "size": 3,
+        "beats": 8,
+        "index": 8
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 328,
+      "request": {
+        "address": 2148098048,
+        "id": 10,
+        "size": 3,
+        "beats": 8,
+        "index": 11
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 337,
+      "request": {
+        "address": 2148106240,
+        "id": 8,
+        "size": 3,
+        "beats": 8,
+        "index": 12
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 359,
+      "request": {
+        "address": 2148114432,
+        "id": 9,
+        "size": 3,
+        "beats": 8,
+        "index": 13
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 369,
+      "request": {
+        "address": 2148122624,
+        "id": 10,
+        "size": 3,
+        "beats": 8,
+        "index": 14
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 390,
+      "request": {
+        "address": 2148130816,
+        "id": 8,
+        "size": 3,
+        "beats": 8,
+        "index": 15
+      }
+    },
+    {
+      "kind": "write",
+      "cycle": 398,
+      "index": 2
+    },
+    {
+      "kind": "write",
+      "cycle": 424,
+      "index": 3
+    },
+    {
+      "kind": "write",
+      "cycle": 429,
+      "index": 4
+    },
+    {
+      "kind": "write",
+      "cycle": 434,
+      "index": 5
+    },
+    {
+      "kind": "write",
+      "cycle": 439,
+      "index": 6
+    },
+    {
+      "kind": "write",
+      "cycle": 461,
+      "index": 7
+    },
+    {
+      "kind": "write",
+      "cycle": 549,
+      "index": 8
+    },
+    {
+      "kind": "write",
+      "cycle": 554,
+      "index": 9
+    },
+    {
+      "kind": "write",
+      "cycle": 572,
+      "index": 10
+    },
+    {
+      "kind": "write",
+      "cycle": 581,
+      "index": 11
+    },
+    {
+      "kind": "read",
+      "cycle": 588,
+      "request": {
+        "address": 2147549184,
+        "id": 1,
+        "size": 0,
+        "beats": 4,
+        "index": 0
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 603,
+      "request": {
+        "address": 2147553280,
+        "id": 2,
+        "size": 1,
+        "beats": 4,
+        "index": 1
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 665,
+      "request": {
+        "address": 2147557376,
+        "id": 3,
+        "size": 2,
+        "beats": 4,
+        "index": 2
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 674,
+      "request": {
+        "address": 2147561472,
+        "id": 1,
+        "size": 3,
+        "beats": 8,
+        "index": 3
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 679,
+      "request": {
+        "address": 2147565568,
+        "id": 2,
+        "size": 0,
+        "beats": 4,
+        "index": 4
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 695,
+      "request": {
+        "address": 2147569664,
+        "id": 3,
+        "size": 1,
+        "beats": 4,
+        "index": 5
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 700,
+      "request": {
+        "address": 2147573760,
+        "id": 1,
+        "size": 2,
+        "beats": 4,
+        "index": 6
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 709,
+      "request": {
+        "address": 2147577856,
+        "id": 2,
+        "size": 3,
+        "beats": 8,
+        "index": 7
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 725,
+      "request": {
+        "address": 2147581952,
+        "id": 3,
+        "size": 0,
+        "beats": 4,
+        "index": 8
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 730,
+      "request": {
+        "address": 2147586048,
+        "id": 1,
+        "size": 1,
+        "beats": 4,
+        "index": 9
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 735,
+      "request": {
+        "address": 2147590144,
+        "id": 2,
+        "size": 2,
+        "beats": 4,
+        "index": 10
+      }
+    },
+    {
+      "kind": "read",
+      "cycle": 755,
+      "request": {
+        "address": 2147594240,
+        "id": 3,
+        "size": 3,
+        "beats": 8,
+        "index": 11
+      }
+    }
+  ],
+  "negative_probes": [
+    {
+      "case": "invalid_geometry",
+      "returncode": 2,
+      "diagnostic": "SimDRAM geometry does not match pinned FASED native configuration"
+    },
+    {
+      "case": "invalid_size",
+      "returncode": 2,
+      "diagnostic": "unsupported AXI size, length or ID"
+    },
+    {
+      "case": "wrong_wlast",
+      "returncode": 2,
+      "diagnostic": "WLAST disagrees with accepted AWLEN"
+    },
+    {
+      "case": "out_of_lane_strobe",
+      "returncode": 2,
+      "diagnostic": "write strobes exceed addressed byte lanes"
+    }
+  ],
+  "reference_sha256": "41f584a4b090dcdad9df0a0d6982887a40b9be71da3a44a7cc82155401bea64b",
+  "candidate_sha256": "bbae4051873d89e0f80e538799963d7aa2164ea89182fa9c3388fbfca5128eb3",
+  "stimulus_sha256": "a6eed8ae29b391f62e710ac66a20f105b56f3567c7646425212585dfb9c62a58",
+  "configuration": {
+    "schema": "merlin.memory_reference_selection.v1",
+    "configuration": "firesim.configs.FRFCFS16GBQuadRankLLC4MB",
+    "axi": {
+      "data_bits": 64,
+      "address_bits": 35,
+      "id_bits": 4,
+      "max_read_bytes": 64,
+      "max_write_bytes": 64,
+      "id_reuse": null,
+      "max_flight": null,
+      "address_base": 2147483648,
+      "address_size": 17179869184
+    },
+    "sources": {}
+  },
+  "integration_receipt_sha256": "c1aac3d553b662b708d3271309eb87647667f7dca1247e72203df43c49d5c17c",
+  "configuration_sha256": "c65962b4c027febf642a81cab04da293201addc163e11fe923b82d9ed4411f40",
+  "deployment_equivalence": "NOT_ESTABLISHED",
+  "whole_system_qualified": false
+}

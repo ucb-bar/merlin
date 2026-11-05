@@ -40,7 +40,7 @@ import stat
 import threading
 import time
 from collections.abc import Callable
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -52,7 +52,55 @@ ENGINE_PRIORITY: tuple[str, ...] = ("vcs", "gsim", "verilator")
 # for more workers. Host-load sizing is a snapshot: two independent grades can
 # both observe an idle host and otherwise each start a full-width pool. The
 # asynchronous broker and direct/scheduled graders must use the same caps.
+# With a shared compute pool selected, its per-CPU leases already bound every
+# engine, so unset GSim and Spike caps become the pool size (resolved at import,
+# like the explicit overrides).
 CAPSULE_WORKER_CAP: dict[str, int] = {"verilator": 4, "gsim": 5, "spike": 8}
+
+
+def _gsim_cap_override() -> int | None:
+    """Operator-declared GSim cap for a dedicated host (the same-user slot count and per-suite cap)."""
+    raw = os.environ.get("MERLIN_GSIM_MAX_SLOTS", "").strip()
+    if not raw:
+        return None
+    value = int(raw)
+    if not 1 <= value <= (os.cpu_count() or 1):
+        raise ValueError(f"MERLIN_GSIM_MAX_SLOTS={raw} must be between 1 and the host CPU count")
+    return value
+
+
+def _spike_cap_override() -> int | None:
+    """Explicit suite fan-out, bounded by physical and shared compute capacity."""
+    raw = os.environ.get("MERLIN_SPIKE_MAX_SLOTS", "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError("MERLIN_SPIKE_MAX_SLOTS must be a positive integer") from exc
+    if not 1 <= value <= (os.cpu_count() or 1):
+        raise ValueError(f"MERLIN_SPIKE_MAX_SLOTS={raw} must be between 1 and the host CPU count")
+    from merlin.common.cpu_pool import grading_cpus, shared_compute_enabled
+
+    return min(value, len(grading_cpus())) if shared_compute_enabled() else value
+
+
+def _shared_pool_cap() -> int:
+    """A selected shared compute pool is the only limiter: unset caps default to its size."""
+    from merlin.common.cpu_pool import compute_capacity
+
+    return min(compute_capacity(), os.cpu_count() or 1)
+
+
+_pool_cap = _shared_pool_cap()
+if (_override := _gsim_cap_override()) is not None:
+    CAPSULE_WORKER_CAP["gsim"] = _override
+elif _pool_cap:
+    CAPSULE_WORKER_CAP["gsim"] = _pool_cap
+if (_override := _spike_cap_override()) is not None:
+    CAPSULE_WORKER_CAP["spike"] = _override
+elif _pool_cap:
+    CAPSULE_WORKER_CAP["spike"] = _pool_cap
 GSIM_RUNTIME_SLOT_PROTOCOL = "reentrant_per_thread_v1"
 
 # Host runners and selected backends may both guard the same synchronous native
@@ -210,11 +258,33 @@ def _process_identity(member: Path, status: bytes, *, uid: int, argv: bytes | No
 def _complete_native_argv(argv: tuple[bytes, ...] | None) -> bool:
     if not argv:
         return False
+    positional_argv = argv
+    # The neutral full-value reader appends this closed coherent-export suffix
+    # to positional-ELF invocations. It changes output transport, not process
+    # ownership. Recognize it before the existing stable owner/child checks so
+    # one reserved simulator is not counted again as an uncoordinated native.
+    if (
+        len(argv) == 6
+        and argv[3].startswith(b"+dump-regions=/")
+        and len(argv[3]) > len(b"+dump-regions=/")
+        and argv[4].startswith(b"+dump-out=/")
+        and len(argv[4]) > len(b"+dump-out=/")
+        and argv[5] in {b"+dump-mode=coherent", b"+dump-mode=coherent-packet"}
+    ):
+        positional_argv = argv[:3]
     loads = [arg.removeprefix(b"+loadmem=") for arg in argv if arg.startswith(b"+loadmem=")]
     limits = [arg.removeprefix(b"+max-cycles=") for arg in argv if arg.startswith(b"+max-cycles=")]
+    # Selected native engines also receive the image as a positional ELF argument.
+    # This closed three-argument form is complete, unlike a lone max-cycles flag.
+    # Recognition only permits later custody checks; it never discounts a process
+    # without stable owner/lock/UID/birth and (when selected) singleton CPU evidence.
+    positional = (
+        len(positional_argv) == 3 and positional_argv[1].startswith(b"/")
+        and positional_argv[2].startswith(b"+max-cycles=") and not loads
+    )
     return (
-        len(loads) == len(limits) == 1
-        and bool(loads[0])
+        (len(loads) == 1 and bool(loads[0]) or positional)
+        and len(limits) == 1
         and 0 < len(limits[0]) <= 32
         and limits[0].isdigit()
         and int(limits[0]) > 0
@@ -316,33 +386,76 @@ def _locked_slot_census(root: Path, *, own_index: int) -> _SlotCensus:
     return _SlotCensus(count, tuple(held))
 
 
-def _lock_owners(locks: bytes, held: tuple[_HeldSlot, ...]) -> dict[_HeldSlot, int]:
-    """Return only exact held inodes with one unambiguous kernel FLOCK owner."""
-    owners: dict[_HeldSlot, list[int]] = {slot: [] for slot in held}
-    by_inode = {(os.major(slot.device), os.minor(slot.device), slot.inode): slot for slot in held}
-    if len(by_inode) != len(held):
+def _own_starttime() -> int:
+    stat_bytes = Path(f"/proc/{os.getpid()}/stat").read_bytes()
+    return int(stat_bytes.rpartition(b") ")[2].split()[19])
+
+
+def _write_slot_owner(fd: int) -> None:
+    """Name this process (pid, starttime) in the slot file it just locked.
+
+    ``/proc/locks`` is never read: walking it takes the kernel's global file-lock rwsem for
+    write, and with ~10^5 read leases on the host every lease operation stalled behind it.
+    The holder truncates the line before unlocking, so a line naming a live process (same
+    starttime) whose slot is still held names that holder. A failed write only loses a discount.
+    """
+    try:
+        line = f"{os.getpid()} {_own_starttime()}\n".encode("ascii")
+        os.ftruncate(fd, 0)
+        os.pwrite(fd, line, 0)
+    except (OSError, ValueError, IndexError):
+        pass
+
+
+def _clear_slot_owner(fd: int) -> None:
+    try:
+        os.ftruncate(fd, 0)
+    except OSError:
+        pass
+
+
+def _slot_owners(root: Path, held: tuple[_HeldSlot, ...]) -> dict[_HeldSlot, tuple[int, int]]:
+    """``{slot: (pid, starttime)}`` from the holders' own lines; unreadable or odd lines are omitted."""
+    if len({(slot.device, slot.inode) for slot in held}) != len(held):
         return {}  # Hardlinked slot names have no independent ownership proof.
-    invalid: set[_HeldSlot] = set()
-    for line in locks.splitlines():
-        fields = line.split()
-        if len(fields) < 6 or fields[1] != b"FLOCK":
+    owners = {}
+    for slot in held:
+        try:
+            fd = os.open(root / f"slot_{slot.index}.lock", os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        except OSError:
             continue
         try:
-            major, minor, inode = fields[5].split(b":")
-            key = (int(major, 16), int(minor, 16), int(inode))
-            slot = by_inode.get(key)
-            if slot is None:
+            info = os.fstat(fd)
+            if (info.st_dev, info.st_ino) != (slot.device, slot.inode) or info.st_size > 64:
                 continue
-            if len(fields) != 8 or fields[2:4] != [b"ADVISORY", b"WRITE"]:
-                invalid.add(slot)
-                continue
-            if fields[6:] != [b"0", b"EOF"] or int(fields[4]) <= 0:
-                invalid.add(slot)
-                continue
-            owners[slot].append(int(fields[4]))
-        except (ValueError, IndexError):
-            return {}  # A malformed lock record cannot prove any overlap.
-    return {slot: matched[0] for slot, matched in owners.items() if len(matched) == 1 and slot not in invalid}
+            fields = os.read(fd, 64).split()
+            if len(fields) == 2 and all(field.isdigit() for field in fields) and int(fields[0]) > 0:
+                owners[slot] = (int(fields[0]), int(fields[1]))
+        except OSError:
+            continue
+        finally:
+            os.close(fd)
+    return owners
+
+
+def _slot_still_held(root: Path, slot: _HeldSlot) -> bool:
+    """A non-blocking exclusive probe: EWOULDBLOCK means some process still holds the slot."""
+    try:
+        fd = _verified_slot_file(root / f"slot_{slot.index}.lock")
+    except (OSError, RuntimeError):
+        return False
+    try:
+        info = os.fstat(fd)
+        if (info.st_dev, info.st_ino) != (slot.device, slot.inode):
+            return False
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        _close_gsim_fd(fd)
 
 
 def _matching_owner_fd(member: Path, slot: _HeldSlot) -> bool:
@@ -380,47 +493,51 @@ def _verified_native_slot_overlap(
     natives: _NativeCensus,
     *,
     proc_root: Path = Path("/proc"),
-    locks_path: Path = Path("/proc/locks"),
+    locks_path: Path | None = None,
 ) -> int:
     """Discount only independently proven, stable direct-child native/slot pairs.
 
-    This is not a trust decision from a lock-file payload. The kernel FLOCK
-    owner, open FD inode, process UID/PPid/starttime and complete native argv
-    must agree before *and* after the join. Unknown evidence means zero
-    discount for that slot, including old holders with no independently proven
-    child. A same-PID multi-slot holder cannot pair children to particular
-    slots, so it receives no discount and may use fewer than five workers.
+    The holder's own (pid, starttime) line names a candidate; it is accepted only
+    when the live process has that starttime, keeps an open FD on the slot inode,
+    and its UID/PPid/starttime and complete native child argv agree before *and*
+    after the join, and a final non-blocking probe finds the slot still held with
+    the same line. Unknown evidence means zero discount for that slot, including
+    old holders with no independently proven child. With an explicit distinct CPU
+    roster, a stable singleton native affinity independently associates a child
+    with its reserved slot. Without that evidence, a same-PID multi-slot holder
+    receives no discount. ``locks_path`` is accepted for compatibility and never
+    opened: the kernel lock table is not read (see :func:`_write_slot_owner`).
     """
+    del locks_path
     if not slots.held or not natives.matchable:
         return 0
-    try:
-        first = _lock_owners(locks_path.read_bytes(), slots.held)
-    except OSError:
-        return 0
+    first = _slot_owners(root, slots.held)
     uid = os.getuid()
-    proven: list[tuple[_HeldSlot, _ProcessIdentity, _ProcessIdentity]] = []
-    for slot, owner_pid in first.items():
-        # A multi-slot owner has no unique slot-to-child association.
-        if list(first.values()).count(owner_pid) != 1:
+    cpus = _gsim_cpu_roster()
+    proven: list[tuple[_HeldSlot, _ProcessIdentity, _ProcessIdentity, int | None]] = []
+    owner_pids = [pid for pid, _ in first.values()]
+    for slot, (owner_pid, owner_start) in first.items():
+        # Shared process FDs alone do not associate a threaded native with a slot.
+        if owner_pids.count(owner_pid) != 1 and cpus is None:
             continue
         owner_member = proc_root / str(owner_pid)
         owner = _fresh_identity(owner_member, uid=uid, native=False)
-        if owner is None or not _matching_owner_fd(owner_member, slot):
+        if owner is None or owner.starttime != owner_start or not _matching_owner_fd(owner_member, slot):
             continue
         children = [
             child for child in natives.matchable if child.ppid == owner_pid and child.starttime > owner.starttime
         ]
+        cpu = cpus[slot.index] if cpus is not None else None
+        if cpu is not None:
+            children = [child for child in children if _native_cpu_matches(proc_root / str(child.pid), cpu)]
         if len(children) != 1:
             continue
-        proven.append((slot, owner, children[0]))
-    try:
-        last = _lock_owners(locks_path.read_bytes(), slots.held)
-    except OSError:
-        return 0
+        proven.append((slot, owner, children[0], cpu))
+    last = _slot_owners(root, slots.held)
     matched_children: set[tuple[int, int]] = set()
-    accepted: list[tuple[_HeldSlot, int]] = []
-    for slot, owner, child in proven:
-        if last.get(slot) != owner.pid or (child.pid, child.starttime) in matched_children:
+    accepted: list[tuple[_HeldSlot, _ProcessIdentity]] = []
+    for slot, owner, child, cpu in proven:
+        if last.get(slot) != (owner.pid, owner.starttime) or (child.pid, child.starttime) in matched_children:
             continue
         try:
             current = (root / f"slot_{slot.index}.lock").lstat()
@@ -434,17 +551,25 @@ def _verified_native_slot_overlap(
             continue
         if not _matching_owner_fd(owner_member, slot):
             continue
+        if cpu is not None and not _native_cpu_matches(child_member, cpu):
+            continue
         if _fresh_identity(child_member, uid=uid, native=True) != child:
             continue
         matched_children.add((child.pid, child.starttime))
-        accepted.append((slot, owner.pid))
+        accepted.append((slot, owner))
     # The owner may have released/replaced a slot during the post-identity
-    # checks; never discount it using only the earlier lock snapshot.
-    try:
-        final = _lock_owners(locks_path.read_bytes(), slots.held)
-    except OSError:
+    # checks. It clears its line before unlocking, so a slot held at the probe
+    # whose line still names the same live owner afterwards was held by it.
+    still_held = {slot for slot, _ in accepted if _slot_still_held(root, slot)}
+    final = _slot_owners(root, slots.held)
+    if _gsim_cpu_roster() != cpus:
         return 0
-    return sum(final.get(slot) == owner_pid for slot, owner_pid in accepted)
+    return sum(
+        slot in still_held
+        and final.get(slot) == (owner.pid, owner.starttime)
+        and _fresh_identity(proc_root / str(owner.pid), uid=uid, native=False) == owner
+        for slot, owner in accepted
+    )
 
 
 def _admitted_load(
@@ -452,7 +577,7 @@ def _admitted_load(
     *,
     own_index: int,
     proc_root: Path = Path("/proc"),
-    locks_path: Path = Path("/proc/locks"),
+    locks_path: Path | None = None,
 ) -> int:
     """Conservative union of natives and reservations, including our pending slot."""
     natives = _native_gsim_census(proc_root=proc_root)
@@ -477,7 +602,9 @@ def _admission_mutex(root: Path, deadline: float | None):
                 locked = True
             except BlockingIOError:
                 if deadline is not None and time.monotonic() >= deadline:
-                    raise TimeoutError("all five GSim slots stayed busy until the capsule wait deadline")
+                    raise TimeoutError(
+                        f"all {CAPSULE_WORKER_CAP['gsim']} GSim slots stayed busy until the capsule wait deadline"
+                    )
                 time.sleep(0.01)
         yield
     finally:
@@ -491,9 +618,98 @@ def capsule_worker_cap(engine: str) -> int:
     return CAPSULE_WORKER_CAP.get(engine, 8)
 
 
+def _gsim_cpu_roster() -> tuple[int, ...] | None:
+    from merlin.common.cpu_pool import shared_compute_enabled
+
+    if shared_compute_enabled():
+        # A shared lease selects a free CPU independently of the GSim cap
+        # reservation. Reservation indices no longer designate CPU numbers.
+        return None
+    raw = os.environ.get("MERLIN_GSIM_CPUS", "").strip()
+    if not raw:
+        return None
+    tokens = raw.split(",")
+    if any(not token.isdecimal() for token in tokens):
+        raise ValueError("MERLIN_GSIM_CPUS requires a comma-separated CPU roster")
+    cpus = tuple(int(token) for token in tokens)
+    if len(set(cpus)) != len(cpus) or len(cpus) < CAPSULE_WORKER_CAP["gsim"]:
+        raise ValueError("MERLIN_GSIM_CPUS requires a distinct CPU for every configured slot")
+    return cpus
+
+
+def _native_cpu_matches(member: Path, cpu: int) -> bool:
+    """Read the kernel's exact singleton affinity, without lock-file assertions."""
+    try:
+        status = _read_process_evidence(member / "status", member)
+    except (OSError, RuntimeError):
+        return False
+    if status is None:
+        return False
+    fields = [line.split() for line in status.splitlines() if line.startswith(b"Cpus_allowed_list:")]
+    return fields == [[b"Cpus_allowed_list:", str(cpu).encode("ascii")]]
+
+
+@contextmanager
+def _gsim_cpu_slot(index: int):
+    """Pin this native-launch thread and its children to one operator-selected CPU."""
+    cpus = _gsim_cpu_roster()
+    if cpus is None:
+        yield
+        return
+    original = os.sched_getaffinity(0)
+    try:
+        os.sched_setaffinity(0, {cpus[index]})
+        if os.sched_getaffinity(0) != {cpus[index]}:
+            raise RuntimeError("selected GSim CPU is unavailable in the process CPU partition")
+        yield
+    finally:
+        os.sched_setaffinity(0, original)
+
+
 @contextmanager
 def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | None = None):
-    """Hold one of five same-user GSim slots for the entire native simulation.
+    """Lease compute first, but release it while waiting for native capacity."""
+    from merlin.common.cpu_pool import shared_compute_enabled, shared_compute_pool
+
+    deadline = None if wait_timeout_s is None else time.monotonic() + max(0.0, wait_timeout_s)
+    if not shared_compute_enabled():
+        with _gsim_runtime_slot(wait_timeout_s=wait_timeout_s, slot_root=slot_root):
+            yield
+        return
+    queued_since_ns = time.monotonic_ns()  # Retries keep their place in the CPU queue.
+    while True:
+        remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+        with ExitStack() as ownership:
+            ownership.enter_context(shared_compute_pool(timeout_s=remaining, queued_since_ns=queued_since_ns))
+            try:
+                ownership.enter_context(_gsim_runtime_slot(wait_timeout_s=0, slot_root=slot_root))
+            except TimeoutError:
+                pass
+            else:
+                yield
+                return
+        # No CPU or native reservation is held by this admission attempt.
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TimeoutError('timed out waiting for GSim native capacity')
+        time.sleep(0.05 if deadline is None else min(0.05, max(0, deadline - time.monotonic())))
+
+
+@contextmanager
+def simulation_runtime_slot(engine: str, *, wait_timeout_s: float | None = None):
+    """Use the common compute lease for every engine, retaining GSim's native cap."""
+    from merlin.common.cpu_pool import shared_compute_pool
+
+    if engine == "gsim":
+        with gsim_runtime_slot(wait_timeout_s=wait_timeout_s):
+            yield
+    else:
+        with shared_compute_pool(timeout_s=wait_timeout_s):
+            yield
+
+
+@contextmanager
+def _gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | None = None):
+    """Hold a configured same-user GSim reservation for the entire native simulation.
 
     Per-suite worker bounds do not protect the machine when two independent grades run at once.
     Advisory file locks survive abrupt worker exit without stale PID reclamation. A private,
@@ -502,9 +718,10 @@ def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | 
     uncoordinated launches after that snapshot cannot be prevented by this protocol.
     Nested synchronous calls in the same thread reuse its slot. Other threads and
     forked children acquire their own; do not launch concurrent children inside one slot.
-    Ambiguous multi-slot ownership can conservatively reduce utilization below five.
+    Ambiguous multi-slot ownership can conservatively reduce utilization below the cap.
     """
-    root = slot_root or Path("/tmp") / f"merlin_gsim_slots_{os.getuid()}"
+    selected_root = os.environ.get("MERLIN_GSIM_SLOT_ROOT", "").strip()
+    root = slot_root or (Path(selected_root) if selected_root else Path("/tmp") / f"merlin_gsim_slots_{os.getuid()}")
     root.mkdir(mode=0o700, parents=False, exist_ok=True)
     info = root.lstat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
@@ -539,6 +756,7 @@ def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | 
                         admitted_load = _admitted_load(root, own_index=index)
                         if admitted_load <= CAPSULE_WORKER_CAP["gsim"]:
                             fd = opened
+                            _write_slot_owner(fd)
                             break
                     finally:
                         if fd is None:
@@ -547,13 +765,17 @@ def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | 
                     break
             if fd is None:
                 if deadline is not None and time.monotonic() >= deadline:
-                    raise TimeoutError("all five GSim slots stayed busy until the capsule wait deadline")
+                    raise TimeoutError(
+                        f"all {CAPSULE_WORKER_CAP['gsim']} GSim slots stayed busy until the capsule wait deadline"
+                    )
                 time.sleep(0.1)
         held[key] = fd
-        yield
+        with _gsim_cpu_slot(index):
+            yield
     finally:
         if fd is not None and os.getpid() == owner_pid:
             held.pop(key, None)
+            _clear_slot_owner(fd)
             fcntl.flock(fd, fcntl.LOCK_UN)
             _close_gsim_fd(fd)
 

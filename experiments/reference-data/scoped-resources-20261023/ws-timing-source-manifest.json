@@ -1,0 +1,50 @@
+{
+  "build": {
+    "path": "<machine-path-027>",
+    "sha256": "482ceb0ac00887f9d2e20978413e7b6e026101c75409bbf6c6d398efc82fde87"
+  },
+  "identity_payload": {
+    "base_source_manifest": {
+      "path": "<machine-path-026>",
+      "sha256": "caa21d8f4664b64e881a2f90b2399270ee4bf09378075f1c4f3ebea78933357b"
+    },
+    "base_selected_source_identity": "79eb1f1b511a1b9f2267532de252965712e65c91e95b91b6df46dab81fdc52b3",
+    "candidate_compiled_leaves": [
+      {
+        "path": "<machine-path-040>",
+        "sha256": "f0acc9febb62ef9e35f0c1bae3023639ccae043552879a680d894b3dfd4a7ea4"
+      },
+      {
+        "path": "<machine-path-041>",
+        "sha256": "1cf996be47c9d3d20302353027adfd4fccbb972c16df759f9cb2ea446732a7f6"
+      }
+    ],
+    "base_build": {
+      "path": "<machine-path-028>",
+      "sha256": "92179295aa776238246946ab6e36b2cf7f8ed63e0b5f3d697d6d33f3d4d90989"
+    },
+    "base_archive_sha256": "9cfa4c78ab3a86c36dc809509a9e601de423b193934a7f2ba585bfc4bdecdc29",
+    "source_commit": "472bd25"
+  },
+  "provider_build": {
+    "path": "<machine-path-024>",
+    "sha256": "a003d9633a6a791aa49d11f23e55a28c1a417876fcb5238cfc662c77ce395280"
+  },
+  "schema": "merlin.annotated_spike_incremental_sources.v1",
+  "scope_policy": "unchanged exact counter-PC scope; optional bounded modeled bookings; no guest instructions or pricing changes",
+  "sha256": "986bea3e9c4110a7404123f42ec0b4ef74722978c4e9e495ce0576fd1eaf9fbd",
+  "shared_provider_observer_headers": [
+    {
+      "path": "<machine-path-015>",
+      "sha256": "a3ad0ac903e091d5e3384534eec8379f24d42b6294adc1c496eea146082b044d"
+    },
+    {
+      "path": "<machine-path-016>",
+      "sha256": "672ed5be138226533b49a8c38c91b2623494b5162286862ed7fcc48f77e37c65"
+    },
+    {
+      "path": "<machine-path-017>",
+      "sha256": "acc2d0a921a651405ffadd2d52ff6c2ab17e47c95c2fb6265cb3f721076b233a"
+    }
+  ]
+}

@@ -3,14 +3,19 @@ title: Compiler verification architecture
 kind: design
 status: current
 owner: verification
-last_verified: 2026-10-07
-related: [verification, lowering_pipeline, capture_execution_attestation]
+last_verified: 2026-10-12
+related: [verification, lowering_pipeline, capture_execution_attestation, verified_compiler_tooling, verified_compiler_roadmap]
 code_refs:
   - src/merlin/verify/receipts.py
   - src/merlin/verify/scalar_ir.py
   - src/merlin/verify/outline_ir.py
   - src/merlin/verify/split_reduction.py
   - src/merlin/verify/cli.py
+  - src/merlin/verify/lean_checker.py
+  - src/merlin/verify/lean_export.py
+  - src/merlin/verify/lean_sat_runtime.py
+  - src/merlin/verify/lean/Merlin/Foundation.lean
+  - src/merlin/transforms/pipeline.py
   - src/merlin/perf/whole_model_chunks.py
   - src/merlin/compile/mesh.py
   - src/merlin/targetgen/operation_numerics.py
@@ -39,6 +44,26 @@ behavior need to be stated; plain output equality is insufficient. If any side
 cannot be modeled, the result is `unsupported` or `unknown`, never `verified`.
 
 ## Boundary obligations and current evidence
+
+The [shared transformation route](../guides/verified_compiler_tooling.md) adds
+host-selected Lean checking for a deliberately narrow xDSL subset. Scalar
+wrapping integers use a typed Lean-MLIR interpretation. Ordered loop partition
+arithmetic and buffer lifetime checks use parameterized lemmas together with
+trusted correspondence of the actual emitted structure. These are explicit
+local obligations, not complete operational semantics for SCF, memory, LLVM
+or target instructions. Strict coverage is fixed by the frozen host profile;
+unknown covered checks refuse acceptance. Independent numerical and hardware
+checks still apply. The [roadmap](verified_compiler_roadmap.md) lists the
+remaining models and pass groups.
+
+Lean receipts distinguish `lean_kernel` from `lean_native_reflection`. Generated
+bit-vector obligations using `bv_decide` require the original toolchain's pinned
+SAT executable and explicit `allow_native_reflection` permission. Lean checks the
+solver's LRAT certificate using native reflection; that mode trusts the selected
+Lean compiler and native checker and admits only its two additional reflection
+axioms. It is not kernel-only assurance. Missing selection, stale bytes or
+unapproved axioms refuse; a candidate cannot choose this mode in a request.
+Neither method proves that a final object implements a checked IR pair.
 
 | Boundary | What must be preserved | Verification approach | Status in Merlin |
 | --- | --- | --- | --- |

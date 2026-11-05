@@ -1,10 +1,20 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/execution
 
+Original compiler-profile composition may explicitly select bounded process
+environment pairs and final directory/empty-file answer masks for the container
+transport. Retain source/image, qualified view/runtime and actual create-plan
+pins; verify observed environment, readonly tmpfs masks and bind metadata.
+Unsupported masks, overlapping writable grants or changed observations refuse.
+Absent selections preserve historical transport interpretation. These checks
+establish selected metadata custody, never deployment, isolation, numerical,
+hardware or timing qualification. No alternate native fallback is permitted.
+
 The provisioned `native_supervisor` is the direct parent/reaper of every guardian.
 `native_guardian` owns only its descendant tree. `chia_native` adapts public Chia
 hooks; no worker-side Popen or private upstream tracker mutation is permitted.
 `_protocol` owns bounded local packets, descriptor transfer and peer identity.
-`owned_children` owns the shared kernel subreaper setup and direct/adopted child
+`owned_children` reexports the original `merlin.common.owned_children` kernel
+subreaper setup and direct/adopted child
 pidfd termination and waitpid/ECHILD completion check. Both the existing native
 guardian and the separately forked component feedback guardian use this primitive;
 neither may replace actual closure with a /proc descendant snapshot. Callback
@@ -17,6 +27,12 @@ Unknown cleanup is never success. Preserve native stdio/environment without expo
 session capabilities to candidates or receipts. Do not launch a background daemon on
 import or automatically change an existing cluster. Service/host failure is not
 qualified by worker-loss tests. Historical task receipts retain their old meaning.
+
+An active `phase2.external_resources` boundary refuses new native service and
+container invocations: these external executors do not inherit the local cgroup
+or prove bounded writable backing. Keep existing cleanup operations available.
+Default launches retain their original behavior; service inspection is never
+aggregate CPU/RAM/disk enforcement evidence.
 
 The optional `container_transport` prepares an actual immutable static PID-1
 command owner from packaged `container_guardian.c`. It uses only an explicitly

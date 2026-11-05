@@ -1,0 +1,117 @@
+{
+  "original_sha256": "c92f448f15d1d955ed615832dfb53851b2f616ac649263fc3cb69b1661957f42",
+  "projection": {
+    "base_observer": {
+      "path": "${TASK}/merlin/out/build/private-probe-observer-v2/spike",
+      "sha256": "c504c4d4a9fcc2695a6be53f4c5e3380c40da19906e80c57432942fcd3ede88e"
+    },
+    "binary": {
+      "path": "${TASK}/merlin/out/build/htif-target-observer-v1/spike",
+      "sha256": "fc39056ce0618fd001cf5333347053bada0b4bcbb2568aa9183ed4783252a908"
+    },
+    "commands": [
+      [
+        "g++",
+        "-std=c++20",
+        "-O2",
+        "-g0",
+        "-fPIC",
+        "-I${RETAINED_RUNTIME}/.tmp/boost-deps/usr/include",
+        "-iquote",
+        "${TASK}/merlin/out/build/private-probe-observer-v2",
+        "-iquote",
+        "${TASK}/merlin/out/build/annotated-spike",
+        "-I${TASK}/spike-timing",
+        "-I${TASK}/spike-timing/timing",
+        "-I${TASK}/spike-timing/timing/core/include",
+        "-iquote",
+        "${TASK}/spike-timing/riscv",
+        "-iquote",
+        "${TASK}/spike-timing/fesvr",
+        "-iquote",
+        "${TASK}/spike-timing/disasm",
+        "-iquote",
+        "${TASK}/spike-timing/customext",
+        "-iquote",
+        "${TASK}/spike-timing/fdt",
+        "-iquote",
+        "${TASK}/spike-timing/softfloat",
+        "-iquote",
+        "${TASK}/spike-timing/spike_main",
+        "-iquote",
+        "${TASK}/spike-timing/spike_dasm",
+        "-c",
+        "${TASK}/spike-timing/spike_main/spike.cc",
+        "-o",
+        "${TASK}/merlin/out/build/htif-target-observer-v1/spike.o"
+      ],
+      [
+        "g++",
+        "-L${RETAINED_RUNTIME}/.tmp/boost-deps${HOST_LIB}",
+        "-Wl,-rpath,${RETAINED_RUNTIME}/.tmp/boost-deps${HOST_LIB}",
+        "-Wl,--export-dynamic",
+        "${TASK}/merlin/out/build/annotated-spike/extension.o",
+        "-o",
+        "${TASK}/merlin/out/build/htif-target-observer-v1/spike",
+        "${TASK}/merlin/out/build/htif-target-observer-v1/spike.o",
+        "${TASK}/merlin/out/build/annotated-spike/libspike_main.a",
+        "${TASK}/merlin/out/build/private-probe-observer-v2/libriscv.a",
+        "${TASK}/merlin/out/build/annotated-spike/libdisasm.a",
+        "${TASK}/merlin/out/build/annotated-spike/libsoftfloat.a",
+        "${TASK}/merlin/out/build/annotated-spike/libfesvr.a",
+        "${TASK}/merlin/out/build/annotated-spike/libfdt.a",
+        "-lcrypto",
+        "-lpthread",
+        "-lboost_regex",
+        "-lboost_system"
+      ]
+    ],
+    "compiled_sources": [
+      {
+        "path": "${TASK}/spike-timing/spike_main/spike.cc",
+        "sha256": "045b5681097c9fb911db03c96ac0a0df457e1108c6361ca61e50e56f34e70158"
+      },
+      {
+        "path": "${TASK}/spike-timing/fesvr/htif.h",
+        "sha256": "84111504d2803a6836125d4d012c079fc8cc5462c4971bfe3a209b9b1e81b370"
+      }
+    ],
+    "feature_source_manifest": {
+      "path": "${TASK}/merlin/out/build/private-probe-observer-v2/timing-source-manifest.json",
+      "sha256": "d439f3e510ff4fe4be363add25a98919e91b257c40da318ecdb94c17db15918f"
+    },
+    "reused_libraries": [
+      {
+        "path": "${TASK}/merlin/out/build/private-probe-observer-v2/libriscv.a",
+        "sha256": "84aa58fc9f9677c2145204fc45d894fdd395be3c16f5922c4ddcf61fcf42447d"
+      },
+      {
+        "path": "${TASK}/merlin/out/build/annotated-spike/extension.o",
+        "sha256": "c07f9905e7e5cefb90eeec281ec4a319e1dd8085b2d7c23b663ad76ca5f2453d"
+      },
+      {
+        "path": "${TASK}/merlin/out/build/annotated-spike/libspike_main.a",
+        "sha256": "77b9c0d475b33d0a3769f0b5a9a994c9fa605001b4c8da265247ae06c50436b1"
+      },
+      {
+        "path": "${TASK}/merlin/out/build/annotated-spike/libdisasm.a",
+        "sha256": "7b864338594d9928ef2552281e8b566227a94f8972ae55b8a52d606eba8734ae"
+      },
+      {
+        "path": "${TASK}/merlin/out/build/annotated-spike/libsoftfloat.a",
+        "sha256": "7b13f3cc0397204ff25b0708e347c59f3f2aadc74802a03e426c5c954f491fba"
+      },
+      {
+        "path": "${TASK}/merlin/out/build/annotated-spike/libfesvr.a",
+        "sha256": "0a2e2479df07ce5173dc8bb03459b3cb761ac2c0669936f580c6ed7a71417a4d"
+      },
+      {
+        "path": "${TASK}/merlin/out/build/annotated-spike/libfdt.a",
+        "sha256": "bfb6e52d63205a632776c3fb5dfe9be2144f530d4e235e34078ee2e4313eee75"
+      }
+    ],
+    "schema": "operator.htif_target_identity_build.v1",
+    "timing_implementation_unchanged": true,
+    "uncommitted_annotated_timing_cc_excluded": true
+  }
+}

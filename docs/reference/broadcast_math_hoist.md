@@ -4,9 +4,7 @@ kind: reference
 status: current
 owner: llvmlower
 last_verified: 2026-10-06
-related:
-  - docs/reference/architecture.md
-  - docs/reference/scalar_pointwise_unroll.md
+related: [docs/reference/architecture.md, docs/reference/scalar_pointwise_unroll.md]
 code_refs:
   - src/merlin/llvmlower/broadcast_math_hoist.py
   - src/merlin/llvmlower/pipeline.py

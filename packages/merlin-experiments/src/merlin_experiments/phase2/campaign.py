@@ -16,9 +16,12 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
+from dataclasses import field as dataclass_field
 from pathlib import Path
 
 import yaml
@@ -29,7 +32,12 @@ from merlin.targetgen import oot_runner
 from merlin.targetgen.oracle_schedule import CapsuleState, Verdict
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import toolchain as TC
-from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, answer_surfaces, audit_hit_is_violation
+from merlin.targetgen.sandbox.answer_surfaces import (
+    AnswerSurface,
+    CapsuleMetadata,
+    answer_surfaces,
+    audit_hit_is_violation,
+)
 from merlin.targetgen.target_experiment import TargetExperiment
 from merlin_experiments.phase2.prompt import PerfCell, PerfPromptContractError
 
@@ -56,6 +64,14 @@ def verify_private_input_snapshot(run_dir: Path, environment: Mapping) -> dict:
     bundle_digest = hashlib.sha256(bundle_path.read_bytes()).hexdigest()
     if environment.get("bundle_manifest_sha256") != bundle_digest:
         raise CampaignGateError("functional archived bundle bytes disagree with host provenance")
+    from merlin.targetgen.tool_profile import verify_tool_profile
+
+    try:
+        profile = verify_tool_profile(bundle, tools=tuple(environment.get("resolved_tools") or ()))
+    except ValueError as error:
+        raise CampaignGateError(str(error)) from error
+    if profile is not None and environment.get("compiler_tool_profile") != profile:
+        raise CampaignGateError("functional run changed its immutable compiler tool profile")
     root = Path(str(snapshot.get("path") or ""))
     ws = Path(str(environment.get("workspace_path") or ""))
     if not root.is_absolute() or not ws.is_absolute() or root.is_symlink() or BW.bundle_snapshot_root(ws) != root:
@@ -210,10 +226,28 @@ class FrozenPackageSandboxInputs:
     surfaces: tuple[AnswerSurface, ...]
 
 
-def select_package_sandbox_inputs(te: TargetExperiment) -> PackageSandboxInputs:
+class PackagePolicyScope:
+    """What every package entrypoint policy of one execution scope may share.
+
+    One grade, self-check request or probe owns one instance for its executor lifetime and passes it
+    to :func:`package_sandbox_policy`. Capsule metadata parses are keyed by freshly read bytes.
+    Filesystem membership and linked-inode facts may share the existing kernel roster guard;
+    any mutation invalidates reuse and unsupported trees retain fresh traversal. Live selections,
+    mount translations, privacy classifications and grants are derived on every call. No policy
+    result or cross-request authority is cached.
+    """
+
+    def __init__(self) -> None:
+        self.capsules = CapsuleMetadata()
+
+
+def select_package_sandbox_inputs(
+    te: TargetExperiment, *, scope: PackagePolicyScope | None = None
+) -> PackageSandboxInputs:
     """Resolve the live selection once, before freezing an execution declaration."""
+    answers = answer_surfaces(te) if scope is None else answer_surfaces(te, capsules=scope.capsules)
     return PackageSandboxInputs(
-        TC.ToolchainPaths.from_checkout(), TC._sim(te), TC.curated_harness_dir(te), tuple(answer_surfaces(te))
+        TC.ToolchainPaths.from_checkout(), TC._sim(te), TC.curated_harness_dir(te), tuple(answers)
     )
 
 
@@ -227,6 +261,11 @@ class PackageSandboxPolicy:
     target_experiment: TargetExperiment
     env_prefix: str | None = None
     frozen_inputs: FrozenPackageSandboxInputs | None = None
+    selected_inputs: PackageSandboxInputs | FrozenPackageSandboxInputs | None = dataclass_field(
+        default=None, repr=False, compare=False
+    )
+
+    compiler_fork_sha256: str | None = None
 
     def __post_init__(self) -> None:
         # Preserve the six-argument constructor while capturing its defaults once.
@@ -703,6 +742,8 @@ def inspect_functional_run(
         raise CampaignGateError(f"functional submission contains a digest-excluded path: {excluded}")
 
     environment = _mapping_file(run_dir / "environment.yaml", yaml_file=True)
+    if environment.get("validation_scope", "full") == "capsules":
+        raise CampaignGateError("capsule-only publication requires explicit capsule_iteration admission")
     verify_private_input_snapshot(run_dir, environment)
     summary = _mapping_file(run_dir / "qa_loop_summary.yaml", yaml_file=True)
     freeze = _mapping_file(run_dir / "freeze.json")
@@ -712,8 +753,10 @@ def inspect_functional_run(
 
     if environment.get("run_id") != run_id or manifest.get("run_id") != run_id:
         raise CampaignGateError("functional evidence names a different run id")
-    if not str(environment.get("bundle_id") or "").startswith("merlin_assisted_rtlchecks_"):
-        raise CampaignGateError("functional run is not from the Arm-4 RTL-checks bundle")
+    profile = environment.get("compiler_tool_profile")
+    if profile is None:
+        if not str(environment.get("bundle_id") or "").startswith("merlin_assisted_rtlchecks_"):
+            raise CampaignGateError("functional run is not from the historical Arm-4 RTL-checks bundle")
     found: list[Deviation] = list(_validate_clean_run(environment, summary))
     if manifest.get("integrity_status") != "clean" or manifest.get("integrity_exempt") is not False:
         found.append(
@@ -924,12 +967,20 @@ def package_sandbox_policy(
     package: Path,
     *,
     inputs: PackageSandboxInputs | FrozenPackageSandboxInputs | None = None,
+    scope: PackagePolicyScope | None = None,
 ) -> PackageSandboxPolicy:
-    """Derive a credential-free, answer-closed bwrap policy for untrusted package entrypoints."""
+    """Derive a credential-free, answer-closed bwrap policy for untrusted package entrypoints.
+
+    ``scope`` shares one execution scope's parsed capsule metadata between calls; the resulting
+    policy is identical to one derived without it.
+    """
     workspace = Path(workspace).resolve()
     package = Path(package).resolve()
     if not workspace.is_dir() or not package.is_dir() or workspace == package:
         raise CampaignGateError("performance sandbox workspace and copied package must be distinct directories")
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import _original_package_composition
+
+    composition = _original_package_composition(te, inputs, scope)
     # Empty bundle is intentional: the package sees its input files and the derived toolchain, not the
     # experiment repository.  The policy-only escape avoids requiring an agent-input snapshot when no
     # bundle grants exist and does not expose any live input itself.
@@ -956,7 +1007,13 @@ def package_sandbox_policy(
         argv += list(inputs.argv)
         surfaces = inputs.surfaces
     elif inputs is None:
-        discovered = select_package_sandbox_inputs(te)
+        # An exact original owner closes all mounts below in one final pass.
+        # Resolve its tools here; discover the live answers only after its grants.
+        discovered = (
+            select_package_sandbox_inputs(te, scope=scope)
+            if composition is None
+            else PackageSandboxInputs(TC.ToolchainPaths.from_checkout(), TC._sim(te), TC.curated_harness_dir(te), ())
+        )
         selected = {
             "paths": discovered.paths,
             "sim": discovered.sim,
@@ -970,11 +1027,6 @@ def package_sandbox_policy(
         memory_dir = next((str(surface.path) for surface in surfaces if surface.origin == "memory"), "")
         argv += TC.toolchain_binds(te, **selected, memory_dir=memory_dir)
     argv = _remove_agent_home_mounts(argv)
-    argv = BW.apply_answer_masks(argv, surfaces)
-    argv += ["--ro-bind", str(package), str(package)]
-    gaps = tuple(str(surface.path) for surface in BW.coverage_gap(argv, surfaces))
-    if gaps:
-        raise CampaignGateError(f"package sandbox exposes derived answer surfaces: {gaps}")
     probes = (
         inputs.probes
         if isinstance(inputs, FrozenPackageSandboxInputs)
@@ -987,7 +1039,24 @@ def package_sandbox_policy(
         if isinstance(inputs, FrozenPackageSandboxInputs)
         else TC.sandbox_env(te, workspace, **selected)
     )
-    return PackageSandboxPolicy(
+    if composition is None:
+        argv = BW.apply_answer_masks(argv, surfaces)
+        argv += ["--ro-bind", str(package), str(package)]
+    else:
+        argv, prefix, current = composition(
+            [*argv, "--ro-bind", str(package), str(package)],
+            prefix,
+            target=te,
+            scope=scope,
+            selected_surfaces=surfaces,
+        )
+        surfaces = (*surfaces, *current)
+        if inputs is None:
+            discovered = replace(discovered, surfaces=current)
+    gaps = tuple(str(surface.path) for surface in BW.coverage_gap(argv, surfaces))
+    if gaps:
+        raise CampaignGateError(f"package sandbox exposes derived answer surfaces: {gaps}")
+    policy = PackageSandboxPolicy(
         tuple(argv),
         gaps,
         probes,
@@ -996,18 +1065,40 @@ def package_sandbox_policy(
         te,
         prefix,
         inputs if isinstance(inputs, FrozenPackageSandboxInputs) else None,
+        discovered if inputs is None else inputs,
+    )
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_public_package_policy
+
+    from .compiler_libraries import apply as additional_library_policy
+
+    return additional_library_policy(
+        active_public_package_policy(policy, target=te, scope=scope) if composition is None else policy
     )
 
 
 def _verify_frozen_policy(policy: PackageSandboxPolicy) -> None:
+    if policy.compiler_fork_sha256 is not None:
+        from merlin.targetgen.compiler_library import active_compiler_library
+        from merlin.targetgen.compiler_library_fork import candidate_sources
+        selection = active_compiler_library()
+        if selection is None or candidate_sources(selection, policy.package)[1] != policy.compiler_fork_sha256:
+            raise CampaignGateError("candidate compiler fork changed before execution")
     if policy.frozen_inputs is not None:
         from merlin_experiments.phase2.qualification_policy import restore
 
         verified = restore(policy.frozen_inputs.root, policy.frozen_inputs.record)
+        from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_public_package_policy
+
+        expected = active_public_package_policy(
+            replace(policy, env_prefix=verified.env_prefix), target=policy.target_experiment
+        )
+        from .compiler_libraries import apply as additional_library_policy
+
+        expected = additional_library_policy(expected)
         if (
             verified != policy.frozen_inputs
             or policy.required_tools != verified.probes
-            or policy.env_prefix != verified.env_prefix
+            or policy.env_prefix != expected.env_prefix
         ):
             raise CampaignGateError("package execution policy differs from verified frozen inputs")
 
@@ -1051,7 +1142,7 @@ def _inside(path: Path, root: Path) -> bool:
 #: unmasked and the answer masks bypassed. Nothing would say so; the measurement would simply be
 #: taken outside the box. So the policy is per-thread and the patch is installed once, under a lock,
 #: for as long as any thread is inside it.
-_ACTIVE = threading.local()
+_ACTIVE = ContextVar("performance_package_sandbox", default=None)
 _PATCH_LOCK = threading.Lock()
 _PATCH_DEPTH = 0
 _ORIGINALS: dict = {}
@@ -1059,7 +1150,7 @@ _ORIGINALS: dict = {}
 
 def active_sandbox_policy() -> PackageSandboxPolicy | None:
     """The policy boxing the calling thread, or None when it is not inside one."""
-    return getattr(_ACTIVE, "policy", None)
+    return _ACTIVE.get()
 
 
 @contextlib.contextmanager
@@ -1071,8 +1162,7 @@ def boxed_entrypoints(policy: PackageSandboxPolicy) -> Iterator[None]:
     """
     global _PATCH_DEPTH
 
-    previous = getattr(_ACTIVE, "policy", None)
-    _ACTIVE.policy = policy
+    token = _ACTIVE.set(policy)
     with _PATCH_LOCK:
         if _PATCH_DEPTH == 0:
             _ORIGINALS["run_entrypoint"] = oot_runner.run_entrypoint
@@ -1083,7 +1173,7 @@ def boxed_entrypoints(policy: PackageSandboxPolicy) -> Iterator[None]:
     try:
         yield
     finally:
-        _ACTIVE.policy = previous
+        _ACTIVE.reset(token)
         with _PATCH_LOCK:
             _PATCH_DEPTH -= 1
             if _PATCH_DEPTH == 0:
@@ -1092,8 +1182,10 @@ def boxed_entrypoints(policy: PackageSandboxPolicy) -> Iterator[None]:
 
 
 def _refuse_build(pkg, *, timeout: int = 1800) -> None:
+    from . import functional_guard_execution
+
     active = getattr(oot_runner, "active_package_executor", None)
-    if callable(active) and active() is not None:
+    if callable(active) and active() is not None and not functional_guard_execution.owns_executor(active()):
         return _ORIGINALS["build_package"](pkg, timeout=timeout)
     build = pkg.manifest.get("build") or {}
     if any(build.get(key) for key in ("configure", "command")):
@@ -1101,8 +1193,15 @@ def _refuse_build(pkg, *, timeout: int = 1800) -> None:
 
 
 def _run_boxed(
-    pkg, name: str, input_mlir: Path, output_json: Path | None = None, *, timeout: int = 600,
-    write_bytecode: bool = False, artifact_profile=None, invocation_directory: Path | None = None,
+    pkg,
+    name: str,
+    input_mlir: Path,
+    output_json: Path | None = None,
+    *,
+    timeout: int = 600,
+    write_bytecode: bool = False,
+    artifact_profile=None,
+    invocation_directory: Path | None = None,
 ) -> subprocess.CompletedProcess:
     """Run one untrusted package entrypoint inside the CALLING THREAD's sandbox policy.
 
@@ -1110,11 +1209,19 @@ def _run_boxed(
     a closure: an invocation that arrives on a thread nobody boxed must not fall through to an
     unsandboxed execution, which is exactly what the previous save/restore could produce.
     """
+    from . import functional_guard_execution, normal_resource_launch
+
     active = getattr(oot_runner, "active_package_executor", None)
-    if callable(active) and active() is not None:
+    if callable(active) and active() is not None and not functional_guard_execution.owns_executor(active()):
         return _ORIGINALS["run_entrypoint"](
-            pkg, name, input_mlir, output_json, timeout=timeout, write_bytecode=write_bytecode,
-            artifact_profile=artifact_profile, invocation_directory=invocation_directory,
+            pkg,
+            name,
+            input_mlir,
+            output_json,
+            timeout=timeout,
+            write_bytecode=write_bytecode,
+            artifact_profile=artifact_profile,
+            invocation_directory=invocation_directory,
         )
     if write_bytecode or artifact_profile is not None:
         raise CampaignGateError("legacy package box has no reviewed artifact-profile or bytecode service")
@@ -1124,24 +1231,70 @@ def _run_boxed(
     _verify_frozen_policy(policy)
     if pkg.directory.resolve() != policy.package:
         raise CampaignGateError("capsule runner attempted to execute a package outside the snapshot")
+    if functional_guard_execution.active_guard() is not None and Path(input_mlir).is_symlink():
+        raise CampaignGateError("functional guard compiler input is linked")
+    if (
+        functional_guard_execution.active_guard() is not None
+        and output_json is not None
+        and Path(output_json).is_symlink()
+    ):
+        raise CampaignGateError("functional guard compiler output destination is linked")
     input_mlir = Path(input_mlir).resolve()
     output_json = Path(output_json).resolve() if output_json is not None else None
     if not _inside(input_mlir, policy.workspace):
         raise CampaignGateError("untrusted package input is outside the performance workspace")
     if output_json is not None and not _inside(output_json, policy.workspace):
         raise CampaignGateError("untrusted package output is outside the performance workspace")
+    if functional_guard_execution.active_guard() is not None:
+        return functional_guard_execution.execute_isolated(
+            policy, pkg, name, input_mlir, output_json, timeout=timeout, invocation_directory=invocation_directory
+        )
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_profile_service
+
+    original_service = active_profile_service()
+    if original_service is not None:
+        # An original profile call sees exactly one input and output staging,
+        # never sibling oracle or simulation records in the performance workspace.
+        from merlin_experiments.phase1.feedback.compiler_profile_runtime import _Executor
+
+        if policy.selected_inputs is None:
+            raise CampaignGateError("original profile call lost its explicit package runtime selection")
+        with tempfile.TemporaryDirectory(prefix="profile-call-", dir=policy.workspace.parent) as raw:
+            executor = _Executor(
+                original_service,
+                policy.target_experiment,
+                pkg.directory,
+                Path(raw),
+                sandbox_inputs=policy.selected_inputs,
+            )
+            return executor.run_entrypoint(
+                pkg, name, input_mlir, output_json, timeout=timeout, invocation_directory=invocation_directory
+            )
     argv = oot_runner._resolve_argv(pkg, name, input_mlir, output_json)
     if oot_runner._needs_interpreter(pkg, argv):
         argv = [sys.executable, *argv]
     shell = policy.env_prefix + 'exec "$@"'
     command = [*policy.argv, "--chdir", str(policy.package), "bash", "-c", shell, "perf-package", *argv]
-    if invocation_directory is None:
-        return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
-    from merlin.common import invocation_record
+    boundary = normal_resource_launch.resources.active_resource_boundary()
+    with normal_resource_launch.bounded_normal_scratch(
+        policy.argv, owner=invocation_directory or policy.workspace, boundary=boundary
+    ) as prefix:
+        command = [*prefix, *command[len(policy.argv) :]]
+        if invocation_directory is None:
+            return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+        from merlin.common import invocation_record
 
-    return invocation_record.run(command, directory=invocation_directory, stage=name, inputs=(input_mlir,),
-                                 outputs=(output_json,) if output_json else (), dependencies=(Path(__file__),),
-                                 capture_output=True, text=True, timeout=timeout)
+        return invocation_record.run(
+            command,
+            directory=invocation_directory,
+            stage=name,
+            inputs=(input_mlir,),
+            outputs=(output_json,) if output_json else (),
+            dependencies=(Path(__file__),),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
 
 
 def completion_report(results: Sequence[Mapping], expected: Sequence[PerfCell]) -> dict:

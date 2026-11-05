@@ -79,7 +79,7 @@ brief.refresh_before_launch(run, ws, 1)
 refreshed = path.read_text()
 assert refreshed.startswith('> ## RESUME') and refreshed.count('> ## RESUME') == 1
 assert refreshed.count('RETRACTION') == 1
-assert refreshed.index('RETRACTION') < refreshed.index('Your iteration_notes.md')
+assert refreshed.index('RETRACTION') < refreshed.index('Your ITERATION_NOTES.md')
 assert 'did NOT update' not in refreshed
 assert (ws / 'qa/.notes_hash').read_bytes() == stamp
 assert 'PRIVATE_SENTINEL' not in refreshed and 'FAST_SENTINEL' not in refreshed
@@ -109,7 +109,7 @@ print('brief-publication-qualified')
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "brief-publication-qualified"
-    assert {p.name for p in (workspace / "qa").iterdir()} == {"round_brief.md", ".notes_hash"}
+    assert {p.name for p in (workspace / "qa").iterdir()} == {"round_brief.md", ".notes_hash", ".round-brief.lock"}
 
 
 def test_brief_implementation_is_masked_not_staged_as_candidate_sdk(tmp_path, monkeypatch):

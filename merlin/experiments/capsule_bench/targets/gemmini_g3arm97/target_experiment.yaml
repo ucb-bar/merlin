@@ -69,7 +69,7 @@ grading:
     - B0_quantized_linear_i8
     - B1_linear_relu_i8
     - B2_linear_acc_scale_relu_i8
-    - B3_conv2d_im2col_i8
+    - B3_conv2d_i8
     - B4_conv2d_relu_i8
     - C0_mlp_linear1
     - C1_mlp_activation_linear2

@@ -221,7 +221,44 @@ def test_distribution_names_cannot_escape_output_root(tmp_path, monkeypatch, nam
 
 def test_all_optional_distributions_share_one_hook():
     root = repo_root()
-    for name in ("analysis", "dse", "experiments", "mining"):
+    for name in ("analysis", "dse", "experiments", "mining", "timing"):
         script = root / "packages" / f"merlin-{name}" / "setup.py"
         assert script.is_symlink()
         assert script.resolve() == root / "build_tools" / "extension_setup.py"
+
+
+def test_portable_sources_stage_canonical_bytes_without_source_copy(tmp_path, monkeypatch):
+    project, _, namespace, distribution = _project(tmp_path, monkeypatch, workspace=True)
+    source = project / "include" / "example.hpp"
+    source.parent.mkdir()
+    source.write_bytes(b"// canonical portable source\n")
+    namespace["_METADATA"]["tool"] = {
+        "merlin": {"portable-sources": {"destination": "example/_portable", "files": ["include/example.hpp"]}}
+    }
+    build = distribution.get_command_obj("build_py")
+    build.ensure_finalized()
+    build.run()
+    assert (Path(build.build_lib) / "example/_portable/include/example.hpp").read_bytes() == source.read_bytes()
+    assert not (project / "src/example/_portable").exists()
+
+
+@pytest.mark.parametrize("case", ["destination", "source", "linked", "missing"])
+def test_portable_sources_refuse_indirection_or_escaping_paths(tmp_path, monkeypatch, case):
+    project, _, namespace, distribution = _project(tmp_path, monkeypatch, workspace=True)
+    member = project / "example.hpp"
+    member.write_bytes(b"// source\n")
+    portable = {"destination": "example/_portable", "files": ["example.hpp"]}
+    if case == "destination":
+        portable["destination"] = "../outside"
+    elif case == "source":
+        portable["files"] = ["../outside.hpp"]
+    elif case == "linked":
+        member.unlink()
+        member.symlink_to(project / "README.md")
+    else:
+        member.unlink()
+    namespace["_METADATA"]["tool"] = {"merlin": {"portable-sources": portable}}
+    build = distribution.get_command_obj("build_py")
+    build.ensure_finalized()
+    with pytest.raises(ValueError, match="portable source"):
+        build.run()

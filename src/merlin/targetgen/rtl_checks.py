@@ -85,38 +85,6 @@ class CheckReport:
         }
 
 
-def _declared_op(capsule: dict | None) -> str | None:
-    if not capsule:
-        return None
-    op = (capsule.get("operation") or {}).get("op")
-    return op.lower() if isinstance(op, str) else None
-
-
-def _declared_output_shape(capsule: dict | None) -> tuple[int, int] | None:
-    """Best-effort (M, N) of the declared output, GENERAL (declared shapes only, no golden).
-
-    For a plain matmul the output is (M, N) with lhs (M,K) and weight (K,N). We read the declared
-    input roles. Returns None when the shape cannot be derived generally (then tile_coverage skips,
-    honestly, rather than guessing).
-    """
-    if not capsule:
-        return None
-    inputs = capsule.get("inputs") or []
-    by_role: dict[str, list] = {}
-    for t in inputs:
-        by_role.setdefault(t.get("role"), []).append(t.get("shape"))
-    lhs = by_role.get("input")
-    w = by_role.get("weight")
-    if not lhs or not w:
-        return None
-    lhs_shape, w_shape = lhs[0], w[0]
-    if not (isinstance(lhs_shape, list) and isinstance(w_shape, list) and len(lhs_shape) == 2 and len(w_shape) == 2):
-        return None
-    M = lhs_shape[0]
-    N = w_shape[1]
-    return (int(M), int(N))
-
-
 class RtlChecksUnavailable(ValueError):
     """The selected support cannot provide the requested structural checks."""
 

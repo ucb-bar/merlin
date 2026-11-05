@@ -3,9 +3,10 @@ title: Defining and inspecting Phase 0 inputs
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-09
-related: [generating_capsules, adding_a_target, integrations]
+last_verified: 2026-10-12
+related: [generating_capsules, adding_a_target, software_instruction_semantics, component_phase0_diagnostics]
 code_refs:
+  - src/merlin/targetgen/corpus_instruction_roles.py
   - src/merlin/targetgen/software_spec.py
   - src/merlin/targetgen/instruction_semantics.py
   - src/merlin/targetgen/rtl/circt_introspect.py
@@ -43,184 +44,171 @@ code_refs:
 Phase 0 combines selected hardware evidence, a software specification, and workload/test
 policy. See the matching [Atlas](../../examples/atlas/phase0/README.md) and
 [Gemmini](../../examples/gemmini/phase0/README.md) examples. The installed generator belongs
-to `merlin-experiments`; target-specific inputs belong to examples or selected OOT support.
+to `merlin-experiments`; target-specific inputs belong to examples or a selected
+target-owned declaration package.
 
-## Run a complete independent diagnostic before authoring
+## Start with five decisions
 
-Select public hardware source, a minimal software contract and independent public
-examples before compiler authoring. Freeze source identities, excluded answer
-roots, reader/runtime selections and finite construction budgets. Example graphs
-identify semantic and interaction classes; their dimensions, frequencies and
-model identities must not select generated cases or performance objectives.
+Write what software may rely on, not everything you know about the accelerator:
 
-The installed command
-`python -m merlin_experiments.phase0.declared_run --request <request.json> --output <fresh-owner>`
-executes the existing RTL, software, native operator-schema, arithmetic and packing
-issuers, followed by the ordinary complete mandatory generator. Its closed request
-uses `merlin.independent_phase0_run.v1`: exact input paths and SHA256s, explicit
-excluded roots, a selected native schema runtime and public declaration checkout,
-a selected CIRCT reader, and explicit automatic construction/reference/source budgets.
-Opt-in request v2 can select the existing public-native Tensor-argument and
-zero-result schema observers. It additionally pins the exact C++ compiler bytes;
-both observers use that same selected SDK compiler. The request retains the
-original call/result metadata requirements and grants no numerical or physical
-effects from schema observations alone. Request v1 keeps its original schema
-selection scope.
-Automatic v8 retains its convolution-only original source factory; opt-in v9
-also constructs compatible original rank-two matmul and unit-alpha, equal-shape
-add sources. Both preserve the full original call/source-slot roster and every
-missing owner, numerical reference/comparison and hardware requirement. Selecting
-v9 does not turn constructed loaders into admitted numerical capsules.
-Opt-in automatic v10 selects source record v3 and also constructs original
-ReLU, round and scalar-bound clamp sources. Original storage types, ranks and
-bound values are preserved; prototype dimensions come from independent finite
-extents, rather than the example's dimensions. Complete input/output counts and
-aggregate source budgets apply before loader creation. Unsupported calls and
-denied guard or transfer members remain required. Historical v8/v9 scopes stay
-unchanged, and v10 grants no original numerical or hardware admission.
-Saved receipts cannot replace fresh live issuance. Output must have a fresh owner;
-failed attempts retain their original files and reasons.
+1. Which operations run on the accelerator, which are fused, and which need the host?
+2. What inputs are legal: precision, rank, layout, tails, broadcasting and aliasing?
+3. What arithmetic must results obey: accumulation, rounding, overflow and exceptional values?
+4. Which quantization formats apply to which operations, and with what scale/zero-point rules?
+5. What crosses between host and accelerator, and is it copied or converted?
 
-The optional live memory-port intake replays the same selected RTL source and
-retains typed local memory declarations, ports and exact scalar expressions.
-It records source latency, collision rules and data/address/mask/clock bindings
-under explicit parse and metadata budgets. State, instance and unsupported
-results remain symbolic stops. Definition-local storage and byte-slice facts
-do not establish command meaning, tensor axes, physical instance routing,
-allocation, capacity use, memory contents or temporal effects.
+Start with one operation instead of promising an entire framework. For example, this is
+one Gemmini contraction declaration inside `operations`:
 
-The optional hierarchical intake consumes that same live memory source and
-checks the complete rooted instance, memory and port roster against explicit
-metadata bounds before expansion. Exact named port/index/type bindings allow
-combinational tracing through defined module bodies. Repeated instances keep
-distinct occurrence identities. State, memory reads, external or parameterized
-bodies and unsupported expressions remain explicit stops. Occurrence paths and
-local byte-slice joins provide source connectivity; they grant no command roles,
-software axes, physical capacity, initialization or temporal execution claims.
+```yaml
+operations:
+  contraction:
+    placement: accelerator
+    operand_dtypes: [int8]
+    accumulator_dtype: i32
+    ranks: [2, 3, 4]
+    layouts: [row_major_contiguous]
+    tails: [zero_pad_valid_window]
+    broadcasting: [none, independent_batches]
+    aliasing: [disjoint_inputs_outputs]
+```
 
-The command reports diagnostic execution separately from coverage completion.
-An exit code of zero can accompany an incomplete coverage report. This occurs only
-after the ordinary generator's exact mandatory-incomplete refusal and replay of
-the complete denominator, source semantics, written membership and full reference
-output rosters. `phases["1"].handoff_accepted` remains false. Generated source files
-and integer source references do not admit original floating operators, numerical
-domains, target execution or a Phase 1 release.
+This is a partial starter, not a standalone SW spec or a certificate. Add the schema,
+target and explicit numerical semantics; define quantization and transfers
+before claiming those paths. Missing declarations are not inherited from this snippet or
+guessed from an instruction name. For Gemmini, i32 readout does not make the internal i20
+partial sum an i32 computation. Copy the matching full [Gemmini spec](../../examples/gemmini/target/software-spec.yaml)
+or [Atlas spec](../../examples/atlas/target/software-spec.yaml) as a worked example, not as
+defaults for another target. Omitted review status means **unreviewed**, never admitted.
+Add reviewed declarations only when independent evidence supports exactly what you wrote.
 
-Opt-in request v3 additionally requires `release_purpose`: `source_diagnostic`,
-`source_preparation` or `performance_campaign`. It produces a private requirement
-ledger that preserves every original requirement ID, rechecks source budgets and
-recomputes complete independent reference outputs. Source prerequisites retain
-their Phase 0 owner; candidate compilation and physical execution verdicts retain
-their Phase 1 owner and remain unevaluated. Missing source cases, RTL premises and
-numerical comparisons still block readiness. A performance campaign also needs
-independent development, guard and transfer cases and measurement contracts;
-an empty objective list cannot establish performance preparation. This ledger
-is diagnostic data and does not change the existing coverage or handoff gates.
+Use the operation's name once. A shared family name such as `contraction` or `movement`
+selects that family; a custom name must explicitly name its `ops` or `families`. Named
+groups are normalized to the same internal operation rows as the legacy list syntax.
+When a row names nonempty `ops`, only those exact frontend operations can match it;
+`families` do not add other operations. Put an observed-family constraint in
+`signature.family` when needed. Rows without an explicit `ops` roster can match
+by semantic family. A direct operation match that fails its signature constraints
+does not fall back to a broader family row.
+A standalone declaration admits only that standalone use: it does not admit the same
+family composed into another operation (`composed_with`) or, for an elementwise map,
+applied as a fused epilogue. Declare and review such a composition explicitly.
+Transfer names work the same way:
 
-Opt-in request v4 adds `source_performance`, with an explicit preparation schema
-and exact objective and literal-sweep file pins, and requires
-`release_purpose: performance_campaign`. Objectives must be nonempty reviewed
-declarations; their families must match the independent tensor DAG sweeps.
-Ordinary generation applies one complete allocation budget across development,
-guard and private transfer cases before constructing tensors or references.
-The fixed source consumer checks every typed node's original operation owner,
-ordered input/output ABI and complete independent references. Unsupported or
-budget-denied requests remain in the roster. No target encoding or tile-relative
-extent is inferred in this mode.
+```yaml
+transfer_contracts:
+  operand_load:
+    from: host
+    to: accelerator
+    copy: {dtype: int8, layout: row_major_contiguous}
+```
 
-The resulting source-performance contract owns the added development membership;
-the requirement ledger retains its historical projection over the original
-coverage obligations. Both preserve all missing requirements. Checked source
-cases establish neither hardware-admitted guards, candidate execution, calibrated
-timing nor a Phase 1 release. The installed `source-performance-inputs` suite
-checks these producer and consumer boundaries with independent synthetic sources;
-its zero-skip scope is the two new test files, while supporting test prerequisites
-and skips are reported separately. This qualification is not accelerator execution.
+`copy` explicitly means a bit-preserving transfer with the same dtype and layout
+at both endpoints; it does not quantize, cast, transpose or dispatch. Add
+`valid_window: required` when that is part of the software contract. Type-changing
+transfers retain expanded `signature`/`semantics` declarations with explicit
+source/result types and conversion rules. Do not mix compact and expanded fields
+in one declaration. Both forms produce the same canonical consumer representation
+in generated `software/software-spec.json`; the exact authored bytes are also saved.
 
-The private original-reference roster separately compares compatible bounded
-original matmul, add and convolution sources with independent scalar references.
-Reference selection v2 explicitly selects `native_observations: batch.v1`:
-one fresh native process reruns the complete original schema/default roster.
-Exact ordered requests, fixed reader source bytes and full output membership
-are checked before the numerical consumer proceeds. No observation or verdict
-cache is consulted. V1 keeps its original separate native invocations and cannot
-adopt batch transport from saved metadata. Both the private consumer and native
-batch observer retain explicit grader identities in source and installed masks.
-The installed `original-schema-batch` suite checks package origins and full-output
-transfer controls; the complete native controls additionally require explicit
-framework/source selections and must be run separately without skips.
-Select explicit operation/ordered-type numerical policies and signed input
-palettes; the original software policy is unchanged. Complete guard and private
-cohorts, allocation/work/transfer budgets and exact source/native products are
-rechecked. Native frames and all raw payload lengths are checked before decoding.
-Missing policies, unsupported original types/forms, overflow and denied slots
-remain required. These observations grant neither global framework equivalence
-nor compiler, hardware or Phase 1 admission. Their reference implementations and
-outputs are private grader surfaces, including installed and bytecode copies.
+No placeholder review/evidence fields are needed to author this unreviewed transfer.
+The backend owns its physical storage and transport. Software-visible conversion,
+layout and valid-window requirements remain explicit. Reviewed transfer claims still
+require explicit evidence; missing or explicitly unqualified evidence cannot grant
+admission. Quantization format IDs may also be omitted: a stable dtype-pair identity
+is generated. Author eligible operations and residual scale/zero-point rules that
+the selected readout cannot establish. Do not copy derived tensor mode,
+granularity or symmetric zero-point values into this file. Inspect their basis
+and remaining unknowns in the generated quantization contract: omission never
+proves that an unknown format became supported.
 
-Opt-in request v5 connects those original observers to the ordinary diagnostic.
-It retains the v4 performance preparation and adds `original_references`, with
-exact `reference` and `standard_ir` file pins. The reference file uses
-`merlin.declared_original_reference_selection.v1`; the standard-IR file uses
-`merlin.declared_original_standard_ir_selection.v1`. Select the complete original
-guard and private cohorts, numerical policies, input palettes and explicit
-construction, reference and process budgets. The standard-IR selection additionally
-names a clean upstream capture checkout and its exact commit, a pinned stock
-parser, and bounded source, payload and parser limits.
+## What is the SW spec?
 
-These selections contain inputs, not saved live identities or accepted verdicts.
-The run issues fresh observers, compares every supported original output, performs
-ordinary upstream conversion and checks the complete ordered source ABI. Its
-requirement ledger joins those finite comparison and ABI facets to the unchanged
-original requirement IDs. Unsupported and budget-denied source slots remain
-required; checked slots do not establish compiled-body correspondence, numerical
-domain completeness, physical effects or a Phase 1 release. Request v1-v4 keep
-their original scope and reject the new fields.
+`target/software-spec.yaml` is a versioned `merlin.software_spec.v1` declaration of
+software-visible behavior. It is not a second handwritten hardware geometry table.
 
-The installed `original-reference-flow` qualification suite checks this versioned
-selection and requirement join outside the checkout. Complete native controls also
-need explicitly selected public framework declarations and runtime, an upstream
-capture checkout, a C++ compiler, FIRRTL tools and a stock MLIR parser. An installed
-qualification that skips unavailable native prerequisites is not evidence that
-those controls executed. Preserve successful execution records, exact effective
-environments and complete source/product pins separately from expected refusals
-and interrupted attempts.
+| Input | Define explicitly | Do not treat it as |
+| --- | --- | --- |
+| SW spec | Operation/signature constraints; layouts, tails, broadcasting, aliasing, placement, selected numeric behavior, quantization eligibility and transfer constraints | Automatically proven by an instruction name or storage width |
+| Selected capability contract | Target ISA/runner intent and extraction anchors that RTL facts cannot establish; explicit same-target Phase 0 input | Executable OOT support, extracted geometry or certification |
+| Selected OOT provider/backend config | Runtime implementation, ISA vocabulary/protocol ownership, extraction anchors and callable references | A second mandatory software spec to hand-maintain |
+| Hardware selection | Which evidence is required and which source/configuration is selected | A capability declaration or certificate |
+| Extracted RTL facts | Array and memory geometry, interfaces, observed decoder fields, datatype evidence (the array cell's operand and accumulator, and the element format of a lane engine beside it) and structural timing where established | Complete operation latency, numerical behavior, endpoint kind or software legality |
+| Recipe/workload policy | Application roster, semantic seeds, tolerances, oracle tiers, holdouts and performance objectives | Hardware facts or generated capsules |
 
-### Count capsules separately from obligations and execution
+The authored spec holds `operations`, `numerical_semantics`, `quantization`,
+`transfer_contracts` and optional `restrictions`. Review status defaults safely to unreviewed.
+An operation may also carry its own `status: unreviewed`; an operation is admitted only when
+both it and the spec are reviewed. Operation rows require placement and executable typed
+constraints, unless they name a fact-derived `hardware` form (below). Use semantic `families` for a shared class, or exact
+`ops` selectors when behavior must be operation-specific; do not duplicate both lists.
+Numerical semantics select an independent model and its rounding/reduction policy,
+never a target-name default. Generated source audits, test counts, qualification hashes
+and long diagnostic reports belong in artifacts, not this YAML.
 
-Report unique capsule IDs by cohort: public development, functional guards and
-private transfer cases. Count mandatory obligations and requested original
-call/cohort slots separately; one obligation can require several source cases,
-and a requested slot can remain unavailable. Source generation and checked
-references do not count as qualified candidate executions.
+When the SW spec is minimal, `experiment.yaml` must select its same-target
+`capability_contract` as a separate file. Installed Phase 0 freezes that file's
+exact bytes and refuses a changed contract on resume. For a new run, use
+`--phase0-capability-contract PATH` to select a reviewed replacement without
+editing the experiment definition. An authored prototype remains diagnostic
+until the required RTL and executable support evidence are separately qualified.
 
-Phase 1's component qualification grades every mandatory guard and transfer
-member. Phase 2 tunes the selected public development corpus and reuses the
-original guard and transfer roster for final descendant qualification. Reuse
-protects correctness after optimization; it does not make private transfer
-cases available as tuning feedback. Record missing performance families and
-unavailable members alongside the counts, rather than presenting a small source
-snapshot as the final experiment corpus.
+## Keep declarations small; derive the rest
 
-A Phase 0 handoff needs these checked inputs:
+Keep accelerator semantics, ISA effects, and deployment selections separate:
 
-- Complete original operator bindings, argument defaults, input/result types and
-  source correspondence. Unsupported original calls remain mandatory.
-- Generated bounded cases and independent complete references for the selected
-  numerical contracts, including numerical stress and exceptional-value policy.
-- RTL-derived resource and axis mappings sufficient to construct tails and
-  capacity boundaries, with explicit gaps when structural facts lack meaning.
-- Concrete source cases for required effects and interactions, including aliases,
-  updates, transfers and publication order, with private transfer membership
-  separated from public author inputs.
-- A frozen corpus whose complete mandatory roster and source/reference bytes
-  verify through the ordinary handoff owner. Missing, denied or unimplemented
-  obligations remain in the denominator.
+| Authored input | What it must establish |
+|---|---|
+| Accelerator software contract | Mathematical operations, ordered types, numeric behavior, and logical transfer requirements. |
+| Public ISA declarations | Instruction effects and encoding fields, with their source identities. |
+| Deployment and test policy | Hardware/frontend selections, host capability manifest, execution routes, and grading requirements. |
 
-Candidate compilation, source-to-ELF correspondence and physical ownership,
-synchronization and execution qualification belong to Phase 1. Measured costs and
-held performance calibration belong to Phase 2. Phase 0 must prepare their inputs
-without claiming those later verdicts or requiring a preexisting target backend.
+Record an input once. Host operation support belongs in the selected host capability
+manifest; accelerator declarations need not repeat that roster. Before removing an
+existing duplicate, compare complete operation admissions and coverage requirements
+under the selected inputs. A missing declaration must retain its ordinary UNKNOWN
+or refusal behavior.
+
+Use the existing fact-resolution machinery for supported `hardware` declarations
+and `eligible_operations: from_facts`. Derive typed operation inventories, tensor
+geometry, graph interactions, coverage requirements and capsule membership through
+the normal capture and requirements tools. Retain unsupported cases in the denominator.
+
+Numeric semantics remain explicit: operand width, internal arithmetic width and
+stored accumulator width can differ. Width extraction alone does not establish
+overflow, rounding, narrowing, or complete instruction meaning. Keep provenance and
+qualification records as separate machine-readable evidence. A selected execution
+route does not establish that its deployment can run a program.
+
+These inputs contain no kernels, instruction sequences, schedules or model-specific
+mapping rules. Compiler authors receive only the inputs admitted at their selected
+evidence level; this organization does not broaden their grants.
+
+## Select corpus instruction roles for a neutral command runtime
+
+A command contract can explicitly select `corpus_instruction_roles` instead of
+the legacy `encoding.corpus_issue_order` baseline. Version 1 contains `version`,
+`instruction_roster_sha256` and `by_role`, with optional `epilogue_roles`.
+The digest binds the complete `rocc_operand_roles.instructions` list serialized
+with sorted keys, compact JSON separators and no nonfinite numbers. Every selected
+class must occur in that exact roster; aliases from a different decoder are refused.
+
+`by_role` maps the existing corpus role vocabulary (`memory`, `weight_load`,
+`matmul`, `acc_readout`, `acc_readout_scaled`, `tensor_compute_unary`,
+`tensor_compute_binary`) to nonempty, distinct class lists. The existing role-slot
+selector chooses the first class of the first available role for each slot.
+An operation with a missing slot or no resulting classes refuses. Review these
+as explicit corpus requirements: they do not establish hardware capabilities,
+operand meanings, a schedule, or numerical execution. Unselected legacy and
+taxonomy routes retain their existing meaning and failure behavior.
+
+For a fused contraction epilogue, `epilogue_roles` maps an explicitly named stage
+to its role/class selections. Those selections apply only when that stage occurs
+in the requested contraction epilogue. Conflicting role selections refuse. A
+fused readout or accumulator-seeding obligation therefore cannot supply a general
+unary/binary role for reductions or elementwise operations. Keep source, placement,
+complete numerical, linked-program policy and private full-model gates separate;
+a passing class selection closes none of them.
 
 ## Bind the selected configuration to its elaborated source
 
@@ -344,112 +332,6 @@ cannot express (a declared loader environment, a pinned interpreter, a quantizat
 scheme instead of a recipe, an already-materialized model) fails closed rather than
 running outside the seal.
 
-## Start with five decisions
-
-Write what software may rely on, not everything you know about the accelerator:
-
-1. Which operations run on the accelerator, which are fused, and which need the host?
-2. What inputs are legal: precision, rank, layout, tails, broadcasting and aliasing?
-3. What arithmetic must results obey: accumulation, rounding, overflow and exceptional values?
-4. Which quantization formats apply to which operations, and with what scale/zero-point rules?
-5. What crosses between host and accelerator, and is it copied or converted?
-
-Start with one operation instead of promising an entire framework. For example, this is
-one Gemmini contraction declaration inside `operations`:
-
-```yaml
-operations:
-  contraction:
-    placement: accelerator
-    operand_dtypes: [int8]
-    accumulator_dtype: i32
-    ranks: [2, 3, 4]
-    layouts: [row_major_contiguous]
-    tails: [zero_pad_valid_window]
-    broadcasting: [none, independent_batches]
-    aliasing: [disjoint_inputs_outputs]
-```
-
-This is a partial starter, not a standalone SW spec or a certificate. Add the schema,
-target and explicit numerical semantics; define quantization and transfers
-before claiming those paths. Missing declarations are not inherited from this snippet or
-guessed from an instruction name. For Gemmini, i32 readout does not make the internal i20
-partial sum an i32 computation. Copy the matching full [Gemmini spec](../../examples/gemmini/target/software-spec.yaml)
-or [Atlas spec](../../examples/atlas/target/software-spec.yaml) as a worked example, not as
-defaults for another target. Omitted review status means **unreviewed**, never admitted.
-Add reviewed declarations only when independent evidence supports exactly what you wrote.
-
-Use the operation's name once. A shared family name such as `contraction` or `movement`
-selects that family; a custom name must explicitly name its `ops` or `families`. Named
-groups are normalized to the same internal operation rows as the legacy list syntax.
-When a row names nonempty `ops`, only those exact frontend operations can match it;
-`families` do not add other operations. Put an observed-family constraint in
-`signature.family` when needed. Rows without an explicit `ops` roster can match
-by semantic family. A direct operation match that fails its signature constraints
-does not fall back to a broader family row.
-A standalone declaration admits only that standalone use: it does not admit the same
-family composed into another operation (`composed_with`) or, for an elementwise map,
-applied as a fused epilogue. Declare and review such a composition explicitly.
-Transfer names work the same way:
-
-```yaml
-transfer_contracts:
-  operand_load:
-    from: host
-    to: accelerator
-    copy: {dtype: int8, layout: row_major_contiguous}
-```
-
-`copy` explicitly means a bit-preserving transfer with the same dtype and layout
-at both endpoints; it does not quantize, cast, transpose or dispatch. Add
-`valid_window: required` when that is part of the software contract. Type-changing
-transfers retain expanded `signature`/`semantics` declarations with explicit
-source/result types and conversion rules. Do not mix compact and expanded fields
-in one declaration. Both forms produce the same canonical consumer representation
-in generated `software/software-spec.json`; the exact authored bytes are also saved.
-
-No placeholder review/evidence fields are needed to author this unreviewed transfer.
-The backend owns its physical storage and transport. Software-visible conversion,
-layout and valid-window requirements remain explicit. Reviewed transfer claims still
-require explicit evidence; missing or explicitly unqualified evidence cannot grant
-admission. Quantization format IDs may also be omitted: a stable dtype-pair identity
-is generated. Author eligible operations and residual scale/zero-point rules that
-the selected readout cannot establish. Do not copy derived tensor mode,
-granularity or symmetric zero-point values into this file. Inspect their basis
-and remaining unknowns in the generated quantization contract: omission never
-proves that an unknown format became supported.
-
-## What is the SW spec?
-
-`target/software-spec.yaml` is a versioned `merlin.software_spec.v1` declaration of
-software-visible behavior. It is not a second handwritten hardware geometry table.
-
-| Input | Define explicitly | Do not treat it as |
-| --- | --- | --- |
-| SW spec | Operation/signature constraints; layouts, tails, broadcasting, aliasing, placement, selected numeric behavior, quantization eligibility and transfer constraints | Automatically proven by an instruction name or storage width |
-| Selected capability contract | Target ISA/runner intent and extraction anchors that RTL facts cannot establish; explicit same-target Phase 0 input | Executable OOT support, extracted geometry or certification |
-| Selected OOT provider/backend config | Runtime implementation, ISA vocabulary/protocol ownership, extraction anchors and callable references | A second mandatory software spec to hand-maintain |
-| Hardware selection | Which evidence is required and which source/configuration is selected | A capability declaration or certificate |
-| Extracted RTL facts | Array and memory geometry, interfaces, observed decoder fields, datatype evidence (the array cell's operand and accumulator, and the element format of a lane engine beside it) and structural timing where established | Complete operation latency, numerical behavior, endpoint kind or software legality |
-| Recipe/workload policy | Application roster, semantic seeds, tolerances, oracle tiers, holdouts and performance objectives | Hardware facts or generated capsules |
-
-The authored spec holds `operations`, `numerical_semantics`, `quantization`,
-`transfer_contracts` and optional `restrictions`. Review status defaults safely to unreviewed.
-An operation may also carry its own `status: unreviewed`; an operation is admitted only when
-both it and the spec are reviewed. Operation rows require placement and executable typed
-constraints, unless they name a fact-derived `hardware` form (below). Use semantic `families` for a shared class, or exact
-`ops` selectors when behavior must be operation-specific; do not duplicate both lists.
-Numerical semantics select an independent model and its rounding/reduction policy,
-never a target-name default. Generated source audits, test counts, qualification hashes
-and long diagnostic reports belong in artifacts, not this YAML.
-
-When the SW spec is minimal, `experiment.yaml` must select its same-target
-`capability_contract` as a separate file. Installed Phase 0 freezes that file's
-exact bytes and refuses a changed contract on resume. For a new run, use
-`--phase0-capability-contract PATH` to select a reviewed replacement without
-editing the experiment definition. An authored prototype remains diagnostic
-until the required RTL and executable support evidence are separately qualified.
-
 ## Let the selected facts fill hardware-shaped fields
 
 An operation row can name the hardware form it relies on instead of authoring
@@ -478,171 +360,14 @@ than the facts without a recorded restriction (`forbids_established`), or one cl
 values the facts decide against (`exceeds_facts`), blocks the coverage commitment.
 `restricted`, `unconfirmed` and `undetermined` findings are reported for review.
 
-## Describe instruction semantics separately
+## Optional reference APIs
 
-The SW spec states which behavior software may rely on. It does not define an
-accelerator instruction set. When a target has an independently reviewed instruction
-description, keep it in its OOT support package and select its relative path with
-`instruction_semantics` in the target contract. Phase 0 validates its SW-operation
-links and binds it to the selected CIRCT facts, then freezes both the exact
-authored bytes (`software/instruction-semantics-authored.yaml`) and the normalized
-consumer model (`software/instruction-semantics.json`). The normalized model records
-the exact authored and selected-input byte hashes when file bytes were supplied;
-in-memory selected views carry canonical content hashes instead.
-Neither file belongs in Merlin core, and neither is a generated compiler.
-
-Each instruction description needs typed operands/results, a computation pattern
-(indexing maps, iterators and scalar SSA body), applicable SW operation, side effects,
-and any local-memory constraints. Unknown effects, missing SW links, or incomplete
-memory capacity remain explicit `UNKNOWN` entries. CIRCT facts can justify observed
-structure, but a decoder field alone cannot supply complete functional semantics.
-Do not copy an instruction from a related target or fill missing behavior by name.
-If no description is selected, Phase 0 emits an `UNKNOWN` model, not a guessed one.
-`described` means the checked declaration is internally complete, not that the
-instruction has been proved against RTL or executed on hardware.
-
-This extra input is intentionally separate from the minimal SW spec: an author writes
-software-visible behavior once, the OOT owner describes instruction behavior once,
-and Phase 0 binds both to exact hardware evidence. The schema is
-[`instruction_semantics.schema.yaml`](../../merlin/schemas/instruction_semantics.schema.yaml).
-
-The Atlas and Gemmini examples use directly named operations and transfers; authors
-do not need IDs, `signature` wrappers or duplicate copy endpoint constraints.
-Expanded v1 list declarations remain readable for compatibility and generated
-inspection, but are not the starter format. The examples do not
-repeat mesh/memory geometry, opcode maps, calibration coefficients, historical runs or
-backend code. Gemmini authors its contraction directly but names fact-derived
-`hardware` forms for its fused and standalone elementwise, readout pooling and movement
-declarations. Gemmini explicitly constrains the internal i20 partial-sum domain even
-though its software readout is i32. Atlas explicitly constrains the finite-normal FP8
-and BF16 domain; unknown block-size/scale parameters remain unknown. Host capabilities
-are a separate manifest bound to the selected host compiler, not accelerator facts.
-
-Version 1 remains backwards compatible: an old inline `capability_contract` and
-`evidence` mapping are optional legacy fields. New minimal specs require a separately
-selected same-target OOT provider or explicit backend-config contract. The pure
-`capability_contract(spec, base_contract=selected_backend)` projection preserves that
-selected policy without filesystem lookup or guessed protocol. Inline legacy declarations
-retain their recorded precedence. The exact backend/config bytes are independently
-frozen, and its broader capability list cannot bypass typed SW admission.
-
-When reviewing a backend declaration separately from its implementation,
-`MERLIN_TARGET_CONTRACT=/selected/target_contract.yaml` explicitly selects that
-declaration while `MERLIN_TARGET_PATH` (unset: the vendored `examples/<example>/support`
-provider) still selects the support code. A descriptor that names an out-of-tree contract package
-prepends it to that effective selection rather than replacing it. Phase 0
-records both source selections and refuses a different target identity. Frozen
-execution consumes the saved contract bytes, not the live override. Selecting a
-new declaration does not prove that the older implementation satisfies it.
-
-Unknowns remain explicit. Review operation legality, exact numeric behavior, quantization
-granularity/zero points and ABI ordering before changing a spec's status. A width alone
-does not identify a floating-point format. “Not extracted by the current reader” does not
-mean “impossible to infer from RTL”: first inspect the available elaboration and extraction
-coverage, then document the residual declaration and its independent evidence.
-
-The generated `funct_decode_table` is a historical field name, not a promise of a full
-instruction set. Its `scope: observed_decode_field` and `complete_isa: false` mean that
-the listed equalities apply only to the field the RTL compared. That field may concatenate
-nonadjacent instruction bits. Do not use its width or values to select RoCC versus a
-self-hosted endpoint, or to accept/reject complete instruction words. Keep the observation
-in `facts.json` for audit; use a separately established executable interface and a
-complete-word ISA definition for those decisions. Missing evidence leaves the generated
-endpoint unresolved rather than promoting a plausible architecture guess.
-
-TorchAO uses public extension points, not source patches. A selected accelerator format
-must also be legal for the operation receiving it. An int8 contraction does not establish
-int8 LSTM, general normalization, or support for another hardware configuration.
-
-Do not handwrite a second TorchAO recipe. The evidence export writes
-`software/quantization-recipes.json`, indexing generated, content-addressed recipes
-under `software/quantization-recipes/`. Each recipe intersects the selected hardware
-format with the SW spec's eligible operations and typed constraints. Host-only
-operations are excluded; explicit signature refusals remain unquantized. Missing
-hardware scale parameters do not acquire a default recipe. These are diagnostic
-transformation inputs, not accelerator-admission certificates.
-An unknown block size does not obstruct a selected per-tensor or per-channel
-recipe, which has no block axis; the generated contract records it as not applicable.
-
-Select a recipe path from that index and use the existing capture worker:
-
-```sh
-"$CAPTURE_PYTHON" src/merlin/targetgen/_m2m_capture_worker.py \
-  --m2m-dir "$MODEL2MLIR_ROOT" \
-  --loader examples/workloads/coverage_mlp/loader.py \
-  --dtype int8 --seed 0 --recipe "$GENERATED_RECIPE" \
-  --materialize-bundle --out "$QUANTIZED_CAPTURE"
-```
-
-Inspect `meta.json`'s `quantization_stats` for the observers, epsilon, actual
-calibration source/count and per-operation SW decisions. Observer defaults are
-framework transformation policy, not RTL semantics, and need not clutter the
-SW spec. The adapter defaults to min/max observation for FP8 because TorchAO PT2E's
-histogram observer requires an integer dtype; an explicit FP8 histogram request is
-refused. `integerization_receipt` records true integer contractions. When the SW
-spec selects `integer_reference`, its `golden_agreement` compares the rewritten
-graph exactly against an independent PT2E integer interpreter; the
-`integer-reference.json` outputs and reference source identity are byte-bound by
-the capture receipt. `portable_agreement` separately compares with TorchAO's
-portable Q/DQ graph and may differ because its arithmetic is not integerized.
-`recipe_agreement` compares against the original floating model. A single example-input calibration does not
-establish model accuracy. Preserve the original FP32 capture as reference lineage,
-and derive a fresh corpus from the actual quantized capture before claiming its
-precision coverage. Scoped dynamic module transforms are not currently supported
-by this signature-screened recipe route.
-
-If the selected host contract admits FP32 but not the source model's BF16,
-explicitly select `--stage-fp32` before the recipe transformation. A sealed
-capture binds the same choice as `worker_options: {stage_fp32: true}`; it does
-not inherit a precision choice from the shell. This requires Model2MLIR's
-audited, schema-owned floating-dtype retargeting API. It changes the captured
-static program, not dtype-dependent Python branches, and does not add BF16 host
-support. The option supports FP32 capture or an explicitly selected int8 recipe,
-not additional ad hoc quantization rewrites.
-
-Inspect `meta.json`'s `precision_conversion` and `fp32_staging`: original and
-staged graph identities, typed input/output ABIs, source-layer placement plan,
-and original-to-FP32 output differences observed **before** quantization.
-Loader-owned calibration is collected from the original module before export,
-copying each yielded sample before its producer can reuse storage. Collection
-is bounded by the quantizer's calibration/agreement budgets, then staged to
-FP32. `calibration_input_abis` records original and staged shapes/dtypes;
-it is not a numerical-equivalence certificate.
-For a semantic session, the audited FP32 stage also freezes its independent
-pre-quantization trajectory in `session_quality_fp32.npz`. Floating observation
-streams are staged to the actual input ABI; integer/bool streams remain exact.
-The integerized trajectory is separately saved in `session_goldens.npz`.
-These are stage-local references over declared inputs and recurrence, not a
-claim of whole-application FP32 accuracy or BF16 target-host support.
-Integer/bool output values and types must remain exact. The recipe agreement
-then compares quantized execution against the FP32 stage, while the integer
-reference checks the integerized graph independently. None of these selected
-input observations proves full-model accuracy; residual unsupported precision
-or incomplete precision evidence still blocks admission. Changed producer
-bytes or staging options require a fresh capture selection, not edited receipts.
-
-Reviewed operation declarations can carry `numerical_contract` with `status`,
-structured `semantics` and review `evidence`, or name a supported contract. The named
-`operand_sum_exhaustive_i8_v1` contract admits a composition only with the program's
-operand-sum numeric screen: a fact-described software model checks all 65,536 ordered
-i8 operand pairs for the selected scale pair against a fact-derived error bound. A missing
-screen leaves the operation unknown and an exceeded bound refuses it; the screen is not
-RTL execution or target-oracle evidence. An exact-op declaration can also constrain integer
-`quantization_parameters` (`zero_point`, `quant_min`, `quant_max`); an unobserved parameter
-stays unknown and a different value is refused. The corresponding declaration on
-the pinned host capability spec is independent of accelerator arithmetic.
-Selected contraction-level `numerical_semantics` apply only to accelerator
-contractions, not automatically to host operations or other operation families.
-Unknown overflow, rounding or reduction behavior blocks numerical declaration
-completeness even when the storage and accumulator widths are known.
-
-Framework realization and integer lowering are also separate. The trace-capable
-model2MLIR PT2E integerizer supports symmetric per-tensor operands and per-output-
-channel weights for Linear, Conv2d and batched matmul. Reduction-axis scales and
-nonzero zero points are refused. Remaining float contractions still block an
-integer-accelerator claim; native FP8 tensors projected to FP32 are explicitly
-reported as a precision-realization blocker. A framework lowering receipt does
-not qualify the target's numerical semantics or compiler implementation.
+The [component diagnostic reference](../reference/component_phase0_diagnostics.md)
+describes the separate component-only route and its qualification requirements.
+It is not a prerequisite for catalog preparation.
+The [instruction semantics reference](../reference/software_instruction_semantics.md)
+describes reviewed effects and operand declarations used by the independent
+checks. These declarations do not provide a compiler lowering or schedule.
 
 ## Derive rather than hand-list the default corpus
 
@@ -766,14 +491,15 @@ shape/layout restrictions. Unknown host precision must not select a different de
 profile. Host capability declarations belong beside the selected external compiler;
 accelerator RTL does not establish host compiler support.
 
-The examples provide `target/host-capabilities.yaml`, selected by the descriptor's
-`host_lane.capability_spec`. It binds the observed example compiler package digest
-and precision strategy without changing the payload. Its operation list is deliberately
-unreviewed: the examples list only typed matmul/batch-matmul candidates observed in
-their exact schedule files. This is not execution qualification and does not establish
-normalization, activation or general reduction support. Never populate it from a package
-name or blanket dtype claim. When selecting another host package, update this separate
-input with that package's exact identity and independently reviewed operation constraints.
+Each descriptor selects a host manifest through `host_lane.capability_spec`.
+Gemmini keeps it in [`platform/`](../../examples/gemmini/platform/README.md);
+other examples may select a manifest beside their descriptor. It binds the selected
+compiler package digest and precision strategy without changing its payload.
+Declarations carry their own review status and exact typed constraints. Neither
+review nor an observed schedule establishes emitted compiler execution or support
+for an entire operation family. Never populate support from a package name or a
+blanket dtype claim. When selecting another host package, update this separate
+input with its exact identity and independently reviewed operation constraints.
 
 Typed producer–consumer edges identify casts, quantization conversions and possible
 host/accelerator transfers. Their semantics and capsule witnesses must be explicit;
@@ -827,7 +553,7 @@ This is input for the existing `quant_layer_plan` and `_recipe_quantizer` adapte
 use TorchAO's public `AOBaseConfig`/PT2E extension points. It does not patch TorchAO, select
 a whole-model format automatically, or certify that a custom format is implemented there.
 
-## Regeneration, coverage and phase handoffs
+## Regenerate and verify coverage
 
 Keep generated facts, application inventories, conformance requirements, synthesis plans,
 capsules, goldens and weights under the configured output root, never committed in examples.
@@ -858,11 +584,9 @@ report. It lists the complete scoped universe and obligations without a witness.
 When a distinct obligation uniquely requires each selected capsule and those
 capsules cover the witnessable universe, the report proves an exact minimum;
 otherwise its selected size is only an upper bound. The generated corpus is not
-pruned. For the Gemmini int8 r18 diagnostic, four source capsules are an exact
-minimum for the 1,106 source-operation and typed-edge witness records; all 43
-Phase 1 capsules remain in the selected cohort. This four-capsule calculation
-does not cover numerical, ISA, precision, tail, shape or other conformance axes,
-or establish that a compiler can execute even the selected four.
+pruned. The witness calculation does not cover numerical, ISA, precision, tail,
+shape or other conformance axes, or establish that a compiler can execute the
+selected cases.
 
 This witness set is a plan for Phase 1 verification, not a correctness guarantee.
 Phase 0 freezes the finite support domain, selected input identities and open proof

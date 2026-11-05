@@ -34,9 +34,10 @@ tested workloads, not every model or all RTL configurations. At most four
 qualification jobs run together; experiment gSIM concurrency remains capped
 at five.
 
-`software-spec.yaml` is authored software-visible semantics, not generated tests.
-`hardware.yaml` selects the deterministic production policy and direct audit
-questions. `host-capabilities.yaml` is a separate declaration bound to immutable
+The [software spec](../target/README.md) is authored software-visible semantics.
+[hardware.yaml](../platform/hardware.yaml) selects the deterministic production
+policy and direct audit questions. [host-capabilities.yaml](../platform/host-capabilities.yaml)
+is a separate declaration bound to immutable
 host compiler bytes; its precision strategy is not an operation support claim.
 
 The software spec is a small authored input: selected arithmetic/overflow and
@@ -101,7 +102,7 @@ python -m merlin.targetgen.rtl.circt_introspect --target gemmini \
 merlin-target-tools rtl-source-audit \
   --source-bundle /generated/gemmini/source-1/source-selection.json \
   --facts /generated/gemmini/source-1/facts.json \
-  --hardware-spec examples/gemmini/target/hardware.yaml \
+  --hardware-spec examples/gemmini/platform/hardware.yaml \
   --output /generated/gemmini/source-1/validation.json
 ```
 
@@ -532,3 +533,31 @@ python examples/gemmini/verification/probe_load_placement.py \
 Compare arms only within one binary: an arm's absolute count moves with the
 other arms in the same binary. The findings are in the
 [design note](../../../docs/design/open_coded_nest_costs.md).
+
+### Calibrate the Spike timing model with derived probes
+
+[timing_probes/](timing_probes/) is the Gemmini data for the calibration stage that
+runs after Phase 1 and before Phase 2. `timing_space.yaml` states how the annotated
+Spike provider decodes RoCC commands into its price classes, naming RTL funct and
+Bundle fields rather than bit positions; `backend.py` turns a probe request into one
+tile-pipeline program. The generic stage chooses the requests. It reads the existing
+gSIM labels, the profile and the Phase 2 corpus ledger, and selects the fewest probes
+that make every fit parameter identifiable over that domain. Run it on operator
+inputs, never inside a Phase 1 run:
+
+```sh
+python -m merlin_experiments.timing_probes run --target-hardware gemmini \
+  --profile /selected/annotated-spike/fire_aligned_30mhz.json \
+  --labels /run/capsule_timing.tar --domain /release/payload/corpus/phase2-deferred.json \
+  --budget macs=16777216 --budget read_bytes=1048576 --budget write_bytes=262144 \
+  --out /operator/calibration/gemmini --jobs 4
+```
+
+The output directory holds `selection.json` (each probe and the requirements it
+covers, plus every unidentifiable parameter and its reason), `timing_probe_labels.tar`
+(capsule-archive row fields; two deterministic replicates per probe), and `recheck.json`.
+`recheck.json` repeats the selection with the new labels and must report no gaps.
+Labels are cached by the elaborated FIRRTL, emulator bytes, engine command, operator
+toolchain and probe source. A rerun on the same hardware reuses them instead of
+simulating again. These programs are operator references: they are never granted to an
+author, staged into a release, or graded.

@@ -1,0 +1,51 @@
+# fresh8 pair (operator decisions 2026-10-27): both arms read the same reviewed kernel files (the four
+# user sources without archive manifests or bitstreams, plus pinned upstream Exo) under the fresh8
+# base guidance (learn from the references, beat them and generalize). Guided-only staging adds map/tool
+# instructions. No measured performance baselines
+# or targets are staged in either arm. The guided arm adds the reference map and the
+# reference-analysis tools; the reference-only arm clears the map.
+extends: fresh-campaign-fresh7ref-paired.yaml
+id: gemmini-open-compiler-fresh8ref-matched-references
+variables:
+  MATCHED_RAW_REFERENCES: ${REPO}/out/artifacts/preparation/fresh8-reference-kernels-only
+  FRESH8_REFERENCE_MAP: ${REPO}/out/artifacts/preparation/fresh8-reference-map/REFERENCE_MAP.json
+  FRESH8_REFERENCE_MAP_SHA256: 5134c637c5d154008e7c877090a72868009f82655d4b2d23e58c8efa4c173ef7
+inputs:
+  # SDK V24 adds the checked shared-RHS/full-K scheduling (attention) with its recipe and catalog
+  # entries; both arms select it explicitly.
+  library_version: 24
+  common_substrate: merlin.common_compiler_substrate.v17
+  # V23's reviewed leaves (as in fresh-campaign-next.yaml) plus the three V24 shared-RHS leaves
+  # absent from the pinned previous library (reviewed 2026-10-27).
+  reviewed_modules:
+  - merlin.sched.ir.events
+  - merlin.compile.scheduling.scf_carried_events
+  - merlin.sched.primitives.event_loops
+  - merlin.common.stat_memo
+  - merlin.sched.primitives.loop_handles
+  - merlin.compile.scheduling.completion_streams
+  - merlin.compile.scheduling.configuration_motion
+  - merlin.compile.scheduling.spatial_max_stripes
+  - merlin.compile.logical_abi
+  - merlin.compile.scheduling.convolution_exploration
+  - merlin.compile.scheduling.dense_panel_epochs
+  - merlin.transforms.evaluated_exploration
+  - merlin.transforms.shape_policy
+  - merlin.compile.scheduling.pointwise_convolution
+  - merlin.compile.scheduling.batched_dense
+  - merlin.compile.scheduling.loaded_sum_epochs
+  - merlin.compile.tuning_knobs
+  - merlin.transforms.tuning_selection
+  - merlin.compile.scheduling.dense_shared_rhs
+  - merlin.compile.scheduling.dense_shared_rhs_check
+  - merlin.compile.scheduling.shared_rhs_schedule_ir
+plan:
+  guidance: ${TASK}/.tmp/fresh/fresh8ref-raw-arm-guidance.md
+  reference_map:
+    path: ${FRESH8_REFERENCE_MAP}
+    sha256: ${FRESH8_REFERENCE_MAP_SHA256}
+run:
+  # Operator decision (2026-10-27): a 6 h clock (correctness took ~3 h in fresh7, leaving ~3 h of
+  # performance work); the final model window and the policy's drain stay 1 h.
+  max_wall_s: 21600
+  final_model_s: 3600

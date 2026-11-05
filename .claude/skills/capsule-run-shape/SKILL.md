@@ -111,6 +111,14 @@ hits.
 - `record_cert` must not recompute the digest. A cert belongs to the bytes that were pending when the
   job was enqueued; re-hashing re-attributes it to whatever has been edited since.
 - An unattributable result is not recorded, never guessed.
+- A promoted job refused before any simulator ran (every joint correctness gSIM slot busy) stays
+  queued in the simjob broker; publishing that refusal left its `pending` record stranded. Author
+  gSIM requests wait for a slot in the correctness ledger's order, ahead of background promotions
+  (`joint_gsim_queue`); budget exhaustion and the campaign window remain refusals.
+- Whole-model rows reach L3 like any other required case: their Spike row's native-tier gap is the
+  promotion prerequisite (`joint_physical_correctness.model_l3_prerequisites`), an L3 a self-check
+  already ran is kept for the snapshot it graded (`selfcheck_certificates`), and the Spike-only final
+  route closes them only from an exact-byte certificate, else reports `l3_evidence_missing`.
 - Coordination paths (slot semaphores, queues) are **per-user** and honour `TMPDIR`. A fixed `/tmp`
   path is squattable by the first user on a shared host.
 - `BMC.run` invokes verilator **directly, outside** the slot arbiter. Anything measuring on RTL should

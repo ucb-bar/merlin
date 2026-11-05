@@ -35,6 +35,13 @@ SCHEMA = "merlin.phase0.selected_m2m_runtime.v1"
 _MAX_SOURCE_COPY_BYTES = 15_000_000_000
 
 
+def read_runtime_reuse(path: Path) -> dict:
+    """Read one explicit ordinary, bounded selection; the runtime verifier owns its meaning."""
+    from .selected_records import read_mapping
+
+    return read_mapping(path, subject="capture runtime selection")
+
+
 def _workload_names(root: Path, synth_profile: Path | None) -> tuple[str, ...]:
     if synth_profile is None or not synth_profile.is_file():
         return ()
@@ -50,6 +57,13 @@ def _workload_names(root: Path, synth_profile: Path | None) -> tuple[str, ...]:
         if entry.get("materialized_capture") or entry.get("micro_model"):
             continue
         if entry.get("kind") != "model" and entry.get("op") != "model":
+            continue
+        from .public_boundaries import SCHEMA_V3, selected_loader
+
+        if (entry.get("public_boundary") or {}).get("schema") == SCHEMA_V3:
+            # These exact generated sources belong to the pinned synthesis
+            # input tree, not the independently selected Model2MLIR package.
+            selected_loader(entry, synth_profile.parent)
             continue
         loader = resolve_model_loader(entry, root)
         try:
@@ -303,8 +317,21 @@ def receipt(frozen: dict) -> bytes:
     return (json.dumps(frozen, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
 
 
-def sealed_capture_config(selected: dict, artifact_root: Path) -> dict:
-    """Bind generation captures to the selected owner, using copied sources after freezing."""
+def sealed_capture_config(
+    selected: dict,
+    artifact_root: Path,
+    *,
+    execution_timeout_seconds: int | None = None,
+    bwrap: str | Path | None = None,
+    runtime_reuse: dict | None = None,
+) -> dict:
+    """Bind generation captures to the selected owner, using copied sources after freezing.
+
+    ``execution_timeout_seconds`` is the operator-selected sandbox timeout every generation
+    capture is selected with. Absent, the key is omitted so the configuration (and every capture
+    selection made from it) keeps its historical bytes and the fixed 120 s timeout.
+    """
+    preflight_capture_sandbox(bwrap)
     copied = "frozen_root" in selected
     private = artifact_root / "private"
     config = {
@@ -318,4 +345,72 @@ def sealed_capture_config(selected: dict, artifact_root: Path) -> dict:
         selector = frozen_selector(private / "m2m-runtime.json")
         verify_frozen_selector(selector, Path(selected["frozen_root"]), selected["frozen_package"])
         config["frozen_origin"] = selector
+    if execution_timeout_seconds is not None:
+        config["execution_timeout_seconds"] = capture_timeout(execution_timeout_seconds)
+    if bwrap is not None:
+        # The operator-selected sandbox binary every generation capture runs under. Absent, the key
+        # is omitted and the capture resolves the system one, as before.
+        config["bwrap"] = capture_bwrap(bwrap)
+    if runtime_reuse is not None:
+        config["runtime_reuse"] = _capture_runtime_reuse(selected, runtime_reuse, artifact_root)
     return config
+
+
+def _capture_runtime_reuse(selected: dict, selection: dict, destination: Path) -> dict:
+    """Reopen the exact selected host runtime and existing read-only composition."""
+    from merlin_experiments.capture_execution import readonly_runtime
+    from merlin_experiments.capture_execution.sealed_m2m import _system_libs
+
+    runtime = _runtime(Path(selected["python"]))
+    if any(selected.get(key) != value for key, value in runtime.items()):
+        raise ValueError("selected Model2MLIR runtime changed before read-only reuse")
+    venv = Path(selected["python"]).parent.parent
+    site = venv / "lib/python3.12/site-packages"
+    torch = next(site.glob("torch/_C*.so"), None)
+    numpy = next(site.glob("numpy/_core/_multiarray_umath*.so"), None)
+    if torch is None or numpy is None:
+        raise ValueError("selected runtime lacks its Torch/NumPy ELF roots")
+    plan = {
+        # Match sealed_m2m.prepare_plan's declared guest mount, which may
+        # differ lexically from the resolved host base already verified above.
+        "base": str(_venv_home(venv)),
+        "system_libs": [str(path) for path in _system_libs(Path(selected["python"]), torch, numpy)],
+        "selected_trees": {"venv": runtime["venv"], "base": runtime["base_python"]},
+    }
+    # Resolve/preflight precedes creating the fresh run. The nearest existing
+    # parent supplies only the filesystem check; this does not create a cache.
+    destination = Path(destination)
+    while not destination.exists():
+        destination = destination.parent
+    return readonly_runtime.verify(plan, selection, destination)
+
+
+def capture_bwrap(value) -> str:
+    """An explicit, absolute, executable sandbox binary for generation captures, or refuse."""
+    import os
+
+    path = Path(str(value)).expanduser()
+    if not path.is_absolute() or not path.is_file() or not os.access(path, os.X_OK) or path.name != "bwrap":
+        raise ValueError(f"Phase 0 capture bwrap must be an absolute executable named bwrap: {value}")
+    return str(path)
+
+
+def preflight_capture_sandbox(value=None) -> str:
+    """Check the actual capture namespace policy before source/runtime staging."""
+    from merlin_experiments.capture_execution.sealed_m2m import _probe_sandbox
+
+    selected = capture_bwrap(value if value is not None else shutil.which("bwrap"))
+    _probe_sandbox(Path(selected))
+    return selected
+
+
+def capture_timeout(value) -> int:
+    """A generation-capture timeout within the sealed checkpoint-free capture bounds, or refuse."""
+    from merlin_experiments.capture_execution import sealed_m2m
+
+    if value is None or not sealed_m2m._selected_timeout_valid(sealed_m2m.SCHEMA, value):
+        raise ValueError(
+            f"Phase 0 capture timeout must be an integer between {sealed_m2m._TIMEOUT_SECONDS} and "
+            f"{sealed_m2m._MAX_SELECTED_CAPTURE_SECONDS} seconds"
+        )
+    return value

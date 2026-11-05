@@ -9,8 +9,8 @@ RVV, spatial for a systolic array, …) — nothing RVV-specific here.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
-from typing import Any
+from dataclasses import asdict, dataclass, field, fields, is_dataclass, replace
+from typing import Any, get_args, get_type_hints
 
 from .cca import CCA
 
@@ -35,7 +35,7 @@ def _populated_pairs(fa, fb) -> dict[str, tuple]:
     return out
 
 
-def uncomparable_axes(expert: "CCA", ours: "CCA") -> list[tuple[str, str]]:
+def uncomparable_axes(expert: CCA, ours: CCA) -> list[tuple[str, str]]:
     """Axes one side populated and the other did NOT -- returned as ``(axis, which_side_is_missing)``.
 
     ``compare`` deliberately emits no divergence when either side is None: it cannot claim a gap it
@@ -136,3 +136,115 @@ def compare(expert: CCA, ours: CCA, *, evidence: list[str] | None = None) -> lis
             )
         )
     return out
+
+
+@dataclass(frozen=True)
+class EvidenceComparison:
+    """Supported structural comparisons, never an agreement or qualification verdict."""
+
+    status: str
+    divergences: tuple[Divergence, ...]
+    compared_axes: tuple[str, ...]
+    unknowns: tuple[dict, ...]
+    advisory_scope: str = "Structural evidence only; semantic, numerical and performance equality are not established."
+
+    @property
+    def denominator(self) -> int:
+        return len(self.compared_axes)
+
+    def to_dict(self) -> dict:
+        return dict(asdict(self), denominator=self.denominator)
+
+
+_RESIDENCY_AXES = frozenset((
+    "memory.onchip_resident", "memory.panel_reuse", "compute.accumulator_resident",
+    "spatial.accumulator_resident", "simt.smem_resident", "communication.resident_across_calls",
+))
+_COUNT_AXES = frozenset(("dispatch.n_dispatches", "dispatch.n_fences", "dispatch.config_fraction",
+                         "dispatch.dma_issue_to_wait", "compute.reduction_partition"))
+
+
+def _axis_evidence(cca, axis):
+    evidence = cca.provenance.get("axis_evidence", {})
+    row = evidence.get(axis, {}) if isinstance(evidence, dict) else {}
+    return row if isinstance(row, dict) else {}
+
+
+def _supported(row):
+    witnesses = row.get("evidence")
+    return (row.get("status") in ("observed", "inferred")
+            and isinstance(witnesses, (tuple, list)) and bool(witnesses)
+            and all(type(witness) is str and bool(witness.strip()) for witness in witnesses))
+
+
+def _known_scope(value):
+    if isinstance(value, dict):
+        return bool(value) and all(type(key) is str and key and _known_scope(item) for key, item in value.items())
+    if isinstance(value, (tuple, list)):
+        return bool(value) and all(_known_scope(item) for item in value)
+    return (type(value) in (int, bool)
+            or type(value) is str and bool(value.strip()) and value.strip().lower() not in ("unknown", "?"))
+
+
+def compare_evidence(expert: CCA, ours: CCA, *, evidence: list[str] | None = None) -> EvidenceComparison:
+    """Compare only populated axes with explicit status, witnesses and compatible scopes.
+
+    Both absent values remain unknown. Residency and dispatch metrics additionally
+    require matching per-axis ``axis_evidence[axis]['scope']`` records; a global
+    residency label alone cannot prove matching lifetimes or count boundaries.
+    Callers retain responsibility for source fusion/numerics, target identity and
+    trusted artifact binding. ``compared`` means a nonzero denominator, not equality.
+    """
+    if type(expert) is not CCA or type(ours) is not CCA:
+        raise ValueError("evidence comparison requires existing typed CCAs")
+    unknowns, identity_mismatch = [], False
+    for key in ("op", "scope"):
+        values = (getattr(expert, key), getattr(ours, key))
+        missing = tuple(side for side, value in zip(("expert", "ours"), values)
+                        if type(value) is not str or value.strip().lower() in ("", "unknown", "?"))
+        if missing or values[0] != values[1]:
+            identity_mismatch |= not missing
+            unknowns.append(dict(axis=key, reason="identity_unknown" if missing else "identity_mismatch",
+                                 missing_sides=missing, expert=values[0], ours=values[1]))
+    problems = (expert.scope_problems(), ours.scope_problems())
+    if any(problems):
+        unknowns.append(dict(axis="scope", reason="invalid_scope", expert=problems[0], ours=problems[1]))
+    blocked = bool(unknowns)
+    eligible, witnesses = [], {}
+    annotations = get_type_hints(CCA)
+    for facet in _facet_names():
+        candidates = get_args(annotations[facet]) or (annotations[facet],)
+        schema = next(candidate for candidate in candidates if is_dataclass(candidate))
+        for item in fields(schema):
+            axis = facet + "." + item.name
+            values = tuple(getattr(getattr(cca, facet), item.name, None) for cca in (expert, ours))
+            rows = tuple(_axis_evidence(cca, axis) for cca in (expert, ours))
+            missing = tuple(side for side, value in zip(("expert", "ours"), values) if value is None)
+            reason = "value_unavailable" if missing else "comparison_identity_unresolved" if blocked else None
+            if reason is None:
+                missing = tuple(side for side, row in zip(("expert", "ours"), rows) if not _supported(row))
+                reason = "axis_evidence_unavailable" if missing else None
+            scopes = tuple(row.get("scope") for row in rows)
+            if reason is None:
+                required = axis in _RESIDENCY_AXES | _COUNT_AXES or any(scope is not None for scope in scopes)
+                missing = tuple(side for side, scope in zip(("expert", "ours"), scopes)
+                                if not isinstance(scope, (str, dict)) or not _known_scope(scope))
+                if required and missing:
+                    reason = "axis_scope_unavailable"
+                elif required and scopes[0] != scopes[1]:
+                    reason = "axis_scope_mismatch"
+                else:
+                    legacy = tuple(cca.provenance.get("residency_scope") for cca in (expert, ours))
+                    if axis in _RESIDENCY_AXES and all(legacy) and legacy[0] != legacy[1]:
+                        reason = "residency_scope_mismatch"
+            if reason:
+                unknowns.append(dict(axis=axis, reason=reason, missing_sides=missing,
+                                     expert_scope=scopes[0], ours_scope=scopes[1]))
+            else:
+                eligible.append(axis)
+                witnesses[axis] = tuple(dict.fromkeys((*rows[0]["evidence"], *rows[1]["evidence"])))
+    divergences = tuple(replace(row, evidence=list(witnesses[row.axis]))
+                        for row in (() if blocked else compare(expert, ours, evidence=evidence))
+                        if row.axis in witnesses)
+    status = "mismatch" if identity_mismatch else "compared" if eligible else "unknown"
+    return EvidenceComparison(status, divergences, tuple(sorted(eligible)), tuple(unknowns))

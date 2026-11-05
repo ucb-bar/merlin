@@ -391,17 +391,17 @@ def _arc_target(target: str) -> str:
 
 
 def core_hw_mlir(target: str) -> Path | None:
-    """The version-matched CORE HW dialect (the module carrying the command decoder) for ANY target,
-    from mlc's per-target arc outputs (``runs/circt-arc/<target>/outputs``). Prefers ``*_core_hw.mlir``
-    (the core parses cleanly; the SoC dialect carries unparseable sv.verbatim blobs)."""
+    """The CORE HW dialect (command decoder) for ANY target: the selection's, else the selected facts'
+    own digest-checked one (``recorded_hw``), else mlc's arc outputs, preferring ``*_core_hw.mlir``."""
+    from .recorded_hw import recorded_core_hw
     from .source_selection import active_selection
 
     selected = active_selection(target)
     if selected is not None:
         return Path(selected["sources"]["core_hw"]["path"])
-    d = mlc_dir()
-    if d is None:
-        return None
+    recorded, d = recorded_core_hw(target), mlc_dir()
+    if recorded is not None or d is None:
+        return recorded
     outs = d / "runs" / "circt-arc" / target / "outputs"
     cands = sorted(outs.glob("*_core_hw.mlir")) or sorted(outs.glob("*_hw.mlir"))
     return next((p for p in cands if p.exists() and ".generic." not in p.name), None)

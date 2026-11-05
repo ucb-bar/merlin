@@ -4,8 +4,7 @@ kind: guide
 status: current
 owner: core
 last_verified: 2026-09-29
-related: [reproducibility, architecture, repo_structure, integrations, model2mlir, rvv_e2e,
-          beam_search, gemmini_experiment, zephyr, dse, dse_guidance, targetgen, adding_a_target]
+related: [reproducibility, architecture, repo_structure, integrations, model2mlir, rvv_e2e, beam_search, phase0_phase1_setup, zephyr, dse, dse_guidance, targetgen, adding_a_target]
 code_refs:
   - pyproject.toml
   - .env.example
@@ -139,7 +138,7 @@ not available on a fresh machine. "board-gated" items are called out in §5.
 | model2MLIR capture ([model2mlir](model2mlir.md)) | `MERLIN_M2M_DIR` + the m2m capture venv (`MERLIN_M2M_VENV`); model repos | — (a full smolVLA capture is RAM-heavy; committed bundles ingest without re-capture) |
 | RVV end-to-end ([rvv_e2e](rvv_e2e.md)) | `llvm_m2m_toolchain` (m2m + clang-23) + capture bundles + `spike_rv64gcv` | K1 board is **optional** — spike rv64gcv is the bit-exact fallback |
 | Beam search ([beam_search](beam_search.md)) | frozen `hand_v0` baseline (in-tree) + expert objdump fixtures + a K1 board **or** spike | `spike_rv64gcv` substitutes for the physical K1 (correctness/cycles, no wall-clock); `chia` only for Ray fan-out |
-| Gemmini experiment ([gemmini_experiment](gemmini_experiment.md)) | `packages/merlin-experiments` + `bwrap` on PATH + the sim toolchain (`MERLIN_CHIPYARD` → spike/verilator) + `ANTHROPIC_API_KEY` for real agentic runs + `out/build/chia-venv` for fan-out | mock LLM fallback runs without a key (no real agentic run); VCS/FireSim rungs skip if absent |
+| Phase 0/1 experiments ([setup](phase0_phase1_setup.md)) | `packages/merlin-experiments`, sandbox tools, selected contract/facts, capture/toolchain inputs and explicitly configured author transport | Preflight names missing selections; required unavailable gates remain incomplete |
 | Zephyr / FireSim / spike ([zephyr](zephyr.md)) | `ZEPHYR_BASE`, `MERLIN_ZEPHYR_SW`, `ZEPHYR_SDK_INSTALL_DIR`, `MERLIN_CHIPYARD`; FireSim additionally needs an [installed runner](firesim.md) and `MERLIN_FIRESIM_RUNNER` | spike substitutes for 2-tile FireSim |
 | Target generation ([targetgen](targetgen.md), [adding_a_target](adding_a_target.md)) | base install + extra `.[targetgen]` (jsonschema) | RTL-grounded targets additionally use `circt_firtool` and the sibling `mlc` package (editable-installed from `MERLIN_MLC_DIR`, §5) |
 | External baselines ([integrations](integrations.md)) | `packages/merlin-analysis` + the relevant framework repo/build + its venv by `MERLIN_*` var (§5) | each arm skips independently when its var is unset |
@@ -188,9 +187,8 @@ cannot be provisioned by a `git clone`. Set `MERLIN_K1_HOST=root@<board-ip>` and
 `MERLIN_K1_SSH_KEY=/path/to/key` when you have one. **Fallback for everyone without the board:**
 `spike rv64gcv` gives bit-exact RVV correctness (and cycle counts under the simulator); only the
 real-wall-clock speedup claims require the board, and those steps record `not_run` when it is absent.
-Board-SSH note: the campus path filters inbound `:22` to that segment, so the board also listens on
-**2222** and `.env` sets `MERLIN_K1_SSH_PORT=2222` (honored across all ssh/scp by `mining/k1.py`); a
-board that pings but hangs on `:22` is not down — use 2222.
+Set `MERLIN_K1_SSH_PORT` if the board uses a nondefault SSH port.
+The configured value is honored by the mining transport for both SSH and SCP.
 
 **Gemmini / Saturn / Muon simulators.** Gemmini functional (spike, L2) and RTL-cycle (verilator, L3)
 sims come from chipyard; set `MERLIN_GEMMINI_SPIKE` / `MERLIN_GEMMINI_VERILATOR` (+
@@ -247,11 +245,8 @@ Point-in-time reports live under `out/artifacts/`, **not** in `docs/`.
 
 ## 8. Conventions before you commit
 
-- **Shared working tree** — do not switch branches; commit on the current branch, small verified
-  batches (`CLAUDE.md`).
+- **Changes** should be isolated on a contribution branch and verified before publication.
 - **Tests** go in `merlin/tests/<bucket>/test_*.py` (`test-layout` skill).
 - **Docs** carry front-matter and are indexed by the hub; run
   `build_tools/scripts/gen_docs_index.py` after adding one. See `docs/AGENT.md`.
 - Re-run `check_structure.py` after any structural change.
-</content>
-</invoke>

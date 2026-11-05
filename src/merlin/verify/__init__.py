@@ -1,4 +1,4 @@
-"""Compiler-pass verification: the static (lit/FileCheck) and formal (SMT) layers.
+"""Compiler-pass verification: static (lit/FileCheck) and formal (SMT/Lean) checks.
 
 The capsule bench grades OUTCOMES — an independent golden, a decoded instruction stream, RTL. This
 package verifies PASSES: what a single transform did to a single module, and whether it preserved

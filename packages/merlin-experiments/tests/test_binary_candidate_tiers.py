@@ -257,7 +257,9 @@ def test_suite_reaudit_uses_selected_adapter_policy_not_result(tmp_path, monkeyp
     source.mkdir()
     capsule = {"name": "model", "kind": "model", "label": "public", "__dir__": str(source)}
     monkeypatch.setattr(grade, "source_experiment_env", lambda _t: {})
-    monkeypatch.setattr(grade, "load_package", lambda *_a, **_k: SimpleNamespace(integrity_exempt=False))
+    tool = tmp_path / "compiler.py"
+    tool.write_text("# Synthetic package tool; compilation is separately stubbed below.\n")
+    monkeypatch.setattr(grade, "load_package", lambda *_a, **_k: SimpleNamespace(integrity_exempt=False, tool=tool))
     monkeypatch.setattr(grade, "integrity_scan", lambda *_a, **_k: None)
     monkeypatch.setattr(grade, "build_package", lambda *_a, **_k: None)
     monkeypatch.setattr(grade.CR, "discover_capsules", lambda *_a, **_k: [capsule])

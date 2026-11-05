@@ -1,0 +1,65 @@
+{
+  "schema": "private.kernel_abstractions.protocol.v1",
+  "source_shape_order": "M,K,N",
+  "experiments": [
+    {
+      "study": "cca",
+      "profile": "projection-family-v2",
+      "control": "current tools and raw references",
+      "treatment": "same plus CCA report and analysis"
+    },
+    {
+      "study": "library",
+      "profile": "conv-family-v2",
+      "control": "original Fresh6 tools",
+      "treatment": "six reviewed convolution composition updates"
+    },
+    {
+      "study": "scheduling",
+      "profile": "projection-family-v2",
+      "control": "original Fresh6 tools",
+      "treatment": "one new checked epoch module"
+    }
+  ],
+  "replicas_per_treatment": 1,
+  "wall_seconds_per_author": 1800,
+  "shared_cpu_pool": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "cpu_quota_percent_per_author": 200,
+  "execution": "One matched pair at a time; optional fifth CPU for common preparation. Combined system deferred.",
+  "common_inputs": [
+    "same Fresh6 backend and historical evidence",
+    "same selected training source",
+    "same case-specific raw reference bank",
+    "same trusted metric bytes",
+    "same evaluator and worker budget"
+  ],
+  "migration": "CCA uses identical current dependencies in both arms. Other studies change only the declared reviewed capability. Compare each final author with its own initial effective compiler; do not count dependency gains as agent discoveries.",
+  "separation": "held-out suite remains operator-only until the compiler and rules are frozen",
+  "e0": "Reopen all unique oracle-study pins; retain source-closure and pending-measurement classifications.",
+  "e1": "Run existing diagnostic requests, retaining static, semantic and dynamic unknowns; counterexample changed fusion/precision/scale contracts.",
+  "correctness": "every live output, original precision, scales, bias and fusion boundary; independent inputs are not captured-model equivalence",
+  "performance": "completed-call cycles with explicit preparation/cache/engine domain; native instruction counts do not qualify timing",
+  "generalization": "Every frozen treatment and replica is evaluated on the same training and held-out panel; all individual and combined contrasts report correctness and performance on both splits.",
+  "supporting_audits": "Oracle pins, parser coverage and counterexamples support the experiments but do not independently establish performance benefit.",
+  "parity": "only numerically matched expert pairs: report all ordered samples and descriptive 5%/8% overhead screens",
+  "forbidden_claims": [
+    "near-shape estimates are measurements",
+    "static loops prove executed reuse",
+    "unmatched quantizers are equivalent",
+    "older kernels establish newest full-model parity"
+  ],
+  "launch": "Input and audit scripts do not launch authors. The separate explicit offline runner uses the selected budget; regular campaigns remain Claude-owned.",
+  "public_development_cases_per_experiment": 3,
+  "frozen_cases": {
+    "cca": 14,
+    "library": 15,
+    "scheduling": 14
+  },
+  "family_objective": "Improve source/resource rules across the family; all public cases get correctness/performance feedback, exact held-out cases stay private. Preserve safe fallbacks and forbid new benchmark-name schedules.",
+  "lifting": "CCA treatment replays the source-bound issue capture into typed region/dataflow and supported candidate comparisons; syntax-only parsing does not establish mechanisms."
+}

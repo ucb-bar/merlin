@@ -70,7 +70,9 @@ def _array(value) -> np.ndarray | None:
 def _digest(array: np.ndarray) -> str:
     body = hashlib.sha256()
     body.update(f"{array.dtype.str}|{list(array.shape)}|".encode())
-    body.update(np.ascontiguousarray(array).tobytes())
+    view = memoryview(np.ascontiguousarray(array)).cast("B")
+    for begin in range(0, len(view), 1 << 20):
+        body.update(view[begin:begin + (1 << 20)])
     return body.hexdigest()
 
 
@@ -145,7 +147,7 @@ def read_document(directory: str | Path):
     return safe_load_text(path.read_text(encoding="utf-8"))
 
 
-def _resolve(document, directory: Path):
+def _resolve(document, directory: Path, *, compact_arrays=False):
     archive: dict[str, np.ndarray] = {}
     opened = False
 
@@ -167,6 +169,9 @@ def _resolve(document, directory: Path):
             raise GoldenStoreError(f"{ARRAYS}:{ref.get('key')} is not the referenced dtype/shape")
         if _digest(array) != ref.get("sha256"):
             raise GoldenStoreError(f"{ARRAYS}:{ref.get('key')} does not match the digest its golden names")
+        if compact_arrays:
+            array.flags.writeable = False
+            return array
         return array.tolist()
 
     def visit(value):
@@ -181,12 +186,14 @@ def _resolve(document, directory: Path):
     return visit(document)
 
 
-def load_golden(directory: str | Path):
+def load_golden(directory: str | Path, *, compact_arrays=False):
     """The golden document with every array resolved and digest-checked; None if there is no golden."""
     document = read_document(directory)
     if document is None:
         return None
-    return _resolve(document, Path(directory))
+    if type(compact_arrays) is not bool:
+        raise GoldenStoreError("golden compact-array selection must be boolean")
+    return _resolve(document, Path(directory), compact_arrays=compact_arrays)
 
 
 def load_golden_file(path: str | Path) -> dict | None:

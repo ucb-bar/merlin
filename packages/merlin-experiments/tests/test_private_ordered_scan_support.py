@@ -258,7 +258,7 @@ def test_reviewed_scan_accounts_for_its_closed_body_at_full_model_source_gate(tm
             return rows
 
         monkeypatch.setattr(movement, "source_inventory_by_ordinal", mixed_join)
-    if variant != "reviewed":
+    if variant not in {"reviewed", "missing_software"}:
         with pytest.raises(ValueError):
             gate._source_obligations(capture, "fixture", software, capability, host, _selected())
         return
@@ -266,6 +266,8 @@ def test_reviewed_scan_accounts_for_its_closed_body_at_full_model_source_gate(tm
     assert proof[scan.FIELD]["count"] == 1
     assert proof[scan.FIELD]["source_verified"] is True
     assert proof[scan.FIELD]["admission_verified"] is True
+    if variant == "missing_software":
+        assert proof[scan.FIELD]["admissions"][0]["software_declaration"] is None
     assert proof[scan.FIELD]["admissions"][0]["root_ordinal"] == proof[scan.FIELD]["occurrences"][0]["root_ordinal"]
 
 

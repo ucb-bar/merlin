@@ -1,0 +1,59 @@
+{
+  "schema": "merlin.reviewed_public_library_extension.v1",
+  "review_id": "generic-source-inventory-mixed-plan-v1",
+  "public_modules": [
+    "merlin.targetgen.oot_starterkit.plan"
+  ],
+  "source_members": [
+    {
+      "module": "merlin.targetgen.oot_starterkit.plan",
+      "relative_path": "merlin/targetgen/oot_starterkit/plan.py",
+      "source_sha256": "0f076c4affbed661a2725452d0359c3afb27b075ebef1f6a277323808e2e5ee2",
+      "public_import": true
+    },
+    {
+      "module": "merlin.targetgen.oot_starterkit.llvm_context",
+      "relative_path": "merlin/targetgen/oot_starterkit/llvm_context.py",
+      "source_sha256": "c4e0bf87c66975ce110c6e22e21bae301eb1286985a08941f930b20f3bf36978",
+      "public_import": false
+    },
+    {
+      "module": "merlin.perf.task_cfg_evidence",
+      "relative_path": "merlin/perf/task_cfg_evidence.py",
+      "source_sha256": "3cdd3df5cfe7eeb92591650ac0c0486bb183d3b37b83035b0427cb9f8c42b8fe",
+      "public_import": false
+    },
+    {
+      "module": "merlin.perf.host_cfg_index",
+      "relative_path": "merlin/perf/host_cfg_index.py",
+      "source_sha256": "bb9aa2ead7a5e0fd304fd18526f5834176223955c601c69c74cf64403c434d74",
+      "public_import": false
+    }
+  ],
+  "resources": [
+    {
+      "relative_path": "merlin/_data/contract/schemas/mixed_program_plan.schema.json",
+      "source": "merlin/contract/schemas/mixed_program_plan.schema.json",
+      "source_sha256": "402c71c1dbb507c9bc16da325425569847fb6b9b19eccfaa4661bd4a6a856af5"
+    }
+  ],
+  "existing_dependencies": [
+    "merlin.common.ir_lock",
+    "merlin.common.paths",
+    "merlin.targetgen.contract.linalg_iface"
+  ],
+  "public_entrypoints": [
+    "source_operation_inventory",
+    "validate_mixed_program_plan"
+  ],
+  "semantics": "Pure caller-source inventory and structural plan/CFG checks. No numerical reference, simulation, source lowering, offload or timing authority.",
+  "security_review": [
+    "All local Merlin imports enumerated; xDSL/jsonschema/stdlib dependencies only beyond existing reviewed leaves.",
+    "No target-specific schedules, private workloads, expected numerical values, evaluator runners or subprocess launch.",
+    "CLI reads only explicitly supplied source/command/lowered paths; schema uses selected public package resource with local references.",
+    "CFG prepared object indexes caller-provided function identity; never cross-boundary or grading receipts.",
+    "Exact public_modules selection controls integrity acceptance; no global targetgen/oot_starterkit exemption.",
+    "Changing the author library copy cannot change independent native evaluator checks."
+  ],
+  "unchanged": "Original source bytes and source/provenance semantics retained; module grant supplies usability only."
+}

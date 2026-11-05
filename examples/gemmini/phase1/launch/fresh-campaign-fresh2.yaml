@@ -1,0 +1,372 @@
+# Fresh (unseeded) open-compiler campaign launch spec, read by fresh_campaign.py.
+#
+# Reproduces gemmini-open-compiler-20261026-fresh2 as recorded: frozen export of the branch HEAD
+# at launch, whose V20 (common substrate v13) was the withholding author SDK. In the current tree
+# that release is V22 / substrate v15 (fresh-campaign-next.yaml selects it); V20 / v13 now name
+# the carried-event roster. Also: the 28 base public references only (no
+# measured-exo), the Phase 0 r4 fallback corpus, performance-scope policy merge,
+# information-first capsule order, unbounded author tokens and a fresh backend.
+#
+# The plan section is the v8 recorded launch (open-continuation/v8/proposed-launch.json,
+# sha256 6dcdc13f...) with the fresh-run rewrites applied and written out: no seed, the new
+# export/release/library/compiler inputs, the selected timing model, its own run id, unit,
+# CPU reservation, agent home, private content store and guidance. Paths are ${NAME}
+# variables (override with --var NAME=VALUE); RUN_ID, UNIT, CPUS, PREPARATION_CPUS,
+# EXPORT_ID, PREFLIGHT_RUN_ID and RUN_TAG (the run id's last word) come from the run section or the command line; HOME and
+# USER from the invoking environment.
+schema: merlin.phase1.fresh_campaign_spec.v1
+id: gemmini-open-compiler-fresh2
+derived_from:
+  launch: ${REPO}/out/artifacts/open-continuation/v8/proposed-launch.json
+  launch_sha256: 6dcdc13fc03e17d58969efbe8aa2e311d3b85d09dfea6b2bf58d1d91e11bbb8f
+run:
+  run_id: gemmini-open-compiler-20261026-fresh2
+  unit: merlinphase1fresh20261026a
+  cpus: 9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28
+  preparation_cpus: 0,1,2,3,4,5,6,7,8,29,30,31
+  max_wall_s: 28800
+  final_model_s: 7200
+  rate_limit_waits: 24
+  sim_max_jobs: 20
+  workers: null
+  treatment: merlin_plus_upstream_reference_kernels
+  # fresh2 ran without a helper effort flag; set e.g. medium to pass --author-helper-effort.
+  author_helper_effort: null
+variables:
+  WORKSPACE: /work/merlin
+  TASK: ${WORKSPACE}/tasks/el4-grader-throughput-20261024
+  REPO: ${TASK}/merlin
+  PYTHON: ${WORKSPACE}/tasks/gemmini-shared-phase1-20261021/.tmp/phase1-runtime-v1/venv/bin/python3.12
+  FRAMEWORK: ${REPO}/out/build/run-frameworks/${EXPORT_ID}
+  INPUTS: ${FRAMEWORK}/out/artifacts/fresh-inputs
+  RELEASE: ${INPUTS}/source-release
+  ARTIFACTS: ${REPO}/out/artifacts/open-fresh/${RUN_TAG}
+  RUN_STATE: ${TASK}/.tmp/${RUN_ID}
+  PRIVATE_ROOT: ${TASK}/private
+  OPERATOR_TMP: ${TASK}/.tmp/fresh
+  # The previous campaign release: preparation runs before the new release exists.
+  PREVIOUS_RELEASE: ${WORKSPACE}/tasks/megaphase-auto-capabilities-20261024/merlin/out/artifacts/full-auto-launch/source-release/release
+  HARNESS: ${WORKSPACE}/tasks/phase1-harness-v2
+  # Sibling launch modules (reservation wrapper, slot roots) from the frozen export itself.
+  LAUNCH_MODULES: ${FRAMEWORK}/examples/gemmini/phase1/launch
+
+export:
+  # Repository-local configuration git archive cannot carry: .env and the host-lane package.
+  config_source: ${WORKSPACE}/tasks/megaphase-auto-capabilities-20261024/merlin
+  copies:
+  - path: .env
+    mode: '0600'
+  - path: out/artifacts/targets/host/gemmini_rocket_scalar_int8_v0
+
+inputs:
+  output: ${INPUTS}
+  nice: 5
+  # The reviewed generic library of the automatic-compiler integration release (V19); its
+  # base-sdk is the corpus SDK. Prepared here as inventory version 20.
+  previous_library: ${WORKSPACE}/tasks/el4-connected-execution-20261023/merlin/out/artifacts/releases/automatic-compiler-integration-20261025-v3/author-library
+  library_version: 20
+  # tree_hash (a reviewed member) reuses unchanged-tree digests through stat_memo, a generic
+  # stdlib-only leaf; it is declared here instead of granted implicitly.
+  reviewed_modules:
+  - merlin.common.stat_memo
+  full_compiler_review_id: fresh-run-complete-compiler-source-${EXPORT_ID}
+  # Phase 0 r4 fallback: sealed 10-18 generation + model-derived performance demand (plan 4cf2da2a7a86).
+  corpus: ${TASK}/.tmp/corpus-r4/export/out/artifacts/corpus-r4/fallback-source-release
+  # The 28 base public references (upstream Exo @ defe1728 + value-free projections).
+  public_references: ${WORKSPACE}/tasks/megaphase-auto-capabilities-20261024/merlin/out/artifacts/full-auto-launch/public-references
+  # The operator's private measured Exo kernels are never given to the author (2026-10-26).
+  forbidden_reference_prefixes:
+  - measured-exo/
+  logical_storage_budget_bytes: 134217728
+  common_substrate: merlin.common_compiler_substrate.v13
+  # Preparation runtime: the campaign environment below with these values replaced.
+  environment:
+    MERLIN_BUNDLE_CAS: ${OPERATOR_TMP}/prepare-cas
+    MERLIN_CAPSULE_ORDER: measured-longest-first
+    MERLIN_CODEX_CPUS: ${PREPARATION_CPUS}
+    MERLIN_COMPUTE_CPUS: ${PREPARATION_CPUS}
+    MERLIN_PREPARATION_CPUS: ${PREPARATION_CPUS}
+    MERLIN_COMPUTE_CPU_SLOTS: ${OPERATOR_TMP}/prepare-tmp/merlin_compute_cpu_slots
+    MERLIN_GSIM_SLOT_ROOT: ${OPERATOR_TMP}/prepare-tmp/merlin_gsim_slot_root
+    MERLIN_CORPUS_SEAL: ${PREVIOUS_RELEASE}/private/seal.json
+    MERLIN_RTL_FACTS: ${PREVIOUS_RELEASE}/payload/experiment/rtl_facts/facts.json
+    MERLIN_TARGET_CONTRACT: ${PREVIOUS_RELEASE}/payload/experiment/contracts/target_contract.yaml
+    MERLIN_TARGET_EXPERIMENT: ${PREVIOUS_RELEASE}/payload/experiment/target_experiment.yaml
+    MERLIN_JOINT_PERFORMANCE_SELECTION: '{"path": "${REPO}/out/artifacts/open-continuation/v8/performance-selection.json", "sha256": "e96a78a341f46cfe98cb718a6550d17ee6a18a4d8cb2794bd9fbb2ed4280e00a"}'
+    MERLIN_OUT_ROOT: ${FRAMEWORK}/out
+    TMPDIR: ${OPERATOR_TMP}/prepare-tmp
+
+seal:
+  reviewed_by: copparihollmann@gmail.com
+  review_note: 'Fresh run fresh2 (export ${EXPORT_ID}): Phase 0 r4 fallback corpus (sealed 10-18 generation
+    + model-derived performance demand plan 4cf2da2a7a86: 40 new scalability cases, 117 total; ResNet-50
+    92.5% / SmolVLA 68-94% / TinyLlama 100% exact coverage), V20 author SDK without withheld or oracle
+    modules, substrate v13, upstream-only public references (no measured-exo). Reviewed by the coordinator:
+    inspect counts vs fresh1 (public 175, hidden 8), REVIEW.md, absence of private Exo names; sealing
+    delegated by the user on 2026-10-26.'
+
+plan:
+  launch_modules: ${LAUNCH_MODULES}
+  library_selection: ${INPUTS}/author-library/compiler-library-selection.json
+  full_compiler_manifest: ${INPUTS}/full-compiler/manifest.json
+  public_reference_manifest: ${INPUTS}/public-references/reference-manifest.json
+  guidance: ${OPERATOR_TMP}/${RUN_TAG}-guidance.md
+  timing_selection: ${REPO}/out/artifacts/timing-models/spike-timing-9cf159f/selection.json
+  policy:
+    # v8's policy; compiler_origin is removed, the clock comes from the run section and the
+    # performance scope's excluded case ids are merged in.
+    base:
+      path: ${REPO}/out/artifacts/open-continuation/v8/policy.json
+      sha256: 8c5acd93e7231b261910b906fb200d161831aae47159776448bbe682ddc1fa74
+    performance_scope: ${TASK}/.tmp/corpus-r4/fallback/epoch/performance-scope.json
+  reservation:
+    margin_s: 1800
+    unit: ${UNIT}
+    state: ${RUN_STATE}/cpu-reservation.json
+    log: ${ARTIFACTS}/campaign.log
+  required_flags:
+  - --fresh-backend
+  - --author-token-unbounded
+  forbidden_flags:
+  - --seed-submission
+  - --author-token-target
+  - --resume
+  forbidden_fragments:
+  - seed-compiler
+  - gemmini-open-compiler-20261024-v8
+  - measured-exo
+  input_flags:
+  - --descriptor
+  - --bundle-manifest
+  - --corpus-seal
+  - --full-compiler-root
+  - --full-compiler-manifest
+  - --compiler-library-root
+  - --compiler-library-contract
+  - --operator-errata
+  - --joint-campaign
+  record:
+    schema: operator.open_compiler_continuation.v1
+    immutable_input_repository: ${WORKSPACE}/tasks/megaphase-auto-capabilities-20261024/merlin
+    origin: fresh backend on the complete editable compiler source; no seed, no inherited results
+    compiler_access: full_compiler
+    capsules:
+      total: 250
+      original_correctness: 153
+      calibration: 20
+      scalability_performance: 77
+    token_admission: false
+    model_status: provisional; no <=4percent qualification claim
+    limits:
+      author_helpers: 16
+      shared_compute_cpus: 20
+      fixed_role_pools: false
+      construction_plan_required: false
+      inherited_pass_credit: false
+    acceptance: Native layer/model execution and isolation exercised. Startup/author/broker legacy proof
+      prerequisites removed in explicit external mode; retained compiler has documented numerical failures
+      to repair.
+    token_budget:
+      target: null
+      mode: unbounded
+      hard_cap: false
+  argv:
+  - ${PYTHON}
+  - -B
+  - -m
+  - merlin_experiments.phase1
+  - --descriptor
+  - ${RELEASE}/payload/experiment/target_experiment.yaml
+  - --repo
+  - ${FRAMEWORK}
+  - --level
+  - EL4
+  - --bundle
+  - merlin_assisted_rtlchecks_public_v0
+  - --bundle-manifest
+  - ${RELEASE}/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/input_bundle_manifest.yaml
+  - --corpus-seal
+  - ${RELEASE}/private/seal.json
+  - --oracle-timing
+  - ${HARNESS}/.tmp/phase1-prep-20261017-v4/oracle-timing.json
+  - --validation-scope
+  - full
+  - --private-full-model-spec
+  - ${WORKSPACE}/tasks/el4-joint-campaign-20261021/private/joint-ready-model-source-v2/private-models.yaml
+  - --instruction-selection
+  - ${HARNESS}/private/instruction-selection/selection.json
+  - --compiler-library-root
+  - ${LIBRARY_ROOT}
+  - --compiler-library-contract
+  - ${ARTIFACTS}/selected-library-contract.json
+  - --compiler-library-contract-sha256
+  - ${LIBRARY_CONTRACT_SHA256}
+  - --driver
+  - codex
+  - --model
+  - gpt-6.1-sol
+  - --effort
+  - high
+  - --codex-max-subagents
+  - '16'
+  - --author-max-subagents
+  - '16'
+  - --codex-binary
+  - ${HOME}/.local/share/codex-0.162.0/bin/codex
+  - --codex-auth-source
+  - ${HOME}/.codex/auth.json
+  - --codex-home-root
+  - ${PRIVATE_ROOT}/codex-${RUN_ID}
+  - --sandbox
+  - bwrap
+  - --experiment
+  - full
+  - --schedule
+  - continuous
+  - --max-wall-s
+  - ${DURATION_S}
+  - --qa-timeout
+  - '1200'
+  - --model-budget-s
+  - '3600'
+  - --sim-max-jobs
+  - ${SIM_MAX_JOBS}
+  - --sim-per-capsule-timeout
+  - '1200'
+  - --grade-interval
+  - '120'
+  - --hidden-capsule-mode
+  - rtl
+  - --operator-errata
+  - ${ARTIFACTS}/author-guidance.md
+  - --live-conformance-feedback
+  - --run-id
+  - ${RUN_ID}
+  - --round-timeout
+  - ${DURATION_S}
+  - --joint-campaign
+  - ${ARTIFACTS}/policy.json
+  - --compiler-execution
+  - snapshot_external_v1
+  - --compiler-access
+  - full_compiler
+  - --full-compiler-root
+  - ${INPUTS}/full-compiler/python
+  - --full-compiler-manifest
+  - ${INPUTS}/full-compiler/manifest.json
+  - --full-compiler-manifest-sha256
+  - ${FULL_COMPILER_MANIFEST_SHA256}
+  - --max-rate-limit-waits
+  - ${RATE_LIMIT_WAITS}
+  - --fresh-backend
+  - --author-token-unbounded
+  environment:
+    LD_LIBRARY_PATH: ${HARNESS}/out/fire-aligned-spike-30mhz/runtime/lib
+    MERLIN_BACKGROUND_CODEGEN_SCALABILITY: '1'
+    MERLIN_BACKGROUND_FINISH_SNAPSHOT: '1'
+    MERLIN_BACKGROUND_PROGRESS: '1'
+    MERLIN_CAPSULE_CALIBRATION_S: '0'
+    # Admit a background grade's cases by information value (failing/stale first, cheap next).
+    MERLIN_CAPSULE_ORDER: information-first
+    MERLIN_CHIPYARD: ${HARNESS}/.tmp/chipyard-fire-aligned
+    MERLIN_CHIPYARD_GEMMINI_ROCKET: ${HARNESS}/.tmp/chipyard-fire-aligned
+    MERLIN_CLANG: ${WORKSPACE}/toolchains/llvm-a47bddcc/install/bin/clang-23
+    MERLIN_CODEX_CPUS: ${CPUS}
+    MERLIN_COMPUTE_CPUS: ${CPUS}
+    MERLIN_COMPUTE_CPU_SLOTS: ${RUN_STATE}/compute-slots
+    MERLIN_CORPUS_SEAL: ${RELEASE}/private/seal.json
+    MERLIN_DEVICE_BUILD_JOBS: '20'
+    MERLIN_EXT_CHIPYARD: ${HARNESS}/.tmp/chipyard-fire-aligned
+    MERLIN_FIRE_ALIGNED_SPIKE_RUNTIME: ${HARNESS}/out/fire-aligned-spike-30mhz/runtime
+    MERLIN_GEMMINI_GSIM_EMU: ${HARNESS}/.tmp/gsim-fire-aligned-provisional-v3/native/emulator
+    MERLIN_GRADE_START_TO_START: '1'
+    MERLIN_GRADE_WORKERS: '20'
+    MERLIN_GSIM_EMU_GEMMINI: ${HARNESS}/.tmp/gsim-fire-aligned-provisional-v3/native/emulator
+    MERLIN_GSIM_MAX_SLOTS: '20'
+    MERLIN_GSIM_SLOT_ROOT: ${RUN_STATE}/gsim-slots
+    MERLIN_JOINT_CORRECTNESS_ROSTER: '{"path": "${WORKSPACE}/tasks/el4-joint-large-feedback-20261021/.tmp/correctness-curriculum-v1/original-roster.json", "sha256": "23ad128f7be738b370c3b1e166678949f7b11c7d2cb8b571cde5bd3265f211e9"}'
+    MERLIN_JOINT_PERFORMANCE_SELECTION: ${PERFORMANCE_SELECTION_PIN}
+    MERLIN_M2M_DIR: ${WORKSPACE}/tasks/el4-publication-clean/model2mlir
+    MERLIN_M2M_PYTHON: ${HARNESS}/model2mlir/.venv/bin/python
+    MERLIN_MODEL2MLIR: ${WORKSPACE}/tasks/el4-publication-clean/model2mlir
+    MERLIN_MODEL_CHECK_BUNDLE: ${WORKSPACE}/tasks/el4-joint-large-feedback-20261021/private/gemmini/numerics/joint-v1
+    MERLIN_NATIVE_CALIBRATION_ADMISSION_REVIEW: '{"path": "${WORKSPACE}/tasks/megaphase-host-admission/merlin/out/artifacts/provisional-partial-row-selection-v1/combined-initial/continued-denial.json", "sha256": "fd90dbca9671613ebd6a6fe0aa246a6f4e6ae192752b3ad772570fe66f1a76d3"}'
+    MERLIN_NATIVE_CALIBRATION_LAUNCHER_REVIEW: '{"path": "${WORKSPACE}/tasks/el4-joint-performance-feedback-20261021/private/automatic-calibration-v1/launcher-correction-v1/review-v2.json", "sha256": "1664fc0619a5a330c2874a32df88c88877744bb9543b8426cb2f16b3205a5620"}'
+    MERLIN_OPERATOR_GRADE_PROCESSES: '0'
+    MERLIN_ORIGINAL_EMISSION_PROCESSES: '0'
+    MERLIN_OUT_ROOT: ${REPO}/out
+    MERLIN_PHASE1_PUBLIC_HOST_BOARD: gemmini_rocket_gsim_fire_aligned
+    MERLIN_PREPARATION_CPUS: ${CPUS}
+    MERLIN_PRIVATE_EXECUTION_WORKERS: '20'
+    MERLIN_REPO_ROOT: ${FRAMEWORK}
+    MERLIN_RTL_FACTS: ${RELEASE}/payload/experiment/rtl_facts/facts.json
+    MERLIN_SELFCHECK_MAX_CAPSULES: auto
+    MERLIN_SELFCHECK_ORDINARY_JOBS: '20'
+    MERLIN_SHAPE_COVERAGE_CACHE: '1'
+    MERLIN_SIMULATION_CERT_CACHE: '1'
+    MERLIN_SNAPSHOT_LEASE_CACHE: '1'
+    MERLIN_SNAPSHOT_LEASE_MAX_FILES: '65536'
+    MERLIN_SNAPSHOT_LEASE_MIN_BYTES: '65536'
+    MERLIN_SPIKE: ${HARNESS}/out/fire-aligned-spike-30mhz/runtime/bin/spike
+    MERLIN_SPIKE_MAX_SLOTS: '20'
+    MERLIN_TARGET_CONTRACT: ${RELEASE}/payload/experiment/contracts/target_contract.yaml
+    MERLIN_TARGET_EXPERIMENT: ${RELEASE}/payload/experiment/target_experiment.yaml
+    MKL_NUM_THREADS: '1'
+    OMP_NUM_THREADS: '1'
+    OPENBLAS_NUM_THREADS: '1'
+    PATH: ${WORKSPACE}/tasks/gemmini-shared-phase1-20261021/.tmp/phase1-runtime-v1/venv/bin:${HARNESS}/merlin/.venv/bin:${WORKSPACE}/hw/bubblewrap-0.11.0/bin:${WORKSPACE}/toolchains/llvm-a47bddcc/install/bin:${HOME}/.local/share/codex-0.162.0/bin:/usr/local/bin:/usr/bin:/bin
+    PYTHONDONTWRITEBYTECODE: '1'
+    PYTHONPATH: ${FRAMEWORK}/src:${FRAMEWORK}/packages/merlin-experiments/src:${FRAMEWORK}/packages/merlin-timing/src:${FRAMEWORK}/packages/merlin-mining/src
+    PYTHONUNBUFFERED: '1'
+    TMPDIR: ${TASK}/.tmp
+    MERLIN_SELFCHECK_VARIANT_JOBS: '20'
+    MERLIN_SELFCHECK_BROKER_JOBS: '2'
+    HOME: ${HOME}
+    USER: ${USER}
+    LOGNAME: ${USER}
+    LANG: C.UTF-8
+    MERLIN_WORK_DIR: ${FRAMEWORK}
+    # Private content store of this run (not shared with preparation or other runs).
+    MERLIN_BUNDLE_CAS: ${RUN_STATE}/bundle-cas
+
+preflight:
+  script: ${OPERATOR_TMP}/preflight-${RUN_ID}.sh
+  run_script: ${OPERATOR_TMP}/run-${RUN_ID}.sh
+  log: ${OPERATOR_TMP}/preflight-${RUN_ID}.log
+  timeout_s: 1500
+  # Earlier preflight state moves aside (never deleted) before a new preflight; its sandbox input
+  # copies (digests kept in bundle_inputs/snapshot.json) are dropped then, or as soon as it passes.
+  retire_into: ${OPERATOR_TMP}/old-preflight-${RUN_ID}
+  retire:
+  - path: ${REPO}/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/${PREFLIGHT_RUN_ID}
+    as: ws
+    drop: [bundle_inputs/external, bundle_inputs/repo]
+  - path: ${REPO}/out/runs/gemmini/phase1/${PREFLIGHT_RUN_ID}
+    as: run
+
+check:
+  log: ${ARTIFACTS}/campaign.log
+  run_dir: ${REPO}/out/runs/gemmini/phase1/${RUN_ID}
+  workspace: ${REPO}/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/${RUN_ID}/workspace
+  interval_s: 60
+  disk_path: ${WORKSPACE}
+  disk_min_gib: 50
+  # Each marker is a sequence of fragments that must occur in order (case-insensitive).
+  error_markers:
+  - [grade failed]
+  - [grade error]
+  - [traceback]
+  - [enospc]
+  - [refus, lease]
+  response_keys:
+  - performance_brief
+  - model_calibration
+  - calibrated
+  - development_headroom
+  console:
+    python: ${WORKSPACE}/tasks/el4-command-console-20261023/merlin/.venv/bin/python
+    pythonpath: src:packages/merlin-experiments/src
+    cwd: ${REPO}
+    timeout_s: 400
+    args: [--task, '${TASK}', --experiment, '${RUN_ID}', --operator-private, --dump, --no-placement]
+    sections: [grader, tools, performance, certification, integrity]

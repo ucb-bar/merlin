@@ -121,7 +121,9 @@ void _mlir_ciface_borrowed(M*a,M*s,M*out,M*w){
  // Initialize the private state each call; repeated use shares only bytes.
  for(int i=0;i<37;i++)((uint8_t*)w->aligned)[i]=(uint8_t)(i+5);
  for(int i=0;i<7;i++)((int32_t*)s->aligned)[i]=i;
- for(int i=0;i<4;i++)((int8_t*)out->aligned)[i]=(int8_t)(((int8_t*)a->aligned)[a->offset+i*a->stride[0]]+((uint8_t*)w->aligned)[i]);
+ for(int i=0;i<4;i++){
+  ((int8_t*)out->aligned)[i]=(int8_t)(((int8_t*)a->aligned)[a->offset+i*a->stride[0]]+((uint8_t*)w->aligned)[i]);
+ }
  calls++;
 }
 """)
@@ -188,5 +190,26 @@ def test_different_workspace_capacities_share_maximum_owned_extent():
     assert result["allocations"] == 1
     owner = module.body.block.first_op
     calls = [op for op in owner.body.block.ops if isinstance(op, func.CallOp)]
+    assert calls[0].arguments[-1] is calls[1].arguments[-1]
+    module.verify()
+
+
+def test_explicit_stack_pool_keeps_owner_abi_and_checks_padding_before_mutation():
+    module, reports = fixture()
+    public = module.body.block.first_op
+    before_type, before = public.function_type, text(module)
+    # 37 data bytes and up to 63 alignment bytes must both be budgeted.
+    with pytest.raises(ValueError, match="exceeds"):
+        pool_private_writer_workspaces(module, reports, stack_budget_bytes=99)
+    assert text(module) == before
+    result = pool_private_writer_workspaces(module, reports, stack_budget_bytes=100)
+    assert public.function_type == before_type
+    assert result["storage"] == "invocation_stack"
+    assert result["maximum_storage_bytes_including_alignment"] == 100
+    assert result["release"] == "owner_return_stack_lifetime"
+    assert result["final_frame_admission"] == "not_established"
+    assert len([op for op in public.body.block.ops if isinstance(op, memref.AllocaOp)]) == 1
+    assert not any(isinstance(op, memref.AllocOp) for op in public.body.block.ops)
+    calls = [op for op in public.body.block.ops if isinstance(op, func.CallOp)]
     assert calls[0].arguments[-1] is calls[1].arguments[-1]
     module.verify()

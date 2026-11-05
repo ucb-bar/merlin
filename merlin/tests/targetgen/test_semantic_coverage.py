@@ -282,7 +282,7 @@ def test_a_declined_offload_is_reported_rather_than_silently_permitted():
     wanted = [
         ("model_slices", "GC5_fused_matmul_bias_bf16_pt"),  # bf16 contraction, declared family
         ("model_slices", "GF2_attn_full_bf16_pt"),  # attention: family NOT declared
-        ("layers", "B3_conv2d_im2col_i8"),
+        ("layers", "B3_conv2d_i8"),
     ]  # int8, accelerates normally
     caps = []
     for sub, name in wanted:

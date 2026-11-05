@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
 
+from merlin.perf.command_buffer_store import CommandBufferIntegrityError, load_command_buffer
 from merlin.perf.envelope import Peak
-from merlin.runtime.commandbuffer import batched_matmul_geometry
 
 COMPUTE = "compute"
 
@@ -32,137 +29,127 @@ class MeasuredPoint:
         return self.macs / self.cycles
 
 
-def harvest_measured_points(run_root: Path) -> tuple[list[MeasuredPoint], list[str]]:
-    """Recover (exact work, measured cycles) pairs a completed run already produced.
+def public_baseline_measurement(raw, *, corpus, member, package_sha256, certificate, decision):
+    """Price only a fresh original public baseline reply, never saved run trees.
 
-    The work is the compiler's OWN emitted command buffer priced by
-    :func:`merlin.perf.work_volume.work_from_command_buffer`, so it is what the program actually asks
-    the array to do, not a shape someone declared. A buffer whose work is a lower bound is skipped
-    rather than counted: a rate built on an understated numerator would flatter every candidate.
-
-    Returns the points and the reasons any result was skipped, because a corpus that silently lost
-    half its members is indistinguishable from one that never had them.
+    The normal caller owns this reply. Exact source, submission, certificate and
+    execution joins are still required; directory names and asserted cycle values
+    alone supply no calibration. The useful work is the frozen workload's work,
+    not extra commands a compiler could declare without executing.
     """
-    from merlin.perf.work_volume import work_from_command_buffer  # noqa: PLC0415
+    import math
 
-    points: dict[str, MeasuredPoint] = {}
-    skipped: list[str] = []
-    for result in sorted(Path(run_root).rglob("capsule_result.json")):
-        try:
-            document = json.loads(result.read_text(encoding="utf-8"))
-        except Exception:  # noqa: BLE001 - an unreadable result is reported, never counted
-            skipped.append(f"{result.parent.name}: capsule result is unreadable")
-            continue
-        cycles = ((document.get("tiers") or {}).get("L3") or {}).get("cycles")
-        if not isinstance(cycles, int) or isinstance(cycles, bool) or cycles <= 0:
-            continue  # no cycle-oracle verdict here; not an error, just not a measured point
-        buffer_path = result.parent / "generated" / "command_buffer.json"
-        if not buffer_path.is_file():
-            skipped.append(
-                f"{result.parent.name}: measured {cycles} cycles but emitted no "
-                "command buffer, so its work cannot be priced"
-            )
-            continue
-        try:
-            command_buffer = json.loads(buffer_path.read_text(encoding="utf-8"))
-            work = work_from_command_buffer(command_buffer)
-        except Exception as exc:  # noqa: BLE001
-            skipped.append(f"{result.parent.name}: command buffer did not price ({type(exc).__name__})")
-            continue
-        if work.is_lower_bound or not work.exact_macs or work.exact_macs <= 0:
-            skipped.append(
-                f"{result.parent.name}: work is a lower bound or zero "
-                f"({len(work.refusals)} refusal(s)), so no rate may be built from it"
-            )
-            continue
-        points.setdefault(
-            result.parent.name,
-            MeasuredPoint(
-                result.parent.name,
-                int(work.exact_macs),
-                cycles,
-                str(result.parent),
-                _command_reduction_depths(command_buffer),
-            ),
+    from merlin.benchharness import hash_tree
+    from merlin.perf.work_volume import command_buffer_evidence
+
+    from . import contracts as K
+    from . import corpus as C
+    from . import feedback_metrics as FM
+    from . import gsim_gate as G
+
+    if (
+        type(corpus) is not C.FrozenPerformanceCorpus
+        or member not in corpus.capsules
+        or member.descriptor.get("label") != "dev"
+    ):
+        return None, None
+    C.verify_frozen_performance_corpus(corpus)
+    if K.mapping_file(member.source_dir / "capsule.yaml", yaml_file=True) != member.descriptor:
+        return None, None
+    execution, guards, measured = (raw.get(key) or {} for key in ("execution", "byte_guards", "measurement"))
+    if (
+        raw.get("schema") != "paired_arm4_raw_execution_v2"
+        or execution.get("phase") != "tuning"
+        or execution.get("arm") != "baseline"
+        or (execution.get("family"), execution.get("capsule")) != (member.family, member.capsule)
+        or execution.get("package_sha256") != package_sha256
+        or execution.get("workload_sha256") != decision.workload_sha256
+        or execution.get("gsim_decision") != decision.to_dict()
+        or not package_sha256
+        or guards.get("package_before") != package_sha256
+        or guards.get("package_after") != package_sha256
+        or guards.get("capsule_before") != member.source_sha256
+        or guards.get("capsule_after") != member.source_sha256
+        or measured.get("status") != "pass"
+        or measured.get("numeric") != "pass"
+        or ((measured.get("per_sim") or {}).get("spike") or {}).get("correct") is not True
+        or ((measured.get("per_sim") or {}).get("gsim") or {}).get("correct") is not True
+        or measured.get("failure")
+        or measured.get("measurement_identity_refusals")
+        or hash_tree(member.source_dir)["sha256"] != member.source_sha256
+    ):
+        return None, None
+    identity = measured.get("measurement_identity") or {}
+    toolchain = identity.get("toolchain") or {}
+    if (identity.get("inputs") or {}).get("sha256") != member.source_sha256 or toolchain.get(
+        "frozen_submission_sha256"
+    ) != package_sha256:
+        return None, None
+    tier = ((measured.get("execution_outcome") or {}).get("gsim") or {}).get("tier_outcome") or {}
+    observed = (measured.get("gsim_execution") or {}).get("gsim") or {}
+    cycles = tier.get("cycles")
+    if (
+        tier.get("status") != "pass"
+        or tier.get("measured_now") is not True
+        or tier.get("carried")
+        or tier.get("derived_from_rtl") is not True
+        or tier.get("cycle_accurate") is not True
+        or observed.get("reused_measurement") is not False
+        or type(cycles) is not int
+        or cycles <= 0
+        or observed.get("cycles") != cycles
+        or decision.selected_engine != "gsim"
+        or not decision.use_gsim
+        or decision.phase != "development_correctness"
+        or decision.certificate_sha256 != certificate.sha256
+    ):
+        return None, None
+    try:
+        if G.validate_execution(certificate, decision, observed).get("admitted") is not True:
+            return None, None
+    except (ValueError, G.GsimGateError):
+        return None, None
+    active = (tier.get("timing") or {}).get("sim_active_s")
+    cost = (
+        float(active)
+        if type(active) in (int, float)
+        and math.isfinite(active)
+        and active > 0
+        and (tier.get("concurrency") or {}).get("workers") == 1
+        else None
+    )
+    artifact = measured.get("command_buffer_artifact") or {}
+    try:
+        command = load_command_buffer(artifact)
+    except CommandBufferIntegrityError:  # changed stored bytes: no admissible work identity
+        return None, None
+    work, checked = command_buffer_evidence(command, compiler_provenance="original public baseline reply")
+    if (
+        not isinstance(command, Mapping)
+        or checked.get("artifact_sha256") != artifact.get("artifact_sha256")
+        or checked.get("artifact_sha256") != (identity.get("program") or {}).get("sha256")
+        or work != measured.get("work_volume")
+    ):
+        return None, None
+    macs, _ = FM.declared_capsule_macs(member.descriptor)
+    depths, _ = FM.declared_reduction_depths(member.descriptor)
+    point = (
+        MeasuredPoint(
+            f"{member.family}/{member.capsule}", macs, cycles, f"public source sha256:{member.source_sha256}", depths
         )
-    return sorted(points.values(), key=lambda p: p.capsule), skipped
+        if type(macs) is int and macs > 0 and depths
+        else None
+    )
+    return point, cost
 
 
-def _command_reduction_depths(command_buffer: Mapping[str, Any]) -> tuple[int, ...]:
-    """Exact contraction depths from the same command buffer whose work was priced.
+def harvest_measured_points(run_root):
+    """Inspection compatibility: saved run trees cannot establish qualified points.
 
-    A rate reached at deep K is not an attainable rate for a shallow-K member on a machine whose
-    fixed issue/fill cost is amortised along K.  Keep this small piece of geometry with every point
-    so consumers can compare like with like.  Unsupported geometry returns no signature and must
-    not be guessed into a cohort.
+    Historical diagnostic consumers still call this entry. Keep their result
+    explicitly UNKNOWN rather than restoring an unscoped filesystem harvest.
     """
-    tensors = command_buffer.get("tensors")
-    commands = command_buffer.get("commands")
-    if not isinstance(tensors, Mapping) or not isinstance(commands, Sequence):
-        return ()
-
-    def shape(name: Any) -> tuple[int, ...] | None:
-        spec = tensors.get(name) if isinstance(name, str) else None
-        raw = spec.get("shape") if isinstance(spec, Mapping) else None
-        if (
-            not isinstance(raw, Sequence)
-            or isinstance(raw, (str, bytes))
-            or not raw
-            or any(not isinstance(v, int) or isinstance(v, bool) or v <= 0 for v in raw)
-        ):
-            return None
-        return tuple(int(v) for v in raw)
-
-    handles: dict[str, str] = {}
-    depths: list[int] = []
-    for raw in commands:
-        if not isinstance(raw, Mapping):
-            return ()
-        opcode = str(raw.get("opcode") or "")
-        operands = raw.get("operands") if isinstance(raw.get("operands"), Mapping) else {}
-        if opcode == "RES_PACK":
-            src, dst = operands.get("src"), operands.get("dst")
-            if isinstance(src, str) and isinstance(dst, str) and shape(src):
-                handles[dst] = src
-            continue
-        if opcode in ("MATMUL", "MATMUL_RESIDENT"):
-            rhs = operands.get("rhs")
-            if opcode == "MATMUL_RESIDENT":
-                rhs = handles.get(rhs) if isinstance(rhs, str) else None
-            lhs_shape, rhs_shape = shape(operands.get("lhs")), shape(rhs)
-            if not lhs_shape or not rhs_shape or len(lhs_shape) != 2 or len(rhs_shape) != 2:
-                return ()
-            depths.append(lhs_shape[1])
-        elif opcode == "BATCHED_MATMUL":
-            try:
-                geometry = batched_matmul_geometry(
-                    shape(operands.get("a")),
-                    shape(operands.get("w")),
-                    shape(operands.get("dst")),
-                    op="BATCHED_MATMUL reduction depth",
-                )
-            except ValueError:
-                return ()
-            depths.append(geometry.k)
-        elif opcode == "ATTENTION_QK":
-            lhs_shape = shape(operands.get("q"))
-            if not lhs_shape or len(lhs_shape) != 2:
-                return ()
-            depths.append(lhs_shape[1])
-        elif opcode == "ATTENTION_PV":
-            lhs_shape = shape(operands.get("p"))
-            if not lhs_shape or len(lhs_shape) != 2:
-                return ()
-            depths.append(lhs_shape[1])
-        elif opcode == "CONV2D":
-            weight = operands.get("weight")
-            if isinstance(weight, str) and weight in handles:
-                weight = handles[weight]
-            weight_shape = shape(weight)
-            if not weight_shape or len(weight_shape) != 2:
-                return ()
-            depths.append(weight_shape[0])
-    return tuple(sorted(depths))
+    return [], ["saved run trees are ineligible; calibration requires original public baseline replies"]
 
 
 def achievable_ceiling(points: Sequence[MeasuredPoint], *, provenance: str) -> Peak:

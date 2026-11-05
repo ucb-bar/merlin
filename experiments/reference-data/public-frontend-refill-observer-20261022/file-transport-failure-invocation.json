@@ -1,0 +1,99 @@
+{
+  "argv": [
+    "retained/tasks/phase1-harness-v2/.tmp/bubblewrap-build/bwrap",
+    "--unshare-all",
+    "--unshare-user",
+    "--as-pid-1",
+    "--cap-drop",
+    "ALL",
+    "--disable-userns",
+    "--assert-userns-disabled",
+    "--die-with-parent",
+    "--new-session",
+    "--clearenv",
+    "--ro-bind",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-v1/attempt-v2/native-view-1792672820232870322/image",
+    "/",
+    "--ro-bind",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf",
+    "/run/merlin/input.elf",
+    "--bind",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/native-call-ymcp3jzo/work",
+    "/run/work",
+    "--bind",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/native-call-ymcp3jzo/tmp",
+    "/tmp",
+    "--chdir",
+    "retained/tasks/phase1-harness-v2/merlin/out/artifacts/probes/gemmini/fire-aligned-30mhz/launch-inputs",
+    "--",
+    "/bin/bash",
+    "--noprofile",
+    "--norc",
+    "-c",
+    "printf READY >&3070; read -r native_go <&3070; [[ $native_go == GO ]] || exit 126; exec 3070>&-; exec /usr/bin/env -- \"$@\"",
+    "native-runtime",
+    "LD_LIBRARY_PATH=retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/lib",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-v1/emulator",
+    "/run/merlin/input.elf",
+    "+max-cycles=20000000",
+    "+refill-trace=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-v1/attempt-v2/events.jsonl"
+  ],
+  "cwd": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2",
+  "dependencies": [
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-v1/attempt-v2/native-view-1792672820232870322/imageretained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-v1/emulator",
+      "sha256": "5cdcff32f10744b9513a6ea125dcbbcf08583922dddc488a1bf45061f396ff6a"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/src/merlin/runtime/_native_files.py",
+      "sha256": "e11645ae1b27365ef58fcb8b758910b5a113948c076d328dc55c6bb3d5d9b840"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/src/merlin/runtime/_native_launch.py",
+      "sha256": "a4a630f5a8c1033a053571bdcf12877d5c7aad44b945fe89cb0ba27f5eccbb96"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/src/merlin/runtime/native_runtime.py",
+      "sha256": "0f8b85e4530e205ebf47c30375075783997b40846ae40c8b5609df6ae08e79e5"
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/bubblewrap-build/bwrap",
+      "sha256": "3a8bb6b2c36fe79d6c62a6d33484e4953ba4d798c224f67e08a397adb1bbb113"
+    }
+  ],
+  "dependencies_unchanged": true,
+  "environment": {
+    "keys": [],
+    "schema": "merlin.process_environment.v1",
+    "scope": "complete effective mapping; values withheld; transitive dependencies unproved",
+    "sha256": "1aa2160350e4c4491b866875fc6d00c0ead6647dbfb5ff7c239a0e41fb7afeab"
+  },
+  "executable": {
+    "path": "retained/tasks/phase1-harness-v2/.tmp/bubblewrap-build/bwrap",
+    "sha256": "3a8bb6b2c36fe79d6c62a6d33484e4953ba4d798c224f67e08a397adb1bbb113"
+  },
+  "executable_unchanged": true,
+  "finished_ns": 1792672930466904341,
+  "inputs": [
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf",
+      "sha256": "cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e"
+    }
+  ],
+  "inputs_unchanged": true,
+  "kind": "subprocess",
+  "outputs": [],
+  "returncode": 0,
+  "schema": "merlin.invocation_record.v1",
+  "stage": "native_runtime_process",
+  "started_ns": 1792672908926869470,
+  "status": "completed",
+  "stderr": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/invocations/9b1ea41712dd42dab8aab03d574bc60d/stderr.bin",
+    "sha256": "e8e92bb2539228a42739750a8574572ee22dcc70a43441e4bd0fb8d2482b98ac"
+  },
+  "stdout": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/invocations/9b1ea41712dd42dab8aab03d574bc60d/stdout.bin",
+    "sha256": "3b16012ebdf9a87f409ca298c1801dbd0324ed09a6ab61d0912aafe0419bb65a"
+  }
+}

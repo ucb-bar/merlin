@@ -4,12 +4,9 @@
 # constrained); correctness is proven by the command-buffer + oracle gates, not by op names.
 version: "0.1"
 target_dialect:
-  recommended_namespace: gemmini
-  recommended_ops: [gemmini.pack, gemmini.matmul, gemmini.commit, gemmini.release]
-  recommended_types: ["!gemmini.resident_tensor", "!gemmini.accumulator"]
   note: >-
-    Op/type names are a recommendation, not a gate. The runner records lowered.target.mlir as
-    evidence but does not assert specific ops — a package is free to choose its own target IR.
+    The package chooses its own internal IR and op/type names. The runner records
+    lowered.target.mlir as evidence; internal naming is not a gate.
 required_outputs:
   - id: lowered_target_mlir
     produced_by: lower_interface_to_target

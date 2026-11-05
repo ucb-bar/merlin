@@ -488,28 +488,28 @@ def _validate_layout(receipt: dict) -> None:
         _relative(relative)
     if len(set(roots)) != len(roots) or directories != sorted(set(directories)):
         raise SnapshotError("duplicate snapshot source inventory")
-    for index, relative in enumerate(roots):
+    root_paths = frozenset(PurePosixPath(relative) for relative in roots)
+    root_ancestors = frozenset(parent for root in root_paths for parent in root.parents)
+    alias_paths = frozenset(PurePosixPath(relative) for relative in aliases)
+    alias_ancestors = frozenset(parent for alias in alias_paths for parent in alias.parents)
+
+    def within_roots(path):
+        return path in root_paths or any(parent in root_paths for parent in path.parents)
+
+    for relative in roots:
         candidate = PurePosixPath(relative)
         if relative not in directories or candidate.parts[0] in {"out", ".venv", "third_party"}:
             raise SnapshotError(f"invalid snapshot source root: {relative}")
-        if any(
-            candidate.is_relative_to(PurePosixPath(other)) or PurePosixPath(other).is_relative_to(candidate)
-            for other in roots[index + 1 :]
-        ):
+        if candidate in root_ancestors or any(parent in root_paths for parent in candidate.parents):
             raise SnapshotError("overlapping snapshot source roots")
-    root_paths = [PurePosixPath(relative) for relative in roots]
-    if any(
-        relative not in ROOT_FILES and not any(PurePosixPath(relative).is_relative_to(owner) for owner in root_paths)
-        for relative in files
-    ):
+    if any(relative not in ROOT_FILES and not within_roots(PurePosixPath(relative)) for relative in files):
         raise SnapshotError("snapshot files outside declared source roots")
     if any(
-        not any(
-            PurePosixPath(relative).is_relative_to(owner) or owner.is_relative_to(PurePosixPath(relative))
-            for owner in root_paths
-        )
-        and not any(PurePosixPath(alias).is_relative_to(PurePosixPath(relative)) for alias in aliases)
-        for relative in directories
+        not within_roots(path)
+        and path not in root_ancestors
+        and path not in alias_paths
+        and path not in alias_ancestors
+        for path in map(PurePosixPath, directories)
     ):
         raise SnapshotError("snapshot directories outside declared source roots")
     if set(links) - {"out", ".venv", "third_party"} or any(
@@ -525,9 +525,7 @@ def _validate_layout(receipt: dict) -> None:
             or relative in links
             or target not in directories
             or PurePosixPath(relative).parts[0] in {"out", ".venv", "third_party"}
-            or any(
-                PurePosixPath(relative).is_relative_to(PurePosixPath(other)) for other in aliases if other != relative
-            )
+            or any(parent in alias_paths for parent in PurePosixPath(relative).parents)
         ):
             raise SnapshotError("invalid snapshot internal aliases")
     if any(

@@ -19,6 +19,12 @@ by a character tokenizer with bracket depth, exactly as the grammar nests them.
 
 from __future__ import annotations
 
+import hashlib
+import io
+import os
+import sys
+import threading
+from collections import OrderedDict
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,36 +43,116 @@ _DRIVEN_DECLS = ("wire", "output")
 
 # ------------------------------------------------------------------------------------------ reading
 
+_BODY_CACHE_BYTES = 16 * 1024 * 1024
+_BODY_CACHE_ENTRIES = 16
+_body_cache: OrderedDict = OrderedDict()
+_body_cache_bytes = 0
+_body_cache_lock = threading.RLock()
+
+
+def _reset_body_cache() -> None:
+    global _body_cache, _body_cache_bytes, _body_cache_lock
+    _body_cache = OrderedDict()
+    _body_cache_bytes = 0
+    _body_cache_lock = threading.RLock()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_body_cache)
+
+
+class _DigestReader(io.RawIOBase):
+    """Hash exactly the raw bytes consumed by the ordinary text reader."""
+
+    def __init__(self, source):
+        self.source = source
+        self.digest = hashlib.sha256()
+
+    def readable(self):
+        return True
+
+    def readinto(self, buffer):
+        count = self.source.readinto(buffer)
+        if count:
+            self.digest.update(memoryview(buffer)[:count])
+        return count
+
+
+def _body_cache_size(value) -> int:
+    return sys.getsizeof(value) + (
+        sum(_body_cache_size(item) for item in value) if isinstance(value, (tuple, frozenset)) else 0
+    )
+
+
+def _cache_bodies(key, bodies) -> None:
+    global _body_cache_bytes
+    frozen = tuple((name, tuple(lines)) for name, lines in bodies.items())
+    # Include fixed per-entry bookkeeping, as well as the complete retained
+    # key/line objects. Never retain the large source text or a verdict.
+    size = _body_cache_size((key, frozen)) + 256
+    if size > _BODY_CACHE_BYTES:
+        return
+    with _body_cache_lock:
+        previous = _body_cache.pop(key, None)
+        if previous is not None:
+            _body_cache_bytes -= previous[1]
+        _body_cache[key] = (frozen, size)
+        _body_cache_bytes += size
+        while len(_body_cache) > _BODY_CACHE_ENTRIES or _body_cache_bytes > _BODY_CACHE_BYTES:
+            _, (_, removed_size) = _body_cache.popitem(last=False)
+            _body_cache_bytes -= removed_size
+
 
 def read_module_bodies(fir: str | Path, names: Iterable[str]) -> dict[str, list[tuple[int, str]]]:
     """``{module: [(line_no, raw_line), ...]}`` for each requested module that the design defines.
 
-    Streams the file once: an elaboration is tens of megabytes, and only the requested bodies are kept.
+    Reopens and fully hashes the actual file on every call. Identical bytes and
+    requested names may reuse only immutable selected lines, never source or
+    qualification verdicts. Cache misses hash the bytes actually parsed, too.
     A module that is not defined is simply absent from the result -- the caller decides whether that is
     an UNKNOWN, since only it knows whether it asked for something the design must have.
     """
-    wanted = set(names)
+    wanted = frozenset(names)
+    with open(fir, "rb") as source:
+        digest = hashlib.file_digest(source, "sha256").digest()
+    key = (digest, wanted)
+    with _body_cache_lock:
+        cached = _body_cache.get(key)
+        if cached is not None:
+            _body_cache.move_to_end(key)
+            return {name: list(lines) for name, lines in cached[0]}
+    with open(fir, "rb") as source:
+        reader = _DigestReader(source)
+        with io.TextIOWrapper(io.BufferedReader(reader), encoding="utf-8", errors="replace") as text:
+            bodies = _read_module_lines(text, wanted)
+            # The file may have changed since the lookup hash. Store only the
+            # digest of the complete stream that produced these exact lines.
+            parsed_digest = reader.digest.digest()
+    _cache_bodies((parsed_digest, wanted), bodies)
+    return bodies
+
+
+def _read_module_lines(lines: Iterable[str], wanted: frozenset[str]) -> dict[str, list[tuple[int, str]]]:
     out: dict[str, list[tuple[int, str]]] = {}
     current: str | None = None
-    with open(fir, encoding="utf-8", errors="replace") as fh:
-        for no, raw in enumerate(fh, start=1):
-            line = raw.rstrip("\n")
-            stripped = line.lstrip(" ")
-            indent = len(line) - len(stripped)
-            if indent == 2 and stripped.startswith(_TOP_OPENERS):
+    for no, raw in enumerate(lines, start=1):
+        line = raw.rstrip("\n")
+        stripped = line.lstrip(" ")
+        indent = len(line) - len(stripped)
+        if indent == 2 and stripped.startswith(_TOP_OPENERS):
+            current = None
+            if stripped.startswith(_MODULE_OPENERS):
+                head = stripped.split(":", 1)[0].split()
+                name = head[-1] if head else ""
+                if name in wanted:
+                    current = name
+                    out[name] = [(no, line)]
+            continue
+        if current is not None:
+            if indent < 4 and stripped:
                 current = None
-                if stripped.startswith(_MODULE_OPENERS):
-                    head = stripped.split(":", 1)[0].split()
-                    name = head[-1] if head else ""
-                    if name in wanted:
-                        current = name
-                        out[name] = [(no, line)]
                 continue
-            if current is not None:
-                if indent < 4 and stripped:
-                    current = None
-                    continue
-                out[current].append((no, line))
+            out[current].append((no, line))
     return out
 
 

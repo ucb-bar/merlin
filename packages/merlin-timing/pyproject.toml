@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=70.1", "tomli>=2; python_version < '3.11'"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "merlin-timing"
+version = "0.1.0"
+description = "Portable streaming timing models and explicitly scoped calibration tools"
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+dependencies = []
+
+[project.scripts]
+spike-timing = "merlin_timing.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["merlin_timing*"]
+namespaces = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
+
+[tool.merlin.portable-sources]
+destination = "merlin_timing/_portable"
+files = ["include/merlin_timing/engine.hpp", "CMakeLists.txt", "tests/test_engine.cpp", "README.md", "LICENSE", "include/merlin_timing/reservations.hpp", "tests/test_reservations.cpp"]

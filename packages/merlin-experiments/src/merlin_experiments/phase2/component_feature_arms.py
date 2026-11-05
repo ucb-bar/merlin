@@ -22,6 +22,7 @@ from merlin.perf.component_cost import ComponentCostRegion, ComponentFeatureObse
 from .component_experiment import RuntimeGrant
 from .component_feature_inputs import PreparedFeatureInputs, pin, plain
 from .contracts import StageGateError, document_sha256, exact_tree_record
+from .external_resources import bounded_tool_scratch
 from .feedback_protocol import FeedbackValueLimits, _syntax_depth, encode_feedback_value
 
 _TOKENS = {
@@ -420,18 +421,19 @@ class IndependentArmFeatures:
         argv = self._argv(compiler, source, prepared, request, product)
         deps = tuple(Path(path) for path, _ in self.command.source_pins)
         native_inputs = (*files, source, prepared, request)
-        result = I.run(
-            argv,
-            directory=call,
-            stage="independent_feature_arm",
-            cwd=compiler,
-            env=dict(self.command.environment),
-            inputs=native_inputs,
-            outputs=(product,),
-            dependencies=deps,
-            capture_output=True,
-            timeout=min(remaining, 600),
-        )
+        with bounded_tool_scratch(argv, owner=call) as command:
+            result = I.run(
+                command,
+                directory=call,
+                stage="independent_feature_arm",
+                cwd=compiler,
+                env=dict(self.command.environment),
+                inputs=native_inputs,
+                outputs=(product,),
+                dependencies=deps,
+                capture_output=True,
+                timeout=min(remaining, 600),
+            )
         result.check_returncode()
         if time.monotonic() >= deadline:
             raise StageGateError("per-arm feature extraction returned after its original deadline")

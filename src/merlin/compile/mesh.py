@@ -489,6 +489,17 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int, 
                     # cert tier comes to stand alone, and refusing here is what makes the screen a gate
                     # rather than a decoration. The tile is counted a FAILURE, not skipped: its layer
                     # is unproven either way, and an excluded tile would leave n_passed == n_tiles.
+                    if rec["screen"]["status"] == "oracle_unavailable":
+                        # An absent screen oracle proves nothing about the tile; count it UNAVAILABLE so an
+                        # environment without the screen is never reported as a compiler failure.
+                        out["n_tiles"] += 1
+                        out["n_unavailable"] += 1
+                        rec["status"] = "oracle_unavailable"
+                        rec["reason"] = (
+                            f"the {screen_tier} {screen_sim} screen oracle is unavailable: {rec['screen']['reason']}"
+                        )
+                        out["per_tile"].append(rec)
+                        continue
                     if rec["screen"]["status"] != "pass":
                         out["n_tiles"] += 1
                         out["n_failed"] += 1

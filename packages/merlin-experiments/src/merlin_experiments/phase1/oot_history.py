@@ -99,6 +99,27 @@ def record_round(run_dir: Path, record: O.CommitRecord | None, *, label: str, ke
     )
 
 
+def verify_turn_end(run_dir: Path, submission: Path, commit: str | None) -> dict:
+    """Void a turn if live source differs from its final agent-source OOT commit."""
+    if not commit:
+        raise O.OotRepoError("turn ended without an OOT source commit")
+    repo = repo_path(run_dir)
+    if O.resolve(repo, "HEAD") != commit:
+        raise O.OotRepoError("turn's OOT commit is no longer the final source commit")
+    committed = O.tree_digest(repo, commit)
+    live = O.package_digest(submission)
+    record = {
+        "commit": commit,
+        "committed_tree_sha256": committed,
+        "live_tree_sha256": live,
+        "matched": committed == live,
+    }
+    (Path(run_dir) / "turn_end_provenance.json").write_text(json.dumps(record, indent=2) + "\n")
+    if committed != live:
+        raise O.OotRepoError("submission changed outside the graded agent-source OOT commit")
+    return record
+
+
 def freeze(run_dir: Path, submission: Path) -> dict | None:
     """Tag ``frozen`` on the exact frozen submission, committing it first if no round holds it."""
     repo = repo_path(run_dir)

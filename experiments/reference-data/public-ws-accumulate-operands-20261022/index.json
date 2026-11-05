@@ -1,0 +1,251 @@
+{
+  "annotated_runs": 2,
+  "author_grants": false,
+  "build": {
+    "original_sha256": "3484162b366c441f25a251fcde46fd7f6ecb340ee15f7212b302ab0e17ee95c1",
+    "projection": {
+      "path": "build.json",
+      "sha256": "1c8ba05a3369da62f1d2f5f8370d8001c4b4974179e2dd7b8b56d28c96f69997"
+    },
+    "projection_rule": "Only absolute workspace/system path strings made portable; scalar evidence and identity hashes preserved."
+  },
+  "comparisons": [
+    {
+      "all_output_bytes_match": true,
+      "capsule": "SY_kdepth_fits_double",
+      "estimate_delta": -9945,
+      "estimated_cycles": 29459,
+      "input_binding": {
+        "begin_pc": 2147484014,
+        "elf_sha256": "851c0bbaff87d4d8e3bc7529bcd6c71276087f074347e063adc9c9a4317965ab",
+        "end_pc": 2147484058,
+        "evidence_sha256": "4d483e4d071dd3dc2cd6c9d93ef8373dace75c54df8b445fe45fdeb3c062c0d7",
+        "input_sha256": "851c0bbaff87d4d8e3bc7529bcd6c71276087f074347e063adc9c9a4317965ab",
+        "occurrence": 0,
+        "schema": "merlin.spike_scope_binding.v1",
+        "scope_sha256": "82dae761bda30488a6760c9ae51764069a6ed9e60544661e90f883477d273525"
+      },
+      "observation": {
+        "original_sha256": "51bd6ac642c0cb88f49ad2f062d12ab13696d860d045108087375541483972a6",
+        "projection": {
+          "path": "SY_kdepth_fits_double/observation.json",
+          "sha256": "cffdead3fcc2f6d36db5dc027dadeaa5fe7ed1649c779c6e7ae74475c2021afd"
+        },
+        "projection_rule": "Only absolute workspace/system path strings made portable; scalar evidence and identity hashes preserved."
+      },
+      "ordinary_and_annotated_console_equal": true,
+      "original_physical_engine_sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651",
+      "outputs_bytes": 1024,
+      "physical_cycles": 27910,
+      "prior_estimated_cycles": 39404,
+      "report": {
+        "original_sha256": "500904f5de435bb62cb89efb2710d8eea34f611aaa6d40b41ace5e05f3448012",
+        "projection": {
+          "path": "SY_kdepth_fits_double/report.json",
+          "sha256": "7c8b315d28ad7280ec1ac08a493315a0fe3c7c1227baa4e6a7c55f57195112cf"
+        },
+        "projection_rule": "Only absolute workspace/system path strings made portable; scalar evidence and identity hashes preserved."
+      },
+      "role": "development diagnostic",
+      "scope_features": {
+        "complete": true,
+        "counted_cpu_instructions": 2107,
+        "primary_cpu_features": [
+          "cpu.atomic",
+          "cpu.bitmanip",
+          "cpu.branch",
+          "cpu.csr",
+          "cpu.custom",
+          "cpu.divide",
+          "cpu.fence",
+          "cpu.fp_add",
+          "cpu.fp_classify",
+          "cpu.fp_compare",
+          "cpu.fp_convert",
+          "cpu.fp_divide",
+          "cpu.fp_fma",
+          "cpu.fp_load",
+          "cpu.fp_minmax",
+          "cpu.fp_move_from_int",
+          "cpu.fp_move_to_int",
+          "cpu.fp_multiply",
+          "cpu.fp_sign",
+          "cpu.fp_sqrt",
+          "cpu.fp_store",
+          "cpu.fp_subtract",
+          "cpu.fp_to_int",
+          "cpu.int_to_fp",
+          "cpu.integer",
+          "cpu.load",
+          "cpu.multiply",
+          "cpu.store",
+          "cpu.system",
+          "cpu.unknown"
+        ],
+        "qualification": "not_established",
+        "schema": "merlin.spike_feature_observation.v1",
+        "scope_instructions": 2107,
+        "scope_kind": "counter_pc_pair",
+        "unresolved": [],
+        "window_index": 0
+      },
+      "signed_relative_error": 0.055499820852740855,
+      "source_compiler_sha256": "d319a88633bf526304d1da2a6265e38489f687a8da3fef13b31e83b34b0b6b7c",
+      "source_elf_sha256": "851c0bbaff87d4d8e3bc7529bcd6c71276087f074347e063adc9c9a4317965ab",
+      "timing_complete": true,
+      "unresolved": []
+    },
+    {
+      "all_output_bytes_match": true,
+      "capsule": "SY_contraction_i8_aligned",
+      "estimate_delta": -39,
+      "estimated_cycles": 618,
+      "input_binding": {
+        "begin_pc": 2147484014,
+        "elf_sha256": "92f0776294c8b8659b94c9f5b2b5093ea3efab65deeade1488e2c8cc18c98e91",
+        "end_pc": 2147484058,
+        "evidence_sha256": "0043f99a2fad4e73b6346ab86ed7d11055de789c24d7ac62165917f78af5ac3f",
+        "input_sha256": "92f0776294c8b8659b94c9f5b2b5093ea3efab65deeade1488e2c8cc18c98e91",
+        "occurrence": 0,
+        "schema": "merlin.spike_scope_binding.v1",
+        "scope_sha256": "82dae761bda30488a6760c9ae51764069a6ed9e60544661e90f883477d273525"
+      },
+      "observation": {
+        "original_sha256": "1d8b674682ae47aeefa2a0e9096e2f9d9d671298958aa42a2b7391403b2db65c",
+        "projection": {
+          "path": "SY_contraction_i8_aligned/observation.json",
+          "sha256": "a91690399fd214720edfcb82bc77a442308e6531ed96cbc2e9ef2d4ff71c3223"
+        },
+        "projection_rule": "Only absolute workspace/system path strings made portable; scalar evidence and identity hashes preserved."
+      },
+      "ordinary_and_annotated_console_equal": true,
+      "original_physical_engine_sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651",
+      "outputs_bytes": 1024,
+      "physical_cycles": 564,
+      "prior_estimated_cycles": 657,
+      "report": {
+        "original_sha256": "240607543dd786821aad0c2f10b10e3bb1788a39390bad54ee3fc5716a320271",
+        "projection": {
+          "path": "SY_contraction_i8_aligned/report.json",
+          "sha256": "b79e1f1b6361d4351981e5bdf4c4ab1f7883921c5cf989083816f541442d739c"
+        },
+        "projection_rule": "Only absolute workspace/system path strings made portable; scalar evidence and identity hashes preserved."
+      },
+      "role": "development diagnostic",
+      "scope_features": {
+        "complete": true,
+        "counted_cpu_instructions": 68,
+        "primary_cpu_features": [
+          "cpu.atomic",
+          "cpu.bitmanip",
+          "cpu.branch",
+          "cpu.csr",
+          "cpu.custom",
+          "cpu.divide",
+          "cpu.fence",
+          "cpu.fp_add",
+          "cpu.fp_classify",
+          "cpu.fp_compare",
+          "cpu.fp_convert",
+          "cpu.fp_divide",
+          "cpu.fp_fma",
+          "cpu.fp_load",
+          "cpu.fp_minmax",
+          "cpu.fp_move_from_int",
+          "cpu.fp_move_to_int",
+          "cpu.fp_multiply",
+          "cpu.fp_sign",
+          "cpu.fp_sqrt",
+          "cpu.fp_store",
+          "cpu.fp_subtract",
+          "cpu.fp_to_int",
+          "cpu.int_to_fp",
+          "cpu.integer",
+          "cpu.load",
+          "cpu.multiply",
+          "cpu.store",
+          "cpu.system",
+          "cpu.unknown"
+        ],
+        "qualification": "not_established",
+        "schema": "merlin.spike_feature_observation.v1",
+        "scope_instructions": 68,
+        "scope_kind": "counter_pc_pair",
+        "unresolved": [],
+        "window_index": 0
+      },
+      "signed_relative_error": 0.0957446808510638,
+      "source_compiler_sha256": "d319a88633bf526304d1da2a6265e38489f687a8da3fef13b31e83b34b0b6b7c",
+      "source_elf_sha256": "92f0776294c8b8659b94c9f5b2b5093ea3efab65deeade1488e2c8cc18c98e91",
+      "timing_complete": true,
+      "unresolved": []
+    }
+  ],
+  "conclusions": [
+    "Deep-K residual falls from+41.18% to+5.55% using selected RTL operand-consumption boundary and unchanged prices. This source is now development evidence because its earlier residual and event trace motivated the correction.",
+    "The original plan expected small aligned matmul to exercise an unaffected overwrite path. Actual estimate decreases39cycles: it includes an eligible accumulation and is an affected small matched diagnostic. No unaffected same-ELF claim is made; default-off and fallback behavior are covered by focused scheduler invariants.",
+    "ACC RMW resource hold, result/config/PE publication and queue retirement remain conservative; only eligible scratchpad operand lifetime is shortened.",
+    "These observations do not establish independent accuracy/ranking qualification. Current reviewed71c9 selection and automatic fit denial remain unchanged.",
+    "No coefficient fitting, additional physical observations, baseline/reference-kernel data, or candidate-compiler modifications were used.",
+    "Portable JSON projections preserve all numerical/custody scalars and original receipt hashes; they do not claim byte identity with path-bearing raw records."
+  ],
+  "fit_eligible": false,
+  "model": {
+    "original_sha256": "9ce62bab015df550d3849f501672dc9a9a1c4ea0c04233029caecf86bb7a56dd",
+    "projection": {
+      "path": "model.json",
+      "sha256": "9ce62bab015df550d3849f501672dc9a9a1c4ea0c04233029caecf86bb7a56dd"
+    },
+    "projection_rule": "Only absolute workspace/system path strings made portable; scalar evidence and identity hashes preserved."
+  },
+  "model_changes": [
+    "libraries[-1] identity",
+    "target.scheduling.split_ws_accumulate_operands=1"
+  ],
+  "model_sha256": "9ce62bab015df550d3849f501672dc9a9a1c4ea0c04233029caecf86bb7a56dd",
+  "ordinary_runs": 2,
+  "packaged_ELFs": false,
+  "packaged_outputs": false,
+  "parent_model_sha256": "01971a26e8b367fe22361a294785be31969ec3473735025608d22399b0ac96b6",
+  "physical_runs_added": 0,
+  "plan": {
+    "original_sha256": "44ab024e2d2c6e9bdb9a2ba8f5c5797f62fe0735d91a3b1daaebf70a29b1f7d8",
+    "projection": {
+      "path": "original-plan.json",
+      "sha256": "fdb6f6fde0dee244ac54c87caf7e728aa63da1fdcc9df737835459420dff2b1e"
+    },
+    "projection_rule": "Only absolute workspace/system path strings made portable; scalar evidence and identity hashes preserved."
+  },
+  "provider_build": {
+    "original_sha256": "a003d9633a6a791aa49d11f23e55a28c1a417876fcb5238cfc662c77ce395280",
+    "projection": {
+      "path": "provider-build.json",
+      "sha256": "c3d90a525cc56f16dcb9670e9f54a374ee455e28537cc2fb1f0a0ba2e687631d"
+    },
+    "projection_rule": "Only absolute workspace/system path strings made portable; scalar evidence and identity hashes preserved."
+  },
+  "qualified": false,
+  "runtime": {
+    "original_sha256": "df2c2bf35cd33353e2f6c7e92c317ad44f1b85089bba3846dd46e6f442dfa6e9",
+    "projection": {
+      "path": "runtime.json",
+      "sha256": "fb5ff8482f4945206c48fb94d17c6a345034ab4e73498ae2fb3490e67d6a10ab"
+    },
+    "projection_rule": "Only absolute workspace/system path strings made portable; scalar evidence and identity hashes preserved."
+  },
+  "runtime_selection_sha256": "df2c2bf35cd33353e2f6c7e92c317ad44f1b85089bba3846dd46e6f442dfa6e9",
+  "schema": "operator.public_accumulating_ws_lifetime_diagnostics.v1",
+  "source_manifest": {
+    "original_sha256": "caa21d8f4664b64e881a2f90b2399270ee4bf09378075f1c4f3ebea78933357b",
+    "projection": {
+      "path": "timing-source-manifest.json",
+      "sha256": "0579fd5c27ef8216bffc3956b6bf629ca0f00fdb5aa4d4b0fe4683a0f8bd6dbe"
+    },
+    "projection_rule": "Only absolute workspace/system path strings made portable; scalar evidence and identity hashes preserved."
+  },
+  "spike_source_commit": "990f570",
+  "status": "inactive_provisional_development_only",
+  "unchanged_inputs_ELFs_and_scopes": true,
+  "unchanged_observer": true,
+  "unchanged_prices": true
+}

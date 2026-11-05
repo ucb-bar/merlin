@@ -17,9 +17,17 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import selected_driver
 
 from merlin.common.paths import merlin_dir, runs_dir
 from merlin.perf import whole_model_build as W
+
+if selected_driver.selected_is_generic("gemmini"):
+    pytest.skip(
+        "tests compiler/harness modules a gemmini support package ships itself; the selected "
+        "generic data provider (merlin.runtime.backends.chipyard_rocc) does not ship them",
+        allow_module_level=True,
+    )
 
 pytestmark = pytest.mark.target("gemmini")
 

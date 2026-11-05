@@ -176,7 +176,9 @@ class Sandbox:
         return bwrap.full_argv(self.te, self.ws, self.bundle, _policy_test_live_inputs=self._policy_test_live_inputs)
 
     def env(self) -> str:
-        return toolchain.sandbox_env(self.te, self.ws)
+        from merlin_experiments.phase1 import author_toolchain
+
+        return author_toolchain.sandbox_env(self.te, self.ws, bundle=self.bundle)
 
     def wrap(self, inner: str) -> str:
         return bwrap.wrap(self.te, self.ws, inner, self.bundle, _policy_test_live_inputs=self._policy_test_live_inputs)
@@ -198,9 +200,12 @@ class Sandbox:
     def containment_record(self) -> dict[str, object]:
         """The block a run artifact embeds so "was this run actually contained?" is answerable after the
         fact — both halves together, because either one alone is satisfiable while the other is not."""
+        from .answer_surfaces import absent_declaration_coverage
+
         return {
             "coverage_gap": [str(surface.path) for surface in self.coverage_gap()],
             "dropped_declarations": [d.as_record() for d in self.dropped_declarations()],
+            "absent_declaration_coverage": absent_declaration_coverage(self.te),
         }
 
 
@@ -214,12 +219,14 @@ def build_sandbox(
     """Build the sandbox for a target from its descriptor (path or loaded ``TargetExperiment``) + an
     optional arm bundle. This is the single seam the experiment scripts + the CI isolation test call."""
     te = descriptor if isinstance(descriptor, TargetExperiment) else load_target_experiment(descriptor)
+    from merlin_experiments.phase1 import author_toolchain
+
     return Sandbox(
         te=te,
         ws=Path(ws),
         bundle=bundle or {},
         kind=resolve_kind(te),
         answer_surfaces=answer_surfaces(te),
-        required_tools=required_tool_probes(te),
+        required_tools=author_toolchain.required_tool_probes(te, bundle=bundle or {}),
         _policy_test_live_inputs=_policy_test_live_inputs,
     )

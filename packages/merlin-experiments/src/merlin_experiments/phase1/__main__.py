@@ -9,7 +9,10 @@ from .options import RunOptions, build_parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    from merlin_experiments.phase2.compiler_library_state import add_selection_arguments, load_selection
+
     parser = build_parser()
+    add_selection_arguments(parser)
     parser.description = "Run functional compiler authoring from explicit experiment inputs."
     parser.add_argument("--descriptor", type=Path, required=True)
     parser.add_argument("--repo", type=Path, required=True, help="operator root for declared resources")
@@ -17,6 +20,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--oracle-timing", type=Path, required=True, help="operator-owned timing record path")
     parser.add_argument("--public-root", type=Path, help="explicit public grading corpus override")
     parser.add_argument("--language", default="", help="task language selection")
+    parser.add_argument(
+        "--require-shared-passes",
+        action="store_true",
+        help="new authoring only: require reviewed shared-pass interfaces and deterministic defaults",
+    )
+    parser.add_argument(
+        "--shared-pass-contract-version",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help="prospective structural contract version; old runs retain v1",
+    )
+    parser.add_argument(
+        "--require-supported-shared-pass",
+        action="append",
+        default=[],
+        metavar="FAMILY",
+        help="original required interface, repeatable; missing/unknown support refuses",
+    )
     parser.add_argument("--treatment", choices=("baseline", "rtlchecks"), default="baseline")
     from .levels import LEVELS, materialize_level
 
@@ -27,6 +49,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     arguments = list(sys.argv[1:] if argv is None else argv)
     values = vars(parser.parse_args(arguments))
+    if (
+        values["codex_canary"] or values["codex_binary"] or values["codex_auth_source"] or values["codex_home_root"]
+    ) and not any(arg == "--model" or arg.startswith("--model=") for arg in arguments):
+        parser.error("explicit Codex runtime requires an explicit --model selection")
     if not values["bundle"]:
         parser.error("installed execution requires --bundle (the authored bundle identity)")
     selected_level = values.pop("level")
@@ -61,8 +87,18 @@ def main(argv: list[str] | None = None) -> int:
     timing = values.pop("oracle_timing").expanduser().resolve()
     public = values.pop("public_root")
     language = values.pop("language")
+    require_shared_passes = values.pop("require_shared_passes")
+    pass_version = values.pop("shared_pass_contract_version")
+    required_passes = tuple(values.pop("require_supported_shared_pass"))
+    if not require_shared_passes and (pass_version != 1 or required_passes):
+        parser.error("shared-pass version/required families need --require-shared-passes")
     if not manifest.is_file():
         parser.error(f"bundle manifest is not a readable file: {manifest}")
+    library = load_selection(
+        root=values.pop("compiler_library_root"),
+        contract_path=values.pop("compiler_library_contract"),
+        contract_sha256=values.pop("compiler_library_contract_sha256"),
+    )
     options = RunOptions(**values)
 
     # Context must precede environment-sensitive execution imports. No native
@@ -89,8 +125,21 @@ def main(argv: list[str] | None = None) -> int:
         language=language,
         public_root=None if public is None else public.expanduser().resolve(),
         treatment=treatment,
+        compiler_library_selection=library,
+        **(
+            {
+                "require_shared_passes": True,
+                "shared_pass_contract_version": pass_version,
+                "required_supported_shared_passes": required_passes,
+            }
+            if require_shared_passes
+            else {}
+        ),
     )
 
 
 if __name__ == "__main__":
+    from .telemetry.resilient_output import install
+
+    install()  # A full log volume drops log lines, never the runner's graders.
     raise SystemExit(main())

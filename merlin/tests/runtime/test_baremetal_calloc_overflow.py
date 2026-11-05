@@ -49,20 +49,21 @@ int main(int argc,char **argv) {
  assert(argc==2);int mode=atoi(argv[1]);memset(storage,0x3c,sizeof(storage));
  merlin_arena_reset();unsigned char before[2048];memcpy(before,storage,sizeof(storage));
  if(mode==0){
-  unsigned char *p=checked_calloc(2,7);assert(p==storage);
+  unsigned char *p=checked_calloc(2,7);
+  assert((uintptr_t)p >= (uintptr_t)storage && (uintptr_t)p+14 <= (uintptr_t)storage+sizeof(storage));
+  assert(((uintptr_t)p & 63)==0);
   for(size_t i=0;i<14;i++)assert(p[i]==0);
-  for(size_t i=14;i<sizeof(storage);i++)assert(storage[i]==0x3c);
-  memcpy(before,storage,sizeof(storage));
-  assert(checked_calloc(0,SIZE_MAX)!=NULL);
-  assert(checked_calloc(SIZE_MAX,0)!=NULL);
-  assert(!memcmp(before,storage,sizeof(storage)));return 0;
+  unsigned char *z0=checked_calloc(0,SIZE_MAX), *z1=checked_calloc(SIZE_MAX,0);
+  assert(z0 && z1 && z0!=z1 && z0!=p && z1!=p);
+  for(size_t i=0;i<14;i++)assert(p[i]==0);
+  return 0;
  }
  volatile size_t count=mode==1?SIZE_MAX/2+1:SIZE_MAX;
  volatile size_t width=mode==3?SIZE_MAX:2;
  if(!setjmp(failed)){checked_calloc(count,width);return 7;}
  assert(strstr(diagnostic,"calloc size multiplication overflow"));
  assert(!memcmp(before,storage,sizeof(storage)));
- assert(checked_malloc(1)==storage);return 0;
+ assert(checked_malloc(1)==storage+64);return 0;
 }
 """
     )

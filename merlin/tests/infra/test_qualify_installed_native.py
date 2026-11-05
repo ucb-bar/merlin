@@ -188,6 +188,7 @@ def test_component_roster_imports_and_archives_only_explicit_new_owners():
         "merlin_experiments.phase0.component_compile_graphs",
         "merlin_experiments.phase2.feedback_guardian",
         "merlin_experiments.execution.owned_children",
+        "merlin.common.owned_children",
         "merlin_experiments.phase0.component_automatic",
         "merlin_experiments.phase0.component_automatic_plan",
         "merlin_experiments.phase1.component_tool_readiness",

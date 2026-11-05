@@ -25,7 +25,7 @@ def _source(tmp_path: Path, *, nondeterministic: bool = False) -> tuple[Path, st
     (root / "emit.py").write_text(
         "import pathlib, sys\n"
         "assert sys.argv[1] == 'SelectedConfig'\n"
-        "text = 'FIRRTL version 3.3.0\\ncircuit Top :%[[]]\\n  module Top :\\n'\n"
+        "text = 'FIRRTL version 3.3.0\\ncircuit Top :%[[]]\\n  module Top : @[generators/fixture/Top.scala 1:1]\\n'\n"
         + ("text += pathlib.Path(sys.argv[2]).parent.name\n" if nondeterministic else "")
         + "pathlib.Path(sys.argv[2]).write_text(text)\n"
     )

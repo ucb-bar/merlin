@@ -4,7 +4,7 @@ kind: reference
 status: draft
 owner: core
 last_verified: 2026-10-06
-related: [architecture, agent_compiler_performance]
+related: [architecture, verified_compiler_roadmap]
 code_refs:
   - src/merlin/llvmlower/source_expression_interval.py
   - src/merlin/llvmlower/source_expression_interval_llvm.py

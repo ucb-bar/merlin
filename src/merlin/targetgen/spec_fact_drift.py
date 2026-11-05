@@ -101,6 +101,7 @@ def fact_capabilities(
     quantization_candidates: Iterable[Mapping[str, Any]] = (),
     taxonomy: Mapping[str, Any] | None = None,
     prohibited_roles: Iterable[str] = (),
+    data_only: bool = False,
 ) -> dict[str, Any]:
     """Per-family capability from the derived ladder, the evidence-checked contract and the facets.
 
@@ -113,7 +114,13 @@ def fact_capabilities(
     from merlin.targetgen import capability_roles as CR
     from merlin.targetgen import compute_units as CU
 
-    derived = CD.derive(target, dict(contract), dict(raw_facts or {}), taxonomy=dict(taxonomy or {}) or None)
+    derived = CD.derive(
+        target,
+        dict(contract),
+        dict(raw_facts or {}),
+        taxonomy=dict(taxonomy or {}) or None,
+        **({"data_only": data_only} if data_only is not False else {}),
+    )
     units = list(CU.compute_units(dict(contract)))
     declared: dict[str, list] = {}
     for unit in units:

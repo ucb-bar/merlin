@@ -1,0 +1,42 @@
+{
+  "schema": "merlin.curated_path_redaction.v1",
+  "description": "Non-executable placeholders replace machine-specific roots; original raw hashes and numerical/source identities preserved. No runtime activation or physical qualification.",
+  "records": [
+    {
+      "curated": "owned-whole-call-summary.json",
+      "raw_sha256": "ca4de9a00ef9d785fe19e0f24386432938ffa742fe1bc027dfa59f66871459c4",
+      "raw_locator": "out/artifacts/owned-model-timing-audit/whole-call-summary.json",
+      "machine_paths_replaced": [
+        "<WORKSPACE>",
+        "<USER_HOME>"
+      ]
+    },
+    {
+      "curated": "owned-bitmanip-facts.json",
+      "raw_sha256": "940ac8e32716d97444dc2c7173a2119167100e5813fd8c4a5df32e66e37cdefe",
+      "raw_locator": "out/artifacts/owned-model-timing-audit/bitmanip-audit/facts.json",
+      "machine_paths_replaced": [
+        "<WORKSPACE>",
+        "<USER_HOME>"
+      ]
+    },
+    {
+      "curated": "owned-bitmanip-opcodes.json",
+      "raw_sha256": "bcc9531c7aa4b5c7e8a48cc15df0a1dadf4ef22d9f9f894cc774e15ffc451312",
+      "raw_locator": "out/artifacts/owned-model-timing-audit/bitmanip-audit/opcodes.json",
+      "machine_paths_replaced": [
+        "<WORKSPACE>",
+        "<USER_HOME>"
+      ]
+    },
+    {
+      "curated": "owned-bitmanip-alignment.json",
+      "raw_sha256": "8047bf0d52e191319fe75e21c8aa5c5586badb909eb45a318b1a56585bce4452",
+      "raw_locator": "out/artifacts/owned-model-timing-audit/bitmanip-audit/alignment.json",
+      "machine_paths_replaced": [
+        "<WORKSPACE>",
+        "<USER_HOME>"
+      ]
+    }
+  ]
+}

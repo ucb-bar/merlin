@@ -33,6 +33,10 @@ class QARunner(Protocol):
         *,
         contract: Path | None = None,
         additional_forbidden: tuple[str, ...] = (),
+        defer_pending: Callable[[], str | None] | None = None,
+        defer_running: bool = True,
+        on_capsule_complete: Callable[[dict], None] | None = None,
+        max_workers: int = 0,
     ) -> dict: ...
 
 

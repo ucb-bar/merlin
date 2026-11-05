@@ -241,6 +241,12 @@ def prewarm(artifact_text: str, *, target: str, work: Path) -> str:
     a prewarmed object is byte-for-byte the object that stage would have compiled itself.
     """
     from merlin.targetgen.contract.compile import llvm_mlir_to_object
+    from merlin.verify.lean_emission_context import requires_fresh_object
+
+    if requires_fresh_object(artifact_text):
+        # The actual consumer must observe this pending traced object; a
+        # disposable cache warmup cannot transfer a live completion to it.
+        return "off"
 
     root = object_cache_root()
     if root is None:
@@ -277,6 +283,12 @@ def _pool(jobs: int):
 def prewarm_async(artifact_text: str, *, target: str, jobs: int) -> Any:
     """Start compiling ``artifact_text`` into the cache in the background; the future, or ``None`` when
     it is already cached (or the cache is off). One compile per key at a time, whoever asks."""
+    from contextvars import copy_context
+
+    from merlin.verify.lean_emission_context import requires_fresh_object
+
+    if requires_fresh_object(artifact_text):
+        return None
     root = object_cache_root()
     if root is None:
         return None
@@ -305,7 +317,7 @@ def prewarm_async(artifact_text: str, *, target: str, jobs: int) -> Any:
         running = _INFLIGHT.get(key)
         if running is not None:
             return running
-    future = _pool(jobs).submit(compile_once)
+    future = _pool(jobs).submit(copy_context().run, compile_once)
     with _INFLIGHT_LOCK:
         _INFLIGHT.setdefault(key, future)
     return future

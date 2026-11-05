@@ -61,7 +61,7 @@ def test_policy_is_strictly_versioned_and_does_not_modify_capsule():
     assert ReadbackPolicy.from_record(ReadbackPolicy(FULL_VALUES_BIN).record()) == ReadbackPolicy(FULL_VALUES_BIN)
 
 
-@pytest.mark.parametrize("transport", ["coherent_dump_v1", "coherent_packet_v1"])
+@pytest.mark.parametrize("transport", ["coherent_dump_v1", "coherent_packet_v1", "coherent_packet_v2"])
 def test_memory_readback_is_explicit_and_never_admits_serial_values(transport):
     policy = ReadbackPolicy(transport)
     assert ReadbackPolicy.from_record(policy.record()) == policy
@@ -69,7 +69,7 @@ def test_memory_readback_is_explicit_and_never_admits_serial_values(transport):
         require_full_value_roster(_cb(), "DONE\n", {"out": [[1, 2]]}, policy=policy)
 
 
-@pytest.mark.parametrize("transport", ["coherent_dump_v1", "coherent_packet_v1"])
+@pytest.mark.parametrize("transport", ["coherent_dump_v1", "coherent_packet_v1", "coherent_packet_v2"])
 def test_memory_build_receipt_rechecks_selected_transport_and_header_bytes(monkeypatch, tmp_path, transport):
     def render(_cb, *, inputs, readback_policy):
         assert readback_policy == ReadbackPolicy(transport)
@@ -111,11 +111,16 @@ def test_memory_build_receipt_rechecks_selected_transport_and_header_bytes(monke
         )
 
     receipt = verified()
-    packet = transport == "coherent_packet_v1"
-    assert receipt["schema"] == ("merlin_readback_build_v3" if packet else "merlin_readback_build_v2")
+    packet = transport in ("coherent_packet_v1", "coherent_packet_v2")
+    assert receipt["schema"] == (
+        "merlin_readback_build_v4" if transport == "coherent_packet_v2"
+        else "merlin_readback_build_v3" if packet else "merlin_readback_build_v2"
+    )
     assert bool(receipt["staged_codec_sha256"]) == packet
     assert recipe["readback_transport"] == policy.record()
-    codecs = ("out_b64.h", "out_bin.h", "out_bin_memory.h")
+    codecs = ("out_b64.h", "out_bin.h", "out_bin_memory.h") + (
+        ("out_packet_v2.h",) if transport == "coherent_packet_v2" else ()
+    )
     assert all((build / name).exists() == packet for name in codecs)
     assert cb == saved
     for path in (obj, elf, build / "harness.c", *((build / name for name in codecs) if packet else ())):
@@ -648,23 +653,44 @@ def test_native_postrun_build_mutation_cannot_retain_a_numerical_pass(monkeypatc
     monkeypatch.setattr(backends, "harness_build_recipe", lambda _target: recipe)
     monkeypatch.setattr(native_model_execution, "_build_service_for", lambda *_args, **_kw: service)
 
+    from merlin.common.paths import runtime_dir
+
+    policy = ReadbackPolicy(FULL_VALUES_B64)
+    recipe_record = {
+        "recipe": "selected",
+        "readback_codec": {"sha256": readback.file_sha256(runtime_dir() / "baremetal" / "out_b64.h")},
+    }
+
     def compile_selected(_cb, _lowered, work, **_kwargs):
         work.mkdir()
-        (work / "kernel.o").write_bytes(b"object")
-        (work / "harness.c").write_text("original\n")
+        obj = work / "kernel.o"
+        obj.write_bytes(b"object")
+        harness_path = work / "harness.c"
+        harness_path.write_text("original\n")
         elf = work / "model.elf"
         elf.write_bytes(b"ELF")
+        readback.stage_codec_header(work, policy=policy)
+        receipt = readback.build_receipt(
+            policy=policy,
+            cb=_cb,
+            target="fixture",
+            recipe_record=recipe_record,
+            source_pins=[],
+            object_path=obj,
+            harness_path=harness_path,
+            elf_path=elf,
+        )
+        (work / readback.BUILD_RECEIPT).write_text(json.dumps(receipt))
         return elf
 
     monkeypatch.setattr(compiler, "compile_lowered_to_elf", compile_selected)
-    monkeypatch.setattr(readback, "selected_build_inputs", lambda *_args, **_kwargs: ({"recipe": "selected"}, []))
+    monkeypatch.setattr(readback, "selected_build_inputs", lambda *_args, **_kwargs: (recipe_record, []))
     checks = []
+    original_receipt_check = readback.require_build_receipt
 
-    def receipt_check(_path, **kwargs):
+    def receipt_check(path, **kwargs):
         checks.append(kwargs["harness_path"].read_text())
-        if checks[-1] != "original\n":
-            raise ValueError("readback build receipt changed during native run")
-        return {"schema": "merlin_readback_build_v1"}
+        return original_receipt_check(path, **kwargs)
 
     monkeypatch.setattr(readback, "require_build_receipt", receipt_check)
     monkeypatch.setattr(
@@ -693,6 +719,7 @@ def test_native_postrun_build_mutation_cannot_retain_a_numerical_pass(monkeypatc
         run_elf=mutate_after_run,
         parse_output=lambda _console: pytest.fail("numeric parsing preceded the post-run build join"),
     )
+    monkeypatch.setattr(backends, "get_backend", lambda _target: backend)
     monkeypatch.setattr(
         model_execution_inputs,
         "native_engine",
@@ -718,8 +745,90 @@ def test_native_postrun_build_mutation_cannot_retain_a_numerical_pass(monkeypatc
         rtl_facts="selected-facts",
         board_config="selected-board",
         numeric_policy={"compare": "exact_int"},
-        readback_policy=ReadbackPolicy(FULL_VALUES_B64),
+        readback_policy=policy,
     )
     assert checks == ["original\n", "mutated\n"]
     assert result["status"] == "incomplete" and result["failure"]["type"] == "ValueError"
+    assert "readback build receipt does not bind" in result["failure"]["detail"]
     assert result.get("tiers", {}).get("L3", {}).get("status") != "pass"
+
+
+def test_a_large_output_on_a_serial_console_engine_selects_the_fastest_exact_readback(monkeypatch):
+    """Text OUT lines cost simulated cycles per character on an RTL engine (175.9M instructions for a
+    3136x64 i32 output, against 26.3M binary and 1.1M with a memory dump). Outputs there use the
+    memory dump when the engine has one -- on the identical explicit whole-program boundary -- or the
+    binary frame; host-side consoles, capped consoles and outputs under a configured threshold keep
+    the text frame."""
+    from merlin.targetgen.contract import readback_policy as RB
+    from merlin.targetgen.contract.harness_render import logical_abi
+
+    def matmul(m):
+        return {
+            "abi_version": "0.1",
+            "target": "t",
+            "tensors": {
+                "W": {"shape": [64, 64], "dtype": "i8", "role": "weight"},
+                "A": {"shape": [m, 64], "dtype": "i8", "role": "input"},
+            },
+            "commands": [
+                {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "R"}},
+                {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A", "rhs": "R", "dst": "acc"}},
+                {
+                    "opcode": "COMMIT",
+                    "operands": {"src": "acc", "dst": "Y"},
+                    "attributes": {"epilogue": [], "output_dtype": "i32"},
+                },
+                {"opcode": "EVICT", "operands": {"handle": "R"}},
+            ],
+        }
+
+    abi = logical_abi()
+    monkeypatch.delenv(RB.LARGE_OUTPUT_ENV, raising=False)
+    big, small = matmul(3136), matmul(16)
+    cb, policy = RB.large_output_readback(big, "gsim", abi=abi, memory_transport=True)
+    assert policy.transport == RB.COHERENT_DUMP_V1 and cb["kernel_abi"]["outputs"] == ["Y"]
+    assert cb["tensors"]["Y"] == {"shape": [3136, 64], "dtype": "i32", "role": "output"} and "kernel_abi" not in big
+    cb, policy = RB.large_output_readback(big, "verilator", abi=abi, memory_transport=False)
+    assert policy.transport == RB.FULL_VALUES_BIN and cb is big
+    cb, policy = RB.large_output_readback(small, "gsim", abi=abi, memory_transport=True)
+    assert policy.transport == RB.COHERENT_DUMP_V1, "every console line is a TSI round trip on gSIM"
+    encoded = {**big, "params": {"storage_encodings": {}}}
+    assert RB.large_output_readback(encoded, "gsim", abi=abi, memory_transport=True)[1].transport == RB.FULL_VALUES_BIN
+    monkeypatch.setenv(RB.LARGE_OUTPUT_ENV, "4096")
+    assert RB.large_output_readback(small, "gsim", abi=abi, memory_transport=True) == (small, None)
+    monkeypatch.delenv(RB.LARGE_OUTPUT_ENV)
+    assert RB.large_output_readback(big, "spike", abi=abi, memory_transport=True) == (big, None)
+    capped = {**big, "params": {"console_value_cap": 4096}}
+    assert RB.large_output_readback(capped, "gsim", abi=abi, memory_transport=True)[1] is None
+    monkeypatch.setenv(RB.LARGE_OUTPUT_ENV, "0")
+    assert RB.large_output_readback(big, "gsim", abi=abi, memory_transport=True)[1] is None
+
+
+def test_preexecution_observer_sees_fresh_build_and_can_abort_without_simulation(monkeypatch, tmp_path):
+    built = []
+    dispatched = []
+    backend = SimpleNamespace(run_elf=lambda *args, **kwargs: dispatched.append(args))
+    from merlin.runtime.backends import base as backends
+
+    monkeypatch.setattr(backends, 'get_backend', lambda target: backend)
+
+    def build(cb, lowered, work, **kwargs):
+        elf = Path(work) / 'package_kernel.elf'
+        elf.write_bytes(b'fresh actual program')
+        built.append(elf)
+        return elf
+
+    monkeypatch.setattr(compiler, 'compile_lowered_to_elf', build)
+
+    class Reused(Exception):
+        pass
+
+    def inspect(elf):
+        assert built == [elf] and elf.read_bytes() == b'fresh actual program'
+        raise Reused()
+
+    with pytest.raises(Reused):
+        compiler.run_on_oracle({}, 'lowered', simulator='fixture', target='fixture', workdir=tmp_path,
+                               before_execution=inspect)
+    assert dispatched == []
+    assert not (tmp_path / 'oracle_console.log').exists()

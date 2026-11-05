@@ -1,0 +1,155 @@
+{
+  "schema": "operator.inactive_fetch_refill_build.v1",
+  "source_commit": "dc308242cd9504b5052cf20469382a32d2452f21",
+  "compiled_and_changed_headers": [
+    {
+      "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/riscv/annotated_timing.cc",
+      "sha256": "4eca6a60c493d7787b4cc412750ec50a9c18c7dac01837b73a403ffc4839b633"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/riscv/annotated_timing_memory.cc",
+      "sha256": "cf0241fa75fb215dab700a884a521c93db40e0aec29b9d720db315956ba9e312"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/timing/memory.hpp",
+      "sha256": "ab17eabe63b297899bf86e1ffe5ece51a8e3741769f2008e047bc96938812e2f"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/timing/core/include/merlin_timing/cache_response_timeline.hpp",
+      "sha256": "28f5bfa4c6c8f989e54567c509018f3a70a3eedb7a0a2ea2fc99e016ff1fd551"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/timing/core/include/merlin_timing/engine.hpp",
+      "sha256": "a3ad0ac903e091d5e3384534eec8379f24d42b6294adc1c496eea146082b044d"
+    }
+  ],
+  "base_build": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/build.json",
+    "sha256": "c72257a0f0cc1af7ccc02a2cbfee1582a37a30d73e8b7dfe187e7dd86154cd05"
+  },
+  "base_archive": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libriscv.a",
+    "sha256": "8e60bb8064a43d3a8c4c38e0fff2319fc3bdd6fe8015aa6925e00c0724748efd"
+  },
+  "source_identity": "79eb1f1b511a1b9f2267532de252965712e65c91e95b91b6df46dab81fdc52b3",
+  "commands": [
+    {
+      "argv": [
+        "g++",
+        "-std=c++20",
+        "-O2",
+        "-g0",
+        "-fPIC",
+        "-I/work/merlin/tasks/phase1-harness-v2/.tmp/boost-deps/usr/include",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike",
+        "-I/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing",
+        "-I/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/timing",
+        "-I/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/timing/core/include",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/riscv",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/fesvr",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/disasm",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/customext",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/fdt",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/softfloat",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/spike_main",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/spike_dasm",
+        "-c",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/riscv/annotated_timing.cc",
+        "-o",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/annotated_timing.o"
+      ],
+      "wall_s": 2.889158572012093
+    },
+    {
+      "argv": [
+        "g++",
+        "-std=c++20",
+        "-O2",
+        "-g0",
+        "-fPIC",
+        "-I/work/merlin/tasks/phase1-harness-v2/.tmp/boost-deps/usr/include",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike",
+        "-I/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing",
+        "-I/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/timing",
+        "-I/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/timing/core/include",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/riscv",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/fesvr",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/disasm",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/customext",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/fdt",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/softfloat",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/spike_main",
+        "-iquote",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/spike_dasm",
+        "-c",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/spike-timing/riscv/annotated_timing_memory.cc",
+        "-o",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/annotated_timing_memory.o"
+      ],
+      "wall_s": 2.029745295003522
+    },
+    {
+      "argv": [
+        "g++",
+        "-L/work/merlin/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu",
+        "-Wl,-rpath,/work/merlin/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu",
+        "-Wl,--export-dynamic",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/extension.o",
+        "-o",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/spike.o",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libspike_main.a",
+        "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/libriscv.a",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libdisasm.a",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libsoftfloat.a",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libfesvr.a",
+        "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/annotated-spike/libfdt.a",
+        "-lcrypto",
+        "-lpthread",
+        "-lboost_regex",
+        "-lboost_system"
+      ]
+    }
+  ],
+  "binary": {
+    "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+    "sha256": "241c8d7343edbcf135e086cba981a56d556ebd085a0643d50ad31c2b7031fd38"
+  },
+  "model": {
+    "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model.json",
+    "sha256": "09663f060f6c00f44ae88ca1eddaac428901440c115813cfec3dd74576583cba"
+  },
+  "runtime": {
+    "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/runtime.json",
+    "sha256": "766a987db1253876fef57ee5c93b93ac084db7517f0296ec9353e9a254662a2d"
+  },
+  "new_target_runs": 0,
+  "base_model": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/model.json",
+    "sha256": "7f8228b441a7ca5e3b17ac3b120c4d74b6847fee9a58c12827de475ead48a6b6"
+  },
+  "frozen_physical_comparison_model_sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869",
+  "base_vs_frozen_changes": "provider library identity only; identical prices/scheduling",
+  "selected_live": false
+}

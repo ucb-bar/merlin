@@ -33,6 +33,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .instruction_observations import InstructionObservations
+
 
 @dataclass
 class ComputeFacet:
@@ -66,6 +68,10 @@ class ComputeFacet:
     # raised. The measured case is a decode step at M=1 on a wide tile: correct, busy, and using one
     # row of the block.
     mr_adapts_to_m: bool | None = None
+    # Ordered reduction depths for one complete output block. The selected
+    # source/operand adapter must establish that boundary; instruction presence
+    # alone cannot supply it. Applicable to vector, array and threaded engines.
+    reduction_partition: tuple[int, ...] | None = None
 
 
 @dataclass
@@ -126,6 +132,12 @@ class DispatchFacet:
     double_buffered_banks: int | None = None  # distinct on-chip banks alternated across tiles
     dma_overlap: bool | None = None  # bulk movement issued to overlap with compute
     dma_issue_to_wait: int | None = None  # METRIC: instructions between a DMA issue and its wait
+    # Explicit host/endpoint fence instructions in the selected issue boundary.
+    # Their number does not establish necessity, completion latency or overlap.
+    n_fences: int | None = None
+    # Listed static instruction sites, not executions: a loop body counts once.
+    static_command_sites: int | None = None
+    static_fence_sites: int | None = None
 
 
 @dataclass
@@ -244,6 +256,27 @@ class CoverageFacet:
 #: model-scoped before this axis existed to say so.
 SCOPES: tuple[str, ...] = ("kernel", "dispatch", "program")
 
+#: ``(instruction.field, distinct values)`` rows; ``None`` values mark a field the
+#: selected decoder bound but could not recover at every listed site.
+FieldValueSets = tuple[tuple[str, tuple[int | float | str | bool, ...] | None], ...]
+
+
+@dataclass
+class OperandFieldFacet:
+    """Decoded accelerator instruction fields grouped by the kind the selected target declares.
+
+    The kinds (stride, extent, scale, activation, output_dtype) are hardware/ISA field semantics
+    read as data from the selected target; a field without a declared kind never appears. Each
+    value set is what the selected decoder recovered at listed static instruction sites. It is not
+    an execution trace, a tile choice or a proof that every value reaches the datapath.
+    """
+
+    stride: FieldValueSets | None = None
+    extent: FieldValueSets | None = None
+    scale: FieldValueSets | None = None
+    activation: FieldValueSets | None = None
+    output_dtype: FieldValueSets | None = None
+
 
 @dataclass
 class CommunicationFacet:
@@ -292,6 +325,10 @@ class CCA:
     #: What crosses a boundary. Engine-agnostic, and populated at ``dispatch``/``program`` scope --
     #: the traffic between regions is invisible from inside one.
     communication: CommunicationFacet | None = None
+    #: Declared-kind instruction field value sets at listed static sites (machine lifts only).
+    operand_fields: OperandFieldFacet | None = None
+    #: ISA-derived observations retain partial values independently of semantic/optimization facets.
+    instructions: InstructionObservations | None = None
     #: Which QUESTION this CCA answers; see :data:`SCOPES`. Defaults to ``kernel`` because every
     #: lifter that predates this axis lifts one region's inner loop.
     scope: str = "kernel"
@@ -941,7 +978,7 @@ def lift_asm_roles(
     resolves every branch to its own address, finds no span, and would otherwise collapse every
     loop-scoped count to a confident zero.
     """
-    from . import roles as _roles
+    from merlin.compile.analysis import instruction_roles as _roles
 
     counts: dict[str, int] = {}
     for d in decoded:
@@ -1140,8 +1177,9 @@ def lift_coverage(model_mlir, claimed_ops, *, op: str = "model", source: str = "
     ``linalg-specialize-generic-ops`` before the schedule runs, so counting op names would report every
     such contraction as an unclaimed ``linalg.generic`` and invent a loss that is not there.
     """
+    from merlin.compile.analysis.contraction_shapes import contraction_shapes
+
     from ..common.mlir_query import op_name, parse
-    from .shapes import contraction_shapes
 
     claimed = {str(c) for c in claimed_ops}
     module = parse(model_mlir)

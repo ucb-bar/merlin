@@ -1,0 +1,233 @@
+{
+ "fixture": {
+  "source_sha256": "12a1a0b45fe7767f03f1b277349b7600c7c68243f7161aba52242df1921721e0",
+  "subset_of": "annotated-Spike fire-aligned profile (price/resource roster only)"
+ },
+ "resources": {
+  "accelerator.config": {
+   "capacity": null,
+   "queue_capacity": null
+  },
+  "accelerator.dma_read": {
+   "capacity": null,
+   "queue_capacity": null
+  },
+  "accelerator.dma_write": {
+   "capacity": null,
+   "queue_capacity": null
+  },
+  "accelerator.execute": {
+   "capacity": null,
+   "queue_capacity": null
+  },
+  "accelerator.load": {
+   "capacity": null,
+   "queue_capacity": null
+  },
+  "accelerator.store": {
+   "capacity": null,
+   "queue_capacity": null
+  }
+ },
+ "schema": "gemmini.annotated_spike.target.v1",
+ "target": {
+  "prices": {
+   "compute_os": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "compute_os_relu": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "compute_ws": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "compute_ws_relu": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "config": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "counter": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "dma": {
+    "read_bytes_per_cycle": null,
+    "write_bytes_per_cycle": null
+   },
+   "fence": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "flush": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "load": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "normalize1": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "normalize2": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "normalize3": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "normalize4": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "normalize5": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "normalize6": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "normalize7": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "pool_store": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "pool_store_act1": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "preload": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "store": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "store_act1": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "store_act2": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "store_act3": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   },
+   "store_act4": {
+    "latency_cycles": null,
+    "latency_per_byte_cycles": null,
+    "latency_per_mac_cycles": null,
+    "occupancy_cycles": null,
+    "occupancy_per_byte_cycles": null,
+    "occupancy_per_mac_cycles": null
+   }
+  }
+ }
+}

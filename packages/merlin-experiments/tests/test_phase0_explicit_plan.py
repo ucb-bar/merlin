@@ -16,6 +16,9 @@ from merlin_experiments.phase0.profiles import synthesis_input_identity
 
 @pytest.fixture
 def authored(tmp_path, monkeypatch):
+    from merlin_experiments.phase0 import m2m_runtime
+
+    monkeypatch.setattr(m2m_runtime, "preflight_capture_sandbox", lambda value=None: str(value or "/selected/bwrap"))
     monkeypatch.setenv("MERLIN_REPO_ROOT", str(tmp_path))
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
     entrypoint = tmp_path / "installed" / "merlin_experiments" / "phase0" / "__main__.py"
@@ -81,11 +84,91 @@ def freeze(plan):
     return {**plan, "inputs": report["inputs"]}
 
 
+@pytest.mark.parametrize("has_l3", [False, True])
+def test_catalog_preflight_resolves_performance_route_without_execution(authored, monkeypatch, has_l3):
+    from merlin_experiments.phase0 import performance_readiness as readiness
+    from merlin_experiments.phase0.evidence import EvidenceSelection, EvidenceSource
+    from test_phase2_scope_bridge import _facts, _selected_scope, _sweep
+
+    from merlin.targetgen import oracle_policy, target_registry
+
+    make, root, config = authored
+    exclusion = root.parent / "merlin" / "contract" / "claim_models.yaml"
+    exclusion.parent.mkdir(parents=True)
+    exclusion.write_text("claim_models: [private_fixture]\n")
+    contract = {
+        "name": "fixture", "compute_units": [{"name": "mesh", "kind": "systolic", "dtypes": ["int8"]}],
+        "capabilities": {"mesh": {"rows": 4, "cols": 4}},
+        "encoding": {"corpus_required_classes": ["CONTRACTION"], "class_family": {"CONTRACTION": "contraction"},
+                     "semantic_class": {"1": "CONTRACTION"}},
+    }
+    contract_path = root / "capability.yaml"
+    contract_path.write_text(yaml.safe_dump(contract))
+    oracles = {"L2": "spike", **({"L3": "gsim"} if has_l3 else {})}
+    (root / "recipe.yaml").write_text(yaml.safe_dump({
+        "capsules": [], "performance_oracles": oracles,
+        "datapath": {"operand_dtype": "int8", "accum_dtype": "i32",
+                     "required_oracle_tiers": ["L0", "L1", "L2", "L3"]},
+    }))
+    # Load the public template from its owning checkout, then restore the fixture's
+    # independent input root before exercising the real catalog preflight.
+    with monkeypatch.context() as public_inputs:
+        public_inputs.delenv("MERLIN_REPO_ROOT", raising=False)
+        sweep = _sweep()
+        from merlin.common.paths import schemas_dir
+        public_schemas = schemas_dir()
+    monkeypatch.setenv("MERLIN_SCHEMAS_DIR", str(public_schemas))
+    (root / "performance.yaml").write_text(yaml.safe_dump({"sweeps": [sweep]}))
+    (root / "conformance.yaml").write_text(yaml.safe_dump({
+        "application_demands": {"status": "not_declared", "coverage_status": "not_applicable"},
+        "scope": _selected_scope([{
+            "signature": "movement -> contraction -> elementwise_map -> elementwise_map -> elementwise_map",
+            "length": 5, "occurrences": 1,
+        }]),
+    }))
+    (root / "synth.yaml").write_text(yaml.safe_dump({"provenance": {
+        "selected_inputs": synthesis_input_identity(conformance_spec=root / "conformance.yaml",
+                                                     recipe=root / "recipe.yaml", descriptor=root / "target.yaml"),
+    }, "capsules": []}))
+    views = json.dumps({"contract": contract, "loaded_facts": {}, "refreshed_facts": {},
+                        "isa_taxonomy": {}, "performance_facts": _facts()}, sort_keys=True).encode()
+    selected = EvidenceSelection(
+        "fixture", (EvidenceSource(contract_path, "target-contract", contract_path.read_bytes()),),
+        views, None, archived_artifacts=(("evidence-manifest.json", b"{}\n"),),
+    )
+    observations = []
+    def observe(command, target):
+        assert target == "fixture"
+        assert command["inputs"]["capability_contract"] == str(contract_path)
+        observations.append(target)
+        return selected
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("selection preflight attempted provider/engine discovery")
+    monkeypatch.setattr(readiness, "selection", observe)
+    monkeypatch.setattr(target_registry, "resolve", forbidden)
+    monkeypatch.setattr(oracle_policy, "selected_l3_engine_report", forbidden)
+    plan = make({**config, "capability_contract": "capability.yaml", "evidence_mode": "diagnostic"})
+    plan["phases"]["0"]["phase0_evidence"] = {
+        "status": "diagnostic", "views_sha256": hashlib.sha256(views).hexdigest(), "diagnostics": [],
+    }
+    report = runner.preflight(plan)
+    assert observations == ["fixture"]
+    assert report["engine_readiness"] == "not_executed"
+    if has_l3:
+        assert report["configuration_ready"], report["errors"]
+    else:
+        assert not report["configuration_ready"]
+        assert any("explicit Phase 0 inputs have no concrete L3 oracle" in error for error in report["errors"])
+    assert not (root.parent / "run").exists()
+
+
 @pytest.mark.parametrize("explicit", [True, False])
 def test_verified_capture_plan_preserves_selected_runtime_store(authored, monkeypatch, tmp_path, explicit):
     """Reach the actual plan assembly without importing the model frameworks."""
     from merlin_experiments.capture_execution.runtime_store import STORE_ENV
-    from merlin_experiments.phase0 import freeze as phase0_freeze, m2m_runtime
+    from merlin_experiments.phase0 import freeze as phase0_freeze
+    from merlin_experiments.phase0 import m2m_runtime
+
     from merlin.common.artifacts import cache_dir
 
     make, definitions, config = authored
@@ -475,3 +558,106 @@ def test_historical_profiles_root_keeps_original_identity_rules(authored):
 def test_invalid_mixed_or_partial_declarations_refuse(config):
     with pytest.raises(SpecError):
         adapters.ADAPTERS["capsule_derivation"].validate({"descriptor": "target.yaml", **config})
+
+
+def test_generation_capture_timeout_is_frozen_into_the_sealed_capture_plan(authored, monkeypatch, tmp_path):
+    from merlin_experiments.phase0 import freeze as phase0_freeze
+    from merlin_experiments.phase0 import m2m_runtime
+    from merlin_experiments.phase0.sealed_generation import CONFIG_ENV
+
+    make, definitions, config = authored
+    (definitions / "software.yaml").write_text("{}\n")
+    selected = {**config, "software_spec": "software.yaml", "evidence_mode": "verified"}
+    selection = {"base": str(tmp_path / "base"), "root": "/m2m", "package": {"sha256": "p"}, "python": "/v/bin/python"}
+    monkeypatch.setattr(m2m_runtime, "observe", lambda *args, **kwargs: dict(selection))
+    monkeypatch.setattr(phase0_freeze, "selected_inputs", lambda *args, **kwargs: ({}, {}))
+    make(selected)
+
+    def plan(**kwargs):
+        return runner.resolve_plan(
+            load_spec(definitions / "experiment.yaml"),
+            phase="0",
+            run_dir=tmp_path / "run",
+            phase0_m2m_root=tmp_path / "m2m",
+            phase0_m2m_python=tmp_path / "venv/bin/python",
+            **kwargs,
+        )
+
+    default = plan()["phases"]["0"]
+    assert "phase0_capture_timeout_seconds" not in default
+    assert "execution_timeout_seconds" not in json.loads(default["env"][CONFIG_ENV])
+    timed = plan(phase0_capture_timeout_seconds=1800)["phases"]["0"]
+    assert timed["phase0_capture_timeout_seconds"] == 1800
+    timed_config = json.loads(timed["env"][CONFIG_ENV])
+    assert timed_config == {**json.loads(default["env"][CONFIG_ENV]), "execution_timeout_seconds": 1800}
+    # The freeze rebuilds the same capture configuration from the frozen command.
+    assert (
+        m2m_runtime.sealed_capture_config(
+            selection, tmp_path / "run/phase0", execution_timeout_seconds=timed["phase0_capture_timeout_seconds"]
+        )
+        == timed_config
+    )
+    for unbounded in (60, 14_401):
+        with pytest.raises(SpecError, match="between 120 and 14400"):
+            plan(phase0_capture_timeout_seconds=unbounded)
+    make({**selected, "evidence_mode": "diagnostic"})
+    with pytest.raises(SpecError, match="only to sealed generation captures"):
+        plan(phase0_capture_timeout_seconds=1800)
+
+
+def test_generation_capture_bwrap_is_frozen_into_the_sealed_capture_plan(authored, monkeypatch, tmp_path):
+    from merlin_experiments.phase0 import freeze as phase0_freeze
+    from merlin_experiments.phase0 import m2m_runtime
+    from merlin_experiments.phase0.sealed_generation import CONFIG_ENV
+
+    make, definitions, config = authored
+    (definitions / "software.yaml").write_text("{}\n")
+    selected = {**config, "software_spec": "software.yaml", "evidence_mode": "verified"}
+    selection = {"base": str(tmp_path / "base"), "root": "/m2m", "package": {"sha256": "p"}, "python": "/v/bin/python"}
+    monkeypatch.setattr(m2m_runtime, "observe", lambda *args, **kwargs: dict(selection))
+    monkeypatch.setattr(phase0_freeze, "selected_inputs", lambda *args, **kwargs: ({}, {}))
+    make(selected)
+    bwrap = tmp_path / "tools" / "bwrap"
+    bwrap.parent.mkdir()
+    bwrap.write_text("#!/bin/sh\n")
+    bwrap.chmod(0o755)
+
+    def plan(**kwargs):
+        return runner.resolve_plan(
+            load_spec(definitions / "experiment.yaml"),
+            phase="0",
+            run_dir=tmp_path / "run",
+            phase0_m2m_root=tmp_path / "m2m",
+            phase0_m2m_python=tmp_path / "venv/bin/python",
+            **kwargs,
+        )
+
+    default = plan()["phases"]["0"]
+    assert "phase0_bwrap" not in default and "bwrap" not in json.loads(default["env"][CONFIG_ENV])
+    chosen = plan(phase0_bwrap=bwrap)["phases"]["0"]
+    assert chosen["phase0_bwrap"] == str(bwrap)
+    chosen_config = json.loads(chosen["env"][CONFIG_ENV])
+    assert chosen_config == {**json.loads(default["env"][CONFIG_ENV]), "bwrap": str(bwrap)}
+    # The freeze rebuilds the same capture configuration from the frozen command.
+    assert (
+        m2m_runtime.sealed_capture_config(selection, tmp_path / "run/phase0", bwrap=chosen["phase0_bwrap"])
+        == chosen_config
+    )
+    not_bwrap = tmp_path / "tools" / "sandbox"
+    not_bwrap.write_text("#!/bin/sh\n")
+    not_bwrap.chmod(0o755)
+    for refused in (not_bwrap, tmp_path / "tools" / "absent" / "bwrap"):
+        with pytest.raises(SpecError, match="absolute executable named bwrap"):
+            plan(phase0_bwrap=refused)
+    make({**selected, "evidence_mode": "diagnostic"})
+    with pytest.raises(SpecError, match="only to sealed generation captures"):
+        plan(phase0_bwrap=bwrap)
+
+
+def test_functional_scope_is_bound_to_ordinary_frozen_command(authored):
+    make, _, config = authored
+    selected = {**config, "generation_scope": "phase1-functional"}
+    plan = make(selected)
+    command = plan["phases"]["0"]
+    assert command["argv"][command["argv"].index("--generation-scope") + 1] == "phase1-functional"
+    assert "--generation-scope" not in make(config)["phases"]["0"]["argv"]

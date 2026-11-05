@@ -72,6 +72,52 @@ def test_a_healthy_channel_is_recorded_and_quiet(loop, tmp_path, capsys):
     assert "UNHEALTHY" not in capsys.readouterr().out
 
 
+def test_a_queued_request_inside_its_deadline_is_in_flight_not_stranded(loop, tmp_path, capsys):
+    """The false alarm: three requests merely queued behind the first grade read as '3 stranded'."""
+    ws, run_dir = tmp_path / "ws", tmp_path / "run"
+    ch = ws / ".qa_channel"
+    ch.mkdir(parents=True)
+    run_dir.mkdir()
+    for rid in ("q1", "q2", "q3"):
+        _req(ch, rid, mtime=time.time(), timeout=540)  # claimed late, still well inside its deadline
+    FL.record_channel_health(ws, run_dir)
+
+    doc = json.loads((run_dir / "feedback_health.json").read_text())
+    assert doc["healthy"] is True and doc["in_flight"] == 3 and doc["stranded"] == 0
+    assert "UNHEALTHY" not in capsys.readouterr().out
+
+
+def test_once_the_brokers_stop_an_unanswered_request_is_stranded(loop, tmp_path, capsys):
+    """Nothing answers after STOP, so the end-of-run account applies to the same request."""
+    ws, run_dir = tmp_path / "ws", tmp_path / "run"
+    ch = ws / ".qa_channel"
+    ch.mkdir(parents=True)
+    run_dir.mkdir()
+    _req(ch, "q1", mtime=time.time(), timeout=540)
+    (ch / "STOP").write_text("stop")
+    FL.record_channel_health(ws, run_dir)
+
+    doc = json.loads((run_dir / "feedback_health.json").read_text())
+    assert doc["healthy"] is False and doc["stranded"] == 1 and "in_flight" not in doc
+    assert "1 stranded" in capsys.readouterr().out
+    final = FL.channel_health(ws)
+    assert final["stranded"] == 1 and final["healthy"] is False
+
+
+def test_the_live_account_still_fails_expired_and_lost_requests(loop, tmp_path):
+    """In-flight is the only relaxation: an expired request, or one whose request file is gone, still fails."""
+    ws = tmp_path / "ws"
+    ch = ws / ".qa_channel"
+    ch.mkdir(parents=True)
+    _req(ch, "expired", mtime=10, timeout=30)
+    (ch / "resp_lost.json").write_text("{}")  # answered, never marked done, request file gone
+    _req(ch, "live", mtime=time.time(), timeout=540)
+
+    health = FL.channel_health(ws, live=True)
+    assert health["expired"] == 1 and health["stranded"] == 1 and health["in_flight"] == 1
+    assert health["healthy"] is False
+
+
 def test_it_is_checked_during_the_run_not_only_at_the_end(loop):
     """The whole defect. Both operator-side grade paths must record it, or a continuous run — which
     has no rounds — reports nothing until it is over."""

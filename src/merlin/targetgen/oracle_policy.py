@@ -170,7 +170,7 @@ def chipyard_l3_selection(target: str) -> dict:
                     from . import gsim_emulator
 
                     exact, source_reason = gsim_emulator.selected_firrtl_status(
-                        target, env_var=getattr(backend, "GSIM_EMU_ENV", None)
+                        target, env_var=getattr(backend, "GSIM_EMU_ENV", None), backend=backend
                     )
                     if not exact:
                         return False, source_reason

@@ -301,6 +301,10 @@ def _token_rates(tokens: dict, think_s: float | None, span_s: float | None) -> d
         "output_tokens_per_think_generate_s": (
             output / think_s if output is not None and think_s and think_s > 0 else None
         ),
+        "input_tokens_per_agent_span_s": (
+            tokens["tokens_input_traffic"] / span_s
+            if tokens.get("tokens_input_traffic") is not None and span_s and span_s > 0 else None
+        ),
         "output_tokens_per_agent_span_s": (output / span_s if output is not None and span_s and span_s > 0 else None),
         "total_tokens_per_agent_span_s": (total / span_s if total is not None and span_s and span_s > 0 else None),
         "note": (

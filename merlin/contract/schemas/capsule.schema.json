@@ -3,6 +3,43 @@
   "$id": "merlin/bench_contract/capsule.schema.json",
   "title": "Workload capsule (capsule_bench_v0)",
   "description": "A compiler-input workload capsule: describes what to compile, the numeric golden policy, the expected Gemmini instruction coverage, the required oracle tiers, and the public/dev/hidden label. A capsule is an INPUT to the backend-under-test, never a kernel.",
+  "$defs": {
+    "numeric_policy_leaf": {
+      "type": "object",
+      "required": [
+        "compare",
+        "dtype"
+      ],
+      "properties": {
+        "compare": {
+          "type": "string",
+          "enum": [
+            "exact_int",
+            "tolerance_float",
+            "bounded_int"
+          ]
+        },
+        "dtype": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Element type the golden comparison is performed in. Same open vocabulary as inputs[].dtype -- see that field."
+        },
+        "acc_scale": {
+          "type": "number"
+        },
+        "requant_shift": {
+          "type": "integer"
+        },
+        "rtol": {
+          "type": "number"
+        },
+        "atol": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
   "type": "object",
   "required": [
     "name",
@@ -33,6 +70,7 @@
       "enum": [
         "behavioral_specimen",
         "pytorch_model_slice",
+        "materialized_performance_capture",
         "handauthored_compiler_test",
         "uplifted_from_bareMetalC",
         "spec_derived",
@@ -126,6 +164,8 @@
             "conv2d",
             "depthwise_conv2d",
             "maxpool2d",
+            "spatial_producer_pool",
+            "quantized_producer_sum",
             "avgpool2d",
             "global_average",
             "movement",
@@ -157,9 +197,11 @@
             "reduce_mean",
             "batch_matmul",
             "permute",
+            "dtype_cast",
             "bias_add",
             "residual_add",
             "residual_seam",
+            "sibling_feed",
             "fused_matmul_bias",
             "fused_norm_scale",
             "attention_scaled",
@@ -173,6 +215,7 @@
             "host_island_seam",
             "scope_chain",
             "component_program",
+            "activation_matmul",
             "model"
           ],
           "description": "The workload the capsule asks the backend to compile. Unlike dtype this IS a closed set, because an op is only expressible if the tooling can build its interface MLIR and produce its golden -- the vocabulary is code, not data. Its sources are merlin.targetgen.corpus_spec.BUILDERS (capsule + interface MLIR) and capsule_golden._recompute_golden (integer goldens; float ops carry an independent golden.yaml instead). Adding a builder without adding it here rejects the whole corpus at load, which is why merlin/tests/targetgen/test_capsule_vocabulary.py pins this list against BUILDERS."
@@ -185,39 +228,52 @@
       "additionalProperties": false
     },
     "numeric_policy": {
-      "type": "object",
-      "required": [
-        "compare",
-        "dtype"
-      ],
-      "properties": {
-        "compare": {
-          "type": "string",
-          "enum": [
-            "exact_int",
-            "tolerance_float",
-            "bounded_int"
-          ]
+      "oneOf": [
+        {
+          "$ref": "#/$defs/numeric_policy_leaf"
         },
-        "dtype": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Element type the golden comparison is performed in. Same open vocabulary as inputs[].dtype -- see that field."
-        },
-        "acc_scale": {
-          "type": "number"
-        },
-        "requant_shift": {
-          "type": "integer"
-        },
-        "rtol": {
-          "type": "number"
-        },
-        "atol": {
-          "type": "number"
+        {
+          "type": "object",
+          "required": [
+            "schema",
+            "compare",
+            "outputs"
+          ],
+          "properties": {
+            "schema": {
+              "const": "merlin.numeric_policy.per_output.v1"
+            },
+            "compare": {
+              "const": "per_output"
+            },
+            "outputs": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": {
+                "minLength": 1
+              },
+              "additionalProperties": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/numeric_policy_leaf"
+                  },
+                  {
+                    "properties": {
+                      "compare": {
+                        "enum": [
+                          "exact_int",
+                          "tolerance_float"
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
         }
-      },
-      "additionalProperties": false
+      ]
     },
     "expected": {
       "type": "object",
@@ -244,6 +300,22 @@
           "additionalProperties": {
             "type": "boolean"
           }
+        },
+        "outcome": {
+          "type": "string",
+          "enum": ["compute", "refuse"],
+          "description": "What a correct backend does with this capsule. Absent or 'compute': emit a program and match the golden. 'refuse': the operation needs something the target's evidence says it cannot perform under this capsule's placement, so the only correct answer is the backend's stated decline; an emitted program fails as MUST_REFUSE_VIOLATED (merlin.targetgen.expected_refusal)."
+        },
+        "refusal": {
+          "type": "object",
+          "description": "For outcome 'refuse': what is refused and the derived evidence for it.",
+          "required": ["reason", "evidence"],
+          "properties": {
+            "reason": {"type": "string"},
+            "evidence": {"type": "string"},
+            "stage": {"type": "string"}
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -272,6 +344,15 @@
       "type": "string",
       "enum": ["L0", "L1", "L2", "L3", "L4", "L5"],
       "description": "Deepest tier bought for this capsule's TIMING measurement -- an exclusion from the measurement matrix, deliberately a DIFFERENT field from `max_oracle_tier`. A tier is bought for one of two reasons and a ceiling on one must never silence the other: `max_oracle_tier` caps CORRECTNESS (the capsule is screened cheaply and its correctness rests on an `extends` sibling), while a performance claim NEEDS the cycle-accurate count on whatever rung the capsule's own acceptance block names in `performance.acceptance.evidence.timing_tier`. Capping correctness therefore does NOT decline the timing rung, or a cell that was measured would read back as though it never was. Declare this only to state that a member is genuinely not to be measured at that rung; the tier is then recorded as `skipped` with `measurement_excluded: true`, which is a statement about the measurement matrix and NOT a correctness verdict."
+    },
+    "performance_scope": {
+      "type": "string",
+      "enum": ["scored", "excluded"],
+      "description": "Whether this case counts in performance scoring (the headline, the CASES totals and the roofline summary). `excluded` keeps the case graded for correctness at every required tier; it is declared, by the Phase 0 redundancy stage, for a case whose contraction work another case already scores (same shape, different readout semantics) or that represents too small a share of its program. Absent means `scored`."
+    },
+    "performance_demand": {
+      "type": "object",
+      "description": "Provenance of a case the Phase 0 performance-demand stage derived from captured programs' layer inventories: the plan digest, whether the shape is the exact layer or its nearest admissible representative, and every model/program/regime class it represents with its share of that program's contraction MACs."
     },
     "extends": {
       "type": "string",
@@ -363,6 +444,8 @@
             "seen",
             "shape",
             "shape_geometry",
+            "tail_isolation",
+            "activation_contraction",
             "layout",
             "rank",
             "dtype",
@@ -370,6 +453,7 @@
             "composition",
             "fusion",
             "epilogue",
+            "column_readout",
             "accumulation_depth",
             "accumulator_output_capacity",
             "conv_window",
@@ -377,6 +461,10 @@
             "application_operation",
             "host_lane",
             "carried_state",
+            "epilogue_refusal",
+            "residual_state",
+            "multi_block",
+            "groups",
             "roster",
             "model",
             "kernel"

@@ -4,9 +4,7 @@ kind: guide
 status: current
 owner: compiler-evaluation
 last_verified: 2026-08-31
-related:
-  - rvv_e2e
-  - rvv_kernel_mining_methodology
+related: [rvv_e2e, rvv_kernel_mining_methodology]
 code_refs:
   - packages/merlin-analysis/src/merlin/compare/capture_workflow.py
   - packages/merlin-analysis/src/merlin/compare/executorch_packages.py

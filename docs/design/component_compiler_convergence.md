@@ -4,7 +4,7 @@ kind: design
 status: draft
 owner: experiments
 last_verified: 2026-10-09
-related: [agentic_experiment_integrity, capsule_phase_split, perf_phase2_wiring, phase0_specification]
+related: [agentic_experiment_integrity, capsule_phase_split, normal_search_feedback, phase0_specification]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/component_automatic.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/component_automatic_plan.py
@@ -514,14 +514,14 @@ Final holdout results are not tuning feedback within that campaign. Disclosing
 failures for repair ends the campaign; later work records the exposure and a new
 campaign. Existing frozen receipts are never rewritten to acquire stronger claims.
 
-## Remaining implementation and qualification
+## Component qualification requirements
 
-These primitives are not a completed Phase 0-to-2 launch. Mandatory remaining
-work includes the protected fresh authoring transport, complete approved shared
-dependency selection, generated mixed-precision/frontier coverage, normal
-compiler stage witnesses, independently calibrated component providers, and
-content-bound final hardware admission. A campaign must remain unavailable
-until those obligations and actual runtime isolation are established.
+This optional component route requires protected fresh authoring transport,
+explicit shared dependency selection, coverage of its declared precision and
+composition domain, compiler stage witnesses, independently calibrated component
+providers, runtime isolation and content-bound final hardware admission. Missing
+requirements keep this route unavailable; its ledger does not add prerequisites
+to ordinary catalog experiments.
 
 Keep a structured optimization inventory containing semantic applicability,
 owner, source/package/object identity, independent cases, complete costs,

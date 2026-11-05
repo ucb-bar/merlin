@@ -10,6 +10,12 @@ purpose: >-
   declaration binds its environment key, source root/file, full Git SHA, and source-file SHA-256.
   core_counts is a set-like sequence of unique exact positive integers; duplicate counts would
   create duplicate matrix-cell identities and are rejected.
+  Version 3 adds an explicit nonempty contraction_format_requirements mapping from declared
+  precision to complete_integer.v1. It requires preselected complete original graph pins and
+  freshly reopened source/trace/MLIR/session format observations at capture registration and
+  freezing. Version 2 retains mixed numerical capture semantics and refuses this new field.
+  Format observations alone do not qualify original-source producers, precision accuracy,
+  numerical equivalence, offload or runtime/measurement authority.
 required_top_level_fields:
   - version
   - label

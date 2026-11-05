@@ -1,0 +1,886 @@
+{
+  "conditions": [
+    {
+      "bank": "conditions/raw/bank.json",
+      "bank_sha256": "16f20f76d9957a4583b77803fe2216f24617552fcc979043ae382e1468475d02",
+      "coverage": {
+        "canonical_signatures": 0,
+        "complete_schedules": 0,
+        "feature_absence": "not a proof of semantic absence; projections and value populations can be bounded",
+        "field_sites": 0,
+        "instruction_classes": [],
+        "largest_canonical_signature_occurrences": 0,
+        "missing_field_sites": 0,
+        "model_occurrences": {},
+        "observed_features": 0,
+        "occurrences": 0,
+        "raw_code_bytes": 0,
+        "roles": [],
+        "static_accelerator_sites": 0,
+        "unique_bodies": 0,
+        "unresolved_field_sites": 0
+      },
+      "label": "raw"
+    },
+    {
+      "bank": "conditions/cca-4/bank.json",
+      "bank_sha256": "bf214132ad4d487779dbcc72bafdad66c16986b8ac075dd0a0a0a610430e4f3a",
+      "coverage": {
+        "canonical_signatures": 2,
+        "complete_schedules": 0,
+        "feature_absence": "not a proof of semantic absence; projections and value populations can be bounded",
+        "field_sites": 11314,
+        "instruction_classes": [
+          "COMPUTE_ACCUMULATE",
+          "COMPUTE_PRELOADED",
+          "CONFIG_EX",
+          "CONFIG_LD",
+          "CONFIG_ST",
+          "MVIN",
+          "MVIN2",
+          "MVIN3",
+          "MVOUT",
+          "PRELOAD",
+          "UNKNOWN"
+        ],
+        "largest_canonical_signature_occurrences": 3,
+        "missing_field_sites": 0,
+        "model_occurrences": {
+          "jack-resnet50": 2,
+          "jack-smolvla": 1,
+          "jack-tinyllama": 1
+        },
+        "observed_features": 345,
+        "occurrences": 4,
+        "raw_code_bytes": 47276,
+        "roles": [
+          "accumulate",
+          "commit",
+          "config",
+          "operand_load",
+          "readout",
+          "weight_load"
+        ],
+        "static_accelerator_sites": 2755,
+        "unique_bodies": 4,
+        "unresolved_field_sites": 2411
+      },
+      "label": "cca-4"
+    },
+    {
+      "bank": "conditions/cca-8/bank.json",
+      "bank_sha256": "5009dcd056ad5bbcb602bfc6281036cbb513b6e352729d0b542579cd441f8604",
+      "coverage": {
+        "canonical_signatures": 3,
+        "complete_schedules": 0,
+        "feature_absence": "not a proof of semantic absence; projections and value populations can be bounded",
+        "field_sites": 22572,
+        "instruction_classes": [
+          "COMPUTE_ACCUMULATE",
+          "COMPUTE_PRELOADED",
+          "CONFIG_EX",
+          "CONFIG_LD",
+          "CONFIG_ST",
+          "MVIN",
+          "MVIN2",
+          "MVIN3",
+          "MVOUT",
+          "PRELOAD",
+          "UNKNOWN"
+        ],
+        "largest_canonical_signature_occurrences": 8,
+        "missing_field_sites": 0,
+        "model_occurrences": {
+          "jack-resnet50": 8,
+          "jack-smolvla": 1,
+          "jack-tinyllama": 1
+        },
+        "observed_features": 432,
+        "occurrences": 10,
+        "raw_code_bytes": 83070,
+        "roles": [
+          "accumulate",
+          "commit",
+          "config",
+          "operand_load",
+          "readout",
+          "weight_load"
+        ],
+        "static_accelerator_sites": 5252,
+        "unique_bodies": 8,
+        "unresolved_field_sites": 6612
+      },
+      "label": "cca-8"
+    },
+    {
+      "bank": "conditions/cca-16/bank.json",
+      "bank_sha256": "412f88ca24c7c273039112185a1add89a4cd8764ed6fe881595f06f0c1e3405b",
+      "coverage": {
+        "canonical_signatures": 6,
+        "complete_schedules": 0,
+        "feature_absence": "not a proof of semantic absence; projections and value populations can be bounded",
+        "field_sites": 57856,
+        "instruction_classes": [
+          "COMPUTE_ACCUMULATE",
+          "COMPUTE_PRELOADED",
+          "CONFIG_EX",
+          "CONFIG_LD",
+          "CONFIG_ST",
+          "MVIN",
+          "MVIN2",
+          "MVIN3",
+          "MVOUT",
+          "PRELOAD",
+          "UNKNOWN"
+        ],
+        "largest_canonical_signature_occurrences": 13,
+        "missing_field_sites": 0,
+        "model_occurrences": {
+          "jack-resnet50": 15,
+          "jack-smolvla": 1,
+          "jack-tinyllama": 2
+        },
+        "observed_features": 497,
+        "occurrences": 18,
+        "raw_code_bytes": 209984,
+        "roles": [
+          "accumulate",
+          "commit",
+          "config",
+          "operand_load",
+          "readout",
+          "weight_load"
+        ],
+        "static_accelerator_sites": 13612,
+        "unique_bodies": 16,
+        "unresolved_field_sites": 15551
+      },
+      "label": "cca-16"
+    },
+    {
+      "bank": "conditions/cca-32/bank.json",
+      "bank_sha256": "a5325ce9a1e92e331fb1bf55f0dcf354ebc1f84d7fe58afeb0021279aa1e4718",
+      "coverage": {
+        "canonical_signatures": 7,
+        "complete_schedules": 0,
+        "feature_absence": "not a proof of semantic absence; projections and value populations can be bounded",
+        "field_sites": 103937,
+        "instruction_classes": [
+          "COMPUTE_ACCUMULATE",
+          "COMPUTE_PRELOADED",
+          "CONFIG_EX",
+          "CONFIG_LD",
+          "CONFIG_ST",
+          "MVIN",
+          "MVIN2",
+          "MVIN3",
+          "MVOUT",
+          "PRELOAD",
+          "UNKNOWN"
+        ],
+        "largest_canonical_signature_occurrences": 25,
+        "missing_field_sites": 0,
+        "model_occurrences": {
+          "jack-resnet50": 29,
+          "jack-smolvla": 4,
+          "jack-tinyllama": 3
+        },
+        "observed_features": 526,
+        "occurrences": 36,
+        "raw_code_bytes": 410716,
+        "roles": [
+          "accumulate",
+          "commit",
+          "config",
+          "operand_load",
+          "readout",
+          "weight_load"
+        ],
+        "static_accelerator_sites": 24240,
+        "unique_bodies": 32,
+        "unresolved_field_sites": 33206
+      },
+      "label": "cca-32"
+    },
+    {
+      "bank": "conditions/cca-66/bank.json",
+      "bank_sha256": "8b91d925fc9da4d98fa0d95b2c9fc58910ebc947b07b93fe141f01c38d664754",
+      "coverage": {
+        "canonical_signatures": 7,
+        "complete_schedules": 0,
+        "feature_absence": "not a proof of semantic absence; projections and value populations can be bounded",
+        "field_sites": 276162,
+        "instruction_classes": [
+          "COMPUTE_ACCUMULATE",
+          "COMPUTE_PRELOADED",
+          "CONFIG_EX",
+          "CONFIG_LD",
+          "CONFIG_ST",
+          "FLUSH",
+          "MVIN",
+          "MVIN2",
+          "MVIN3",
+          "MVOUT",
+          "PRELOAD",
+          "UNKNOWN"
+        ],
+        "largest_canonical_signature_occurrences": 59,
+        "missing_field_sites": 0,
+        "model_occurrences": {
+          "jack-resnet50": 61,
+          "jack-smolvla": 6,
+          "jack-tinyllama": 6
+        },
+        "observed_features": 529,
+        "occurrences": 73,
+        "raw_code_bytes": 1038910,
+        "roles": [
+          "accumulate",
+          "commit",
+          "config",
+          "operand_load",
+          "readout",
+          "sync",
+          "weight_load"
+        ],
+        "static_accelerator_sites": 65838,
+        "unique_bodies": 66,
+        "unresolved_field_sites": 86813
+      },
+      "label": "cca-66"
+    }
+  ],
+  "coordinator_branch": "cc/el4-grader-throughput-20261024",
+  "corpus_manifest_sha256": "43bf560821de1592c0bc8db6499bcd3f7e1e0513033c6d89c08b68c534682b9c",
+  "database_sha256": "abcaf173559a47070b003b1148fa54c10f7a1c3958c0ab8bccbe001d365408a7",
+  "launch_blockers": [
+    "Native author grant and broker enforcement for every coverage condition have not been exercised.",
+    "Useful candidate-bound comparison through the actual native client has not been verified for this study.",
+    "Common seed qualification and exact author/evaluation budgets must be pinned before launch."
+  ],
+  "raw": [
+    {
+      "id": "jack-resnet50",
+      "path": "originals/models/resnet50.elf",
+      "sha256": "97decefb6ff3852d01ce69d30f60d97f7f13bb6ce86815081899da66b87765fd"
+    },
+    {
+      "id": "jack-smolvla",
+      "path": "originals/models/smolvla.elf",
+      "sha256": "e598857dd6001d177868d34dac598a333a4c393dc9202734e6587456b121196b"
+    },
+    {
+      "id": "jack-tinyllama",
+      "path": "originals/models/tinyllama.elf",
+      "sha256": "f7a70f3a9ad2791956a808ae5aa212043614307e8ed5d5ab22328af41534de65"
+    }
+  ],
+  "schema": "merlin.jack_cca_coverage_study.v1",
+  "selection_algorithm": "model coverage, execution roles, unseen roles/classes/field bins/control; byte size; SHA tie-break",
+  "selection_cost_boundary": "all-reference preprocessing and selection cost applies even to the smallest bank",
+  "selection_sha256": "7186db0662d85b3338452dfbc8ebc75c9ce787a9a85d2d589c9ba2ead92a492b",
+  "status": "prepared_not_launch_qualified",
+  "unit_order": [
+    {
+      "kernel_id": "machine-97df7c51e06f8b25192400ca140fd222c97c26aa72d0ccb0c7d7637279b37d11",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-c244c9216192c85b29b9eb96"
+      ]
+    },
+    {
+      "kernel_id": "machine-63ad13712e43ae36b034d627ed00836f18a324a3997841dc2d7aaad37da16812",
+      "models": [
+        "jack-tinyllama"
+      ],
+      "occurrences": [
+        "jack-tinyllama:region-6fdc6b05c59320253ed07aee"
+      ]
+    },
+    {
+      "kernel_id": "machine-40149af7d7de956745a708992d19721727a0f74dd07c82e66c9420edfc1ab7b8",
+      "models": [
+        "jack-smolvla"
+      ],
+      "occurrences": [
+        "jack-smolvla:region-a480bf7d1c5555fcb31b0447"
+      ]
+    },
+    {
+      "kernel_id": "machine-bb08dded653948fb232399351875ee8034e49f23001a13479cc1139654d7504d",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-5e3e6747323475496a2d39f5"
+      ]
+    },
+    {
+      "kernel_id": "machine-153b02ca6eea238376eb65cba705c73ed2ab2dbcd7d88475bdd5bdd036011d21",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-96bf4e6b611ca711792d0d5a"
+      ]
+    },
+    {
+      "kernel_id": "machine-046eea499c97f3dd224e5151810c64818ea9501e89ceea09a3663b94d5cbb17d",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-7a897896e5ccdb17670dab65"
+      ]
+    },
+    {
+      "kernel_id": "machine-f45b2994d48a1133cac7e789f5533d0d27e19f12a1ffa8f612189900fba51042",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-a418dc07254f1e0d813ca9b2",
+        "jack-resnet50:region-098ad1e912b63af78bf5275a",
+        "jack-resnet50:region-239792ab3d21dbf407447958"
+      ]
+    },
+    {
+      "kernel_id": "machine-cf293adf192847e43a7b2319dd66abcaf6a39e70d160af9a039c4ec6d5fcd3d8",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-74f2b4d946121453b09d3223"
+      ]
+    },
+    {
+      "kernel_id": "machine-9ce9385d9112309fec5ca8d4e6204c0c505787233f5ef9bd2b018cc5d1e7a8a0",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-cb80e5aa29c1ee0072d6b85b"
+      ]
+    },
+    {
+      "kernel_id": "machine-cb68e437396012878845b318736df37619aef6c38f4e993d6fb0b19d8e8cdc03",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-9487e35a953bd415c111a178"
+      ]
+    },
+    {
+      "kernel_id": "machine-92d6086561ad83bd668429fd0c02e1b0c03cbbcf206374bc989d30b59e598e63",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-630e0a71c57e93117650a31c"
+      ]
+    },
+    {
+      "kernel_id": "machine-e98d80a5664b6a079966812caa41cfab65da5d199fdc21a20877d6c1892b1831",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-da49de80498b6177121751f4"
+      ]
+    },
+    {
+      "kernel_id": "machine-541d3f91d6c1014900dc998e4049062cea0d4c57cf4fb43d2617b299c38007a2",
+      "models": [
+        "jack-tinyllama"
+      ],
+      "occurrences": [
+        "jack-tinyllama:region-d85ac3afcd6d5ba1dd5b814c"
+      ]
+    },
+    {
+      "kernel_id": "machine-702e3bb79c8e2ab3591ab5b22101c62563ac19e584dca2767357252431d39407",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-6a344408536a5973d6d5e3c7"
+      ]
+    },
+    {
+      "kernel_id": "machine-70dd9e19aa2217d2a546ee7e1ad566053460d64a009dd2b632fecf62075bea63",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-fb9e8706e0ea8bf5476d60dd"
+      ]
+    },
+    {
+      "kernel_id": "machine-06c528c3272049e6863c34fb6da1ed4b6669c69aa219119809866f041fbe7ec7",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-6a1ac3724ff98a3a424a4594"
+      ]
+    },
+    {
+      "kernel_id": "machine-282031f2f3f94b708ba0e5b4f395d12c2fd94f586a31ea3b37047ac655cd2e3f",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-63bfdf8030e18edfa07096ac"
+      ]
+    },
+    {
+      "kernel_id": "machine-e4be041e5cc5e00b8225448a925c3bfb98090d1b5e51f31639827a268c3ff3e2",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-3ad26652556fe3bfe5d69c61"
+      ]
+    },
+    {
+      "kernel_id": "machine-5cbdec6d67aaa4196f49067e6d056606e291cb848600f2782dc8911e082ec2a1",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-57768946884a3eb7d8f0bde3"
+      ]
+    },
+    {
+      "kernel_id": "machine-d2ce4f7f87e161d578b4193adbf544712570e85d967a4096fb7e88e7634c3078",
+      "models": [
+        "jack-smolvla"
+      ],
+      "occurrences": [
+        "jack-smolvla:region-10195c12233db8e0eab162d5"
+      ]
+    },
+    {
+      "kernel_id": "machine-dcb567dd69a0993c50904fdf1588c4744a4e97f3c1fc60501d9de6ad9d6c2755",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-bd4e338d9d2885db10d608cd"
+      ]
+    },
+    {
+      "kernel_id": "machine-1b242454c97a536a919737eb970a45c588a385a4aef65f73c606312bb09fb8cf",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-e292fe5b32a9b4203162a971",
+        "jack-resnet50:region-6929422e416b09ec9fadb8d7"
+      ]
+    },
+    {
+      "kernel_id": "machine-a89d2017230a1cf825f002d82f77a1c4ba4537851d730516fddc631dae770c1d",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-09116d7f46b8509904bf6e08"
+      ]
+    },
+    {
+      "kernel_id": "machine-97869efc193bae05ed69a2637e8958e23974e13591a30d9cab08f3061d8e8d02",
+      "models": [
+        "jack-tinyllama"
+      ],
+      "occurrences": [
+        "jack-tinyllama:region-5d9ccd17e17df687aba7316b"
+      ]
+    },
+    {
+      "kernel_id": "machine-7bd32dfbe03196809f185b15a11bbc9598711f0700a4ec6edbbbba21b07d298e",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-0774bf22a756b4f815bb47c6"
+      ]
+    },
+    {
+      "kernel_id": "machine-673150e8fdd58583d35037e58104019b0bf9cd191972ab252352ff448e8e79ae",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-e8a2cbd3e486d556fdb5b5ee"
+      ]
+    },
+    {
+      "kernel_id": "machine-9d7af6039ee3f2105684bad885ead9195cc0b8caf441f28fef5918fd64c0e199",
+      "models": [
+        "jack-smolvla"
+      ],
+      "occurrences": [
+        "jack-smolvla:region-49cb5dc883fbed95f8023f35"
+      ]
+    },
+    {
+      "kernel_id": "machine-0db38728b42eaa27e37628f12f4e754c03811b347b101fc2039930e74b5a419e",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-7d323486449ee04c6f999342"
+      ]
+    },
+    {
+      "kernel_id": "machine-c8cb78b9175cdbae4ef10df4bafd8b8875f80fcb73fbdafe133c903566400130",
+      "models": [
+        "jack-smolvla"
+      ],
+      "occurrences": [
+        "jack-smolvla:region-58446fc998616fd7456e71d4"
+      ]
+    },
+    {
+      "kernel_id": "machine-9eb0a5eb4dedab1b647d4ac43438f395a413126ee6e3d40bce0a38fb09c0d5c1",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-3e1ab25975fdecaa7623b65b",
+        "jack-resnet50:region-3c64401d982cc4e94927366b"
+      ]
+    },
+    {
+      "kernel_id": "machine-a5bc746743f7bc00518b90d29ebe70423d608fcbe09b0f2e63072714221185af",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-dccbcce06bbae509305f9797"
+      ]
+    },
+    {
+      "kernel_id": "machine-a7d68e51151b731d324d628c16115e1388ee716bc68347382c7c524741abbc8c",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-64b803e694e71b2d224afdb7"
+      ]
+    },
+    {
+      "kernel_id": "machine-abe2575603cfabcd746c5bd20f0d030d75c1897bbab2e3dc23bbb8536fb6c996",
+      "models": [
+        "jack-smolvla"
+      ],
+      "occurrences": [
+        "jack-smolvla:region-7b192c89d2f385071bc45b04"
+      ]
+    },
+    {
+      "kernel_id": "machine-93bc998317d1409ae01cd55530bced6d3ed650ff96a2a0a7ac06c2e4e836e682",
+      "models": [
+        "jack-tinyllama"
+      ],
+      "occurrences": [
+        "jack-tinyllama:region-2b7edbe199bdef0e7ed125bd"
+      ]
+    },
+    {
+      "kernel_id": "machine-b30c37e95868dfe65af22d903a3af2e008dc452d07ec27704caf1ce80d85f659",
+      "models": [
+        "jack-smolvla"
+      ],
+      "occurrences": [
+        "jack-smolvla:region-3d18a07174ccbbb4485996af"
+      ]
+    },
+    {
+      "kernel_id": "machine-9cd770f2aa8ce1587ee35f8cfd2ac050c2888fc51b9ec260a89ee0a7f370fee5",
+      "models": [
+        "jack-tinyllama"
+      ],
+      "occurrences": [
+        "jack-tinyllama:region-98133e0515a36977eb3fcf10"
+      ]
+    },
+    {
+      "kernel_id": "machine-654793d96929ea25bef06aea5e8ec7ac1cff3d57b1f5b7cce4665794f3d367b5",
+      "models": [
+        "jack-tinyllama"
+      ],
+      "occurrences": [
+        "jack-tinyllama:region-a642fd4975b1d5582d2ec21d"
+      ]
+    },
+    {
+      "kernel_id": "machine-da35b0deb39c4fb844012d0738dc2ea3528e23f1bfd43482f25a5e80184bd9ff",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-069a4e77c07317449c32aae1",
+        "jack-resnet50:region-3ac0bdd9c4d74fd4d8ed1d38"
+      ]
+    },
+    {
+      "kernel_id": "machine-9754ecfe1df550a832288463844047c6e84ab66aa44ad968de6c2f5a97c92aba",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-da3a0c783c007145b22ae5e8"
+      ]
+    },
+    {
+      "kernel_id": "machine-78ef0fdaf2e907d24b234e6ba82634c7385db6c58d507070d8cfbaf80bc1fb2d",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-becb382be454e6c9bc6f8f86"
+      ]
+    },
+    {
+      "kernel_id": "machine-bc6100c0d6579330b883c60a3bb3d0a3b710569e2751a27265b9aa05ab2ece47",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-8324a28d5028406f6425053c"
+      ]
+    },
+    {
+      "kernel_id": "machine-fe7f7742e77e8db0c2a00d809b88d6b700e0b0b7c910da35ff49f81ded337b4b",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-1de40f9186073b4f57e2966b"
+      ]
+    },
+    {
+      "kernel_id": "machine-48f47be9f4d899d9053faab00979bb7b3d5fa8ef56d467285be19f32a5c5422c",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-b96d2e2fba691189a3d11fe5"
+      ]
+    },
+    {
+      "kernel_id": "machine-2ea6882d1a6b223f0fb3b449f0d79e7861254054b7e5cebe9d01208a7f32463b",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-da9764a1c58d18bb5a37f1ea"
+      ]
+    },
+    {
+      "kernel_id": "machine-4f3e85884edd79620610110c0e749e1a0efadcf8820b97d581e622d0b765f39a",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-b8121db566887057ee265791"
+      ]
+    },
+    {
+      "kernel_id": "machine-902c4815edf4359b65a378dc1c2695734ddb099ae136c0a3da4cb3e11d9f7bf4",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-d35cf2f850594c5c55df3cdc"
+      ]
+    },
+    {
+      "kernel_id": "machine-b57f00a7dc42ca99f06ef277f31d3cca77dc0144dad630eeb433f9a599b434ae",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-c1e6a22c42395ed1745bb1bb"
+      ]
+    },
+    {
+      "kernel_id": "machine-6c5c02c22f5f59f442f2818310b3de0183cc5f12ebfa036c0959ee99364b57c1",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-f0ffe44dfdc911840772f054"
+      ]
+    },
+    {
+      "kernel_id": "machine-95943c38bc81a645a879ca898b06eff54e609df7be9c8106cabe0ad3fddbd91d",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-42190336ae8c926c30d8e8c7"
+      ]
+    },
+    {
+      "kernel_id": "machine-c112e4ab924b12e7fca4663167fa6dbaf2415b9de14dc5ef3b25c3af517f5505",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-bc2fb45bb9bb890eedd385cb"
+      ]
+    },
+    {
+      "kernel_id": "machine-de5b49ada7b522103efa38fe7cf9745c89e70d24f72d7a3cdad16a7a66d401bf",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-e764b37ad13debc8f3eff245"
+      ]
+    },
+    {
+      "kernel_id": "machine-c4d9c7eba2c7ff781490773bf31b63e66bd2331549d3395d4b714f8422679930",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-a4927e11d84fb4efab9dc56d"
+      ]
+    },
+    {
+      "kernel_id": "machine-0758f22b777d8b709cead013fdc0ca44d20a422785eeea25c5a456fecf675a2d",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-a2756261084ab71e2ba661a0"
+      ]
+    },
+    {
+      "kernel_id": "machine-7976a9544cee8cbdd2f8cdcfa16509d5c7323d322108980e852c3b1ece5fe1ad",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-a854c7a903cf5ad39708ea0f"
+      ]
+    },
+    {
+      "kernel_id": "machine-bd7d1209d4ac1655e47ac54f2fe7a921272ff9f7629bce0bbd44c79364e80cbf",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-2c82c22486006153419b94f8"
+      ]
+    },
+    {
+      "kernel_id": "machine-2d40bfbd1d4100c0d3e7cb3619370e6080d9f44c177740e7624198658dbfc757",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-432900ce5b87411f432f5ec7",
+        "jack-resnet50:region-71efc03ec43004f568da160d",
+        "jack-resnet50:region-904b6e48951f2a98162f4172"
+      ]
+    },
+    {
+      "kernel_id": "machine-07358fb1e709b53babd00a466411a7874f5b1dc120e98e0ca13e15bd5e20bac9",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-73ba8941e24e12c69532cc52"
+      ]
+    },
+    {
+      "kernel_id": "machine-939f567bf68760f2dffc82aa3b2ac452537ca031b69013bbf6ad42779a1aa87b",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-d2586eba0a81f8782da6ef07"
+      ]
+    },
+    {
+      "kernel_id": "machine-a7d6b4f59ffb20b25f27718256f921b1a6fd8526998933e607d62a11f73b9a8b",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-71b3dc6caa24f5de81cec47b"
+      ]
+    },
+    {
+      "kernel_id": "machine-6be2e0e4465d35caffbaea0387007e819d4ca1df4d411605ba2dd824e9fc086d",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-5b2366a26451e9d4b44e1823"
+      ]
+    },
+    {
+      "kernel_id": "machine-6e95a2f08f60d306cf86655b1e67d063e587cb1abc529f5057603baccf8faa23",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-8554dc697bac8d8877dbec7f"
+      ]
+    },
+    {
+      "kernel_id": "machine-b5b88fe6ac8c5ec4fa16c08c110577754519b126b49ea7e2dd18fca02fb3031e",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-81c08a36b3d0cba0ebfa68f3"
+      ]
+    },
+    {
+      "kernel_id": "machine-da929434d10a98b3349270242c57566d6e81942bac8aaf3c0be2c58f5338f234",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-4380bf3226ec15fa3f1c17c2"
+      ]
+    },
+    {
+      "kernel_id": "machine-28f4b325b0c18fa175777ddd8c185634640e790123c56c070b519570dc46c789",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-818b82659996aa8bb4bf7fa9"
+      ]
+    },
+    {
+      "kernel_id": "machine-70d99107e57614c698029b86009bdc64e84eb586c462e79ec424f342d7932131",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-e0ad7a47a0283254497725fe"
+      ]
+    },
+    {
+      "kernel_id": "machine-8b51fc2deb8d76298564769cc544e169f3eaa0803d4e35b47fc7a9778a99ec13",
+      "models": [
+        "jack-resnet50"
+      ],
+      "occurrences": [
+        "jack-resnet50:region-73eca1fd6d00e873b64b892b"
+      ]
+    }
+  ]
+}

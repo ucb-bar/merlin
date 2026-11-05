@@ -46,6 +46,13 @@ def test_complete_membership_and_identity(selected):
         assert inputs[f"phase1:startup:provider:python:{relative}"]["path"] == str(root / relative)
     assert inputs["phase1:startup:provider:identity"]["sha256"] == SI.fingerprint(root / "provider.yaml")
     assert inputs["phase1:startup:provider:contract"]["path"] == str(root / "contracts/target_contract.yaml")
+    for key, module in (
+        ("sandbox_mount_visibility", "merlin.targetgen.sandbox.mount_visibility"),
+        ("capsule_diagnostics", "merlin.targetgen.capsule_diagnostics"),
+    ):
+        path = SI._source(module).resolve()
+        assert inputs[f"phase1:startup:{key}"]["path"] == str(path)
+        assert inputs[f"phase1:startup:{key}"]["sha256"] == SI.fingerprint(path)
     SI.verify(record, **arguments)
 
 

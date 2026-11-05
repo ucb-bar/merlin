@@ -3,7 +3,7 @@ title: Extending the compiler stack
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-06
+last_verified: 2026-10-16
 related: [phase0_specification, model_lowering, model2mlir, triton_kernels, target_resolution, llvm_integration, simulator_selection]
 code_refs:
   - src/merlin/targetgen/software_spec.py
@@ -12,6 +12,7 @@ code_refs:
   - src/merlin/targetgen/quant_recipe.py
   - src/merlin/targetgen/quant_layer_plan.py
   - src/merlin/targetgen/_recipe_quantizer.py
+  - src/merlin/targetgen/_gptq.py
   - src/merlin/targetgen/rtl/circt_introspect.py
   - src/merlin/targetgen/rtl/timing.py
   - src/merlin/xdsl_dialects/schedule.py
@@ -143,6 +144,15 @@ an agent to invent missing semantics, select favorable tests or repair a target 
 Phase 1 is the agentic functional compiler experiment. Phase 2 optimizes and measures an
 already functionally qualified compiler using a separate performance cohort.
 
+When an original recorded RTL reader path has moved, `select_evidence` accepts an
+explicit `rtl_source_relocations` mapping from that absolute path to
+`{"path": "/new/absolute/path", "sha256": "<recorded digest>"}`. Every entry must
+match an actual digest-bound facts source and the replacement's exact bytes;
+unknown entries and indirect files refuse. The original facts remain unchanged.
+Evidence snapshots record the replacement's custody and export both paths and
+the selected facts digest in `hardware/source-relocations.json`. This restores
+byte provenance only; it grants no new extraction or qualification.
+
 For a live model workload, capsule generation reads `workloads/<name>/capture.toml`
 from the selected model2MLIR source, not another checkout named by the host environment.
 A malformed declaration or missing pinned interpreter fails that capsule explicitly.
@@ -220,6 +230,55 @@ Functional arithmetic a container owns between its children (a residual add, for
 planned per operation; an operation whose owner cannot be established is refused.
 Module eligibility is a first filter, not complete proof of arbitrary functional-operator
 or fused-region placement.
+
+A contraction of two run-time activations (attention's `Q @ K^T` and `P @ V`) has no
+stored weight, so a derived recipe leaves it in floating point. Quantizing it is a numerical
+choice, never a derived default: `quant_recipe.with_activation_contractions` (CLI:
+`python -m merlin.targetgen.quant_recipe activation-contractions IN.json OUT.json`) adds
+the `activation_contraction` family to a derived static per-tensor integer recipe. The
+static quantizer then spells each fused `scaled_dot_product_attention` as its math
+definition (the one the capture lowers it to) and puts the activation spec on both operands
+of every activation x activation matmul whose reduction exceeds 16: `Q`, `K`, the softmax
+probabilities `P` and `V` each get one calibrated static scale per tensor.
+
+Run-time scales are a second opt-in, the recipe's `dynamic` block
+(`quant_recipe.with_dynamic_contractions`, CLI `dynamic-contractions`): the listed contraction
+families are rewritten by `_dynamic_contractions` before PT2E into plain `int8 x int8 -> i32`
+`_int_mm` calls with scales on non-reduction axes only (one per row of the streamed operand, one per
+column of the other, a stored weight's per output channel), rescaled on the host by their outer
+product. The block can split a softmax-produced operand into k int8 planes (k device matmuls, summed
+on the host) and subtract the other operand's mean over a softmax's axis (a shift the softmax
+ignores). The device still sees ordinary int8 matmuls; every scale, plane sum and shift is host work,
+counted in the capture's `quantization_stats.dynamic_contractions`. With `scales: static_heads`
+(CLI `--scales static_heads`) the same block fixes the scales at capture instead, the form a readout
+applies per device call: `_static_attention` calibrates one minmax scale per head of each operand in
+one pass over the calibration inputs before PT2E, takes the smooth shift as a calibrated per-(head,
+row) mean (folded into the producing Linear's bias when only layout steps lie between, otherwise a
+host subtraction), and replaces a softmax-produced operand by `exp(s - rowmax)` in planes with fixed
+scales `1/127`, `1/(127*128)`, ..., dividing the result rows by their sum on the host. `--planes
+operand=k` puts every other operand on a static per-head grid of k int8 digits (two: 15 bits); each
+pair of digit planes is one device call per head with one scale.
+
+A wider STATIC activation grid is a third opt-in, the recipe's `static_planes` block
+(`quant_recipe.with_static_planes`, CLI `static-planes [--planes k] [--observer O] [--owners a,b]`).
+A Linear or ungrouped Conv2d in scope (its owning module path under one of `owners`; default: all) gets one
+calibrated scale per tensor on a grid of k int8 digits: the top digit spans the recipe's int8 range,
+each lower one `[0, 127]` (two digits: 15 bits). After `convert_pt2e`, `_static_planes` rewrites each
+such contraction into k `_int_mm` calls (a Conv2d through im2col of each digit plane) against the SAME int8 weight and sums `128 * acc_top + acc_low`
+inside the per-column rescale the host already applies, so no host pass is added; the sites and their
+cost are in `quantization_stats.static_planes`. A static activation observer may also be a
+percentile of `|x|` (`with_activation_observer`, CLI `activation-observer IN OUT p99.999`;
+`_recipe_observers`).
+
+Weight codes are rounded to nearest unless a recipe opts into GPTQ:
+`quant_recipe.with_gptq_weights` (CLI:
+`python -m merlin.targetgen.quant_recipe gptq-weights IN.json OUT.json`) sets
+`weight.rounding: gptq` and records `calibration_samples`, `act_order`, `damp` and `block`
+under `weight.gptq`, all of which enter the digest. The grid stays the recipe's: GPTQ only
+picks each code on the scales the weight observer computes. `_gptq.py` accumulates each
+contraction's Hessian during the static calibration pass and sets the codes into the stored
+weights before `convert_pt2e` folds them, so the converted program's int8 weights are GPTQ's.
+A recipe without the key keeps its digest and its nearest codes.
 
 For a new format, first add its structural vocabulary and derivation rules, including
 granularity, packing, ranges, zero points, bias domain and rounding. Then extend the

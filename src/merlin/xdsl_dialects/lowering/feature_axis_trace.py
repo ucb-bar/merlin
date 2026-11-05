@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from merlin.common import mlir_query as mq
-from merlin.kernels import shapes as KS
+from merlin.compile.analysis import contraction_shapes as KS
 
 __all__ = ["Derivation", "derive_feature_axis"]
 

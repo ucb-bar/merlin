@@ -39,6 +39,28 @@ def test_operator_seal_runs_official_grade_but_can_never_report_formal_completio
 
     body = inspect.getsource(loop.execute)
     assert "or incomplete_operator_seal" in body
-    assert "formal_complete = (not incomplete_operator_seal)" in body
+    import ast
+
+    selected = next(
+        node
+        for node in ast.walk(ast.parse(body))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_completion_for_scope"
+    )
+    assert any(
+        arg.arg == "checkpoint" and isinstance(arg.value, ast.Name) and arg.value.id == "incomplete_operator_seal"
+        for arg in selected.keywords
+    )
+    for scope in ("full", "capsules"):
+        result = loop.CERT._completion_for_scope(
+            validation_scope=scope,
+            numeric_all_pass=True,
+            workflow_conformant=True,
+            official_grade={"complete": True},
+            telemetry={"complete": True},
+            checkpoint=True,
+        )
+        assert result["converged"] is result["formal_complete"] is False
     assert "if a.seal_current:" in body
     assert "return False" in body

@@ -25,6 +25,7 @@ from .component_generation import digest
 from .rtl_intake import RtlIntakePin, _exclusion_prefix, _outside
 
 SCHEMA = "merlin.phase0.source_preparation_release.v1"
+POINTWISE_SCHEMA = "merlin.phase0.source_preparation_release.v2"
 _ISSUED = weakref.WeakKeyDictionary()
 
 
@@ -92,6 +93,13 @@ def _semantic_facets(ledger, cases):
             "actual_cases": copy.deepcopy(selected),
             "scope": "finite original input/reference cases; original whole requirement remains unchanged",
         }
+        if record["schema"] == M.POINTWISE_SCHEMA:
+            requirement["original_semantic_facets"].update(
+                reviewed_finite_original_owner="checked"
+                if all(row["owner"] is not None and row["state"] == "source_case_checked" for row in selected)
+                else "unavailable",
+                supplementary_original_stress=[copy.deepcopy(family["supplementary_stress"]) for family in families],
+            )
     return {
         "sha256": cases.sha256,
         "schema": record["schema"],
@@ -139,7 +147,7 @@ def _record(*, root, coverage, hardware, software, semantic_cases):
     # All original states, missing producers and mandatory IDs are inherited
     # from the fixed replay above. Finite facets never replace those premises.
     return {
-        "schema": SCHEMA,
+        "schema": POINTWISE_SCHEMA if semantic is not None and semantic["schema"] == M.POINTWISE_SCHEMA else SCHEMA,
         "source_root": str(root),
         "coverage_sha256": coverage["sha256"],
         "hardware_intake_sha256": hardware.sha256,

@@ -86,6 +86,29 @@ def _decision(entry: dict, *, host_only: bool) -> dict:
     }
 
 
+def accelerator_placement_refusal(screen: dict | None) -> str | None:
+    """Why a capsule with this written-program screen may not be published, or ``None`` when it may.
+
+    A capsule grades the author's accelerator compiler; host placement is compiled by Merlin's own
+    generic host codegen. A program with no operation placed on the accelerator therefore grades none
+    of the author's work. Fail closed: a screen without a per-lane placement count is refused too,
+    because an absent count is not evidence of accelerator work.
+    """
+    placements = screen.get("placements") if isinstance(screen, dict) else None
+    if not isinstance(placements, dict):
+        return "the capsule carries no frozen per-operation placement record"
+    count = placements.get("accelerator", 0)
+    if type(count) is not int or count < 0:
+        return "the capsule's frozen accelerator placement count is malformed"
+    if count == 0:
+        lanes = ", ".join(f"{lane}={placements[lane]}" for lane in sorted(placements)) or "no placed operation"
+        return (
+            f"no operation of the written program is placed on the accelerator ({lanes}); host placement "
+            "is Merlin-supplied and grades none of the author's work"
+        )
+    return None
+
+
 def entry_refusal_is_final(entry: dict, decision: dict) -> bool:
     """Whether a screen of an ENTRY (before its capsule is written) may refuse it outright.
 
@@ -95,6 +118,10 @@ def entry_refusal_is_final(entry: dict, decision: dict) -> bool:
     """
     probe = entry.get("generalization") or {}
     host_probe = probe.get("must_accelerate") is False and probe.get("eligible") is False
+    # A MUST-REFUSE member is refused by the declarations on purpose: that refusal is what it grades,
+    # so it is never moved out of the graded cohort for it (merlin.targetgen.expected_refusal).
+    if entry.get("outcome") == "refuse":
+        return False
     return decision.get("status") == "unsupported" and not host_probe
 
 
@@ -119,7 +146,7 @@ def summarize(entries: list[dict], *, host_only: bool = False, scope: str) -> di
     }
 
 
-def account_program(program: Path, *, name: str, target: str, evidence) -> list[dict]:
+def account_program(program: Path, *, name: str, target: str, evidence, source_context=None) -> list[dict]:
     """Per-operation admission entries of one Linalg/source program, as for a captured application."""
     from merlin.targetgen.application_inventory import application_demand_inventory
     from merlin.targetgen.operation_accounting import build_operation_accounting
@@ -137,7 +164,51 @@ def account_program(program: Path, *, name: str, target: str, evidence) -> list[
         capability_contract=evidence.contract,
         host_capabilities=getattr(evidence, "host_capabilities", None),
     )
+    _join_source_admissions(accounting, {name: program}, evidence=evidence, source_context=source_context, target=target)
     return accounting["applications"][name]["signatures"]
+
+
+def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evidence, source_context=None, target=None) -> None:
+    """Re-screen exact inventoried source bodies; serialized signatures are insufficient."""
+    from merlin.common import mlir_query as mq
+    from merlin.frontends.capture_normalization import normalize_capture_mlir
+    from merlin.targetgen.operation_accounting import admit_operation_row
+
+    if set(captures) != set(accounting["applications"]):
+        raise ValueError("source admission captures must cover the exact application roster")
+    if source_context is not None:
+        from .connected_source_context import require_context
+        require_context(source_context, captures)
+    for name, application in accounting["applications"].items():
+        raw = Path(captures[name]).read_bytes()
+        if hashlib.sha256(raw).hexdigest() != application["capture_sha256"]:
+            raise ValueError("source admission capture differs from inventoried bytes")
+        normalized, _ = normalize_capture_mlir(raw.decode("utf-8"))
+        operations = tuple(mq.walk(mq.parse(normalized)))
+        bound_context = source_context.for_program(captures[name]) if source_context is not None else None
+        control_context = (source_context.control_admission_context(captures[name], target=target)
+                           if source_context is not None else None)
+        index_context = source_context.index_admission_context(captures[name]) if source_context is not None else None
+        for entry in application["signatures"]:
+            row = entry["observed_signature"]
+            control = control_context is not None and row.get("mlir_operation") in {
+                "arith.index_cast", "arith.addi", "arith.cmpi", "cf.assert"}
+            if entry["host_admission"]["status"] != "unknown" and not control:
+                continue
+            entry.update(
+                admit_operation_row(
+                    row,
+                    software_spec=evidence.software_spec or None,
+                    capability_contract=evidence.contract,
+                    host_capabilities=getattr(evidence, "host_capabilities", None),
+                    source_operations=tuple(operations[ordinal] for ordinal in row["ordinals"]),
+                    source_context=(control_context if control else index_context
+                                    if index_context is not None and row.get("frontend_op") == "aten.index.Tensor"
+                                    else bound_context),
+                )
+            )
+    if source_context is not None:
+        require_context(source_context, captures)
 
 
 def account_interface(program: Path, *, target: str, evidence, numeric_screens: list[dict] | None = None) -> list[dict]:
@@ -245,7 +316,7 @@ def _operand_sum_numeric_screens_text(mlir: str, evidence) -> list[dict]:
     return screens
 
 
-def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> dict | None:
+def screen_written(capsule: dict, directory: Path, *, target: str, evidence, source_context=None) -> dict | None:
     """The written program's screen, or ``None`` when the capsule contains no program to read."""
     from .coverage_commitment import _selected_program
 
@@ -259,7 +330,8 @@ def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> 
     semantic = capsule.get("semantic") or capsule.get("generalization") or {}
     host_only = semantic.get("must_accelerate") is False and semantic.get("eligible") is False
     if "linalg_mlir" in capsule or capsule.get("kind") == "model":
-        entries = account_program(program, name=str(capsule.get("name")), target=target, evidence=evidence)
+        entries = account_program(program, name=str(capsule.get("name")), target=target, evidence=evidence,
+                                  source_context=source_context)
         scope = "written source program: per-operation admission, as for a captured application"
         numeric_screens = []
     else:
@@ -320,11 +392,13 @@ def _check_saved_inventory(screen: dict, materialized: dict, evidence) -> dict:
     return {**screen, "saved_inventory": {"capture_sha256": expected["capture_sha256"], "status": "matched"}}
 
 
-def derive_inventory(inventory: dict, *, target: str, evidence) -> dict:
+def derive_inventory(inventory: dict, *, target: str, evidence, captures: dict[str, Path] | None = None,
+                     source_context=None) -> dict:
     """The per-operation admission inventory of each declared capture, written at derivation.
 
     ``inventory`` is the derivation's own detailed application inventory of the declared captures,
-    judged once more with the selected declarations, so no capture is re-read here.
+    judged once more with the selected declarations. Selected captures additionally
+    establish parsed source-body requirements against the exact inventoried bytes.
     """
     from merlin.targetgen.operation_accounting import build_operation_accounting
 
@@ -334,6 +408,17 @@ def derive_inventory(inventory: dict, *, target: str, evidence) -> dict:
         capability_contract=evidence.contract,
         host_capabilities=getattr(evidence, "host_capabilities", None),
     )
+    if (
+        captures is None
+        and inventory.get("applications")
+        and all(
+            isinstance(row.get("capture_source_path"), str) and row["capture_source_path"]
+            for row in inventory["applications"].values()
+        )
+    ):
+        captures = {name: Path(row["capture_source_path"]) for name, row in inventory["applications"].items()}
+    if captures is not None:
+        _join_source_admissions(accounting, captures, evidence=evidence, source_context=source_context)
     applications = {}
     for label, application in sorted(accounting["applications"].items()):
         screen = summarize(application["signatures"], scope="declared iteration capture at derivation")

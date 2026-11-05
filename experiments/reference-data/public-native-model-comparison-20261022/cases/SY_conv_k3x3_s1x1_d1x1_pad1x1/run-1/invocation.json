@@ -1,0 +1,304 @@
+{
+  "original_sha256": "4128fa6535cf92b9aad96cfd2098bc43805de5e472b0b28c25e4422b7b5eb542",
+  "projection": "portable namespace and tool roles; raw invocation hash preserved",
+  "record": {
+    "argv": [
+      "${RETAINED_RUNTIME}/.tmp/bubblewrap-build/bwrap",
+      "--unshare-pid",
+      "--unshare-net",
+      "--die-with-parent",
+      "--new-session",
+      "--clearenv",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/scratch/0",
+      "/tmp",
+      "--bind",
+      "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace",
+      "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace",
+      "--chdir",
+      "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace",
+      "--ro-bind",
+      "${RETAINED_RUNTIME}/out/fire-aligned-spike-30mhz/runtime/bin/spike",
+      "${RETAINED_RUNTIME}/out/fire-aligned-spike-30mhz/runtime/bin/spike",
+      "--ro-bind",
+      "${TASK}/merlin/out/build/htif-target-observer-v1/spike",
+      "${TASK}/merlin/out/build/htif-target-observer-v1/spike",
+      "--ro-bind",
+      "${RETAINED_RUNTIME}/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump",
+      "${RETAINED_RUNTIME}/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump",
+      "--ro-bind",
+      "${TASK}/merlin/out/build/combined-public-structure-v1/model.json",
+      "${TASK}/merlin/out/build/combined-public-structure-v1/model.json",
+      "--ro-bind",
+      "${RETAINED_RUNTIME}/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+      "${RETAINED_RUNTIME}/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+      "--ro-bind",
+      "${TASK}/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+      "${TASK}/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+      "--ro-bind",
+      "${HOST_LIB}/ld-linux-x86-64.so.2",
+      "${HOST_LIB}/ld-linux-x86-64.so.2",
+      "--ro-bind",
+      "${HOST_LIB}/libc.so.6",
+      "${HOST_LIB}/libc.so.6",
+      "--ro-bind",
+      "${HOST_LIB}/libcrypto.so.3",
+      "${HOST_LIB}/libcrypto.so.3",
+      "--ro-bind",
+      "${HOST_LIB}/libdl.so.2",
+      "${HOST_LIB}/libdl.so.2",
+      "--ro-bind",
+      "${HOST_LIB}/libgcc_s.so.1",
+      "${HOST_LIB}/libgcc_s.so.1",
+      "--ro-bind",
+      "${HOST_LIB}/libicudata.so.70.1",
+      "${HOST_LIB}/libicudata.so.70.1",
+      "--ro-bind",
+      "${HOST_LIB}/libicudata.so.70.1",
+      "${HOST_LIB}/libicudata.so.70",
+      "--ro-bind",
+      "${HOST_LIB}/libicui18n.so.70.1",
+      "${HOST_LIB}/libicui18n.so.70.1",
+      "--ro-bind",
+      "${HOST_LIB}/libicui18n.so.70.1",
+      "${HOST_LIB}/libicui18n.so.70",
+      "--ro-bind",
+      "${HOST_LIB}/libicuuc.so.70.1",
+      "${HOST_LIB}/libicuuc.so.70.1",
+      "--ro-bind",
+      "${HOST_LIB}/libicuuc.so.70.1",
+      "${HOST_LIB}/libicuuc.so.70",
+      "--ro-bind",
+      "${HOST_LIB}/libm.so.6",
+      "${HOST_LIB}/libm.so.6",
+      "--ro-bind",
+      "${HOST_LIB}/libpthread.so.0",
+      "${HOST_LIB}/libpthread.so.0",
+      "--ro-bind",
+      "${HOST_LIB}/libstdc++.so.6.0.35",
+      "${HOST_LIB}/libstdc++.so.6.0.35",
+      "--ro-bind",
+      "${HOST_LIB}/libstdc++.so.6.0.35",
+      "${HOST_LIB}/libstdc++.so.6",
+      "--ro-bind",
+      "${RETAINED_RUNTIME}/.tmp/boost-deps${HOST_LIB}/libboost_regex.so.1.74.0",
+      "${RETAINED_RUNTIME}/.tmp/boost-deps${HOST_LIB}/libboost_regex.so.1.74.0",
+      "--ro-bind",
+      "${RETAINED_RUNTIME}/.tmp/boost-deps${HOST_LIB}/libboost_regex.so.1.74.0",
+      "${RETAINED_RUNTIME}/.tmp/boost-deps${HOST_LIB}/libboost_regex.so.1",
+      "--ro-bind",
+      "${RETAINED_RUNTIME}/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+      "${RETAINED_RUNTIME}/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+      "--ro-bind",
+      "${RETAINED_RUNTIME}/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+      "${RETAINED_RUNTIME}/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1",
+      "--ro-bind",
+      "${RETAINED_RUNTIME}/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0",
+      "${RETAINED_RUNTIME}/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0",
+      "--ro-bind",
+      "${RETAINED_RUNTIME}/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0",
+      "${RETAINED_RUNTIME}/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1",
+      "--ro-bind",
+      "${HOST_BIN}/dtc",
+      "${HOST_BIN}/dtc",
+      "--ro-bind",
+      "${HOST_LIB}/libyaml-0.so.2.0.6",
+      "${HOST_LIB}/libyaml-0.so.2.0.6",
+      "--ro-bind",
+      "${HOST_LIB}/libyaml-0.so.2.0.6",
+      "${HOST_LIB}/libyaml-0.so.2",
+      "--ro-bind",
+      "${HOST_LIB}/ld-linux-x86-64.so.2",
+      "/lib64/ld-linux-x86-64.so.2",
+      "--setenv",
+      "LD_LIBRARY_PATH",
+      "${RETAINED_RUNTIME}/out/fire-aligned-spike-30mhz/runtime/lib:${TASK}/merlin/out/build/streamed-readout-v4:${HOST_LIB}:${RETAINED_RUNTIME}/.tmp/boost-deps${HOST_LIB}:${RETAINED_RUNTIME}/.tmp/chipyard-fire-aligned/.conda-env/lib:${RETAINED_RUNTIME}/.tmp/functional-fire-build-v3/install/lib:${HOST_BIN}",
+      "--setenv",
+      "PATH",
+      "${HOST_BIN}:${HOST_LIB}",
+      "--bind",
+      "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/scratch/shm",
+      "/dev/shm",
+      "--remount-ro",
+      "/dev",
+      "--remount-ro",
+      "/",
+      "--unshare-user",
+      "--disable-userns",
+      "--assert-userns-disabled",
+      "--ro-bind",
+      "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/program.elf",
+      "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/program.elf",
+      "--ro-bind",
+      "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/output-symbols.elf",
+      "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/output-symbols.elf",
+      "--ro-bind",
+      "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/scope.json",
+      "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/scope.json",
+      "--",
+      "${TASK}/merlin/out/build/htif-target-observer-v1/spike",
+      "--extlib=${RETAINED_RUNTIME}/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+      "--extlib=${TASK}/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+      "--extension=gemmini",
+      "-p1",
+      "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+      "-m0x80000000:0x400000000",
+      "--instructions=1000000000",
+      "--timing-model=${TASK}/merlin/out/build/combined-public-structure-v1/model.json",
+      "--timing-report=${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/report.json",
+      "--timing-scope-binding=${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/scope.json",
+      "--timing-input-sha256=ec0607f6b7a00ac6ed470029246c16f2555176fc728305f8ae261f83701fad94",
+      "+symbol-elf=${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/output-symbols.elf",
+      "+signature=${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/output-1.signature",
+      "+signature-granularity=1",
+      "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/program.elf"
+    ],
+    "cwd": "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace",
+    "dependencies": [
+      {
+        "path": "${HOST_LIB}/ld-linux-x86-64.so.2",
+        "sha256": "41daf7836f7fce21a40ca63a00c5caf21b05a35a76ccc075d86f1716212cdf01"
+      },
+      {
+        "path": "${HOST_LIB}/libc.so.6",
+        "sha256": "b2cf6c33b74d2f22543b7a469a75b538911e690f769d0b238843a49465b83793"
+      },
+      {
+        "path": "${HOST_LIB}/libcrypto.so.3",
+        "sha256": "7cc817ff1841b59516d684f357bc0c3fc2cc52c3fa9b4ffb8ce8bdc215f02915"
+      },
+      {
+        "path": "${HOST_LIB}/libdl.so.2",
+        "sha256": "3eaaa4aefd9c28f3867c96a427c3cbec9191cb61c4c9d0a2cb4a765d66064499"
+      },
+      {
+        "path": "${HOST_LIB}/libgcc_s.so.1",
+        "sha256": "334f871dfe528301a82186d0ba5c07c2a92dcadaacf3dceda792373b0c1c433d"
+      },
+      {
+        "path": "${HOST_LIB}/libicudata.so.70.1",
+        "sha256": "c1404396288e178c8db2f30203cb8150e4d2c14cacee9a2883e0092f45399cc8"
+      },
+      {
+        "path": "${HOST_LIB}/libicui18n.so.70.1",
+        "sha256": "24fa78caa9b66c10c90711c51089f45273b643f132031172d54a3e98d711d48e"
+      },
+      {
+        "path": "${HOST_LIB}/libicuuc.so.70.1",
+        "sha256": "4683f3623dc47a92e862dc3c8770caff81c9f4c7e116bb672fc439737b06d88a"
+      },
+      {
+        "path": "${HOST_LIB}/libm.so.6",
+        "sha256": "3dd5511ae94785c9f921429b0f2b2f7aabb461b6f0e6de6dfdbef15f24bdfee6"
+      },
+      {
+        "path": "${HOST_LIB}/libpthread.so.0",
+        "sha256": "fbed9505adacada2abb37c6b43be2df6de81e742712c6025694ba48de62c7e78"
+      },
+      {
+        "path": "${HOST_LIB}/libstdc++.so.6.0.35",
+        "sha256": "7d03c9686574bad9ee3590450fc441481b2ee01c97ee13647a72cad0637143c8"
+      },
+      {
+        "path": "${TASK}/merlin/out/build/combined-public-structure-v1/model.json",
+        "sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869"
+      },
+      {
+        "path": "${TASK}/merlin/out/build/htif-target-observer-v1/spike",
+        "sha256": "fc39056ce0618fd001cf5333347053bada0b4bcbb2568aa9183ed4783252a908"
+      },
+      {
+        "path": "${TASK}/merlin/out/build/private-probe-observer-v2/timing-source-manifest.json",
+        "sha256": "d439f3e510ff4fe4be363add25a98919e91b257c40da318ecdb94c17db15918f"
+      },
+      {
+        "path": "${TASK}/merlin/out/build/streamed-readout-v4/libtiming_provider.so",
+        "sha256": "4c4b4f26f5bf543da4bbc5707ed141c2b1fb14eba9320185ae93910e429a2a6b"
+      },
+      {
+        "path": "${TASK}/merlin/packages/merlin-experiments/src/merlin_experiments/phase2/retained_memory_observation.py",
+        "sha256": "291605ca15fe1f429b3f41725057d31fa79bf697c578abfde8ac20153516f586"
+      },
+      {
+        "path": "${RETAINED_RUNTIME}/.tmp/boost-deps${HOST_LIB}/libboost_regex.so.1.74.0",
+        "sha256": "e2b8b67932a6ab53544c7da1e6421fe7e75571feae5218d586b5c69d62ea1c49"
+      },
+      {
+        "path": "${RETAINED_RUNTIME}/.tmp/bubblewrap-build/bwrap",
+        "sha256": "3a8bb6b2c36fe79d6c62a6d33484e4953ba4d798c224f67e08a397adb1bbb113"
+      },
+      {
+        "path": "${RETAINED_RUNTIME}/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+        "sha256": "0f56e521cd437dd7415763a0b22c2a5cf05a29027c343724123770b16fb939f9"
+      },
+      {
+        "path": "${RETAINED_RUNTIME}/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump",
+        "sha256": "1c0a65ea4d86a0fdc57e22a49b777f80881b0a3df9b2ac0634dc651b295c0410"
+      },
+      {
+        "path": "${RETAINED_RUNTIME}/.tmp/chipyard-fire-aligned/generators/rocket-chip/src/main/scala/rocket/CSR.scala",
+        "sha256": "10fbf32035cf5eece8c802f16b189afbec824287cddc8b8f1218c1d8209ed61f"
+      },
+      {
+        "path": "${RETAINED_RUNTIME}/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0",
+        "sha256": "e2b8b67932a6ab53544c7da1e6421fe7e75571feae5218d586b5c69d62ea1c49"
+      },
+      {
+        "path": "${RETAINED_RUNTIME}/out/fire-aligned-spike-30mhz/runtime/bin/spike",
+        "sha256": "5df9c82ca3e921823da8606284a258b491541defbafee4586fb938639e03c6b9"
+      },
+      {
+        "path": "${RETAINED_RUNTIME}/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "sha256": "2dbd8445376cdda0df63abcf217c7a19f974d34a16ada21b549ed82fffd718eb"
+      }
+    ],
+    "dependencies_unchanged": true,
+    "environment": {
+      "keys": [],
+      "schema": "merlin.process_environment.v1",
+      "scope": "complete effective mapping; values withheld; transitive dependencies unproved",
+      "sha256": "1aa2160350e4c4491b866875fc6d00c0ead6647dbfb5ff7c239a0e41fb7afeab"
+    },
+    "executable": {
+      "path": "${RETAINED_RUNTIME}/.tmp/bubblewrap-build/bwrap",
+      "sha256": "3a8bb6b2c36fe79d6c62a6d33484e4953ba4d798c224f67e08a397adb1bbb113"
+    },
+    "executable_unchanged": true,
+    "finished_ns": 1792671570906375915,
+    "inputs": [
+      {
+        "path": "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/program.elf",
+        "sha256": "ec0607f6b7a00ac6ed470029246c16f2555176fc728305f8ae261f83701fad94"
+      },
+      {
+        "path": "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/scope.json",
+        "sha256": "113fdad7efa7beaecfd11dc7cb18ba7e3076bc6adea8182b184a8437a17516ea"
+      }
+    ],
+    "inputs_unchanged": true,
+    "kind": "subprocess",
+    "outputs": [
+      {
+        "path": "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/workspace/report.json",
+        "sha256": "89d78e60214ac933f80fc32e12015e63f978b737f12eb66db6998b083c42f946"
+      }
+    ],
+    "returncode": 0,
+    "schema": "merlin.invocation_record.v1",
+    "stage": "archive_screen_count",
+    "started_ns": 1792671570719307541,
+    "status": "completed",
+    "stderr": {
+      "path": "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/run-1/invocations/1ab54332ddfa440180b7539597deac5a/stderr.bin",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stdout": {
+      "path": "${TASK}/.tmp/retained-model-observation-v1/observed-v5-SY_conv_k3x3_s1x1_d1x1_pad1x1/run-1/invocations/1ab54332ddfa440180b7539597deac5a/stdout.bin",
+      "sha256": "2e2964b2cea1d23d1c6afad843dcc1ad430c5af7db55afe6d8b60e73a8ab5730"
+    }
+  }
+}

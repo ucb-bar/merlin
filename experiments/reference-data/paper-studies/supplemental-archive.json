@@ -1,0 +1,766 @@
+{
+  "schema": "merlin.reference_archive.v1",
+  "archive": {
+    "filename": "supplemental-study-records.tar.gz",
+    "format": "tar.gz",
+    "bytes": 4839299,
+    "sha256": "6351ce5cf0e35601a5c16234a738f7e44acb7b8817baa49397a4b571f64ee5e7"
+  },
+  "files": [
+    {
+      "path": "supplemental-studies/abstraction-study/docs/h1d-analysis/ANALYSIS.md",
+      "member": "supplemental-studies/abstraction-study/docs/h1d-analysis/ANALYSIS.md",
+      "bytes": 17864,
+      "mode": "0o664",
+      "sha256": "09a8265c5a6a6f0c88d201b08a0e4ed745584f0dfed5d0dc85d131b2e0539e13"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/docs/h1d-analysis/mechanisms.json",
+      "member": "supplemental-studies/abstraction-study/docs/h1d-analysis/mechanisms.json",
+      "bytes": 69637,
+      "mode": "0o664",
+      "sha256": "7bce668597318ef3d244755dc3b41302ed12f2864fc33daa4971dbd62060c4ba"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/figure-data.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/figure-data.json",
+      "bytes": 52340,
+      "mode": "0o664",
+      "sha256": "c7d6314bb4117ddefad607dc6062499c01c4b974b65bdb5f35202cfa5556fcc4"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/arm-00/mechanism-milestones.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/arm-00/mechanism-milestones.json",
+      "bytes": 218562,
+      "mode": "0o664",
+      "sha256": "9393b46bd284604d2f43206bc7a234952542012610ab825eda087bd94a3ab733"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/arm-01/mechanism-milestones.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/arm-01/mechanism-milestones.json",
+      "bytes": 178534,
+      "mode": "0o664",
+      "sha256": "b5bbd41febe0b780bb65040f9837ea5750daf45f3088e9b8814ee0133da6144a"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/arms.csv",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/arms.csv",
+      "bytes": 16456,
+      "mode": "0o664",
+      "sha256": "3208f51e4990949b98333ccb2fedb3498449fb4b31d0608ed9829d55caf75871"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/audit.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/audit.json",
+      "bytes": 30866,
+      "mode": "0o664",
+      "sha256": "a5fce8c23aa86040043a9ff1b3fc5ff9fbfde5293dd90343e498cfd06bed4454"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/progress.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/progress.json",
+      "bytes": 15072318,
+      "mode": "0o664",
+      "sha256": "a7f01643d38d89813b354871efeaad5ddf838118b48c0e03ec8102b70f700a36"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arm-00/mechanism-milestones.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arm-00/mechanism-milestones.json",
+      "bytes": 246594,
+      "mode": "0o664",
+      "sha256": "e9817085a7760f215b4f15377fd9b655aafd33f983abf21b60c73e06066986ef"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arm-01/mechanism-milestones.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arm-01/mechanism-milestones.json",
+      "bytes": 203244,
+      "mode": "0o664",
+      "sha256": "c352cdaa136d021d1fc8f998ffab141f759853528cfc9217da39cd05385fda26"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arm-02/mechanism-milestones.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arm-02/mechanism-milestones.json",
+      "bytes": 174069,
+      "mode": "0o664",
+      "sha256": "7c4c59e0ad2c68870376a08964a06681c3ad2a14f4a2fea73f399801f5ae877c"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arm-03/mechanism-milestones.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arm-03/mechanism-milestones.json",
+      "bytes": 222765,
+      "mode": "0o664",
+      "sha256": "fecaa521630268d536e09ecfd0c7af25c0e1e71ab8486901e3ea5015380d3ec6"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arms.csv",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arms.csv",
+      "bytes": 25066,
+      "mode": "0o664",
+      "sha256": "017d142371a704bf808487d7bf8f0c7eb3f07dc98806d6b49eb5d9cd77ade277"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/audit.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/audit.json",
+      "bytes": 48611,
+      "mode": "0o664",
+      "sha256": "782f7f72bd824e7ff271ab4f7a453a8b87f7112fd919af969e9b983c65f8b06a"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/progress.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/progress.json",
+      "bytes": 30272995,
+      "mode": "0o664",
+      "sha256": "dc554679ef3a9ba18a8c362115a17dd68fd1deb03bc20dff85bd1c7b07b5efe8"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/arm-00/mechanism-milestones.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/arm-00/mechanism-milestones.json",
+      "bytes": 71910,
+      "mode": "0o664",
+      "sha256": "fbba48144ea2ef0cee1be323e45abfe71b18af05adbbcd4793d52c3f99bfe095"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/arm-01/mechanism-milestones.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/arm-01/mechanism-milestones.json",
+      "bytes": 72060,
+      "mode": "0o664",
+      "sha256": "ced726edd1a59ba441ecd7c0c0d514658b63e5809ba1c769fd49085909a35c7e"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/arms.csv",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/arms.csv",
+      "bytes": 14110,
+      "mode": "0o664",
+      "sha256": "6aa05c39d45653a3e4f3dc6d4c05176c54152e718070db5bc70d2b3d8ea44842"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/audit.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/audit.json",
+      "bytes": 27901,
+      "mode": "0o664",
+      "sha256": "284e4c6671513947652306c7e19f0c6bd6d31807e1d96f253c878e8e1c5147a1"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/progress.json",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/progress.json",
+      "bytes": 4741295,
+      "mode": "0o664",
+      "sha256": "022f4957b29fbc89a9e2a102e7eeb88477f7b2d5dc9e5f666b522832d6a7a935"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/render.py",
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/render.py",
+      "bytes": 16809,
+      "mode": "0o664",
+      "sha256": "c85f743daa0314da108acf9a783d14613179a64188bd9dc48a875dddc3fd13b9"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v2/H1-cca/time-to-mechanism/figure-data.json",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v2/H1-cca/time-to-mechanism/figure-data.json",
+      "bytes": 10758,
+      "mode": "0o664",
+      "sha256": "2393911f965675d11c8de4b1026651411c53a2a42fb64277ec6496492447e51c"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v2/palette_check.py",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v2/palette_check.py",
+      "bytes": 5878,
+      "mode": "0o664",
+      "sha256": "ccb3194e9e51d6f126a95081696f5a2a8f7a0fcbd89aaedb705186044a781329"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v2/style.py",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v2/style.py",
+      "bytes": 15647,
+      "mode": "0o664",
+      "sha256": "3ee1e144f5a57b895f973fe6ca848ff97493a8a9dc4fd0dc06c9bed51863a51c"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v3/H1-cca/h1d-effect-map-v3/figure-data.json",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H1-cca/h1d-effect-map-v3/figure-data.json",
+      "bytes": 21074,
+      "mode": "0o664",
+      "sha256": "0260ce61a3270dbc7fe952c702c154e446937dd7b30ceaff0a665bdfaade430a"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v3/H1-cca/h1d-effect-map-v3/render.py",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H1-cca/h1d-effect-map-v3/render.py",
+      "bytes": 20247,
+      "mode": "0o664",
+      "sha256": "77c7a072d2d97aad18049258fa72f63b6dfa78677c6748e9f73249febe927063"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/bundle/data/figure-data.json",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/bundle/data/figure-data.json",
+      "bytes": 17436,
+      "mode": "0o664",
+      "sha256": "10df55726b20e5a862053633d86d2873727eba8bb55bd40b51d406bf3f8aeacd"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v1/timeline.json",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v1/timeline.json",
+      "bytes": 16720,
+      "mode": "0o664",
+      "sha256": "0c1e212df9c84dab8292f6400d5b96d71426992388172bdcf0f06c42112b083d"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v1/variants.json",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v1/variants.json",
+      "bytes": 22332,
+      "mode": "0o664",
+      "sha256": "98610d4614a0255b212af3c2e37d227286e4e33bb4f709a798c388ecf7623f17"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v4/edits.json",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v4/edits.json",
+      "bytes": 5003,
+      "mode": "0o664",
+      "sha256": "08341bd3f717a63465f4a2acefbd5abbb93931a126c0af598760aa118f991aa0"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v5/own-code.json",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v5/own-code.json",
+      "bytes": 1355,
+      "mode": "0o664",
+      "sha256": "ad8b7242f250b6d05f9d248610b3285cdc744713aaab0db66f1143868b98102c"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v6/render.py",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v6/render.py",
+      "bytes": 80546,
+      "mode": "0o664",
+      "sha256": "f0d88633bafa11e509365698a7932757574490518754006c30159c12682b3b91"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v3/H3-scheduling/final-v9/figure-data.json",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H3-scheduling/final-v9/figure-data.json",
+      "bytes": 18623,
+      "mode": "0o664",
+      "sha256": "5141c7a01d5c7a21c350b01062b9baa568cf84a2d1f651a45ee38d472d7e1f4f"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v3/H3-scheduling/final-v9/render.py",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H3-scheduling/final-v9/render.py",
+      "bytes": 17135,
+      "mode": "0o664",
+      "sha256": "f01d1f918536323aafab5badf324034d0fc4f59877c3495730c083da33710a5d"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v3/H3-scheduling/final/render.py",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H3-scheduling/final/render.py",
+      "bytes": 20829,
+      "mode": "0o664",
+      "sha256": "ee01d4d856e4bf9d17a4748104c20f4ee4525146cdd55a22985f78111fd72922"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v3/main/figure-data.json",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/main/figure-data.json",
+      "bytes": 32467,
+      "mode": "0o664",
+      "sha256": "3d4fb52d497b5f69d0aa018bfb1641fed61887f241211073ccd6dd4efd246b80"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/figures-paper-v3/main/render.py",
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/main/render.py",
+      "bytes": 26485,
+      "mode": "0o664",
+      "sha256": "7cf05fbd5cff153306b8c3d03a28dd09a9ae7182509b6b8c8265a46d8324335f"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/fpga-diagnosis-h2conv-v1/diagnosis.json",
+      "member": "supplemental-studies/abstraction-study/fpga-diagnosis-h2conv-v1/diagnosis.json",
+      "bytes": 6100,
+      "mode": "0o664",
+      "sha256": "3269db3c5122cf128ba20346f5cafc47784b408840da5bad8d0ad0b240b9dc2f"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/fpga-pool-v4/aggregate-v4_1/followup-library-oracle-h2conv-r2.json",
+      "member": "supplemental-studies/abstraction-study/fpga-pool-v4/aggregate-v4_1/followup-library-oracle-h2conv-r2.json",
+      "bytes": 66548,
+      "mode": "0o644",
+      "sha256": "049758c2ef725b267875533d206e64d891dc2441a06cdfcd81ca7ad55a38c11e"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/ledger/ledger.json",
+      "member": "supplemental-studies/abstraction-study/ledger/ledger.json",
+      "bytes": 1033527,
+      "mode": "0o664",
+      "sha256": "bda2d9432ffe9b6bd382682c7d4678554fc6e3453466df77fcb73b819ed90911"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/operator-owners-v7/collect-paired-study-metrics-v5-baseline.py",
+      "member": "supplemental-studies/abstraction-study/operator-owners-v7/collect-paired-study-metrics-v5-baseline.py",
+      "bytes": 33518,
+      "mode": "0o664",
+      "sha256": "4cad98fb2b6cecae8e8c16098f516ff3409f53d3ddd41adc80a62da64ee96e16"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/operator-owners-v7/mechanism_milestone_v1.py",
+      "member": "supplemental-studies/abstraction-study/operator-owners-v7/mechanism_milestone_v1.py",
+      "bytes": 17702,
+      "mode": "0o664",
+      "sha256": "32531f961380d0ccc482523f0180994a26626da88f9c7e8abd6b8688ede74971"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/operator-owners/known-coverage-observer-v3/study_metrics.py",
+      "member": "supplemental-studies/abstraction-study/operator-owners/known-coverage-observer-v3/study_metrics.py",
+      "bytes": 46397,
+      "mode": "0o664",
+      "sha256": "d26e876ad80288ec775d848f05e25968b193c5465d192cf31755088ee91e7729"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/pass-analysis-h2conv-v1/followup-library-oracle-h2conv-30min-v3/pass-trace/pass-trace.json",
+      "member": "supplemental-studies/abstraction-study/pass-analysis-h2conv-v1/followup-library-oracle-h2conv-30min-v3/pass-trace/pass-trace.json",
+      "bytes": 16892,
+      "mode": "0o600",
+      "sha256": "f075bbd7840ea1d6564711f3117475e05ede9d8b69d71180a6f5889f88382e95"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/queue/runs/followup-cca-machine-aot-mm-o-30min-v1/checkpoints/3600-final_stop-1793255862410087465/observations.json",
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-cca-machine-aot-mm-o-30min-v1/checkpoints/3600-final_stop-1793255862410087465/observations.json",
+      "bytes": 4314,
+      "mode": "0o644",
+      "sha256": "cb0821523a562b993a6c20dfc11f576462342b1943d44b766c69c02385e73b0c"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/queue/runs/followup-cca-machine-aot-mm-o-30min-v1/postfreeze-recovery-v1/evaluation/cells/run-00--PF2_projection_m16k2048n2048/result.json",
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-cca-machine-aot-mm-o-30min-v1/postfreeze-recovery-v1/evaluation/cells/run-00--PF2_projection_m16k2048n2048/result.json",
+      "bytes": 19085,
+      "mode": "0o644",
+      "sha256": "30d399feda8f438d4fed01456ffa6996a1fcd41ccc0f35c181a5652e14cc8027"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/queue/runs/followup-cca-machine-aot-mm-o-30min-v1/postfreeze-recovery-v1/evaluation/cells/run-01--PF2_projection_m16k2048n2048/result.json",
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-cca-machine-aot-mm-o-30min-v1/postfreeze-recovery-v1/evaluation/cells/run-01--PF2_projection_m16k2048n2048/result.json",
+      "bytes": 19091,
+      "mode": "0o644",
+      "sha256": "fd92df815baeee15b0934cb4cbb67d4a50a1dfa0ed7abe34f63b0876d70cfbc1"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/checkpoints/3600-final_stop-1793237068029280963/observations.json",
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/checkpoints/3600-final_stop-1793237068029280963/observations.json",
+      "bytes": 8227,
+      "mode": "0o644",
+      "sha256": "2e2a6b6c17c3d580a98b4de67a68bdc8ac35bc8bb41200601402909ba575f6f8"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/postfreeze/evaluation/cells/run-00--PF2_projection_m16k2048n2048/result.json",
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/postfreeze/evaluation/cells/run-00--PF2_projection_m16k2048n2048/result.json",
+      "bytes": 237222,
+      "mode": "0o644",
+      "sha256": "629e321b772bc205f5999f0f4b0b75da4e73d27345b2d9a387dc8e9adeebbf28"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/postfreeze/evaluation/cells/run-01--PF2_projection_m16k2048n2048/result.json",
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/postfreeze/evaluation/cells/run-01--PF2_projection_m16k2048n2048/result.json",
+      "bytes": 236474,
+      "mode": "0o644",
+      "sha256": "b10418ecff91e65be5b5f6f7a5dfa7b0e751dc096c0f53ff26afa96992e09927"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/postfreeze/evaluation/cells/run-02--PF2_projection_m16k2048n2048/result.json",
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/postfreeze/evaluation/cells/run-02--PF2_projection_m16k2048n2048/result.json",
+      "bytes": 236919,
+      "mode": "0o644",
+      "sha256": "caf80a2f2bedcc8f95ed450e08b1049e65b14a19dceea17a2696d2bec2e32d12"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/postfreeze/evaluation/cells/run-03--PF2_projection_m16k2048n2048/result.json",
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/postfreeze/evaluation/cells/run-03--PF2_projection_m16k2048n2048/result.json",
+      "bytes": 236659,
+      "mode": "0o644",
+      "sha256": "0a4bc48551325dfd57cb821a59b49eec898e62298b83b2d705705f9154c6897e"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/queue/runs/followup-scheduling-h3a-30min-v1/checkpoints/1800-final_stop-1793266113916265379/observations.json",
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-scheduling-h3a-30min-v1/checkpoints/1800-final_stop-1793266113916265379/observations.json",
+      "bytes": 4241,
+      "mode": "0o644",
+      "sha256": "7e15511ebbd7264088a67f1b50a8b955eddcaafe9fff4817a38fc64ced6238b6"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/queue/runs/followup-scheduling-h3a-30min-v1/postfreeze/evaluation/cells/run-00--PF2_projection_m16k2048n2048/result.json",
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-scheduling-h3a-30min-v1/postfreeze/evaluation/cells/run-00--PF2_projection_m16k2048n2048/result.json",
+      "bytes": 236140,
+      "mode": "0o644",
+      "sha256": "463f6691f372cf5e353ca2e20cb76e9a8c20c73bd81bdb42b50054c7cdc290ad"
+    },
+    {
+      "path": "supplemental-studies/abstraction-study/queue/runs/followup-scheduling-h3a-30min-v1/postfreeze/evaluation/cells/run-01--PF2_projection_m16k2048n2048/result.json",
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-scheduling-h3a-30min-v1/postfreeze/evaluation/cells/run-01--PF2_projection_m16k2048n2048/result.json",
+      "bytes": 236140,
+      "mode": "0o644",
+      "sha256": "40959cdfd1ca5dca1e3b8a5f3ffbfc804a4fd3bdd6f34202443bc0d7ce156a8c"
+    },
+    {
+      "path": "supplemental-studies/controlled-cca-execution/execution/four-boot-aggregate.json",
+      "member": "supplemental-studies/controlled-cca-execution/execution/four-boot-aggregate.json",
+      "bytes": 1436617,
+      "mode": "0o644",
+      "sha256": "fc759e57333ac46626f0e276112dc2915b6ea4d9f595a407cf78ee0ada3ad0b5"
+    },
+    {
+      "path": "supplemental-studies/controlled-cca-execution/results-summary.json",
+      "member": "supplemental-studies/controlled-cca-execution/results-summary.json",
+      "bytes": 44043,
+      "mode": "0o664",
+      "sha256": "0f0163ce58a49046a45b62c45f9aa3baa4f35dd3e6fbf793a59a1bbc56eb2496"
+    },
+    {
+      "path": "supplemental-studies/paper-figure-revisions/fsm-adapted/build.py",
+      "member": "supplemental-studies/paper-figure-revisions/fsm-adapted/build.py",
+      "bytes": 6330,
+      "mode": "0o664",
+      "sha256": "db18e94462e58d008b26b21e3f156a2c857c8461d78583f7407dffa60c26ef87"
+    },
+    {
+      "path": "supplemental-studies/paper-figure-revisions/fsm-adapted/data-policy.json",
+      "member": "supplemental-studies/paper-figure-revisions/fsm-adapted/data-policy.json",
+      "bytes": 40841,
+      "mode": "0o664",
+      "sha256": "7512e132a7aa712b58a1dbf48fefcdeea855dcafc4c27e484246346223e86080"
+    },
+    {
+      "path": "supplemental-studies/scheduling-seed-smoke/numerical-smoke-v1/result.json",
+      "member": "supplemental-studies/scheduling-seed-smoke/numerical-smoke-v1/result.json",
+      "bytes": 233990,
+      "mode": "0o644",
+      "sha256": "2493a8815361c529c79b58d48f8dbafaf3d3e9bb014d70b245f6425462642f2b"
+    }
+  ],
+  "source_pin_checks": [
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/figure-data.json",
+      "expected_sha256": "c7d6314bb4117ddefad607dc6062499c01c4b974b65bdb5f35202cfa5556fcc4",
+      "actual_sha256": "c7d6314bb4117ddefad607dc6062499c01c4b974b65bdb5f35202cfa5556fcc4",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/arms.csv",
+      "expected_sha256": "6aa05c39d45653a3e4f3dc6d4c05176c54152e718070db5bc70d2b3d8ea44842",
+      "actual_sha256": "6aa05c39d45653a3e4f3dc6d4c05176c54152e718070db5bc70d2b3d8ea44842",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/render.py",
+      "expected_sha256": "c85f743daa0314da108acf9a783d14613179a64188bd9dc48a875dddc3fd13b9",
+      "actual_sha256": "c85f743daa0314da108acf9a783d14613179a64188bd9dc48a875dddc3fd13b9",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-paper-v2/H1-cca/time-to-mechanism/figure-data.json",
+      "expected_sha256": "2393911f965675d11c8de4b1026651411c53a2a42fb64277ec6496492447e51c",
+      "actual_sha256": "2393911f965675d11c8de4b1026651411c53a2a42fb64277ec6496492447e51c",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-paper-v2/palette_check.py",
+      "expected_sha256": "ccb3194e9e51d6f126a95081696f5a2a8f7a0fcbd89aaedb705186044a781329",
+      "actual_sha256": "ccb3194e9e51d6f126a95081696f5a2a8f7a0fcbd89aaedb705186044a781329",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-paper-v2/style.py",
+      "expected_sha256": "3ee1e144f5a57b895f973fe6ca848ff97493a8a9dc4fd0dc06c9bed51863a51c",
+      "actual_sha256": "3ee1e144f5a57b895f973fe6ca848ff97493a8a9dc4fd0dc06c9bed51863a51c",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H3-scheduling/final/render.py",
+      "expected_sha256": "ee01d4d856e4bf9d17a4748104c20f4ee4525146cdd55a22985f78111fd72922",
+      "actual_sha256": "ee01d4d856e4bf9d17a4748104c20f4ee4525146cdd55a22985f78111fd72922",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/main/figure-data.json",
+      "expected_sha256": "3d4fb52d497b5f69d0aa018bfb1641fed61887f241211073ccd6dd4efd246b80",
+      "actual_sha256": "3d4fb52d497b5f69d0aa018bfb1641fed61887f241211073ccd6dd4efd246b80",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/main/render.py",
+      "expected_sha256": "7cf05fbd5cff153306b8c3d03a28dd09a9ae7182509b6b8c8265a46d8324335f",
+      "actual_sha256": "7cf05fbd5cff153306b8c3d03a28dd09a9ae7182509b6b8c8265a46d8324335f",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/ledger/ledger.json",
+      "expected_sha256": "bda2d9432ffe9b6bd382682c7d4678554fc6e3453466df77fcb73b819ed90911",
+      "actual_sha256": "bda2d9432ffe9b6bd382682c7d4678554fc6e3453466df77fcb73b819ed90911",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/scheduling-seed-smoke/numerical-smoke-v1/result.json",
+      "expected_sha256": "2493a8815361c529c79b58d48f8dbafaf3d3e9bb014d70b245f6425462642f2b",
+      "actual_sha256": "2493a8815361c529c79b58d48f8dbafaf3d3e9bb014d70b245f6425462642f2b",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/arm-00/mechanism-milestones.json",
+      "expected_sha256": "9393b46bd284604d2f43206bc7a234952542012610ab825eda087bd94a3ab733",
+      "actual_sha256": "9393b46bd284604d2f43206bc7a234952542012610ab825eda087bd94a3ab733",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/arm-01/mechanism-milestones.json",
+      "expected_sha256": "b5bbd41febe0b780bb65040f9837ea5750daf45f3088e9b8814ee0133da6144a",
+      "actual_sha256": "b5bbd41febe0b780bb65040f9837ea5750daf45f3088e9b8814ee0133da6144a",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/arms.csv",
+      "expected_sha256": "3208f51e4990949b98333ccb2fedb3498449fb4b31d0608ed9829d55caf75871",
+      "actual_sha256": "3208f51e4990949b98333ccb2fedb3498449fb4b31d0608ed9829d55caf75871",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/audit.json",
+      "expected_sha256": "a5fce8c23aa86040043a9ff1b3fc5ff9fbfde5293dd90343e498cfd06bed4454",
+      "actual_sha256": "a5fce8c23aa86040043a9ff1b3fc5ff9fbfde5293dd90343e498cfd06bed4454",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-cca-machine-aot-mm-o-30min-v1/progress.json",
+      "expected_sha256": "a7f01643d38d89813b354871efeaad5ddf838118b48c0e03ec8102b70f700a36",
+      "actual_sha256": "a7f01643d38d89813b354871efeaad5ddf838118b48c0e03ec8102b70f700a36",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arm-00/mechanism-milestones.json",
+      "expected_sha256": "e9817085a7760f215b4f15377fd9b655aafd33f983abf21b60c73e06066986ef",
+      "actual_sha256": "e9817085a7760f215b4f15377fd9b655aafd33f983abf21b60c73e06066986ef",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arm-01/mechanism-milestones.json",
+      "expected_sha256": "c352cdaa136d021d1fc8f998ffab141f759853528cfc9217da39cd05385fda26",
+      "actual_sha256": "c352cdaa136d021d1fc8f998ffab141f759853528cfc9217da39cd05385fda26",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arm-02/mechanism-milestones.json",
+      "expected_sha256": "7c4c59e0ad2c68870376a08964a06681c3ad2a14f4a2fea73f399801f5ae877c",
+      "actual_sha256": "7c4c59e0ad2c68870376a08964a06681c3ad2a14f4a2fea73f399801f5ae877c",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arm-03/mechanism-milestones.json",
+      "expected_sha256": "fecaa521630268d536e09ecfd0c7af25c0e1e71ab8486901e3ea5015380d3ec6",
+      "actual_sha256": "fecaa521630268d536e09ecfd0c7af25c0e1e71ab8486901e3ea5015380d3ec6",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/arms.csv",
+      "expected_sha256": "017d142371a704bf808487d7bf8f0c7eb3f07dc98806d6b49eb5d9cd77ade277",
+      "actual_sha256": "017d142371a704bf808487d7bf8f0c7eb3f07dc98806d6b49eb5d9cd77ade277",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/audit.json",
+      "expected_sha256": "782f7f72bd824e7ff271ab4f7a453a8b87f7112fd919af969e9b983c65f8b06a",
+      "actual_sha256": "782f7f72bd824e7ff271ab4f7a453a8b87f7112fd919af969e9b983c65f8b06a",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-construction-scheduling-factorial-v1/progress.json",
+      "expected_sha256": "dc554679ef3a9ba18a8c362115a17dd68fd1deb03bc20dff85bd1c7b07b5efe8",
+      "actual_sha256": "dc554679ef3a9ba18a8c362115a17dd68fd1deb03bc20dff85bd1c7b07b5efe8",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/arm-00/mechanism-milestones.json",
+      "expected_sha256": "fbba48144ea2ef0cee1be323e45abfe71b18af05adbbcd4793d52c3f99bfe095",
+      "actual_sha256": "fbba48144ea2ef0cee1be323e45abfe71b18af05adbbcd4793d52c3f99bfe095",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/arm-01/mechanism-milestones.json",
+      "expected_sha256": "ced726edd1a59ba441ecd7c0c0d514658b63e5809ba1c769fd49085909a35c7e",
+      "actual_sha256": "ced726edd1a59ba441ecd7c0c0d514658b63e5809ba1c769fd49085909a35c7e",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/arms.csv",
+      "expected_sha256": "6aa05c39d45653a3e4f3dc6d4c05176c54152e718070db5bc70d2b3d8ea44842",
+      "actual_sha256": "6aa05c39d45653a3e4f3dc6d4c05176c54152e718070db5bc70d2b3d8ea44842",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/audit.json",
+      "expected_sha256": "284e4c6671513947652306c7e19f0c6bd6d31807e1d96f253c878e8e1c5147a1",
+      "actual_sha256": "284e4c6671513947652306c7e19f0c6bd6d31807e1d96f253c878e8e1c5147a1",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-extra/time-to-mechanism/owner-runs/followup-scheduling-h3a-30min-v1/progress.json",
+      "expected_sha256": "022f4957b29fbc89a9e2a102e7eeb88477f7b2d5dc9e5f666b522832d6a7a935",
+      "actual_sha256": "022f4957b29fbc89a9e2a102e7eeb88477f7b2d5dc9e5f666b522832d6a7a935",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/operator-owners-v7/collect-paired-study-metrics-v5-baseline.py",
+      "expected_sha256": "4cad98fb2b6cecae8e8c16098f516ff3409f53d3ddd41adc80a62da64ee96e16",
+      "actual_sha256": "4cad98fb2b6cecae8e8c16098f516ff3409f53d3ddd41adc80a62da64ee96e16",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/operator-owners-v7/mechanism_milestone_v1.py",
+      "expected_sha256": "32531f961380d0ccc482523f0180994a26626da88f9c7e8abd6b8688ede74971",
+      "actual_sha256": "32531f961380d0ccc482523f0180994a26626da88f9c7e8abd6b8688ede74971",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/operator-owners/known-coverage-observer-v3/study_metrics.py",
+      "expected_sha256": "d26e876ad80288ec775d848f05e25968b193c5465d192cf31755088ee91e7729",
+      "actual_sha256": "d26e876ad80288ec775d848f05e25968b193c5465d192cf31755088ee91e7729",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-cca-machine-aot-mm-o-30min-v1/checkpoints/3600-final_stop-1793255862410087465/observations.json",
+      "expected_sha256": "cb0821523a562b993a6c20dfc11f576462342b1943d44b766c69c02385e73b0c",
+      "actual_sha256": "cb0821523a562b993a6c20dfc11f576462342b1943d44b766c69c02385e73b0c",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-cca-machine-aot-mm-o-30min-v1/postfreeze-recovery-v1/evaluation/cells/run-00--PF2_projection_m16k2048n2048/result.json",
+      "expected_sha256": "30d399feda8f438d4fed01456ffa6996a1fcd41ccc0f35c181a5652e14cc8027",
+      "actual_sha256": "30d399feda8f438d4fed01456ffa6996a1fcd41ccc0f35c181a5652e14cc8027",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-cca-machine-aot-mm-o-30min-v1/postfreeze-recovery-v1/evaluation/cells/run-01--PF2_projection_m16k2048n2048/result.json",
+      "expected_sha256": "fd92df815baeee15b0934cb4cbb67d4a50a1dfa0ed7abe34f63b0876d70cfbc1",
+      "actual_sha256": "fd92df815baeee15b0934cb4cbb67d4a50a1dfa0ed7abe34f63b0876d70cfbc1",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/checkpoints/3600-final_stop-1793237068029280963/observations.json",
+      "expected_sha256": "2e2a6b6c17c3d580a98b4de67a68bdc8ac35bc8bb41200601402909ba575f6f8",
+      "actual_sha256": "2e2a6b6c17c3d580a98b4de67a68bdc8ac35bc8bb41200601402909ba575f6f8",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/postfreeze/evaluation/cells/run-00--PF2_projection_m16k2048n2048/result.json",
+      "expected_sha256": "629e321b772bc205f5999f0f4b0b75da4e73d27345b2d9a387dc8e9adeebbf28",
+      "actual_sha256": "629e321b772bc205f5999f0f4b0b75da4e73d27345b2d9a387dc8e9adeebbf28",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/postfreeze/evaluation/cells/run-01--PF2_projection_m16k2048n2048/result.json",
+      "expected_sha256": "b10418ecff91e65be5b5f6f7a5dfa7b0e751dc096c0f53ff26afa96992e09927",
+      "actual_sha256": "b10418ecff91e65be5b5f6f7a5dfa7b0e751dc096c0f53ff26afa96992e09927",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/postfreeze/evaluation/cells/run-02--PF2_projection_m16k2048n2048/result.json",
+      "expected_sha256": "caf80a2f2bedcc8f95ed450e08b1049e65b14a19dceea17a2696d2bec2e32d12",
+      "actual_sha256": "caf80a2f2bedcc8f95ed450e08b1049e65b14a19dceea17a2696d2bec2e32d12",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-construction-scheduling-factorial-v1/postfreeze/evaluation/cells/run-03--PF2_projection_m16k2048n2048/result.json",
+      "expected_sha256": "0a4bc48551325dfd57cb821a59b49eec898e62298b83b2d705705f9154c6897e",
+      "actual_sha256": "0a4bc48551325dfd57cb821a59b49eec898e62298b83b2d705705f9154c6897e",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-scheduling-h3a-30min-v1/checkpoints/1800-final_stop-1793266113916265379/observations.json",
+      "expected_sha256": "7e15511ebbd7264088a67f1b50a8b955eddcaafe9fff4817a38fc64ced6238b6",
+      "actual_sha256": "7e15511ebbd7264088a67f1b50a8b955eddcaafe9fff4817a38fc64ced6238b6",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-scheduling-h3a-30min-v1/postfreeze/evaluation/cells/run-00--PF2_projection_m16k2048n2048/result.json",
+      "expected_sha256": "463f6691f372cf5e353ca2e20cb76e9a8c20c73bd81bdb42b50054c7cdc290ad",
+      "actual_sha256": "463f6691f372cf5e353ca2e20cb76e9a8c20c73bd81bdb42b50054c7cdc290ad",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/queue/runs/followup-scheduling-h3a-30min-v1/postfreeze/evaluation/cells/run-01--PF2_projection_m16k2048n2048/result.json",
+      "expected_sha256": "40959cdfd1ca5dca1e3b8a5f3ffbfc804a4fd3bdd6f34202443bc0d7ce156a8c",
+      "actual_sha256": "40959cdfd1ca5dca1e3b8a5f3ffbfc804a4fd3bdd6f34202443bc0d7ce156a8c",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/pass-analysis-h2conv-v1/followup-library-oracle-h2conv-30min-v3/pass-trace/pass-trace.json",
+      "expected_sha256": "f075bbd7840ea1d6564711f3117475e05ede9d8b69d71180a6f5889f88382e95",
+      "actual_sha256": "f075bbd7840ea1d6564711f3117475e05ede9d8b69d71180a6f5889f88382e95",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v1/timeline.json",
+      "expected_sha256": "0c1e212df9c84dab8292f6400d5b96d71426992388172bdcf0f06c42112b083d",
+      "actual_sha256": "0c1e212df9c84dab8292f6400d5b96d71426992388172bdcf0f06c42112b083d",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v1/variants.json",
+      "expected_sha256": "98610d4614a0255b212af3c2e37d227286e4e33bb4f709a798c388ecf7623f17",
+      "actual_sha256": "98610d4614a0255b212af3c2e37d227286e4e33bb4f709a798c388ecf7623f17",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/fpga-pool-v4/aggregate-v4_1/followup-library-oracle-h2conv-r2.json",
+      "expected_sha256": "049758c2ef725b267875533d206e64d891dc2441a06cdfcd81ca7ad55a38c11e",
+      "actual_sha256": "049758c2ef725b267875533d206e64d891dc2441a06cdfcd81ca7ad55a38c11e",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/fpga-diagnosis-h2conv-v1/diagnosis.json",
+      "expected_sha256": "3269db3c5122cf128ba20346f5cafc47784b408840da5bad8d0ad0b240b9dc2f",
+      "actual_sha256": "3269db3c5122cf128ba20346f5cafc47784b408840da5bad8d0ad0b240b9dc2f",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v4/edits.json",
+      "expected_sha256": "08341bd3f717a63465f4a2acefbd5abbb93931a126c0af598760aa118f991aa0",
+      "actual_sha256": "08341bd3f717a63465f4a2acefbd5abbb93931a126c0af598760aa118f991aa0",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v5/own-code.json",
+      "expected_sha256": "ad8b7242f250b6d05f9d248610b3285cdc744713aaab0db66f1143868b98102c",
+      "actual_sha256": "ad8b7242f250b6d05f9d248610b3285cdc744713aaab0db66f1143868b98102c",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-paper-v3/H2-library/trace-v6/render.py",
+      "expected_sha256": "f0d88633bafa11e509365698a7932757574490518754006c30159c12682b3b91",
+      "actual_sha256": "f0d88633bafa11e509365698a7932757574490518754006c30159c12682b3b91",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/controlled-cca-execution/execution/four-boot-aggregate.json",
+      "expected_sha256": "fc759e57333ac46626f0e276112dc2915b6ea4d9f595a407cf78ee0ada3ad0b5",
+      "actual_sha256": "fc759e57333ac46626f0e276112dc2915b6ea4d9f595a407cf78ee0ada3ad0b5",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/controlled-cca-execution/results-summary.json",
+      "expected_sha256": "0f0163ce58a49046a45b62c45f9aa3baa4f35dd3e6fbf793a59a1bbc56eb2496",
+      "actual_sha256": "0f0163ce58a49046a45b62c45f9aa3baa4f35dd3e6fbf793a59a1bbc56eb2496",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/docs/h1d-analysis/ANALYSIS.md",
+      "expected_sha256": "09a8265c5a6a6f0c88d201b08a0e4ed745584f0dfed5d0dc85d131b2e0539e13",
+      "actual_sha256": "09a8265c5a6a6f0c88d201b08a0e4ed745584f0dfed5d0dc85d131b2e0539e13",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/docs/h1d-analysis/mechanisms.json",
+      "expected_sha256": "7bce668597318ef3d244755dc3b41302ed12f2864fc33daa4971dbd62060c4ba",
+      "actual_sha256": "7bce668597318ef3d244755dc3b41302ed12f2864fc33daa4971dbd62060c4ba",
+      "matches": true
+    },
+    {
+      "member": "supplemental-studies/abstraction-study/figures-paper-v2/style.py",
+      "expected_sha256": "3ee1e144f5a57b895f973fe6ca848ff97493a8a9dc4fd0dc06c9bed51863a51c",
+      "actual_sha256": "3ee1e144f5a57b895f973fe6ca848ff97493a8a9dc4fd0dc06c9bed51863a51c",
+      "matches": true
+    }
+  ],
+  "excluded_inputs": [
+    "The sealed-case identity file is not needed for recomputing already anonymized plotted ratios. It remains a separately controlled input for repeating the experiment."
+  ]
+}

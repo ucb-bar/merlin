@@ -20,6 +20,41 @@ from merlin.capture.safetensors import load_header as load_safetensors_header
 DTYPE_BYTES = {"I8": 1, "U8": 1, "I32": 4, "I64": 8, "F16": 2, "BF16": 2, "F32": 4, "F64": 8}
 
 
+def weight_files_beside(capture):
+    """Select a manifest and its matching payload, never two independent globs.
+
+    A model bundle owns the canonical ``weights.safetensors`` pair. Retained
+    source sidecars can legitimately have different bytes after preparation.
+    Other capture directories need one unambiguous basename-matched pair.
+    """
+    capture = Path(capture)
+    beside = capture if capture.is_dir() else capture.parent
+    canonical = beside / "weights.safetensors.manifest.json", beside / "weights.safetensors"
+    if (beside / "model.mlir").is_file() and any(path.exists() for path in canonical):
+        if not all(path.is_file() and not path.is_symlink() for path in canonical):
+            raise ValueError("model bundle has an incomplete or indirect canonical weight pair")
+        return canonical
+    pairs = []
+    manifests = sorted(beside.glob("*.manifest.json"))
+    for manifest in manifests:
+        stem = manifest.name.removesuffix(".manifest.json")
+        weights = beside / (stem if stem.endswith(".safetensors") else stem + ".safetensors")
+        if weights.is_file():
+            if manifest.is_symlink() or weights.is_symlink():
+                raise ValueError("capture weight pairs require direct regular files")
+            pairs.append((manifest, weights))
+    if not pairs and len(manifests) == 1:
+        # Historical single-pair captures did not require a common basename.
+        payloads = list(beside.glob("*.safetensors"))
+        if len(payloads) == 1:
+            if manifests[0].is_symlink() or payloads[0].is_symlink():
+                raise ValueError("capture weight pairs require direct regular files")
+            pairs.append((manifests[0], payloads[0]))
+    if len(pairs) > 1:
+        raise ValueError("capture has ambiguous weight pairs; select a canonical model bundle")
+    return pairs[0] if pairs else (None, None)
+
+
 @dataclass
 class WeightEntry:
     arg_index: int

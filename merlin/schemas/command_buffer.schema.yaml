@@ -20,6 +20,7 @@ optional_top_level_fields:
   - tensors            # handle -> {dtype, shape, role, scale_of?, block?}; absent for inline-only operands
   - params             # scalar lowering parameters (e.g. acc_scale), optional full-value console_output_transport
   - compiler_pointer_abi # {version: 1, arguments: [tensor names in asserted lowered-kernel pointer order]}; declaration agreement only, not proof of pointer use; required before a new numerical accelerator certificate, optional for diagnostics
+  - host_optimization_request # source-bound bounded host choices; permissions remain original sealed inputs
   - kernel_abi         # explicit pointer args/access, outputs, and semantic single/all-warp SIMT launch kind
   - declined           # see `decline_example` below
 producer: merlin runtime lowering (merlin-runtime-to-command-buffer)

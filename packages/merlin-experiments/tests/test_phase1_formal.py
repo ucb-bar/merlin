@@ -108,7 +108,7 @@ sys.meta_path.insert(0, NoNative())
 from merlin.targetgen import capsule_runner as CR
 from merlin.common import provenance
 from merlin_experiments.phase1.feedback import freeze
-CR._config_for_target = lambda *args: SimpleNamespace(rtl_tiers={'L3'})
+CR._config_for_target = lambda *args: SimpleNamespace(rtl_tiers={'L3'}, tier_sim={'L2': 'spike'})
 CR._rtl_tiers_of = lambda target: {'L3'}
 CR.describe_l3_engine = lambda target: {
     'available': not bool(os.environ.get('MISSING_ENGINE')),
@@ -136,6 +136,12 @@ def external_execution(caps, package_dir, *, runs_root, oracle_adapters, target,
         assert kwargs['timeout'] == int(sys.argv[sys.argv.index('--qa-timeout') + 1])
     labels = {cap['label'] for cap in caps}
     hidden = labels == {'hidden'}
+    functional_hidden = hidden and '--hidden-capsule-mode' in sys.argv
+    if functional_hidden:
+        assert set(oracle_adapters) == {'L2'}
+        executable = [cap for cap in caps if (cap.get('expected') or {}).get('outcome') != 'refuse']
+        assert all(cap['oracle_tier_ceiling'] == 'L2' for cap in executable)
+        assert all(cap['required_oracle_tiers'] == ['L2'] for cap in executable)
     assert bool((run / 'freeze.json').exists()) == hidden
     if hidden:
         record = json.loads((run / 'freeze.json').read_text())
@@ -144,7 +150,10 @@ def external_execution(caps, package_dir, *, runs_root, oracle_adapters, target,
     event('hidden' if hidden else 'public')
     rows = []
     for cap in caps:
-        tiers = {name: {'status': 'pass', 'derived_from_rtl': name == 'L3'} for name in oracle_adapters}
+        tiers = {name: {'status': 'pass', 'derived_from_rtl': name == 'L3',
+                        'engine': 'spike' if name == 'L2' else 'fixture',
+                        'fidelity': 'functional_model' if name == 'L2' else 'elaborated_rtl'}
+                 for name in oracle_adapters}
         missing = not tiers
         row = {
             'capsule': cap['name'], 'label': cap['label'], 'kind': 'isa',
@@ -153,6 +162,14 @@ def external_execution(caps, package_dir, *, runs_root, oracle_adapters, target,
             'numeric': {'status': 'not_gradeable_no_oracle' if missing else 'pass', 'mismatch_count': 0},
             'trace_check': {'status': 'pass', 'violations': []}
         }
+        if (cap.get('expected') or {}).get('outcome') == 'refuse':
+            from merlin.targetgen.expected_refusal import verdict
+            declined = {'reason': 'synthetic unsupported operation'}
+            status, failure, record = verdict(cap, 'declined', None, declined)
+            row.update(status=status, failure=failure, declined=declined, expected_refusal=record,
+                       tiers={}, numeric={'status': 'skipped'}, trace_check={'status': 'skipped'})
+            if os.environ.get('MALFORMED_REFUSAL'):
+                row['expected_refusal']['expected'] = {'reason': 'different', 'evidence': 'different'}
         result = Path(runs_root) / 'runs' / CR.suite_for(target) / cap['name']
         result.mkdir(parents=True)
         (result / 'capsule_result.json').write_text(json.dumps(row))
@@ -164,7 +181,7 @@ runpy.run_module(sys.argv[0], run_name='__main__')
 """
 
 
-def _run_formal(tmp_path, *, flags=(), fault=None):
+def _run_formal(tmp_path, *, flags=(), fault=None, refusals=False):
     from test_phase1_feedback import _inputs
 
     run, public, descriptor, host, env, _ = _inputs(tmp_path)
@@ -172,7 +189,24 @@ def _run_formal(tmp_path, *, flags=(), fault=None):
     hidden.mkdir(parents=True)
     capsule = json.loads((public / "A/capsule.yaml").read_text())
     capsule.update(name="H", label="hidden")
+    if '--hidden-capsule-mode' in flags:
+        from merlin_experiments.phase1.feedback import hidden_capsule_policy
+
+        mode = flags[flags.index('--hidden-capsule-mode') + 1]
+        environment_path = run / 'environment.yaml'
+        environment = yaml.safe_load(environment_path.read_text()) if environment_path.is_file() else {}
+        environment['hidden_capsule_validation'] = hidden_capsule_policy.record(mode)
+        environment_path.write_text(yaml.safe_dump(environment))
+        capsule['required_oracle_tiers'] = ['L2', 'L3']
     (hidden / "capsule.yaml").write_text(json.dumps(capsule))
+    if refusals:
+        expected = {**capsule.get('expected', {}), 'outcome': 'refuse',
+                    'refusal': {'reason': 'unsupported operation', 'evidence': 'fixture'}}
+        for root, label in ((public, 'public'), (hidden.parent, 'hidden')):
+            refused = {**capsule, 'name': 'R', 'label': label, 'expected': expected,
+                       'required_oracle_tiers': ['L3']}
+            (root / 'R').mkdir()
+            (root / 'R/capsule.yaml').write_text(json.dumps(refused))
     host.write_text(_HOST)
     if fault:
         env[fault] = "1"
@@ -203,6 +237,44 @@ def _run_formal(tmp_path, *, flags=(), fault=None):
         timeout=30,
     )
     return run, result
+
+
+def test_explicit_hidden_spike_policy_runs_after_freeze_without_relaxing_public_or_private(tmp_path):
+    run, result = _run_formal(tmp_path, flags=('--hidden-capsule-mode', 'functional_spike'))
+    assert result.returncode == 1, result.stderr + result.stdout  # No private model gate supplied by fixture.
+    manifest = yaml.safe_load((run / 'run_manifest.yaml').read_text())
+    assert [json.loads(row) for row in (run / 'events.jsonl').read_text().splitlines()] == [
+        'public', 'freeze', 'hidden',
+    ]
+    assert manifest['public_dev']['tier_reached']['L3'] == 1
+    assert manifest['public_dev']['formal_complete'] is True
+    hidden = manifest['hidden']
+    assert hidden['formal_complete'] is True and hidden['tier_reached']['L2'] == 1
+    assert hidden['tier_reached']['L3'] == 0 and hidden['rtl_certified'] is False
+    assert hidden['claim'] == 'functional_corroboration'
+    assert manifest['completion']['required_tier'] == 'L3'
+    assert manifest['completion']['hidden_required_tier'] == 'L2'
+    assert 'private_full_models:incomplete' in manifest['completion']['failures']
+    assert manifest['model_mesh_sim']['fidelity'] == 'elaborated_rtl'
+    assert json.loads((run / 'freeze.json').read_text())['hidden_capsule_validation']['mode'] == 'functional_spike'
+
+
+@pytest.mark.parametrize('malformed', [False, True])
+def test_real_projection_keeps_declared_refusal_out_of_execution_denominators(tmp_path, malformed):
+    run, result = _run_formal(tmp_path, flags=('--hidden-capsule-mode', 'functional_spike'),
+                              refusals=True, fault='MALFORMED_REFUSAL' if malformed else None)
+    assert result.returncode == 1, result.stderr + result.stdout  # Private gate deliberately absent.
+    manifest = yaml.safe_load((run / 'run_manifest.yaml').read_text())
+    for name, tier in (('public_dev', 'L3'), ('hidden', 'L2')):
+        phase = manifest[name]
+        assert phase['n_capsules'] == phase['n_passed'] == 2
+        assert phase['tier_reached'][tier] == 1
+        assert phase['expected_refusal_scope']['n_declared_refusals'] == 1
+        assert phase['expected_refusal_scope']['n_validated_refusals'] == (0 if malformed else 1)
+        assert phase['formal_complete'] is (not malformed)
+    assert manifest['public_dev']['pass_evidence']['rtl_backed'] == 1
+    assert manifest['hidden']['pass_evidence']['rtl_backed'] == 0
+    assert manifest['hidden']['functional_hidden_evidence']['n_spike_passed'] == 1
 
 
 def test_real_public_freeze_rehash_hidden_lifecycle_outside_checkout(tmp_path):

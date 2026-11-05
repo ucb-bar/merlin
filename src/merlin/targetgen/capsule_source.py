@@ -23,6 +23,7 @@ venv. Precision is a parameter (``dtype``): the SAME token a target's ``compute_
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import importlib
 import json
@@ -41,6 +42,9 @@ from merlin.common.paths import env as _env
 from merlin.common.paths import repo_root
 from merlin.targetgen import capture_cache, component_sources
 from merlin.targetgen.golden_store import write_golden
+
+from ._capture_diagnostics import stderr_cause as _stderr_cause
+from .capsule_capture_spec import _capture_spec
 
 _MODEL_CAPTURE_ABI_VERSION = 6
 
@@ -65,61 +69,6 @@ def _m2m_python(*, checkout: Path | None = None) -> Path:
     from merlin.integrations.model2mlir import capture_python_path
 
     return capture_python_path(checkout=checkout if checkout is not None else _m2m_dir())
-
-
-def _stderr_cause(stderr: str, *, limit: int = 1800) -> str:
-    """The part of ``stderr`` that explains a failure, rather than whatever came last.
-
-    A python subprocess interleaves warnings with tracebacks, so the tail of stderr is often a
-    warning emitted after the real error -- which is exactly how a capture failure came to be
-    attributed to a benign LSTM contiguity UserWarning. So: prefer the LAST traceback, and fall back
-    to the tail only when there is none, saying which was used either way.
-    """
-    text = str(stderr or "")
-    if not text.strip():
-        return "(the worker wrote nothing to stderr)"
-    marker = "Traceback (most recent call last)"
-    idx = text.rfind(marker)
-    if idx < 0:
-        return "--- stderr tail (no traceback found) ---\n" + text[-limit:]
-
-    # ⚠️ A `SystemExit` TRACEBACK IS NOT A DIAGNOSIS. A worker that ends `raise SystemExit(main())`
-    # produces a traceback whose only frame is that line: the process CHOSE its exit code and printed
-    # its reason itself, earlier in stderr. Preferring the last traceback then reports the wrapper and
-    # discards the message -- measured on the m2m capture worker, where three capsules failed with
-    # `rc=1` and the recorded cause was four lines of `raise SystemExit(main())`, naming nothing.
-    #
-    # Same shape as the warning bug this function already guards: the informative text is not where the
-    # obvious rule looks. So when the tail of the traceback names SystemExit, or names no exception at
-    # all, keep the tail as well rather than instead -- the traceback still locates the exit, and the
-    # tail is where the worker said why.
-    tail_lines = [ln for ln in text[idx:].splitlines() if ln.strip()]
-    closing = tail_lines[-1].strip() if tail_lines else ""
-    uninformative = closing.startswith("SystemExit") or closing.startswith("raise SystemExit")
-    if uninformative:
-        return (
-            "--- last traceback names only SystemExit, so the worker's own message is kept too ---\n"
-            + text[idx:][: limit // 3]
-            + "\n--- stderr tail ---\n"
-            + text[:idx][-(limit - limit // 3) :]
-        )
-
-    # ⚠️ TRUNCATE FROM THE MIDDLE, NEVER FROM THE HEAD. `text[idx:idx + limit]` keeps the header and
-    # the stack frames and cuts off the LAST line -- which is the only line that names the error. A
-    # deep traceback therefore recorded a failure reason containing no error at all, just frames, and
-    # every diagnosis that started from one of these was slower than it needed to be. The exception
-    # line is the point of a traceback, so it is the part that is guaranteed to survive.
-    tb = text[idx:]
-    if len(tb) <= limit:
-        return "--- last traceback ---\n" + tb
-    head = limit // 3
-    tail = limit - head
-    return (
-        "--- last traceback (middle elided; the exception line is kept) ---\n"
-        + tb[:head]
-        + f"\n    ... {len(tb) - limit} characters of frames elided ...\n"
-        + tb[-tail:]
-    )
 
 
 class M2MUnavailable(RuntimeError):
@@ -205,6 +154,21 @@ def _require_pt2e_integerization_receipt(
     program. Missing fields are never treated as zero or as success.
     """
     receipt = meta.get("integerization_receipt")
+    if isinstance(receipt, dict) and receipt.get("schema") == "merlin.dynamic_integer_reference.v1":
+        from merlin.targetgen.application_inventory import verified_static_integerization, verify_capture_receipt
+
+        if capture_root is None:
+            raise M2MUnavailable("dynamic independent reference needs its complete capture directory")
+        actual = capture_root / "model.mlir"
+        if not actual.is_file() or actual.read_text() != program:
+            raise M2MUnavailable("dynamic independent reference program differs from its capture")
+        observed = verify_capture_receipt(actual)
+        projection = observed.get("capture_integerization")
+        if (observed.get("status") != "verified_materialized"
+                or not isinstance(projection, dict) or projection.get("integerization_receipt") != receipt
+                or not verified_static_integerization(projection, receipt_sha256=observed.get("receipt_sha256"))):
+            raise M2MUnavailable("dynamic independent reference lacks complete bound source/output/census proof")
+        return
     if not isinstance(receipt, dict) or receipt.get("schema") != "m2m.pt2e-integerize.v1":
         raise M2MUnavailable("static W8A8 model has no supported integerization receipt")
 
@@ -545,9 +509,16 @@ def get_model_and_inputs():
     "permute": """
 class Model(nn.Module):
     def forward(self, x):
-        return x.permute(1, 0)
+        return x.permute({perm_args})
 def get_model_and_inputs():
-    return Model(), (_r({M}, {K}),)
+    return Model(), (_r({shape_args}),)
+""",
+    "dtype_cast": """
+class Model(nn.Module):
+    def forward(self, x):
+        return x.to(dtype=torch.{native_output_torch_dtype})
+def get_model_and_inputs():
+    return Model(), (_r({shape_args}),)
 """,
     "reduce_sum": """
 class Model(nn.Module):
@@ -711,8 +682,11 @@ def build_loader_src(spec: dict) -> str:
     from .capsule_builtin_source import render_builtin_source
 
     return render_builtin_source(
-        spec, preamble=_PREAMBLE, integer_matmul=_INT_MATMUL,
-        parametric_linear=_PARAMETRIC_LINEAR, bodies=_OP_BODIES,
+        spec,
+        preamble=_PREAMBLE,
+        integer_matmul=_INT_MATMUL,
+        parametric_linear=_PARAMETRIC_LINEAR,
+        bodies=_OP_BODIES,
         input_names=_OP_INPUT_NAMES | _FUSED_OP_INPUT_NAMES,
     )
 
@@ -1358,6 +1332,7 @@ _FUSED_OP_INPUT_NAMES = {
     "reduce_mean": ["X"],
     "batch_matmul": ["A0", "W"],
     "permute": ["X"],
+    "dtype_cast": ["X"],
     # composite ops from real model graphs (linalg-as-interface, positional args)
     "bias_add": ["X", "B"],
     "fused_matmul_bias": ["X", "W", "B"],
@@ -1376,10 +1351,6 @@ _FUSED_OP_INPUT_NAMES = {
 _FUSED_OP_INPUT_NAMES.update(component_sources.INPUT_NAMES)
 
 
-def _entry_seed(name: str) -> int:
-    return sum((i + 1) * ord(c) for i, c in enumerate(name)) or 1
-
-
 # Float tolerance for a host-eager golden. A target whose native datapath is integer (e.g.
 # exact_int) carries no atol/rtol, but a float (bf16/fp16) op still needs one — fall back to a sane
 # default so a fused op on an integer-datapath target is gradeable.
@@ -1392,17 +1363,29 @@ def _tol(binding) -> tuple[float, float]:
     return atol, rtol
 
 
-def _model_output_numeric_policy(output_abi: list[dict], golden_values: list, binding) -> dict:
+def _model_output_numeric_policy(output_abi: list[dict], golden_values: list, binding, *, output_names=None) -> dict:
     """Grade in the captured result's element type, not the target's operand type.
 
     The capture worker serializes even integer tensors through float64 JSON. An
     integer policy is sound only where every serialized golden remains finite,
     integral and exactly representable; the ABI supplies the actual tensor dtype.
-    A capsule has one numeric policy, so heterogeneous result dtypes are refused.
+    Heterogeneous result dtypes require an explicit complete output roster and
+    receive one existing numerical policy per result; legacy calls refuse them.
     """
     if len(output_abi) != len(golden_values):
         raise M2MUnavailable("model output ABI/result cardinality disagrees with its golden")
     dtypes = {str(result.get("dtype") or "") for result in output_abi}
+    if len(dtypes) != 1 and output_names is not None:
+        if len(output_names) != len(output_abi) or len(set(output_names)) != len(output_names):
+            raise M2MUnavailable("typed model output numerical policy needs every unique original result")
+        return {
+            "schema": "merlin.numeric_policy.per_output.v1",
+            "compare": "per_output",
+            "outputs": {
+                name: _model_output_numeric_policy([abi], [value], binding)
+                for name, abi, value in zip(output_names, output_abi, golden_values, strict=True)
+            },
+        }
     if len(dtypes) != 1:
         raise M2MUnavailable(
             f"model results have different output dtypes {sorted(dtypes)}; one numeric policy cannot describe them"
@@ -1456,54 +1439,6 @@ def _flatten(nested) -> list:
     for row in nested:
         out.extend(_flatten(row) if isinstance(row[0], list) else row)
     return out
-
-
-def _capture_spec(entry: dict, binding) -> dict:
-    """Build the PytorchRefSource capture spec (op + shapes + dtype + seed) from an abstract entry."""
-    dim = binding.tile_dim
-    op = entry.get("op", "matmul")
-    M = entry.get("M", entry.get("M_tiles", 1) * dim)
-    K = entry.get("K", entry.get("K_tiles", 1) * dim)
-    N = entry.get("N", entry.get("N_tiles", 1) * dim)
-    if op == "attention_qk" and "N" not in entry and "N_tiles" not in entry:
-        N = M  # Preserve the square default, while honoring explicit rectangular source geometry.
-    spec = {
-        "op": entry.get("capture_op", op),
-        "dtype": entry.get("capture_dtype", binding.operand_dtype),
-        "seed": _entry_seed(entry["name"]),
-        "M": M,
-        "K": K,
-        "N": N,
-    }
-    if "shape" in entry:
-        spec["shape"] = list(entry["shape"])
-    # WHICH QUANTIZATION the captured PROGRAM should carry, when the entry names one. The dtype default
-    # for int8 is weight-only, which emits a float matmul over dequantized weights -- correct for a
-    # model ladder, wrong for a capsule meant to exercise an integer datapath, and not fixable by
-    # substituting a golden: the program itself contains no integer contraction.
-    if entry.get("quant_scheme"):
-        spec["quant_scheme"] = str(entry["quant_scheme"])
-    if op in ("rmsnorm", "gemma_4norm", "layernorm"):
-        spec["eps"] = entry.get("eps", 1.0 / 65536.0)
-    # optional per-op fields (batch / soft-cap / conv geometry) pass through verbatim when present
-    for f in (
-        "B",
-        "cap",
-        "Cin",
-        "Himg",
-        "Wimg",
-        "P",
-        "Pool",
-        "Dv",
-        "causal",
-        "eps",
-        "input_palette",
-        "producer_scale",
-        "quant_scale",
-    ):
-        if f in entry:
-            spec[f] = entry[f]
-    return spec
 
 
 def _host_eager_golden(art, names, out_name, binding, *, interface: str, arg_order, exact_integer: bool = False):
@@ -1980,7 +1915,7 @@ def _generic_form_linalg_summary(linalg_mlir: str) -> dict:
 
     from merlin.common import mlir_query as mq
     from merlin.common import quant_formats as qf
-    from merlin.kernels import shapes as ks
+    from merlin.compile.analysis import contraction_shapes as ks
 
     module = mq.parse(linalg_mlir)
     shapes = {id(op): shape for op, shape in ks.observe_contractions(module)}
@@ -2142,8 +2077,7 @@ def model_op_demands(linalg_mlir: str, in_fmt: str, weight_fmt: str | None = Non
         # contracts nothing, whatever its region is called. Downgraded to UNKNOWN rather than renamed:
         # unknown never widens, so such an op is matched by NAME alone, exactly as it would be if the
         # capture had never stated a family for it.
-        if fam == "contraction" and carrier == "linalg.generic" and reduces[i] is False:
-            fam = ""
+        fam = sf.carrier_provenance_family(fam, carrier_op=carrier, reduces=reduces[i])
         # ``prov.family`` is a capture vocabulary (layout, cast, elementwise, ...),
         # while a compute-unit contract speaks canonical semantic families.  Only
         # normalize a present, operation-valid tag; the deliberately erased
@@ -2192,103 +2126,13 @@ class ModelDemandIncomplete(ValueError):
     """A captured contraction was not represented exactly once by the routing demands."""
 
 
-def model_op_demands_checked(linalg_mlir: str, in_fmt: str, weight_fmt: str | None = None) -> list:
-    """Extract demands, then require structural contraction identity and shape parity.
+def model_op_demands_checked(
+    linalg_mlir: str, in_fmt: str, weight_fmt: str | None = None, *, source_kind: str = "captured_provenance_v1"
+) -> list:
+    """Verify complete ordered contraction identity and declared source formats."""
+    from .source_demand_inventory import model_op_demands_checked as checked
 
-    ``model_op_demands`` remains the fast compatibility reader of provenance-tagged text. Its tags
-    cannot prove that they enumerate the whole model: a new lowering may emit an untagged contraction,
-    or tag a different operation with a contraction family. This stricter entry point parses the MLIR,
-    classifies contractions by their computation body, and independently reads their shapes. It refuses
-    an unreadable or unshaped contraction rather than giving a whole-model compile a partial route plan.
-    No target capability or accelerator spelling is involved.
-    """
-    from collections import Counter
-    from math import prod
-
-    from merlin.common import mlir_query as mq
-    from merlin.kernels import shapes as ks
-    from merlin.xdsl_dialects.lowering import contraction_coverage as cc
-
-    try:
-        module = mq.parse(linalg_mlir)
-    except Exception as exc:
-        raise ModelDemandIncomplete(f"cannot parse whole-model MLIR for demand completeness: {exc}") from exc
-
-    structural = []
-    for ordinal, op in enumerate(mq.walk(module)):
-        name = mq.op_name(op)
-        if name in cc.MATMUL_OPS:
-            structural.append((ordinal, op, name))
-        elif name == "linalg.generic":
-            try:
-                if cc.classify_generic(op) == "contraction":
-                    structural.append((ordinal, op, name))
-            except Exception as exc:
-                raise ModelDemandIncomplete(f"cannot classify linalg.generic at operation {ordinal}: {exc}") from exc
-
-    # The shape observer is independent of the provenance-tag reader. It deliberately may decline a
-    # structural contraction whose maps/extent are undecidable; that is an explicit refusal here.
-    observed = {id(op): shape for op, shape in ks.observe_contractions(module)}
-    expected: Counter = Counter()
-    expected_sequence: list[tuple[str, int, int, int, int]] = []
-    unshaped: list[str] = []
-    untagged: list[str] = []
-    for ordinal, op, name in structural:
-        marker = f"operation {ordinal} ({name})"
-        tag = getattr((op.attributes or {}).get("prov.op"), "data", None)
-        if not isinstance(tag, str) or not tag:
-            untagged.append(marker)
-            continue
-        shape = observed.get(id(op))
-        if shape is None or len(shape.parallel) < 2 or not shape.reduction:
-            unshaped.append(f"{marker}, prov.op={tag!r}")
-            continue
-        parallel = tuple(int(x) for x in shape.parallel)
-        reduction = tuple(int(x) for x in shape.reduction)
-        identity = (tag, prod(parallel[:-2]), parallel[-2], prod(reduction), parallel[-1])
-        expected[identity] += 1
-        expected_sequence.append(identity)
-
-    if untagged or unshaped:
-        raise ModelDemandIncomplete(
-            f"structural contraction inventory incomplete: {len(structural)} contraction(s); "
-            f"untagged={untagged[:8]}, unshaped={unshaped[:8]}"
-        )
-
-    demands = model_op_demands(linalg_mlir, in_fmt, weight_fmt)
-    actual: Counter = Counter()
-    actual_sequence: list[tuple[str, int, int, int, int]] = []
-    missing_shape: list[str] = []
-    for index, demand in enumerate(demands):
-        if demand.family != "contraction":
-            continue
-        if not demand.has_shape or demand.batch is None:
-            missing_shape.append(f"demand {index} ({demand.op})")
-            continue
-        identity = (demand.op, demand.batch, demand.m, demand.k, demand.n)
-        actual[identity] += 1
-        actual_sequence.append(identity)
-    absent = expected - actual
-    excess = actual - expected
-    out_of_order = [
-        {"ordinal": i, "structural": want, "demand": got}
-        for i, (want, got) in enumerate(zip(expected_sequence, actual_sequence))
-        if want != got
-    ]
-    if missing_shape or absent or excess or out_of_order:
-
-        def _rows(counter: Counter) -> list[dict]:
-            return [
-                {"op": op, "batch": batch, "M": m, "K": k, "N": n, "count": count}
-                for (op, batch, m, k, n), count in sorted(counter.items())[:8]
-            ]
-
-        raise ModelDemandIncomplete(
-            f"contraction demands differ from parsed MLIR: structural={sum(expected.values())}, "
-            f"demands={sum(actual.values())}, missing_shape={missing_shape[:8]}, "
-            f"missing={_rows(absent)}, extra={_rows(excess)}, out_of_order={out_of_order[:8]}"
-        )
-    return demands
+    return checked(linalg_mlir, in_fmt, weight_fmt, source_kind=source_kind)
 
 
 def linalg_to_iface(linalg_mlir: str, entry: dict, binding):
@@ -2691,6 +2535,12 @@ def write_pytorch_capsule(entry: dict, binding, out_root, *, source: PytorchRefS
         golden = _host_eager_golden(
             art, names, out_name, binding, interface="linalg_positional", arg_order=names + [out_name]
         )
+        from .native_storage_source import publish_native_storage
+
+        try:
+            publish_native_storage(spec, art, cap, golden, binding)
+        except ValueError as exc:
+            raise M2MUnavailable(str(exc)) from exc
         if op == "producer_quantizer_observer" or len((art.meta or {}).get("output_abi") or []) > 1:
             from .capsule_results import publication
 
@@ -3030,6 +2880,28 @@ def model_capture_python(workload: str | None, m2m_dir: str | Path | None = None
     return python
 
 
+def freeze_materialized_loader_profile(selection: dict, destination: Path) -> dict:
+    """Publish the exact selected adjacent loader input, for every workload role."""
+    import hashlib
+
+    selected, digest = selection.get("profile_path"), selection.get("profile_sha256")
+    if selected is None and digest is None:
+        return {}
+    if not isinstance(selected, str) or not isinstance(digest, str) or len(digest) != 64:
+        raise M2MUnavailable("materialized loader profile needs its selected path and digest")
+    profile = Path(selected)
+    loader = Path(selection.get("loader_path") or "")
+    if (profile.name != "profile.json" or profile.parent != loader.parent
+            or any(path.is_symlink() for path in (profile, *profile.parents)) or not profile.is_file()):
+        raise M2MUnavailable("materialized loader profile must be the exact adjacent ordinary input")
+    raw = profile.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != digest:
+        raise M2MUnavailable("materialized loader profile changed during publication")
+    destination = Path(destination)
+    (destination / "profile.json").write_bytes(raw)
+    return {"loader_profile": "profile.json", "loader_profile_sha256": digest}
+
+
 def freeze_model_loader_dependencies(
     workload: str | None, destination: Path, capture_meta: dict, m2m_dir: str | Path | None = None
 ) -> str | None:
@@ -3166,25 +3038,15 @@ def input_provenance_record(
 
 
 def model_accelerator_demand(linalg_mlir: str, binding) -> tuple[str | None, list[str]]:
-    """What a whole-model capstone OWES the accelerator: its semantic family and instruction classes.
-
-    Both DERIVED, and from two independent places: the family comes from the MODEL's own captured linalg
-    (which ops it actually contains), the classes from THIS TARGET's role census. Neither is authored, so
-    adding a target or swapping the model changes the demand without editing anything here.
-
-    WHY IT EXISTS. A model capsule shipped ``instruction_classes: []`` with ``must_accelerate: false``,
-    which together mean a submission that runs the entire network on the CPU and returns the right numbers
-    PASSES the capstone. That is precisely the vacuity that was removed from the op capsules and never
-    from the thing the whole suite builds toward -- and the capstone is the one result anybody quotes.
-
-    Returns ``(family, classes)``. FAIL CLOSED at every step: a model whose ops the vocabulary cannot name,
-    a target that declares no matching capability, or a taxonomy with no role census all yield
-    ``(None, [])``, and the caller must then leave ``must_accelerate`` off rather than assert a demand it
-    could not ground. An ungrounded demand fails a conformant submission, which is the one direction
-    running the capsule cannot detect.
+    """Derive accelerator family/classes from original source and target roles.
+    Unsupported source families, absent capability or missing role census yield
+    ``(None, [])``. The caller must preserve that zero *mandatory* device demand
+    instead of inventing a hardware obligation. Public host programs retain
+    complete source/numerical checks and optional legal accelerator lowering.
     """
     from merlin.targetgen import eligibility as _el
     from merlin.targetgen import semantic_families as _sf
+    from merlin.targetgen.corpus_instruction_roles import classes_for_checked_source
 
     target = getattr(binding, "target", None)
     if not target or not linalg_mlir:
@@ -3254,7 +3116,7 @@ def model_accelerator_demand(linalg_mlir: str, binding) -> tuple[str | None, lis
     classes: list[str] = []
     for op in eligible_ops:
         try:
-            got = binding.classes_for(op=op, output_dtype=in_fmt)
+            got = classes_for_checked_source(binding, op=op, output_dtype=in_fmt)
         except Exception:  # noqa: BLE001 — an underivable class list demands nothing
             continue
         for c in got or ():
@@ -3377,9 +3239,17 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
 
     import numpy as np
 
+    from merlin.targetgen import materialized_integer_capture as native_capture
     from merlin.targetgen.application_inventory import verify_capture_receipt
 
-    if selection.get("workload_role") != "iteration" or selection.get("coverage_scope") != "full_capture":
+    native_integer = native_capture.selected(selection)
+    public_performance = (
+        (selection.get("schema") == "merlin.materialized_public_capture.v2" or native_integer)
+        and selection.get("workload_role") == "performance_scale"
+    )
+    if (selection.get("workload_role") != "iteration" and not public_performance) or selection.get(
+        "coverage_scope"
+    ) != "full_capture":
         raise M2MUnavailable(
             "materialized derivation requires an explicit full iteration capture, never held-out validation"
         )
@@ -3415,7 +3285,8 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
         raise M2MUnavailable(
             "materialized source is declared held-out validation even if its selected bundle was renamed"
         )
-    required = {"meta.json", "inputs.npz", "input_order.json", "golden.npy", "frontend-trace.json"}
+    reference = native_capture.REFERENCE if native_integer else "golden.npy"
+    required = {"meta.json", "inputs.npz", "input_order.json", reference, "frontend-trace.json"}
     if not required <= set(receipt["artifacts"]):
         raise M2MUnavailable("materialized bundle lacks receipt-bound metadata, inputs, golden or source trace")
     if receipt.get("lifted_constants"):
@@ -3434,35 +3305,56 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
     meta = json.loads(read_bound("meta.json"))
     if not meta.get("ok") or meta.get("opaque", -1) != 0:
         raise M2MUnavailable("materialized model metadata does not declare a clean capture")
+    if public_performance and meta.get("extra"):
+        raise M2MUnavailable("public performance capture needs a complete portable extra-constant binding")
     output_abi = meta.get("output_abi") or []
     # The existing bundle format records only the first eager tensor as golden.npy.
     # fp16/BF16 values lift losslessly into f32; integer/f64 references do not.
     # Never silently certify a multi-result or integer-result ABI with that file.
-    if len(output_abi) != 1 or output_abi[0].get("dtype") not in {"f32", "f16", "bf16"}:
+    complete_reference = (not native_integer and len(output_abi) > 1)
+    if complete_reference:
+        from merlin.targetgen.application_inventory import verified_static_integerization
+        from merlin.targetgen.materialized_reference import complete_float_outputs
+
+        if not verified_static_integerization(observed.get("capture_integerization"),
+                                              receipt_sha256=observed["receipt_sha256"]):
+            raise M2MUnavailable("multiple materialized outputs require the complete independent integer reference")
+        try:
+            golden_values = complete_float_outputs(meta, read_bound("integer-reference.json"))
+        except (ValueError, TypeError, KeyError) as error:
+            raise M2MUnavailable(str(error)) from error
+    if not native_integer and not complete_reference and (
+            len(output_abi) != 1 or output_abi[0].get("dtype") not in {"f32", "f16", "bf16"}):
         raise M2MUnavailable(
             "materialized golden.npy needs one losslessly represented floating result; "
             "other ABIs need complete references"
         )
-    with np.load(io.BytesIO(read_bound("inputs.npz")), allow_pickle=False) as archive:
-        count = len(meta.get("input_abi") or [])
-        names = [f"in{i}" for i in range(count)]
-        if set(archive.files) != set(names):
-            raise M2MUnavailable("materialized input leaves differ from the declared input ABI")
-        inputs = [archive[name].tolist() for name in names]
+    count = len(meta.get("input_abi") or [])
+    if native_integer:
+        inputs = native_capture.inputs(meta, read_bound("inputs.npz"))
+        golden_values = native_capture.outputs(meta, read_bound(reference))
+    else:
+        with np.load(io.BytesIO(read_bound("inputs.npz")), allow_pickle=False) as archive:
+            names = [f"in{i}" for i in range(count)]
+            if set(archive.files) != set(names):
+                raise M2MUnavailable("materialized input leaves differ from the declared input ABI")
+            inputs = [archive[name].tolist() for name in names]
     order = json.loads(read_bound("input_order.json"))
     if not isinstance(order, dict) or sorted(order.values()) != list(range(count)):
         raise M2MUnavailable("materialized input-order mapping is not a complete positional ABI")
-    golden_array = np.load(io.BytesIO(read_bound("golden.npy")), allow_pickle=False)
-    if list(golden_array.shape) != output_abi[0].get("shape") or str(golden_array.dtype) != "float32":
-        raise M2MUnavailable("materialized golden shape/dtype differs from the output ABI")
-    if output_abi[0]["dtype"] == "f16" and not np.array_equal(
-        golden_array, golden_array.astype(np.float16).astype(np.float32), equal_nan=True
-    ):
-        raise M2MUnavailable("materialized golden is not an exact fp16 value lifted to f32")
-    if output_abi[0]["dtype"] == "bf16" and np.any(
-        (golden_array.view(np.uint32) & 0xFFFF != 0) & np.isfinite(golden_array)
-    ):
-        raise M2MUnavailable("materialized golden is not an exact BF16 value lifted to f32")
+    if not native_integer and not complete_reference:
+        golden_array = np.load(io.BytesIO(read_bound("golden.npy")), allow_pickle=False)
+        if list(golden_array.shape) != output_abi[0].get("shape") or str(golden_array.dtype) != "float32":
+            raise M2MUnavailable("materialized golden shape/dtype differs from the output ABI")
+        if output_abi[0]["dtype"] == "f16" and not np.array_equal(
+            golden_array, golden_array.astype(np.float16).astype(np.float32), equal_nan=True
+        ):
+            raise M2MUnavailable("materialized golden is not an exact fp16 value lifted to f32")
+        if output_abi[0]["dtype"] == "bf16" and np.any(
+            (golden_array.view(np.uint32) & 0xFFFF != 0) & np.isfinite(golden_array)
+        ):
+            raise M2MUnavailable("materialized golden is not an exact BF16 value lifted to f32")
+        golden_values = golden_array.tolist()
     trace = dict(meta.get("frontend_trace") or {})
     trace["path"] = str(directory / "frontend-trace.json")
     meta["frontend_trace"] = trace
@@ -3495,6 +3387,19 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
             raise M2MUnavailable("materialized loader must be an ordinary member beside its selected capture")
         if hashlib.sha256(loader.read_bytes()).hexdigest() != selection["loader_sha256"]:
             raise M2MUnavailable("materialized loader differs from its preselected workload snapshot")
+    if selection.get("loader_path"):
+        profile_sha = (meta.get("loader_provenance") or {}).get("profile_sha256")
+        if profile_sha is not None or selection.get("profile_path"):
+            profile = Path(selection.get("profile_path", ""))
+            if (
+                profile.parent != directory
+                or profile.name != "profile.json"
+                or profile.is_symlink()
+                or not profile.is_file()
+                or hashlib.sha256(profile.read_bytes()).hexdigest() != profile_sha
+                or profile_sha != selection.get("profile_sha256")
+            ):
+                raise M2MUnavailable("materialized loader profile differs from its preselected capture")
     meta["materialized_artifact_identities"] = receipt["artifacts"]
     meta["materialized_receipt_bytes"] = receipt_raw
     # Retain original source bytes. The writer records the one known relocation.
@@ -3504,7 +3409,7 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
         raise M2MUnavailable("materialized model lacks its exact recorded weights-location attribute")
     meta["materialized_weights_reference"] = source_weights
     return CapsuleArtifacts(
-        "model", meta.get("dtype", "fp32"), "", program, inputs, golden_array.tolist(), str(weights), meta
+        "model", meta.get("dtype", "fp32"), "", program, inputs, golden_values, str(weights), meta
     )
 
 
@@ -3614,12 +3519,21 @@ def write_model_capsule(
     if not output_abi:
         raise M2MUnavailable("model capture has no output_abi; refusing to guess result cardinality")
     golden_values = list(art.golden) if len(output_abi) > 1 else [art.golden]
-    numeric_policy = _model_output_numeric_policy(output_abi, golden_values, binding)
     out_names = [str(x) for x in (entry.get("outs") or [])]
     if not out_names:
         out_names = [str(entry.get("out", "Y0"))] if len(output_abi) == 1 else [f"Y{i}" for i in range(len(output_abi))]
     if len(out_names) != len(output_abi) or len(set(out_names)) != len(out_names):
         raise M2MUnavailable(f"model declares outputs {out_names!r}, but capture has {len(output_abi)} tensor results")
+    typed_public = (entry.get("public_boundary") or {}).get("schema") == "merlin.phase0.public_joint_boundaries.v2"
+    output_selection = entry.get("output_numeric_policy")
+    if output_selection not in (None, "captured_per_output_v1"):
+        raise M2MUnavailable("model output numerical selection must be captured_per_output_v1")
+    numeric_policy = _model_output_numeric_policy(
+        output_abi,
+        golden_values,
+        binding,
+        output_names=out_names if typed_public or output_selection == "captured_per_output_v1" else None,
+    )
     out_name = out_names[0]
     gate = entry.get("gate") or {"after_op_pass_fraction": 0.8}
 
@@ -3648,6 +3562,10 @@ def write_model_capsule(
             declared = art.meta["materialized_artifact_identities"][original]
             if len(payload) != declared["bytes"] or hashlib.sha256(payload).hexdigest() != declared["sha256"]:
                 raise M2MUnavailable(f"materialized external payload changed during capsule copying: {original}")
+    loader_profile = (
+        freeze_materialized_loader_profile(art.meta["materialized_capture"], d)
+        if artifact is not None else {}
+    )
     loader_dependencies = (
         freeze_model_loader_dependencies(workload, d, art.meta or {}, src.m2m_dir) if artifact is None else []
     )
@@ -3662,7 +3580,13 @@ def write_model_capsule(
         "name": entry["name"],
         "kind": "model",
         **({"materialized_capture": art.meta["materialized_capture"]} if artifact is not None else {}),
-        "source_role": "model_derived" if artifact is not None else entry.get("source_role", "pytorch_model_slice"),
+        "source_role": (
+            "materialized_performance_capture"
+            if artifact is not None and art.meta["materialized_capture"].get("workload_role") == "performance_scale"
+            else "model_derived"
+            if artifact is not None
+            else entry.get("source_role", "pytorch_model_slice")
+        ),
         "source_reference": entry.get("source_reference", f"whole model {entry.get('model', '')}"),
         "label": entry.get("label", "public"),
         "interface_mlir": "capsule.interface.mlir",
@@ -3709,6 +3633,7 @@ def write_model_capsule(
                 ),
                 "torch_seed": int((art.meta or {}).get("torch_seed", 0)),
                 **({"loader_dependencies": loader_dependencies} if loader_dependencies else {}),
+                **loader_profile,
                 "compile_dtype": compile_dtype(binding.operand_dtype),
                 "arg_order": in_names + out_names,
                 "weights": "capsule.weights.safetensors",
@@ -3790,8 +3715,17 @@ def write_model_capsule(
     frontend_evidence = _write_frontend_evidence(art, d, linalg)
     if frontend_evidence is not None:
         cap["frontend_trace"] = frontend_evidence
+    if entry.get("performance") is not None:
+        cap["performance"] = copy.deepcopy(entry["performance"])
     if src is not None:
         cap["capture_tool"] = _freeze_selected_m2m_tool(src.m2m_dir, d)
+    if artifact is not None and art.meta["materialized_capture"].get("workload_role") == "performance_scale":
+        from .capsule_privacy import capture_reference_closure
+
+        cap["reference_closure"] = capture_reference_closure(
+            art.meta["materialized_artifact_identities"],
+            source_mode=art.meta["materialized_capture"].get("source_mode"),
+        )
     (d / "capsule.yaml").write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
     (d / "capsule.interface.mlir").write_text(linalg, encoding="utf-8")
     (d / "expected_instruction_coverage.yaml").write_text(
@@ -3807,6 +3741,22 @@ def write_model_capsule(
             if hashlib.sha256(loader_bytes).hexdigest() != art.meta["materialized_capture"]["loader_sha256"]:
                 raise M2MUnavailable("materialized loader changed during capsule copying")
             (d / "capsule.pytorch.py").write_bytes(loader_bytes)
+        if art.meta["materialized_capture"].get("workload_role") == "performance_scale":
+            origin = Path(art.meta["materialized_capture"]["path"]).parent
+            from .materialized_integer_capture import reference_members, selected
+            from .materialized_reference import reference_members as float_reference_members
+
+            references = (
+                reference_members(art.meta["materialized_artifact_identities"])
+                if selected(art.meta["materialized_capture"])
+                else float_reference_members(art.meta["materialized_artifact_identities"])
+            )
+            for member in ("meta.json", "inputs.npz", "input_order.json", *references):
+                raw = (origin / member).read_bytes()
+                declared = art.meta["materialized_artifact_identities"][member]
+                if len(raw) != declared["bytes"] or hashlib.sha256(raw).hexdigest() != declared["sha256"]:
+                    raise M2MUnavailable("public performance capture reference closure changed")
+                (d / ("source-capture-" + member)).write_bytes(raw)
     write_golden(d, golden)
     return d
 

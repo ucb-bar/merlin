@@ -1,0 +1,1033 @@
+{
+ "fence_per_tile": {
+  "instructions": [
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 0
+   },
+   {
+    "class": "FLUSH_CMD",
+    "funct": 7,
+    "index": 1
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 2
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 3
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 4
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 5
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 6
+   },
+   {
+    "class": "LOAD3_CMD",
+    "funct": 14,
+    "index": 7
+   },
+   {
+    "class": "LOAD3_CMD",
+    "funct": 14,
+    "index": 8
+   },
+   {
+    "class": "LOAD3_CMD",
+    "funct": 14,
+    "index": 9
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 10
+   },
+   {
+    "class": "LOAD2_CMD",
+    "funct": 1,
+    "index": 11
+   },
+   {
+    "class": "LOAD2_CMD",
+    "funct": 1,
+    "index": 12
+   },
+   {
+    "class": "LOAD2_CMD",
+    "funct": 1,
+    "index": 13
+   },
+   {
+    "class": "PRELOAD_CMD",
+    "funct": 6,
+    "index": 14
+   },
+   {
+    "class": "COMPUTE_AND_FLIP_CMD",
+    "funct": 4,
+    "index": 15
+   },
+   {
+    "class": "PRELOAD_CMD",
+    "funct": 6,
+    "index": 16
+   },
+   {
+    "class": "COMPUTE_AND_FLIP_CMD",
+    "funct": 4,
+    "index": 17
+   },
+   {
+    "class": "PRELOAD_CMD",
+    "funct": 6,
+    "index": 18
+   },
+   {
+    "class": "COMPUTE_AND_FLIP_CMD",
+    "funct": 4,
+    "index": 19
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 20
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 21
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 22
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 23
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 24
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 25
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 26
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 27
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 28
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 29
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 30
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 31
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 32
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 33
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 34
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 35
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 36
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 37
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 38
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 39
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 40
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 41
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 42
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 43
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 44
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 45
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 46
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 47
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 48
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 49
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 50
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 51
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 52
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 53
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 54
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 55
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 56
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 57
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 58
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 59
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 60
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 61
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 62
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 63
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 64
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 65
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 66
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 67
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 68
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 69
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 70
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 71
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 72
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 73
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 74
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 75
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 76
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 77
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 78
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 79
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 80
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 81
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 82
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 83
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 84
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 85
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 86
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 87
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 88
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 89
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 90
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 91
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 92
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 93
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 94
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 95
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 96
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 97
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 98
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 99
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 100
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 101
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 102
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 103
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 104
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 105
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 106
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 107
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 108
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 109
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 110
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 111
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 112
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 113
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 114
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 115
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 116
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 117
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 118
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 119
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 120
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 121
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 122
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 123
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 124
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 125
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 126
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 127
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 128
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 129
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 130
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 131
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 132
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 133
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 134
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 135
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 136
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 137
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 138
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 139
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 140
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 141
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 142
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 143
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 144
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 145
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 146
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 147
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 148
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 149
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 150
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 151
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 152
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 153
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 154
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 155
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 156
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 157
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 158
+   }
+  ],
+  "summary": {
+   "counted_loops": {
+    "basis": "original_llvm_cfg_constant_induction_v1",
+    "functions": [],
+    "instruction_multiplicity": "static_sites_only",
+    "varying_operands": "unknown; loop bounds are not operand or hazard proof"
+   }
+  }
+ },
+ "large_gemm_census": {
+  "feature_counts": {
+   "target.class.compute_ws": 45824,
+   "target.class.config": 4,
+   "target.class.fence": 131,
+   "target.class.flush": 1,
+   "target.class.load": 45915,
+   "target.class.preload": 45824,
+   "target.class.store": 128,
+   "target.commands": 137696,
+   "target.fences": 131,
+   "target.load_publication.packet_command_boundary": 45826,
+   "target.load_publication.packet_per_row": 89,
+   "target.local_read_bytes": 15396864,
+   "target.local_write_bytes": 14669408,
+   "target.nominal_padded_macs": 187695104,
+   "target.posted.accepted": 20158,
+   "target.posted.allocation_source_d_reads": 109217,
+   "target.posted.cold_sinkd_data": 871432,
+   "target.posted.cold_sinkd_noop": 107589,
+   "target.posted.cold_sourcec_read": 176,
+   "target.posted.dirty_writeback_publications": 22,
+   "target.posted.full_raw_write_beats": 72,
+   "target.posted.full_raw_write_packets": 18,
+   "target.posted.issued": 20158,
+   "target.posted.masked_sinkc_beats": 72,
+   "target.posted.modeled_raw_source_wait_cycles": 1043052,
+   "target.posted.modeled_target_fence_wait_cycles": 4788,
+   "target.posted.mul_pre": 5878,
+   "target.posted.raw_accepted": 137696,
+   "target.posted.raw_bypass": 1,
+   "target.posted.raw_to_rs_allocated": 20158,
+   "target.posted.read_allocations_completed": 108929,
+   "target.posted.victim_sinkc_publications": 88,
+   "target.requested_read_bytes": 11736672,
+   "target.requested_write_bytes": 8192,
+   "target.useful_shape_macs": 11730944
+  },
+  "status": "UNKNOWN"
+ },
+ "overlapped": {
+  "instructions": [
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 0
+   },
+   {
+    "class": "FLUSH_CMD",
+    "funct": 7,
+    "index": 1
+   },
+   {
+    "class": "CONFIG_CMD",
+    "funct": 0,
+    "index": 2
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 3
+   },
+   {
+    "class": "LOAD2_CMD",
+    "funct": 1,
+    "index": 4
+   },
+   {
+    "class": "PRELOAD_CMD",
+    "funct": 6,
+    "index": 5
+   },
+   {
+    "class": "COMPUTE_AND_FLIP_CMD",
+    "funct": 4,
+    "index": 6
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 7
+   },
+   {
+    "class": "LOAD2_CMD",
+    "funct": 1,
+    "index": 8
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 9
+   },
+   {
+    "class": "PRELOAD_CMD",
+    "funct": 6,
+    "index": 10
+   },
+   {
+    "class": "COMPUTE_AND_FLIP_CMD",
+    "funct": 4,
+    "index": 11
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 12
+   },
+   {
+    "class": "LOAD2_CMD",
+    "funct": 1,
+    "index": 13
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 14
+   },
+   {
+    "class": "PRELOAD_CMD",
+    "funct": 6,
+    "index": 15
+   },
+   {
+    "class": "COMPUTE_AND_FLIP_CMD",
+    "funct": 4,
+    "index": 16
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 17
+   },
+   {
+    "class": "LOAD2_CMD",
+    "funct": 1,
+    "index": 18
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 19
+   },
+   {
+    "class": "PRELOAD_CMD",
+    "funct": 6,
+    "index": 20
+   },
+   {
+    "class": "COMPUTE_AND_FLIP_CMD",
+    "funct": 4,
+    "index": 21
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 22
+   },
+   {
+    "class": "LOAD2_CMD",
+    "funct": 1,
+    "index": 23
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 24
+   },
+   {
+    "class": "PRELOAD_CMD",
+    "funct": 6,
+    "index": 25
+   },
+   {
+    "class": "COMPUTE_AND_FLIP_CMD",
+    "funct": 4,
+    "index": 26
+   },
+   {
+    "class": "LOAD_CMD",
+    "funct": 2,
+    "index": 27
+   },
+   {
+    "class": "LOAD2_CMD",
+    "funct": 1,
+    "index": 28
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 29
+   },
+   {
+    "class": "PRELOAD_CMD",
+    "funct": 6,
+    "index": 30
+   },
+   {
+    "class": "COMPUTE_AND_FLIP_CMD",
+    "funct": 4,
+    "index": 31
+   },
+   {
+    "class": "STORE_CMD",
+    "funct": 3,
+    "index": 32
+   },
+   {
+    "class": "FENCE",
+    "funct": null,
+    "index": 33
+   }
+  ],
+  "summary": {
+   "counted_loops": {
+    "basis": "original_llvm_cfg_constant_induction_v1",
+    "functions": [],
+    "instruction_multiplicity": "static_sites_only",
+    "varying_operands": "unknown; loop bounds are not operand or hazard proof"
+   }
+  }
+ },
+ "source": "anonymized excerpts of one archived author attempt: a self-check's decoded instruction stream (classes and selectors only) and one timing-model command census",
+ "target": "gemmini"
+}

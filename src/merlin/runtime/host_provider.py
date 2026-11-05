@@ -11,9 +11,10 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable
+from types import MethodType
 
 from merlin.common.digest import sha256_file
 
@@ -235,10 +236,48 @@ def _symbols(path, inspector):
     return defined, required
 
 
+def prepare_model_host_provider(
+    builder,
+    *,
+    prepared_path,
+    model_ir,
+    workdir,
+    compiler,
+    compiler_flags,
+    compilation,
+    runner,
+    inspector,
+):
+    """Bind ordinary model artifacts and observed compilation to the provider."""
+
+    def compile_provider(cmd, *, inputs, output):
+        return compilation.run(cmd, runner=runner, inputs=inputs, output=Path(output))
+
+    return prepare_host_provider(
+        builder,
+        HostProviderContext(
+            Path(prepared_path),
+            Path(model_ir),
+            workdir / "model.o",
+            workdir / "host_provider",
+            Path(compiler),
+            tuple(compiler_flags),
+            compile_provider,
+        ),
+        inspector=inspector,
+    )
+
+
 def prepare_host_provider(builder, context, *, inspector):
     """Invoke an explicit builder and validate every imported boundary and pin."""
     if builder is None:
         return (), None
+    if type(builder) is MethodType:
+        from merlin.llvmlower.shared_pointwise_routing import resolve_pointwise_provider
+
+        builder = resolve_pointwise_provider(builder, context)
+        if builder is None:
+            return (), None
     if not callable(builder):
         raise ValueError("host_provider_builder must be explicitly callable")
     if inspector is None:
@@ -364,7 +403,9 @@ def prepare_host_provider(builder, context, *, inspector):
     return tuple(Path(path) for path in paths), record
 
 
-def close_host_provider(record, objects, executable, *, inspector, link_flags=()):
+def close_host_provider(
+    record, objects, executable, *, inspector, link_flags=(), native_dynamic_imports=None, native_link_inputs=()
+):
     """Recheck immutable imports and final ordered object/symbol resolution."""
     if record is None:
         return
@@ -385,10 +426,36 @@ def close_host_provider(record, objects, executable, *, inspector, link_flags=()
             symbol = str(flag)[len(prefix) :]
             wrappers[symbol] = "__wrap_" + symbol
     defined, unresolved = _symbols(executable, inspector)
+    inherited = set()
+    if native_dynamic_imports is not None:
+        if (
+            type(native_dynamic_imports) is not tuple
+            or len(set(native_dynamic_imports)) != len(native_dynamic_imports)
+            or any(type(symbol) is not str or not symbol or "@" in symbol for symbol in native_dynamic_imports)
+            or type(native_link_inputs) is not tuple
+            or not native_link_inputs
+            or any(_identity(path)["sha256"] != digest for path, digest in native_link_inputs)
+        ):
+            raise ValueError("native provider requires original unchanged model/runtime imports")
+        inherited = set(native_dynamic_imports)
+        # ELF symbol versions refine an original unversioned link requirement.
+        # Preserve those actual versions in the receipt, never ignore a name.
+        if {symbol.partition("@")[0] for symbol in unresolved} - inherited:
+            raise ValueError("native provider introduced an unsupported dynamic import")
     resolved = {symbol: wrappers.get(symbol, symbol) for symbol in record["required_symbols"]}
     exported = [abi["symbol"] for row in record["objects"] for abi in row["defined"]]
-    if unresolved or any(len(defined.get(symbol, ())) != 1 for symbol in [*exported, *resolved.values()]):
+    required = [symbol for symbol in resolved.values() if symbol not in inherited]
+    if (unresolved and native_dynamic_imports is None) or any(
+        len(defined.get(symbol, ())) != 1 for symbol in [*exported, *required]
+    ):
         raise ValueError("final provider symbol resolution is incomplete or ambiguous")
+    if native_dynamic_imports is not None:
+        record["native_dynamic_link"] = {
+            "inherited_imports": list(native_dynamic_imports),
+            "actual_undefined_symbols": sorted(unresolved),
+            "original_inputs": [_identity(path) for path, _ in native_link_inputs],
+            "scope": "original host link requirements only; dynamic loader/runtime qualification remains external",
+        }
     record.update(
         status="completed",
         ordered_link_objects=ordered,
@@ -397,3 +464,72 @@ def close_host_provider(record, objects, executable, *, inspector, link_flags=()
         executable=_identity(executable),
     )
     Path(record["receipt_path"]).write_text(json.dumps(record, indent=2) + "\n")
+
+
+def revalidate_host_provider(record):
+    """Reopen one completed provider through the read-only batch boundary."""
+    revalidate_host_providers((record,))
+
+
+def revalidate_host_providers(records, *, max_records=4096):
+    """Reopen original completed records with one hash per exact path per batch.
+
+    The caller retains the producer's original records and excludes concurrent
+    writes during this callback-free boundary. This is not an atomic filesystem
+    snapshot. Each new call reopens all files; no identity survives the batch.
+    Records are frozen before checking and must remain unchanged through return.
+    ``max_records`` bounds the number of original records before any snapshots
+    or file reads. No ABI, numerical, effect or execution qualification is granted.
+    """
+    if type(max_records) is not int or max_records <= 0:
+        raise ValueError("provider custody record budget must be a positive integer")
+    if type(records) not in (tuple, list):
+        raise ValueError("provider custody requires an explicit finite record sequence")
+    if len(records) > max_records:
+        raise ValueError("provider custody record sequence exceeds its explicit budget")
+    originals = tuple(records)
+    for record in originals:
+        if record is not None and (
+            type(record) is not dict
+            or record.get("schema") != "source_bound_host_provider_v1"
+            or record.get("status") != "completed"
+        ):
+            raise ValueError("provider custody requires its completed link record")
+    snapshots = tuple(json.dumps(record) for record in originals)
+    identities = {}
+
+    def identity(path):
+        key = str(path)
+        path = Path(path)
+        # Preserve each raw occurrence's regular-file check, even on a hit.
+        # Distinct spellings and aliases do not acquire shared read authority.
+        if not path.is_file() or path.is_symlink():
+            raise ValueError("provider artifacts require regular files")
+        if key not in identities:
+            identities[key] = _identity(path)
+        return identities[key]
+
+    for snapshot in snapshots:
+        record = json.loads(snapshot)
+        if record is None:
+            continue
+        receipt = Path(record["receipt_path"])
+        identity(record["receipt_path"])
+        # JSON normalizes the producer's tuple-valued ABI argument lists.
+        if json.loads(receipt.read_text()) != record:
+            raise ValueError("provider completed receipt changed")
+        for expected in (*record["source_model"], *record["ordered_link_objects"], record["executable"]):
+            if identity(expected["path"]) != expected:
+                raise ValueError("provider source, link object or executable changed after link closure")
+        for path, pin in record["compilation_pins"].items():
+            if identity(path)["sha256"] != pin:
+                raise ValueError("provider compilation dependency changed after link closure")
+        for expected in record.get("native_dynamic_link", {}).get("original_inputs", ()):
+            if identity(expected["path"]) != expected:
+                raise ValueError("native provider original model/runtime input changed after link closure")
+    if (
+        len(records) != len(originals)
+        or any(current is not original for current, original in zip(records, originals, strict=True))
+        or tuple(json.dumps(record) for record in originals) != snapshots
+    ):
+        raise ValueError("provider original custody records changed during revalidation")

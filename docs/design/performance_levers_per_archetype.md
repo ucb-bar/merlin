@@ -4,7 +4,7 @@ kind: design
 status: current
 owner: core
 last_verified: 2026-08-30
-related: [performance_budget_unit, expert_gap_attribution]
+related: [performance_budget_unit, normal_search_feedback]
 code_refs: [src/merlin/perf/occupancy.py, src/merlin/perf/differential.py, src/merlin/targetgen/rtl/fsm.py, src/merlin/perf/depgraph.py, src/merlin/perf/deps/measured.py]
 ---
 

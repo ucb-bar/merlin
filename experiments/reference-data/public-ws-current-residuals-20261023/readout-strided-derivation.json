@@ -1,0 +1,34 @@
+{
+  "schema": "merlin.aligned_strided_readout_derivation.v1",
+  "source": {
+    "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/StoreController.scala",
+    "sha256": "a0b556d109196c3c9d9ac5ed4dffc1bcad334c0f1f87780d948b84bde7402c6d"
+  },
+  "source_lines": [
+    127,
+    165,
+    167,
+    234
+  ],
+  "semantics": "StoreController generates each row request at base+row_counter*configured_stride; destination stride does not change the full-width accumulator/scale/writer path.",
+  "admission": [
+    "full-width accumulator row",
+    "column extent equals physical array width",
+    "row count positive and at most array width",
+    "base aligned to rowbytes",
+    "stride>=rowbytes and stride%rowbytes==0",
+    "non-normalizing, non-pooling",
+    "explicit streamed readout and request-stage opt-ins"
+  ],
+  "preserved": [
+    "exact per-row byte address",
+    "exact row byte count",
+    "per-row cacheline/coherence classification",
+    "nonoverlap",
+    "existing stage costs and resource capacities"
+  ],
+  "unsupported": "Partial, unaligned, overlapping, pooling or narrow/scaled outputs remain on previous approximation; they gain no new qualification.",
+  "case_role": "Both32-cubed cases guided this geometry refinement and are development evidence, not independent final validation.",
+  "new_physical_runs": 0,
+  "qualified": false
+}

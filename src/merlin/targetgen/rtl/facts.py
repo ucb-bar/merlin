@@ -1123,21 +1123,19 @@ def dialect_plan_path(target: str, *, explicit: str | Path | None = None) -> Pat
 SERVED_FOR_KEY = "served_for"
 
 
-def load_facts(target: str, *, explicit: str | Path | None = None) -> dict[str, Any]:
-    """Load and parse the facts artifact, regenerating the cache from the RTL if it is cold
-    (see :func:`ensure_facts`). This is the accessor consumers should use to READ facts.
-
+def load_facts(target: str, *, explicit: str | Path | None = None, regenerate: bool = True) -> dict[str, Any]:
+    """Read facts; ``regenerate=False`` selects existing data without building RTL.
     When the artifact belongs to a DIFFERENT target than the one asked for (a config variant served out
     of the design its own residual declares — see :func:`facts_alias`), the returned doc is stamped with
     ``served_for``, saying who asked, whose artifact answered, and what that redirect does NOT cover.
-    Recording which elaboration a fact came from is the repo's hardware-provenance rule; a redirect that
-    left no trace would make the variant's facts indistinguishable from its base's, which is exactly the
-    confusion "a result attributed to the wrong device" describes. The stamp lives OUTSIDE ``facts``, so
-    the body every consumer reads is byte-identical to the base's."""
+    The stamp lives OUTSIDE ``facts``; its body stays byte-identical to the base's."""
     captured = _OBSERVED.get().get(target)
     if captured is not None and explicit is None:
         return copy.deepcopy(captured[0])
-    doc = json.loads(ensure_facts(target, explicit=explicit).read_text(encoding="utf-8"))
+    path = ensure_facts(target, explicit=explicit) if regenerate else find_facts(target, explicit=explicit)
+    if path is None:
+        raise FileNotFoundError("selected RTL facts unavailable; read-only selection cannot regenerate")
+    doc = json.loads(path.read_text(encoding="utf-8"))
     # Explicit evidence and selected support pins must not inherit an unrelated
     # descriptor/residual alias merely because it shares the requested name.
     override = explicit is not None or bool(os.environ.get("MERLIN_RTL_FACTS"))

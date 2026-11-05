@@ -75,6 +75,14 @@ def _summary(path: Path) -> dict:
     for key in ("n_passed", "n_capsules", "all_pass", "integrity_status", "highest_tier"):
         if key in doc:
             out[key] = doc[key]
+    failure = doc.get("package_failure")
+    if isinstance(failure, dict):
+        out["package_failure"] = {key: str(failure.get(key, ""))[:600]
+                                  for key in ("plane", "category", "detail")}
+    notice = doc.get("operator_epoch_notice")
+    if isinstance(notice, dict) and notice.get("schema") == "merlin.operator_epoch_notice.v1":
+        out["operator_epoch_notice"] = {key: str(notice.get(key, ""))[:600]
+                                       for key in ("action", "instruction")}
     failing = (
         [
             name

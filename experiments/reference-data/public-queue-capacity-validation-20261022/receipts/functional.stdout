@@ -1,0 +1,27 @@
+CAPACITY arm=0 rep=0 jobs=1 fenced=0 cycles=56 checked=256 errors=0 guards=32
+CAPACITY arm=0 rep=1 jobs=1 fenced=0 cycles=56 checked=256 errors=0 guards=32
+CAPACITY arm=0 rep=2 jobs=1 fenced=0 cycles=56 checked=256 errors=0 guards=32
+CAPACITY arm=1 rep=0 jobs=1 fenced=1 cycles=58 checked=256 errors=0 guards=32
+CAPACITY arm=1 rep=1 jobs=1 fenced=1 cycles=58 checked=256 errors=0 guards=32
+CAPACITY arm=1 rep=2 jobs=1 fenced=1 cycles=58 checked=256 errors=0 guards=32
+CAPACITY arm=2 rep=0 jobs=3 fenced=0 cycles=102 checked=768 errors=0 guards=32
+CAPACITY arm=2 rep=1 jobs=3 fenced=0 cycles=102 checked=768 errors=0 guards=32
+CAPACITY arm=2 rep=2 jobs=3 fenced=0 cycles=102 checked=768 errors=0 guards=32
+CAPACITY arm=3 rep=0 jobs=3 fenced=1 cycles=108 checked=768 errors=0 guards=32
+CAPACITY arm=3 rep=1 jobs=3 fenced=1 cycles=108 checked=768 errors=0 guards=32
+CAPACITY arm=3 rep=2 jobs=3 fenced=1 cycles=108 checked=768 errors=0 guards=32
+CAPACITY arm=4 rep=0 jobs=7 fenced=0 cycles=194 checked=1792 errors=0 guards=32
+CAPACITY arm=4 rep=1 jobs=7 fenced=0 cycles=194 checked=1792 errors=0 guards=32
+CAPACITY arm=4 rep=2 jobs=7 fenced=0 cycles=194 checked=1792 errors=0 guards=32
+CAPACITY arm=5 rep=0 jobs=7 fenced=1 cycles=208 checked=1792 errors=0 guards=32
+CAPACITY arm=5 rep=1 jobs=7 fenced=1 cycles=208 checked=1792 errors=0 guards=32
+CAPACITY arm=5 rep=2 jobs=7 fenced=1 cycles=208 checked=1792 errors=0 guards=32
+CAPACITY arm=6 rep=0 jobs=11 fenced=0 cycles=286 checked=2816 errors=0 guards=32
+CAPACITY arm=6 rep=1 jobs=11 fenced=0 cycles=286 checked=2816 errors=0 guards=32
+CAPACITY arm=6 rep=2 jobs=11 fenced=0 cycles=286 checked=2816 errors=0 guards=32
+CAPACITY arm=7 rep=0 jobs=11 fenced=1 cycles=308 checked=2816 errors=0 guards=32
+CAPACITY arm=7 rep=1 jobs=11 fenced=1 cycles=308 checked=2816 errors=0 guards=32
+CAPACITY arm=7 rep=2 jobs=11 fenced=1 cycles=308 checked=2816 errors=0 guards=32
+CAPACITY_TOTAL errors=0 warmup_runs=16
+Gemmini extension configured with:
+    dim = 16

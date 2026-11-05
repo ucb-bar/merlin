@@ -4,8 +4,7 @@ kind: reference
 status: current
 owner: compiler
 last_verified: 2026-10-07
-related:
-  - reference/architecture.md
+related: [reference/architecture.md]
 code_refs:
   - src/merlin/llvmlower/prepared_model_transform.py
   - src/merlin/runtime/backends/spike_model.py

@@ -1,0 +1,36 @@
+schema: merlin.quantization_experiment.v1
+id: native-scalar-weight-dataflow-v1
+status: prospective_unmeasured
+selected_by_default: false
+baseline: native-speed.yaml
+regenerate: >-
+  PYTHONPATH=src python examples/gemmini/protocol/native_scalar_recipes.py
+  --contract <selected-target-contract.json>
+recipes:
+  tiny_llama: recipes/tiny_llama-native-scalar-speed.json
+  smolvla: recipes/smolvla-native-scalar-speed.json
+arithmetic:
+  weight: Existing symmetric signed-I8 per-tensor MinMax scale; range [-127, 127].
+  activation: Existing static per-tensor histogram scale; range [-128, 127].
+  bias: Existing integer accumulator preload with range and exact-carrier checks.
+  native_output_grids: Unchanged from the separately selected native-speed recipe.
+  attention_planes: Unchanged from native-speed; this profile does not alter attention precision.
+  physical_readout_scale_width: Unchanged from the independently selected contract.
+  packing: >-
+    Preserve separate output grids and permit at most 64 nonuniform physical
+    readout blocks in a joint pack. Larger scalar-uniform whole vectors are
+    permitted. Refused joint packs retain their original native projections.
+comparison:
+  references: Generate and seal fresh independent quantized references for this exact recipe.
+  compiled_quantized: ../numerics/models.yaml#numerics.functional
+  floating_quality: Report per-output and section metrics; no inherited accuracy claim.
+  inputs_shapes_checkpoints_calibration: Unchanged and rebound by every actual capture.
+  old_results: Retain their original per-16 recipe and source attribution.
+measurement:
+  results: null
+  cycle_or_speedup_claim: none
+  source_cost: >-
+    A scalar gain can avoid nonuniform repeated readout in the frozen compiler.
+    This is a source-derived opportunity, not measured cycles. Packed distinct
+    scalar roles can still have nonuniform gains and must pass the packing guard.
+  physical_input_reuse: Requires actual traffic evidence; logical packing alone is insufficient.

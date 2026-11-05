@@ -1,0 +1,55 @@
+{
+  "original_sha256": "a439153adea0e8b067204e3623af3edef96583c56d7f919717a23f5843870a38",
+  "projection": "historical path roles only",
+  "record": {
+    "command": [
+      "python3",
+      "${TASK}/merlin/out/build/scratchpad-request-admission-v2/source/build_provider.py",
+      "--spike-root",
+      "${TASK}/spike-timing",
+      "--output-library",
+      "${TASK}/merlin/out/build/scratchpad-request-admission-v2/libtiming_provider.so"
+    ],
+    "model": {
+      "path": "${TASK}/merlin/out/build/scratchpad-request-admission-v2/model.json",
+      "sha256": "e4796a4bb3d984e0981e84cb28d4cdd3322ebe46d32f6cb9ed3bda8717cb6d8a"
+    },
+    "no_physical_runs": true,
+    "parent_runtime": {
+      "path": "${TASK}/merlin/out/build/modeled-event-observer-v1/runtime.json",
+      "sha256": "5638b628ea91dcb060e3f09f876647880ca81d7f507edde356aea80a3d30b14d"
+    },
+    "runtime": {
+      "path": "${TASK}/merlin/out/build/scratchpad-request-admission-v2/runtime.json",
+      "sha256": "6a2bca494fb0e52cb3844ad8a10e89bea9d82e47dc88c7ca9f6bee2f95001a2d"
+    },
+    "source_pins": [
+      {
+        "path": "${TASK}/spike-timing/examples/gemmini/timing/README.md",
+        "sha256": "beb7fd3daa433da9104b3ea524d565379fdeefb54b6247e2ab010b237d6b6ffd"
+      },
+      {
+        "path": "${TASK}/spike-timing/examples/gemmini/timing/bridge.cpp",
+        "sha256": "75b71b705c18c8c47e0a0be6c1bd21b3ce2fa9b4594691d0388175991d73a602"
+      },
+      {
+        "path": "${TASK}/spike-timing/examples/gemmini/timing/provider.hpp",
+        "sha256": "14766c6515056a196ce2724f72f52c2d1d3a5c44e9c1a6d2a76bba1cb7617a58"
+      },
+      {
+        "path": "${TASK}/spike-timing/examples/gemmini/timing/staged.hpp",
+        "sha256": "bc9a6973d72e3fe0efd9cc466f3b225457668b40f18e19feb5eb207f481f10e4"
+      },
+      {
+        "path": "${TASK}/spike-timing/examples/gemmini/timing/streamed_readout.hpp",
+        "sha256": "9b4ba32a70089f91c65727be83408a10fd983a2ae78124c2029bdca06f18e918"
+      },
+      {
+        "path": "${TASK}/spike-timing/examples/gemmini/timing/scratchpad_load.hpp",
+        "sha256": "73f8346198a7285e2002d83341871fbae2d4e12939af79d46198a55544e7677a"
+      }
+    ],
+    "unchanged_cpu_memory_observer": true,
+    "unchanged_prices": true
+  }
+}

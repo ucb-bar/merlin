@@ -4,7 +4,7 @@ kind: reference
 status: current
 owner: core
 last_verified: 2026-10-06
-related: [agent_compiler_performance]
+related: [verified_compiler_roadmap]
 code_refs:
   - merlin/runtime/c/ordered_fma_bounds.h
   - merlin/runtime/c/fma_product_norms.h

@@ -111,7 +111,8 @@ void _mlir_ciface_borrowed(M*a,M*scratch,M*out) {
  if(a->aligned==scratch->aligned || a->aligned==out->aligned || scratch->aligned==out->aligned) abort();
 
  for(int i=0;i<7;i++)((int32_t*)scratch->aligned)[i]=i+3;
- for(int i=0;i<4;i++)((int8_t*)out->aligned)[i]=(int8_t)(((int8_t*)a->aligned)[a->offset+i*a->stride[0]]+((int32_t*)scratch->aligned)[i]);
+ for(int i=0;i<4;i++)((int8_t*)out->aligned)[i]=(int8_t)(
+   ((int8_t*)a->aligned)[a->offset+i*a->stride[0]]+((int32_t*)scratch->aligned)[i]);
 }
 """)
     # Pytest may delete passed temp dirs and reuse their names while dlopen
@@ -120,7 +121,7 @@ void _mlir_ciface_borrowed(M*a,M*scratch,M*out) {
     lib = tmp_path / f"model_{live_destination}_{declaration_abi}_{optimization}.so"
     subprocess.run([str(clang()), optimization, "-fPIC", "-c", str(source), "-o", str(obj)], check=True)
     subprocess.run(
-        ["cc", optimization, "-fPIC", "-shared", str(obj), str(adapter), str(mlir_runtime_c()), "-o", str(lib)],
+        [str(clang()), optimization, "-fPIC", "-shared", str(obj), str(adapter), str(mlir_runtime_c()), "-o", str(lib)],
         check=True,
     )
     inp = np.array([-128, -1, 0, 120], dtype=np.int8)

@@ -44,7 +44,7 @@ REPO = Path(repo_root())
 def _objdump(obj: Path, out: Path) -> str | None:
     """Disassemble the lowered ``model.o`` and keep it beside the measurement (the evidence a
     claim about the inner loop has to be made from). Returns the text, or None if unreadable."""
-    from merlin.kernels.decode.objdump import objdump_bin
+    from merlin.compile.analysis.disassembly import objdump_bin
 
     try:
         p = subprocess.run([objdump_bin(), "-d", "--mattr=+v", str(obj)], capture_output=True, text=True, timeout=180)

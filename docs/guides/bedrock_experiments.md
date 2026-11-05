@@ -1,5 +1,5 @@
 ---
-title: Running capsule-bench experiments on AWS Bedrock
+title: Run capsule experiments with Bedrock
 kind: guide
 status: current
 owner: capsule-bench
@@ -8,7 +8,7 @@ related: [adding_a_target, getting_started]
 code_refs: [merlin/experiments/capsule_bench/harness, packages/merlin-experiments/src/merlin/targetgen/aet_bridge.py]
 ---
 
-# Running capsule-bench experiments on AWS Bedrock
+# Run capsule experiments with Bedrock
 
 The agentic arms drive their model through Claude Code (`claude --print`). The **provider toggle**
 (experiments-only) routes that CLI to AWS Bedrock instead of the interactive subscription, and every run's

@@ -1,0 +1,376 @@
+{
+  "schema": "merlin.public_independent_validation_evidence.v1",
+  "recorded_at": "2026-10-22T10:31:54.886204+00:00",
+  "artifact_root": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1",
+  "source": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/probe.c",
+    "sha256": "5c7f188fce274155f932fef943956fc8e851c28dca96a87a5e0a8aa5f367e9de"
+  },
+  "elf": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/program.elf",
+    "sha256": "3cf3f5607790e126a5b921de0ca54e4e8c160ee96e42f55cd8f6503956edd1b7"
+  },
+  "prespecified_plan": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/plan.json",
+    "sha256": "49e4da97daaabdcad168e25fc96c42af1dd7e2e5934e3d928bc439052f7247d3"
+  },
+  "selected_model": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+    "sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869"
+  },
+  "selected_runtime": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/runtime.json",
+    "sha256": "0684df369407bffad8ee67b1a36d53d7867595a620f105d6c6466c0f26d57801"
+  },
+  "initial_selection": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/selection.json",
+    "sha256": "807f75767198d4f6b4d01fd0badf0f18f81a882878215a5ad39b6af2de31e990"
+  },
+  "label_engine": {
+    "engine": "gsim",
+    "binary": {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/emulator",
+      "sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651"
+    },
+    "selection_sha256": "41585c97224637927ee761ebc0ce6420d0966c0d988332418fc4c1f7d43d77c3",
+    "readback_transport": "coherent_dump_v1",
+    "execution_resources": {
+      "max_model_spike_timeout_s": 3600,
+      "max_native_timeout_s": 7200,
+      "selected_engine_timeout_s": 7200
+    },
+    "receipt": {
+      "receipt_path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/build_receipt.json",
+      "receipt_sha256": "7df91fd3d7e6b1fa927b264f0b612f898a2056aa5a83a10660f18bc75c84d0d8",
+      "schema_version": "merlin.gsim-model-build.v3",
+      "status": "complete",
+      "binary_sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651",
+      "firrtl_sha256": "6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149",
+      "firrtl_path": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig.fir",
+      "model_manifest_sha256": "9a46fcc032820cd89ca0bf9ae68152ec2aef4e781eb9a4ba88c8ba2d9889f3bb",
+      "inputs_sha256": "b5a4b9d667e77b00a80854a6689e15d0b6e641ac78f6fb7ce482e63eaca180cc",
+      "commands_sha256": "d27332ab4d09a5eddd7bb320dcb7735b827fceabb9c69ed85e6cee6e9649b9c9",
+      "provenance": {
+        "elaboration_performed": false,
+        "firrtl_boundary": "adopted_preexisting",
+        "warning": "FIRRTL was adopted as a pre-existing byte-pinned input; this receipt does not establish the RTL revision or command that originally elaborated it."
+      },
+      "tools": {
+        "cxx_compiler": "db19bad939a900b7635c4b19bc3b5029a888d02551da1f60e87745056a354d10",
+        "cxx_wrapper": "db19bad939a900b7635c4b19bc3b5029a888d02551da1f60e87745056a354d10",
+        "gsim_emitter": "0f9151d180ef1566700e5a335ff0e5cee6fb6485a201f6b945e913bc3080586b"
+      }
+    }
+  },
+  "selected_RTL_source_pins": [
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/ExecuteController.scala",
+      "sha256": "59b068a79d6063d283561813f7fb65c3503e94d5923334e553ab5d42e2692e8c"
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig.fir",
+      "sha256": "6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149"
+    },
+    {
+      "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-queue-release-v1/selected-ExecuteController.fir",
+      "sha256": "069a9ffe54cd9ce7c82ae575602a66e3f8bf26d80fc76b4ab574611f776b0ff7"
+    }
+  ],
+  "source_reviews": [
+    {
+      "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/docs/perf_records/public_ws_pipeline_20261022/ws-resident-pairing.json",
+      "sha256": "97bb3bc47013f51d3ef8f45cc0118a6d8d5ca725647e3494f8ce57d5524ae3c1"
+    },
+    {
+      "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/docs/perf_records/public_ws_pipeline_20261022/ws-queue-release.json",
+      "sha256": "5037d04665d48db24cf395fd9f49916cd12897b86569ffc427c062bef2077dd4"
+    },
+    {
+      "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/docs/perf_records/public_ws_pipeline_20261022/streamed-readout.json",
+      "sha256": "8bcf9298062f53bcf47047e9ddcfd98cfc9a5b254f3c63faeb1059219c1c71b6"
+    }
+  ],
+  "observed_exact_scope": {
+    "begin_pc": 2147485062,
+    "end_pc": 2147485228,
+    "occurrence": "7*repetition+arm,0through20",
+    "scope_sha256": "82dae761bda30488a6760c9ae51764069a6ed9e60544661e90f883477d273525"
+  },
+  "evidence": [
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/plan.json",
+      "sha256": "49e4da97daaabdcad168e25fc96c42af1dd7e2e5934e3d928bc439052f7247d3"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/probe.c",
+      "sha256": "5c7f188fce274155f932fef943956fc8e851c28dca96a87a5e0a8aa5f367e9de"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/start.S",
+      "sha256": "49a5a04306a2c942447156d02733e5c2a7a4da9323eb67f14534fdc0a2dcfdc8"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/link.ld",
+      "sha256": "e098b845a50cc2f6094db6a2f52df65f47b210b8a8dc89d6f5a7b9470a6553ce"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/program.elf",
+      "sha256": "3cf3f5607790e126a5b921de0ca54e4e8c160ee96e42f55cd8f6503956edd1b7"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/build.json",
+      "sha256": "521b5a0786d6606ff81b2d2613d95302f10f530c4905b117c02baef74780b13a"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/functional.json",
+      "sha256": "2d750865f38dc7936b5846ba2597919b5d62de7f2f009c70ab8b783df05381ae"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/functional.stdout",
+      "sha256": "e060fa00cc4eef6880cdbdbcc68068340adcedca1dbb47fd09fb320f698ea328"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/completion.json",
+      "sha256": "f8aff2f4d5428ed6f123854a4c775d42b2c401e3aeb559d2d8da3066ce894d87"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/estimates.json",
+      "sha256": "0dcb3ceab93833893ac0e893cb0593a99c5006d73d385c654504f68c6be37f41"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/physical-admission.json",
+      "sha256": "32944e0247d6761b22786502c70fa7491f63d6d863a68685054869a05b4383f9"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/physical-authorization.json",
+      "sha256": "a2525c104acb561f15d857f74ec2b56c30348298aaca6b33b62d0cedbb63346a"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/physical-owner.json",
+      "sha256": "a20e9faedc06e4d03d4cd1d8a47dd31458b32fbcde3daae3e64477f9446fef83"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/physical-result.json",
+      "sha256": "c3d1ee7933bed3902f6c4a5c88957c39fca3afa5ba896d1a9aae22fe55b9b0de"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/physical.stdout",
+      "sha256": "a50e6dc6d7a1153d0a741c9fd3d3ec8cc518f11136f4e6296381cf8b607e6902"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/comparison.json",
+      "sha256": "8f5c958b18eead90a60771958b9df6cd10ebd4fe1d0456effe9b1ee0ea060e35"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/public-reference-analysis.json",
+      "sha256": "dc090ab63d452571be04d8d84bf8c11b197b9c5cf058d043e9ba44e89cd7302f"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/symbols.txt",
+      "sha256": "5e6b22589fca5ada45d8995560bc063dd2521395e09881088e9c87b4551d44a4"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/00.json",
+      "sha256": "420d04e6120cf7259ee2ac2eb6bb04858890c3e9aa07ec413c35f185dbd22b18"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/01.json",
+      "sha256": "00e5eddb3fee4eb81dbd72196c23ee60e3f0c68d5da08bec8fcd348bed1f515e"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/02.json",
+      "sha256": "218c107b67e25ac728b98f70c1ed6530336ef0d5d57ade07a43676ad222b5a16"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/03.json",
+      "sha256": "63e4707fafc5ecee42e6aea561dd93f0e2d381272b2309b1faaf29ab4070200f"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/04.json",
+      "sha256": "13a614e100674b6494cb9f4bff707455d1efa0701e918c9953c62e4b7ab00378"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/05.json",
+      "sha256": "b2b8982bbe8d295fcb273fe3d1e0f04db6d9fb2f7b24b3bcf47f1f08a1c746ee"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/06.json",
+      "sha256": "1859d0d9b1c9ae99dc93a332d470ba882cbf5fc4a10d5e023d43c3ea42ddda1a"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/07.json",
+      "sha256": "5d8fffa7295324b3f72041f433b4a51002f0284e9a17e3965efb52a1e996e815"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/08.json",
+      "sha256": "dc4b501fe944579f2e45ee2380e06228819d76fa17a207295ee495a843be8dbd"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/09.json",
+      "sha256": "2f91fe6afb0cb49e0778c9efebe4c682cc713dd8fb3f97e679696deefca4806c"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/10.json",
+      "sha256": "6882dfd54c7a1328fe45fab6ead232d8f1ff820c34e6234079cbf6a201d90f6a"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/11.json",
+      "sha256": "a0a38d3d0a64c27b0a557b9cf99c340954777fb4306e9d8013fb8a8a626737f2"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/12.json",
+      "sha256": "8d2c25ef410c5b4e769e6f3ebcd1c0a5e82f1310e25096d2b97e8f9c8004f870"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/13.json",
+      "sha256": "39848882e6400b66b5eb4d5f81561c7970c413bbbadde5fd9e3031e89a743a84"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/14.json",
+      "sha256": "6dbc57d9b381ba1c11a409f1882756adc4db4c52e6453d5814c256312c20f459"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/15.json",
+      "sha256": "13287d2af6835be4b4b097e52e3594d6c8c8755e8dc2698989be01c92f8afbb1"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/16.json",
+      "sha256": "ae44e1972ef99915a5401270270cda201e6bfa69e2e9572b05cf8bdd563b2bc6"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/17.json",
+      "sha256": "7e60efaf129ff1700e624b4320ff07d45386d7f106bc770152957432c4092a98"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/18.json",
+      "sha256": "89773c94afa8708edf5912eb1fecf13765d378e69bf47ea82836d0e5c220bc0d"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/19.json",
+      "sha256": "c94541dc87f0b095f8d6b69d841ece60bfe8e0893f5bb9f92d2736546292dee6"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/scopes/20.json",
+      "sha256": "1bbaf2a8796ca4f1f71e879144bd5c86b5a8664186a675b56b06838ffbee894e"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/00.json",
+      "sha256": "64d3bc669b43c764b8a178bb934ef2e85d267757ad7e1848d06372d38ce32ae9"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/01.json",
+      "sha256": "4ec300788c54afca663be6a74fc236f5471e3fe985e2b4dae119f1eaa4e0d3ef"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/02.json",
+      "sha256": "8378bef7a1665dc95efd571d6eb6950ed06be5bd96c0e07927e37e3c912cd043"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/03.json",
+      "sha256": "4dba30cc3e240cb9517a785b198e806529114342f4e3d84b65233f4d6995097b"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/04.json",
+      "sha256": "3c86f33e41b861c9e64f79451acd659695776a63700660fee573296e90d041c2"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/05.json",
+      "sha256": "350659525dd2c83cf749a2439ccc59ec839851f68e082cd80b5c1a081f4a7ea8"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/06.json",
+      "sha256": "e9defedf5352e6119437e4443bf3716ea0afcb49d9aaf26290d2ec72eaaf1c27"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/07.json",
+      "sha256": "136f7d6ec175d05d50378c96307bfda5bf3af27c6b86a339b10041d06801f22a"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/08.json",
+      "sha256": "59c4e6aca2b83867fa82ade99bbde5467c499b5d9653818aad61daee72625cc7"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/09.json",
+      "sha256": "2a21f0d0b9edd414d28980cf021e192480245c781ca7555de94b88f239c96a84"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/10.json",
+      "sha256": "35b73aa831614435528952f77f9462bb1670e3f68683e5656dbb33970fb834f2"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/11.json",
+      "sha256": "4cd1e07cd7a5e49b3c7eb99a525ae2f24060d92a20f0859ad0ebe3939d1cd639"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/12.json",
+      "sha256": "43eee89e0e25ec6e30439d0955a1608f159bc14a1def520fc0764deb529cef31"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/13.json",
+      "sha256": "011842e08015ba14ee1fe054a424a0437718e58b59c0aed25a342e446a665232"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/14.json",
+      "sha256": "e13f83552ac86260ca843abcede066068c9f392dcc63ef6f6b703a907e6f4d3f"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/15.json",
+      "sha256": "9808b00f0e6968e8ad8ccb9ca16cf4991c952fe0a37e786f87e0c3496f1aa652"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/16.json",
+      "sha256": "ff29cf0d512e238a3668aea69a8c146b2902f5371230fcb82e7c24047047e18e"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/17.json",
+      "sha256": "cceeca22127fe9ea884cf82789fdd4c1e9958063b8d3dd16d608b999fc78902b"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/18.json",
+      "sha256": "5b654f7f493a36e42d7d9eaa263599d39b6ce9fbf762b6183eac0361ec329437"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/19.json",
+      "sha256": "a0be6d1c393ba929a2bd7ddcdacffdde17dc6f7444cb7bbbe5f7be94c9b596dd"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/reports/20.json",
+      "sha256": "0275950072bb67f566f62889ba3ea13e4799e41d6ee454210de98f179a455d91"
+    }
+  ],
+  "physical_runs": 1,
+  "elapsed_physical_worker_s": 163.67908941296628,
+  "numerics": {
+    "matrix_values": 12288,
+    "guard_words": 672,
+    "checksums": 21,
+    "all_exact": true
+  },
+  "physical_budget": {
+    "ledger": "retained/tasks/el4-joint-campaign-20261021/merlin/out/runs/gemmini/phase1/gemmini-joint-empty-20261021-v7/joint_gsim_budget.json",
+    "previous_worker_s": 210.33814565412467,
+    "after_worker_s": 373.7648741111625,
+    "active_after": [],
+    "reset": false
+  },
+  "qualification": "prespecified_conditions_fail: physical repeat spread only; narrow error/order/differential gates pass. No automatic modelpromotion or fit admission change.",
+  "model_unchanged_verified": true,
+  "private_reference_feedback_used": false,
+  "automatic_author_grant": false,
+  "publication": "Public diagnostic evidence, operator-driven; this commit alone grants no files or measurements to the author sandbox.",
+  "archive_projection": {
+    "path_policy": "retained/tasks/ locators identify historical task-relative evidence, not bundled files or live execution paths. Resolve against the retained evidence archive; artifact SHA256 values bind original bytes.",
+    "original_record_sha256": {
+      "independent-validation-comparison.json": "8f5c958b18eead90a60771958b9df6cd10ebd4fe1d0456effe9b1ee0ea060e35",
+      "independent-validation-evidence.json": "144ce1165c6666fa3034251bb5774bb331b100dde70e1dd0e527795815d37cca",
+      "independent-validation-occurrences.json": "43305da38c2c1220368abbcbfed003f1aa2bfdf2f6626b510a0eef61c78a17db",
+      "independent-validation-plan.json": "49e4da97daaabdcad168e25fc96c42af1dd7e2e5934e3d928bc439052f7247d3",
+      "independent-validation-source.c": "5c7f188fce274155f932fef943956fc8e851c28dca96a87a5e0a8aa5f367e9de"
+    },
+    "source_copy": "independent-validation-source.c",
+    "plan_copy": "independent-validation-plan.json",
+    "comparison_copy": "independent-validation-comparison.json",
+    "occurrence_analysis": "independent-validation-occurrences.json",
+    "plan_copy_note": "Only absolute machine prefixes were normalized in the archival plan copy. prespecified_plan.sha256 binds the original unmodified plan, retained externally; this projection does not replace the prespecification."
+  }
+}

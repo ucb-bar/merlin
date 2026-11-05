@@ -1,12 +1,41 @@
 # AGENT.md — src/merlin/verify
 
+Original emission operations may consume their explicitly selected concurrent
+executor's snapshot re-admission context before the existing verification scope.
+The existing scope, original owner checks and final custody remain mandatory.
+The executor may explicitly lend its issued live entry for guarded publication;
+changed, expired or absent guards retain full independent payload reads.
+Executors without that capability retain the original path.
+
+
 ## Purpose
 
-Compiler-pass verification: the **static** (lit/FileCheck) and **formal** (SMT) layers that sit beside
+Compiler-pass verification: the **static** (lit/FileCheck) and **formal** (SMT/Lean) layers that sit beside
 the capsule oracle ladder. The bench grades *outcomes*; this package verifies *passes*. Model, results
 and working log: `docs/design/compiler_verification.md`.
 
 ## Modules
+
+- `llvm_symbols.py` resolves a unique defined function through type-preserving,
+  address-only LLVM aliases. Unknown expressions, cycles and declarations refuse;
+  resolving an entry never removes the original helper bodies from auditing.
+- `input_copy_loops`, `input_copy_integer` and `input_copy_batch` derive bounded
+  original CFG domains and execute their constant control/address instructions in
+  batches. Sibling loops reuse depth axes. Count-only observation leaves tensor
+  and opaque results unknown; it supplies no memory/effect admission. The input
+  transport proof additionally requires disjoint reads/writes, original byte
+  origins and initialized scratch. Forwarding tracks actual source write epochs;
+  every copy chain must end in a decoded input transfer or unchanged publication
+  of decoded result bytes. CPU result reads require the intervening command fence.
+  Scalar copy limits remain in force; command/control traversal shares the existing
+  constant-control bounds. Batching bounds lanes per invocation, expanded work per
+  region, actual vector instructions, processed payload bytes and aggregate storage.
+  No numerical comparison or device-work gate is waived.
+- `host_call_alignment` reopens actual host LLVM/object inputs and selected stock
+  LLVM tools. It observes original descriptor call sites and proves low address
+  bits structurally. Kernel assumptions and allocator names are not authority;
+  unknown origins retain one-byte alignment. This proves no bounds, nonaliasing,
+  mandatory execution, numerical or final-image property.
 
 - `tools.py` — locate FileCheck / llvm-lit / mlir-opt / mlir-translate; `None` is a first-class answer.
 - `smt_ops.py` — the one `smt` op xDSL does not ship: the solver scope the SMT-LIB exporter requires.
@@ -36,6 +65,32 @@ and working log: `docs/design/compiler_verification.md`.
   under `packages/merlin-analysis/src/merlin/verify/`; install the analysis `replay` extra.
 
 ## Invariants
+
+- `lean_contract.py` owns public result data and strict modeled coverage; it cannot issue
+  accepted evidence. `lean_export.py` projects actual pure integer SSA under explicit
+  primitive semantics. `lean_checker.py` runs the selected Lean kernel and owns live
+  host completions. Deserialized receipts, candidate callbacks and status strings are
+  never acceptance authority. Reuse only bounded process-local successful proof checks
+  bound to actual IR, semantic model, scope and revalidated toolchain products.
+- The common transformation broker chooses the frozen semantics, index width and
+  toolchain. Lower experiment levels receive automatic checking through that broker;
+  the author-facing Lean API is an explicitly separate treatment. Do not broaden grants.
+- Loop/storage checks combine parameterized arithmetic/lifetime lemmas with trusted
+  structural correspondence. They do not prove complete SCF/memory execution, LLVM,
+  physical resource allocation, ISA encoding, numerical policy or RTL behavior.
+  Unsupported effects, poison flags and metadata remain explicit gaps.
+- `lean_obligations.py` projects V2 total-scalar rewrites and ordered unrolling
+  only after exact IR correspondence passes. Generic function/fold lemmas do not
+  model timing, allocation failure or arbitrary memory/RTL execution. The
+  invocation inventory commitment is written after closed-file byte validation;
+  a saved commitment cannot seed the process-local completion ledger.
+- `lean_checked.py` reconstructs actual emitted resource geometry and actual
+  authored sequential reorderings before live receipt acceptance. V3's
+  `lean_isa_semantics.py` selects original frozen software/facts; candidate
+  messages cannot set primitive meanings, bank geometry or atomic completion.
+  `StateEffects` derives commutation from read/write frames under admitted
+  sequential semantics. `ResourceGeometry` checks actual projected intervals
+  and address relations; neither supplies a physical/RTL proof.
 
 - **A layer that cannot run must never look like one that ran clean.** Missing tool, missing solver,
   solver timeout: all report an explicit state. `unknown` is never `verified`; `abstracted` is never a
@@ -91,3 +146,33 @@ and working log: `docs/design/compiler_verification.md`.
   0.68 and 0.70 — identical. Upgrading does not help; `smt_ops` supplies the scope and
   `smt_semantics.in_range` constrains element widths with the shift identity instead.
 - Keep queries quantifier-free: take extents CONCRETE from the IR's own types.
+
+`lean_sat_runtime` binds generated BV obligations to an explicit original SAT
+executable/file inventory. Native reflection requires independent original
+opt-in, uses the exact frozen solver path and labels the broader Lean compiler
+and native LRAT TCB. Successful selected BV checks use `lean_native_reflection`,
+not kernel-only assurance. `Lean.ofReduceBool` and `Lean.trustCompiler` are
+admitted only in this original mode; other reported axioms retain the fixed
+policy, and kernel reduction remains separately labeled `lean_kernel`.
+Identifiers are lexed structurally, excluding comments and strings; a generated
+query cannot override the solver. Saved documents remain descriptive, not live
+completion authority. Native loader closure and deployment stay independent.
+
+`lean_emission_products` issues immutable text carriers only within the original
+host process and live scope. Lookup uses exact object identity; equal-byte
+strings, serialized IDs and reconstructed objects cannot select a source.
+Trusted artifact copies retain exact path/byte association, with ambiguous
+paths refusing. Failed claims remain pending, and object sharing stays within
+one observed origin. Host rewrites invalidate previous path ownership; intervening
+writers prevent stale registration. Completed sources may feed later ordinary
+consumers only with a fresh source check and actual object observation, bypassing
+legacy byte caches. Bound pending/completed text, alias and writer records; never copy tensor
+data or grant an author new source permissions through this bookkeeping.
+
+Observed source/object transports inspect only their live emission issuer before
+entering the existing fresh custody operation. That inspection is not admission:
+the operation must verify the original owner before any candidate/native work.
+Source publication remains after independent operation-exit verification and its
+own fresh locked publication check. Pure retention inside that same locked check
+must not repeat the entire payload scan. Never issue aliases before final custody
+or reuse this bookkeeping path across commands, threads, or unlocked work.

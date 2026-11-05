@@ -4,7 +4,7 @@ kind: design
 status: current
 owner: core
 last_verified: 2026-09-20
-related: [integrations, architecture]
+related: [architecture]
 code_refs: [src/merlin/integrations/modelir.py, src/merlin/integrations/model2mlir.py, src/merlin/frontends/quant_ext.py, src/merlin/llvmlower/toolchain.py, src/merlin/kernels/ingest]
 ---
 

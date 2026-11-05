@@ -19,6 +19,7 @@ from .late_quant_rne import (
     _Instruction,
     _instruction,
     _match,
+    _match_intrinsic,
     _number,
     _statement_boundary,
     _tokens,
@@ -153,8 +154,8 @@ def _rewrite_source_interval_lookup(
 ):
     """Explicit structural binding before any target RNE/ISA legalization.
 
-    Source bounded-RNE arithmetic must still be present: an unknown intrinsic,
-    inline instruction or converted consumer refuses. The build verifies the
+    Source bounded-RNE arithmetic or its exact standard roundeven intrinsic
+    must still be present: unknown intrinsics and inline instructions refuse. The build verifies the
     returned complete LLVM module and supplies the original source callbacks.
     Empty selection returns exactly the original bytes without parsing.
     """
@@ -216,7 +217,7 @@ def _rewrite_source_interval_lookup(
             continue
         if any(
             operation.opcode == "call"
-            and operation.callee not in ("llvm.maximum.f32", "llvm.minimum.f32", "llvm.fma.f32")
+            and operation.callee not in ("llvm.maximum.f32", "llvm.minimum.f32", "llvm.fma.f32", "llvm.roundeven.f32")
             for operation in instructions
         ):
             continue
@@ -235,7 +236,7 @@ def _rewrite_source_interval_lookup(
                 uses.setdefault(token.text, []).append(owner)
         legacy = {_identity(name): operation for name, operation in definitions.items()}
         for final in instructions:
-            rne = _match(final, legacy)
+            rne = _match(final, legacy) or _match_intrinsic(final, legacy)
             if rne is None or rne["integer_dtype"] != "i8" or rne["bounds"] != [-128, 127]:
                 continue
             scaled = definitions.get(rne["raw_input"])

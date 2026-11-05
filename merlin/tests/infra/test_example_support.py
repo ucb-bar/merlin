@@ -35,6 +35,10 @@ from merlin.targetgen.providers import ProviderError, read_provider
 RECORD = "SOURCE.yaml"
 VENDORED_SCHEMA = "merlin.vendored_support.v1"
 CANONICAL_SCHEMA = "merlin.canonical_example_support.v1"
+#: A provider that is pure DATA (contract copy, plugin pointers, specs) served by generic core code.
+GENERIC_SCHEMA = "merlin.generic_data_support.v1"
+#: Members a data-only provider may hold. Anything else (code, headers, CRT, binaries) is refused.
+GENERIC_DATA_SUFFIXES = {".yaml", ".yml", ".json", ".md"}
 
 
 def _records() -> list[tuple[Path, dict]]:
@@ -152,6 +156,36 @@ def _assert_source_record(record: Path, doc: dict) -> None:
         )
         datetime.fromisoformat(origin["commit_date"])
         assert origin["provider_root"] and not Path(origin["provider_root"]).is_absolute()
+    elif doc.get("schema") == GENERIC_SCHEMA:
+        assert set(doc) == {
+            "schema",
+            "target",
+            "provider_id",
+            "path",
+            "role",
+            "visibility",
+            "file_count",
+            "tree",
+            "backend",
+            "records",
+            "experimenter_tools",
+        }
+        assert doc["role"] == "support" and doc["visibility"] == "experimenter_only"
+        assert _git_tree_id(root, members) == doc["tree"], "data provider bytes changed"
+        # Code may live only in declared experimenter-side tool directories (masked with the rest of the
+        # provider), never in what the provider selects or serves.
+        tools = tuple(f"{name.rstrip('/')}/" for name in doc["experimenter_tools"])
+        assert all((root / name).is_dir() for name in tools), "a declared experimenter tool directory is missing"
+        assert [m for m in members if Path(m).suffix not in GENERIC_DATA_SUFFIXES and not m.startswith(tools)] == [], (
+            "a data provider holds code outside its declared experimenter tools"
+        )
+        plugin_refs = [
+            str(v) for v in yaml.safe_load((root / "contracts/target_contract.yaml").read_text())["plugin"].values()
+        ]
+        assert not any(ref.startswith(tools) for ref in plugin_refs), "a plugin selects experimenter tooling"
+        selected = yaml.safe_load((root / "contracts/target_contract.yaml").read_text(encoding="utf-8"))
+        assert selected["plugin"]["backend"] == doc["backend"]
+        assert plugins.core_module_path(doc["backend"]) is not None, "the backend is not generic core code"
     else:
         raise AssertionError("unknown support ownership schema")
     provider = read_provider(root)
@@ -214,12 +248,36 @@ def test_the_migration_manifest_agrees_with_every_source_record():
         for entry in manifest["companions"]
         if "canonical_example" in entry
     }
+    listed_generic = {
+        entry["generic_data_support"]["source_record"]: entry
+        for entry in manifest["companions"]
+        if "generic_data_support" in entry
+    }
     assert not (set(listed_legacy) & set(listed_canonical))
-    assert set(listed_legacy) | set(listed_canonical) == {
+    assert not (set(listed_generic) & (set(listed_legacy) | set(listed_canonical)))
+    assert set(listed_legacy) | set(listed_canonical) | set(listed_generic) == {
         path.relative_to(repo_root()).as_posix() for path, _ in RECORDS
     }
     for path, doc in RECORDS:
         key = path.relative_to(repo_root()).as_posix()
+        if doc["schema"] == GENERIC_SCHEMA:
+            entry = listed_generic[key]
+            generic = entry["generic_data_support"]
+            assert entry["ownership"] == "generic_data_support"
+            assert set(generic) == {"path", "source_record", "tree", "file_count", "backend"}
+            assert (generic["tree"], generic["file_count"], generic["backend"]) == (
+                doc["tree"],
+                doc["file_count"],
+                doc["backend"],
+            )
+            assert (
+                entry["provider_root"]
+                == generic["path"]
+                == _support_root(path, doc).relative_to(repo_root()).as_posix()
+            )
+            assert (entry["provider_role"], entry["target"]) == (doc["role"], doc["target"])
+            assert "vendored" not in entry and "companion_commit" not in entry
+            continue
         if doc["schema"] == CANONICAL_SCHEMA:
             entry = listed_canonical[key]
             canonical = entry["canonical_example"]

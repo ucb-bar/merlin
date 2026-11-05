@@ -3,6 +3,7 @@
 import importlib.util
 import io
 import json
+import subprocess
 import sys
 import tarfile
 import zipfile
@@ -23,6 +24,109 @@ def load(name):
 
 
 Q = load("qualify_installed")
+
+
+def test_packing_memory_suite_keeps_the_complete_original_control_roster():
+    suite = Q.SUITES["packing-memory-intake"]
+    files = (
+        "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+        "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+        "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+        "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+    )
+    members = suite["native_test_cases"]
+    assert suite["tests"] == suite["native_test_files"] == files
+    assert len(members) == len(set(members)) == 129
+    assert [sum(filename == selected for filename, _ in members) for selected in files] == [42, 36, 29, 22]
+    native_members = tuple(name for filename, name in members if filename == files[-1])
+    assert [
+        sum(name.endswith("[" + era + "]") or "[" + era + "-" in name for name in native_members)
+        for era in (
+            "legacy",
+            "modern",
+        )
+    ] == [11, 11]
+    assert suite["tests_root"] == "." and suite["test_fixture_imports"] is True
+    assert suite["collect_selected_tests"] is True
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["required_modules"] == ("xdsl", "jsonschema", "numpy")
+    assert suite["native_tools"] == ("firtool", "circt-opt", "firtool-modern", "circt-opt-modern")
+
+
+@pytest.mark.parametrize("changed", ["firtool", "circt-opt", "firtool-modern", "circt-opt-modern"])
+def test_packing_memory_both_explicit_pairs_retain_actual_tool_bytes(tmp_path, monkeypatch, changed):
+    suite = "packing-memory-intake"
+    supplied = []
+    expected_environment = {}
+    for name in Q.SUITES[suite]["native_tools"]:
+        tool = tmp_path / name
+        tool.write_text("#!/bin/sh\n# " + name + "\nexit 0\n")
+        tool.chmod(0o700)
+        supplied.append(name + "=" + str(tool))
+        expected_environment[Q.NATIVE_TOOL_ENVIRONMENT[name]] = str(tool)
+    monkeypatch.setenv("MERLIN_TEST_FIRTOOL_MODERN", "/unselected/modern/compiler")
+    selected = Q.capture_native_tools(suite, supplied)
+    assert Q.native_environment({"native_tools": selected}, suite=suite) == expected_environment
+    assert set(expected_environment) == {
+        "MERLIN_TEST_FIRTOOL",
+        "MERLIN_TEST_CIRCT_OPT",
+        "MERLIN_TEST_FIRTOOL_MODERN",
+        "MERLIN_TEST_CIRCT_OPT_MODERN",
+    }
+    Q.verify_native_tools(selected)
+    Path(selected[changed]["path"]).write_text("changed explicitly selected compiler")
+    with pytest.raises(Q.QualificationFailed, match="changed"):
+        Q.verify_native_tools(selected)
+    with pytest.raises(Q.QualificationFailed, match="complete explicit tool roster"):
+        Q.capture_native_tools(suite, supplied[:-1])
+
+
+@pytest.mark.parametrize(
+    "change",
+    [None, "pure_missing", "native_missing", "era", "extra", "duplicate", "skip_pure", "skip_native", "class", "error"],
+)
+def test_packing_memory_qualification_requires_every_pure_and_native_original_member(tmp_path, change):
+    from xml.etree import ElementTree as ET
+
+    suite = "packing-memory-intake"
+    policy = Q.SUITES[suite]
+    xml = ET.Element("testsuites")
+    cases = ET.SubElement(xml, "testsuite")
+    for filename, name in policy["native_test_cases"]:
+        ET.SubElement(
+            cases,
+            "testcase",
+            {"file": filename, "classname": Path(filename).with_suffix("").as_posix().replace("/", "."), "name": name},
+        )
+    pure, native = cases[0], cases[-1]
+    if change == "pure_missing":
+        cases.remove(pure)
+    elif change == "native_missing":
+        cases.remove(native)
+    elif change == "era":
+        native.set("name", native.get("name").replace("modern", "unselected"))
+    elif change in {"extra", "duplicate"}:
+        attributes = dict(pure.attrib)
+        if change == "extra":
+            attributes["name"] = "test_unselected_substitute"
+        ET.SubElement(cases, "testcase", attributes)
+    elif change in {"skip_pure", "skip_native"}:
+        ET.SubElement(pure if change == "skip_pure" else native, "skipped", {"message": "actual unavailable input"})
+    elif change == "class":
+        native.set("classname", native.get("classname") + ".Alias")
+    elif change == "error":
+        ET.SubElement(native, "error", {"message": "actual native failure"})
+    path = tmp_path / "actual-report.xml"
+    ET.ElementTree(xml).write(path)
+    report = {"native_tools": {}}
+    assert Q.native_test_report_required(suite, report)
+    if change is not None:
+        with pytest.raises(Q.QualificationFailed):
+            Q.check_native_test_report(suite, path, report)
+        return
+    Q.check_native_test_report(suite, path, report)
+    assert report["suite_test_counts"] == report["native_test_counts"] == {"tests": 129, "skipped": 0}
+    assert report["missing_native_test_cases"] == report["unexpected_native_test_cases"] == []
 
 
 def test_source_input_patterns_are_target_neutral_and_archive_bound(tmp_path):
@@ -127,7 +231,7 @@ def test_environment_removes_source_and_provider_overrides(monkeypatch):
     assert not {"UV_OVERRIDE", "UV_EXCLUDE", "UV_CONSTRAINT", "UV_BUILD_CONSTRAINT"} & environment.keys()
 
 
-@pytest.mark.parametrize("suite", ["compile-only", "component-convergence"])
+@pytest.mark.parametrize("suite", ["compile-only", "component-convergence", "original-candidate-members"])
 def test_explicit_native_roster_is_closed_complete_and_bound_to_actual_bytes(tmp_path, monkeypatch, suite):
     selections = []
     for name in Q.SUITES[suite]["native_tools"]:
@@ -183,6 +287,26 @@ def test_versions_and_assisted_extra_come_from_projects(tmp_path):
     assert projects[0]["extras"] == ["xdsl"] and projects[1]["extras"] == []
     with pytest.raises(Q.QualificationFailed, match="does not declare"):
         Q.projects(tmp_path, ("undeclared",))
+
+
+def test_analysis_project_is_explicit_and_uses_declared_distribution(tmp_path):
+    (tmp_path / "pyproject.toml").write_text('[project]\nname="core"\nversion="1"\n')
+    analysis = tmp_path / "packages/merlin-analysis"
+    analysis.mkdir(parents=True)
+    (analysis / "pyproject.toml").write_text('[project]\nname="analysis"\nversion="2"\n')
+    assert [row["name"] for row in Q.projects(tmp_path, (), include_experiments=False)] == ["core"]
+    assert [row["name"] for row in Q.projects(tmp_path, (), include_experiments=False, include_analysis=True)] == [
+        "core",
+        "analysis",
+    ]
+    suite = Q.SUITES["capture-contraction-formats"]
+    assert suite["include_analysis"] is True and suite["include_experiments"] is False
+    assert suite["tests"] == (
+        "targetgen/test_contraction_formats.py",
+        "dse/test_capture_format_freezing.py",
+        "dse/test_capture_format_policy.py",
+    )
+    assert "merlin.compare.freeze" in suite["probe_modules"]
 
 
 def test_failed_child_keeps_terminal_record_and_log(tmp_path):
@@ -279,6 +403,10 @@ def test_probe_compares_actual_installed_bytes(probe, monkeypatch, tmp_path):
         *((suite, False) for suite in Q.SUITES),
         ("compile-only", True),
         ("component-convergence", True),
+        ("original-pointwise-host", True),
+        ("original-candidate-members", True),
+        ("host-ranked-descriptors", True),
+        ("packing-memory-intake", True),
     ],
 )
 def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
@@ -298,6 +426,21 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
 
     def run(self, label, argv, cwd, *, stdout=None):
         calls.append((label, list(map(str, argv))))
+        if suite == "packing-memory-intake" and native:
+            for name in Q.SUITES[suite]["native_tools"]:
+                assert self.environment[Q.NATIVE_TOOL_ENVIRONMENT[name]] == str(tmp_path / name)
+        if suite in ("original-pointwise-host", "original-candidate-members", "host-ranked-descriptors") and native:
+            assert self.environment["MERLIN_COMPILER_PYTHON"] == str(tmp_path / "compiler-python")
+            assert self.environment["MERLIN_LLVM_LLC"] == str(tmp_path / "llvm-llc")
+            assert self.environment["MERLIN_M2M_DIR"] == str(frontend)
+            if suite == "host-ranked-descriptors":
+                assert self.environment["MERLIN_CLANG"] == str(tmp_path / "clang")
+                assert "MERLIN_MLIR_TRANSLATE" not in self.environment
+            else:
+                assert self.environment["MERLIN_MLIR_TRANSLATE"] == str(tmp_path / "mlir-translate")
+            if suite == "original-candidate-members":
+                assert self.environment["MERLIN_TEST_BWRAP"] == str(tmp_path / "bwrap")
+                assert self.environment["MERLIN_CLANG"] == str(tmp_path / "clang")
         if label == "resource-manifest":
             Path(stdout).write_text('{"files": []}')
         elif label == "source-archive":
@@ -307,6 +450,7 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
             files = {
                 "pyproject.toml": core,
                 "packages/merlin-experiments/pyproject.toml": '[project]\nname="merlin-experiments"\nversion="9.8.7"\n',
+                "packages/merlin-analysis/pyproject.toml": '[project]\nname="merlin-analysis"\nversion="2.3.4"\n',
             }
             for name in (*Q.SUITES[suite]["tests"], *Q.SUITES[suite].get("support_files", ())):
                 tests_root = Q.SUITES[suite].get("tests_root", "packages/merlin-experiments/tests")
@@ -324,20 +468,23 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
             (directory / ("fixture.tar.gz" if label.endswith("-sdist") else "fixture.whl")).write_bytes(b"artifact")
         elif label == "freeze":
             Path(stdout).write_text("pytest==synthetic\n")
-        elif label == "tests" and native:
+        elif label == "tests" and (native or Q.SUITES[suite].get("mandatory_test_report")):
             from xml.etree import ElementTree as ET
 
             # Synthetic orchestration fixture, never a native qualification.
             xml = ET.Element("testsuites")
             selected = ET.SubElement(xml, "testsuite")
-            for name in Q.SUITES[suite]["native_test_files"]:
+            members = Q.SUITES[suite].get("native_test_cases") or tuple(
+                (name, "test_synthetic_pipeline") for name in Q.SUITES[suite]["native_test_files"]
+            )
+            for name, method in members:
                 ET.SubElement(
                     selected,
                     "testcase",
                     {
                         "file": name,
                         "classname": Path(name).with_suffix("").as_posix().replace("/", "."),
-                        "name": "test_synthetic_pipeline",
+                        "name": method,
                     },
                 )
             if suite == "component-convergence":
@@ -355,12 +502,40 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
 
     monkeypatch.setattr(Q.Recorder, "run", run)
     selections = []
+    sources = []
     if native:
         for name in Q.SUITES[suite]["native_tools"]:
             tool = tmp_path / name
             tool.write_text("#!/bin/sh\nexit 0\n")
             tool.chmod(0o700)
             selections.append(name + "=" + str(tool))
+        if suite in ("original-pointwise-host", "original-candidate-members", "host-ranked-descriptors"):
+            frontend = tmp_path / "frontend"
+            (frontend / "m2m").mkdir(parents=True)
+            (frontend / "m2m/__init__.py").write_text("# owned source identity fixture\n")
+            (frontend / "pyproject.toml").write_text('[project]\nname="owned-control"\nversion="0"\n')
+            environment = {"PATH": "/usr/bin:/bin", "LC_ALL": "C"}
+            for argv in (
+                ["git", "init", "-q", frontend],
+                ["git", "-C", frontend, "add", "."],
+                [
+                    "git",
+                    "-C",
+                    frontend,
+                    "-c",
+                    "user.name=Control",
+                    "-c",
+                    "user.email=control@example.invalid",
+                    "commit",
+                    "-qm",
+                    "source",
+                ],
+            ):
+                subprocess.run(argv, env=environment, check=True, capture_output=True)
+            selected_commit = (
+                subprocess.check_output(["git", "-C", frontend, "rev-parse", "HEAD"], env=environment).decode().strip()
+            )
+            sources.append("m2m=" + str(frontend) + "@" + selected_commit)
     success = Q.qualify(
         repo_root(),
         output,
@@ -370,6 +545,7 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
         requested_ref="named-ref",
         invocation=["synthetic"],
         native_tools=selections,
+        native_sources=sources,
     )
     report = json.loads((output / "report.json").read_text())
     assert report["requested_ref"] == "named-ref" and report["ref"] == "b" * 40
@@ -379,6 +555,8 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
         return
     assert success
     versions = ["7.8.9", "9.8.7"] if Q.SUITES[suite].get("include_experiments", True) else ["7.8.9"]
+    if Q.SUITES[suite].get("include_analysis"):
+        versions.append("2.3.4")
     assert [p["version"] for p in report["projects"]] == versions
     labels = [name for name, _ in calls]
     assert (
@@ -402,17 +580,27 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
     archive_command = dict(calls)["source-archive"]
     assert archive_command[:4] == ["git", "archive", "--format=tar", "b" * 40]
     for name in (*Q.SUITES[suite]["tests"], *Q.SUITES[suite].get("support_files", ())):
-        assert report["tests_root"] + "/" + name in archive_command
-        assert report["tests_root"] + "/" + name in report["source_files"]
+        member = (Path(report["tests_root"]) / name).as_posix()
+        assert member in archive_command
+        assert member in report["source_files"]
         # Tests are copied from the selected commit archive, never the live checkout.
         assert (external / "qualification-tests" / name).read_text() == "# committed synthetic test\n"
-    assert dict(calls)["tests"][-1] == str(external / "qualification-tests")
+    expected_tests = (
+        [str(external / "qualification-tests" / name) for name in Q.SUITES[suite]["tests"]]
+        if Q.SUITES[suite].get("collect_selected_tests")
+        else [str(external / "qualification-tests")]
+    )
+    assert dict(calls)["tests"][-len(expected_tests) :] == expected_tests
     test_command = dict(calls)["tests"]
-    assert ("--junitxml" in test_command) is native
-    if native:
+    mandatory_report = native or bool(Q.SUITES[suite].get("mandatory_test_report"))
+    assert ("--junitxml" in test_command) is mandatory_report
+    if mandatory_report:
         assert test_command[test_command.index("--rootdir") + 1] == str(external / "qualification-tests")
         assert "junit_family=xunit1" in test_command
-        assert report["native_test_counts"] == {"tests": len(Q.SUITES[suite]["native_test_files"]), "skipped": 0}
+        assert report["native_test_counts"] == {
+            "tests": len(Q.SUITES[suite].get("native_test_cases") or Q.SUITES[suite]["native_test_files"]),
+            "skipped": 0,
+        }
         assert report["missing_native_test_files"] == []
         assert report["native_zero_skip_scope"] == "declared_native_test_files"
         assert report["other_test_counts"]["skipped"] == int(suite == "component-convergence")
@@ -422,7 +610,7 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
     assert report["test_process_policy"] == ("deny_processes_and_listeners" if guarded else "suite_defined")
     assert test_command[test_command.index("--basetemp") + 1] == str(external / "test-tmp")
     if not Q.SUITES[suite].get("include_experiments", True):
-        assert len(report["projects"]) == 1
+        assert len(report["projects"]) == (2 if Q.SUITES[suite].get("include_analysis") else 1)
         assert not any("experiments" in label for label in labels)
         assert not any(module.startswith("merlin_experiments") for module in report["probe_modules"])
     assert "--source-root" in dict(calls)["layout"]
@@ -463,6 +651,358 @@ def test_target_fetch_qualification_is_core_only():
     assert suite["probe_modules"] == ("merlin.targetgen.oot_fetch",)
 
 
+def test_rtl_source_bindings_keep_complete_operator_and_reader_controls():
+    from collections import Counter
+
+    suite = Q.SUITES["rtl-source-bindings"]
+    expected = {
+        "test_hw_value_bindings.py": 38,
+        "test_value_binding_tool.py": 40,
+        "test_counter_source_tool.py": 36,
+        "test_plain_word_relation.py": 58,
+        "test_plain_word_request.py": 45,
+        "test_source_predicates.py": 20,
+        "test_plain_word_tool.py": 13,
+        "test_plain_word_files.py": 16,
+    }
+    assert suite["tests"] == suite["native_test_files"] == tuple(expected)
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == expected
+    assert len(set(suite["native_test_cases"])) == 266
+    assert suite["include_experiments"] is False
+    assert suite["tests_root"] == "merlin/tests/targetgen"
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["test_fixture_imports"] is True and suite["collect_selected_tests"] is True
+    assert suite["support_files"] == (
+        "test_hw_counter_intervals.py",
+        "test_hw_counter_state_timelines.py",
+        "test_hw_state_effects.py",
+    )
+    assert suite["probe_modules"] == (
+        "merlin.targetgen.rtl.hw_value_bindings",
+        "merlin.targetgen.rtl.plain_word_relation",
+        "merlin.targetgen.rtl.plain_word_request",
+        "merlin.targetgen.tool_cli",
+    )
+    assert suite["core_extras"] == suite["required_modules"] == ("xdsl",)
+    assert not suite.get("native_tools") and not suite.get("native_sources")
+
+
+def test_original_scalar_qualification_preserves_complete_source_native_and_support_rosters():
+    from collections import Counter
+
+    suite = Q.SUITES["original-scalar-binary-sources"]
+    expected = {
+        "merlin/tests/targetgen/test_original_scalar_binary_sources.py": 30,
+        "merlin/tests/targetgen/test_original_scalar_binary_correspondence.py": 44,
+        "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py": 16,
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py": 20,
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_native.py": 6,
+    }
+    assert suite["tests_root"] == "."
+    assert suite["tests"] == suite["native_test_files"] == tuple(expected)
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == expected
+    assert len(set(suite["native_test_cases"])) == 116
+    assert suite["support_files"] == ("packages/merlin-experiments/tests/original_scalar_conversion_fixtures.py",)
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["test_fixture_imports"] is True and suite["collect_selected_tests"] is True
+    assert suite["native_tools"] == ("operator-python", "firtool", "mlir-opt")
+    assert suite["native_python_entries"] == ("operator-python",)
+    assert suite["native_sources"] == {"m2m": {"package": "m2m", "environment_key": "MERLIN_TEST_M2M_ROOT"}}
+    assert suite["test_input_environment_keys"] == (
+        "MERLIN_TEST_M2M_COMMIT",
+        "MERLIN_TEST_OPERATOR_DECLARATIONS",
+        "MERLIN_TEST_TORCH_SOURCE_ROOT",
+    )
+    assert suite["core_extras"] == ("xdsl", "targetgen")
+    assert suite["probe_modules"] == (
+        "merlin.targetgen.original_scalar_binary_sources",
+        "merlin.targetgen.original_scalar_binary_correspondence",
+        "merlin_experiments.phase0.original_call_sources",
+        "merlin_experiments.phase0.original_scalar_conversion",
+        "merlin_experiments.phase0.original_scalar_conversion_observer",
+    )
+
+
+def test_integer_scalar_qualification_keeps_every_legacy_and_integer_identity():
+    from collections import Counter
+
+    legacy = Q.SUITES["original-scalar-binary-sources"]
+    suite = Q.SUITES["original-integer-scalar-binary-sources"]
+    expected = {
+        "merlin/tests/targetgen/test_original_scalar_binary_sources.py": 30,
+        "merlin/tests/targetgen/test_original_scalar_binary_correspondence.py": 44,
+        "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py": 16,
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py": 20,
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_native.py": 6,
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py": 47,
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_correspondence.py": 45,
+        "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py": 16,
+        "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_observer.py": 20,
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_fixture_versions.py": 9,
+        "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_native.py": 7,
+    }
+    assert suite["tests"] == suite["native_test_files"] == tuple(expected)
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == expected
+    assert len(set(suite["native_test_cases"])) == 260
+    assert suite["native_test_cases"][:116] == legacy["native_test_cases"]
+    assert suite["native_tools"] == (*legacy["native_tools"], "tensor-argument-compiler")
+    assert Q.NATIVE_TOOL_ENVIRONMENT["tensor-argument-compiler"] == "MERLIN_TEST_TENSOR_ARGUMENT_COMPILER"
+    for key in (
+        "tests_root",
+        "test_fixture_imports",
+        "collect_selected_tests",
+        "mandatory_test_report",
+        "native_python_entries",
+        "native_sources",
+        "test_input_environment_keys",
+        "support_files",
+        "core_extras",
+        "probe_modules",
+        "required_modules",
+    ):
+        assert suite[key] == legacy[key]
+
+
+def test_original_automatic_flow_qualification_keeps_complete_controls_and_exact_fixture_support():
+    from collections import Counter
+
+    suite = Q.SUITES["original-scalar-automatic-flow"]
+    assert suite["tests_root"] == "."
+    assert (
+        suite["tests"]
+        == suite["native_test_files"]
+        == (
+            "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
+            "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+            "packages/merlin-experiments/tests/test_original_factory_prerequisites.py",
+            "packages/merlin-experiments/tests/test_source_prerequisite_ledger.py",
+        )
+    )
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == dict(
+        zip(suite["tests"], (17, 21, 27, 22), strict=True)
+    )
+    assert len(set(suite["native_test_cases"])) == 87
+    assert suite["support_files"] == (
+        "merlin/tests/targetgen/test_original_scalar_binary_sources.py",
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+        "packages/merlin-experiments/tests/original_reference_fixtures.py",
+        "packages/merlin-experiments/tests/test_declared_original_reference_flow.py",
+        "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+        "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py",
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py",
+        "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+    )
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["test_fixture_imports"] is True and suite["collect_selected_tests"] is True
+    assert suite["core_extras"] == ("xdsl", "targetgen")
+    assert suite["probe_modules"] == (
+        "merlin_experiments.phase0.component_automatic",
+        "merlin_experiments.phase0.declared_run",
+        "merlin_experiments.phase0.original_call_sources",
+        "merlin_experiments.phase0.original_scalar_conversion_flow",
+        "merlin_experiments.phase0.original_factory_prerequisites",
+        "merlin_experiments.phase0.source_requirement_ledger",
+    )
+    assert not suite.get("native_tools") and not suite.get("native_sources")
+
+
+@pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
+def test_original_automatic_flow_requires_each_member_with_zero_skips(tmp_path, defect):
+    _check_scalar_qualification_report(tmp_path, "original-scalar-automatic-flow", defect)
+
+
+def test_original_metadata_qualification_keeps_complete_controls_and_dynamic_fixture():
+    from collections import Counter
+
+    suite = Q.SUITES["original-metadata-source-flow"]
+    assert (
+        suite["tests"]
+        == suite["native_test_files"]
+        == (
+            "merlin/tests/targetgen/test_original_metadata_sources.py",
+            "packages/merlin-experiments/tests/test_original_metadata_source_flow.py",
+            "packages/merlin-experiments/tests/test_original_metadata_automatic_flow.py",
+        )
+    )
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == dict(
+        zip(suite["tests"], (64, 21, 13), strict=True)
+    )
+    assert len(set(suite["native_test_cases"])) == 98
+    assert set(suite["support_files"]) == {
+        "merlin/tests/targetgen/test_original_scalar_binary_sources.py",
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+        "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+        "packages/merlin-experiments/tests/test_declared_original_reference_flow.py",
+        "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
+        "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+        "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py",
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py",
+        "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+        "packages/merlin-experiments/tests/original_reference_fixtures.py",
+    }
+    assert len(suite["support_files"]) == 11
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["test_fixture_imports"] is True and suite["collect_selected_tests"] is True
+    assert "merlin.targetgen.original_metadata_sources" in suite["probe_modules"]
+    assert not suite.get("native_tools") and not suite.get("native_sources")
+
+
+@pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
+def test_original_metadata_qualification_requires_every_identity_without_skips(tmp_path, defect):
+    _check_scalar_qualification_report(tmp_path, "original-metadata-source-flow", defect)
+
+
+def test_original_triangular_qualification_keeps_complete_controls_and_dynamic_fixture():
+    from collections import Counter
+
+    suite = Q.SUITES["original-triangular-source-flow"]
+    assert (
+        suite["tests"]
+        == suite["native_test_files"]
+        == (
+            "merlin/tests/targetgen/test_original_triangular_sources.py",
+            "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+            "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+        )
+    )
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == dict(
+        zip(suite["tests"], (50, 16, 13), strict=True)
+    )
+    assert len(set(suite["native_test_cases"])) == 79
+    assert suite["support_files"] == Q.SUITES["original-metadata-source-flow"]["support_files"]
+    assert "packages/merlin-experiments/tests/original_reference_fixtures.py" in suite["support_files"]
+    assert len(suite["support_files"]) == 11
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["test_fixture_imports"] is True and suite["collect_selected_tests"] is True
+    assert "merlin.targetgen.original_triangular_sources" in suite["probe_modules"]
+    assert not suite.get("native_tools") and not suite.get("native_sources")
+
+
+@pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
+def test_original_triangular_qualification_requires_every_identity_without_skips(tmp_path, defect):
+    _check_scalar_qualification_report(tmp_path, "original-triangular-source-flow", defect)
+
+
+def test_original_reshape_qualification_keeps_complete_controls_and_fixture_closure():
+    from collections import Counter
+
+    suite = Q.SUITES["original-reshape-source-flow"]
+    assert (
+        suite["tests"]
+        == suite["native_test_files"]
+        == (
+            "merlin/tests/targetgen/test_original_reshape_sources.py",
+            "packages/merlin-experiments/tests/test_original_reshape_source_flow.py",
+            "packages/merlin-experiments/tests/test_original_reshape_automatic_flow.py",
+        )
+    )
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == dict(
+        zip(suite["tests"], (76, 16, 13), strict=True)
+    )
+    assert len(set(suite["native_test_cases"])) == 105
+    assert suite["support_files"] == Q.SUITES["original-triangular-source-flow"]["support_files"]
+    assert len(suite["support_files"]) == 11
+    assert "packages/merlin-experiments/tests/original_reference_fixtures.py" in suite["support_files"]
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["test_fixture_imports"] is True and suite["collect_selected_tests"] is True
+    assert suite["core_extras"] == ("xdsl", "targetgen")
+    assert "merlin.targetgen.original_reshape_sources" in suite["probe_modules"]
+    assert not suite.get("native_tools") and not suite.get("native_sources")
+
+
+@pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
+def test_original_reshape_qualification_requires_every_identity_without_skips(tmp_path, defect):
+    _check_scalar_qualification_report(tmp_path, "original-reshape-source-flow", defect)
+
+
+def test_source_cfg_qualification_keeps_complete_controls_and_fixture_closure():
+    from collections import Counter
+
+    suite = Q.SUITES["source-cfg-caller-controls"]
+    assert (
+        suite["tests"]
+        == suite["native_test_files"]
+        == (
+            "merlin/tests/targetgen/test_source_control_flow_observation.py",
+            "packages/merlin-experiments/tests/test_component_runtime_cfg_observation.py",
+        )
+    )
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == dict(
+        zip(suite["tests"], (56, 4), strict=True)
+    )
+    assert len(set(suite["native_test_cases"])) == 60
+    assert suite["support_files"] == (
+        "merlin/tests/targetgen/test_emitted_control_flow.py",
+        "merlin/tests/targetgen/test_source_observation.py",
+        "packages/merlin-experiments/tests/test_component_runtime_source_selection.py",
+        "packages/merlin-experiments/tests/test_component_runtime_support.py",
+    )
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["test_fixture_imports"] is True and suite["collect_selected_tests"] is True
+    assert suite["core_extras"] == ("xdsl", "targetgen")
+    assert "merlin.targetgen.contract.source_control_flow" in suite["probe_modules"]
+    assert not suite.get("native_tools") and not suite.get("native_sources")
+    assert Q.SUITES["emitted-dataflow"]["native_tools"] == ("mlir-opt",)
+    assert Q.SUITES["emitted-dataflow"]["native_test_files"] == ("test_emitted_control_flow.py",)
+
+
+@pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
+def test_source_cfg_qualification_requires_every_identity_without_skips(tmp_path, defect):
+    _check_scalar_qualification_report(tmp_path, "source-cfg-caller-controls", defect)
+
+
+@pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
+def test_scalar_qualification_requires_each_original_member_identity_and_zero_skips(tmp_path, defect):
+    _check_scalar_qualification_report(tmp_path, "original-scalar-binary-sources", defect)
+
+
+@pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
+def test_integer_scalar_qualification_requires_each_original_member_identity_and_zero_skips(tmp_path, defect):
+    _check_scalar_qualification_report(tmp_path, "original-integer-scalar-binary-sources", defect)
+
+
+def _check_scalar_qualification_report(tmp_path, suite, defect):
+    import xml.etree.ElementTree as ET
+
+    rows = Q.SUITES[suite]["native_test_cases"]
+    root = ET.Element("testsuites")
+    group = ET.SubElement(root, "testsuite")
+    for filename, name in rows:
+        ET.SubElement(
+            group,
+            "testcase",
+            file=filename,
+            name=name,
+            classname=Path(filename).with_suffix("").as_posix().replace("/", "."),
+        )
+    member = group[-1]
+    if defect == "missing":
+        group.remove(member)
+    elif defect == "extra":
+        ET.SubElement(group, "testcase", **{**member.attrib, "name": "undeclared_original"})
+    elif defect == "duplicate":
+        ET.SubElement(group, "testcase", **member.attrib)
+    elif defect == "module":
+        member.set("classname", "substituted.module")
+    elif defect == "skip":
+        ET.SubElement(member, "skipped", message="actual prerequisite unavailable")
+    elif defect == "failure":
+        ET.SubElement(member, "failure", message="original source correspondence failed")
+    path = tmp_path / "original-tests.xml"
+    ET.ElementTree(root).write(path)
+    report = {}
+    if defect is None:
+        Q.check_native_test_report(suite, path, report)
+        expected = len(rows)
+        assert report["native_test_counts"] == {"tests": expected, "skipped": 0}
+        assert report["missing_native_test_cases"] == report["unexpected_native_test_cases"] == []
+    else:
+        with pytest.raises(Q.QualificationFailed):
+            Q.check_native_test_report(suite, path, report)
+
+
 def test_tensor_inspection_qualification_is_core_only():
     suite = Q.SUITES["tensor-inspection"]
     assert suite["include_experiments"] is False
@@ -482,3 +1022,97 @@ def test_interrupted_pipeline_records_terminal_status(monkeypatch, tmp_path):
     monkeypatch.setattr(Q.Recorder, "run", interrupted)
     assert not Q.qualify(repo_root(), tmp_path, "b" * 40, "phase1", 5)
     assert json.loads((tmp_path / "report.json").read_text())["status"] == "interrupted"
+
+
+def _native_test_input_file(tmp_path):
+    path = tmp_path / "native-inputs.json"
+    keys = Q.SUITES["original-transpose-sources"]["test_input_environment_keys"]
+    path.write_text(json.dumps({key: "explicit original input" for key in keys}))
+    return path
+
+
+def test_native_test_inputs_are_explicit_closed_and_reopened(tmp_path):
+    path = _native_test_input_file(tmp_path)
+    selected = Q.capture_native_test_inputs("original-transpose-sources", str(path))
+    report = {"native_test_inputs": selected}
+    assert Q.native_environment(report) == json.loads(path.read_bytes())
+    Q.verify_native_inputs(report)
+    path.write_text(path.read_text() + "\n")
+    with pytest.raises(Q.QualificationFailed, match="test inputs changed"):
+        Q.verify_native_inputs(report)
+    assert Q.capture_native_test_inputs("phase1", None) == {}
+
+
+@pytest.mark.parametrize("defect", ["missing", "extra", "duplicate", "boolean", "null", "empty", "nul"])
+def test_native_test_inputs_reject_ambiguous_or_undeclared_mappings(tmp_path, defect):
+    path = _native_test_input_file(tmp_path)
+    mapping = json.loads(path.read_bytes())
+    key = next(iter(mapping))
+    if defect == "missing":
+        mapping.pop(key)
+    elif defect == "extra":
+        mapping["UNDECLARED_OVERRIDE"] = "unselected"
+    elif defect == "duplicate":
+        path.write_text(path.read_text()[:-1] + "," + json.dumps(key) + ':"repeated"}')
+    else:
+        mapping[key] = {"boolean": True, "null": None, "empty": "", "nul": "a\0b"}[defect]
+    if defect != "duplicate":
+        path.write_text(json.dumps(mapping))
+    with pytest.raises(Q.QualificationFailed, match="complete closed suite mapping"):
+        Q.capture_native_test_inputs("original-transpose-sources", str(path))
+
+
+@pytest.mark.parametrize("defect", ["relative", "symlink", "oversized", "wrong_suite"])
+def test_native_test_input_selection_requires_bounded_regular_admitted_file(tmp_path, defect):
+    path = _native_test_input_file(tmp_path)
+    suite = "original-transpose-sources"
+    if defect == "relative":
+        path = Path("unselected.json")
+    elif defect == "symlink":
+        link = tmp_path / "alias.json"
+        link.symlink_to(path)
+        path = link
+    elif defect == "oversized":
+        path.write_bytes(b" " * 65537)
+    else:
+        suite = "phase1"
+    with pytest.raises(Q.QualificationFailed):
+        Q.capture_native_test_inputs(suite, str(path))
+
+
+def test_native_test_inputs_cannot_replace_tool_or_source_environment(tmp_path):
+    path = _native_test_input_file(tmp_path)
+    selected = Q.capture_native_test_inputs("original-transpose-sources", str(path))
+    key = next(iter(selected["environment"]))
+    with pytest.raises(Q.QualificationFailed, match="conflict"):
+        Q.native_environment(
+            {"native_test_inputs": selected, "native_tools": {"owned": {"environment_key": key, "path": "/tool"}}}
+        )
+
+
+def test_actual_child_mutation_is_rejected_after_qualification_command(tmp_path):
+    path = _native_test_input_file(tmp_path)
+    report = {
+        "commands": [],
+        "native_test_inputs": Q.capture_native_test_inputs("original-transpose-sources", str(path)),
+    }
+    recorder = Q.Recorder(tmp_path, report, 5)
+    script = "from pathlib import Path; Path(" + repr(str(path)) + ").write_text('{}')"
+    with pytest.raises(Q.QualificationFailed, match="test inputs"):
+        recorder.run("owned-input-mutation", [sys.executable, "-I", "-B", "-c", script], tmp_path)
+    assert report["commands"][-1]["status"] == "inputs_changed"
+
+
+def test_native_test_input_cli_forwards_explicit_selection(monkeypatch, tmp_path):
+    path = _native_test_input_file(tmp_path)
+    seen = {}
+    monkeypatch.setattr(Q, "resolve_ref", lambda *_: "a" * 40)
+    monkeypatch.setattr(Q, "reserve_output", lambda *_: tmp_path)
+
+    def qualify(*args, **kwargs):
+        seen.update(kwargs)
+        return True
+
+    monkeypatch.setattr(Q, "qualify", qualify)
+    assert Q.main(["--ref", "HEAD", "--suite", "original-transpose-sources", "--test-inputs", str(path)]) == 0
+    assert seen["test_inputs"] == str(path)

@@ -172,8 +172,10 @@ class LayoutOp:
 
     A coupled operation requires every port to use the selected encoding and is how elementwise,
     residual, and layout-polymorphic accelerator regions propagate one graph-level decision.  A
-    non-coupled operation is a fixed physical boundary and therefore has exactly one native option;
-    conversions are explicit at every mismatched port.
+    non-coupled operation has exactly one native option. Explicit flexible
+    inputs can consume their selected representation through an independently
+    implemented exact index map; this grants no target capability. All other
+    mismatched ports retain explicit conversions.
     """
 
     name: str
@@ -184,6 +186,7 @@ class LayoutOp:
     options: tuple[OperatorEncoding, ...]
     provenance: tuple[str, ...] = ()
     coupled_ports: tuple[str, ...] = ()
+    flexible_inputs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.name.strip() or not self.kind.strip():
@@ -209,12 +212,19 @@ class LayoutOp:
                 raise PhysicalLayoutError("operation coupled ports must not contain duplicates")
             if set(self.coupled_ports) - set(ports):
                 raise PhysicalLayoutError("operation couples a value absent from its ports")
+        if (type(self.flexible_inputs) is not tuple
+                or len(set(self.flexible_inputs)) != len(self.flexible_inputs)
+                or set(self.flexible_inputs) - set(self.inputs)
+                or set(self.flexible_inputs) & set(self.propagated_ports)):
+            raise PhysicalLayoutError("flexible layout ports must be distinct uncoupled inputs")
         for option in self.options:
             if set(dict(option.port_encodings)) - set(ports):
                 raise PhysicalLayoutError("operator option encodes a value absent from its ports")
             if set(dict(option.port_encodings)) & set(self.propagated_ports):
                 raise PhysicalLayoutError(
                     "operator option must not override a graph-propagated port encoding")
+            if set(dict(option.port_encodings)) & set(self.flexible_inputs):
+                raise PhysicalLayoutError("operator option must not override a flexible input layout")
         _nonempty(self.provenance, "operation provenance")
 
     @property
@@ -232,6 +242,7 @@ class LayoutOp:
             "name": self.name, "kind": self.kind, "inputs": list(self.inputs),
             "outputs": list(self.outputs), "couple": self.couple,
             "coupled_ports": list(self.propagated_ports),
+            "flexible_inputs": list(self.flexible_inputs),
             "options": [item.to_dict() for item in self.options],
             "provenance": list(self.provenance),
         }
@@ -635,7 +646,8 @@ def _evaluate(graph: LayoutGraph, assignments: dict[str, str]) -> tuple[
                 f"operation has no exact option for encoding {identifier!r}", op.provenance))
             continue
         port_encodings = dict(option.port_encodings)
-        if any(values[port].encoding(port_encodings.get(port, identifier)) is None
+        if any(values[port].encoding(assignments[port] if port in op.flexible_inputs
+                                     else port_encodings.get(port, identifier)) is None
                for port in op.ports):
             refusals.append(LayoutRefusal(
                 op.name, "operator_port_encoding_unavailable",
@@ -657,7 +669,7 @@ def _evaluate(graph: LayoutGraph, assignments: dict[str, str]) -> tuple[
         for port, names in (("input", op.inputs), ("output", op.outputs)):
             for name in names:
                 selected_id = assignments[name]
-                native_id = port_encodings.get(name, option.encoding_id)
+                native_id = selected_id if name in op.flexible_inputs else port_encodings.get(name, option.encoding_id)
                 if selected_id == native_id:
                     continue
                 source, destination = ((selected_id, native_id) if port == "input"

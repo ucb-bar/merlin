@@ -130,6 +130,24 @@ def test_a_symbol_absent_from_the_package_is_refused(tmp_path):
         validate_against_package(load("t", "p", body=body), tmp_path)
 
 
+def test_reviewed_v2_load_preserves_new_pass_authority(tmp_path):
+    (tmp_path / "compiler.py").write_text("def schedule(shape):\n return shape\n")
+    contract = load(
+        "t",
+        "p",
+        body={
+            "schema": "compiler_edit_contract_v2",
+            "required_decisions": [{"decision": "scheduling", "owner": "compiler.py:schedule"}],
+            "existing_symbols": [{"surface_id": "schedule", "path": "compiler.py", "symbol": "schedule"}],
+            "new_python_components": [
+                {"directory": "passes", "surface_ids": ["schedule"], "reason": "new scheduling implementations"}
+            ],
+        },
+    )
+    assert contract["schema"] == "compiler_edit_contract_v2"
+    validate_against_package(contract, tmp_path)
+
+
 # ---------------------------------------------------------------------------------------------
 # THE MUTATION: a candidate that edits outside the contract is rejected. Run against a synthetic
 # package shaped like the real one, so it runs everywhere rather than only where the artifacts are.

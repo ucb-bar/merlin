@@ -1,0 +1,23 @@
+# Ownership of support/: a DATA-ONLY provider written in this repository, not a copy of a companion.
+# It holds the reviewed contract plus a plugin block naming GENERIC core code
+# (merlin.runtime.backends.chipyard_rocc) and an ISA-headers spec that references the upstream
+# runtime bytes by pin and digest. No backend, kernel or CRT byte is selected from here; the only
+# code is the experimenter-side ISA probe under probe_compiler/, masked from candidates with the rest.
+# merlin/tests/infra/test_example_support.py recomputes the tree id and refuses any non-data member.
+# Regenerate contracts/ with build_tools/scripts/sync_support_contract.py gemmini after a reviewed
+# contract edit, then update tree here and in build_tools/upstreams/target_support.json.
+schema: merlin.generic_data_support.v1
+target: gemmini
+provider_id: gemmini-support
+path: support
+role: support
+visibility: experimenter_only
+file_count: 8
+tree: d858e65967f358d7e85875ce161fa39ace1314f2
+backend: merlin.runtime.backends.chipyard_rocc
+# Experimenter-side tooling kept inside the masked provider tree (never selected by a plugin key):
+# the ISA probe package that exercises the grading path (probe_compiler/README.md).
+experimenter_tools: [probe_compiler]
+records:
+  file_provenance: support/isa_headers.yaml
+  migrations: []

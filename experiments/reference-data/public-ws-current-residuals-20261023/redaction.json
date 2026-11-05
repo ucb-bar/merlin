@@ -1,0 +1,46 @@
+{
+  "schema": "merlin.curated_path_redaction.v1",
+  "description": "Only absolute machine root strings replaced with explicit non-executable placeholders. Raw receipts are retained in generated task artifacts; hashes here identify those unredacted bytes. Numeric measurements and identity hashes unchanged.",
+  "records": [
+    {
+      "curated": "baseline-windows.json",
+      "raw_sha256": "eeb0abaabf13e5f7cebb9efcd1461c11d69647991592fe5878ac939b80c93a46",
+      "raw_locator": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/comparison.json"
+    },
+    {
+      "curated": "baseline-complete-calls.json",
+      "raw_sha256": "19b4b1e9ae998f14b6bf9a696f2bd34936aaff02af95bbb479864dbe162d9fe7",
+      "raw_locator": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/complete-call-comparison.json"
+    },
+    {
+      "curated": "baseline-timeline.json",
+      "raw_sha256": "6d519fcc15746f44aff66a1c23be4eea1ef98e3bf89883518d71f66614d5b4dc",
+      "raw_locator": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/timeline.json"
+    },
+    {
+      "curated": "structural-prerequisites.json",
+      "raw_sha256": "26ef860540f9b277471fb2060e2da6ae92948fd6ebb314b35f1c223204aafb44",
+      "raw_locator": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/structural-prerequisites.json"
+    },
+    {
+      "curated": "candidate-comparison.json",
+      "raw_sha256": "a477d325d20333864219c1e2a37af6a37edb325525ba90f3c91e8814ff6854b0",
+      "raw_locator": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/comparison.json"
+    },
+    {
+      "curated": "candidate-build.json",
+      "raw_sha256": "7f766e68881bc1cfee568b97d7da5c6da50c982a09ce6ff5f6bc741fed049139",
+      "raw_locator": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/build.json"
+    },
+    {
+      "curated": "candidate-checks.json",
+      "raw_sha256": "724cb39d52ea4cb9da4b6fa37faab0febdb78e0dceffa5293d7dc8ac2f6bba68",
+      "raw_locator": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/focused-checks.json"
+    },
+    {
+      "curated": "candidate-model.json",
+      "raw_sha256": "a0c5565fb7fbfc5778d2664640de104cd19f6ecb4b8a0f0935b910132392670b",
+      "raw_locator": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/model.json"
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "schema": "merlin.scoped_ws_observer_acceptance.v1",
+  "old_off_on_equal": true,
+  "results": [
+    {
+      "name": "baseline",
+      "argv": [
+        "<machine-path-014>",
+        "--extlib=<machine-path-048>",
+        "--extlib=<machine-path-022>",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<machine-path-030>",
+        "--timing-report=<machine-path-031>",
+        "--timing-scope-binding=<machine-path-013>",
+        "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+        "<machine-path-012>"
+      ],
+      "wall_seconds": 17.846044178004377,
+      "estimated_cycles": 354,
+      "timing_complete": true,
+      "functional_status": "PASS",
+      "scope_sha256": "82dae761bda30488a6760c9ae51764069a6ed9e60544661e90f883477d273525",
+      "elf_sha256": "9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+      "model_sha256": "9ce62bab015df550d3849f501672dc9a9a1c4ea0c04233029caecf86bb7a56dd",
+      "report_sha256": "802388c8c21f4aaa3722364bed284eff8c5cacf859b844ae16cb29e70c4e774e"
+    },
+    {
+      "name": "off",
+      "argv": [
+        "<machine-path-029>",
+        "--extlib=<machine-path-048>",
+        "--extlib=<machine-path-022>",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<machine-path-033>",
+        "--timing-report=<machine-path-034>",
+        "--timing-scope-binding=<machine-path-013>",
+        "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+        "<machine-path-012>"
+      ],
+      "wall_seconds": 18.846015669987537,
+      "estimated_cycles": 354,
+      "timing_complete": true,
+      "functional_status": "PASS",
+      "scope_sha256": "82dae761bda30488a6760c9ae51764069a6ed9e60544661e90f883477d273525",
+      "elf_sha256": "9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+      "model_sha256": "80602c3c9f863d18c7cbb574008589e5a76a0f4e242d235adc240cf3c0a1b36f",
+      "report_sha256": "d888c044a37f0079f3411be361494a65520663f7e994b82ac17f4d85411fac10"
+    },
+    {
+      "name": "on",
+      "argv": [
+        "<machine-path-029>",
+        "--extlib=<machine-path-048>",
+        "--extlib=<machine-path-022>",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=<machine-path-035>",
+        "--timing-report=<machine-path-036>",
+        "--timing-scope-binding=<machine-path-013>",
+        "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+        "<machine-path-012>"
+      ],
+      "wall_seconds": 22.796770607004873,
+      "estimated_cycles": 354,
+      "timing_complete": true,
+      "functional_status": "PASS",
+      "scope_sha256": "82dae761bda30488a6760c9ae51764069a6ed9e60544661e90f883477d273525",
+      "elf_sha256": "9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+      "model_sha256": "8089fb9a2ea325ff2e61508ad9a78a23b92a9620099839cbcba0a221470e7c1c",
+      "report_sha256": "d726bb6d8be1ecf8e91340ebd518a9a36a05a320751caed02c408a347eb4af08"
+    }
+  ],
+  "qualification_issued": false,
+  "coefficient_changes": false,
+  "new_physical_runs": 0
+}

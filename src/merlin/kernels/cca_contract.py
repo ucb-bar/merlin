@@ -321,6 +321,13 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
         "MAGNITUDE behind dispatch.dma_overlap's boolean, so a stream that overlaps by one instruction "
         "is distinguishable from one that overlaps a whole tile",
     ),
+    "dispatch.n_fences": FieldSpec(
+        "dispatch.n_fences",
+        METRIC,
+        ("dispatch",),
+        "explicit host/endpoint fence instructions in the selected issue boundary -> a diagnostic count; it "
+        "does not establish that a fence is necessary, nor its completion latency or overlap",
+    ),
     # --- communication: what crosses a boundary (dispatch/program scope) ---
     # ALL BACKEND_STUB. There is no lifter for this facet yet and therefore no route: a field that
     # cannot be routed is a stub, never a quiet LEVER. They are declared now, rather than when the
@@ -432,7 +439,38 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
         ("memory",),
         "which operand stays on chip across the reduction -> residency lever (routes pending)",
     ),
+    "dispatch.static_command_sites": FieldSpec(
+        "dispatch.static_command_sites",
+        METRIC,
+        ("dispatch",),
+        "listed selected-opcode instruction sites in the region -> a static structural count, never "
+        "the number of commands issued",
+    ),
+    "dispatch.static_fence_sites": FieldSpec(
+        "dispatch.static_fence_sites",
+        METRIC,
+        ("dispatch",),
+        "listed CPU fence instruction sites in the region -> a static structural count, never executions",
+    ),
+    # --- operand_fields: decoded field values by declared hardware/ISA kind (machine lifts) ---
+    **{
+        "operand_fields." + kind: FieldSpec(
+            "operand_fields." + kind,
+            METRIC,
+            ("operand_fields",),
+            "distinct decoded values of fields the selected target declares as " + kind + " at listed static "
+            "sites -> an observation for comparison, not a lever with its own route",
+        )
+        for kind in ("stride", "extent", "scale", "activation", "output_dtype")
+    },
     # --- compute: the field behind a route that already existed ---
+    "compute.reduction_partition": FieldSpec(
+        "compute.reduction_partition",
+        METRIC,
+        ("compute",),
+        "ordered reduction depths of one complete output block, as the selected source/operand adapter "
+        "establishes them -> a comparison diagnostic, not a lever with its own route",
+    ),
     "compute.mr_adapts_to_m": FieldSpec(
         "compute.mr_adapts_to_m",
         LEVER,

@@ -1,0 +1,34 @@
+{
+  "schema": "operator.observer_host_only_check.v1",
+  "not_hardware_execution": true,
+  "checks": [
+    {
+      "truncation_case": false,
+      "status": "pass",
+      "footer": {
+        "kind": "footer",
+        "observed_events": 7,
+        "written_events": 7,
+        "dropped": 0,
+        "truncated": false,
+        "simulator_done": true,
+        "exit_code": 0,
+        "record_bytes": 1778
+      }
+    },
+    {
+      "truncation_case": true,
+      "status": "pass",
+      "footer": {
+        "kind": "footer",
+        "observed_events": 65547,
+        "written_events": 65536,
+        "dropped": 11,
+        "truncated": true,
+        "simulator_done": true,
+        "exit_code": 0,
+        "record_bytes": 19692781
+      }
+    }
+  ]
+}

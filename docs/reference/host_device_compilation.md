@@ -30,6 +30,11 @@ captured graph and declared constants
 The partition, numerical policy, buffer representation, output order, state,
 and transfer obligations are compiler decisions. The execution environment
 must not quietly move a failed required-native region to host computation.
+
+The logical device ABI describes pointer roles and per-group linked names. The
+original executable entry comes from the selected harness build recipe. Object
+renaming, codegen custody and built-body audits use that same executable entry;
+they do not substitute the logical ABI's default symbol or infer a candidate name.
 Runtime input tensors are passed at invocation; expected outputs and grading
 data belong only to the evaluator.
 

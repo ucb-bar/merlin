@@ -1,9 +1,17 @@
 # Phase 1: functional compiler
 
+The [shared workload protocol](../protocol/README.md) records full-model shapes,
+quantization, input provenance and numerical rules. Capsule certification and
+external full-model validation have separate completion records and clocks; the
+frozen compiler may be published while external validation is still pending.
+Claims about full-network execution still require those completed receipts.
+
 Select the reviewed Phase 0 manifest's `phase_corpora.phase1` functional members
 and retain its evidence-manifest identity, SW spec and hardware selection.
-The example's current diagnostic derivation is not an admission release; required
-source consistency, semantics and coverage must be resolved in a fresh run first.
+The retained diagnostic derivation described below is not an admission release.
+An admission release comes from a fresh Phase 0 run with verified evidence
+(`--phase0-evidence-mode verified`): audited RTL facts, sealed capture
+attestations and the reviewed host manifest. Run it, then prepare and seal it.
 Do not substitute Phase 2's performance membership for the functional population.
 
 Start from [the experiment definition](../experiment.yaml). Its
@@ -106,9 +114,16 @@ The four iteration captures have complete static frontend correspondence, but
 their materialized receipts all report `source_closure_verified: false`. Both
 large SmolVLA stages report incomplete quantized-to-prepared correspondence;
 `prefix_encode` additionally has prepared nodes `n552`–`n557` without final
-lowering correspondence. The host manifest is `unreviewed`, leaving all host
-admissions unknown. No target execution or whole-model numerical match follows
-from these counts. The selected Gemmini compiler's retained whole-model
+lowering correspondence. The host manifest that check used (`74a614e8…`) was
+`unreviewed`, so it left all host admissions unknown. The current
+[`host-capabilities.yaml`](../target/host-capabilities.yaml) is `reviewed` at the
+document level and pins the minted scalar package (`89e00e39…`). Of its 63
+operation declarations, 18 carry reviewed numerical contracts and 45 remain
+`unreviewed`. Host admission is therefore decided per operation. A route whose
+matching contract is unreviewed stays unknown. A reviewed route still needs its
+own emitted lowering and numerical receipt. Re-run this check against the current
+manifest rather than reusing these counts. No target execution or whole-model
+numerical match follows from these counts. The selected Gemmini compiler's retained whole-model
 `emit_command_buffer` observations explicitly decline routing upstream Linalg
 regions, even where parse and native LLVM lowering accepted the model.
 
@@ -240,9 +255,44 @@ and review bundles instead of relying on those links as sandbox grants. Generate
 capsules, workspaces, compiler payloads and certification records remain artifacts,
 not files in this example. The remaining harness resources still require a checkout.
 
+### Checked-in launch configuration
+
+The fresh empty-origin EL4 launch on the fire-aligned release is one file:
+[`launch/el4-fire-aligned.yaml`](launch/el4-fire-aligned.yaml). It holds the
+controller argv values (Codex `gpt-6.1-sol`, effort `high`, at most 16 subagents,
+an 18000 s authoring cap with a 120 s grade interval), the complete process
+environment and CPU policy (manager CPU 0, author CPUs 4–5, one shared 18-CPU
+priority pool on CPUs 6–23 with no per-engine caps), the pinned Spike, libgemmini,
+gSIM emulator and timing-profile bytes, the selected target contract and RTL facts,
+the numerics lineage to the approved `launch-v8` bundle, the approved instruction
+selection and the served [errata](launch/errata/fresh-empty.md). It consumes the
+release named by [`../phase0/release/fire-aligned-v10.yaml`](../phase0/release/fire-aligned-v10.yaml).
+Machine roots are variables (`${TASK_ROOT}`, `${PREP}`, `${RUN_ID}`, `${HOME}`);
+release and numerics versions are overridable defaults. Neither file is granted to
+the author sandbox or copied into a release payload.
+
+```sh
+python -m merlin_experiments.phase1.launch_config render \
+  --config examples/gemmini/phase1/launch/el4-fire-aligned.yaml \
+  --task-root "${TASK_ROOT:?}" --prep "${PREP:?}" --plan-template "${PLAN_TEMPLATE:?}"
+python -m merlin_experiments.phase1.launch_config verify \
+  --config examples/gemmini/phase1/launch/el4-fire-aligned.yaml \
+  --task-root "${TASK_ROOT:?}" --prep "${PREP:?}" [--run-id "${RUN_ID}" --controller-pid PID]
+```
+
+`render` writes `environment.sh`, `launch-argv.json`, `release-prepare.json`, the
+errata copy and the launch plan into `--out` (default `--prep`) and refuses to
+replace different bytes. `verify` exits 1 and lists every drift between the config
+and the prepared environment file, plan, pinned files, numerics and release records,
+exclusions and, with `--controller-pid`, the live controller's command line,
+environment and affinity. Neither starts a run.
+
 ## Independent runtime support
 
-The copied kernel headers and legacy harness aliases have been removed. Fresh
-experiments require separately derived support from the admitted public RTL and
-minimal reviewed software contract. The handwritten compiler and its runtime
-remain a private final reference; they cannot supply authoring or feedback tools.
+The copied kernel headers and legacy harness aliases have been removed. Runtime
+support is the data-only provider `examples/gemmini/support` (selected by default
+when `MERLIN_TARGET_PATH` is unset): the generic `merlin.runtime.backends.chipyard_rocc`
+backend reads its contract and ISA-headers spec, builds against the pinned bare-metal
+runtime plus a header generated from the RTL facts, and never puts an excluded vendor
+header on the include path. Reference compilers and their runtimes stay outside
+the repository; they cannot supply authoring or feedback tools.

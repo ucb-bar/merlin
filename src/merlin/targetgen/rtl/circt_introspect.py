@@ -38,7 +38,7 @@ from .port_geometry import extract_accumulator, memories_from_port_geometry
 
 _REPO = repo_root()  # the repo root (contains merlin/)
 
-GENERATOR_VERSION = "rtl-introspect-v11-selected-source-receipts"
+GENERATOR_VERSION = "rtl-introspect-v12-inherent-attribute-graph"
 # RISC-V ISA STANDARD custom-N major opcodes — fixed by the base ISA for EVERY RISC-V chip, NOT a
 # per-target fact. WHICH custom slot a RoCC accelerator is wired to IS target-specific; it is resolved
 # from the target's own reviewed encoding (contract ``encoding.rocc_custom_slot``) — never a baked
@@ -136,7 +136,12 @@ def extract_funct_table(isa_src: str, *, start_comment: str, stop_declaration: s
             continue
         if after.strip() and not after.strip().startswith("//"):
             continue  # e.g. ``.U(3.W)`` -> not a funct code
-        table.setdefault(int(num), name)
+        selector = int(num)
+        if selector in table and table[selector] != name:
+            raise ValueError("Scala funct block has conflicting selector/name bindings")
+        if any(bound == name and code != selector for code, bound in table.items()):
+            raise ValueError("Scala funct block assigns one name to different selectors")
+        table[selector] = name
     if not stopped:
         raise ValueError(f"Scala funct block stop declaration {stop_declaration!r} is absent")
     legal = sorted(table)
@@ -146,6 +151,14 @@ def extract_funct_table(isa_src: str, *, start_comment: str, stop_declaration: s
         "name": "funct_decode_table",
         "legal_funct": legal,
         "names": {str(k): table[k] for k in legal},
+        "source_declared_names": {str(k): table[k] for k in legal},
+        "source_declared_names_provenance": {
+            "kind": "scala_funct_block",
+            "scope": "selected_source_declaration",
+            "source_sha256": hashlib.sha256(isa_src.encode("utf-8")).hexdigest(),
+            "start_comment": start_comment,
+            "stop_declaration": stop_declaration,
+        },
         # Bindings OUTSIDE the funct block, for naming codes the SILICON decodes that the block never
         # mentions. Kept separate because they are not authoritative: see :func:`outside_block_names`.
         "outside_block_names": outside_block_names(isa_src, start_at=start),
@@ -475,6 +488,13 @@ def _reconcile_funct(decoder: dict[str, Any] | None, header: dict[str, Any] | No
     if header is not None:
         hs, ds = set(header.get("legal_funct", [])), set(decoder["legal_funct"])
         hnames = header.get("names", {})
+        for selector, observed_name in (decoder.get("names") or {}).items():
+            declared_name = hnames.get(str(selector))
+            if declared_name is not None and observed_name != declared_name:
+                raise ValueError("decoder and source have conflicting selector/name bindings")
+        if "source_declared_names" in header:
+            decoder["source_declared_names"] = dict(header["source_declared_names"])
+            decoder["source_declared_names_provenance"] = dict(header["source_declared_names_provenance"])
         decoder["names"] = {str(k): hnames.get(str(k), "?") for k in decoder["legal_funct"]}
         # A code the SILICON decodes that the funct block never named reads as "?" -- and an unnamed
         # instruction cannot be given a role, so it lands in `claimed_no_role` forever. Measured on
@@ -639,11 +659,13 @@ def _funct_name_table(target: str, isa_path: Path | None) -> dict[str, Any] | No
     if isa_path is not None and Path(isa_path).is_file():
         block = _scala_funct_block(target)
         if block is not None:
-            return extract_funct_table(
-                Path(isa_path).read_text(errors="replace"),
+            table = extract_funct_table(
+                Path(isa_path).read_bytes().decode("utf-8"),
                 start_comment=block[0],
                 stop_declaration=block[1],
             )
+            table["source_declared_names_provenance"]["source_path"] = str(Path(isa_path).absolute())
+            return table
     headers = _declared_isa_headers(target)
     code_name = _functs_from_headers(headers)
     if not code_name:
@@ -1084,7 +1106,7 @@ def _build_facts(
         raise ValueError("build_facts requires an explicit target (no default is assumed)")
     from . import datapaths as datapath_reader
     from . import feature_gates as feature_reader
-    from . import hw_graph, mlc_bridge, source_selection, timing
+    from . import command_ordering, hw_graph, memory_roles, mlc_bridge, source_selection, timing, timing_structure
     from .facts import target_contract_path
 
     readers = [
@@ -1098,6 +1120,8 @@ def _build_facts(
             hw_graph,
             mlc_bridge,
             timing,
+            memory_roles,
+            timing_structure,
         )
     ]
     extractor_digest = _sha256(Path(__file__))
@@ -1125,6 +1149,7 @@ def _build_facts(
     if selected is not None:
         elaborated_fir = Path(selected["sources"]["firrtl"]["path"])
         selected_hierarchy = Path(selected["sources"]["hierarchy"]["path"])
+        source_selection.require_generator_scope(selected)  # a wrong scope would census nothing
         v1 = V1.census_facts(elaborated_fir, selected_hierarchy, generator=selected["generator"])
         # Legacy declared role probes are supplemental readers of the same bytes,
         # never an alternate selected elaboration.
@@ -1133,6 +1158,8 @@ def _build_facts(
             for field in ("arrays", "datapaths", "interfaces"):
                 if probes.get(field):
                     v1[field] = probes[field]
+            # Declared roles name census stores; with no census the role probes are the stores.
+            v1["memories"] = memory_roles.label_roles(v1.get("memories") or [], probes.get("memories") or [])
         v1["source"] = {
             "kind": "explicit_source_bundle",
             "config": selected["config"],
@@ -1155,10 +1182,11 @@ def _build_facts(
                         "accounting_note": "logical address-space view; do not sum with physical census stores",
                     }
                 )
-                v1["memory_address_spaces"] = [address_space]
-                # Preserve the named compatibility view consumed by profiles,
-                # alongside the physical inventory with an explicit view tag.
+                # Preserve the named compatibility view consumed by profiles; census rows that
+                # physically back it move to census.physical_memories (never counted twice).
                 v1.setdefault("memories", []).append(address_space)
+                v1["memories"] = memory_roles.separate_backings(v1["memories"], v1["memories"], v1)
+                v1["memory_address_spaces"] = [row for row in v1["memories"] if row.get("view_kind") == "address_space"]
     elif isa_path.is_file():  # a chipyard target with a Chisel ISA source -> legacy FIRRTL grep + HW-port
         accumulator_layout = _accumulator_layout(target)
         try:
@@ -1186,6 +1214,7 @@ def _build_facts(
     sourced += _datapaths_from_cells(target, v1)
     sourced += _lane_datapaths_from_units(target, v1)
     sourced += _timing_from_discovery(target, v1)
+    sourced += timing_structure.add_to_facts(target, v1)  # capacities, in-flight limits, fixed delays
 
     # Decoder comparison field: preserve RTL-observed values over the weaker
     # header parse, without treating either as an exhaustive legal set. NAMES
@@ -1230,6 +1259,8 @@ def _build_facts(
     build_features = extract_elaborated_rtl_features(target, v1, elaborated_fir)
     v1.setdefault("interfaces", []).append(build_features)
     sourced.append(f"elaborated_features({build_features['status']})")
+    # COMMAND ORDERING (queues, release points, spans): probes the dispatch module with the layouts above
+    sourced += command_ordering.add_to_facts(target, v1)
 
     # WHO THESE FACTS ARE ABOUT, inside the body -- not only in ``inputs``. A pin is matched to a target
     # by what its body DECLARES (``facts._facts_declares`` reads ``facts.target``), never by the
