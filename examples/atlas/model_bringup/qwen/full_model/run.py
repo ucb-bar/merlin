@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from source_roots import MERLIN_ROOT as ROOT, bootstrap_compiler, observed_revision
 HERE = Path(__file__).resolve().parent
-KERNELS = "80c5f27d4bcded9c1ca7618a17ffcdbae2be7a39"
+KERNELS = "ce465827a977ba8451b585f71910726e7f12b885"
 HISTORICAL_KERNELS = "80c5f27d4bcded9c1ca7618a17ffcdbae2be7a39"
 MODEL = "47b8599d8ffbe5ddd96059ffe2b5be2427a410f5"
 

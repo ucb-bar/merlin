@@ -1,5 +1,7 @@
 # Qwen kernel campaign
 
+See [local integration](docs/local-integration.md) for the current repository split, offline random full-model launch bench, shared kernel APIs, and qualification limits.
+
 For the actual pretrained-model export, graph-derived PyTorch regions and model-shape library benchmark, use [full_model/README.md](full_model/README.md). The workflow below is the earlier manually authored microbenchmark campaign. Imported numerical reports are historical evidence from Jeremy Mills' source commits; this path-rewritten replay does not reproduce their measurements.
 
 These are ordinary PyTorch subgraphs of `deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B`, the Qwen2 model in [Radiance PR #1](https://github.com/ucb-bar/radiance-kernels/pull/1). See the [results and recommendations](docs/qwen-results.md) for measured cycles, numerical error, and the exact boundaries of each workload. The follow-up [roofline analysis](docs/qwen-roofline.md) includes per-resource lower bounds, default/faster-memory comparisons, raw reports and reproduction.

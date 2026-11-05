@@ -1,4 +1,4 @@
-"""Run full-K projection panels on actual tensors from the pretrained session.
+"""Run full-K projection panels on actual captured model boundary tensors.
 
 The same library generator and staging path as MODEL-BENCH are used. This
 changes the data factory to captured operands, and compares against the saved
@@ -57,22 +57,13 @@ def main():
             logical_n=128,
         )
         entry = dict(family="projection_gemm", key=name, params=p)
-        original = bench_model.synthetic_projection
-        # Bind actual operands at the library's documented staging seam. The
-        # generator, compiler comparison, arithmetic oracle and simulator stay
-        # unchanged, and byte hashes identify the substituted operands.
-        bench_model.synthetic_projection = lambda params, rng: (
-            a,
-            w,
-            kernel_bench.quantize(a),
-            kernel_bench.quantize(w),
+        # External operands use the library's public staging API. The shared
+        # generator, quantization, and independent arithmetic golden are retained.
+        built = bench_model.build(
+            entry, args.out, args.model_root, projection_operands=(a, w)
         )
-        try:
-            built = bench_model.build(entry, args.out, args.model_root)
-        finally:
-            bench_model.synthetic_projection = original
         identity = bench_model.program_identity(
-            built, args.atlas_bin, "stream-verified"
+            built, args.atlas_bin, "verified"
         )
         execution = Executor(args.model_root).execute(
             built.source,
@@ -104,7 +95,9 @@ def main():
             **kernel_bench.fidelity(actual, expected),
             backend=identity["backend"],
             calibration=built.meta,
-            source="pretrained model graph boundary tensors",
+            source=json.loads((args.capture / "capture.json").read_text()).get(
+                "tensor_source", "captured model graph boundary tensors"
+            ),
         )
         rows.append(row)
         print(json.dumps(row), flush=True)
