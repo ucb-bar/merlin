@@ -578,8 +578,20 @@ def compile_rvv(
             return out
         feats = _workload_features(pkg, bundle, out)
         if matrix is not None:
-            return _compile_matrix(out, bundle, work, pkg, feats, refs, board=board, harts=harts,
-                                   iters=iters, warmup=warmup, timeout=timeout, matrix=matrix)
+            return _compile_matrix(
+                out,
+                bundle,
+                work,
+                pkg,
+                feats,
+                refs,
+                board=board,
+                harts=harts,
+                iters=iters,
+                warmup=warmup,
+                timeout=timeout,
+                matrix=matrix,
+            )
 
         def _build(fs):
             return zm.build_app(
@@ -630,6 +642,9 @@ def compile_rvv(
             b = _build(narrowed)
             feats = narrowed
         out["binary"] = str(b["elf"])
+        # The identity the image prints as `METRIC build_hash`: a console returned from a board or
+        # FireSim is matched to THIS binary by it, so a stale ELF cannot be graded as this one.
+        out["build_hash"] = b.get("build_hash")
         out["status"] = "compiled"
         if run == "verilator":
             sim = zm.verilator_sim(board=board)
@@ -798,6 +813,7 @@ def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, 
         {
             "status": "compiled",
             "binary": str(pair.ship["elf"]),
+            "build_hash": pair.ship.get("build_hash"),
             "twin_binary": str(pair.twin["elf"]),
             "matrix": {
                 "unit": unit,
@@ -1379,9 +1395,7 @@ def _workflow(a, run: str) -> dict:
             iters=a.iters,
             warmup=a.warmup,
             board=a.board,
-            matrix=(
-                (a.matrix_unit, a.matrix_config, a.matrix_support_target) if a.matrix_unit else None
-            ),
+            matrix=((a.matrix_unit, a.matrix_config, a.matrix_support_target) if a.matrix_unit else None),
         )
     else:
         return compile_oot(
