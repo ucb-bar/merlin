@@ -30,7 +30,6 @@ a final manual step if that is how it is being sent.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import shutil
@@ -52,6 +51,9 @@ from merlin.mining.registry import load_rvv_package  # noqa: E402
 from merlin.runtime import boards, elf_audit  # noqa: E402
 from merlin.runtime.backends import zephyr_model as zm  # noqa: E402
 from merlin.runtime.boards import CONSOLE_HTIF  # noqa: E402
+
+#: The RVV schedule package every image is lowered with (--rvv-package overrides it).
+RVV_PACKAGE = repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8"
 
 #: How each board is loaded and run, in ITS OWN flow. Quoted from the board's own repo so the authors
 #: recognise it, rather than a command we invented.
@@ -423,7 +425,7 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
 
     # The SAME package, features and int8 datapath the Zephyr path uses. Not optional: lowering the raw
     # bundle here scored cos 0.925 on deepjscc, which the prepared path gets bit-exact.
-    pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
+    pkg = load_rvv_package(RVV_PACKAGE)
     # Size the arena to THIS model, the way the Zephyr path already does. spike_model defaults to a
     # fixed 256 MB, which silently decides which models can run: whisper needs 319 MB live at its
     # encoder attention and died here as `*** FAILED *** (tohost = 2055)` -- no message, no named
@@ -525,7 +527,7 @@ def build_board_only(
     and ELF-level property. The package records that no console reference exists for these binaries
     rather than implying one.
     """
-    pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
+    pkg = load_rvv_package(RVV_PACKAGE)
     if brd.flow == boards.FLOW_BAREMETAL:
         # Respect the board's FLOW. Skipping the simulation must not also silently change which
         # harness the image is built with: a board whose SDK has no RTOS cannot run a Zephyr image,
@@ -640,7 +642,7 @@ def build_one(
     # (which carry the vector -march), but does take the per-op register blocking, which is what makes
     # the arithmetic right rather than what makes it vector.
     vec = backend == "rvv"
-    pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
+    pkg = load_rvv_package(RVV_PACKAGE)
     tune = (
         dict(rvv_schedule=pkg.schedule_text, cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=vlen) if vec else {}
     )
@@ -963,91 +965,36 @@ def build_matrix(
     """
     if not support_target:
         raise ValueError("matrix routing requires an explicit support_target")
-    from merlin.kernels.decode import opu as unit_audit
     from merlin.llvmlower.impr_features import OPU_MATMUL_NAME
-    from merlin.targetgen.plugins import load_declared
+    from merlin.runtime.backends.matrix_image import build_matrix_pair
 
-    provider = load_declared(support_target, "matrix_lowering")
-    encodings = provider.derive_encodings(provider.load_contract(unit)).encodings
-    pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
-    tune = dict(rvv_schedule=pkg.schedule_text, cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=vlen)
+    pkg = load_rvv_package(RVV_PACKAGE)
     refs = {"fp32": np.load(bundle / "golden.npy")}
     if (bundle / "golden_w8a8.npy").is_file():
         refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
     cpus = zm.image_cpus(brd, harts)
     routing = zm.MatrixRouting(unit=unit, config=config, support_target=support_target)
-
-    def build(*, stand_in: bool, dbg: bool, where: str):
-        return zm.build_app(
-            bundle,
-            work / where,
-            board=brd.name,
-            backend="rvv",
-            rvv_hart=0,
-            cpus=cpus,
-            int8_compute=True,
-            features=frozenset([PEROP_BLOCK_NAME, OPU_MATMUL_NAME]),
-            n_harts=harts,
-            sdk_dir=sdk_dir,
-            debug=dbg,
-            matrix=routing,
-            matrix_scalar_tile=stand_in,
-            **tune,
-        )
-
-    ship_where, twin_where = f"board_h{harts}", f"twin_h{harts}"
-    ship = build(stand_in=False, dbg=False, where=ship_where)
-    twin = build(stand_in=True, dbg=False, where=twin_where)
-
-    # What has to match is the LOWERING -- the model object and the weights -- because that is what the
-    # twin's grade is a statement about. The image-level `build_hash` deliberately folds in the app
-    # configuration as well, and the twin's app genuinely differs: it compiles the shim with the
-    # stand-in selected. Comparing that instead would reject a correct pair, which is exactly what it
-    # did the first time this ran.
-    def lowering_digest(where: str) -> str:
-        h = hashlib.sha256()
-        h.update((work / where / "model.o").read_bytes())
-        h.update((work / where / "cgen" / "weights.bin").read_bytes())
-        return h.hexdigest()[:16]
-
-    ship_lowering, twin_lowering = lowering_digest(ship_where), lowering_digest(twin_where)
-    if ship_lowering != twin_lowering:
-        raise RuntimeError(
-            f"the stand-in twin lowers to {twin_lowering} against the shipped image's {ship_lowering}; "
-            "they are not the same lowering, so grading the twin would say nothing about what ships"
-        )
-
-    # The anti-cheat, in both directions. An image carrying NONE of the unit's instructions computes
-    # correct answers on the host core and passes every numerical check, which is the most comfortable
-    # way for a matrix-unit delivery to be wrong; and a twin that carries them is not a stand-in.
-    counts = {k: int(v) for k, v in sorted((unit_audit.audit_object(ship["elf"], encodings).counts or {}).items()) if v}
-    if not counts:
-        raise RuntimeError(f"the shipped image contains NONE of {unit}'s instructions")
-    # Count by VALUE, not by key: the audit returns an entry per instruction whether or not it occurs,
-    # so a clean image comes back as `{OPMACC: 0, ...}` -- a dict that is perfectly truthy and made this
-    # reject its own correct twin the first time it ran.
-    twin_counts = {k: int(v) for k, v in (unit_audit.audit_object(twin["elf"], encodings).counts or {}).items() if v}
-    if twin_counts:
-        raise RuntimeError(
-            f"the stand-in twin contains the unit's instructions ({twin_counts}), so it is not a stand-in"
-        )
-
-    # The DIAGNOSTIC build, audited the same way and for the same reason. It is the image someone falls
-    # back to when the plain one misbehaves on hardware nobody has run, so a diagnostic build that lost
-    # the routing is the worst outcome available: it would run, print a clean trace, grade correctly on
-    # the host core, and prove nothing about the unit. Built here rather than by the caller so the audit
-    # cannot be skipped by whoever asks for it.
-    dbg = build(stand_in=False, dbg=True, where=f"board_h{harts}_dbg") if debug else None
-    dbg_counts = (
-        {}
-        if dbg is None
-        else {k: int(v) for k, v in sorted((unit_audit.audit_object(dbg["elf"], encodings).counts or {}).items()) if v}
+    # The shipped image, its stand-in twin and the diagnostic build, with the checks that make the pair
+    # meaningful (same lowering; the shipped and diagnostic images carry the unit's instructions and the
+    # twin carries none) -- one implementation shared with `merlin-compile --matrix-unit`.
+    pair = build_matrix_pair(
+        bundle,
+        work,
+        board=brd.name,
+        harts=harts,
+        cpus=cpus,
+        routing=routing,
+        features=frozenset([PEROP_BLOCK_NAME, OPU_MATMUL_NAME]),
+        rvv_schedule=pkg.schedule_text,
+        cflags=pkg.cflags + zm._CFLAGS_COMMON,
+        vlen=vlen,
+        sdk_dir=sdk_dir,
+        debug=debug,
     )
-    if dbg is not None and not dbg_counts:
-        raise RuntimeError(
-            f"the diagnostic build of this image contains NONE of {unit}'s instructions, "
-            "so the build someone falls back to on a bad run would not exercise the unit"
-        )
+    ship, twin, dbg = pair.ship, pair.twin, pair.debug
+    ship_where = pair.ship_dir.name
+    ship_lowering = pair.lowering_digest
+    counts, dbg_counts = pair.unit_instruction_counts, pair.debug_instruction_counts
 
     if simulate:
         res = zm.run_on_spike(
@@ -1080,6 +1027,7 @@ def build_matrix(
         **_matrix_facts(ship.get("matrix_build")),
         # What was routed, from this image's own sidecar rather than from a number measured elsewhere.
         "routing": _routing_facts(work / ship_where, routing),
+        "routing_report": pair.report,
         # What actually matches between the two images. The image-level build_hash folds in the app
         # configuration, which legitimately differs -- the twin compiles the shim with the stand-in.
         "lowering_digest": ship_lowering,
@@ -1163,6 +1111,13 @@ def main(argv=None) -> int:
         "--matrix-config",
         default=None,
         help="the elaborated hardware configuration to derive the tile geometry from. Required by --matrix-harts.",
+    )
+    ap.add_argument(
+        "--rvv-package",
+        type=Path,
+        default=None,
+        help="the RVV schedule package to lower every image with (default: the tracked "
+        "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8)",
     )
     ap.add_argument("--timeout", type=int, default=14400)
     ap.add_argument(
@@ -1258,6 +1213,9 @@ def main(argv=None) -> int:
         "$MERLIN_FIRESIM_EVIDENCE_BOARD (process env or .env).",
     )
     a = ap.parse_args(argv)
+    global RVV_PACKAGE
+    if a.rvv_package is not None:
+        RVV_PACKAGE = a.rvv_package.resolve()
 
     if not a.refresh and a.matrix_harts.strip() and not (a.matrix_unit and a.matrix_config and a.matrix_support_target):
         ap.error("--matrix-harts needs --matrix-unit, --matrix-config and --matrix-support-target")
