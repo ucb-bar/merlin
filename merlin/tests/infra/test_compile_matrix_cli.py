@@ -129,3 +129,57 @@ def test_a_multi_hart_block_that_does_not_lower_is_re_derived_once(tmp_path, mon
     )
     assert len(calls) == 2 and "narrow" in calls[1] and "wide" not in calls[1]
     assert out["harts_split_block_retry"] == {"tried": ["wide"], "used": ["narrow"]}
+
+
+_NOTHING = {
+    "routed_contractions": 0,
+    "not_routed_contractions": 3,
+    "not_routed_by_reason": {"declined by the selector": 3},
+    "opu_mac_share": 0.0,
+    "not_routed": [{"why": "declined by the selector: min(M=8, N=2048) < tile edge 64"}],
+}
+
+
+def test_a_model_with_nothing_to_route_says_why_and_builds_no_twin(tmp_path, monkeypatch):
+    """A decode-length token count leaves every contraction smaller than one tile. That used to surface as
+    "the shipped image contains NONE of the unit's instructions" -- true, and silent about why -- after a
+    stand-in twin had been built for an image that could never ship."""
+    built = []
+
+    def fake_build(bundle, work, **kw):
+        built.append(kw["matrix_scalar_tile"])
+        Path(work).mkdir(parents=True, exist_ok=True)
+        return {"elf": Path(work) / "zephyr.elf"}
+
+    provider = SimpleNamespace(
+        load_contract=lambda unit: None, derive_encodings=lambda c: SimpleNamespace(encodings={})
+    )
+    routing = SimpleNamespace(unit="unit_a", provider=lambda: provider)
+    monkeypatch.setattr("merlin.runtime.boards.board", lambda name: SimpleNamespace(check_matrix_image=lambda h: None))
+    monkeypatch.setattr(zm, "build_app", fake_build)
+    monkeypatch.setattr(matrix_image, "_audit", lambda elf, enc: {})
+    monkeypatch.setattr(matrix_image, "routing_report", lambda build_dir, routing: dict(_NOTHING))
+    with pytest.raises(matrix_image.NothingRouted, match=r"min\(M=8, N=2048\) < tile edge 64") as raised:
+        matrix_image.build_matrix_pair(
+            Path("bundle"), tmp_path, board="b", harts=1, cpus=2, routing=routing, features=frozenset(),
+            rvv_schedule="s", cflags=[],
+        )  # fmt: skip
+    assert built == [False]  # the shipped image only: no twin for an image that cannot ship
+    assert raised.value.report_path.is_file()
+
+
+def test_merlin_compile_reports_a_model_with_nothing_to_route(tmp_path, monkeypatch):
+    def nothing(bundle, work, **kw):
+        raise matrix_image.NothingRouted("unit_a", dict(_NOTHING), tmp_path / "routing_report.json")
+
+    monkeypatch.setattr(matrix_image, "build_matrix_pair", nothing)
+    monkeypatch.setattr(zm, "run_on_spike", lambda *a, **k: pytest.fail("simulated an image that was not built"))
+    monkeypatch.setattr(zm, "image_cpus", lambda brd, harts: harts)
+    monkeypatch.setattr("merlin.runtime.boards.board", lambda n: SimpleNamespace(vlen=512, dram_base=0))
+    out = compile_cli._compile_matrix(
+        {}, Path("b"), tmp_path, SimpleNamespace(schedule_text="s", cflags=[]), [], {}, board="b", harts=1,
+        iters=1, warmup=0, timeout=1, matrix=("unit_a", "c", "t"),
+    )  # fmt: skip
+    assert out["status"] == "not_routed" and "tile edge 64" in out["reason"]
+    assert out["matrix"]["routed_contractions"] == 0
+    assert out["matrix"]["not_routed_by_reason"] == {"declined by the selector": 3}

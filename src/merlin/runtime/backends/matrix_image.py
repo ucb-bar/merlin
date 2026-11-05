@@ -41,6 +41,25 @@ class MatrixPair:
     ship_dir: Path
 
 
+class NothingRouted(RuntimeError):
+    """The selector routed no contraction of this model to the unit, so there is no matrix image to ship.
+
+    Not a build failure: every contraction was declined for a stated reason (typically smaller than one
+    tile -- a decode-length token count, say), and a "matrix" image would be the RVV image under another
+    name. Carries the routing report (also written beside the build) so a caller can say WHY rather than
+    only that the image carries none of the unit's instructions.
+    """
+
+    def __init__(self, unit: str, report: dict[str, Any], report_path: Path) -> None:
+        self.report, self.report_path = report, report_path
+        reasons = "; ".join(f"{n}x {why}" for why, n in (report.get("not_routed_by_reason") or {}).items())
+        example = next((str(r.get("why")) for r in report.get("not_routed") or []), "")
+        super().__init__(
+            f"nothing routed to {unit}: {report.get('not_routed_contractions', 0)} contraction(s) declined "
+            f"({reasons or 'no contraction found'}" + (f", e.g. {example})" if example else ")")
+        )
+
+
 def _audit(elf: Path, encodings: dict) -> dict[str, int]:
     from merlin.kernels.decode import opu as unit_audit
 
@@ -127,9 +146,10 @@ def build_matrix_pair(
 ) -> MatrixPair:
     """Build the shipped image, its stand-in twin and (optionally) the diagnostic build, and check them.
 
-    Raises ``RuntimeError`` when the twin is not the same lowering, when the shipped (or diagnostic)
-    image carries none of the unit's instructions, or when the twin carries any; ``BoardRegistryError``
-    when ``harts`` would reach a hart the board does not list among its ``matrix_harts``.
+    Raises :class:`NothingRouted` when the selector routed no contraction (its report says why);
+    ``RuntimeError`` when the twin is not the same lowering, when the shipped (or diagnostic) image
+    carries none of the unit's instructions though contractions were routed, or when the twin carries any;
+    ``BoardRegistryError`` when ``harts`` would reach a hart the board does not list among its ``matrix_harts``.
     """
     # A routed image splits its tile loop over every worker, so each must sit on a hart that HAS the unit
     # (a heterogeneous SoC can give a hart a vector unit and no matrix unit). Refused before any build;
@@ -164,17 +184,24 @@ def build_matrix_pair(
 
     ship_where, twin_where = f"board_h{harts}", f"twin_h{harts}"
     ship = build(stand_in=False, dbg=False, where=ship_where)
-    twin = build(stand_in=True, dbg=False, where=twin_where)
     ship_dir = work / ship_where
+    counts = _audit(ship["elf"], encodings)
+    report = routing_report(ship_dir, routing)
+    (ship_dir / ROUTING_REPORT).write_text(json.dumps(report, indent=2), encoding="utf-8")
+    if not counts and not report.get("routed_contractions"):
+        raise NothingRouted(routing.unit, report, ship_dir / ROUTING_REPORT)  # before building a twin for it
+    if not counts:
+        raise RuntimeError(
+            f"the shipped image contains NONE of {routing.unit}'s instructions, though the routing report "
+            f"says {report.get('routed_contractions')} contraction(s) were routed"
+        )
+    twin = build(stand_in=True, dbg=False, where=twin_where)
     digest, twin_digest = _lowering_digest(ship_dir), _lowering_digest(work / twin_where)
     if digest != twin_digest:
         raise RuntimeError(
             f"the stand-in twin lowers to {twin_digest} against the shipped image's {digest}; they are not "
             "the same lowering, so grading the twin would say nothing about what ships"
         )
-    counts = _audit(ship["elf"], encodings)
-    if not counts:
-        raise RuntimeError(f"the shipped image contains NONE of {routing.unit}'s instructions")
     twin_counts = _audit(twin["elf"], encodings)
     if twin_counts:
         raise RuntimeError(f"the stand-in twin contains the unit's instructions ({twin_counts}); it is not a stand-in")
@@ -185,6 +212,4 @@ def build_matrix_pair(
             f"the diagnostic build contains NONE of {routing.unit}'s instructions, so the build someone falls "
             "back to on a bad run would not exercise the unit"
         )
-    report = routing_report(ship_dir, routing)
-    (ship_dir / ROUTING_REPORT).write_text(json.dumps(report, indent=2), encoding="utf-8")
     return MatrixPair(ship, twin, dbg, digest, counts, dbg_counts, report, ship_dir)

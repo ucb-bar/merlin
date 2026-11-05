@@ -17,7 +17,7 @@ def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, 
     from merlin.llvmlower.impr_features import OPU_MATMUL_NAME
     from merlin.runtime.backends import output_identity
     from merlin.runtime.backends import zephyr_model as zm
-    from merlin.runtime.backends.matrix_image import ROUTING_REPORT, build_matrix_pair
+    from merlin.runtime.backends.matrix_image import ROUTING_REPORT, NothingRouted, build_matrix_pair
     from merlin.runtime.boards import board as _board_desc
 
     unit, config, support = matrix
@@ -43,6 +43,20 @@ def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, 
 
     try:
         pair = _pair(feats)
+    except NothingRouted as none:
+        # Not an error to hide behind "the image carries none of the unit's instructions": the model has
+        # nothing the unit takes, and the report says which contractions were declined and why.
+        out.update(status="not_routed", reason=str(none))
+        out["matrix"] = {
+            "unit": unit,
+            "config": config,
+            "support_target": support,
+            "routing_report": str(none.report_path),
+            "routed_contractions": 0,
+            "opu_mac_share": none.report.get("opu_mac_share"),
+            "not_routed_by_reason": none.report.get("not_routed_by_reason"),
+        }
+        return out
     except Exception as exc:  # noqa: BLE001
         # Same fallback as the RVV route: a contraction left on the vector unit is split across harts
         # before the schedule runs, and the un-narrowed register block may not lower on the per-hart tile.
