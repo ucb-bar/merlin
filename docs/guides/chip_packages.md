@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-11-04
 related: [target_resolution, adding_a_target, zephyr, model2mlir]
-code_refs: [src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, build_tools/scripts/vendor_support.py]
+code_refs: [src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, src/merlin/targetgen/rtl/matrix_isa.py, src/merlin/kernels/matrix_shim.py, src/merlin/compile_cli.py, build_tools/scripts/vendor_support.py]
 ---
 
 # Chip packages layered on a base target
@@ -17,7 +17,7 @@ provider that `extends` a base provider and inherits everything else:
 ```
 rvv-mlir        base: RVV contract (vector unit, dtypes, requant)       examples/rvv/support
  ├── kodiak-mlir   + BME outer-product unit, + Kodiak boards             examples/kodiak/support
- └── iris-mlir     + Iris config and boards (VME unit next)              examples/iris/support
+ └── iris-mlir     + VME/Xsfmm matrix unit, + Iris boards                examples/iris/support
 ```
 
 Each package is its own repository; Merlin vendors a copy of each at `examples/<chip>/support` with
@@ -100,3 +100,34 @@ build with `--matrix-unit/--matrix-config/--matrix-support-target`, on both `mer
 
 Only contractions whose operands are exactly A(M,K)·B(K,N) are routed. A transposed operand stays on
 the vector unit and is reported.
+
+### What Merlin gives a matrix unit, and what the package brings
+
+| Merlin (generic) | the chip package |
+|---|---|
+| `targetgen.rtl.matrix_isa`: encodings as MATCH/MASK pairs from a decode table (`props` keys) and `BitPat` declarations, cross-checked against an `.insn r` header and optionally a simulator's `MATCH_*`/`MASK_*` table; geometry from the vector unit whose params enable the unit | `contracts/matrix_units.yaml`: which files and declaration names to read (addresses, never values) |
+| `kernels.matrix_shim`: the memref-descriptor bridge, the K-major pack of A, the dense/aligned/fits checks with a counted scalar fallback, batched entries | the kernel: one C function `(c, at, b, bias, m, n, k)` with K-major operands, and its scalar stand-in |
+| `kernels.decode.opu`: the audit, matching a word on exactly the bits its decoder looks at | the roles and pairs naming which derived instruction is which |
+| `matrix_image.build_matrix_pair`, `routing_report.json`, the twin gate | `device_simulator(unit=, config=)` (optional): a simulator that executes the unit |
+
+An instruction is identified by the bits its decoder reads, not by `(opcode, funct3, funct6)`: a unit
+can keep several instructions in one funct6 slot and tell them apart by `rs2` (Iris's `sf.vtzero.t`,
+`sf.vtmv.v.t` and `sf.vtdiscard` do), and the host core declares its configuration instructions as whole
+32-bit patterns. Bits the RTL decoder ignores but an `.insn r` must spell (a `vm` bit) come from the
+author's header and are recorded as such.
+
+### Harts without the unit
+
+A board can say which harts carry the matrix unit with `matrix_hart_ids` (default: every hart a vector
+image may use). A routed image splits its tile loop over every worker, so `build_matrix_pair` refuses a
+matrix image (and its twin) whose workers would include another hart. Iris declares `[0, 1]`: its third hart has
+a vector unit (Rocket's DMA unit) and no matrix unit.
+
+### Running the shipped image
+
+When the package's plugin declares `device_simulator`, `merlin-compile --matrix-unit ... --run spike` also
+runs the SHIPPED image on that simulator with the unit's ISA extensions and gates it
+(`matrix.shipped_on_simulator` in the result). Declared but absent, the leg is `not_run` with the reason;
+it never falls back to a simulator without the unit. Iris declares upstream riscv-isa-sim with Zvt (pin
+`spike_zvt`, binary `$MERLIN_SPIKE_ZVT`); Kodiak declares none, so its shipped image is gated only by the
+audit and the twin.
