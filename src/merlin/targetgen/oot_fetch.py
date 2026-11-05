@@ -7,6 +7,10 @@ already picks such a package up with zero env once it sits in the generated-targ
 (``out/build/generated/<target>/``). This module is the missing verb: it FETCHES that repo into the
 home, so ``merlin-target-fetch <target>`` is all it takes to plug a published target in.
 
+A layered package (``provider.yaml`` with ``extends``, see :mod:`merlin.targetgen.provider_compose`) is
+fetched together with its base: :func:`fetch_chain` follows ``extends`` and checks each base out at the
+exact commit the layer pins, into the base's own generated-target home.
+
 Each champion experiment is a *branch* of the target's repo (the default branch is the target base,
 carrying the reference backend + contract; a champion branch forks from it and adds a codegen
 payload). ``--champion <branch>`` selects one.
@@ -146,6 +150,56 @@ def fetch(
     return dest
 
 
+def _pin_commit(dest: Path, commit: str) -> None:
+    """Move a fetched checkout to ``commit`` (detached), fetching just that commit if it is absent."""
+    if _run_git(["rev-parse", "HEAD"], cwd=dest) == commit:
+        return
+    try:
+        _run_git(["cat-file", "-e", f"{commit}^{{commit}}"], cwd=dest)
+    except FetchError:
+        _run_git(["fetch", "--depth", "1", "origin", commit], cwd=dest)
+    _check_contract(commit, dest)
+    _run_git(["checkout", "--detach", "--no-overwrite-ignore", "-q", commit], cwd=dest)
+    _run_git(["update-ref", _FETCHED_REF, commit], cwd=dest)
+
+
+def fetch_chain(
+    target: str,
+    *,
+    champion: str | None = None,
+    dest: Path | None = None,
+    url: str | None = None,
+    depth: int = 1,
+    update: bool = True,
+    max_depth: int = 8,
+) -> list[Path]:
+    """Fetch ``target`` and, following ``provider.yaml`` ``extends``, every base it is layered on.
+
+    Returns the roots, the requested package first. A base is cloned from the ``repo`` its layer names
+    (else the URL template) into its own generated-target home and checked out at the layer's pinned
+    ``commit`` when one is declared. A cycle or an over-long chain raises :class:`FetchError`.
+    """
+    from .providers import ProviderError, read_provider
+
+    roots = [fetch(target, champion=champion, dest=dest, url=url, depth=depth, update=update)]
+    seen = {target}
+    while True:
+        try:
+            layer = read_provider(roots[-1], materialized=False)
+        except ProviderError as exc:
+            raise FetchError(str(exc)) from exc
+        if layer is None or layer.extends is None:
+            return roots
+        base = layer.extends
+        if base.target in seen or len(roots) > max_depth:
+            raise FetchError(f"extends chain from {target!r} loops or exceeds {max_depth}: {sorted(seen)}")
+        seen.add(base.target)
+        root = fetch(base.target, url=base.repo or repo_url(base.target), depth=depth, update=update)
+        if base.commit is not None:
+            _pin_commit(root, base.commit)
+        roots.append(root)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="merlin-target-fetch",
@@ -158,24 +212,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--depth", type=int, default=1, help="clone depth (default 1)")
     ap.add_argument("--no-update", action="store_true", help="do not re-fetch an existing clone")
     ap.add_argument("--print-url", action="store_true", help="print the resolved URL and exit")
+    ap.add_argument("--no-base", action="store_true", help="do not follow provider.yaml extends to fetch bases")
     args = ap.parse_args(argv)
 
     if args.print_url:
         print(args.url or repo_url(args.target))
         return 0
+    kwargs = dict(champion=args.champion, dest=args.dest, url=args.url, depth=args.depth, update=not args.no_update)
     try:
-        root = fetch(
-            args.target,
-            champion=args.champion,
-            dest=args.dest,
-            url=args.url,
-            depth=args.depth,
-            update=not args.no_update,
-        )
+        roots = [fetch(args.target, **kwargs)] if args.no_base else fetch_chain(args.target, **kwargs)
     except FetchError as exc:
         print(f"merlin-target-fetch: {exc}", file=sys.stderr)
         return 1
-    print(root)
+    for root in roots:
+        print(root)
     return 0
 
 

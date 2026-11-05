@@ -211,3 +211,36 @@ def test_unsafe_ref_refuses_before_clone(tmp_path, ref):
     with pytest.raises(oot_fetch.FetchError):
         oot_fetch.fetch("fixturenpu", url=(tmp_path / "absent").as_uri(), dest=dest, champion=ref)
     assert not dest.exists()
+
+
+def test_fetch_chain_brings_the_pinned_base(tmp_path, monkeypatch):
+    """A layered package names its base; fetching it also fetches the base at the pinned commit."""
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
+    base = _make_target_repo(tmp_path / "base", name="fixturebase")
+    pinned = _git(["rev-parse", "HEAD"], base)
+    (base / "NEWER").write_text("a later commit the layer did not compose against\n", encoding="utf-8")
+    _git(["add", "-A"], base)
+    _git(["commit", "-q", "-m", "newer"], base)
+
+    layer = tmp_path / "layer"
+    layer.mkdir()
+    _git(["init", "-q", "-b", "main"], layer)
+    _git(["config", "user.email", "t@t"], layer)
+    _git(["config", "user.name", "t"], layer)
+    (layer / "contracts").mkdir()
+    (layer / "contracts" / "target_contract.yaml").write_text("name: fixturechip\n", encoding="utf-8")
+    (layer / "contracts" / "overlay.yaml").write_text("{}\n", encoding="utf-8")
+    (layer / "provider.yaml").write_text(
+        "schema: merlin.provider.v2\nid: fixturechip-support\ntarget: fixturechip\nrole: support\n"
+        f"extends:\n  target: fixturebase\n  repo: file://{base}\n  commit: {pinned}\n",
+        encoding="utf-8",
+    )
+    _git(["add", "-A"], layer)
+    _git(["commit", "-q", "-m", "layer"], layer)
+
+    roots = oot_fetch.fetch_chain("fixturechip", url=f"file://{layer}", depth=50)
+    assert [r.name for r in roots] == ["fixturechip", "fixturebase"]
+    assert _git(["rev-parse", "HEAD"], roots[1]) == pinned
+    assert not (roots[1] / "NEWER").exists()
+    # The CLI prints both roots; --no-base prints only the layer.
+    assert oot_fetch.main(["fixturechip", "--url", f"file://{layer}", "--depth", "50", "--no-base"]) == 0
