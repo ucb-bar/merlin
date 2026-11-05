@@ -197,11 +197,46 @@ def _run_shipped_on_device_simulator(pair, routing, brd, *, cpus: int, timeout: 
         "output_identity": output_identity.output_identity(res),
         **_sim_meta(sim),
     }
+    output = res.get("output") if res.get("output") is not None else res.get("prefix")
+    if output is None or not len(output):
+        return {**got, "status": "run_failed", "reason": (res.get("console") or "")[-1500:]}
+    if not refs and twin is None:
+        return got
+    ok = True
     if refs:
-        g = zm._gate(res["output"] if res.get("output") is not None else res["prefix"], refs)
+        g = zm._gate(output, refs)
         got["verify"] = {"gate_ok": bool(g.get("ok")), "of": "shipped image", **g}
-        got["status"] = "verified" if g.get("ok") else "run_mismatch"
+        ok = bool(g.get("ok"))
+    if twin is not None:
+        ok = _compare_with_twin(got, res, twin) and ok
+    got["status"] = "verified" if ok else "run_mismatch"
     return got
+
+
+def _compare_with_twin(got: dict, res: dict, twin: dict) -> bool:
+    """Record whether the shipped image's output equals the twin's to the bit (prefix and whole-tensor hash).
+
+    One lowering, two tile bodies, so any difference is the kernel or the unit's datapath (or its model).
+    """
+    import numpy as np
+
+    a, b = res.get("prefix"), twin.get("prefix")
+    same_prefix = a is not None and b is not None and len(a) == len(b) and bool(np.array_equal(a, b))
+    hashes = (res.get("out_hash"), twin.get("out_hash"))
+    same_hash = None if None in hashes else hashes[0] == hashes[1]
+    got["bit_exact_vs_twin"] = same_prefix and same_hash is not False
+    got["twin_compare"] = {
+        "prefix_equal": same_prefix,
+        "out_hash_equal": same_hash,
+        "elements": 0 if a is None else len(a),
+    }
+    if not got["bit_exact_vs_twin"] and a is not None and b is not None and len(a) == len(b):
+        diff = np.flatnonzero(np.asarray(a) != np.asarray(b))
+        if diff.size:
+            i = int(diff[0])
+            got["twin_compare"]["first_difference"] = {"index": i, "shipped": a[i].item(), "twin": b[i].item()}
+            got["twin_compare"]["differing_prefix_elements"] = int(diff.size)
+    return bool(got["bit_exact_vs_twin"])
 
 
 def _sim_meta(sim: dict) -> dict:
@@ -216,8 +251,6 @@ def _run_shipped_on_spike_extension(pair, routing, brd, *, cpus: int, timeout: i
     bytes or raises; a raise is ``not_run`` with its reason. The model computes what the unit computes and
     says nothing about its timing, so the cycles recorded are spike's, not the unit's.
     """
-    import numpy as np
-
     from merlin.runtime.backends import spike as spike_backend
     from merlin.runtime.backends import zephyr_model as zm
     from merlin.targetgen import spike_extension as SE
@@ -271,16 +304,6 @@ def _run_shipped_on_spike_extension(pair, routing, brd, *, cpus: int, timeout: i
     if twin is not None:
         # Same lowering, two tile bodies: on a correct unit the outputs agree to the bit, on the dumped
         # prefix and on the whole-tensor hash.
-        a, b = res.get("prefix"), twin.get("prefix")
-        same_prefix = a is not None and b is not None and len(a) == len(b) and bool(np.array_equal(a, b))
-        hashes = (res.get("out_hash"), twin.get("out_hash"))
-        same_hash = None if None in hashes else hashes[0] == hashes[1]
-        got["bit_exact_vs_twin"] = same_prefix and same_hash is not False
-        got["twin_compare"] = {
-            "prefix_equal": same_prefix,
-            "out_hash_equal": same_hash,
-            "elements": 0 if a is None else len(a),
-        }
-        ok = ok and got["bit_exact_vs_twin"]
+        ok = _compare_with_twin(got, res, twin) and ok
     got["status"] = "verified" if ok else "run_mismatch"
     return got
