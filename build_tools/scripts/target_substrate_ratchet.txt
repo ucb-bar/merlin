@@ -5,7 +5,6 @@
 build_tools/scripts/check_fact_provenance.py  # cyclotron
 build_tools/scripts/check_repro_env.py  # k1
 build_tools/scripts/harvest_xnnpack_fixtures.py  # k1
-build_tools/scripts/make_delivery.py  # kodiak
 build_tools/scripts/rvv_chia_beam.py  # k1
 merlin/python/merlin/baselines/buddy.py  # spacemit
 merlin/python/merlin/baselines/executorch.py  # spacemit

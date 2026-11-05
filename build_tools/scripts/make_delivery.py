@@ -58,42 +58,6 @@ RVV_PACKAGE = repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_
 #: How each board is loaded and run, in ITS OWN flow. Quoted from the board's own repo so the authors
 #: recognise it, rather than a command we invented.
 LOADER_DOC = {
-    "chipyard_kodiak": """\
-```bash
-# 1. reset the board (Arduino-style controller on /dev/ttyUSB0 @ 9600; sends "all", waits "Completed: all")
-python3 scripts/send_all.py
-
-# 2. load + run + capture the console over UART-TSI + FESVR
-pyuartsi --port /dev/ttyUSB2 --elf <THIS.elf> --load --hart0_msip --fesvr \\
-         --baudrate 57600 --cflush_addr 0x2010200 --selfcheck
-```
-The run ends by itself: the image calls `sys_reboot()`, which the SoC turns into an HTIF `tohost=1`, and
-the loader prints `DUT forcefuly exit`. Everything between the banner and `DONE` is what we need back.
-
-If your `tools/pyuartsi` is the pinned submodule (`c1bbb3a`), invoke it as `python3 -m pyuartsi` and drop
-`--use_symbols` — that version has neither the console-script entry point nor that flag.
-
-### Please raise `--baudrate` for the large images
-
-The `57600` above is what your own `scripts/run_experiments.py` uses, and it is what the upload column
-in the table below assumes. At that rate the loader moves about **5.6 KB/s**, so the biggest model spends
-**hours** on the wire before a single instruction executes — with `--fesvr` polling `tohost` in a loop
-that has no timeout, so from the outside that is indistinguishable from a hang — an image whose UPLOAD
-alone outlasts your harness timeout is reported as a failure that no rebuild can fix.
-
-`pyuartsi`'s serial layer takes the baud straight through to pyserial, and its own `Baudrate` enum goes
-to 4000000. At **921600** the same image is ~16x quicker. If a higher rate is not reliable on your
-setup, please tell us what is and we will quote honest numbers against it, and start with the smallest
-image in the table.
-
-### Keep the loader attached for the WHOLE run
-
-This board's console is HTIF, which is not a self-contained UART: the image writes a word and waits for a
-host to acknowledge it, and on this link that host is `pyuartsi --fesvr` itself. So stay attached, at the
-baud you loaded with, until `DONE`. If you load and detach, the image will appear to hang in its very
-first print — no banner, no `STAGE`, no fault — while it is in fact computing correctly and waiting for
-someone to read it. That failure looks exactly like a dead image and it is the one we would most like you
-not to spend a day on.""",
     "gemmelos_bearly25": """\
 **Output comes out of UART0 at 115200 baud, 8 data bits, 2 stop bits** — the same console your own
 `printf` uses on a `PLATFORM=CHIP` build. Open that terminal first, then load:
@@ -1065,7 +1029,7 @@ def build_matrix(
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--board", required=True, help="Zephyr board (e.g. chipyard_kodiak)")
+    ap.add_argument("--board", required=True, help="Zephyr board, from the selected MERLIN_BOARD_CATALOG")
     ap.add_argument(
         "--models",
         default="spectformer,deepjscc,lstmnetvit",
@@ -2212,108 +2176,23 @@ def _verdict(b: dict) -> str:
     return "not simulated" if b.get("spike_cycles") is None else "see status"
 
 
-#: Prepended when the console had to be corrected. Someone who already tried an earlier build and got
-#: nothing needs to know WHY before they spend bench time on another one -- and needs to be able to
-#: check the claim rather than take it on faith.
-KODIAK_VSTATE_DOC = """\
-## Why every multi-hart image failed last time, and what changed
-
-Your table was the shape of the diagnosis: **every `h1` PASSED and every `h2`/`h3` FAILED**,
-deterministically. Your trap logs are the proof, and they are worth more than the table — thank you
-for them. All of this is our bug.
-
-`mcause: 2` is an illegal instruction, and `mtval` is the instruction that took it. Both of yours
-decode to the same thing:
-
-```
-mtval 0xcd827057   (deepjscc h2, mepc 0x8001d794)
-mtval 0xcd817057   (whisper  h2, mepc 0x80079cf8)
-   opcode[6:0]   = 0x57   OP-V  — a vector instruction
-   funct3[14:12] = 111    OPCFG — the vsetvli family
-   bits[31:30]   = 11            vsetivli
-```
-
-`vsetivli` is the instruction that *begins* every RVV block. Two different models, two different PCs,
-the identical instruction — that is not an unsupported opcode or a bad encoding, it is a vector unit
-that was **off** when the code reached its first vector instruction.
-
-Here is why it was off. Our generated config did not set `CONFIG_RISCV_ISA_EXT_V`, so Zephyr never put
-`mstatus.VS` into a thread's initial mstatus and never saved or restored vector state across a context
-switch. The single-worker image survives that because it enables VS by hand and then never
-context-switches again. A multi-hart image calls `merlin_omp_init`, which creates and joins a probe
-thread per hart and then creates the pool — so the **master** switches out and comes back with
-VS = Off, and traps on its own share of the first parallel region. Your `mepc` values land exactly
-there.
-
-What then made it unreadable was ours too: the fault was reported, and the run never **ended**. HTIF
-kept polling to no exit, so from outside a trap and a hang looked the same. Zephyr's default handler
-halts the faulting CPU and stops; it never terminates in the console protocol. Every image here now
-prints `FAIL fatal reason= hart= mcause= mepc= mtval= vs= build_hash=` followed by `DONE`, so a
-crashed run is a finished, attributable, gradeable run instead of a log that just stops.
-
-The reason we had those two settings was a stale note in our own board descriptor, which described the
-Zephyr your **`kodiak` branch** pins (submodule `5a06eb0d`). We build against the `dev` pin
-(`852bb170`), two commits later, which contains *"riscv: decouple V/F save-restore + add
-RISCV_V_KERNEL_ONLY"* — there, `v.c` compiles under `CONFIG_RISCV_ISA_EXT_V` independently of
-`FPU_SHARING`, exactly as its CMakeLists comment says. We had simply never re-checked.
-
-What these images use instead is **your own working sample's configuration** —
-`samples/q8_gemm_minmax/prj.conf` on the `kodiak` branch, the one with a checked-in `ref-out`:
-`CONFIG_RISCV_ISA_EXT_V=y`, `CONFIG_RISCV_VECTOR_MAX_LEN=512`, `CONFIG_FPU_SHARING=n`.
-Belt and braces, the OpenMP shim now re-arms `mstatus.VS` at every parallel-region entry including the
-master's, so the image is correct even where Zephyr is not managing it.
-
-Your probe run settled the vector length independently, so it is no longer taken on trust from a
-config file: `vlenb 64` is **VLEN = 512 bits**, and your `vlmax_e8 64` / `vlmax_e32 16` are exactly
-what 512 predicts. Everything here is built for that.
-
-**We could not reproduce the trap in any simulator**, and that is worth saying plainly rather than
-implying the fix is tested: neither spike nor the vector RTL we run on FireSim enforces `mstatus.VS`, so
-both ran the broken image perfectly. Your two `mtval` values are the only direct evidence that exists, which
-is why they mattered so much. Every image here now reports the state itself — look for
-`METRIC hart<N>_mstatus_vs`. A `2` or `3` means Zephyr is managing vector state; a `0` would mean we
-are back where we started.
-
-### The other failure mode in your logs, which we have NOT explained
-
-Three runs — `deepjscc h3 scalar`, `spectformer h2`, `whisper h3 scalar` — produced **no Zephyr banner
-at all** before the log ended. That is not the vector-state bug: those images had not reached any of
-our code yet, so the fix above does not address them and we are not going to pretend otherwise.
-
-The explanation we find most likely is that the capture ended before the upload did. `pyuartsi` sends
-the loadable sections over the serial link, and at the **57600** baud in your `run_experiments.py` that
-is minutes to tens of minutes before the first instruction executes — the estimate for each image is in
-the table above. If your harness timeout is shorter than that, the log ends exactly the way yours did:
-ELF loaded, hart kicked, silence, EOF.
-
-Two things would confirm or kill that theory in one round:
-
-1. **Raise the baud.** 921600 is 16× faster and `pyuartsi` only transmits `SHT_PROGBITS`, not the
-   zero-fill, so nothing else has to change.
-2. **Run `vlen_probe.elf` and the `_debug` twin of one of the three.** The probe is 10 KB and uploads
-   instantly; if it banners and the big image does not, the difference is transport, not the image.
-
-If the banner is still missing with a generous timeout at a high baud, tell us — that is a different
-bug and we would want the log.
-
-"""
+#: A board's OWN delivery text -- how it is loaded, and the history of its last failures -- ships beside the
+#: catalog that declares the board, as ``<catalog dir>/delivery/<board>/{loader,history}.md``. A chip
+#: package's ``boards.yaml`` is such a catalog, so the words addressed to that chip's owners live with the
+#: chip, not in this generic script. History is keyed by descriptor name only (never by Zephyr port and
+#: never defaulted): it addresses a conversation that a second configuration of the same port was never
+#: part of. The loader text also falls back to the port, since how an image is loaded belongs to the link.
+def _board_doc(brd, kind: str) -> str:
+    names = (brd.name,) if kind == "history" else (brd.name, brd.zephyr_board)
+    selection = os.environ.get(boards.BOARD_CATALOG_ENV) or ""
+    for name in (n for n in names if n):
+        for catalog in boards.catalog_paths(selection) if selection else ():
+            doc = catalog.parent / "delivery" / name / f"{kind}.md"
+            if doc.is_file():
+                return doc.read_text(encoding="utf-8")
+    return ""
 
 
-#: A board's OWN bring-up history, keyed by descriptor name -- deliberately not by Zephyr port and not
-#: defaulted. The text addresses a conversation ("your table", "your trap logs") that a second
-#: configuration built against the same port was never part of, so inheriting it would put words in a
-#: recipient's mouth about runs they never did.
-KODIAK_UPLOAD_DOC = """\
-### Two corrections to the upload times we sent last time
-
-Both ours. We quoted them from `MemSiz` at 921600 baud. Your loader transmits only `SHT_PROGBITS`
-sections — so the byte count was too *high* — and you run it at 57600 — so the rate was 16x too
-*optimistic*. The table below fixes both. We think this, not the compiled code, is why `whisper_tiny`
-came back FAIL on every hart count: at that baud its upload alone outlasts any reasonable timeout.
-
-"""
-
-HISTORY_DOC = {"chipyard_kodiak": KODIAK_VSTATE_DOC + KODIAK_UPLOAD_DOC}
 
 
 SUPERSEDED_DOC = """\
@@ -2438,9 +2317,14 @@ def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
     # the port and the link, not to how many cores the design has, so a descriptor that shares
     # `zephyr_board` with a documented one would otherwise ship the generic paragraph and read as a
     # different, unsupported flow.
-    loader = LOADER_DOC.get(brd.name) or LOADER_DOC.get(brd.zephyr_board or "") or LOADER_DOC["default"]
+    loader = (
+        _board_doc(brd, "loader")
+        or LOADER_DOC.get(brd.name)
+        or LOADER_DOC.get(brd.zephyr_board or "")
+        or LOADER_DOC["default"]
+    )
     # Each board gets the explanation of ITS last failure, not a generic one.
-    superseded_doc = SUPERSEDED_DOC if brd.sdk_chip else HISTORY_DOC.get(brd.name, "")
+    superseded_doc = SUPERSEDED_DOC if brd.sdk_chip else _board_doc(brd, "history")
     debug_doc = DEBUG_DOC + _debug_tail(manifest, brd) if any(b.get("debug") for b in manifest["binaries"]) else ""
     # Say what was actually checked for THIS board's console. Claiming a `.htif` check on a board whose
     # console is its own UART is both wrong and exactly the kind of detail that erodes trust in the

@@ -5,16 +5,24 @@ host-assisted (HTIF) console served by its own loader. That combination is what 
 building one model three different ways for one chip, and proving each of them before anyone touches the
 board.
 
-Board facts live in [`merlin/python/merlin/runtime/boards.py`](../../merlin/python/merlin/runtime/boards.py)
-as data (`chipyard_kodiak`), not in code — see [`docs/guides/adding_a_target.md`](../../docs/guides/adding_a_target.md).
+Kodiak's support (the OPU, its boards, its RTL source) is the **Kodiak chip package**, vendored at
+[`support/`](support/) from `ucb-bar/kodiak-mlir`. It is a layer on the RVV base (`examples/rvv/support`,
+from `ucb-bar/rvv-mlir`): see [`docs/guides/chip_packages.md`](../../docs/guides/chip_packages.md). The
+boards (`chipyard_kodiak`, `kodiak_opu_2core`, `firesim_kodiak_opu`) are data in
+[`support/boards.yaml`](support/boards.yaml); the field meanings are on `Board` in
+`src/merlin/runtime/boards.py`.
 
 ```bash
 ./run.sh preflight
 ./run.sh probe
-./run.sh build            # add --full for the shipped matrix (hours)
-./run.sh package
-./run.sh grade <console.txt>
+./run.sh capture <model>          # any model model2MLIR can capture, + its W8A8 golden
+./run.sh build [--opu] [--models <model>]   # add --full for the shipped matrix (hours)
+./run.sh package [--opu] [--models <model>]
+./run.sh grade <console.txt> [model]
 ```
+
+Running on the chip itself (a shared rig: check it is idle first) is in
+[`support/RUNNING.md`](support/RUNNING.md).
 
 ## 1. `probe` — ask the chip what it is, before uploading megabytes
 
@@ -59,6 +67,38 @@ before it can ship. Two things that gate catches, both of which have shipped bro
   ships now without a gate behind it.
 - **`h1` and `hN` disagreeing.** The packager checks the multi-hart output is bit-identical to the
   single-hart one, so a fan-out bug cannot hide behind a cosine that is merely close.
+
+## 2b. `--opu` — route the big int8 matmuls to the outer-product unit
+
+Kodiak's Saturn units carry an int8 **outer-product unit** (OPU, pin `saturn_opu_int8`). With `--opu`,
+`build`/`package` also produce images whose int8 contractions with both M and N at least one tile
+(64 on Kodiak) call the OPU kernel from the Kodiak package. Everything else stays on RVV.
+
+No simulator here executes the OPU, so each OPU image is gated through its **stand-in twin**, which is
+the same lowering (checked by digest) with a scalar tile body. The twin is what spike runs against the
+W8A8 golden. The shipped ELF is audited to contain the OPU's instructions and the twin to contain none.
+The OPU datapath itself is certified separately on its RTL (`merlin.kernels.opu_cert`).
+
+Every OPU build writes `routing_report.json` next to the image:
+
+* `routed_contractions` and `opu_mac_share`: how much of the model the OPU sees. This bounds the
+  speedup, and it is the first thing to read for a new model.
+* `not_routed_by_reason`: why the rest did not go. Usually "smaller than one tile", sometimes a
+  transposed weight (those are refused, never routed with the wrong layout).
+
+`MERLIN_CHIPYARD` must point at a chipyard whose `generators/saturn` carries the OPU: the encodings
+and the tile geometry are derived from it.
+
+**Bring your own model.** `./run.sh capture <model>` writes `recaptures/<model>_int8_full` and its
+W8A8 golden. Use a model2MLIR roster name, or `--loader path/to/loader.py` with a
+`get_model_and_inputs()` (see `docs/guides/model2mlir.md`). Then
+`./run.sh build --opu --models <model>`. For a single image without packaging:
+
+```bash
+merlin-compile --workload <model> --dtype int8 --target rvv --board chipyard_kodiak --harts 2 \
+  --matrix-unit saturn_opu --matrix-config KodiakOPUConfig --matrix-support-target kodiak \
+  --run spike --verify
+```
 
 ## 3. What simulation cannot tell you
 

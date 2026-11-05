@@ -194,7 +194,9 @@ def test_a_configurations_loader_instructions_come_from_the_port_it_is_built_aga
     md = _load_packager()
     brd, man = _manifest([_matrix_binary()])
     txt = md._readme(brd, man)
-    assert md.LOADER_DOC[brd.zephyr_board].split("\n")[1] in txt
+    loader = md._board_doc(brd, "loader")
+    assert loader, "the port's loader text ships beside the catalog that declares it"
+    assert loader.split("\n")[1] in txt
 
 
 def test_a_configuration_does_not_inherit_another_boards_bring_up_history():
@@ -205,7 +207,9 @@ def test_a_configuration_does_not_inherit_another_boards_bring_up_history():
     brd, man = _manifest([_matrix_binary()])
     txt = md._readme(brd, man)
     assert "Your trap logs" not in txt
-    assert md.HISTORY_DOC["chipyard_kodiak"] not in txt
+    assert md._board_doc(brd, "history") == ""
+    port_history = md._board_doc(boards.board(brd.zephyr_board), "history")
+    assert port_history and port_history not in txt
 
 
 def test_the_diagnostic_build_of_a_matrix_image_is_audited_and_named():
@@ -251,7 +255,9 @@ def test_the_loader_section_does_not_name_models_a_package_may_not_ship():
     """It documents the LINK, and it is now shared by more than one configuration of the same port. Naming
     one package's models there recommends a binary the recipient does not have."""
     md = _load_packager()
-    doc = md.LOADER_DOC["chipyard_kodiak"]
+    brd, _man = _manifest([_matrix_binary()])
+    doc = md._board_doc(brd, "loader")
+    assert doc
     for model in md.STATUS:
         assert model not in doc, f"the loader doc names {model}"
 

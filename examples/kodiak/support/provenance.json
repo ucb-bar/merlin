@@ -19,8 +19,8 @@
     {
       "path": "opu_shim.py",
       "source": "examples/saturn/support/opu_shim.py@e45205bf90d3fe7652404fd361128a062fad9d31",
-      "change": "copied",
-      "sha256": "bd34b52a64f1cb82c8253b6735e8709a9cd745c8f2131e257502a2f34d866d7b"
+      "change": "copied; build_object sizes KernelSpec.pad_k_max to the deepest routed K",
+      "sha256": "705083efef4f7fb1ca38587354fcf86c2f0257aba4c24bcfb2ade13e30858d1d"
     },
     {
       "path": "matrix_lowering.py",

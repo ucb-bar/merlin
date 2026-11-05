@@ -746,10 +746,13 @@ def build_object(
 
     tile_edge, alignment = contract.geometry(config)
 
+    # The partial-N padding must cover every routed reduction: a call deeper than its scratch falls back
+    # to the unpadded tail, which the taped-out unit computes wrong. Sized from what this build routes.
+    deepest_k = max((int(sig[-1]) for sig in signatures.values()), default=1)
     unit_src = emit_translation_unit(
         derived.encodings,
         signatures,
-        spec=contract.spec(),
+        spec=contract.spec(pad_k_max=max(deepest_k, KernelSpec.pad_k_max)),
         alignment_bytes=alignment,
         derivation_ok=derived.ok,
         scratch_bytes=scratch_bytes,

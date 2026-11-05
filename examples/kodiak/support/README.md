@@ -44,6 +44,20 @@ examples/kodiak/run.sh build --opu --models <model>
 examples/kodiak/run.sh package --opu --models <model>
 ```
 
+One model at one hart count, without packaging:
+
+```sh
+merlin-compile --workload <model> --dtype int8 --target rvv --board chipyard_kodiak --harts 2 \
+  --matrix-unit saturn_opu --matrix-config KodiakOPUConfig --matrix-support-target kodiak \
+  --run spike --verify
+```
+
+No simulator here executes the OPU, so the run is the image's **stand-in twin**: the same lowering
+(checked by digest) with the OPU tile replaced by a scalar loop. That checks the routing, the K-major
+pack, the call ABI and the requant epilogue; the OPU datapath itself is certified on its RTL
+(`merlin.kernels.opu_cert`). The shipped ELF is audited to contain the OPU's instructions, and the twin
+to contain none.
+
 Every build writes `routing_report.json`, which lists which contractions went to the OPU and why the
 others did not (too small for a 64×64 tile, transposed operand, dtype...). Read it before expecting a
 speedup: a model whose matmuls are smaller than one tile runs entirely on RVV.

@@ -206,8 +206,8 @@ def test_target_name_gate_flags_a_newly_registered_target(tmp_path):
 
 def test_substrate_literal_is_flagged_but_its_own_module_is_exempt(tmp_path):
     gate = _load_gate("check_no_target_name")
-    planted = _write(tmp_path, "planted.py", 'BOARD = "kodiak"\nSIM = "cyclotron"\n')
-    assert {name for _ln, name, _snip in gate._scan_file(planted, gate.SUBSTRATE_NAMES)} == {"kodiak", "cyclotron"}
+    planted = _write(tmp_path, "planted.py", 'BOARD = "spacemit"\nSIM = "cyclotron"\n')
+    assert {name for _ln, name, _snip in gate._scan_file(planted, gate.SUBSTRATE_NAMES)} == {"spacemit", "cyclotron"}
     assert gate._substrate_owned("build_tools/scripts/k1_int8_fair_compare.py", "k1")
     assert gate._substrate_owned("merlin/python/merlin/llvmlower/passes_opu.py", "opu")
     assert not gate._substrate_owned("merlin/python/merlin/compare/spec.py", "k1")
