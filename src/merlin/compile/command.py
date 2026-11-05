@@ -93,6 +93,18 @@ def parser(
         help="board name for RVV execution or an explicitly selected bare-metal --model-build",
     )
     ap.add_argument(
+        "--matrix-unit",
+        help="rvv int8: ALSO route large int8 contractions to this matrix unit (a unit the support "
+        "provider declares). Builds the shipped image plus a scalar stand-in twin and gates the twin, "
+        "since no functional simulator executes the unit; needs --matrix-config and "
+        "--matrix-support-target",
+    )
+    ap.add_argument("--matrix-config", help="the elaborated hardware configuration the unit's geometry is read from")
+    ap.add_argument(
+        "--matrix-support-target",
+        help="the support provider (on MERLIN_TARGET_PATH or vendored) that owns the matrix_lowering plugin",
+    )
+    ap.add_argument(
         "--corpus-descriptor",
         type=Path,
         help="explicit OOT corpus descriptor; prefer a released descriptor (this CLI does not verify its seal)",
@@ -191,6 +203,14 @@ def validate(ap: argparse.ArgumentParser, a: argparse.Namespace) -> None:
     elif a.target == "rvv" and a.run == "gsim":
         ap.error("RVV gsim execution requires an explicit --model-build and matching board")
 
+    matrix = (a.matrix_unit, a.matrix_config, a.matrix_support_target)
+    if any(matrix):
+        if not all(matrix):
+            ap.error("--matrix-unit, --matrix-config and --matrix-support-target are given together")
+        if a.target != "rvv" or a.dtype != "int8":
+            ap.error("matrix routing applies to --target rvv --dtype int8")
+        if a.run not in ("spike", "zephyr") or a.board is None:
+            ap.error("matrix routing builds a Zephyr image and gates its twin: use --run spike|zephyr --board")
     if a.model_preflight and (a.target == "rvv" or not a.capture_bundle or not a.deployment_dtype):
         ap.error("--model-preflight requires an OOT --target, --capture-bundle, and --deployment-dtype")
     if not (a.model_preflight or a.model_build) and not a.workload:

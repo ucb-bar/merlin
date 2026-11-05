@@ -274,8 +274,13 @@ def compile_rvv(
     device: Any | None = None,
     selected_host_dts_required: bool = False,
     expected_board_target: str | None = None,
+    matrix: tuple[str, str, str] | None = None,
 ) -> dict:
     """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden).
+
+    ``matrix=(unit, config, support_target)`` also routes large int8 contractions to that matrix unit:
+    the shipped image cannot run on any functional simulator, so its scalar stand-in twin (same lowering)
+    is what runs and is graded, and the result names both ELFs and the routing report.
 
     ``kernel_backend='mesh'`` + ``mesh_target`` runs the model's matmul LAYERS on that target's
     accelerator mesh (host dispatch runtime, each matmul injected onto the mesh oracle)."""
@@ -572,6 +577,9 @@ def compile_rvv(
             out["reason"] = "Zephyr/spike toolchain unavailable (ZEPHYR_BASE / SDK / MERLIN_CHIPYARD)"
             return out
         feats = _workload_features(pkg, bundle, out)
+        if matrix is not None:
+            return _compile_matrix(out, bundle, work, pkg, feats, refs, board=board, harts=harts,
+                                   iters=iters, warmup=warmup, timeout=timeout, matrix=matrix)
 
         def _build(fs):
             return zm.build_app(
@@ -758,6 +766,71 @@ def compile_rvv(
         return out
     out["status"] = "not_run"
     out["reason"] = f"run mode {run!r} not supported for rvv (use none|k1|spike|zephyr|verilator)"
+    return out
+
+
+def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, iters, warmup, timeout, matrix) -> dict:
+    """The matrix-unit leg of ``compile_rvv``: shipped image + stand-in twin, the twin gated on spike."""
+    from .llvmlower.impr_features import OPU_MATMUL_NAME
+    from .runtime.backends import zephyr_model as zm
+    from .runtime.backends.matrix_image import ROUTING_REPORT, build_matrix_pair
+    from .runtime.boards import board as _board_desc
+
+    unit, config, support = matrix
+    brd = _board_desc(board)
+    routing = zm.MatrixRouting(unit=unit, config=config, support_target=support)
+    cpus = zm.image_cpus(brd, harts)
+    pair = build_matrix_pair(
+        bundle,
+        work,
+        board=board,
+        harts=harts,
+        cpus=cpus,
+        routing=routing,
+        features=frozenset([*feats, OPU_MATMUL_NAME]),
+        rvv_schedule=pkg.schedule_text,
+        cflags=pkg.cflags + [flag for flag in zm._CFLAGS_COMMON if flag not in pkg.cflags],
+        vlen=brd.vlen,
+        iters=iters,
+        warmup=warmup,
+    )
+    out.update(
+        {
+            "status": "compiled",
+            "binary": str(pair.ship["elf"]),
+            "twin_binary": str(pair.twin["elf"]),
+            "matrix": {
+                "unit": unit,
+                "config": config,
+                "support_target": support,
+                "lowering_digest": pair.lowering_digest,
+                "unit_instruction_counts": pair.unit_instruction_counts,
+                "routing_report": str(pair.ship_dir / ROUTING_REPORT),
+                "routed_contractions": pair.report.get("routed_contractions"),
+                "opu_mac_share": pair.report.get("opu_mac_share"),
+                "not_routed_by_reason": pair.report.get("not_routed_by_reason"),
+            },
+        }
+    )
+    res = zm.run_on_spike(
+        pair.twin["elf"],
+        dram_base=brd.dram_base,
+        harts=cpus,
+        mem_bytes=pair.twin["ram_bytes"],
+        timeout=timeout,
+        vlen=brd.vlen,
+    )
+    out["status"] = "ran"
+    # NOT the shipped image's cycles: the twin replaces the unit with a scalar loop.
+    out["matrix"]["twin_spike_cycles"] = res.get("metrics", {}).get("cycles")
+    out["matrix"]["gated_via"] = (
+        "scalar stand-in twin on spike: same lowering (lowering_digest) as the shipped image, so the routing, "
+        "pack, descriptor ABI and epilogue are checked; the unit's datapath is certified on its RTL"
+    )
+    if refs:
+        g = zm._gate(res["prefix"], refs)
+        out["verify"] = {"gate_ok": bool(g.get("ok")), "of": "stand-in twin", **g}
+        out["status"] = "verified" if g.get("ok") else "run_mismatch"
     return out
 
 
@@ -1305,6 +1378,9 @@ def _workflow(a, run: str) -> dict:
             iters=a.iters,
             warmup=a.warmup,
             board=a.board,
+            matrix=(
+                (a.matrix_unit, a.matrix_config, a.matrix_support_target) if a.matrix_unit else None
+            ),
         )
     else:
         return compile_oot(
