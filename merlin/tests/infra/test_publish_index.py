@@ -147,3 +147,27 @@ def test_recertification_republishes_at_the_same_version(tmp_path, monkeypatch):
     assert "if branch_existed and _head_fingerprint(clone_dir) == fingerprint:" in src
     # ... and an already-published tag is never re-pointed (consumers may have pinned it)
     assert "if tag not in existing_tags:" in src
+
+
+def test_a_default_branch_that_is_the_base_provider_is_kept(bare_remote, tmp_path, monkeypatch):
+    """When main carries the target's support provider (the base that chip packages extend), republishing
+    the index regenerates only the README: replacing main with a bare landing page would delete the base."""
+    monkeypatch.setattr(P, "_git_sha_full", lambda: "a" * 40)
+    monkeypatch.setattr(P, "git_sha7", lambda: "aaaaaaa")
+    monkeypatch.setattr(P, "_check_gate", lambda selection: (True, "synthetic routing fixture"))
+    seed = tmp_path / "provider-seed"
+    _git("clone", bare_remote, str(seed))
+    (seed / "contracts").mkdir()
+    (seed / "contracts" / "target_contract.yaml").write_text("name: rvv\n")
+    (seed / "provider.yaml").write_text("schema: merlin.provider.v1\nid: rvv-support\ntarget: rvv\nrole: support\n")
+    _git("add", "--", ".", cwd=seed)
+    _git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "base provider", cwd=seed)
+    _git("push", "origin", "main", cwd=seed)
+
+    res = P.publish_index("rvv", remote=bare_remote, dry_run=False)
+    assert any("support provider: kept" in a for a in res["actions"]), res["actions"]
+    clone = tmp_path / "after"
+    _git("clone", bare_remote, str(clone))
+    assert (clone / "provider.yaml").is_file() and (clone / "contracts" / "target_contract.yaml").is_file()
+    readme = (clone / "README.md").read_text()
+    assert "base `rvv` layer" in readme and "stable/impr_tuned_wholemodel_vf_int8" in readme
