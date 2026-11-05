@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -57,6 +58,69 @@ def bundle_dir(name: str) -> Path:
     return recaptures_dir() / f"{name}_int8_full"
 
 
+def declared_deps(workload_dir: Path) -> list[str]:
+    """The libraries a workload says its loader imports: ``deps`` in the ``capture.toml`` beside it.
+
+    model2MLIR's roster declares them per model (``workloads/<model>/capture.toml``), and a ``--loader``
+    directory may carry the same file. Absent or unreadable: nothing declared.
+    """
+    import tomllib
+
+    toml = Path(workload_dir) / "capture.toml"
+    try:
+        return [str(d) for d in (tomllib.loads(toml.read_text(encoding="utf-8")).get("deps") or [])]
+    except (OSError, ValueError):
+        return []
+
+
+#: Run INSIDE the capture interpreter: sort each requirement into satisfied / missing / conflicting.
+_DEPS_PROBE = """
+import json, sys
+from importlib import metadata
+from packaging.requirements import Requirement
+out = {"ok": [], "missing": [], "conflict": []}
+for text in json.loads(sys.argv[1]):
+    req = Requirement(text)
+    try:
+        have = metadata.version(req.name)
+    except metadata.PackageNotFoundError:
+        out["missing"].append(text)
+        continue
+    out["ok" if req.specifier.contains(have, prereleases=True) else "conflict"].append(f"{text} (have {have})")
+print(json.dumps(out))
+"""
+
+
+def ensure_capture_deps(py: Path, deps: list[str], *, workload: str) -> None:
+    """Make the capture interpreter able to import what the workload declares, or say exactly why not.
+
+    The capture venv ``setup`` builds carries model2MLIR's own stack, not every model's libraries, and a
+    roster workload whose own venv is absent falls back to it: TinyLlama, Gemma and Whisper then failed
+    deep inside the loader on ``import transformers``. A declared requirement that is simply missing is
+    installed (``uv pip install``); one that would REPLACE an installed version -- a model pinning its own
+    torch, say -- is refused, because changing the shared venv under every other model is not this
+    capture's call to make.
+    """
+    if not deps:
+        return
+    probe = subprocess.run([str(py), "-c", _DEPS_PROBE, json.dumps(deps)], capture_output=True, text=True)
+    if probe.returncode != 0:
+        raise SystemExit(f"cannot check {workload}'s declared deps {deps} in {py}:\n{probe.stderr[-1500:]}")
+    got = json.loads(probe.stdout.strip().splitlines()[-1])
+    if got["conflict"]:
+        raise SystemExit(
+            f"{workload} declares {got['conflict']}, which the capture venv ({py}) has at another version. "
+            f"Give it its own venv (the `venv` key of its capture.toml) rather than changing the shared one."
+        )
+    if not got["missing"]:
+        return
+    if shutil.which("uv") is None:
+        raise SystemExit(f"{workload} needs {got['missing']} in {py}; install them: uv pip install --python {py} ...")
+    print(f"[capture] {workload} declares {got['missing']}, which {py} lacks: installing", flush=True)
+    if _run(["uv", "pip", "install", "--python", py, *got["missing"]]).returncode != 0:
+        raise SystemExit(f"installing {got['missing']} into {py} failed; see the output above")
+
+
 def capture(name: str, loader: Path | None, *, env: dict | None = None) -> Path:
     bundle = bundle_dir(name)
     m2m = _env("MERLIN_M2M_DIR")
@@ -66,6 +130,7 @@ def capture(name: str, loader: Path | None, *, env: dict | None = None) -> Path:
         m2m_py = _env("MERLIN_M2M_PYTHON")
         if not m2m_py:
             raise SystemExit("set MERLIN_M2M_PYTHON to the model2MLIR venv's python")
+        ensure_capture_deps(Path(m2m_py), declared_deps(Path(loader).parent), workload=name)
         cmd = [
             m2m_py,
             "src/merlin/targetgen/_m2m_capture_worker.py",
@@ -88,6 +153,7 @@ def capture(name: str, loader: Path | None, *, env: dict | None = None) -> Path:
             capture_py = _capture_python(Path(m2m), name)
         except RuntimeError as exc:
             raise SystemExit(str(exc)) from None
+        ensure_capture_deps(capture_py, declared_deps(Path(m2m) / "workloads" / name), workload=name)
         cmd = [
             capture_py,
             Path(m2m) / "workloads" / "capture_consistent.py",

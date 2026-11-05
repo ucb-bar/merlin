@@ -173,3 +173,61 @@ def test_the_twin_is_not_simulated_again_when_its_answer_was_recorded(tmp_path, 
     result["matrix"]["twin_output_identity"] = output_identity.output_identity(twin)
     got = flow.matrix_on_spike("op_x", _args(), result)
     assert got["status"] == "run_mismatch" and got["twin_compare"]["out_hash_equal"] is False
+
+
+def test_a_workload_declares_its_capture_deps_beside_its_loader(tmp_path):
+    flow = _load("chip_flow")
+    (tmp_path / "capture.toml").write_text('deps = ["libone", "libtwo>=2"]\n', encoding="utf-8")
+    assert flow.declared_deps(tmp_path) == ["libone", "libtwo>=2"]
+    assert flow.declared_deps(tmp_path / "absent") == []
+
+
+def _probe_says(monkeypatch, verdict):
+    import json
+    import subprocess
+
+    def probe(cmd, **kw):
+        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(verdict), stderr="")
+
+    monkeypatch.setattr(subprocess, "run", probe)
+
+
+def test_a_missing_declared_dep_is_installed_into_the_capture_venv(tmp_path, monkeypatch):
+    """A roster model whose own venv is absent falls back to the shared capture venv, which carries
+    model2MLIR's stack and not every model's libraries: TinyLlama failed there on `import transformers`."""
+    import shutil
+    import subprocess
+
+    flow = _load("chip_flow")
+    _probe_says(monkeypatch, {"ok": [], "missing": ["libone"], "conflict": []})
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/" + name)
+    installs = []
+
+    def run(cmd, **kw):
+        installs.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(flow, "_run", run)
+    flow.ensure_capture_deps(tmp_path / "py", ["libone"], workload="w")
+    assert installs == [["uv", "pip", "install", "--python", str(tmp_path / "py"), "libone"]]
+
+
+def test_a_declared_dep_that_would_replace_an_installed_version_is_refused(tmp_path, monkeypatch):
+    flow = _load("chip_flow")
+    _probe_says(monkeypatch, {"ok": [], "missing": [], "conflict": ["torch==1.0 (have 2.9)"]})
+    monkeypatch.setattr(flow, "_run", lambda *a, **k: pytest.fail("changed the shared venv"))
+    with pytest.raises(SystemExit, match="its own venv"):
+        flow.ensure_capture_deps(tmp_path / "py", ["torch==1.0"], workload="w")
+
+
+def test_a_roster_capture_uses_the_configured_capture_interpreter(tmp_path, monkeypatch):
+    """`run.sh setup` builds the capture venv OUTSIDE the model2MLIR checkout and records it as
+    MERLIN_M2M_PYTHON; a roster capture that ignored it ran under merlin's own interpreter (no torch)."""
+    from merlin.compile.bundles import _capture_python
+
+    (tmp_path / "workloads" / "somemodel").mkdir(parents=True)
+    py = tmp_path / "venv" / "bin" / "python"
+    py.parent.mkdir(parents=True)
+    py.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setenv("MERLIN_M2M_PYTHON", str(py))
+    assert _capture_python(tmp_path, "somemodel") == py
