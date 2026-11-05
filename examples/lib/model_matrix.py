@@ -145,10 +145,27 @@ def summarize(cell: dict) -> dict:
             if on.get("status") == "run_mismatch":
                 why = f"bit_exact_vs_twin={on.get('bit_exact_vs_twin')}; {_why(row['shipped']['gate'])}"
             problems.append(f"shipped image on the unit model: {on.get('status')} {str(why)[:300]}".rstrip())
+    # The image's memory budget: why it fits the board (rvv: the image; matrix: the shipped image).
+    cell["memory"] = res.get("memory") or (res.get("matrix") or {}).get("ship_memory")
     cell.update(row)
     cell["problems"] = problems
     cell["status"] = "PASS" if not problems else "FAIL"
     return cell
+
+
+def _memory_cell(memory: dict | None) -> str:
+    """``sum > arena + heap / region`` in MiB: the buffers' sum, what the plan seats them in, the region."""
+    if not memory:
+        return "n/a"
+
+    def mib(v) -> str:
+        return "?" if v is None else f"{int(v) / 2**20:.0f}"
+
+    heap = (memory.get("heap_residue") or {}).get("bytes")
+    return (
+        f"{mib(memory.get('allocation_sum_bytes'))} > {mib(memory.get('arena_bytes'))}+{mib(heap)} "
+        f"/ {mib(memory.get('region_bytes'))}"
+    )
 
 
 def _why(gate: dict) -> str:
@@ -207,10 +224,13 @@ def table(cells: list[dict], board: str) -> str:
         "Every cell is gated on spike against the bundle's W8A8 golden (`cos`, `rel` = max abs error / max "
         "|ref|, `max_rel` = per-element). `cycles` are spike's (functional: instructions retired, not "
         "time); for `matrix` they are the shipped image's on the unit's functional model, which does not "
-        "model the unit's timing. `share` is the matrix unit's share of the model's contraction MACs.",
+        "model the unit's timing. `share` is the matrix unit's share of the model's contraction MACs. "
+        "`memory` is MiB: the sum of the model's buffers > the static arena they are planned into + the heap "
+        "residue / the region the image is linked for.",
         "",
-        "| model | harts | leg | status | cos | rel | max_rel | cycles | = h1 | share | routed | not routed (why) |",
-        "|---|---:|---|---|---:|---:|---:|---:|---|---:|---:|---|",
+        "| model | harts | leg | status | cos | rel | max_rel | cycles | = h1 | share | routed | memory "
+        "| not routed (why) |",
+        "|---|---:|---|---|---:|---:|---:|---:|---|---:|---:|---|---|",
     ]
     for c in sorted(cells, key=lambda c: (c["model"], c["harts"], LEGS.index(c["leg"]))):
         g = c.get("gate") or {}
@@ -226,7 +246,8 @@ def table(cells: list[dict], board: str) -> str:
             f"| {_fmt(g.get('w8a8_rel'), '.4g')} | {_fmt(g.get('w8a8_max_rel'), '.4g')} | {_fmt(c.get('cycles'), ',')} "
             f"| {'-' if 'identical_to' not in c else ('yes' if ident else ('NO' if ident is False else '?'))} "
             f"| {_fmt(r.get('opu_mac_share'), '.4f') if c['leg'] == 'matrix' else ''} "
-            f"| {r.get('routed_contractions', '') if c['leg'] == 'matrix' else ''} | {why} |"
+            f"| {r.get('routed_contractions', '') if c['leg'] == 'matrix' else ''} | {_memory_cell(c.get('memory'))} "
+            f"| {why} |"
         )
     lines += ["", "## Problems", ""]
     any_problem = False

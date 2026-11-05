@@ -473,7 +473,7 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
 #: Keys `zephyr_model.build_app` returns that describe an image's MEMORY DEMAND. Forwarded explicitly by
 #: every wrapper, because a wrapper that hand-picks its return silently drops them -- and then the arena
 #: check downstream compares against zero and passes an image it never examined.
-MEMORY_KEYS = ("allocation_bytes_total", "allocation_dynamic_calls", "activation_peak_bytes")
+MEMORY_KEYS = ("allocation_bytes_total", "allocation_dynamic_calls", "activation_peak_bytes", "memory")
 
 
 def _keep_memory(b: dict) -> dict:
@@ -856,6 +856,26 @@ def _memory_facts(build: dict, rep) -> dict:
         out["activation_peak_mb"] = round(int(build["activation_peak_bytes"]) / 2**20, 1)
     if need and arena < need:
         out["arena_short_mb"] = round((need - arena) / 2**20, 1)
+    plan = build.get("memory") or {}
+    if plan:
+        # The plan's own terms, so a recipient sees WHY the image fits: what the model's buffers add up
+        # to, the most of them live at once, the static arena they were seated in, and the region.
+        def mb(v):
+            return None if v is None else round(int(v) / 2**20, 1)
+
+        out["plan"] = {
+            "policy": plan.get("policy"),
+            "buffers_sum_mb": mb(plan.get("allocation_sum_bytes")),
+            "peak_live_mb": mb(plan.get("peak_live_bytes")),
+            "static_arena_mb": mb(plan.get("arena_bytes")),
+            "heap_residue_mb": mb((plan.get("heap_residue") or {}).get("bytes")),
+            "weights_mb": mb(plan.get("weights_bytes")),
+            "code_mb": mb(plan.get("code_bytes")),
+            "need_mb": mb(plan.get("need_bytes")),
+            "region_mb": mb(plan.get("region_bytes")),
+            "dram_mb": mb(plan.get("dram_bytes")),
+            "fits": plan.get("fits"),
+        }
     return out
 
 

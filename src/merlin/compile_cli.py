@@ -660,6 +660,10 @@ def compile_rvv(
         # The identity the image prints as `METRIC build_hash`: a console returned from a board or
         # FireSim is matched to THIS binary by it, so a stale ELF cannot be graded as this one.
         out["build_hash"] = b.get("build_hash")
+        # Why the image does or does not fit its board: buffers summed vs the peak live vs the planned
+        # arena vs the region it was linked for (zephyr_memory.MemoryBudget).
+        if b.get("memory"):
+            out["memory"] = b["memory"]
         out["status"] = "compiled"
         if run == "verilator":
             sim = zm.verilator_sim(board=board)

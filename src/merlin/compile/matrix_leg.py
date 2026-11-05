@@ -93,6 +93,8 @@ def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, 
                 "spike_harts": cpus,
                 "ship_ram_bytes": pair.ship.get("ram_bytes"),
                 "twin_ram_bytes": pair.twin.get("ram_bytes"),
+                # The shipped image's memory budget (zephyr_memory): buffers summed, peak, arena, region.
+                "ship_memory": pair.ship.get("memory"),
                 # WHICH revision of the unit's sources the encodings and geometry were derived from (pins
                 # verified, drift listed): a verdict about this image is a verdict about that revision.
                 "provenance": (pair.ship.get("matrix_build") or {}).get("provenance"),
