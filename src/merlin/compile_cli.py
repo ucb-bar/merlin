@@ -293,6 +293,7 @@ def compile_rvv(
 
     from .mining import k1
     from .mining.registry import load_rvv_package
+    from .runtime.backends import output_identity
     from .runtime.backends import zephyr_model as zm
 
     # ``timeout`` is the budget for the complete subprocess session.  The generated harness owns
@@ -684,6 +685,9 @@ def compile_rvv(
                 res.update(zm._gate(res["prefix"], refs))
         out["status"] = "ran"
         out["cycles"] = res.get("metrics", {}).get("cycles")
+        # The answer's identity (whole-tensor hash + prefix digest), so a caller can tell whether two
+        # images -- 1 vs N harts, shipped vs twin -- computed the same bits without simulating again.
+        out["output_identity"] = output_identity.output_identity(res)
         if res.get("sustained"):
             out["sustained"] = res["sustained"]
             out["iter_cycles"] = list(res.get("iter_cycles", ()))

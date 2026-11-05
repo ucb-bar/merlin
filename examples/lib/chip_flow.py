@@ -163,6 +163,7 @@ def matrix_on_spike(name: str, args, matrix: dict) -> dict:
     different ``.so`` raises rather than running something else. A target that declares none is skipped,
     and says so -- plain spike would take an illegal instruction on the first unit opcode.
     """
+    from merlin.runtime.backends import output_identity
     from merlin.runtime.backends import spike as spike_backend
     from merlin.runtime.backends import zephyr_model as zm
     from merlin.runtime.boards import board as board_desc
@@ -209,16 +210,26 @@ def matrix_on_spike(name: str, args, matrix: dict) -> dict:
     if res.get("prefix") is None or not len(res["prefix"]):
         return {**out, "status": "run_failed", "error": res.get("console", "")[-1500:]}
     g = zm._gate(res["prefix"], _references(name))
+    mine = output_identity.output_identity(res)
+    out["output_identity"] = mine
     # The twin is the same lowering with a scalar tile body, so on a correct model the two must agree to
-    # the bit -- on the dumped prefix AND on the whole-tensor hash. Re-run here because merlin-compile
-    # keeps only the twin's verdict, not its output.
-    t = zm.run_on_spike(twin, mem_bytes=m["twin_ram_bytes"], **run)
-    same_prefix = t.get("prefix") is not None and bool((t["prefix"] == res["prefix"]).all())
-    hashes = (res.get("out_hash"), t.get("out_hash"))
-    same_hash = None if None in hashes else hashes[0] == hashes[1]
+    # the bit -- on the dumped prefix AND on the whole-tensor hash. merlin-compile records the twin's
+    # answer (twin_output_identity); only a result without it costs a second twin simulation here.
+    theirs = m.get("twin_output_identity")
+    rerun = not (theirs and theirs.get("prefix_sha256"))
+    if rerun:
+        theirs = output_identity.output_identity(zm.run_on_spike(twin, mem_bytes=m["twin_ram_bytes"], **run))
+    same = output_identity.same_output(mine, theirs)
     out["verify"] = {"gate_ok": bool(g.get("ok")), "of": "shipped image on the unit model", **g}
-    out["bit_exact_vs_twin"] = same_prefix and same_hash is not False
-    out["twin_compare"] = {"prefix_equal": same_prefix, "out_hash_equal": same_hash, "elements": len(res["prefix"])}
+    out["bit_exact_vs_twin"] = same is True
+    out["twin_compare"] = {
+        "prefix_equal": mine.get("prefix_sha256") == theirs.get("prefix_sha256"),
+        "out_hash_equal": None
+        if None in (mine.get("out_hash"), theirs.get("out_hash"))
+        else mine["out_hash"] == theirs["out_hash"],
+        "elements": len(res["prefix"]),
+        "twin_rerun": rerun,
+    }
     out["status"] = "verified" if (g.get("ok") and out["bit_exact_vs_twin"]) else "run_mismatch"
     return out
 

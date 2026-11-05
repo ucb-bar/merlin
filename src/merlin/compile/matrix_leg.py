@@ -15,6 +15,7 @@ from pathlib import Path
 def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, iters, warmup, timeout, matrix) -> dict:
     """The matrix-unit leg of ``compile_rvv``: shipped image + stand-in twin, the twin gated on spike."""
     from merlin.llvmlower.impr_features import OPU_MATMUL_NAME
+    from merlin.runtime.backends import output_identity
     from merlin.runtime.backends import zephyr_model as zm
     from merlin.runtime.backends.matrix_image import ROUTING_REPORT, build_matrix_pair
     from merlin.runtime.boards import board as _board_desc
@@ -73,6 +74,9 @@ def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, 
                 "spike_harts": cpus,
                 "ship_ram_bytes": pair.ship.get("ram_bytes"),
                 "twin_ram_bytes": pair.twin.get("ram_bytes"),
+                # WHICH revision of the unit's sources the encodings and geometry were derived from (pins
+                # verified, drift listed): a verdict about this image is a verdict about that revision.
+                "provenance": (pair.ship.get("matrix_build") or {}).get("provenance"),
             },
         }
     )
@@ -91,6 +95,9 @@ def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, 
     out["status"] = "ran"
     # NOT the shipped image's cycles: the twin replaces the unit with a scalar loop.
     out["matrix"]["twin_spike_cycles"] = res.get("metrics", {}).get("cycles")
+    # The twin's answer, kept so the shipped image can be compared with it bit for bit without re-running
+    # the twin (a whole-model scalar stand-in is the most expensive simulation in the flow).
+    out["matrix"]["twin_output_identity"] = output_identity.output_identity(res)
     out["matrix"]["gated_via"] = (
         "scalar stand-in twin on spike: same lowering (lowering_digest) as the shipped image, so the routing, "
         "pack, descriptor ABI and epilogue are checked; the unit's datapath is certified on its RTL"
@@ -136,6 +143,7 @@ def _run_shipped_on_device_simulator(pair, routing, brd, *, cpus: int, timeout: 
     ``twin`` is the stand-in twin's spike result. With it, the shipped image must also match the twin bit for
     bit: they are one lowering with two tile bodies, so any difference is the unit's datapath (or its model).
     """
+    from merlin.runtime.backends import output_identity
     from merlin.runtime.backends import zephyr_model as zm
 
     provider = routing.provider()
@@ -172,6 +180,7 @@ def _run_shipped_on_device_simulator(pair, routing, brd, *, cpus: int, timeout: 
         "elf": str(pair.ship["elf"]),
         "isa": isa,
         "spike_cycles": res.get("metrics", {}).get("cycles"),
+        "output_identity": output_identity.output_identity(res),
         **_sim_meta(sim),
     }
     if refs:

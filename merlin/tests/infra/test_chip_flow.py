@@ -128,3 +128,48 @@ def test_the_shipped_image_leg_merlin_compile_already_ran_is_reported_not_rerun(
     }  # fmt: skip
     got = flow.matrix_on_spike("op_x", _args(), result)
     assert got["status"] == "verified" and got["bit_exact_vs_twin"] and got["extension"]["name"] == "m"
+
+
+def test_the_twin_is_not_simulated_again_when_its_answer_was_recorded(tmp_path, monkeypatch):
+    """merlin-compile records the twin's output identity; comparing against it must not cost a second
+    whole-model twin simulation, and a differing identity is still a mismatch."""
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from merlin.runtime.backends import output_identity
+    from merlin.runtime.backends import zephyr_model as zm
+    from merlin.targetgen import spike_extension as SE
+
+    flow = _load("chip_flow")
+    ext = SE.SpikeExtension(
+        target="chip_a",
+        extension_name="m",
+        extlib=tmp_path / "l.so",
+        library_dir=tmp_path,
+        sha256="0" * 64,
+        declared=True,
+    )
+    monkeypatch.setattr(SE, "declared_extension", lambda target: {"extension_name": "m"})
+    monkeypatch.setattr(SE, "resolve", lambda target, **kw: ext)
+    monkeypatch.setattr("merlin.runtime.boards.board", lambda name: SimpleNamespace(vlen=512, dram_base=0x80000000))
+    monkeypatch.setattr(flow, "_references", lambda name: {"w8a8": np.ones(4)})
+    monkeypatch.setattr(zm, "_gate", lambda got, refs: {"ok": True, "w8a8_cos": 1.0})
+    ran = []
+
+    def fake_spike(elf, **kw):
+        ran.append(Path(elf).name)
+        return {"prefix": np.arange(4.0), "metrics": {"cycles": 7}, "out_hash": {"value": 5}}
+
+    monkeypatch.setattr(zm, "run_on_spike", fake_spike)
+    result = _matrix_result(tmp_path)
+    twin = {"prefix": np.arange(4.0), "out_hash": {"value": 5}}
+    result["matrix"]["twin_output_identity"] = output_identity.output_identity(twin)
+    got = flow.matrix_on_spike("op_x", _args(), result)
+    assert ran == ["ship.elf"] and got["status"] == "verified" and got["bit_exact_vs_twin"]
+    assert got["twin_compare"]["twin_rerun"] is False
+
+    twin["out_hash"] = {"value": 6}  # same dumped prefix, different bits further into the tensor
+    result["matrix"]["twin_output_identity"] = output_identity.output_identity(twin)
+    got = flow.matrix_on_spike("op_x", _args(), result)
+    assert got["status"] == "run_mismatch" and got["twin_compare"]["out_hash_equal"] is False
