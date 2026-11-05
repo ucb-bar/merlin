@@ -1,75 +1,48 @@
-# Current TVM campaign instructions (2026-10-27)
+# Working in the TVM comparison (2026-11-04)
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md), [FIRESIM_HANDOFF.md](FIRESIM_HANDOFF.md)
-and [TENSORIR_OP_AUDIT.md](TENSORIR_OP_AUDIT.md).
-The sole model-running protocol is Merlin `8ec99308cb1182b9b896a6075300312266fadf6f`.
-Use the frozen run contract, with the user's approved TinyLlama numerics correction
-from 128 to 32 prefill tokens; final chain is 32+32, cache capacity 64. Use only
-the pinned protocol's quality policy. Earlier PPL/top-1/cosine thresholds and
-checkout-default CURRENT_RUN_POLICY are superseded for this campaign.
+The ResNet50 + 16-kernel campaign ran on AWS F2 FireSim on 2026-10-28.
+Start with [README.md](README.md); the results and recipe are in
+[REPRODUCING_F2_RESULTS.md](REPRODUCING_F2_RESULTS.md). Read
+[ARCHITECTURE.md](ARCHITECTURE.md) and [TENSORIR_OP_AUDIT.md](TENSORIR_OP_AUDIT.md)
+before changing compiler behaviour, and the companion TVM `apps/gemmini/AGENTS.md`.
 
-The active next campaign is ResNet50 plus the 16 cases in
-KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md. Full-model TinyLlama and
-SmolVLA are backlogged; isolated T01–T07 kernels remain active. ResNet DSE has a
-4h allowance and each final E2E run has a 30min upper timeout. The requested
-candidate plan is up to 25 total ReplayTrace proposals per kernel case/chunk,
-shared across internal tasks and graph options. No ML warmup or guided phase.
-Use the capacity-checked shape/reuse default before sampling; keep its measured
-fallback. ResNet's 4h cap wins; the 16-case TVM kernel sweep has a conservative
-24 occupied-slot-hour ceiling. Stop admissions and finish active jobs safely.
-Keep old payloads as historical evidence. Automatic prepacking/bias folding stay
-removed; stock fusion/CSE and TensorIR schedules remain. Report unequal model
-optimization effort; do not present deferred models as equally tuned.
-This agent prepares ELFs or build instructions; the remote agent owns deployment.
+## Evidence rules
 
-Keep ordinary mathematical TensorIR and TensorIntrins. Derive device admission
-from exact software-spec declarations and their proof obligations; similarity is
-not support. No new compiler passes or hidden CPU fallback for eligible device
-work. Keep tiling/movement schedule choices visible to stock MetaSchedule and
-record unsupported search axes. Device code belongs in the external TVM backend;
-this directory owns trusted comparison/preparation orchestration.
+- The F2 numbers bind TVM `f3cfd1a7d`, Merlin `fe0306676`, GCC 16.1.0 and AGFI
+  `agfi-02410ef1a8461b435` (F2, 60 MHz, DDR3+LLC). Never relabel them as the
+  selected U250 30 MHz target or as results of a later source revision.
+- Frozen products under `out/artifacts/` keep their original source, input,
+  compiler and hardware identities. Write new results to new products
+  (`merlin.common.artifacts.new_product` / `new_measurement`); never edit a receipt.
+- Report only measured cycles of rebuilt complete units. Never sum chunk or
+  task minima into complete-call or end-to-end numbers. No cycles from estimates.
+- Keep failures, timeouts, duplicates and unused budget in every report. A
+  timeout is not a cycle label.
+- Spike results are functional evidence only. The repaired diagnostic oracle is
+  not the spec-pinned libgemmini provider.
+- The sole model protocol is Merlin `8ec99308`; use its quality policy.
 
-Preserve historical source trees, numerical releases, failures and measurements;
-do not relabel their inputs, recipes, compiler or hardware identities. Use the
-selected capture, independent references, package-session bridge and existing
-prepare/collect tools. Validate every declared array including carried state and
-padding. Full-model qualification is separate from capsule and small-op tests.
-Use actual candidate state between calls; never substitute reference state.
+## Compiler rules
 
-The remote worker binds actual manager, physical slots, image, target clock,
-memory map and wall-watchdog/cancellation evidence. Do not ask the user for these
-details to finish ELF preparation. No sequential Spike preflight is selected for
-remote candidate validation; preserve guest checks and wrong-oracle controls.
-Keep baseline and tuned complete chain timing comparable; never sum operator minima into E2E cycles. No cycles
-may be supplied from estimates. Final E2E wall timeouts only are 1,800 seconds
-for ResNet and 25,200 for TinyLlama/SmolVLA per baseline/tuned run. Active tuning budgets are 4h for ResNet and 24 aggregate slot-hours for the
-16-kernel TVM study; full TinyLlama/SmolVLA remain backlogged. Candidate hang
-watchdogs are separate remote-runner settings.
-The user approved median-based candidate wall watchdogs in place of incumbent
-cycle cancellation. Retain completed slow cycles; do not require a live observer.
-Before tuning, the remote runner must qualify guest correctness, wall cancellation
-and safe slot reuse under ADAPTER_CONTRACT.md. Spec-pinned oracle provenance is
-still missing; locally repaired diagnostic Spike is distinct evidence.
+- Keep mathematical TensorIR, stock graph passes, stock MetaSchedule
+  (ReplayTrace, JSONDatabase, MetaScheduleApplyDatabase) and declared
+  TensorIntrins. Do not restore automatic bias folding, prepacking, scale/readout
+  rewrites or DMA peepholes.
+- No model name, captured ID or expected output may choose an optimization.
+  Unsupported work stays on the CPU with a placement reason or is refused;
+  kernel builds must not fall back to the CPU for the measured operation.
+- Device code belongs in the TVM fork. This directory owns inputs, builders,
+  runner orchestration and evidence.
+- Full TinyLlama/SmolVLA remain backlogged. Their session tools stay here as
+  future work, not launch instructions.
 
-Read root AGENT.md/CLAUDE.md and the companion TVM apps/gemmini instructions.
-Use merlin.common.artifacts.new_product/new_measurement for outputs. Keep large
-payloads outside Git. On this shared VM use bounded workers and single-threaded
-BLAS; ask before long/heavy preparation. No sudo, user namespaces, destructive
-actions, publication or PR without authorization. Preserve other worktrees.
+## Practicalities
 
-Run relevant tests and python build_tools/scripts/check_structure.py; report
-inherited failures separately. No new full-model hardware success is claimed
-until source, numerical, placement, exact-kernel, instruction and deployment
-checks bind actual complete-chain execution.
-
-At the per-model tuning limit, stop admitting new work and **finish active runs**.
-Do not start queued jobs during this completion period. Record the time beyond
-budget separately; preserve failure/hang safeguards. This adds
-no new tuning allowance and does not renew a continuation's budget.
-
-The user approved retaining only spec-declared, proved composite TensorIntrins
-while removing custom graph passes. Composite scope is settled; per-family proof
-and execution admission still need evidence. The approved median policy uses three
-baseline timings, 3x the latest-nine median with a 3x baseline floor, and an explicit
-hard ceiling. Freeze per admitted job; bootstrap/ceiling values come from the remote
-pilot. No sequential Spike preflight and no incumbent-cycle filtering.
+- On the shared VM use bounded workers, single-threaded BLAS and the
+  `tvm-tuning-env.sh` variables; check `tvm.__file__` and the loaded `libtvm`.
+- Run the relevant tests (`merlin/tests/gemmini/test_tvm_*.py`, TVM
+  `tests/python/relax/test_*gemmini*.py`) and
+  `python build_tools/scripts/check_structure.py`. Report inherited failures
+  separately (see [USAGE.md](USAGE.md#9-tests)).
+- No sudo, user namespaces, destructive actions, pushes or PRs without the
+  user's approval. Preserve other worktrees.

@@ -1,37 +1,49 @@
 # TVM Gemmini comparison
 
-Start at **[FIRESIM_HANDOFF.md](FIRESIM_HANDOFF.md)** for the current approved
-workloads, knobs, ELF build commands and full-session preparation instructions.
-The frozen model delivery originated at `82b321a89`; the simplified compiler
-and median-watchdog runner are supplied by the current handoff. Model protocol is exclusively `8ec99308` with the
-approved TinyLlama 32+32 correction. Use only its quality policy.
+This directory holds the Merlin side of the TVM–Gemmini baseline: frozen
+inputs, complete-unit ELF builders, the FireSim study runner and the evidence
+rules. The compiler itself is the TVM fork
+[`grammy117/tvm` `gemmini/direct-intrinsics`](https://github.com/grammy117/tvm/tree/gemmini/direct-intrinsics).
 
-The next campaign is **ResNet50 plus 16 kernel cases**, with
-up to 25 ReplayTrace proposals total per kernel/chunk, without ML. Full TinyLlama/SmolVLA model runs are
-backlogged; their isolated kernel cases remain in scope. ResNet's caps are
-4h DSE and 30min per E2E run. See the handoff for trial accounting and the 24 slot-hour kernel ceiling
-and the separate [kernel study](KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md).
-The restored 36-chunk delivery remains available as historical input evidence;
-its TinyLlama/SmolVLA model roster is not the new kernel roster.
+**Status (2026-11-04):** the ResNet50 + 16-kernel campaign ran on AWS F2 FireSim
+(60 MHz DDR3+LLC image) on 2026-10-28. Results, setup and the recipe are in
+[REPRODUCING_F2_RESULTS.md](REPRODUCING_F2_RESULTS.md). Full TinyLlama and
+SmolVLA, and the selected U250 30 MHz target, were not run.
 
-| Reference | Purpose |
+## Start here
+
+| Guide | For |
 | --- | --- |
-| [Selected protocol](https://github.com/ucb-bar/merlin/tree/8ec99308cb1182b9b896a6075300312266fadf6f/examples/gemmini/protocol) | Sole E2E recipe/input/quality authority; approved correction in handoff |
-| [Adapter contract](ADAPTER_CONTRACT.md) | Approved median wall watchdog, cycle measurement and remote cancellation qualification |
-| [Architecture and paper scope](ARCHITECTURE.md) | Current top-down path, stock/custom boundaries and limits on claims |
-| [Operation support](TENSORIR_OP_AUDIT.md) | Exact spec families, primitive/composite mappings and all 51 fixture boundaries |
-| [Optimization ownership/knobs](OPTIMIZATION_KNOBS.md) | Compiler simplification, scheduling/cost-model audit and approved scope |
-| [Input audit](EL4_INPUT_AUDIT.md) | Dated source/shape/input findings; current readiness is in the handoff |
-| [Generation](GENERATION.md) | Compiler flow and ownership |
-| [Performance audit](PERFORMANCE_AUDIT.md) | Hardware/resource and historical cycle analysis |
-| [Numerical diagnostics](NUMERICAL_DIAGNOSTICS.md) | Existing first-divergence tools |
-| [Ownership and attribution](OWNERSHIP.md) | Bringup by Nicolas Reed (PR #53, `gemmini/bringup`) and what the curated branches kept |
+| [USAGE.md](USAGE.md) | Build TVM and the adapter, build untuned/tuned ELFs, check on Spike, tune on FireSim |
+| [IMPLEMENTATION.md](IMPLEMENTATION.md) | What the compiler and runner do, in one page |
+| [REPRODUCING_F2_RESULTS.md](REPRODUCING_F2_RESULTS.md) | Experimental setup, exact pins, step-by-step recipe, result tables and how to read them |
 
-The older overlapping setup/run pages now link to the single current handoff.
-Historical artifacts and reports remain unchanged. The prior long setup/run
-reference is retained in [Git history](https://github.com/ucb-bar/merlin/blob/1900c7ff8b4c4495479e20a73a27bdbd79413abf/examples/gemmini/comparisons/tvm/README.md).
+## Reference
 
-At the per-model tuning limit, stop admitting new work and **finish active runs**.
-Do not start queued jobs during this completion period. Record the time beyond
-budget separately; preserve the median wall watchdog and failure safeguards. This adds
-no new tuning allowance and does not renew a continuation's budget.
+| Document | Purpose |
+| --- | --- |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Design record: stock vs custom layers, scheduling, measurement contract, limits on paper claims |
+| [TENSORIR_OP_AUDIT.md](TENSORIR_OP_AUDIT.md) | Operation inventory: primitive/composite mappings, spec families and fixture boundaries |
+| [OPTIMIZATION_KNOBS.md](OPTIMIZATION_KNOBS.md) | What is searched, fixed or removed |
+| [ADAPTER_CONTRACT.md](ADAPTER_CONTRACT.md) | Remote runner contract: watchdog, cycle scope, cancellation qualification |
+| [FIRESIM_HANDOFF.md](FIRESIM_HANDOFF.md) | The launch specification the F2 campaign followed (budgets, defaults, build commands) |
+| [KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md](KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md) | Cross-compiler definition of the 16 kernel cases |
+| [SPIKE_HANDOFF_EVIDENCE.md](SPIKE_HANDOFF_EVIDENCE.md) | Pre-campaign Spike functional checks (74 operators, 16 kernels, 18 chunks, ResNet parent) |
+| [OWNERSHIP.md](OWNERSHIP.md) | Bringup by Nicolas Reed (PR #53, `gemmini/bringup`) and what the curated branches kept |
+| [NUMERICAL_DIAGNOSTICS.md](NUMERICAL_DIAGNOSTICS.md) | First-divergence tools |
+| [byoc/](byoc/README.md) | The original BYOC bringup path and its validation |
+
+## History
+
+These records are kept unchanged for provenance and are not instructions:
+[README_HISTORICAL.md](README_HISTORICAL.md) (the long pre-campaign setup and
+run reference), [UPSTREAM_AUDIT.md](UPSTREAM_AUDIT.md),
+[PERFORMANCE_AUDIT.md](PERFORMANCE_AUDIT.md), [EL4_INPUT_AUDIT.md](EL4_INPUT_AUDIT.md),
+[EL4_ASSETS.md](EL4_ASSETS.md), [FASED_SWEEPS.md](FASED_SWEEPS.md) (deprecated
+local Verilator sweeps), [HOST_SETUP.md](HOST_SETUP.md) (bringup pointer, kept
+byte-identical) and [FIRESIM_ROUND2_HANDOFF.md](FIRESIM_ROUND2_HANDOFF.md)
+(linked from frozen handoff releases).
+Superseded launch pages (branch, chunk-tuning, remote-tuning, tuning-plan and
+generation guides) were removed on 2026-11-04; their last text is in
+[Git history](https://github.com/ucb-bar/merlin/tree/5998ce4ef/examples/gemmini/comparisons/tvm).
+Older measurements keep their original source, input and hardware identities.

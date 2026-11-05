@@ -1,5 +1,16 @@
 # FireSim handoff: ResNet50 and 16 complete kernel cases
 
+> **Status (2026-11-04): executed.** This launch specification was run on AWS F2
+> (60 MHz DDR3+LLC image) on 2026-10-28. The run used TVM `f3cfd1a7d`
+> (= `bb4ad9f8d`, the Spike-evidence pin), one commit before the `fee495aca`
+> named below; `fee495aca` only moves historical Python into `gemmini_legacy.py`.
+> Deviations from this plan: ResNet50 also ran on the F2 image rather than the
+> selected U250 30 MHz target; no graph-plan continuation trials ran, because no
+> alternative plan added a new contraction; and the slot-hour ledger counts
+> tuning campaigns only, not confirmations. Results, setup and the exact recipe
+> are in [REPRODUCING_F2_RESULTS.md](REPRODUCING_F2_RESULTS.md). The text below
+> is kept unchanged as the specification that was followed.
+
 Active scope is **ResNet50 plus G01–G06, C01–C03 and T01–T07** from
 [KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md](KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md).
 **Do not run full TinyLlama or SmolVLA.** Their isolated kernels remain active.

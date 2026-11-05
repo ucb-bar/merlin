@@ -11,6 +11,8 @@ Archive the resolved launch configuration and
 per-run provenance; the protocol is not a replacement for those bindings.
 Baseline implementers should use the [shared comparison workflow](protocol/baselines.md).
 It reads these same definitions and compares saved outputs without running a model.
+The TVM baseline, with its FireSim results and reproduction guide, is in
+[comparisons/tvm](comparisons/tvm/README.md).
 
 Start here for the public inputs and phase handoffs. The catalog entry is
 [`experiment.yaml`](experiment.yaml), registered as

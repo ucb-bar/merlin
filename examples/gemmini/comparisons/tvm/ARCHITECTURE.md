@@ -31,7 +31,9 @@ flowchart TD
     I --> J["Replay, connected-call checks, baseline/tuned E2E"]
 ```
 
-The final hardware steps are required campaign work, not completed results.
+The final hardware steps (H–J) ran on an AWS F2 60 MHz image on 2026-10-28 with
+TVM `f3cfd1a7d`; see [REPRODUCING_F2_RESULTS.md](REPRODUCING_F2_RESULTS.md).
+They were not run on the selected U250 30 MHz target.
 
 | Layer | Implementation and ownership | Why it remains |
 | --- | --- | --- |
@@ -137,7 +139,7 @@ work that is required to run on Gemmini.
 | Exact spec compliance | Bind every evaluated program's PE/accumulator bounds, scales, layouts and permitted compositions. Until then say implemented candidates, not complete spec support. The source-default software-spec.yaml differs from the requested pin; use exact 8ec99308 bytes. |
 | Hardware and oracle identity | Match capability/header/runtime facts to deployed hardware. ResNet's selected U250 and reported F2 kernel setup are not interchangeable. Repaired diagnostic Spike is not the missing spec-pinned oracle. |
 | Final-source execution | The current 74-case operator suite and 16 complete kernels pass diagnostic Spike with the current reuse default; see SPIKE_HANDOFF_EVIDENCE.md for ResNet checks and source hashes. Older releases retain their own identities. No FireSim speedup follows from Spike correctness. |
-| Complete workloads | The tuning runner measures extracted contractions. Complete all-head/all-output kernel builders and ResNet chunk/parent builders now exist. Final FireSim confirmation is still required; never sum isolated minima into complete-call/E2E cycles. |
+| Complete workloads | The tuning runner measures extracted contractions. Complete all-head/all-output kernel builders and ResNet chunk/parent builders exist, and all 16 kernels, 18 chunks and the connected parent were confirmed on the F2 image (see REPRODUCING_F2_RESULTS.md). Never sum isolated minima into complete-call/E2E cycles; the F2 data show chunk winners do not compose. |
 | Fair comparison | Match shapes, input bytes, dtypes, exits, cache/warm policy, placement and host packing across systems. Include runtime config/WS reuse and any timed preparation; report precomputed preparation separately. |
 | Tuning strength | This is a small, seeded random trace search with an engineered default, not an ML-tuned or converged optimum. Publish seeds, unique valid candidates, errors, per-task allocation, timeouts and actual occupancy. A four-hour cap may leave chunks undertuned. |
 | Baseline attribution | Report the default heuristic as an optimization itself. Compare default versus selected schedules; an ablation is needed to attribute gains specifically to search, reuse, fusion or a runtime change. |
