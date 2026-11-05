@@ -11,9 +11,10 @@
 #   ./run.sh capture <model> [--loader loader.py]
 #                                 capture any model to an int8 bundle + its W8A8 golden
 #   ./run.sh op gemm [M N K] [--harts N]
-#                                 ONE operator (gemm|gemm_nt|conv2d|attention|encoder_block|loader.py): RVV vs RVV+VME. The
-#                                 VME image's stand-in twin is gated on spike; with $MERLIN_SPIKE_ZVT the
-#                                 SHIPPED VME image also runs on a spike that implements the unit
+#                                 ONE operator (gemm|gemm_nt|conv2d|attention|encoder_block|loader.py):
+#                                 RVV vs RVV+VME. The VME image's stand-in twin is gated on spike; with
+#                                 $MERLIN_SPIKE_ZVT the SHIPPED VME image also runs on a spike that
+#                                 implements the unit
 #   ./run.sh op gemm --rvv-only   the RVV leg alone (no VME route)
 #   ./run.sh op gemm --matrix-kernel K
 #                                 every routed contraction calls VME kernel K: a name in the package's
