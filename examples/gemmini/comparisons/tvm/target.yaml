@@ -1,0 +1,84 @@
+kind: comparison_plan
+status: planning
+executable: false
+target: gemmini
+descriptor_reference: examples/gemmini/target/descriptor.yaml
+source:
+  checkout_env: TVM_ROOT
+  work_branch: gemmini/bringup
+  fork: git@github.com:reed-nicolas/tvm.git
+  commit: 6b376cc8895a83387ec38cc06ef8f7b09827b071
+  initial_commit: fb78e0e3adcee44948a1542cd394710b3a6f9dba
+  apache_release: v0.19.0
+  apache_commit: c4dc0c29ff81ddae688da24625a603da3b4a2c0e
+  frontend_fixes:
+    repository: https://github.com/ucb-bar/tvm.git
+    branch: merlin/relax-onnx-fixes
+    commit: fb78e0e3adcee44948a1542cd394710b3a6f9dba
+    count: 5
+recommendation:
+  status: provisional_development
+  hardware: int8_gemmini
+  host_runtime: baremetal # Candidate for development; final deployment is unconfirmed.
+# This profile authorizes local development assumptions, not paper qualification.
+development:
+  sources:
+    gemmini_commit: 6ad65b90b1eb270c20ce4f04109e3dde0180b36f
+    rocc_tests_commit: 7c540b3adf1b86ad93d07f893abe3a73489b568e
+    libgemmini_commit: ea8f7ed7afd68e001fb06ddccad9a023c990961d
+    params_sha256: 3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924
+    operators_sha256: 18801f4eab0cd2e81e25a6c2aa97c7ed644b693e8d2c24cdeb41ab3a7208336d
+  arithmetic:
+    input_dtype: int8
+    output_dtype: int32
+    full_accumulator_readout: true
+    dim: 16
+    pe_output_bits: 20 # Provisional Scala configuration; absent from the C parameter header.
+    scratchpad_bytes: 262144
+    accumulator_bytes: 65536
+  runtime:
+    kind: baremetal
+    isa: rv64gc
+    abi: lp64d
+  instructions:
+    dataflow: OS
+    hardware_loops: forbid # Agustin requires no FSM instructions for any implementation.
+    paper_confirmed: true
+  memory:
+    base_address: 0x80000000
+    requested_size_bytes: 8589934592 # Hypothetical 8 GiB planning map, not observed capacity.
+    confirmed_size_bytes: null # Do not infer capacity from Spike -m or host AXI width.
+  resnet50:
+    status: development_proposal
+    paper_approved: false
+    architecture: torchvision_resnet50_v1_5
+    checkpoint: IMAGENET1K_V2 # Supplied artifact identity must be recorded per run.
+    recipe: resnet50-v1.5-symmetric-pow2-development-v1
+    input_preparation: prepare_resnet_inputs.py
+    calibration: imagenette320_train
+    evaluation: imagenette320_val # Ten-class development subset, not final ImageNet accuracy.
+    calibration_per_class: 1
+    evaluation_per_class: 2
+    maximum_top1_rate_drop: 0.02 # Proposed development gate versus unchanged FP32.
+    tensor_memory_limit_bytes: 268435456 # Excludes executable/stack/platform reservations.
+    host_work: [packing, requantization, residuals, pooling, logit_dequantization]
+selection:
+  lowering_route: gemmini_c_library # Selected for baseline fairness.
+  hardware_variant: gemmini # Regular Gemmini is selected; not MX.
+  host: rocket # Jack confirms default Gemmini + Rocket; exact FireSim build remains unbound.
+  hardware_family: default_gemmini
+  hardware_revision: null
+  hardware_configuration: null
+  loop_policy: primitive_only
+  runtime: baremetal # Agustin permits baremetal or RTOS; this integration chooses baremetal.
+  quantization: null
+  host_fallback_policy: null
+  numerical_acceptance: null
+  measurement_boundary: null
+measurement:
+  final_substrate: firesim
+  coordination: platform_owners # Platform access and timing/capture procedure still pending.
+workload_order:
+  - resnet50 # Selected torchvision v1.5 / IMAGENET1K_V2; final paper qualification remains.
+  - tiny_llama # Selected TinyLlama-1.1B-Chat-v1.0; full integer session remains unqualified.
+  - smolvla
