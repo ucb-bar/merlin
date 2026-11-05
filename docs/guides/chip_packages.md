@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-11-05
 related: [target_resolution, adding_a_target, zephyr, model2mlir]
-code_refs: [examples/lib/chip_setup.py, examples/lib/preflight.py, src/merlin/common/pin_drift.py, src/merlin/targetgen/unit_pins.py, src/merlin/targetgen/support_pins.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, build_tools/upstreams/target_support.json, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, src/merlin/targetgen/rtl/matrix_isa.py, src/merlin/kernels/matrix_shim.py, src/merlin/compile_cli.py, src/merlin/compile/matrix_leg.py, src/merlin/targetgen/spike_extension.py, build_tools/scripts/vendor_support.py]
+code_refs: [examples/lib/chip_setup.py, examples/lib/preflight.py, src/merlin/common/pin_drift.py, src/merlin/targetgen/unit_pins.py, src/merlin/targetgen/support_pins.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, build_tools/upstreams/target_support.json, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, src/merlin/targetgen/rtl/matrix_isa.py, src/merlin/kernels/matrix_shim.py, src/merlin/compile_cli.py, src/merlin/compile/matrix_leg.py, src/merlin/targetgen/spike_extension.py, build_tools/scripts/vendor_support.py, src/merlin/kernels/matrix_kernels.py, src/merlin/kernels/matrix_kernel_test.py]
 ---
 
 # Chip packages layered on a base target
@@ -239,6 +239,7 @@ the vector unit and is reported.
 | `kernels.matrix_shim`: the memref-descriptor bridge, the K-major pack of A, the dense/aligned/fits checks with a counted scalar fallback, batched entries | the kernel: one C function `(c, at, b, bias, m, n, k)` with K-major operands, and its scalar stand-in |
 | `kernels.decode.opu`: the audit, matching a word on exactly the bits its decoder looks at | the roles and pairs naming which derived instruction is which |
 | `matrix_image.build_matrix_pair`, `routing_report.json`, the twin gate | `device_simulator(unit=, config=)` (optional): a simulator that executes the unit |
+| `kernels.matrix_kernels` (registry, selection, generated `<unit>.h`, reference twin, constraint refusal) and `kernels.matrix_kernel_test` | `kernels/kernels.yaml` and hand-written kernels ([Write your own kernel](#write-your-own-kernel)); `build_object(kernel=)`, `kernel_header_facts`, `generated_kernel` |
 
 An instruction is identified by the bits its decoder reads, not by `(opcode, funct3, funct6)`: a unit
 can keep several instructions in one funct6 slot and tell them apart by `rs2` (Iris's `sf.vtzero.t`,
@@ -271,3 +272,99 @@ in the result and in the package manifest). A mismatch, or a shipped image that 
 the image. Declared but unusable (the binary or `.so` is absent, or its digest differs), the leg is
 `not_run` with the reason; it never falls back to a simulator without the unit. With no declaration it
 is `not_declared`, and the image is gated by the audit and the twin alone.
+
+## Write your own kernel
+
+A unit's kernel is the C function every routed contraction calls. By default it is the one the package
+generates from its derived encodings; a kernel author can instead write it by hand, as a plain C file in
+the package, and select it with one flag. Merlin compiles it into the shipped image, builds the twin from
+its own scalar reference, and gates the shipped image against that twin bit for bit, so a passing build
+means *your kernel computed exactly what the reference computes on every shape the model routed*.
+
+### The ABI
+
+```c
+void my_gemm(int32_t *c, const int8_t *at, const int8_t *b, const int32_t *bias,
+             size_t m, size_t n, size_t k);
+
+C[i][j] = (bias ? bias[j] : 0) + sum_k at[k*m + i] * b[k*n + j]     /* int32, wrapping; C is written */
+```
+
+| argument | layout | who makes it |
+|---|---|---|
+| `at` | the left operand, **K-major**: `k` rows of `m` int8 (row stride `m`) | `matrix_shim` packs (transposes) A into an aligned scratch buffer |
+| `b` | the right operand, **K-major**: `k` rows of `n` int8 (row stride `n`) | the model's weights, in place (dense, aligned, else the call falls back) |
+| `c` | int32, row-major `m x n` (row stride `n`); written, never accumulated into | the model's buffer |
+| `bias` | `n` int32, or NULL | the shim always passes NULL; kernel-test also checks a bias |
+| `m, n, k` | each `>= 1`; any values unless the kernel declares constraints | read from the memref descriptors |
+
+`at`, `b` and `c` are aligned to the unit's operand alignment (`<P>_ALIGN_BYTES`). The kernel stops at the
+int32 accumulators: requantization to int8 (the per-channel scale, rounding and clamp) is Merlin's
+epilogue after the call, and a non-dense or misaligned operand never reaches the kernel (the shim takes a
+counted scalar fallback). On a multi-hart image the kernel is compiled with `-fopenmp`; a kernel that wants
+every hart's unit splits its own tile loop (`#pragma omp parallel for`), otherwise it runs on one.
+
+### The files
+
+| file | owner | |
+|---|---|---|
+| `kernels/<kernel>.c` | you | the kernel; may include any `.h` beside it |
+| `kernels/kernels.yaml` | you | schema `merlin.matrix_kernels.v1`: the header's name and macro prefix, each unit's default, and per kernel `unit`, `file`, `function`, `description`, `constraints` |
+| `<unit>.h` (e.g. `saturn_opu.h`) | **generated** | written at build time by `merlin.kernels.matrix_kernels.emit_header` from the unit's DERIVED encodings; never in the package |
+
+The generated header gives, for every instruction `NAME` the derivation knows: `<P>_NAME(rd, rs1, rs2)`, the
+`.insn r` directive as a string (operands the encoding fixes are spelled in and not taken), to paste into an
+`asm volatile`; `<P>_NAME_R(...)`, the whole statement with register numbers; `<P>_NAME_MATCH/_MASK`; and
+`<P>_REG(n)`, `<P>_KERNEL(name)` (the ABI), `<P>_TILE_EDGE`, `<P>_ALIGN_BYTES`, plus whatever the package's
+`kernel_header_facts(unit=, config=)` derives (a reduction depth, operand-layout bit positions). A comment
+on each instruction names the same word in the unit author's own header (the derivation's cross-check
+pairs). `run.sh kernel-test` writes the header beside its report, so you can read it before writing code.
+
+`constraints` (all optional, default any shape): `m_multiple`, `n_multiple`, `k_multiple` (granularity) and
+`max_m`, `max_n`, `max_k`, each an integer or relative to the tile edge (`tile`, `2*tile`); `bias: false` if
+the kernel ignores a bias. A build whose routed contractions fall outside them is refused with each
+contraction and the rule it breaks (`KernelConstraintError`); kernel-test sweeps only the shapes declared.
+
+### Selecting it
+
+`--matrix-kernel <name|path>` on `merlin-compile`, `make_delivery.py`, the chip examples' `run.sh`
+(`op`, `kernel-test`; Kodiak also `build`/`package`/`matrix`/`firesim`) or `MERLIN_MATRIX_KERNEL` in the
+environment. A name is looked up in `kernels/kernels.yaml`; a path (`file.c`, or `file.c:function`;
+without `:function` the function is named like the file) lets you try a file outside the package, compiled
+against the same generated header. Unset, the package's default (its generated kernel) is built byte for
+byte as before. The kernel's name, file and sha256 are recorded in `routing_report.json`, in the build
+record (`matrix_build.kernel`), in the image's provenance (`provenance.matrix_kernel`) and in a delivery
+manifest.
+
+### The loop
+
+```sh
+export MERLIN_TARGET_PATH=~/src/kodiak-mlir:$PWD/examples/rvv/support   # your clone of the package, no pin bump
+cp ~/src/kodiak-mlir/kernels/opu_tile_loop.c ~/src/kodiak-mlir/kernels/my_gemm.c  # register it in kernels.yaml
+examples/kodiak/run.sh kernel-test my_gemm             # 1. seconds: ~90 shapes on the unit's simulator
+examples/kodiak/run.sh op gemm 96 80 200 --matrix-kernel my_gemm   # 2. one operator, whole flow
+examples/kodiak/run.sh matrix --models spectformer --matrix-kernel my_gemm  # 3. whole models
+```
+
+1. **`kernel-test`** (`merlin.kernels.matrix_kernel_test`) builds one bare-metal image with your kernel
+   (compiled exactly as a model build compiles it), Merlin's reference and a driver; audits that it contains
+   the unit's instructions; runs it on the simulator the package declares for its unit (Kodiak: spike with
+   the OPU model; Iris: the Zvt spike) and prints a table: partial M and N around one and two tiles, K
+   tails, deep K, multi-tile shapes, a bias, full-range operands, back-to-back calls (a batched
+   contraction), and the OPU certification corpus's shapes. Each shape is checked element by element
+   against the in-image reference (the first difference as `C[i][j]: got X, reference Y`), against a
+   numpy hash computed on the host, and for writes past the end of C or elements never written (C is
+   pre-filled with a poison word). `--quick` runs only small shapes, `--full` adds the large corpus
+   shapes, `--list` lists the registered kernels.
+2. **`op gemm`** builds the operator as RVV and as RVV+unit with your kernel, gates the twin (reference
+   kernel) and the shipped image (your kernel, on the unit's simulator) against the W8A8 golden, and
+   requires the two to match bit for bit. A mismatch prints the first differing output element and points
+   back at kernel-test.
+3. **Whole models** the same way (`matrix`, `package --opu`, or `op encoder_block` on Iris).
+
+With the package clone on `MERLIN_TARGET_PATH` (put the rvv base after it, or the base's own checkout), an
+edit to the kernel is picked up by the next command; commit it in the package and bump the pin when done
+(`vendor_support.py pin`). The plugin's part of the contract is three small hooks: `build_object(...,
+kernel=)` hands the selection's `prepare()` result to `matrix_shim` in place of the generated kernel,
+`kernel_header_facts(unit=, config=)` (optional) and `generated_kernel(unit=, config=, max_k=)` (for
+kernel-test of the default).
