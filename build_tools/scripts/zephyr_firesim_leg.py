@@ -70,14 +70,21 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--harts", type=int, default=1)
     ap.add_argument("--vlen", type=int, default=512)
     ap.add_argument("--arena-mb", type=int, default=0, help="0 = derive from the model's activation peak (see below)")
-    ap.add_argument("--runner", help="installed FireSim runner name (or set MERLIN_FIRESIM_RUNNER)")
+    ap.add_argument(
+        "--runner",
+        help="installed FireSim runner name (or set MERLIN_FIRESIM_RUNNER). Only a runner that WATCHES the "
+        "console needs its terminal marker in the image; an image run through the queue's "
+        "`runworkload-full` ends on its own exit, so with neither set the image carries no marker",
+    )
     a = ap.parse_args(argv)
     if not a.matrix_support_target:
         ap.error("routing and unit audit require --matrix-support-target (not inferred from --unit)")
 
+    import json
+
     from merlin.common.ir_lock import IR_LOCK
     from merlin.common.mlir_query import activation_peak_bytes
-    from merlin.common.paths import repo_root
+    from merlin.common.paths import env, repo_root
     from merlin.kernels.decode import opu as opu_audit
     from merlin.llvmlower.impr_features import OPU_MATMUL_NAME, PEROP_BLOCK_NAME
     from merlin.mining.registry import load_rvv_package
@@ -86,7 +93,10 @@ def main(argv: list[str] | None = None) -> int:
     from merlin.targetgen.plugins import load_declared
 
     provider = load_declared(a.matrix_support_target, "matrix_lowering")
-    selected_runner = select_runner(a.runner)
+    # A runner is selected only when one is named: it contributes nothing but the terminal marker its
+    # console-watcher waits for, and requiring one made a queue-run leg unbuildable without it.
+    runner_name = a.runner or env("MERLIN_FIRESIM_RUNNER")
+    selected_runner = select_runner(runner_name) if runner_name else None
     enc = provider.derive_encodings(provider.load_contract(a.unit)).encodings
 
     bundle = repo_root() / "out/artifacts/recaptures" / a.bundle
@@ -148,6 +158,25 @@ def main(argv: list[str] | None = None) -> int:
     if not routed and counts:
         raise SystemExit(f"[leg] FAIL: control image CARRIES the unit's instructions ({counts}) — it is not a control")
     print("[leg] AUDIT OK")
+    # What was built, for whoever submits and grades it: the build hash the image prints as
+    # `METRIC build_hash` is how a returned console is matched to THIS image and not a stale one.
+    record = {
+        "leg": a.leg,
+        "bundle": str(bundle),
+        "elf": str(b["elf"]),
+        "build_hash": b.get("build_hash"),
+        "ram_bytes": b.get("ram_bytes"),
+        "board": a.board,
+        "harts": a.harts,
+        "vlen": a.vlen,
+        "arena_mb": arena_mb,
+        "package": a.package,
+        "unit": a.unit,
+        "config": a.config,
+        "support_target": a.matrix_support_target,
+        "unit_instruction_counts": counts,
+    }
+    (out / "leg.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     return 0
 
 

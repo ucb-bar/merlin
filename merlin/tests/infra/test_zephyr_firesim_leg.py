@@ -14,9 +14,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from pathlib import Path
-
-import pytest
 
 from merlin.common.paths import repo_root
 
@@ -140,3 +137,21 @@ def test_the_hart_default_is_safe_on_a_one_hart_board():
     src = _src()
     assert 'ap.add_argument("--harts", type=int, default=1)' in src
     assert "deadlock the barrier" in src  # the reason, so nobody raises it back
+
+
+def test_a_runner_is_needed_only_when_one_is_named():
+    """A runner contributes only the terminal marker its console-watcher waits for. A leg run through
+    the queue's `runworkload-full` ends on the image's own exit, so requiring a runner made such a leg
+    unbuildable on a host that has none."""
+    src = _src()
+    assert 'runner_name = a.runner or env("MERLIN_FIRESIM_RUNNER")' in src
+    assert "select_runner(runner_name) if runner_name else None" in src
+
+
+def test_the_leg_records_what_was_built_for_whoever_grades_it():
+    """`leg.json` carries the build hash the image prints, so a returned console can be matched to
+    THIS image and a stale one refused."""
+    src = _src()
+    assert '(out / "leg.json").write_text' in src
+    for key in ('"build_hash": b.get("build_hash")', '"elf": str(b["elf"])', '"unit_instruction_counts": counts'):
+        assert key in src
