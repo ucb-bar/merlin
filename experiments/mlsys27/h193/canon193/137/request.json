@@ -1,0 +1,161 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              1.25,
+              0.8500000238418579,
+              0.550000011920929
+            ],
+            [
+              0.949999988079071,
+              1.350000023841858,
+              1.75
+            ]
+          ]
+        },
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              0.550000011920929,
+              0.8500000238418579,
+              1.25
+            ],
+            [
+              1.75,
+              1.350000023841858,
+              0.949999988079071
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.pow.Tensor_Tensor",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      3,
+      1
+    ],
+    "values": [
+      [
+        1.1305779218673706,
+        0.8709757924079895,
+        0.4736454486846924
+      ],
+      [
+        0.9141475558280945,
+        1.4995142221450806,
+        1.7017123699188232
+      ]
+    ]
+  },
+  "expected_sha256": "846d0ec7b9a116c8d00635374bdc30af034fe36f3cd1b8b75ab5d839b79e9f96",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.pow.Tensor_Tensor",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              1.25,
+              0.8500000238418579,
+              0.550000011920929
+            ],
+            [
+              0.949999988079071,
+              1.350000023841858,
+              1.75
+            ]
+          ]
+        },
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              0.550000011920929,
+              0.8500000238418579,
+              1.25
+            ],
+            [
+              1.75,
+              1.350000023841858,
+              0.949999988079071
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::pow.Tensor_Tensor(Tensor self, Tensor exponent) -> Tensor"
+}

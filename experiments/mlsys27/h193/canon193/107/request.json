@@ -1,0 +1,109 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "bool",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              false,
+              true,
+              false
+            ],
+            [
+              true,
+              false,
+              true
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.logical_not.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      3,
+      1
+    ],
+    "values": [
+      [
+        true,
+        false,
+        true
+      ],
+      [
+        false,
+        true,
+        false
+      ]
+    ]
+  },
+  "expected_sha256": "0a7481122d8cb4eb3ac818432749af6cffa28d68c50ea19bd53b1d470033cc97",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.logical_not.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "bool",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              false,
+              true,
+              false
+            ],
+            [
+              true,
+              false,
+              true
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::logical_not(Tensor self) -> Tensor"
+}

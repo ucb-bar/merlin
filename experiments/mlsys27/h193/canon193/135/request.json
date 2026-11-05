@@ -1,0 +1,111 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        2.0,
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              1.75,
+              1.350000023841858,
+              1.0499999523162842
+            ],
+            [
+              1.4500000476837158,
+              1.850000023841858,
+              2.25
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.pow.Scalar",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      3,
+      1
+    ],
+    "values": [
+      [
+        3.3635857105255127,
+        2.549121379852295,
+        2.0705296993255615
+      ],
+      [
+        2.7320806980133057,
+        3.605001926422119,
+        4.756828308105469
+      ]
+    ]
+  },
+  "expected_sha256": "c88837e8f8bee53c310c5a86c4590473cbbd904156cc6a333013020962948ad1",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.pow.Scalar",
+  "post_arguments": {
+    "args": {
+      "items": [
+        2.0,
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              1.75,
+              1.350000023841858,
+              1.0499999523162842
+            ],
+            [
+              1.4500000476837158,
+              1.850000023841858,
+              2.25
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::pow.Scalar(Scalar self, Tensor exponent) -> Tensor"
+}

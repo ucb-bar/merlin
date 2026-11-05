@@ -1,0 +1,52 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        2.5
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {
+      "dtype": {
+        "kind": "dtype",
+        "value": "float32"
+      }
+    }
+  },
+  "case_id": "corpus_193:aten.scalar_tensor.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [],
+    "storage_offset": 0,
+    "stride": [],
+    "values": 2.5
+  },
+  "expected_sha256": "1a60aaa8676dc528c43a4eeaa0a24067e3958c4b9f55994c55c35d1d719dd8c1",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.scalar_tensor.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        2.5
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {
+      "dtype": {
+        "kind": "dtype",
+        "value": "float32"
+      }
+    }
+  },
+  "rng_seed": 0,
+  "schema": "aten::scalar_tensor(Scalar s, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor"
+}

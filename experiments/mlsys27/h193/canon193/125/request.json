@@ -1,0 +1,144 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        0.25,
+        true
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.native_dropout.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "items": [
+      {
+        "dtype": "float32",
+        "kind": "tensor",
+        "requires_grad": false,
+        "shape": [
+          2,
+          3
+        ],
+        "storage_offset": 0,
+        "stride": [
+          3,
+          1
+        ],
+        "values": [
+          [
+            -0.0,
+            -0.46666666865348816,
+            0.06666668504476547
+          ],
+          [
+            0.0,
+            1.133333444595337,
+            0.0
+          ]
+        ]
+      },
+      {
+        "dtype": "bool",
+        "kind": "tensor",
+        "requires_grad": false,
+        "shape": [
+          2,
+          3
+        ],
+        "storage_offset": 0,
+        "stride": [
+          3,
+          1
+        ],
+        "values": [
+          [
+            false,
+            true,
+            true
+          ],
+          [
+            false,
+            true,
+            false
+          ]
+        ]
+      }
+    ],
+    "kind": "tuple"
+  },
+  "expected_sha256": "c740175d98b635136a2688ecba8aa31c17e792eb27dc2e795af2add42150c801",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.native_dropout.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        0.25,
+        true
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::native_dropout(Tensor input, float p, bool? train) -> (Tensor, Tensor)"
+}

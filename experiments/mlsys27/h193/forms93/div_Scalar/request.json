@@ -1,0 +1,133 @@
+{
+ "arguments": {
+  "args": {
+   "items": [
+    {
+     "dtype": "float32",
+     "kind": "tensor",
+     "requires_grad": false,
+     "shape": [
+      2,
+      3
+     ],
+     "storage_offset": 0,
+     "stride": [
+      3,
+      1
+     ],
+     "values": [
+      [
+       -0.75,
+       -0.3499999940395355,
+       0.050000011920928955
+      ],
+      [
+       0.44999998807907104,
+       0.8500000238418579,
+       1.25
+      ]
+     ]
+    },
+    2.0
+   ],
+   "kind": "tuple"
+  },
+  "kwargs": {}
+ },
+ "case_id": "corpus_193:aten.div.Scalar",
+ "comparison": "equal",
+ "comparison_parameters": {},
+ "expected": {
+  "dtype": "float32",
+  "kind": "tensor",
+  "requires_grad": false,
+  "shape": [
+   2,
+   3
+  ],
+  "storage_offset": 0,
+  "stride": [
+   3,
+   1
+  ],
+  "values": [
+   [
+    -0.375,
+    -0.171875,
+    0.03125
+   ],
+   [
+    0.21875,
+    0.421875,
+    0.625
+   ]
+  ]
+ },
+ "expected_sha256": "5e66f2dd5e90dc6188c333270166d85e7cd8a10c111eca892a8ee43c6fdaa637",
+ "mutated_arguments": [],
+ "output_input_aliases": [],
+ "overload": "aten.div.Scalar",
+ "post_arguments": {
+  "args": {
+   "items": [
+    {
+     "dtype": "float32",
+     "kind": "tensor",
+     "requires_grad": false,
+     "shape": [
+      2,
+      3
+     ],
+     "storage_offset": 0,
+     "stride": [
+      3,
+      1
+     ],
+     "values": [
+      [
+       -0.75,
+       -0.3499999940395355,
+       0.050000011920928955
+      ],
+      [
+       0.44999998807907104,
+       0.8500000238418579,
+       1.25
+      ]
+     ]
+    },
+    2.0
+   ],
+   "kind": "tuple"
+  },
+  "kwargs": {}
+ },
+ "rng_seed": 0,
+ "schema": "aten::div.Scalar(Tensor self, Scalar other) -> Tensor",
+ "numeric_reference": {
+  "policy": "spec_int8",
+  "engine": "tools/gen_spec_int8_form.py (exact rational evaluation of the declared quantized model)",
+  "contract": {
+   "exponent": -6,
+   "quant_min": -128,
+   "quant_max": 127,
+   "zero_point": 0,
+   "nonfinite": "byte_storage_zero_nan_saturating_infinity"
+  },
+  "divisor": "2",
+  "software_spec": "/scratch2/loren/merlin-mlsys27-final/examples/gemmini/target/software-spec.yaml",
+  "fp32_eager_expected": [
+   [
+    -0.375,
+    -0.17499999701976776,
+    0.025000005960464478
+   ],
+   [
+    0.22499999403953552,
+    0.42500001192092896,
+    0.625
+   ]
+  ],
+  "comparison": "exact: array_equal on the f32 output words (rtol = atol = 0)"
+ }
+}

@@ -1,0 +1,217 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            1,
+            1,
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            4,
+            4,
+            2,
+            1
+          ],
+          "values": [
+            [
+              [
+                [
+                  -0.75,
+                  -0.08333331346511841
+                ],
+                [
+                  0.5833333134651184,
+                  1.25
+                ]
+              ]
+            ]
+          ]
+        },
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            1,
+            2,
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            8,
+            4,
+            2,
+            1
+          ],
+          "values": [
+            [
+              [
+                [
+                  -0.75,
+                  -0.4642857015132904
+                ],
+                [
+                  -0.1785714030265808,
+                  0.10714289546012878
+                ]
+              ],
+              [
+                [
+                  0.3928571045398712,
+                  0.6785714030265808
+                ],
+                [
+                  0.9642857313156128,
+                  1.0
+                ]
+              ]
+            ]
+          ]
+        },
+        0,
+        0,
+        true
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.grid_sampler_2d.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      1,
+      1,
+      2,
+      2
+    ],
+    "storage_offset": 0,
+    "stride": [
+      4,
+      4,
+      2,
+      1
+    ],
+    "values": [
+      [
+        [
+          [
+            -0.3095237910747528,
+            0.261904776096344
+          ],
+          [
+            0.8333333134651184,
+            1.2380952835083008
+          ]
+        ]
+      ]
+    ]
+  },
+  "expected_sha256": "c3e2e6338454a8e9839c178065c800f02fe7235a53c654bd9f5fc9ecd2b806f7",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.grid_sampler_2d.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            1,
+            1,
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            4,
+            4,
+            2,
+            1
+          ],
+          "values": [
+            [
+              [
+                [
+                  -0.75,
+                  -0.08333331346511841
+                ],
+                [
+                  0.5833333134651184,
+                  1.25
+                ]
+              ]
+            ]
+          ]
+        },
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            1,
+            2,
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            8,
+            4,
+            2,
+            1
+          ],
+          "values": [
+            [
+              [
+                [
+                  -0.75,
+                  -0.4642857015132904
+                ],
+                [
+                  -0.1785714030265808,
+                  0.10714289546012878
+                ]
+              ],
+              [
+                [
+                  0.3928571045398712,
+                  0.6785714030265808
+                ],
+                [
+                  0.9642857313156128,
+                  1.0
+                ]
+              ]
+            ]
+          ]
+        },
+        0,
+        0,
+        true
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::grid_sampler_2d(Tensor input, Tensor grid, int interpolation_mode, int padding_mode, bool align_corners) -> Tensor"
+}

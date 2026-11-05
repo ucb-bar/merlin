@@ -1,0 +1,180 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            1,
+            1,
+            3,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            9,
+            9,
+            3,
+            1
+          ],
+          "values": [
+            [
+              [
+                [
+                  -0.75,
+                  -0.5,
+                  -0.25
+                ],
+                [
+                  0.0,
+                  0.25,
+                  0.5
+                ],
+                [
+                  0.75,
+                  1.0,
+                  1.25
+                ]
+              ]
+            ]
+          ]
+        },
+        [
+          1,
+          1,
+          1,
+          1
+        ]
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.reflection_pad2d.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      1,
+      1,
+      5,
+      5
+    ],
+    "storage_offset": 0,
+    "stride": [
+      25,
+      25,
+      5,
+      1
+    ],
+    "values": [
+      [
+        [
+          [
+            0.25,
+            0.0,
+            0.25,
+            0.5,
+            0.25
+          ],
+          [
+            -0.5,
+            -0.75,
+            -0.5,
+            -0.25,
+            -0.5
+          ],
+          [
+            0.25,
+            0.0,
+            0.25,
+            0.5,
+            0.25
+          ],
+          [
+            1.0,
+            0.75,
+            1.0,
+            1.25,
+            1.0
+          ],
+          [
+            0.25,
+            0.0,
+            0.25,
+            0.5,
+            0.25
+          ]
+        ]
+      ]
+    ]
+  },
+  "expected_sha256": "0e12fa7c219b875b8fedc3d11f346060ef993a3d4c9b9982fc255edf92e43661",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.reflection_pad2d.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            1,
+            1,
+            3,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            9,
+            9,
+            3,
+            1
+          ],
+          "values": [
+            [
+              [
+                [
+                  -0.75,
+                  -0.5,
+                  -0.25
+                ],
+                [
+                  0.0,
+                  0.25,
+                  0.5
+                ],
+                [
+                  0.75,
+                  1.0,
+                  1.25
+                ]
+              ]
+            ]
+          ]
+        },
+        [
+          1,
+          1,
+          1,
+          1
+        ]
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::reflection_pad2d(Tensor self, SymInt[4] padding) -> Tensor"
+}

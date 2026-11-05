@@ -1,0 +1,109 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              1.25,
+              0.8500000238418579,
+              0.550000011920929
+            ],
+            [
+              0.949999988079071,
+              1.350000023841858,
+              1.75
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.rsqrt.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      3,
+      1
+    ],
+    "values": [
+      [
+        0.8944271802902222,
+        1.084652304649353,
+        1.3483996391296387
+      ],
+      [
+        1.0259783267974854,
+        0.8606629371643066,
+        0.7559289932250977
+      ]
+    ]
+  },
+  "expected_sha256": "b2dd22f4b39d731176088202217bc4b03bb27babdf24a2a0e0114b933f7730d7",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.rsqrt.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              1.25,
+              0.8500000238418579,
+              0.550000011920929
+            ],
+            [
+              0.949999988079071,
+              1.350000023841858,
+              1.75
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::rsqrt(Tensor self) -> Tensor"
+}

@@ -1,0 +1,113 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        1,
+        false
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten._softmax.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      3,
+      1
+    ],
+    "values": [
+      [
+        0.21198272705078125,
+        0.316241055727005,
+        0.47177624702453613
+      ],
+      [
+        0.21198272705078125,
+        0.316241055727005,
+        0.47177624702453613
+      ]
+    ]
+  },
+  "expected_sha256": "8ce408d9bdb8f95a023ef24b146c8eebe8524204db5819dc59dddd14c7db6c2f",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten._softmax.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        1,
+        false
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::_softmax(Tensor self, int dim, bool half_to_float) -> Tensor"
+}

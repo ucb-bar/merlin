@@ -1,0 +1,886 @@
+[
+ {
+  "overload": "aten._adaptive_avg_pool2d.default",
+  "slug": "_adaptive_avg_pool2d_default",
+  "path": "forms93/_adaptive_avg_pool2d_default",
+  "lane": "window_sum",
+  "form": "reduce_pool: window_sum: adaptive_avg_pool2d (6,8) -> (4,2) (windows 2x4, overlapping rows) on [1,2,6,8] i8",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten._adaptive_avg_pool2d_backward.default",
+  "slug": "_adaptive_avg_pool2d_backward_default",
+  "path": "forms93/_adaptive_avg_pool2d_backward_default",
+  "lane": "window_sum",
+  "form": "reduce_pool: window_sum: adaptive_avg_pool2d_backward (6,8)<-(4,2): grad_output spreads over its adaptive window divided by the window count 8; i8 result",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten._adaptive_avg_pool3d.default",
+  "slug": "_adaptive_avg_pool3d_default",
+  "path": "forms93/_adaptive_avg_pool3d_default",
+  "lane": "window_sum",
+  "form": "reduce_pool: window_sum: adaptive_avg_pool3d (6,4,4) -> (4,2,2) (windows 2x2x2) on [1,2,6,4,4] i8",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten._to_copy.default",
+  "slug": "_to_copy_default",
+  "path": "forms93/_to_copy_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: movement: dtype-widening copy i8 -> i32 is exactly the movement op",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.adaptive_avg_pool1d.default",
+  "slug": "adaptive_avg_pool1d_default",
+  "path": "forms93/adaptive_avg_pool1d_default",
+  "lane": "window_sum",
+  "form": "reduce_pool: window_sum: adaptive_avg_pool1d 6 -> 4 (overlapping windows of 2) on [2,3,6] i8",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.add.Scalar",
+  "slug": "add_Scalar",
+  "path": "forms93/add_Scalar",
+  "lane": "widened",
+  "form": "elementwise: add.Scalar(x, 3) on x widened to i32; int8 widened to i32, scalar as an i32 constant, i32 result (exact torch-eager integer reference in int32)",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.add.Tensor",
+  "slug": "add_Tensor",
+  "path": "forms93/add_Tensor",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: residual_add: int8 add of two activations (alpha=1), exact",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.addmm.default",
+  "slug": "addmm_default",
+  "path": "forms93/addmm_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: matmul: int8 matmul with a bias_add epilogue (alpha=beta=1)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.alias.default",
+  "slug": "alias_default",
+  "path": "forms93/alias_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: movement: dense movement (identity), i8 in / i32 out",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.amax.default",
+  "slug": "amax_default",
+  "path": "forms93/amax_default",
+  "lane": "INT8",
+  "form": "reduce_pool: x0, [0, 2], True",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.amin.default",
+  "slug": "amin_default",
+  "path": "forms93/amin_default",
+  "lane": "INT8",
+  "form": "reduce_pool: x0, [1], False",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.any.default",
+  "slug": "any_default",
+  "path": "forms93/any_default",
+  "lane": "INT8",
+  "form": "reduce_pool: x0",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.any.dim",
+  "slug": "any_dim",
+  "path": "forms93/any_dim",
+  "lane": "INT8",
+  "form": "reduce_pool: x0, 1, True",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.any.dims",
+  "slug": "any_dims",
+  "path": "forms93/any_dims",
+  "lane": "INT8",
+  "form": "reduce_pool: x0, [0, 2], False",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.argmax.default",
+  "slug": "argmax_default",
+  "path": "forms93/argmax_default",
+  "lane": "INT8",
+  "form": "hard: x0, 1, False",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.argmin.default",
+  "slug": "argmin_default",
+  "path": "forms93/argmin_default",
+  "lane": "INT8",
+  "form": "hard: x0, 1, False",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.as_strided.default",
+  "slug": "as_strided_default",
+  "path": "forms93/as_strided_default",
+  "lane": "DEVICE_FORMS",
+  "form": "movement: movement: as_strided(x, [2, 2], [4, 1], 1) on a contiguous [3, 4] source is the slice rows 0:2, cols 1:3",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.avg_pool1d.default",
+  "slug": "avg_pool1d_default",
+  "path": "forms93/avg_pool1d_default",
+  "lane": "window_sum",
+  "form": "reduce_pool: window_sum: avg_pool1d k2 s2 p1 count_include_pad on [2,3,10] i8 (edge windows half padding)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.avg_pool2d.default",
+  "slug": "avg_pool2d_default",
+  "path": "forms93/avg_pool2d_default",
+  "lane": "window_sum",
+  "form": "reduce_pool: window_sum: avg_pool2d k2 s2 ceil_mode on [1,2,7,7] i8 (last window is 1 cell wide)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.avg_pool2d_backward.default",
+  "slug": "avg_pool2d_backward_default",
+  "path": "forms93/avg_pool2d_backward_default",
+  "lane": "window_sum",
+  "form": "reduce_pool: window_sum: avg_pool2d_backward k2 s2: each grad_output cell spreads over its 2x2 window divided by the count 4 (exact integer weights L/count into i32, one round-half-even readout, saturated to i8)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.avg_pool3d.default",
+  "slug": "avg_pool3d_default",
+  "path": "forms93/avg_pool3d_default",
+  "lane": "window_sum",
+  "form": "reduce_pool: window_sum: avg_pool3d k2 s2 on [1,2,4,4,4] i8 (count 8)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.bitwise_and.Scalar",
+  "slug": "bitwise_and_Scalar",
+  "path": "forms93/bitwise_and_Scalar",
+  "lane": "INT8",
+  "form": "elementwise: x0, 3",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.bitwise_or.Scalar",
+  "slug": "bitwise_or_Scalar",
+  "path": "forms93/bitwise_or_Scalar",
+  "lane": "INT8",
+  "form": "elementwise: x0, 3",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.bmm.default",
+  "slug": "bmm_default",
+  "path": "forms93/bmm_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: gemv_batched: batched int8 matmul",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.cat.default",
+  "slug": "cat_default",
+  "path": "forms93/cat_default",
+  "lane": "DEVICE_FORMS",
+  "form": "movement: concat: two [2, 3] tensors joined on axis 0 through the interface concat op",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.ceil.default",
+  "slug": "ceil_default",
+  "path": "forms93/ceil_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: movement: ceil on an integer dtype is the identity: dense movement",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.clone.default",
+  "slug": "clone_default",
+  "path": "forms93/clone_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: movement: dense movement (identity), i8 in / i32 out",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.col2im.default",
+  "slug": "col2im_default",
+  "path": "forms93/col2im_default",
+  "lane": "window_sum",
+  "form": "reduce_pool: window_sum: col2im k2 s1 d1 p0 to a 3x3 image: the exact i32 sum of overlapping patches (no readout)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.constant_pad_nd.default",
+  "slug": "constant_pad_nd_default",
+  "path": "forms93/constant_pad_nd_default",
+  "lane": "DEVICE_FORMS",
+  "form": "movement: movement: constant pad of the last two dims with code 1",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.convolution.default",
+  "slug": "convolution_default",
+  "path": "forms93/convolution_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: conv2d: int8 NHWC conv2d (groups=1)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.convolution_backward.default",
+  "slug": "spec_convolution_backward_default",
+  "path": "forms93/spec_convolution_backward_default",
+  "lane": "SPEC_FORM",
+  "form": "spec: spec form: row contraction (convolution_backward forms), contraction/convolution_backward_spatial via corpus_form_table at the aligned cell (16x16); builder op conv_backward_spatial",
+  "note": "spec form: row contraction (convolution_backward forms), contraction/convolution_backward_spatial via corpus_form_table at the aligned cell (16x16); builder op conv_backward_spatial",
+  "testable": true
+ },
+ {
+  "overload": "aten.copy.default",
+  "slug": "copy_default",
+  "path": "forms93/copy_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: movement: dense movement (identity), i8 in / i32 out",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.cumsum.default",
+  "slug": "spec_cumsum_default",
+  "path": "forms93/spec_cumsum_default",
+  "lane": "SPEC_FORM",
+  "form": "spec: spec form: row reduction_prefix_sum, reduction/cumsum via corpus_form_table at the aligned cell (16x16); builder op prefix_sum",
+  "note": "spec form: row reduction_prefix_sum, reduction/cumsum via corpus_form_table at the aligned cell (16x16); builder op prefix_sum",
+  "testable": true
+ },
+ {
+  "overload": "aten.diagonal.default",
+  "slug": "spec_diagonal_default",
+  "path": "forms93/spec_diagonal_default",
+  "lane": "SPEC_FORM",
+  "form": "spec: spec form: row movement, movement/diagonal via corpus_form_table at the aligned cell (16x16); builder op movement",
+  "note": "spec form: row movement, movement/diagonal via corpus_form_table at the aligned cell (16x16); builder op movement",
+  "testable": true
+ },
+ {
+  "overload": "aten.div.Scalar",
+  "slug": "div_Scalar",
+  "path": "forms93/div_Scalar",
+  "lane": "SPEC_INT8",
+  "form": "spec_int8: spec_int8 (operator decision 2026-11-04): the f32 capture divf x, 2.0 graded EXACTLY against the spec's declared quantized model (s = 2^-6, entry RNE, exact rational body, one RNE byte readout); tools/gen_spec_int8_form.py",
+  "note": "spec_int8 (operator decision 2026-11-04): the f32 capture divf x, 2.0 graded EXACTLY against the spec's declared quantized model (s = 2^-6, entry RNE, exact rational body, one RNE byte readout); tools/gen_spec_int8_form.py",
+  "testable": true
+ },
+ {
+  "overload": "aten.div.Scalar_mode",
+  "slug": "div_Scalar_mode",
+  "path": "forms93/div_Scalar_mode",
+  "lane": "INT8",
+  "form": "elementwise: x0, 3, rounding_mode='floor'",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.elu.default",
+  "slug": "elu_default",
+  "path": "forms93/elu_default",
+  "lane": "NO_INT_FORM",
+  "form": "-",
+  "note": "torch.ops.aten.elu.default has no int8 kernel ('elu_cpu' not implemented for 'Char', measured) and its negative branch alpha*(exp(x)-1) is not integer-valued. Unlock: a quantization/LUT spec for exp, or admitting f32 inputs and outputs",
+  "testable": false
+ },
+ {
+  "overload": "aten.eq.Scalar",
+  "slug": "eq_Scalar",
+  "path": "forms93/eq_Scalar",
+  "lane": "INT8",
+  "form": "elementwise: x0, 1",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.expand.default",
+  "slug": "expand_default",
+  "path": "forms93/expand_default",
+  "lane": "DEVICE_FORMS",
+  "form": "movement: movement: expand [1, 3] -> [2, 3]: the interface broadcast form (leading dims replay whole rows)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.fill.Scalar",
+  "slug": "fill_Scalar",
+  "path": "forms93/fill_Scalar",
+  "lane": "widened",
+  "form": "elementwise: fill.Scalar(x, 3) on x widened to i32; int8 widened to i32, scalar as an i32 constant, i32 result (exact torch-eager integer reference in int32)",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.flip.default",
+  "slug": "flip_default",
+  "path": "forms93/flip_default",
+  "lane": "DEVICE_FORMS",
+  "form": "movement: movement: flip dims [1] is the slice with offset d-1 and stride -1 (negative strides walk backwards)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.floor.default",
+  "slug": "floor_default",
+  "path": "forms93/floor_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: movement: floor on an integer dtype is the identity: dense movement",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.fmod.Scalar",
+  "slug": "fmod_Scalar",
+  "path": "forms93/fmod_Scalar",
+  "lane": "INT8",
+  "form": "elementwise: x0, 3",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.full.default",
+  "slug": "spec_full_default",
+  "path": "forms93/spec_full_default",
+  "lane": "SPEC_FORM",
+  "form": "spec: spec form: row movement, movement/fill via corpus_form_table at the aligned cell (16x16); builder op fill",
+  "note": "spec form: row movement, movement/fill via corpus_form_table at the aligned cell (16x16); builder op fill",
+  "testable": true
+ },
+ {
+  "overload": "aten.full_like.default",
+  "slug": "spec_full_like_default",
+  "path": "forms93/spec_full_like_default",
+  "lane": "SPEC_FORM",
+  "form": "spec: spec form: row movement, movement/fill via corpus_form_table at the aligned cell (16x16); builder op fill",
+  "note": "spec form: row movement, movement/fill via corpus_form_table at the aligned cell (16x16); builder op fill",
+  "testable": true
+ },
+ {
+  "overload": "aten.ge.Scalar",
+  "slug": "ge_Scalar",
+  "path": "forms93/ge_Scalar",
+  "lane": "INT8",
+  "form": "elementwise: x0, 1",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.gt.Scalar",
+  "slug": "gt_Scalar",
+  "path": "forms93/gt_Scalar",
+  "lane": "INT8",
+  "form": "elementwise: x0, 1",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.hardtanh.default",
+  "slug": "hardtanh_default",
+  "path": "forms93/hardtanh_default",
+  "lane": "INT8",
+  "form": "elementwise: x0, -3, 3",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.isinf.default",
+  "slug": "isinf_default",
+  "path": "forms93/isinf_default",
+  "lane": "NO_INT_FORM",
+  "form": "-",
+  "note": "torch.ops.aten.isinf.default on an int8 tensor is constant False (measured: all-zero output for every input), so the golden has no spread and phase 0 refuses it (UnfalsifiablePolicy, falsifiability ceiling 0.0); an integer domain has no NaN/Inf to widen the stimulus with. Unlock: admitting f32 inputs carrying NaN/Inf with a bool result, or a decision to accept a constant-False capsule (RECOMMENDED_ALT_DEVICE holds the residual_add form the frozen compiler lowers)",
+  "testable": false
+ },
+ {
+  "overload": "aten.isnan.default",
+  "slug": "isnan_default",
+  "path": "forms93/isnan_default",
+  "lane": "NO_INT_FORM",
+  "form": "-",
+  "note": "torch.ops.aten.isnan.default on an int8 tensor is constant False (measured: all-zero output for every input), so the golden has no spread and phase 0 refuses it (UnfalsifiablePolicy, falsifiability ceiling 0.0); an integer domain has no NaN/Inf to widen the stimulus with. Unlock: admitting f32 inputs carrying NaN/Inf with a bool result, or a decision to accept a constant-False capsule (RECOMMENDED_ALT_DEVICE holds the residual_add form the frozen compiler lowers)",
+  "testable": false
+ },
+ {
+  "overload": "aten.le.Scalar",
+  "slug": "le_Scalar",
+  "path": "forms93/le_Scalar",
+  "lane": "INT8",
+  "form": "elementwise: x0, 1",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.leaky_relu.default",
+  "slug": "leaky_relu_default",
+  "path": "forms93/leaky_relu_default",
+  "lane": "NO_INT_FORM",
+  "form": "-",
+  "note": "torch.ops.aten.leaky_relu.default has no int8 kernel ('leaky_relu_cpu' not implemented for 'Char', measured, for float and int slopes). Unlock: a fixed-point negative-slope spec (x if x>=0 else (x*p)>>k), or admitting f32 inputs and outputs",
+  "testable": false
+ },
+ {
+  "overload": "aten.lt.Scalar",
+  "slug": "lt_Scalar",
+  "path": "forms93/lt_Scalar",
+  "lane": "INT8",
+  "form": "elementwise: x0, 1",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.max.dim",
+  "slug": "max_dim",
+  "path": "forms93/max_dim",
+  "lane": "INT8",
+  "form": "hard: x0, 1, False",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.mean.default",
+  "slug": "mean_default",
+  "path": "forms93/mean_default",
+  "lane": "window_sum",
+  "form": "reduce_pool: window_sum: mean over all 32 elements of a [4,8] i8 tensor (rank-0 result held as [1,1])",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.mean.dim",
+  "slug": "mean_dim",
+  "path": "forms93/mean_dim",
+  "lane": "window_sum",
+  "form": "reduce_pool: window_sum: mean over dims [1,3] with keepdim (count 16) of a [2,4,3,4] i8 tensor",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.min.dim",
+  "slug": "min_dim",
+  "path": "forms93/min_dim",
+  "lane": "INT8",
+  "form": "hard: x0, 1, False",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.mm.default",
+  "slug": "mm_default",
+  "path": "forms93/mm_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: matmul: int8 matmul, i32 accumulate",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.mul.Scalar",
+  "slug": "mul_Scalar",
+  "path": "forms93/mul_Scalar",
+  "lane": "widened",
+  "form": "elementwise: mul.Scalar(x, 2) on x widened to i32; int8 widened to i32, scalar as an i32 constant, i32 result (exact torch-eager integer reference in int32)",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.native_dropout.default",
+  "slug": "native_dropout_default",
+  "path": "forms93/native_dropout_default",
+  "lane": "COMPOSITE",
+  "form": "hard: composite of: clone, ones_like (inference form train=False: identity plus an all-true mask)",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.ne.Scalar",
+  "slug": "ne_Scalar",
+  "path": "forms93/ne_Scalar",
+  "lane": "INT8",
+  "form": "elementwise: x0, 1",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.neg.default",
+  "slug": "neg_default",
+  "path": "forms93/neg_default",
+  "lane": "DEVICE_FORMS",
+  "form": "elementwise: residual_add: int8 negation as a residual add with lhs multiplier -1 and rhs multiplier 0 (inputs in [-8, 8): no saturation)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.permute.default",
+  "slug": "permute_default",
+  "path": "forms93/permute_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: component_program: rank-2 transpose (dims [1,0]), widened to i32; rank>2 permutes are not representable (rank-2 only)",
+  "note": "",
+  "golden_src": "numpy fallback (component integer reference source bound differs from its ac)",
+  "testable": true
+ },
+ {
+  "overload": "aten.pow.Tensor_Scalar",
+  "slug": "pow_Tensor_Scalar",
+  "path": "forms93/pow_Tensor_Scalar",
+  "lane": "INT8",
+  "form": "elementwise: x0, 2",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.prod.default",
+  "slug": "prod_default",
+  "path": "forms93/prod_default",
+  "lane": "INT8",
+  "form": "reduce_pool: x0",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.prod.dim_int",
+  "slug": "prod_dim_int",
+  "path": "forms93/prod_dim_int",
+  "lane": "INT8",
+  "form": "reduce_pool: x0, 1, True",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.reflection_pad1d.default",
+  "slug": "reflection_pad1d_default",
+  "path": "forms93/reflection_pad1d_default",
+  "lane": "DEVICE_FORMS",
+  "form": "movement: movement: i8 pad through the interface pad form (reflect)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.reflection_pad2d.default",
+  "slug": "reflection_pad2d_default",
+  "path": "forms93/reflection_pad2d_default",
+  "lane": "DEVICE_FORMS",
+  "form": "movement: movement: i8 pad through the interface pad form (reflect)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.reflection_pad3d.default",
+  "slug": "reflection_pad3d_default",
+  "path": "forms93/reflection_pad3d_default",
+  "lane": "DEVICE_FORMS",
+  "form": "movement: movement: i8 pad through the interface pad form (reflect)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.relu.default",
+  "slug": "relu_default",
+  "path": "forms93/relu_default",
+  "lane": "DEVICE_FORMS",
+  "form": "elementwise: residual_add: int8 relu as a residual add with multipliers (1, 0) and the relu epilogue",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.remainder.Scalar",
+  "slug": "remainder_Scalar",
+  "path": "forms93/remainder_Scalar",
+  "lane": "INT8",
+  "form": "elementwise: x0, 3",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.repeat.default",
+  "slug": "repeat_default",
+  "path": "forms93/repeat_default",
+  "lane": "DEVICE_FORMS",
+  "form": "movement: movement: repeat [2, 1] through the interface repeat form",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.replication_pad2d.default",
+  "slug": "replication_pad2d_default",
+  "path": "forms93/replication_pad2d_default",
+  "lane": "DEVICE_FORMS",
+  "form": "movement: movement: i8 pad through the interface pad form (replicate)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.replication_pad3d.default",
+  "slug": "replication_pad3d_default",
+  "path": "forms93/replication_pad3d_default",
+  "lane": "DEVICE_FORMS",
+  "form": "movement: movement: i8 pad through the interface pad form (replicate)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.round.default",
+  "slug": "round_default",
+  "path": "forms93/round_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: movement: round on an integer dtype is the identity: dense movement",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.scalar_tensor.default",
+  "slug": "spec_scalar_tensor_default",
+  "path": "forms93/spec_scalar_tensor_default",
+  "lane": "SPEC_FORM",
+  "form": "spec: spec form: row movement, movement/fill_scalar via corpus_form_table at the aligned cell (16x16); builder op fill",
+  "note": "spec form: row movement, movement/fill_scalar via corpus_form_table at the aligned cell (16x16); builder op fill",
+  "testable": true
+ },
+ {
+  "overload": "aten.select.int",
+  "slug": "spec_select_int",
+  "path": "forms93/spec_select_int",
+  "lane": "SPEC_FORM",
+  "form": "spec: spec form: row movement, movement/select via corpus_form_table at the aligned cell (16x16); builder op movement_chain",
+  "note": "spec form: row movement, movement/select via corpus_form_table at the aligned cell (16x16); builder op movement_chain",
+  "testable": true
+ },
+ {
+  "overload": "aten.select_scatter.default",
+  "slug": "select_scatter_default",
+  "path": "forms93/select_scatter_default",
+  "lane": "DEVICE_FORMS",
+  "form": "movement: insert_slice: select_scatter at dim 1 index 1 is insert_slice with the selected dim kept at size 1 (src [2, 1])",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.sign.default",
+  "slug": "sign_default",
+  "path": "forms93/sign_default",
+  "lane": "INT8",
+  "form": "elementwise: x0",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.slice.Tensor",
+  "slug": "slice_Tensor",
+  "path": "forms93/slice_Tensor",
+  "lane": "DEVICE_FORMS",
+  "form": "movement: movement: i8 values moved unchanged through the interface slice form (offsets, sizes, strides)",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.slice_scatter.default",
+  "slug": "slice_scatter_default",
+  "path": "forms93/slice_scatter_default",
+  "lane": "DEVICE_FORMS",
+  "form": "movement: insert_slice: the [2, 2] source written into columns 1, 3 of a [2, 5] destination through the interface insert_slice op",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.sort.default",
+  "slug": "sort_default",
+  "path": "forms93/sort_default",
+  "lane": "COMPOSITE",
+  "form": "hard: composite of: stable rank-select sort along dim 1 (compare, cast, sum, one-hot place); equals torch.sort(stable=True)",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.split_with_sizes.default",
+  "slug": "spec_split_with_sizes_default",
+  "path": "forms93/spec_split_with_sizes_default",
+  "lane": "SPEC_FORM",
+  "form": "spec: spec form: row movement, movement/split_sizes via corpus_form_table at the aligned cell (16x16); builder op movement_chain",
+  "note": "spec form: row movement, movement/split_sizes via corpus_form_table at the aligned cell (16x16); builder op movement_chain",
+  "testable": true
+ },
+ {
+  "overload": "aten.sqrt.default",
+  "slug": "sqrt_default",
+  "path": "forms93/sqrt_default",
+  "lane": "NO_INT_FORM",
+  "form": "-",
+  "note": "torch.ops.aten.sqrt.default on an int8 tensor promotes to float32 (measured; negative inputs give NaN) so the result is not integer-valued. Unlock: an integer square-root spec (floor isqrt on x>=0, exact only on perfect squares) or admitting f32 outputs",
+  "testable": false
+ },
+ {
+  "overload": "aten.squeeze.dim",
+  "slug": "squeeze_dim",
+  "path": "forms93/squeeze_dim",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: component_program: rank-2 stand-in: element order preserved; the rank change itself is not represented",
+  "note": "",
+  "golden_src": "numpy fallback (component integer reference source bound differs from its ac)",
+  "testable": true
+ },
+ {
+  "overload": "aten.squeeze.dims",
+  "slug": "squeeze_dims",
+  "path": "forms93/squeeze_dims",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: component_program: rank-2 stand-in: element order preserved; the rank change itself is not represented",
+  "note": "",
+  "golden_src": "numpy fallback (component integer reference source bound differs from its ac)",
+  "testable": true
+ },
+ {
+  "overload": "aten.sub.Scalar",
+  "slug": "sub_Scalar",
+  "path": "forms93/sub_Scalar",
+  "lane": "widened",
+  "form": "elementwise: sub.Scalar(x, 3) on x widened to i32; int8 widened to i32, scalar as an i32 constant, i32 result (exact torch-eager integer reference in int32)",
+  "note": "",
+  "testable": true
+ },
+ {
+  "overload": "aten.sub.Tensor",
+  "slug": "sub_Tensor",
+  "path": "forms93/sub_Tensor",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: residual_add: int8 subtract as add with rhs_scale -1 (alpha=1), exact",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.sum.dim_IntList",
+  "slug": "sum_dim_IntList",
+  "path": "forms93/sum_dim_IntList",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: column_sum: exact i32 sum over the outer axis",
+  "note": "",
+  "golden_src": "numpy fallback (component integer reference source bound differs from its ac)",
+  "testable": true
+ },
+ {
+  "overload": "aten.trunc.default",
+  "slug": "trunc_default",
+  "path": "forms93/trunc_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: movement: trunc on an integer dtype is the identity: dense movement",
+  "note": "",
+  "golden_src": "merlin integer reference",
+  "testable": true
+ },
+ {
+  "overload": "aten.unsqueeze.default",
+  "slug": "unsqueeze_default",
+  "path": "forms93/unsqueeze_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: component_program: rank-2 stand-in: element order preserved; the rank change itself is not represented",
+  "note": "",
+  "golden_src": "numpy fallback (component integer reference source bound differs from its ac)",
+  "testable": true
+ },
+ {
+  "overload": "aten.upsample_nearest2d.vec",
+  "slug": "spec_upsample_nearest2d_vec",
+  "path": "forms93/spec_upsample_nearest2d_vec",
+  "lane": "SPEC_FORM",
+  "form": "spec: spec form: row movement, movement/upsample_nearest via corpus_form_table at the aligned cell (16x16); builder op movement",
+  "note": "spec form: row movement, movement/upsample_nearest via corpus_form_table at the aligned cell (16x16); builder op movement",
+  "testable": true
+ },
+ {
+  "overload": "aten.view.default",
+  "slug": "view_default",
+  "path": "forms93/view_default",
+  "lane": "DEVICE_FORMS",
+  "form": "builders: component_program: row-major reshape [16,32] -> [32,16], widened to i32",
+  "note": "",
+  "golden_src": "numpy fallback (component integer reference source bound differs from its ac)",
+  "testable": true
+ }
+]

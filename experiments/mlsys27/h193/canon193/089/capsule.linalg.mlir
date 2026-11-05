@@ -1,0 +1,19 @@
+"builtin.module"() ({
+  "func.func"() <{sym_name = "forward", function_type = (tensor<2x3xf32>) -> tensor<2x3xf32>}> ({
+  ^bb0(%0: tensor<2x3xf32>):
+    %1 = "tensor.empty"() {prov.region_id = "gelu_0", prov._pattern_hint = "gelu", prov.op = "gelu", prov.family = "elementwise", prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering", prov.aten = "aten.gelu.default", prov.orig_dtype = "float32"} : () -> tensor<2x3xf32>
+    %2 = "linalg.generic"(%0, %1) <{indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = [#linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>], operandSegmentSizes = array<i32: 1, 1>}> ({
+    ^bb1(%3: f32, %4: f32):
+      %5 = "arith.constant"() <{value = 5.000000e-01 : f32}> {prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering"} : () -> f32
+      %6 = "arith.constant"() <{value = 1.000000e+00 : f32}> {prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering"} : () -> f32
+      %7 = "arith.constant"() <{value = 0.707106769 : f32}> {prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering"} : () -> f32
+      %8 = "arith.mulf"(%3, %7) <{fastmath = #arith.fastmath<none>}> {prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering"} : (f32, f32) -> f32
+      %9 = "math.erf"(%8) <{fastmath = #arith.fastmath<none>}> {prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering"} : (f32) -> f32
+      %10 = "arith.addf"(%6, %9) <{fastmath = #arith.fastmath<none>}> {prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering"} : (f32, f32) -> f32
+      %11 = "arith.mulf"(%5, %3) <{fastmath = #arith.fastmath<none>}> {prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering"} : (f32, f32) -> f32
+      %12 = "arith.mulf"(%11, %10) <{fastmath = #arith.fastmath<none>}> {prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering"} : (f32, f32) -> f32
+      "linalg.yield"(%12) {prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering"} : (f32) -> ()
+    }) {prov.region_id = "gelu_0", prov._pattern_hint = "gelu", prov.op = "gelu", prov.family = "elementwise", prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering", prov.aten = "aten.gelu.default", prov.orig_dtype = "float32"} : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+    "func.return"(%2) : (tensor<2x3xf32>) -> ()
+  }) : () -> ()
+}) {m2m.result_layout = "{\22authority\22: \22same_conversion_exported_program\22, \22inputs\22: [{\22dtype\22: \22float32\22, \22requires_grad\22: false, \22shape\22: [2, 3], \22storage_offset\22: 0, \22stride\22: [3, 1]}], \22results\22: [{\22alias_inputs\22: [], \22alias_results\22: [], \22dtype\22: \22float32\22, \22requires_grad\22: false, \22role\22: \22user_output\22, \22shape\22: [2, 3], \22storage_offset\22: 0, \22stride\22: [3, 1]}], \22schema_version\22: 1}", prov.weights_file = "/scratch/loren/backend-verify/out-c1/captures/case-a01719ccae1d10ef57b7f41391de6b454a8e9c0e94d464b6688be840e9286d59/capture-work/weights.safetensors", prov.level = "linalg-on-tensors"} : () -> ()

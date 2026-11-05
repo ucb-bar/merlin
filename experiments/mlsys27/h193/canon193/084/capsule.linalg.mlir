@@ -1,0 +1,7 @@
+"builtin.module"() ({
+  "func.func"() <{sym_name = "forward", function_type = () -> tensor<2x3xf32>}> ({
+    %0 = "arith.constant"() <{value = 1.250000e+00 : f32}> {prov.region_id = "fill_0", prov.family = "fill", prov._pattern_hint = "fill", prov.op = "fill", prov.source_node_ids = ["g:prepared:root:n0"], prov.origin_node_ids = ["g:original:root:n0", "g:quantized:root:n0"], prov.trace_role = "lowering", prov.aten = "aten.full.default", prov.orig_dtype = "float32"} : () -> f32
+    %1 = "tensor.splat"(%0) {prov.region_id = "fill_0", prov.family = "fill", prov._pattern_hint = "fill", prov.op = "fill", prov.source_node_ids = ["g:prepared:root:n0"], prov.origin_node_ids = ["g:original:root:n0", "g:quantized:root:n0"], prov.trace_role = "lowering", prov.aten = "aten.full.default", prov.orig_dtype = "float32"} : (f32) -> tensor<2x3xf32>
+    "func.return"(%1) : (tensor<2x3xf32>) -> ()
+  }) : () -> ()
+}) {m2m.result_layout = "{\22authority\22: \22same_conversion_exported_program\22, \22inputs\22: [], \22results\22: [{\22alias_inputs\22: [], \22alias_results\22: [], \22dtype\22: \22float32\22, \22requires_grad\22: false, \22role\22: \22user_output\22, \22shape\22: [2, 3], \22storage_offset\22: 0, \22stride\22: [3, 1]}], \22schema_version\22: 1}", prov.weights_file = "/scratch/loren/backend-verify/out-c1/captures/case-3de7c3c0b62d847b1f837e8ff398ab796dad020ed286e40fe233ec79e718d2ea/capture-work/weights.safetensors", prov.level = "linalg-on-tensors"} : () -> ()

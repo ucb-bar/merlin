@@ -1,0 +1,4 @@
+{
+ "source": "spec_int8 numeric reference (no registry capsule; expected = {} as for the f32 capture)",
+ "capsule": {}
+}

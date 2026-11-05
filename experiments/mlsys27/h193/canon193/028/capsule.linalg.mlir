@@ -1,0 +1,16 @@
+"builtin.module"() ({
+  "func.func"() <{sym_name = "forward", function_type = () -> tensor<3xi64>}> ({
+    %0 = "tensor.empty"() {prov.region_id = "iota_0", prov.family = "iota", prov._pattern_hint = "arange", prov.op = "arange", prov.source_node_ids = ["g:prepared:root:n0"], prov.origin_node_ids = ["g:original:root:n0", "g:quantized:root:n0"], prov.trace_role = "lowering", prov.aten = "aten.arange.start_step", prov.orig_dtype = "int64"} : () -> tensor<3xi64>
+    %1 = "linalg.generic"(%0) <{indexing_maps = [affine_map<(d0) -> (d0)>], iterator_types = [#linalg.iterator_type<parallel>], operandSegmentSizes = array<i32: 0, 1>}> ({
+    ^bb0(%2: i64):
+      %3 = "linalg.index"() <{dim = 0 : i64}> {prov.source_node_ids = ["g:prepared:root:n0"], prov.origin_node_ids = ["g:original:root:n0", "g:quantized:root:n0"], prov.trace_role = "lowering"} : () -> index
+      %4 = "arith.index_cast"(%3) {prov.source_node_ids = ["g:prepared:root:n0"], prov.origin_node_ids = ["g:original:root:n0", "g:quantized:root:n0"], prov.trace_role = "lowering"} : (index) -> i64
+      %5 = "arith.constant"() <{value = 2 : i64}> {prov.source_node_ids = ["g:prepared:root:n0"], prov.origin_node_ids = ["g:original:root:n0", "g:quantized:root:n0"], prov.trace_role = "lowering"} : () -> i64
+      %6 = "arith.muli"(%4, %5) <{overflowFlags = #arith.overflow<none>}> {prov.source_node_ids = ["g:prepared:root:n0"], prov.origin_node_ids = ["g:original:root:n0", "g:quantized:root:n0"], prov.trace_role = "lowering"} : (i64, i64) -> i64
+      %7 = "arith.constant"() <{value = 1 : i64}> {prov.source_node_ids = ["g:prepared:root:n0"], prov.origin_node_ids = ["g:original:root:n0", "g:quantized:root:n0"], prov.trace_role = "lowering"} : () -> i64
+      %8 = "arith.addi"(%7, %6) <{overflowFlags = #arith.overflow<none>}> {prov.source_node_ids = ["g:prepared:root:n0"], prov.origin_node_ids = ["g:original:root:n0", "g:quantized:root:n0"], prov.trace_role = "lowering"} : (i64, i64) -> i64
+      "linalg.yield"(%8) {prov.source_node_ids = ["g:prepared:root:n0"], prov.origin_node_ids = ["g:original:root:n0", "g:quantized:root:n0"], prov.trace_role = "lowering"} : (i64) -> ()
+    }) {prov.region_id = "iota_0", prov.family = "iota", prov._pattern_hint = "arange", prov.op = "arange", prov.source_node_ids = ["g:prepared:root:n0"], prov.origin_node_ids = ["g:original:root:n0", "g:quantized:root:n0"], prov.trace_role = "lowering", prov.aten = "aten.arange.start_step", prov.orig_dtype = "int64"} : (tensor<3xi64>) -> tensor<3xi64>
+    "func.return"(%1) : (tensor<3xi64>) -> ()
+  }) : () -> ()
+}) {m2m.result_layout = "{\22authority\22: \22same_conversion_exported_program\22, \22inputs\22: [], \22results\22: [{\22alias_inputs\22: [], \22alias_results\22: [], \22dtype\22: \22int64\22, \22requires_grad\22: false, \22role\22: \22user_output\22, \22shape\22: [3], \22storage_offset\22: 0, \22stride\22: [1]}], \22schema_version\22: 1}", prov.weights_file = "/scratch/loren/backend-verify/out-c1/captures/case-7120eec1f4a9398e1148adeeb4a6461da63303dd7ce8b484b4a3146af191652a/capture-work/weights.safetensors", prov.level = "linalg-on-tensors"} : () -> ()

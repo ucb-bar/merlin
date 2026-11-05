@@ -1,0 +1,111 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              3,
+              4,
+              5
+            ]
+          ]
+        },
+        3
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.bitwise_and.Scalar",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      3,
+      1
+    ],
+    "values": [
+      [
+        0,
+        1,
+        2
+      ],
+      [
+        3,
+        0,
+        1
+      ]
+    ]
+  },
+  "expected_sha256": "614ba15f76014863e08efa61fabcffef6f35a8247a8123411add5cf1a32af917",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.bitwise_and.Scalar",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              3,
+              4,
+              5
+            ]
+          ]
+        },
+        3
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::bitwise_and.Scalar(Tensor self, Scalar other) -> Tensor"
+}

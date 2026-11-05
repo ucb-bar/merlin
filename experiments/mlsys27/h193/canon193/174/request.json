@@ -1,0 +1,115 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        0.5
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {
+      "alpha": 2
+    }
+  },
+  "case_id": "corpus_193:aten.sub.Scalar",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      3,
+      1
+    ],
+    "values": [
+      [
+        -1.75,
+        -1.350000023841858,
+        -0.949999988079071
+      ],
+      [
+        -0.550000011920929,
+        -0.1499999761581421,
+        0.25
+      ]
+    ]
+  },
+  "expected_sha256": "acc5d4c3db5204823e8bd83e61ef8b0d826ba7edc9b275ba60129409e199db59",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.sub.Scalar",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        0.5
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {
+      "alpha": 2
+    }
+  },
+  "rng_seed": 0,
+  "schema": "aten::sub.Scalar(Tensor self, Scalar other, Scalar alpha=1) -> Tensor"
+}

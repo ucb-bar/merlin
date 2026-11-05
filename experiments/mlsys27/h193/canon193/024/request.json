@@ -1,0 +1,107 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        [
+          1
+        ],
+        false
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.amin.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2
+    ],
+    "storage_offset": 0,
+    "stride": [
+      1
+    ],
+    "values": [
+      -0.75,
+      0.44999998807907104
+    ]
+  },
+  "expected_sha256": "0a3a7448287b6816ed916e3aae0e5af995286cdb8c39611e0d50417ebd73e567",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.amin.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        [
+          1
+        ],
+        false
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::amin(Tensor self, int[1] dim=[], bool keepdim=False) -> Tensor"
+}

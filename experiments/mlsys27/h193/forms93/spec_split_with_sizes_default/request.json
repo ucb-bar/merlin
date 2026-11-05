@@ -1,0 +1,1 @@
+{"expected": {"kind": "tuple", "items": [{"kind": "tensor", "dtype": "int32", "shape": [3, 16], "name": "Y0"}, {"kind": "tensor", "dtype": "int32", "shape": [5, 16], "name": "Y1"}, {"kind": "tensor", "dtype": "int32", "shape": [8, 16], "name": "Y2"}]}, "comparison": "equal", "comparison_parameters": {}}

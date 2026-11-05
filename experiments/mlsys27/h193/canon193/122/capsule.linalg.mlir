@@ -1,0 +1,14 @@
+"builtin.module"() ({
+  "func.func"() <{sym_name = "forward", function_type = (tensor<3x4xf32>, tensor<4x2xf32>) -> tensor<3x2xf32>}> ({
+  ^bb0(%0: tensor<3x4xf32>, %1: tensor<4x2xf32>):
+    %2 = "arith.constant"() <{value = 0.000000e+00 : f32}> {prov.region_id = "matmul_0", prov.source_node_ids = ["g:prepared:root:n2"], prov.origin_node_ids = ["g:original:root:n2", "g:quantized:root:n2"], prov.trace_role = "lowering", prov.aten = "aten.mm.default", prov.orig_dtype = "float32"} : () -> f32
+    %3 = "tensor.splat"(%2) {prov.region_id = "matmul_0", prov.source_node_ids = ["g:prepared:root:n2"], prov.origin_node_ids = ["g:original:root:n2", "g:quantized:root:n2"], prov.trace_role = "lowering", prov.aten = "aten.mm.default", prov.orig_dtype = "float32"} : (f32) -> tensor<3x2xf32>
+    %4 = "linalg.matmul"(%0, %1, %3) <{operandSegmentSizes = array<i32: 2, 1>, indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d2, d1)>, affine_map<(d0, d1, d2) -> (d0, d1)>]}> ({
+    ^bb1(%5: f32, %6: f32, %7: f32):
+      %8 = "arith.mulf"(%5, %6) <{fastmath = #arith.fastmath<none>}> {prov.source_node_ids = ["g:prepared:root:n2"], prov.origin_node_ids = ["g:original:root:n2", "g:quantized:root:n2"], prov.trace_role = "lowering"} : (f32, f32) -> f32
+      %9 = "arith.addf"(%8, %7) <{fastmath = #arith.fastmath<none>}> {prov.source_node_ids = ["g:prepared:root:n2"], prov.origin_node_ids = ["g:original:root:n2", "g:quantized:root:n2"], prov.trace_role = "lowering"} : (f32, f32) -> f32
+      "linalg.yield"(%9) {prov.source_node_ids = ["g:prepared:root:n2"], prov.origin_node_ids = ["g:original:root:n2", "g:quantized:root:n2"], prov.trace_role = "lowering"} : (f32) -> ()
+    }) {prov.region_id = "matmul_0", prov.op = "matmul", prov.family = "contraction", prov.source_node_ids = ["g:prepared:root:n2"], prov.origin_node_ids = ["g:original:root:n2", "g:quantized:root:n2"], prov.trace_role = "lowering", prov.aten = "aten.mm.default", prov.orig_dtype = "float32"} : (tensor<3x4xf32>, tensor<4x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>
+    "func.return"(%4) : (tensor<3x2xf32>) -> ()
+  }) : () -> ()
+}) {m2m.result_layout = "{\22authority\22: \22same_conversion_exported_program\22, \22inputs\22: [{\22dtype\22: \22float32\22, \22requires_grad\22: false, \22shape\22: [3, 4], \22storage_offset\22: 0, \22stride\22: [4, 1]}, {\22dtype\22: \22float32\22, \22requires_grad\22: false, \22shape\22: [4, 2], \22storage_offset\22: 0, \22stride\22: [2, 1]}], \22results\22: [{\22alias_inputs\22: [], \22alias_results\22: [], \22dtype\22: \22float32\22, \22requires_grad\22: false, \22role\22: \22user_output\22, \22shape\22: [3, 2], \22storage_offset\22: 0, \22stride\22: [2, 1]}], \22schema_version\22: 1}", prov.weights_file = "/scratch/loren/backend-verify/out-c1/captures/case-1e8a849490b38b081055a8d668d1372cbaeb2f8c55efc47d8bd901e89609a3b5/capture-work/weights.safetensors", prov.level = "linalg-on-tensors"} : () -> ()

@@ -1,0 +1,269 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            1,
+            1,
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            4,
+            4,
+            2,
+            1
+          ],
+          "values": [
+            [
+              [
+                [
+                  1.0,
+                  1.0
+                ],
+                [
+                  1.0,
+                  1.0
+                ]
+              ]
+            ]
+          ]
+        },
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            1,
+            1,
+            4,
+            4
+          ],
+          "storage_offset": 0,
+          "stride": [
+            16,
+            16,
+            4,
+            1
+          ],
+          "values": [
+            [
+              [
+                [
+                  -0.75,
+                  -0.6166666746139526,
+                  -0.4833333194255829,
+                  -0.34999996423721313
+                ],
+                [
+                  -0.21666663885116577,
+                  -0.08333329856395721,
+                  0.05000004172325134,
+                  0.1833333820104599
+                ],
+                [
+                  0.3166666030883789,
+                  0.44999995827674866,
+                  0.5833333134651184,
+                  0.7166666388511658
+                ],
+                [
+                  0.8499999642372131,
+                  0.9833333492279053,
+                  1.1166666746139526,
+                  1.25
+                ]
+              ]
+            ]
+          ]
+        },
+        [
+          2,
+          2
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          0,
+          0
+        ],
+        false,
+        true,
+        null
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.avg_pool2d_backward.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      1,
+      1,
+      4,
+      4
+    ],
+    "storage_offset": 0,
+    "stride": [
+      16,
+      16,
+      4,
+      1
+    ],
+    "values": [
+      [
+        [
+          [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ]
+        ]
+      ]
+    ]
+  },
+  "expected_sha256": "3b4aa24e6623eefb06d7c47c42956a885c32af128df0b3b3d045a193b4b24de4",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.avg_pool2d_backward.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            1,
+            1,
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            4,
+            4,
+            2,
+            1
+          ],
+          "values": [
+            [
+              [
+                [
+                  1.0,
+                  1.0
+                ],
+                [
+                  1.0,
+                  1.0
+                ]
+              ]
+            ]
+          ]
+        },
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            1,
+            1,
+            4,
+            4
+          ],
+          "storage_offset": 0,
+          "stride": [
+            16,
+            16,
+            4,
+            1
+          ],
+          "values": [
+            [
+              [
+                [
+                  -0.75,
+                  -0.6166666746139526,
+                  -0.4833333194255829,
+                  -0.34999996423721313
+                ],
+                [
+                  -0.21666663885116577,
+                  -0.08333329856395721,
+                  0.05000004172325134,
+                  0.1833333820104599
+                ],
+                [
+                  0.3166666030883789,
+                  0.44999995827674866,
+                  0.5833333134651184,
+                  0.7166666388511658
+                ],
+                [
+                  0.8499999642372131,
+                  0.9833333492279053,
+                  1.1166666746139526,
+                  1.25
+                ]
+              ]
+            ]
+          ]
+        },
+        [
+          2,
+          2
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          0,
+          0
+        ],
+        false,
+        true,
+        null
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::avg_pool2d_backward(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] stride, int[2] padding, bool ceil_mode, bool count_include_pad, int? divisor_override) -> Tensor"
+}

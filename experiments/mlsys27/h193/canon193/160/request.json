@@ -1,0 +1,213 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        1,
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ],
+          "values": [
+            [
+              0,
+              2
+            ],
+            [
+              1,
+              0
+            ]
+          ]
+        },
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ],
+          "values": [
+            [
+              1.0,
+              1.0
+            ],
+            [
+              1.0,
+              1.0
+            ]
+          ]
+        },
+        "sum"
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {
+      "include_self": true
+    }
+  },
+  "case_id": "corpus_193:aten.scatter_reduce.two",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      3,
+      1
+    ],
+    "values": [
+      [
+        0.25,
+        -0.3499999940395355,
+        1.0499999523162842
+      ],
+      [
+        1.4500000476837158,
+        1.850000023841858,
+        1.25
+      ]
+    ]
+  },
+  "expected_sha256": "098d05f1c1b95f53d0a4886d1d0b55dc35740246b18cf1dae5feaddc013b6700",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.scatter_reduce.two",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        1,
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ],
+          "values": [
+            [
+              0,
+              2
+            ],
+            [
+              1,
+              0
+            ]
+          ]
+        },
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ],
+          "values": [
+            [
+              1.0,
+              1.0
+            ],
+            [
+              1.0,
+              1.0
+            ]
+          ]
+        },
+        "sum"
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {
+      "include_self": true
+    }
+  },
+  "rng_seed": 0,
+  "schema": "aten::scatter_reduce.two(Tensor self, int dim, Tensor index, Tensor src, str reduce, *, bool include_self=True) -> Tensor"
+}

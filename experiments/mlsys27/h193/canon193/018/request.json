@@ -1,0 +1,139 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            1,
+            2,
+            6
+          ],
+          "storage_offset": 0,
+          "stride": [
+            12,
+            6,
+            1
+          ],
+          "values": [
+            [
+              [
+                -0.75,
+                -0.5681818127632141,
+                -0.3863636255264282,
+                -0.20454543828964233,
+                -0.022727251052856445,
+                0.15909093618392944
+              ],
+              [
+                0.34090906381607056,
+                0.5227272510528564,
+                0.7045454382896423,
+                0.8863636255264282,
+                1.0681817531585693,
+                1.25
+              ]
+            ]
+          ]
+        },
+        [
+          3
+        ]
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.adaptive_avg_pool1d.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      1,
+      2,
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      6,
+      3,
+      1
+    ],
+    "values": [
+      [
+        [
+          -0.6590908765792847,
+          -0.2954545319080353,
+          0.0681818425655365
+        ],
+        [
+          0.4318181574344635,
+          0.7954545021057129,
+          1.1590908765792847
+        ]
+      ]
+    ]
+  },
+  "expected_sha256": "42af65dab664f82864c0ba21fac43df25d6128e477ea768ab3f610d6c4cae5e0",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.adaptive_avg_pool1d.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            1,
+            2,
+            6
+          ],
+          "storage_offset": 0,
+          "stride": [
+            12,
+            6,
+            1
+          ],
+          "values": [
+            [
+              [
+                -0.75,
+                -0.5681818127632141,
+                -0.3863636255264282,
+                -0.20454543828964233,
+                -0.022727251052856445,
+                0.15909093618392944
+              ],
+              [
+                0.34090906381607056,
+                0.5227272510528564,
+                0.7045454382896423,
+                0.8863636255264282,
+                1.0681817531585693,
+                1.25
+              ]
+            ]
+          ]
+        },
+        [
+          3
+        ]
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::adaptive_avg_pool1d(Tensor self, int[1] output_size) -> Tensor"
+}

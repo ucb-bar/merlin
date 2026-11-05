@@ -1,0 +1,230 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            1,
+            1,
+            4,
+            4
+          ],
+          "storage_offset": 0,
+          "stride": [
+            16,
+            16,
+            4,
+            1
+          ],
+          "values": [
+            [
+              [
+                [
+                  -0.75,
+                  -0.6166666746139526,
+                  -0.4833333194255829,
+                  -0.34999996423721313
+                ],
+                [
+                  -0.21666663885116577,
+                  -0.08333329856395721,
+                  0.05000004172325134,
+                  0.1833333820104599
+                ],
+                [
+                  0.3166666030883789,
+                  0.44999995827674866,
+                  0.5833333134651184,
+                  0.7166666388511658
+                ],
+                [
+                  0.8499999642372131,
+                  0.9833333492279053,
+                  1.1166666746139526,
+                  1.25
+                ]
+              ]
+            ]
+          ]
+        },
+        [
+          2,
+          2
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        false
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.max_pool2d_with_indices.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "items": [
+      {
+        "dtype": "float32",
+        "kind": "tensor",
+        "requires_grad": false,
+        "shape": [
+          1,
+          1,
+          2,
+          2
+        ],
+        "storage_offset": 0,
+        "stride": [
+          4,
+          4,
+          2,
+          1
+        ],
+        "values": [
+          [
+            [
+              [
+                -0.08333329856395721,
+                0.1833333820104599
+              ],
+              [
+                0.9833333492279053,
+                1.25
+              ]
+            ]
+          ]
+        ]
+      },
+      {
+        "dtype": "int64",
+        "kind": "tensor",
+        "requires_grad": false,
+        "shape": [
+          1,
+          1,
+          2,
+          2
+        ],
+        "storage_offset": 0,
+        "stride": [
+          4,
+          4,
+          2,
+          1
+        ],
+        "values": [
+          [
+            [
+              [
+                5,
+                7
+              ],
+              [
+                13,
+                15
+              ]
+            ]
+          ]
+        ]
+      }
+    ],
+    "kind": "tuple"
+  },
+  "expected_sha256": "9df798d52d101cb8a9d1d3ef07b2bfa69ac257cc5ab151f591c2e42b210249fa",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.max_pool2d_with_indices.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            1,
+            1,
+            4,
+            4
+          ],
+          "storage_offset": 0,
+          "stride": [
+            16,
+            16,
+            4,
+            1
+          ],
+          "values": [
+            [
+              [
+                [
+                  -0.75,
+                  -0.6166666746139526,
+                  -0.4833333194255829,
+                  -0.34999996423721313
+                ],
+                [
+                  -0.21666663885116577,
+                  -0.08333329856395721,
+                  0.05000004172325134,
+                  0.1833333820104599
+                ],
+                [
+                  0.3166666030883789,
+                  0.44999995827674866,
+                  0.5833333134651184,
+                  0.7166666388511658
+                ],
+                [
+                  0.8499999642372131,
+                  0.9833333492279053,
+                  1.1166666746139526,
+                  1.25
+                ]
+              ]
+            ]
+          ]
+        },
+        [
+          2,
+          2
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        false
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::max_pool2d_with_indices(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, int[2] dilation=1, bool ceil_mode=False) -> (Tensor, Tensor)"
+}

@@ -1,0 +1,269 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            5,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.6071428656578064,
+              -0.4642857015132904
+            ],
+            [
+              -0.3214285373687744,
+              -0.1785714030265808,
+              -0.03571425378322601
+            ],
+            [
+              0.10714289546012878,
+              0.24999995529651642,
+              0.3928571045398712
+            ],
+            [
+              0.5357142686843872,
+              0.6785714030265808,
+              0.8214285373687744
+            ],
+            [
+              0.9642857313156128,
+              1.1071428060531616,
+              1.25
+            ]
+          ]
+        },
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            4
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ],
+          "values": [
+            0,
+            1,
+            2,
+            1
+          ]
+        },
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ],
+          "values": [
+            0,
+            2
+          ]
+        },
+        false,
+        0,
+        false,
+        null,
+        false,
+        -1
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten._embedding_bag.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "items": [
+      {
+        "dtype": "float32",
+        "kind": "tensor",
+        "requires_grad": false,
+        "shape": [
+          2,
+          3
+        ],
+        "storage_offset": 0,
+        "stride": [
+          3,
+          1
+        ],
+        "values": [
+          [
+            -1.0714285373687744,
+            -0.7857142686843872,
+            -0.4999999403953552
+          ],
+          [
+            -0.21428564190864563,
+            0.07142855226993561,
+            0.3571428656578064
+          ]
+        ]
+      },
+      {
+        "dtype": "int64",
+        "kind": "tensor",
+        "requires_grad": false,
+        "shape": [
+          0
+        ],
+        "storage_offset": 0,
+        "stride": [
+          1
+        ],
+        "values": []
+      },
+      {
+        "dtype": "int64",
+        "kind": "tensor",
+        "requires_grad": false,
+        "shape": [
+          2
+        ],
+        "storage_offset": 0,
+        "stride": [
+          1
+        ],
+        "values": [
+          0,
+          0
+        ]
+      },
+      {
+        "dtype": "int64",
+        "kind": "tensor",
+        "requires_grad": false,
+        "shape": [
+          2
+        ],
+        "storage_offset": 0,
+        "stride": [
+          1
+        ],
+        "values": [
+          0,
+          0
+        ]
+      }
+    ],
+    "kind": "tuple"
+  },
+  "expected_sha256": "a3437840030299aef959ee853f5e13cbd74a6be06f6f90095fab63ccd1a3432e",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten._embedding_bag.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            5,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.6071428656578064,
+              -0.4642857015132904
+            ],
+            [
+              -0.3214285373687744,
+              -0.1785714030265808,
+              -0.03571425378322601
+            ],
+            [
+              0.10714289546012878,
+              0.24999995529651642,
+              0.3928571045398712
+            ],
+            [
+              0.5357142686843872,
+              0.6785714030265808,
+              0.8214285373687744
+            ],
+            [
+              0.9642857313156128,
+              1.1071428060531616,
+              1.25
+            ]
+          ]
+        },
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            4
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ],
+          "values": [
+            0,
+            1,
+            2,
+            1
+          ]
+        },
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ],
+          "values": [
+            0,
+            2
+          ]
+        },
+        false,
+        0,
+        false,
+        null,
+        false,
+        -1
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::_embedding_bag(Tensor weight, Tensor indices, Tensor offsets, bool scale_grad_by_freq=False, int mode=0, bool sparse=False, Tensor? per_sample_weights=None, bool include_last_offset=False, int padding_idx=-1) -> (Tensor, Tensor, Tensor, Tensor)"
+}

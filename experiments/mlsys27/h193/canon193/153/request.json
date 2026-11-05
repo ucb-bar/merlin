@@ -1,0 +1,93 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        [
+          3,
+          2
+        ]
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.resize_.default",
+  "comparison": "metadata",
+  "comparison_parameters": {},
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      3,
+      2
+    ],
+    "storage_offset": 0,
+    "stride": [
+      2,
+      1
+    ]
+  },
+  "expected_sha256": "82290a3c1a3c9d588c834f88b6f49e97c474b59a18ea5da0077e8e22b16de737",
+  "mutated_arguments": [
+    "args[0]"
+  ],
+  "output_input_aliases": [
+    "result->args[0]"
+  ],
+  "overload": "aten.resize_.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            3,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ]
+        },
+        [
+          3,
+          2
+        ]
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::resize_(Tensor(a!) self, SymInt[] size, *, MemoryFormat? memory_format=None) -> Tensor(a!)"
+}

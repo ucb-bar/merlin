@@ -1,0 +1,161 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              3,
+              4,
+              5
+            ]
+          ]
+        },
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              2,
+              1,
+              0
+            ],
+            [
+              5,
+              4,
+              3
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.bitwise_and.Tensor",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      3,
+      1
+    ],
+    "values": [
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        1,
+        4,
+        1
+      ]
+    ]
+  },
+  "expected_sha256": "8495be2f60645316edf5df51235cbfaee87662de7ea2c44857e4ddc4f035062f",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.bitwise_and.Tensor",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              3,
+              4,
+              5
+            ]
+          ]
+        },
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              2,
+              1,
+              0
+            ],
+            [
+              5,
+              4,
+              3
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::bitwise_and.Tensor(Tensor self, Tensor other) -> Tensor"
+}

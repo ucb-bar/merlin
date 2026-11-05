@@ -1,0 +1,76 @@
+{
+ "source": "corpus_spec.build",
+ "capsule": {
+  "name": "SY_atenop_addmm_default",
+  "kind": "isa",
+  "source_role": "derived_sweep",
+  "source_reference": "t",
+  "label": "public",
+  "interface_mlir": "capsule.interface.mlir",
+  "inputs": [
+   {
+    "name": "W",
+    "role": "weight",
+    "shape": [
+     32,
+     16
+    ],
+    "dtype": "i8"
+   },
+   {
+    "name": "A0",
+    "role": "input",
+    "shape": [
+     16,
+     32
+    ],
+    "dtype": "i8"
+   },
+   {
+    "name": "B",
+    "role": "bias",
+    "shape": [
+     16
+    ],
+    "dtype": "i32"
+   }
+  ],
+  "operation": {
+   "op": "matmul",
+   "attributes": {
+    "lhs": "A0",
+    "weight": "W",
+    "out": "Y0",
+    "epilogue": [
+     "bias_add"
+    ],
+    "output_dtype": "i8",
+    "bias": "B"
+   }
+  },
+  "numeric_policy": {
+   "compare": "exact",
+   "dtype": "i8"
+  },
+  "expected": {
+   "instruction_classes": [],
+   "modes": {
+    "relu": false,
+    "acc_scale": false,
+    "i8": true
+   }
+  },
+  "required_oracle_tiers": [
+   "L2",
+   "L3"
+  ],
+  "vcs": "optional",
+  "firesim": "optional",
+  "semantic": {
+   "semantic_family": "contraction",
+   "generalization_axis": "seen",
+   "must_accelerate": false,
+   "eligible": "auto"
+  }
+ }
+}

@@ -1,0 +1,7 @@
+"builtin.module"() ({
+  "func.func"() <{sym_name = "forward", function_type = (tensor<2x5xf32>) -> tensor<2x2xf32>}> ({
+  ^bb0(%0: tensor<2x5xf32>):
+    %1 = "tensor.extract_slice"(%0) <{static_offsets = array<i64: 0, 1>, static_sizes = array<i64: 2, 2>, static_strides = array<i64: 1, 2>, operandSegmentSizes = array<i32: 1, 0, 0, 0>}> {prov.region_id = "slice_0", prov.family = "layout", prov._pattern_hint = "slice", prov.op = "slice", prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering", prov.aten = "aten.slice.Tensor", prov.orig_dtype = "float32"} : (tensor<2x5xf32>) -> tensor<2x2xf32>
+    "func.return"(%1) : (tensor<2x2xf32>) -> ()
+  }) : () -> ()
+}) {m2m.result_layout = "{\22authority\22: \22same_conversion_exported_program\22, \22inputs\22: [{\22dtype\22: \22float32\22, \22requires_grad\22: false, \22shape\22: [2, 5], \22storage_offset\22: 0, \22stride\22: [5, 1]}], \22results\22: [{\22alias_inputs\22: [0], \22alias_results\22: [], \22dtype\22: \22float32\22, \22requires_grad\22: false, \22role\22: \22user_output\22, \22shape\22: [2, 2], \22storage_offset\22: 1, \22stride\22: [5, 2]}], \22schema_version\22: 1}", prov.weights_file = "/scratch/loren/backend-verify/out-c1/captures/case-5bfadfe8f07d9fd287c19e985add1e46398dc7c698dc5250c28ba4cece613127/capture-work/weights.safetensors", prov.level = "linalg-on-tensors"} : () -> ()

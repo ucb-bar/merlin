@@ -1,0 +1,191 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            3,
+            4
+          ],
+          "storage_offset": 0,
+          "stride": [
+            4,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.5681818127632141,
+              -0.3863636255264282,
+              -0.20454543828964233
+            ],
+            [
+              -0.022727251052856445,
+              0.15909093618392944,
+              0.34090906381607056,
+              0.5227272510528564
+            ],
+            [
+              0.7045454382896423,
+              0.8863636255264282,
+              1.0681817531585693,
+              1.25
+            ]
+          ]
+        },
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            4,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.4642857015132904
+            ],
+            [
+              -0.1785714030265808,
+              0.10714289546012878
+            ],
+            [
+              0.3928571045398712,
+              0.6785714030265808
+            ],
+            [
+              0.9642857313156128,
+              1.25
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.mm.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      3,
+      2
+    ],
+    "storage_offset": 0,
+    "stride": [
+      2,
+      1
+    ],
+    "values": [
+      [
+        0.3149350881576538,
+        -0.23051950335502625
+      ],
+      [
+        0.6266233325004578,
+        0.912337601184845
+      ],
+      [
+        0.9383116960525513,
+        2.055194854736328
+      ]
+    ]
+  },
+  "expected_sha256": "780cb435f8a919aef9e1a9ec0d77002fed7d0a5eeecd3d042bdc845510ba691e",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.mm.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            3,
+            4
+          ],
+          "storage_offset": 0,
+          "stride": [
+            4,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.5681818127632141,
+              -0.3863636255264282,
+              -0.20454543828964233
+            ],
+            [
+              -0.022727251052856445,
+              0.15909093618392944,
+              0.34090906381607056,
+              0.5227272510528564
+            ],
+            [
+              0.7045454382896423,
+              0.8863636255264282,
+              1.0681817531585693,
+              1.25
+            ]
+          ]
+        },
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            4,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.4642857015132904
+            ],
+            [
+              -0.1785714030265808,
+              0.10714289546012878
+            ],
+            [
+              0.3928571045398712,
+              0.6785714030265808
+            ],
+            [
+              0.9642857313156128,
+              1.25
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::mm(Tensor self, Tensor mat2) -> Tensor"
+}

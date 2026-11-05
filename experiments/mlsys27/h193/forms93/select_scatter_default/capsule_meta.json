@@ -1,0 +1,73 @@
+{
+ "source": "corpus_spec.build",
+ "capsule": {
+  "name": "SY_atenop_select_scatter_default",
+  "kind": "isa",
+  "source_role": "derived_sweep",
+  "source_reference": "t",
+  "label": "public",
+  "interface_mlir": "capsule.interface.mlir",
+  "inputs": [
+   {
+    "name": "X0",
+    "role": "input",
+    "shape": [
+     2,
+     3
+    ],
+    "dtype": "i8"
+   },
+   {
+    "name": "X1",
+    "role": "input",
+    "shape": [
+     2,
+     1
+    ],
+    "dtype": "i8"
+   }
+  ],
+  "operation": {
+   "op": "insert_slice",
+   "attributes": {
+    "out": "Y0",
+    "dest": "X0",
+    "src": "X1",
+    "offsets": [
+     0,
+     1
+    ],
+    "strides": [
+     1,
+     1
+    ],
+    "output_dtype": "i8",
+    "shape": [
+     2,
+     3
+    ]
+   }
+  },
+  "numeric_policy": {
+   "compare": "exact",
+   "dtype": "i8"
+  },
+  "expected": {
+   "instruction_classes": [],
+   "modes": {
+    "movement": true
+   }
+  },
+  "required_oracle_tiers": [
+   "L2",
+   "L3"
+  ],
+  "vcs": "optional",
+  "firesim": "optional",
+  "semantic": {
+   "generalization_axis": "seen",
+   "must_accelerate": false,
+   "eligible": "auto"
+  }
+ }
+}

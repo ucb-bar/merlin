@@ -1,0 +1,249 @@
+[
+ {
+  "overload": "aten.cumsum.default",
+  "slug": "spec_cumsum_default",
+  "spec_row": "reduction_prefix_sum",
+  "family": "reduction",
+  "form": "cumsum",
+  "builder_op": "prefix_sum",
+  "note": "spec form: row reduction_prefix_sum, reduction/cumsum via corpus_form_table at the aligned cell (16x16); builder op prefix_sum",
+  "inputs": {
+   "A0": [
+    16,
+    16
+   ]
+  },
+  "outputs": {
+   "Y0": [
+    16,
+    16
+   ]
+  },
+  "expected": {
+   "instruction_classes": [],
+   "modes": {}
+  }
+ },
+ {
+  "overload": "aten.diagonal.default",
+  "slug": "spec_diagonal_default",
+  "spec_row": "movement",
+  "family": "movement",
+  "form": "diagonal",
+  "builder_op": "movement",
+  "note": "spec form: row movement, movement/diagonal via corpus_form_table at the aligned cell (16x16); builder op movement",
+  "inputs": {
+   "X": [
+    16,
+    16
+   ]
+  },
+  "outputs": {
+   "Y0": [
+    16
+   ]
+  },
+  "expected": {
+   "instruction_classes": [],
+   "modes": {
+    "movement": true
+   }
+  }
+ },
+ {
+  "overload": "aten.select.int",
+  "slug": "spec_select_int",
+  "spec_row": "movement",
+  "family": "movement",
+  "form": "select",
+  "builder_op": "movement_chain",
+  "note": "spec form: row movement, movement/select via corpus_form_table at the aligned cell (16x16); builder op movement_chain",
+  "inputs": {
+   "X": [
+    16,
+    16
+   ]
+  },
+  "outputs": {
+   "Y0": [
+    16
+   ]
+  },
+  "expected": {
+   "instruction_classes": [],
+   "modes": {
+    "movement": true
+   }
+  }
+ },
+ {
+  "overload": "aten.split_with_sizes.default",
+  "slug": "spec_split_with_sizes_default",
+  "spec_row": "movement",
+  "family": "movement",
+  "form": "split_sizes",
+  "builder_op": "movement_chain",
+  "note": "spec form: row movement, movement/split_sizes via corpus_form_table at the aligned cell (16x16); builder op movement_chain",
+  "inputs": {
+   "X": [
+    16,
+    16
+   ]
+  },
+  "outputs": {
+   "Y0": [
+    3,
+    16
+   ],
+   "Y1": [
+    5,
+    16
+   ],
+   "Y2": [
+    8,
+    16
+   ]
+  },
+  "expected": {
+   "instruction_classes": [],
+   "modes": {
+    "movement": true
+   }
+  }
+ },
+ {
+  "overload": "aten.convolution_backward.default",
+  "slug": "spec_convolution_backward_default",
+  "spec_row": "contraction (convolution_backward forms)",
+  "family": "contraction",
+  "form": "convolution_backward_spatial",
+  "builder_op": "conv_backward_spatial",
+  "note": "spec form: row contraction (convolution_backward forms), contraction/convolution_backward_spatial via corpus_form_table at the aligned cell (16x16); builder op conv_backward_spatial",
+  "inputs": {
+   "Xcol": [
+    16,
+    36
+   ],
+   "dY": [
+    16,
+    16
+   ],
+   "W": [
+    36,
+    16
+   ]
+  },
+  "outputs": {
+   "grad_weight": [
+    36,
+    16
+   ],
+   "grad_input": [
+    1,
+    4,
+    4,
+    4
+   ],
+   "grad_bias": [
+    1,
+    16
+   ]
+  },
+  "expected": {
+   "instruction_classes": [],
+   "modes": {}
+  }
+ },
+ {
+  "overload": "aten.upsample_nearest2d.vec",
+  "slug": "spec_upsample_nearest2d_vec",
+  "spec_row": "movement",
+  "family": "movement",
+  "form": "upsample_nearest",
+  "builder_op": "movement",
+  "note": "spec form: row movement, movement/upsample_nearest via corpus_form_table at the aligned cell (16x16); builder op movement",
+  "inputs": {
+   "X": [
+    16,
+    2,
+    16
+   ]
+  },
+  "outputs": {
+   "Y0": [
+    32,
+    4,
+    16
+   ]
+  },
+  "expected": {
+   "instruction_classes": [],
+   "modes": {
+    "movement": true
+   }
+  }
+ },
+ {
+  "overload": "aten.full.default",
+  "slug": "spec_full_default",
+  "spec_row": "movement",
+  "family": "movement",
+  "form": "fill",
+  "builder_op": "fill",
+  "note": "spec form: row movement, movement/fill via corpus_form_table at the aligned cell (16x16); builder op fill",
+  "inputs": {},
+  "outputs": {
+   "Y0": [
+    16,
+    16
+   ]
+  },
+  "expected": {
+   "instruction_classes": [],
+   "modes": {
+    "movement": true
+   }
+  }
+ },
+ {
+  "overload": "aten.full_like.default",
+  "slug": "spec_full_like_default",
+  "spec_row": "movement",
+  "family": "movement",
+  "form": "fill",
+  "builder_op": "fill",
+  "note": "spec form: row movement, movement/fill via corpus_form_table at the aligned cell (16x16); builder op fill",
+  "inputs": {},
+  "outputs": {
+   "Y0": [
+    16,
+    16
+   ]
+  },
+  "expected": {
+   "instruction_classes": [],
+   "modes": {
+    "movement": true
+   }
+  }
+ },
+ {
+  "overload": "aten.scalar_tensor.default",
+  "slug": "spec_scalar_tensor_default",
+  "spec_row": "movement",
+  "family": "movement",
+  "form": "fill_scalar",
+  "builder_op": "fill",
+  "note": "spec form: row movement, movement/fill_scalar via corpus_form_table at the aligned cell (16x16); builder op fill",
+  "inputs": {},
+  "outputs": {
+   "Y0": []
+  },
+  "expected": {
+   "instruction_classes": [],
+   "modes": {
+    "movement": true
+   }
+  }
+ }
+]

@@ -1,0 +1,14 @@
+"builtin.module"() ({
+  "func.func"() <{sym_name = "forward", function_type = (tensor<2x3xi1>) -> tensor<2x1xi1>}> ({
+  ^bb0(%0: tensor<2x3xi1>):
+    %1 = "arith.constant"() <{value = false}> {prov.region_id = "reduce_0", prov.family = "reduce", prov._pattern_hint = "any", prov.op = "any", prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering", prov.aten = "aten.any.dim", prov.orig_dtype = "bool"} : () -> i1
+    %2 = "tensor.splat"(%1) {prov.region_id = "reduce_0", prov.family = "reduce", prov._pattern_hint = "any", prov.op = "any", prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering", prov.aten = "aten.any.dim", prov.orig_dtype = "bool"} : (i1) -> tensor<2xi1>
+    %3 = "linalg.reduce"(%0, %2) <{dimensions = array<i64: 1>}> ({
+    ^bb1(%4: i1, %5: i1):
+      %6 = "arith.ori"(%4, %5) {prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering"} : (i1, i1) -> i1
+      "linalg.yield"(%6) {prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering"} : (i1) -> ()
+    }) {prov.region_id = "reduce_0", prov.family = "reduce", prov._pattern_hint = "any", prov.op = "any", prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering", prov.aten = "aten.any.dim", prov.orig_dtype = "bool"} : (tensor<2x3xi1>, tensor<2xi1>) -> tensor<2xi1>
+    %7 = "tensor.expand_shape"(%3) <{reassociation = [[0 : i64, 1 : i64]], static_output_shape = array<i64: 2, 1>}> {prov.region_id = "reduce_0", prov.family = "reduce", prov._pattern_hint = "any", prov.op = "any", prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering", prov.aten = "aten.any.dim", prov.orig_dtype = "bool"} : (tensor<2xi1>) -> tensor<2x1xi1>
+    "func.return"(%7) : (tensor<2x1xi1>) -> ()
+  }) : () -> ()
+}) {m2m.result_layout = "{\22authority\22: \22same_conversion_exported_program\22, \22inputs\22: [{\22dtype\22: \22bool\22, \22requires_grad\22: false, \22shape\22: [2, 3], \22storage_offset\22: 0, \22stride\22: [3, 1]}], \22results\22: [{\22alias_inputs\22: [], \22alias_results\22: [], \22dtype\22: \22bool\22, \22requires_grad\22: false, \22role\22: \22user_output\22, \22shape\22: [2, 1], \22storage_offset\22: 0, \22stride\22: [1, 1]}], \22schema_version\22: 1}", prov.weights_file = "/scratch/loren/backend-verify/out-c1/captures/case-489d44763419f578d23d1d63f5b249e01acbd8c1b4c9a600ec967871a3706028/capture-work/weights.safetensors", prov.level = "linalg-on-tensors"} : () -> ()

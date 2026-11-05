@@ -1,0 +1,95 @@
+{
+ "source": "registry capsule.yaml",
+ "capsule": {
+  "name": "SY_atenop_add_Scalar",
+  "kind": "isa",
+  "source_role": "derived_sweep",
+  "source_reference": "t",
+  "label": "public",
+  "interface_mlir": "capsule.interface.mlir",
+  "inputs": [
+   {
+    "name": "X0",
+    "role": "input",
+    "shape": [
+     16,
+     16
+    ],
+    "dtype": "f32"
+   }
+  ],
+  "operation": {
+   "op": "aten_op",
+   "attributes": {
+    "out": "Y0",
+    "arg_order": [
+     "X0"
+    ],
+    "causal": false
+   }
+  },
+  "numeric_policy": {
+   "compare": "exact_int",
+   "dtype": "i32"
+  },
+  "expected": {
+   "instruction_classes": [],
+   "modes": {}
+  },
+  "required_oracle_tiers": [
+   "L2",
+   "L3"
+  ],
+  "vcs": "optional",
+  "firesim": "optional",
+  "pytorch_ref": {
+   "op": "aten_op",
+   "dtype": "f32",
+   "loader": "capsule.pytorch.py"
+  },
+  "linalg_mlir": "capsule.interface.mlir",
+  "composite_of": "add.Scalar(x, 3) on x widened to i32; int8 widened to i32, scalar as an i32 constant, i32 result (exact torch-eager integer reference in int32)",
+  "frontend_trace": {
+   "schema": "merlin.capsule_frontend_evidence.v2",
+   "path": "frontend-trace.json",
+   "sha256": "5f106d3e78d2d57296dd1d6cac897f402a1ee4886a1b486e417a1b383afc0c8b",
+   "source_mlir": "frontend-source.mlir",
+   "source_mlir_sha256": "638ee2ecac1b363e68f6f6e882a9e2d76d80f27753385a99f90411437da23d58",
+   "source_mlir_bytes": 4410,
+   "raw_source_mlir_sha256": "6fa69f44ab64be4a3d68bb1b62c6fd788e859e5de4916e6d812b61aef71c1ee3",
+   "raw_source_mlir_bytes": 4615,
+   "raw_source_trace_bound": true,
+   "capture_mlir_sha256": "6fa69f44ab64be4a3d68bb1b62c6fd788e859e5de4916e6d812b61aef71c1ee3",
+   "packaged_mlir": "capsule.linalg.mlir",
+   "packaged_mlir_sha256": "70810f572f2a847f3b1df4187a1995716412d30c5bfc7a7495a8d7c693bd0b94",
+   "packaged_mlir_bytes": 1518,
+   "interface_mlir": "capsule.interface.mlir",
+   "interface_mlir_sha256": "70810f572f2a847f3b1df4187a1995716412d30c5bfc7a7495a8d7c693bd0b94",
+   "weights_sidecars": null,
+   "capture_receipt": null,
+   "normalization": null,
+   "frontend_pin": {
+    "pin": "model2mlir_capture",
+    "ok": false,
+    "citation": "model2mlir_capture 31fd3989fe44a0cd1cadd24e1aa66b7936d96233 (checkout HEAD is bf4d71d7cc6f) plus these bytes: m2m/capture/pt2e_integerize.py@06b2343a408ccf6b, m2m/capture/trace.py@864b316357656319"
+   },
+   "packaging": "weights_reference_omission",
+   "weights_reference_relocation": null,
+   "source_portability": {
+    "kind": "weights_reference_omission",
+    "edit_count": 1,
+    "from_reference_sha256": "c7e686df83467901f3de33360316c07c610346cef25567263c145e29519e7513",
+    "to": null,
+    "scope": "module provenance only; op tensors are explicit operands and no weights sidecar is shipped",
+    "raw_sha256": "6fa69f44ab64be4a3d68bb1b62c6fd788e859e5de4916e6d812b61aef71c1ee3",
+    "emitted_sha256": "638ee2ecac1b363e68f6f6e882a9e2d76d80f27753385a99f90411437da23d58"
+   },
+   "qualification": "trace-bound raw hash and exact portability edit; compiler execution unverified"
+  },
+  "capture_tool": {
+   "status": "not_available",
+   "reason": "selected M2M source has no installed-wheel identity",
+   "scope": "selected M2M package only; Torch, loaders and data are not covered"
+  }
+ }
+}

@@ -1,0 +1,121 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        1.25
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {
+      "dtype": {
+        "kind": "dtype",
+        "value": "float64"
+      }
+    }
+  },
+  "case_id": "corpus_193:aten.full_like.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      3,
+      1
+    ],
+    "values": [
+      [
+        1.25,
+        1.25,
+        1.25
+      ],
+      [
+        1.25,
+        1.25,
+        1.25
+      ]
+    ]
+  },
+  "expected_sha256": "0b5581d0e9efb8616b4ad95bf74f5482608f0ecc81a41ca5e7d165cb2169593a",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.full_like.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        1.25
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {
+      "dtype": {
+        "kind": "dtype",
+        "value": "float64"
+      }
+    }
+  },
+  "rng_seed": 0,
+  "schema": "aten::full_like(Tensor self, Scalar fill_value, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor"
+}

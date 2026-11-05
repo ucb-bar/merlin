@@ -1,0 +1,67 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        [
+          2,
+          3
+        ]
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {
+      "dtype": {
+        "kind": "dtype",
+        "value": "float32"
+      },
+      "memory_format": {
+        "kind": "memory_format",
+        "value": "contiguous_format"
+      }
+    }
+  },
+  "case_id": "corpus_193:aten.empty.memory_format",
+  "comparison": "metadata",
+  "comparison_parameters": {},
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      3,
+      1
+    ]
+  },
+  "expected_sha256": "356376f1c861d8298d499f5de0a826353d2b25db0fddaf2580cb73242c35ca54",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.empty.memory_format",
+  "post_arguments": {
+    "args": {
+      "items": [
+        [
+          2,
+          3
+        ]
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {
+      "dtype": {
+        "kind": "dtype",
+        "value": "float32"
+      },
+      "memory_format": {
+        "kind": "memory_format",
+        "value": "contiguous_format"
+      }
+    }
+  },
+  "rng_seed": 0,
+  "schema": "aten::empty.memory_format(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor"
+}

@@ -1,0 +1,124 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            3,
+            4
+          ],
+          "storage_offset": 0,
+          "stride": [
+            4,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.5681818127632141,
+              -0.3863636255264282,
+              -0.20454543828964233
+            ],
+            [
+              -0.022727251052856445,
+              0.15909093618392944,
+              0.34090906381607056,
+              0.5227272510528564
+            ],
+            [
+              0.7045454382896423,
+              0.8863636255264282,
+              1.0681817531585693,
+              1.25
+            ]
+          ]
+        },
+        0,
+        0,
+        1
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.diagonal.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      5
+    ],
+    "values": [
+      -0.75,
+      0.15909093618392944,
+      1.0681817531585693
+    ]
+  },
+  "expected_sha256": "6f3060d8f5e097f21a32410e3aeede562654f3820178f9c426c8d3eab6251a22",
+  "mutated_arguments": [],
+  "output_input_aliases": [
+    "result->args[0]"
+  ],
+  "overload": "aten.diagonal.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            3,
+            4
+          ],
+          "storage_offset": 0,
+          "stride": [
+            4,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.5681818127632141,
+              -0.3863636255264282,
+              -0.20454543828964233
+            ],
+            [
+              -0.022727251052856445,
+              0.15909093618392944,
+              0.34090906381607056,
+              0.5227272510528564
+            ],
+            [
+              0.7045454382896423,
+              0.8863636255264282,
+              1.0681817531585693,
+              1.25
+            ]
+          ]
+        },
+        0,
+        0,
+        1
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::diagonal(Tensor(a) self, int offset=0, int dim1=0, int dim2=1) -> Tensor(a)"
+}

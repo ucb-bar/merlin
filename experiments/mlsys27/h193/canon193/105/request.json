@@ -1,0 +1,109 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              1.25,
+              0.8500000238418579,
+              0.550000011920929
+            ],
+            [
+              0.949999988079071,
+              1.350000023841858,
+              1.75
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.log2.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      3,
+      1
+    ],
+    "values": [
+      [
+        0.32192808389663696,
+        -0.23446521162986755,
+        -0.8624964356422424
+      ],
+      [
+        -0.07400059700012207,
+        0.4329594373703003,
+        0.8073549270629883
+      ]
+    ]
+  },
+  "expected_sha256": "0a531afbd0f7450a305bd3524c40212a3360e0dca659c14cf638288c2122e16d",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.log2.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              1.25,
+              0.8500000238418579,
+              0.550000011920929
+            ],
+            [
+              0.949999988079071,
+              1.350000023841858,
+              1.75
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::log2(Tensor self) -> Tensor"
+}

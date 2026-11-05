@@ -1,0 +1,12 @@
+"builtin.module"() ({
+  "func.func"() <{sym_name = "forward", function_type = (tensor<2x3xf32>) -> tensor<2x3xi1>}> ({
+  ^bb0(%0: tensor<2x3xf32>):
+    %1 = "tensor.empty"() {prov.region_id = "classify_0", prov.family = "classify", prov._pattern_hint = "classify", prov.op = "classify", prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering", prov.aten = "aten.isnan.default", prov.orig_dtype = "bool"} : () -> tensor<2x3xi1>
+    %2 = "linalg.generic"(%0, %1) <{indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = [#linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>], operandSegmentSizes = array<i32: 1, 1>}> ({
+    ^bb1(%3: f32, %4: i1):
+      %5 = "arith.cmpf"(%3, %3) <{predicate = 14 : i64, fastmath = #arith.fastmath<none>}> {prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering"} : (f32, f32) -> i1
+      "linalg.yield"(%5) {prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering"} : (i1) -> ()
+    }) {prov.region_id = "classify_0", prov.family = "classify", prov._pattern_hint = "classify", prov.op = "classify", prov.source_node_ids = ["g:prepared:root:n1"], prov.origin_node_ids = ["g:original:root:n1", "g:quantized:root:n1"], prov.trace_role = "lowering", prov.aten = "aten.isnan.default", prov.orig_dtype = "bool"} : (tensor<2x3xf32>, tensor<2x3xi1>) -> tensor<2x3xi1>
+    "func.return"(%2) : (tensor<2x3xi1>) -> ()
+  }) : () -> ()
+}) {m2m.result_layout = "{\22authority\22: \22same_conversion_exported_program\22, \22inputs\22: [{\22dtype\22: \22float32\22, \22requires_grad\22: false, \22shape\22: [2, 3], \22storage_offset\22: 0, \22stride\22: [3, 1]}], \22results\22: [{\22alias_inputs\22: [], \22alias_results\22: [], \22dtype\22: \22bool\22, \22requires_grad\22: false, \22role\22: \22user_output\22, \22shape\22: [2, 3], \22storage_offset\22: 0, \22stride\22: [3, 1]}], \22schema_version\22: 1}", prov.weights_file = "/scratch/loren/backend-verify/out-c1/captures/case-a9a380ec965037f5cd5872a0e1644a21cb9761e725b070162d0b88c256b7a0f2/capture-work/weights.safetensors", prov.level = "linalg-on-tensors"} : () -> ()

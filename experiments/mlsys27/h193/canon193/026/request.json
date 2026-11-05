@@ -1,0 +1,109 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "bool",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              false,
+              true,
+              false
+            ],
+            [
+              true,
+              false,
+              true
+            ]
+          ]
+        },
+        1,
+        true
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.any.dim",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      1
+    ],
+    "storage_offset": 0,
+    "stride": [
+      1,
+      1
+    ],
+    "values": [
+      [
+        true
+      ],
+      [
+        true
+      ]
+    ]
+  },
+  "expected_sha256": "e4a8c9b38f6e3bba75330454dfbc8d6b1ef6863cfdfa0d45d809c70177928910",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.any.dim",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "bool",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              false,
+              true,
+              false
+            ],
+            [
+              true,
+              false,
+              true
+            ]
+          ]
+        },
+        1,
+        true
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::any.dim(Tensor self, int dim, bool keepdim=False) -> Tensor"
+}

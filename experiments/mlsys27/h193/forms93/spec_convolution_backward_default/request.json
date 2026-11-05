@@ -1,0 +1,1 @@
+{"expected": {"kind": "tuple", "items": [{"kind": "tensor", "dtype": "int32", "shape": [36, 16], "name": "grad_weight"}, {"kind": "tensor", "dtype": "int32", "shape": [1, 4, 4, 4], "name": "grad_input"}, {"kind": "tensor", "dtype": "int32", "shape": [1, 16], "name": "grad_bias"}]}, "comparison": "equal", "comparison_parameters": {}}

@@ -1,0 +1,165 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              1,
+              2,
+              3
+            ],
+            [
+              4,
+              5,
+              6
+            ]
+          ]
+        },
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              3,
+              2,
+              1
+            ],
+            [
+              6,
+              5,
+              4
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {
+      "rounding_mode": "floor"
+    }
+  },
+  "case_id": "corpus_193:aten.div.Tensor_mode",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      3,
+      1
+    ],
+    "values": [
+      [
+        0,
+        1,
+        3
+      ],
+      [
+        0,
+        1,
+        1
+      ]
+    ]
+  },
+  "expected_sha256": "76e275dffdfa3cbac8bcbdd3bc385f8265aaa794c2b68f6a192f84fdefe5b3e5",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.div.Tensor_mode",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              1,
+              2,
+              3
+            ],
+            [
+              4,
+              5,
+              6
+            ]
+          ]
+        },
+        {
+          "dtype": "int64",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              3,
+              2,
+              1
+            ],
+            [
+              6,
+              5,
+              4
+            ]
+          ]
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {
+      "rounding_mode": "floor"
+    }
+  },
+  "rng_seed": 0,
+  "schema": "aten::div.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor"
+}

@@ -1,0 +1,1 @@
+{"expected": {"kind": "tensor", "dtype": "int32", "shape": [1, 2, 8, 8]}, "comparison": "equal", "comparison_parameters": {}}

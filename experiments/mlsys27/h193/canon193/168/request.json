@@ -1,0 +1,177 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            5
+          ],
+          "storage_offset": 0,
+          "stride": [
+            5,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.5277777910232544,
+              -0.3055555522441864,
+              -0.0833333283662796,
+              0.1388888955116272
+            ],
+            [
+              0.3611111044883728,
+              0.5833333134651184,
+              0.8055555820465088,
+              1.0277777910232544,
+              1.25
+            ]
+          ]
+        },
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ],
+          "values": [
+            [
+              1.0,
+              1.0
+            ],
+            [
+              1.0,
+              1.0
+            ]
+          ]
+        },
+        1,
+        1,
+        5,
+        2
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.slice_scatter.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      2,
+      5
+    ],
+    "storage_offset": 0,
+    "stride": [
+      5,
+      1
+    ],
+    "values": [
+      [
+        -0.75,
+        1.0,
+        -0.3055555522441864,
+        1.0,
+        0.1388888955116272
+      ],
+      [
+        0.3611111044883728,
+        1.0,
+        0.8055555820465088,
+        1.0,
+        1.25
+      ]
+    ]
+  },
+  "expected_sha256": "5d94b223361a6b594b249088c1dda5f1ad591db78b7f355db52162eccd004ee0",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.slice_scatter.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            5
+          ],
+          "storage_offset": 0,
+          "stride": [
+            5,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.5277777910232544,
+              -0.3055555522441864,
+              -0.0833333283662796,
+              0.1388888955116272
+            ],
+            [
+              0.3611111044883728,
+              0.5833333134651184,
+              0.8055555820465088,
+              1.0277777910232544,
+              1.25
+            ]
+          ]
+        },
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ],
+          "values": [
+            [
+              1.0,
+              1.0
+            ],
+            [
+              1.0,
+              1.0
+            ]
+          ]
+        },
+        1,
+        1,
+        5,
+        2
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::slice_scatter(Tensor self, Tensor src, int dim=0, SymInt? start=None, SymInt? end=None, SymInt step=1) -> Tensor"
+}

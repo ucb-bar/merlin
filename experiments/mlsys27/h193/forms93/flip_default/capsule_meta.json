@@ -1,0 +1,70 @@
+{
+ "source": "corpus_spec.build",
+ "capsule": {
+  "name": "SY_atenop_flip_default",
+  "kind": "isa",
+  "source_role": "derived_sweep",
+  "source_reference": "t",
+  "label": "public",
+  "interface_mlir": "capsule.interface.mlir",
+  "inputs": [
+   {
+    "name": "X",
+    "role": "input",
+    "shape": [
+     2,
+     3
+    ],
+    "dtype": "i8"
+   }
+  ],
+  "operation": {
+   "op": "movement",
+   "attributes": {
+    "out": "Y0",
+    "src": "X",
+    "semantic": "mvin_mvout",
+    "form": "slice",
+    "offsets": [
+     0,
+     2
+    ],
+    "sizes": [
+     2,
+     3
+    ],
+    "strides": [
+     1,
+     -1
+    ],
+    "output_dtype": "i8",
+    "shape": [
+     2,
+     3
+    ]
+   }
+  },
+  "numeric_policy": {
+   "compare": "exact",
+   "dtype": "i8"
+  },
+  "expected": {
+   "instruction_classes": [],
+   "modes": {
+    "movement": true
+   }
+  },
+  "required_oracle_tiers": [
+   "L2",
+   "L3"
+  ],
+  "vcs": "optional",
+  "firesim": "optional",
+  "semantic": {
+   "semantic_family": "movement",
+   "generalization_axis": "seen",
+   "must_accelerate": false,
+   "eligible": "auto"
+  }
+ }
+}

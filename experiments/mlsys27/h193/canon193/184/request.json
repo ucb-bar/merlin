@@ -1,0 +1,144 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        2,
+        1,
+        true,
+        true
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten.topk.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "items": [
+      {
+        "dtype": "float32",
+        "kind": "tensor",
+        "requires_grad": false,
+        "shape": [
+          2,
+          2
+        ],
+        "storage_offset": 0,
+        "stride": [
+          2,
+          1
+        ],
+        "values": [
+          [
+            0.050000011920928955,
+            -0.3499999940395355
+          ],
+          [
+            1.25,
+            0.8500000238418579
+          ]
+        ]
+      },
+      {
+        "dtype": "int64",
+        "kind": "tensor",
+        "requires_grad": false,
+        "shape": [
+          2,
+          2
+        ],
+        "storage_offset": 0,
+        "stride": [
+          2,
+          1
+        ],
+        "values": [
+          [
+            2,
+            1
+          ],
+          [
+            2,
+            1
+          ]
+        ]
+      }
+    ],
+    "kind": "tuple"
+  },
+  "expected_sha256": "ad6485078345b48b1d8eb407f0cffa9e83c49e3422bf11385d27b44067e4c107",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.topk.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ],
+          "values": [
+            [
+              -0.75,
+              -0.3499999940395355,
+              0.050000011920928955
+            ],
+            [
+              0.44999998807907104,
+              0.8500000238418579,
+              1.25
+            ]
+          ]
+        },
+        2,
+        1,
+        true,
+        true
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::topk(Tensor self, SymInt k, int dim=-1, bool largest=True, bool sorted=True) -> (Tensor values, Tensor indices)"
+}

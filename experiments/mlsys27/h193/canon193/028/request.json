@@ -1,0 +1,64 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        1,
+        7,
+        2
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {
+      "dtype": {
+        "kind": "dtype",
+        "value": "int64"
+      }
+    }
+  },
+  "case_id": "corpus_193:aten.arange.start_step",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+      3
+    ],
+    "storage_offset": 0,
+    "stride": [
+      1
+    ],
+    "values": [
+      1,
+      3,
+      5
+    ]
+  },
+  "expected_sha256": "8a4da7087606984154f28da42a1ec88518745cae3ae325439c1a89f424b50975",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten.arange.start_step",
+  "post_arguments": {
+    "args": {
+      "items": [
+        1,
+        7,
+        2
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {
+      "dtype": {
+        "kind": "dtype",
+        "value": "int64"
+      }
+    }
+  },
+  "rng_seed": 0,
+  "schema": "aten::arange.start_step(Scalar start, Scalar end, Scalar step=1, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor"
+}

@@ -1,0 +1,143 @@
+{
+ "source": "corpus_spec.build",
+ "capsule": {
+  "name": "SY_atenop_unsqueeze_default",
+  "kind": "isa",
+  "source_role": "derived_sweep",
+  "source_reference": "t",
+  "label": "public",
+  "interface_mlir": "capsule.interface.mlir",
+  "linalg_mlir": "capsule.interface.mlir",
+  "inputs": [
+   {
+    "name": "A0",
+    "role": "input",
+    "shape": [
+     16,
+     16
+    ],
+    "dtype": "i8"
+   }
+  ],
+  "operation": {
+   "op": "component_program",
+   "attributes": {
+    "program": {
+     "schema": "merlin.component_program.v2",
+     "inputs": [
+      {
+       "name": "A0",
+       "role": "input",
+       "shape": [
+        16,
+        16
+       ],
+       "dtype": "operand"
+      }
+     ],
+     "nodes": [
+      {
+       "name": "y",
+       "op": "cast",
+       "inputs": [
+        "A0"
+       ],
+       "dtype": "accumulator"
+      }
+     ],
+     "outputs": [
+      {
+       "name": "Y0",
+       "value": "y"
+      }
+     ]
+    },
+    "out": "Y0",
+    "outs": [
+     "Y0"
+    ],
+    "arg_order": [
+     "A0",
+     "Y0"
+    ]
+   }
+  },
+  "component_program": {
+   "inputs": [
+    {
+     "name": "A0",
+     "role": "input",
+     "shape": [
+      16,
+      16
+     ],
+     "dtype": "i8"
+    }
+   ],
+   "nodes": [
+    {
+     "name": "y",
+     "op": "cast",
+     "inputs": [
+      "A0"
+     ],
+     "dtype": "i32",
+     "ordinal": 0,
+     "actual_inputs": [
+      "A0"
+     ],
+     "shape": [
+      16,
+      16
+     ]
+    }
+   ],
+   "outputs": [
+    {
+     "name": "Y0",
+     "value": "y",
+     "actual_value": "y",
+     "shape": [
+      16,
+      16
+     ],
+     "dtype": "i32"
+    }
+   ],
+   "effects": [
+    "output_publication"
+   ],
+   "uses": {
+    "A0": 1,
+    "y": 0
+   },
+   "logical_epochs": {},
+   "logical_aliases": {},
+   "selected_storage": {
+    "operand": "i8",
+    "accumulator": "i32"
+   },
+   "scope": "functionalized tensor semantics; physical alias, lifetime and synchronization unverified",
+   "schema": "merlin.component_program.v2"
+  },
+  "numeric_policy": {
+   "compare": "exact",
+   "dtype": "i32"
+  },
+  "expected": {
+   "instruction_classes": [],
+   "modes": {}
+  },
+  "required_oracle_tiers": [
+   "L2",
+   "L3"
+  ],
+  "vcs": "optional",
+  "firesim": "optional",
+  "semantic": {
+   "generalization_axis": "seen",
+   "must_accelerate": false,
+   "eligible": "auto"
+  }
+ }
+}

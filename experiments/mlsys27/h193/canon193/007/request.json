@@ -1,0 +1,50 @@
+{
+  "arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [],
+          "storage_offset": 0,
+          "stride": [],
+          "values": 2.5
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "case_id": "corpus_193:aten._local_scalar_dense.default",
+  "comparison": "torch_close",
+  "comparison_parameters": {
+    "atol": 1e-06,
+    "equal_nan": true,
+    "rtol": 1e-05
+  },
+  "expected": 2.5,
+  "expected_sha256": "686513ed91231892fbf0c4e72acee20264caa8538e8389157a942a808dba6531",
+  "mutated_arguments": [],
+  "output_input_aliases": [],
+  "overload": "aten._local_scalar_dense.default",
+  "post_arguments": {
+    "args": {
+      "items": [
+        {
+          "dtype": "float32",
+          "kind": "tensor",
+          "requires_grad": false,
+          "shape": [],
+          "storage_offset": 0,
+          "stride": [],
+          "values": 2.5
+        }
+      ],
+      "kind": "tuple"
+    },
+    "kwargs": {}
+  },
+  "rng_seed": 0,
+  "schema": "aten::_local_scalar_dense(Tensor self) -> Scalar"
+}

@@ -1,0 +1,6 @@
+"builtin.module"() ({
+  "func.func"() <{sym_name = "forward", function_type = () -> tensor<2x3xf32>}> ({
+    %0 = "tensor.empty"() {prov.family = "fill", prov.region_id = "empty_0", prov._pattern_hint = "empty", prov.op = "empty", prov.source_node_ids = ["g:prepared:root:n0"], prov.origin_node_ids = ["g:original:root:n0", "g:quantized:root:n0"], prov.trace_role = "lowering", prov.aten = "aten.empty.memory_format", prov.orig_dtype = "float32"} : () -> tensor<2x3xf32>
+    "func.return"(%0) : (tensor<2x3xf32>) -> ()
+  }) : () -> ()
+}) {m2m.result_layout = "{\22authority\22: \22same_conversion_exported_program\22, \22inputs\22: [], \22results\22: [{\22alias_inputs\22: [], \22alias_results\22: [], \22dtype\22: \22float32\22, \22requires_grad\22: false, \22role\22: \22user_output\22, \22shape\22: [2, 3], \22storage_offset\22: 0, \22stride\22: [3, 1]}], \22schema_version\22: 1}", prov.weights_file = "/scratch/loren/backend-verify/out-c1/captures/case-cc631c652ba61f0a54a18ce4dee5efb2586788699430ecbe6cb7c048cfb85c5e/capture-work/weights.safetensors", prov.level = "linalg-on-tensors"} : () -> ()
