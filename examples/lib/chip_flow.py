@@ -5,9 +5,9 @@
         recaptures/<name>_int8_full + its W8A8 golden. With --loader, any PyTorch model whose loader
         defines get_model_and_inputs(); without it, a model in model2MLIR's workloads/ roster.
 
-    chip_flow.py op <gemm|conv2d|encoder_block|path/to/loader.py> [dims ...] --board B [--harts N]
-                 [--matrix-unit U --matrix-config C --matrix-support-target T [--matrix-kernel K]]
-                 [--firesim-submit]
+    chip_flow.py op <gemm|gemm_nt|conv2d|attention|encoder_block|path/to/loader.py> [dims ...] --board B
+                 [--harts N] [--matrix-unit U --matrix-config C --matrix-support-target T
+                 [--matrix-kernel K]] [--firesim-submit]
         Capture the operator (once per shape), build it for the board as plain RVV and -- with the
         matrix flags -- routed to the matrix unit, gate both on spike, and print one summary. When the
         support target declares a spike model of its unit (``runner.spike_extension``), a third leg,
@@ -38,7 +38,12 @@ OPS = {
     "gemm": (("GEMM_M", "GEMM_N", "GEMM_K"), (64, 64, 64)),
     "conv2d": (("CONV_CIN", "CONV_COUT", "CONV_HW", "CONV_K"), (16, 64, 16, 3)),
     "encoder_block": ((), ()),
+    "attention": (("ATTN_S", "ATTN_D", "ATTN_H"), (64, 128, 4)),
+    "gemm_nt": (("GEMMNT_M", "GEMMNT_N", "GEMMNT_K"), (64, 96, 80)),
 }
+#: Optional knobs a loader reads from the environment beyond its dims. A non-default value is part of the
+#: capture's identity, so it goes into the bundle name rather than silently reusing another capture.
+OP_KNOBS = {"conv2d": (("CONV_STRIDE", "s"), ("CONV_DILATION", "d"))}
 
 
 def _env(key: str) -> str:
@@ -372,6 +377,9 @@ def op(args) -> int:
             raise SystemExit(f"{args.op} takes {len(keys)} dims ({' '.join(keys)}), got {dims}")
         loader = WORKLOADS / args.op / "loader.py"
         name = "op_" + args.op + ("_" + "x".join(map(str, dims)) if dims else "")
+        for knob, tag in OP_KNOBS.get(args.op, ()):
+            if os.environ.get(knob, "1") != "1":
+                name += f"_{tag}{int(os.environ[knob])}"
     else:
         loader, keys, dims = Path(args.op).resolve(), (), []
         if not loader.is_file():

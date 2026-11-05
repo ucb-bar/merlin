@@ -11,7 +11,7 @@
 #   ./run.sh capture <model> [--loader loader.py]
 #                                 capture any model to an int8 bundle + its W8A8 golden
 #   ./run.sh op gemm [M N K] [--harts N]
-#                                 ONE operator (gemm|conv2d|encoder_block|loader.py): RVV vs RVV+VME. The
+#                                 ONE operator (gemm|gemm_nt|conv2d|attention|encoder_block|loader.py): RVV vs RVV+VME. The
 #                                 VME image's stand-in twin is gated on spike; with $MERLIN_SPIKE_ZVT the
 #                                 SHIPPED VME image also runs on a spike that implements the unit
 #   ./run.sh op gemm --rvv-only   the RVV leg alone (no VME route)
@@ -23,6 +23,9 @@
 #                                 check ONE VME kernel in seconds: a sweep of shapes (edges, K tails, tile
 #                                 multiples, bias, back-to-back calls) on the Zvt spike, bit-exact
 #                                 against Merlin's reference
+#   ./run.sh matrix --models a,b [--harts 1,2] [--legs matrix]
+#                                 model regression matrix: each model x harts x {RVV, RVV+VME}, every
+#                                 image gated on spike, h2 checked bit-identical to h1
 #
 # The VME route derives the unit's encodings and geometry from $MERLIN_CHIPYARD_IRIS (a chipyard iris-cy
 # checkout at pin chipyard_iris, with generators/saturn at saturn_vme and generators/rocket-chip at
@@ -38,12 +41,13 @@ MATRIX_CONFIG=IrisConfig
 
 ex_parse_flags "$@"
 set -- ${EX_ARGS[@]+"${EX_ARGS[@]}"}
-LOADER=""; HARTS_OPT=""; RVV_ONLY=0; REST=()
+LOADER=""; HARTS_OPT=""; RVV_ONLY=0; MODELS_OVERRIDE=""; REST=()
 MATRIX_KERNEL="${MERLIN_MATRIX_KERNEL:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --loader)   LOADER="$(ex_abs "$2")"; shift ;;
     --matrix-kernel) MATRIX_KERNEL="$2"; shift ;;
+    --models)   MODELS_OVERRIDE="$2"; shift ;;
     --harts)    HARTS_OPT="$2"; shift ;;
     --rvv-only) RVV_ONLY=1 ;;
     *)          REST+=("$1") ;;
@@ -80,7 +84,7 @@ op)
   # One operator, end to end: capture (once per shape), build as RVV and as RVV+VME, gate both on spike.
   # `op gemm 96 80 200` = M N K; `op conv2d 16 64 16 3` = CIN COUT HW K; or `op path/to/loader.py`.
   shift
-  if [ $# -lt 1 ]; then echo "usage: $0 op <gemm|conv2d|encoder_block|loader.py> [dims...] [--harts N]" >&2; exit 2; fi
+  if [ $# -lt 1 ]; then echo "usage: $0 op <gemm|gemm_nt|conv2d|attention|encoder_block|loader.py> [dims...] [--harts N]" >&2; exit 2; fi
   case "$1" in *.py) set -- "$(ex_abs "$1")" "${@:2}" ;; esac
   MATRIX_ARGS=()
   if [ "$RVV_ONLY" = "1" ]; then
@@ -115,8 +119,20 @@ kernel-test)
   ex_run "$PY" -m merlin.kernels.matrix_kernel_test ${KT[@]+"${KT[@]}"} --support-target "$MATRIX_SUPPORT" \
       --unit "$MATRIX_UNIT" --config "$MATRIX_CONFIG" --board "$BOARD" "$@"
   ;;
+matrix)
+  # The regression matrix over whole models, as in examples/kodiak: per model and hart count the plain RVV
+  # image and the VME image (its stand-in twin, then the shipped image on the Zvt spike, bit-exact against
+  # the twin), each graded against the W8A8 golden, plus every hart count's output against 1 hart's.
+  if [ -z "$MODELS_OVERRIDE" ]; then echo "usage: $0 matrix --models a,b [--harts 1,2] [--legs matrix]" >&2; exit 2; fi
+  ex_preflight "$BOARD" --require package
+  ex_say "model matrix on $BOARD: $MODELS_OVERRIDE"
+  ex_run "$PY" "$EX_LIB_DIR/model_matrix.py" --board "$BOARD" --models "$MODELS_OVERRIDE" \
+      --harts "${HARTS_OPT:-1,2}" --matrix-unit "$MATRIX_UNIT" --matrix-config "$MATRIX_CONFIG" \
+      --matrix-support-target "$MATRIX_SUPPORT" ${KERNEL_ARGS[@]+"${KERNEL_ARGS[@]}"} "${@:2}"
+  ex_note "table: out/artifacts/probes/model_matrix/$BOARD/MATRIX.md (one JSON per cell beside it)"
+  ;;
 *)
-  sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac

@@ -13,7 +13,7 @@
 #   ./run.sh probe                build vlen_probe.elf and self-check it on spike        (no board)
 #   ./run.sh capture <model> [--loader loader.py]
 #                                 capture any model to an int8 bundle + its W8A8 golden   (no board)
-#   ./run.sh op gemm [M N K]      ONE operator (gemm|conv2d|encoder_block|loader.py), RVV vs RVV+OPU,
+#   ./run.sh op gemm [M N K]      ONE operator (gemm|gemm_nt|conv2d|attention|encoder_block|loader.py), RVV vs RVV+OPU,
 #                                 both gated on spike, with the routing report             (no board)
 #                                 --board firesim_kodiak_opu: built for FireSim, and one FireSim job
 #                                 per image is printed (--submit runs them on the shared FPGA)
@@ -134,7 +134,7 @@ op)
   # RVV+OPU, gate both on spike, print a summary. `op gemm 96 80 200` = M N K; `op conv2d 16 64 16 3` =
   # CIN COUT HW K; or `op path/to/loader.py` for your own one-op model.
   shift
-  if [ $# -lt 1 ]; then echo "usage: $0 op <gemm|conv2d|encoder_block|loader.py> [dims...] [--harts N]" >&2; exit 2; fi
+  if [ $# -lt 1 ]; then echo "usage: $0 op <gemm|gemm_nt|conv2d|attention|encoder_block|loader.py> [dims...] [--harts N]" >&2; exit 2; fi
   case "$1" in *.py) set -- "$(ex_abs "$1")" "${@:2}" ;; esac
   # On a FireSim board (--board firesim_kodiak_opu) the same two images are built for that board, and
   # one FireSim job per image is planned and printed; --submit runs them on the shared FPGA.
