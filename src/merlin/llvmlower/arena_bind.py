@@ -33,8 +33,10 @@ mistake into wrong numbers, not a crash, so the reasoning has to be checkable:
 3. Two bound buffers share bytes only when one's ``free`` DOMINATES the other's ``malloc`` -- every
    path reaching the second allocation has already executed the first free. With (2) that makes the
    windows disjoint, which is exactly the property the arena needs.
-4. Nothing outlives the call: the raw ``malloc`` pointer's only uses are the alignment ``ptrtoint``
-   and its ``free``, and the function returns void.
+4. Nothing outlives the call and nothing else frees the buffer: the HANDLE ``malloc`` returned is
+   followed through every value that may carry it (the descriptor it is inserted into, the local
+   ``alloca`` the descriptor is spilled to, values loaded back from there) and each must stay local
+   and reach only callees that cannot keep or free it; the function returns void.
 
 Every allocation that fails ANY of those is LEFT ALONE -- still a ``malloc``/``free`` pair, still
 correct, counted in the report as ``refused`` with a reason. The pass never guesses; a program it
@@ -66,16 +68,18 @@ _NAME_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012
 #: to ``@memrefCopy``. Measured on the deepjscc int8 build: 17 of 112 allocations reach a descriptor
 #: this way and nothing else, and refusing them costs 15% of the allocations this pass can remove.
 #:
-#: Admitting ``insertvalue`` is only sound while no callee can retain or free what it is given, so it
-#: is admitted ONLY when every callee in the function is in :data:`_NON_CAPTURING_CALLEES`; one
-#: unrecognised callee drops the whole function back to the strict rule. Anything else consuming the
-#: raw pointer -- a store to caller-visible memory, a second free, a return -- refuses the
-#: allocation.
+#: Admitting ``insertvalue`` is only sound while the descriptor cannot be kept or freed by anyone, so
+#: :func:`_handle_escapes` follows it to every use for EACH allocation. That used to be decided for the
+#: whole function -- one unrecognised callee anywhere switched the relaxation off -- and the ownership
+#: passes' own ``@dealloc_helper`` is such a callee: on the spectformer int8 build it left 123
+#: allocations (32 MiB) on the heap although none of their descriptors reaches it. Anything else
+#: consuming the raw pointer -- a store to caller-visible memory, a second free, a return -- refuses
+#: the allocation.
 _ALLOWED_RAW_USES = ("ptrtoint", "insertvalue")
 
 #: Callees that neither free nor retain a pointer argument past the call. These are the LLVM
 #: intrinsics and the MLIR C-runner entry points the memref lowering emits; they are not facts about
-#: any target. An unknown callee is not assumed harmless -- it disables the descriptor relaxation.
+#: any target. An unknown callee is not assumed harmless: a handle that reaches one is refused.
 _NON_CAPTURING_CALLEES = frozenset(
     {
         "@free",
@@ -221,8 +225,89 @@ _PURE_CALLEE_PREFIXES = (
 )
 
 
-def _is_non_capturing(callee: str) -> bool:
-    return callee in _NON_CAPTURING_CALLEES or callee in _PURE_LIBM_CALLEES or callee.startswith(_PURE_CALLEE_PREFIXES)
+def _is_non_capturing(callee: str, harmless: frozenset[str] = frozenset()) -> bool:
+    return (
+        callee in _NON_CAPTURING_CALLEES
+        or callee in _PURE_LIBM_CALLEES
+        or callee.startswith(_PURE_CALLEE_PREFIXES)
+        or callee in harmless
+    )
+
+
+#: Type punctuation blanked before a parameter is split into words, so ``<4 x ptr>`` and ``{ ptr, i64 }``
+#: both yield the word ``ptr``.
+_TYPE_PUNCTUATION = str.maketrans({c: " " for c in "{}[]<>(),"})
+
+
+def _parameter_list(header: str) -> str | None:
+    """The text between the parentheses of a ``declare``/``define`` header's parameter list.
+
+    Read with a depth count rather than to the first ``)``: an attribute such as ``captures(none)``
+    closes a parenthesis INSIDE the list, and stopping there would drop the parameters after it -- the
+    direction that would let a pointer parameter go unseen.
+    """
+    at = header.find("@")
+    open_at = header.find("(", at) if at >= 0 else -1
+    if open_at < 0:
+        return None
+    depth = 0
+    for i in range(open_at, len(header)):
+        if header[i] == "(":
+            depth += 1
+        elif header[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return header[open_at + 1 : i]
+    return None
+
+
+def _top_level_items(params: str) -> list[str]:
+    """``params`` split on the commas that separate parameters, not those inside an aggregate type."""
+    out: list[str] = []
+    depth, cur = 0, []
+    for ch in params:
+        depth += (ch in "({[<") - (ch in ")}]>")
+        if ch == "," and depth == 0:
+            out.append("".join(cur).strip())
+            cur = []
+        else:
+            cur.append(ch)
+    if "".join(cur).strip():
+        out.append("".join(cur).strip())
+    return out
+
+
+def _harmless_callees(lines: list[str]) -> frozenset[str]:
+    """Callees whose OWN signature in this module shows they cannot keep or free a pointer they are given.
+
+    Derived from the module rather than listed, so a new math helper or vector intrinsic needs no entry:
+
+    * a function with no pointer-carrying parameter never receives the pointer at all -- the portable
+      transcendentals (``float @merlin_erff(float)``) and ``@rsqrtf`` are of this shape;
+    * an ``@llvm.*`` intrinsic every one of whose pointer parameters LLVM itself marks ``captures(none)``
+      (or the older ``nocapture``) reads or writes through the pointer and keeps nothing -- the masked
+      vector loads and stores. Only intrinsics: on an ordinary function ``captures(none)`` does not
+      exclude FREEING the pointer (``@free`` may be declared that way).
+    """
+    out: set[str] = set()
+    for line in lines:
+        if not line.startswith(("declare ", "define ")):
+            continue
+        at = line.find("@")
+        end = at + 1
+        while end < len(line) and line[end] in _NAME_CHARS:
+            end += 1
+        params = _parameter_list(line)
+        if at < 0 or params is None:
+            continue
+        name = line[at:end]
+        # Any parameter whose type mentions `ptr` -- a bare pointer or an aggregate holding one.
+        carrying = [p for p in _top_level_items(params) if "ptr" in p.translate(_TYPE_PUNCTUATION).split()]
+        if not carrying:
+            out.add(name)
+        elif name.startswith("@llvm.") and all("captures(none)" in p or "nocapture" in p.split() for p in carrying):
+            out.add(name)
+    return frozenset(out)
 
 
 class ArenaBindError(RuntimeError):
@@ -313,31 +398,6 @@ def _label_targets(terminator: str) -> list[str]:
 def _is_terminator(inst: str) -> bool:
     head = inst.split(" ", 1)[0]
     return head in ("br", "ret", "switch", "unreachable", "resume", "indirectbr", "callbr")
-
-
-def _callees(lines: list[str], blocks: list["_Block"]) -> set[str]:
-    """Every ``@symbol`` a ``call`` in this function names.
-
-    Read from the call instruction's own text: the callee is the last ``@name`` token before the
-    argument list, so taking the token that precedes the first ``(`` after an ``@`` finds it without
-    knowing the return type or the attribute soup in between.
-    """
-    out: set[str] = set()
-    for b in blocks:
-        for li in b.insts:
-            inst = lines[li].strip()
-            body = inst.partition(" = ")[2] or inst
-            if not body.startswith(("call ", "tail call ", "musttail call ", "notail call ", "invoke ")):
-                continue
-            at = body.find("@")
-            if at < 0:
-                out.add("<indirect>")  # a call through a value: never assumed harmless
-                continue
-            end = at + 1
-            while end < len(body) and body[end] in _NAME_CHARS:
-                end += 1
-            out.add(body[at:end])
-    return out
 
 
 def _split_function(lines: list[str], symbol: str) -> tuple[int, int]:
@@ -510,7 +570,7 @@ def _parse_free(inst: str) -> str | None:
     return arg if arg.startswith("%") else None
 
 
-def _window_blocks(a: "_Alloc", succs: list[list[int]]) -> set[int]:
+def _window_blocks(a: _Alloc, succs: list[list[int]]) -> set[int]:
     """Blocks that can be entered between ``a``'s malloc and its free.
 
     A forward walk from the malloc's block that does NOT expand the free's block: once control
@@ -552,46 +612,128 @@ def _store_destination(inst: str) -> str | None:
     return name if name.startswith("%") else None
 
 
-def _aggregate_escapes(raw: str, lines: list[str], blocks: list["_Block"], uses: dict[str, list[int]]) -> bool:
-    """Does the memref descriptor built around ``raw`` reach memory the caller can see?
+#: Opcodes whose result is a comparison: an ``i1`` cannot carry a pointer, so the walk stops there.
+_NO_CARRY_OPS = ("icmp ", "fcmp ")
 
-    Admitting ``insertvalue`` on the raw pointer (see :data:`_ALLOWED_RAW_USES`) is only sound while
-    the aggregate it builds stays inside the call. It does when the descriptor is spilled to a local
-    ``alloca`` and handed to ``@memrefCopy``, which is what the ``memref.copy`` lowering emits. It
-    does NOT if the descriptor is stored through a caller-provided pointer -- then the arena address
-    outlives the call, past the point the plan gives those bytes to another buffer. Checking only the
-    raw pointer's own uses would miss that entirely, because the escaping value is the aggregate.
+#: Opcodes whose result may carry whatever their operand carries (pointer and integer arithmetic, and
+#: the merges of control flow).
+_CARRY_OPS = frozenset(
+    "getelementptr bitcast addrspacecast ptrtoint inttoptr phi select freeze "
+    "add sub and or xor urem udiv mul shl lshr".split()
+)
+
+
+def _operand_name(item: str) -> str:
+    """The value of one ``<type> <value>`` operand: its last word."""
+    words = item.split()
+    return words[-1] if words else ""
+
+
+def _handle_escapes(
+    raw: str,
+    free_line: int,
+    lines: list[str],
+    uses: dict[str, list[int]],
+    defs: dict[str, int],
+    harmless: frozenset[str],
+) -> str | None:
+    """Can the HANDLE ``raw`` -- the pointer ``free`` accepts -- reach anything but its one ``free``?
+
+    Returns the refusal reason, or None when every value that may carry the handle stays inside the
+    call and reaches only callees that cannot keep or free it.
+
+    WHAT IS FOLLOWED, AND WHY ONLY THIS. Binding moves the buffer into the arena and deletes its
+    ``free``. Byte REUSE is safe because the input program is correct under ``malloc``/``free``
+    (module docstring, point 1): no access to the buffer's bytes happens outside its window, whoever
+    performs it, so a callee that reads or writes through the DATA pointer -- the aligned address the
+    lowering derives by ``ptrtoint`` arithmetic, which is what an OpenMP region or a matrix kernel is
+    handed -- cannot observe the reuse. What binding CHANGES is the handle: deleting its ``free`` is
+    only right if nothing else frees it, and an arena address handed to ``free`` corrupts the heap.
+    So this follows the handle and everything that may contain it: the memref descriptor it is
+    inserted into (field-sensitively -- extracting the ALIGNED field of a descriptor does not yield the
+    handle), any local ``alloca`` the descriptor is spilled to and every value loaded back from one,
+    and pointer or integer arithmetic on any of those.
+
+    Refused when a carrier is stored anywhere but a local ``alloca`` (``descriptor_escapes``: it would
+    outlive the call), is handed to a callee not shown harmless or to a second ``free``
+    (``handle_escapes_to_callee``), or is returned or used by an instruction this reader does not know
+    (``descriptor_escapes``).
     """
-    defs: dict[str, int] = {}
-    for b in blocks:
-        for li in b.insts:
-            lhs, sep, _ = lines[li].strip().partition(" = ")
-            if sep and lhs.startswith("%"):
-                defs[lhs.strip()] = li
+    taint: dict[str, frozenset] = {raw: frozenset({"*"})}  # value -> fields that may hold the handle
+    local: set[str] = set()  # allocas holding a carrier, and pointers into them
+    work = [raw]
 
-    closure = {raw}
-    frontier = [raw]
-    while frontier:
-        cur = frontier.pop()
-        for li in uses.get(cur, []):
-            lhs, sep, rhs = lines[li].strip().partition(" = ")
-            if sep and rhs.startswith("insertvalue ") and lhs.strip() not in closure:
-                closure.add(lhs.strip())
-                frontier.append(lhs.strip())
+    def is_alloca(name: str) -> bool:
+        src = defs.get(name)
+        return src is not None and lines[src].strip().partition(" = ")[2].startswith("alloca ")
 
-    for member in closure - {raw}:
-        for li in uses.get(member, []):
-            inst = lines[li].strip()
-            rhs = inst.partition(" = ")[2]
-            if rhs.startswith(("insertvalue ", "extractvalue ")):
+    def mark(name: str, fields: frozenset, is_local: bool = False) -> None:
+        old = taint.get(name)
+        grew = old is None or not fields <= old
+        if is_local and name not in local:
+            local.add(name)
+            grew = True  # re-read its uses: loads from it now carry
+        if grew:
+            taint[name] = (old or frozenset()) | fields
+            work.append(name)
+
+    while work:
+        v = work.pop()
+        for li in uses.get(v, []):
+            if li == defs.get(v):
                 continue
-            dest = _store_destination(inst)
-            if dest is None:
-                return True  # some other consumer: not shown to be local
-            src = defs.get(dest)
-            if src is None or not lines[src].strip().partition(" = ")[2].startswith("alloca "):
-                return True  # stored through a pointer this function did not make
-    return False
+            inst = lines[li].strip()
+            lhs, sep, rhs = inst.partition(" = ")
+            body = rhs if sep else inst
+            res = lhs.strip() if sep else ""
+            if v == raw and (li == free_line or body.startswith("ptrtoint ")):
+                continue  # its own free, and the alignment arithmetic that yields the DATA pointer
+            if body.startswith(_NO_CARRY_OPS):
+                continue
+            if body.startswith("store "):
+                dest = _store_destination(inst)
+                if dest is None:
+                    return "descriptor_escapes"
+                if dest == v and v not in _ssa_names(inst.rpartition(", ptr ")[0]):
+                    continue  # writing THROUGH the carrier; the value stored is something else
+                if dest in local or is_alloca(dest):
+                    mark(dest, frozenset({"*"}), is_local=True)
+                    continue
+                return "descriptor_escapes"
+            if body.startswith("load "):
+                if v in local and res:
+                    mark(res, frozenset({"*"}))
+                continue  # a load through a data pointer reads data, not the handle
+            if body.startswith(("call ", "tail call ", "musttail call ", "notail call ")):
+                callee = "@" + (_call_target(inst) or "<indirect>")
+                if callee == "@free" or not _is_non_capturing(callee, harmless):
+                    return "handle_escapes_to_callee"
+                continue
+            if body.startswith("insertvalue "):
+                items = _top_level_items(body[len("insertvalue ") :])
+                if len(items) < 3 or not res:
+                    return "descriptor_escapes"
+                agg, elt, field = _operand_name(items[0]), _operand_name(items[1]), items[2].strip()
+                held = taint.get(agg, frozenset())
+                fields = {f for f in held if f != field or f == "*"}
+                if elt in taint:
+                    fields.add(field)
+                if fields:
+                    mark(res, frozenset(fields), is_local=agg in local)
+                continue
+            if body.startswith("extractvalue "):
+                items = _top_level_items(body[len("extractvalue ") :])
+                if len(items) < 2 or not res:
+                    return "descriptor_escapes"
+                held = taint.get(_operand_name(items[0]), frozenset())
+                if "*" in held or items[1].strip() in held:
+                    mark(res, frozenset({"*"}))
+                continue
+            if res and body.split(" ", 1)[0] in _CARRY_OPS:
+                mark(res, frozenset({"*"}), is_local=v in local and body.startswith("getelementptr "))
+                continue
+            return "descriptor_escapes"  # returned, or an instruction this reader does not know
+    return None
 
 
 @dataclass
@@ -603,6 +745,11 @@ class BindReport:
     naive_total_bytes: int
     reuse_factor: float
     symbol: str
+    #: The most bytes the bound buffers hold at any one program point: a LOWER bound on any arena that
+    #: seats them. ``arena_bytes`` minus this is what the first-fit placement lost to fragmentation.
+    peak_live_bytes: int = 0
+    #: Bytes the refused constant-size allocations ask for, once per site. They stay on the heap.
+    refused_bytes: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -613,6 +760,8 @@ class BindReport:
             "naive_total_bytes": self.naive_total_bytes,
             "reuse_factor": self.reuse_factor,
             "symbol": self.symbol,
+            "peak_live_bytes": self.peak_live_bytes,
+            "refused_bytes": self.refused_bytes,
         }
 
 
@@ -678,11 +827,16 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL, entry: str = "forwar
     def refuse(reason: str) -> None:
         refusals[reason] = refusals.get(reason, 0) + 1
 
-    # Does any callee in this function possibly retain or free a pointer it is handed? If so the
-    # descriptor relaxation is off for the WHOLE function -- an unknown callee is not evidence of
-    # safety, and deciding per-allocation would mean deciding which arguments it captures.
-    unknown = sorted(c for c in _callees(lines, blocks) if not _is_non_capturing(c))
-    allowed_uses = _ALLOWED_RAW_USES if not unknown else ("ptrtoint",)
+    # Where the HANDLE (the pointer malloc returned, the one thing `free` accepts) can travel is decided
+    # per allocation by following it -- see `_handle_escapes`. A callee is trusted with a value that
+    # carries it only when its kind or its own signature shows it cannot keep or free it.
+    harmless = _harmless_callees(lines)
+    defs: dict[str, int] = {}
+    for b in blocks:
+        for li in b.insts:
+            lhs, sep, _ = lines[li].strip().partition(" = ")
+            if sep and lhs.startswith("%"):
+                defs[lhs.strip()] = li
 
     cyclic = _cyclic_blocks(succs)
     allocs: list[_Alloc] = []
@@ -696,13 +850,14 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL, entry: str = "forwar
             li
             for li in uses.get(name, [])
             if li != fline
-            and not lines[li].strip().partition(" = ")[2].startswith(tuple(op + " " for op in allowed_uses))
+            and not lines[li].strip().partition(" = ")[2].startswith(tuple(op + " " for op in _ALLOWED_RAW_USES))
         ]
         if bad:
             refuse("raw_pointer_escapes")
             continue
-        if "insertvalue" in allowed_uses and _aggregate_escapes(name, lines, blocks, uses):
-            refuse("descriptor_escapes")
+        why = _handle_escapes(name, fline, lines, uses, defs, harmless)
+        if why is not None:
+            refuse(why)
             continue
         mb, mp = line_block[mline]
         fb, fp = line_block[fline]
@@ -794,6 +949,15 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL, entry: str = "forwar
     out.insert(first_define, f"@{symbol} = internal global [{arena_bytes} x i8] zeroinitializer, align {ARENA_ALIGN}")
 
     naive = sum(sizes.values())
+    # What is live at each allocation: the buffer itself plus every conflicting one whose window holds
+    # this malloc. The heaviest such set is the peak; an arena cannot be smaller than it.
+    by_name = {a.name: a for a in allocs}
+    peak = max(
+        sizes[b.name]
+        + sum(sizes[o] for o in conflicts[b.name] if in_window(by_name[o], window[o], b.malloc_block, b.malloc_pos))
+        for b in allocs
+    )
+    bound_names = {a.name for a in allocs}
     report = BindReport(
         arena_bytes=arena_bytes,
         bound=len(allocs),
@@ -802,6 +966,8 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL, entry: str = "forwar
         naive_total_bytes=naive,
         reuse_factor=round(naive / arena_bytes, 2) if arena_bytes else 0.0,
         symbol=symbol,
+        peak_live_bytes=peak,
+        refused_bytes=sum(size for name, (_line, size) in mallocs.items() if name not in bound_names),
     )
     return "\n".join(out), report
 
@@ -901,7 +1067,7 @@ def _malloc_size(inst: str) -> int | None:
     return int(tokens[-1])
 
 
-def heap_demand(ll_texts: "list[str]") -> HeapDemand:
+def heap_demand(ll_texts: list[str]) -> HeapDemand:
     """The bytes one run of the program made of ``ll_texts`` (its LLVM modules) allocates."""
     sites: dict[str, list[tuple[int | None, bool]]] = {}  # fn -> [(size or None, in a cycle)]
     calls: dict[str, list[tuple[str, bool]]] = {}  # callee -> [(caller, in a cycle)]

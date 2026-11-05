@@ -358,22 +358,85 @@ m1:
 )
 
 
-def test_a_memref_descriptor_use_is_admitted_only_when_no_callee_can_capture():
+def test_a_memref_descriptor_use_is_admitted_only_while_its_handle_reaches_no_unknown_callee():
     """``insertvalue`` builds the memref descriptor the ``memref.copy`` lowering hands to
     ``@memrefCopy``; refusing it costs 15% of the allocations on the deepjscc int8 build (17 of 112).
-    It is admitted only because nothing in the function can retain what it is given — so an unknown
-    callee must switch the relaxation back off for the whole function, and this test pins BOTH
-    directions rather than only the permissive one."""
+    It is admitted because the HANDLE in field 0 provably reaches nothing that could keep or free it.
+    That is decided per allocation by following the handle, so this pins both directions: the
+    descriptor handed to an unknown callee is refused, and the module is left byte-identical."""
     out, rep = _bind(DESCRIPTOR)
     assert rep.bound == 1 and rep.refusals == {}, rep.to_dict()
     assert "@merlin_arena" in out
 
     hostile = DESCRIPTOR.replace(
-        "  br i1 true, label %fa, label %m1", "  call void @capture(ptr %ap)\n  br i1 true, label %fa, label %m1"
+        "  br i1 true, label %fa, label %m1",
+        "  %slot = alloca { ptr, ptr, i64 }, align 8\n"
+        "  store { ptr, ptr, i64 } %d2, ptr %slot, align 8\n"
+        "  call void @capture(ptr %slot)\n"
+        "  br i1 true, label %fa, label %m1",
     )
     out2, rep2 = _bind(hostile)
-    assert rep2.bound == 0 and rep2.refusals == {"raw_pointer_escapes": 1}, rep2.to_dict()
+    assert rep2.bound == 0 and rep2.refusals == {"handle_escapes_to_callee": 1}, rep2.to_dict()
     assert out2 == hostile
+
+
+def test_the_data_pointer_handed_to_an_unknown_callee_does_not_refuse_the_buffer():
+    """The ALIGNED address is what every kernel, OpenMP region and matrix routine is handed. Whatever
+    such a callee does with it happens inside the buffer's ``[malloc, free)`` window -- the input
+    program is correct under malloc/free -- so it cannot observe the bytes being reused afterwards.
+    Refusing on it would refuse every buffer a multicore image touches, for no soundness gain: only
+    the handle, which ``free`` accepts, is what binding changes."""
+    data_use = DESCRIPTOR.replace(
+        "  br i1 true, label %fa, label %m1", "  call void @capture(ptr %ap)\n  br i1 true, label %fa, label %m1"
+    )
+    _, rep = _bind(data_use)
+    assert rep.bound == 1 and rep.refusals == {}, rep.to_dict()
+
+
+def test_a_handle_extracted_from_its_descriptor_and_freed_again_is_left_on_the_heap():
+    """A loop-carried memref is freed through the pointer EXTRACTED from its descriptor, a different
+    SSA name from the malloc's. Binding would delete one free and leave the other to hand an arena
+    address to the allocator. Extracting the ALIGNED field instead is harmless, which is what makes
+    the walk field-sensitive rather than merely conservative."""
+    twice = DESCRIPTOR.replace(
+        "  br i1 true, label %fa, label %m1",
+        "  %h = extractvalue { ptr, ptr, i64 } %d2, 0\n  call void @free(ptr %h)\n  br i1 true, label %fa, label %m1",
+    )
+    _, rep = _bind(twice)
+    assert rep.bound == 0 and rep.refusals == {"handle_escapes_to_callee": 1}, rep.to_dict()
+    aligned = DESCRIPTOR.replace(
+        "  br i1 true, label %fa, label %m1",
+        "  %x = extractvalue { ptr, ptr, i64 } %d2, 1\n  call void @capture(ptr %x)\n  br i1 true, label %fa, label %m1",
+    )
+    _, rep2 = _bind(aligned)
+    assert rep2.bound == 1 and rep2.refusals == {}, rep2.to_dict()
+
+
+def test_a_callee_that_cannot_keep_a_pointer_is_read_off_its_own_declaration():
+    """The portable transcendentals and ``@rsqrtf`` take a float; the masked vector loads mark their
+    pointer ``captures(none)``. Both are derived from the module's declarations, not listed. An
+    ordinary function marked ``captures(none)`` may still FREE its argument, so only intrinsics get
+    that reading."""
+    lines = [
+        "declare float @merlin_erff(float) #0",
+        "declare <8 x i8> @llvm.masked.load.v8i8.p0(ptr captures(none), <8 x i1>, <8 x i8>) #4",
+        "declare void @keeps(ptr)",
+        "declare void @takes_vec(<4 x ptr>)",
+        "declare void @takes_agg({ ptr, i64 })",
+        "declare void @not_intrinsic(ptr captures(none))",
+    ]
+    harmless = ab._harmless_callees(lines)
+    assert "@merlin_erff" in harmless and "@llvm.masked.load.v8i8.p0" in harmless
+    assert not {"@keeps", "@takes_vec", "@takes_agg", "@not_intrinsic"} & harmless
+
+
+def test_the_report_states_the_peak_the_placement_is_measured_against():
+    """``peak_live_bytes`` is the most the bound buffers hold at once -- a lower bound on any arena --
+    so ``arena_bytes`` can be judged against it rather than only against the naive sum."""
+    _, rep = _bind(OVERLAPPING)
+    d = rep.to_dict()
+    assert d["peak_live_bytes"] == 256 == d["arena_bytes"]
+    assert d["refused_bytes"] == 0
 
 
 DESCRIPTOR_ESCAPES = (
