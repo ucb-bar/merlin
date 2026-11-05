@@ -11,6 +11,8 @@ before changing compiler behaviour, and the companion TVM `apps/gemmini/AGENTS.m
 - The F2 numbers bind TVM `f3cfd1a7d`, Merlin `fe0306676`, GCC 16.1.0 and AGFI
   `agfi-02410ef1a8461b435` (F2, 60 MHz, DDR3+LLC). Never relabel them as the
   selected U250 30 MHz target or as results of a later source revision.
+- The submodule `third_party/tvm` pins that F2 TVM revision. Move it only
+  together with new measurements that bind the new revision.
 - Frozen products under `out/artifacts/` keep their original source, input,
   compiler and hardware identities. Write new results to new products
   (`merlin.common.artifacts.new_product` / `new_measurement`); never edit a receipt.

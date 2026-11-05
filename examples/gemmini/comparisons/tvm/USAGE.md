@@ -11,8 +11,8 @@ it uses the same tools with fixed pins. For what the compiler does, see
 
 | Piece | Source | Notes |
 | --- | --- | --- |
-| Merlin | this branch, `comparisons/tvm-workload-tuning` | Provides `src/` (artifact helpers) and this directory, `examples/gemmini/comparisons/tvm/` (`$COMPARISON`) |
-| TVM fork | [`grammy117/tvm` `gemmini/direct-intrinsics`](https://github.com/grammy117/tvm/tree/gemmini/direct-intrinsics) | Apache TVM v0.19.0 plus the Gemmini backend (`python/tvm/relax/backend/contrib/gemmini*.py`) and tools (`apps/gemmini/`). The F2 results used `f3cfd1a7d`; the tip `fee495aca` adds only a Python refactor. |
+| Merlin | this branch, `mlsys27/feat-SoTA-tvm` (formerly `comparisons/tvm-workload-tuning`) | Provides `src/` (artifact helpers) and this directory, `examples/gemmini/comparisons/tvm/` (`$COMPARISON`) |
+| TVM fork | submodule `third_party/tvm`, pinned at `f3cfd1a7d` on [`grammy117/tvm` `gemmini/direct-intrinsics`](https://github.com/grammy117/tvm/tree/gemmini/direct-intrinsics) | Apache TVM v0.19.0 plus the Gemmini backend (`python/tvm/relax/backend/contrib/gemmini*.py`) and tools (`apps/gemmini/`). The pin is the exact source of the F2 results. The branch tip adds only a Python refactor and documentation. |
 | LLVM | 18.x with `llvm-config` | Built into `libtvm.so`; produces the RV64 operator objects |
 | RISC-V GCC | `riscv64-unknown-elf-gcc` (Chipyard toolchain) | Compiles the C adapter and links the bare-metal ELF. F2 used 16.1.0; the a26 host uses 13.2.0. Both build working ELFs, but the bytes differ. |
 | Gemmini software | gemmini `6ad65b90`, gemmini-rocc-tests `7c540b3a`, rocc-software `fddb795a` | Headers for the adapter (`gemmini_params.h` must match the hardware image) |
@@ -25,8 +25,8 @@ Use single-threaded BLAS and bounded build workers on shared machines.
 ## 2. Build TVM
 
 ```sh
-git clone https://github.com/grammy117/tvm.git "$TVM_SOURCE"
-git -C "$TVM_SOURCE" checkout gemmini/direct-intrinsics      # or f3cfd1a7d to match F2 exactly
+git -C "$MERLIN" submodule update --init third_party/tvm     # f3cfd1a7d, the F2 compiler (name the path:
+export TVM_SOURCE="$MERLIN/third_party/tvm"                  #  a bare --init also clones llvm-project)
 git -C "$TVM_SOURCE" submodule update --init 3rdparty/dlpack 3rdparty/dmlc-core 3rdparty/rang
 cmake -S "$TVM_SOURCE" -B "$TVM_BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DUSE_LLVM="$LLVM18/bin/llvm-config --link-shared" -DUSE_OPENMP=OFF -DUSE_LIBBACKTRACE=OFF \
@@ -37,14 +37,16 @@ cmake --build "$TVM_BUILD" --target tvm tvm_runtime --parallel 4
 These are the flags of the a26 build (LLVM 18.1.8 from conda).
 [host-config.cmake](host-config.cmake) is the bringup's equivalent cache file,
 which also disables GPU, RPC and BLAS back ends. The Gemmini backend is
-Python-only. The C++ sources are identical from `c50c4e269` through `fee495aca`,
-so one `libtvm.so` serves every pin on this branch.
+Python-only. The C++ sources are identical from `c50c4e269` through the branch
+tip, so one `libtvm.so` serves every revision on the branch. Keep the submodule
+at the F2 pin; to work on the newer tip, use a separate clone of
+`gemmini/direct-intrinsics` and move the pin only together with new measurements.
 
 ## 3. Environment
 
 ```sh
 export MERLIN=<merlin checkout>               # this branch
-export TVM_SOURCE=<tvm checkout>  TVM_BUILD=<tvm build dir>
+export TVM_SOURCE="$MERLIN/third_party/tvm"  TVM_BUILD=<tvm build dir>
 export TVM_LIBRARY_PATH="$TVM_BUILD"
 export PY=<venv>/bin/python
 export RISCV_GCC=<riscv64-unknown-elf-gcc>
@@ -58,8 +60,9 @@ export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 TVM_NUM_THREAD
 On a26, `source /scratch/grammy/blast/tvm-tuning-env.sh` sets these variables.
 Its `TVM` points at `tvm-f2-followup` (`c50c4e269` plus local edits), which is
 not the F2 pin. Override `TVM_SOURCE` and `PYTHONPATH` with
-`$BASELINE/tvm-f2-pin-f3cfd1a7d` (exact F2 sources) or
-`$BASELINE/tvm-direct-intrinsics` (branch tip).
+`$MERLIN_DELIVERY/third_party/tvm` (the submodule: exact F2 sources, same tree
+as `$BASELINE/tvm-f2-pin-f3cfd1a7d`) or `$BASELINE/tvm-direct-intrinsics`
+(branch tip).
 
 ## 4. Build the Gemmini adapter
 

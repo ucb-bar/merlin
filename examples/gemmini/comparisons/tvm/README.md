@@ -3,7 +3,9 @@
 This directory holds the Merlin side of the TVM–Gemmini baseline: frozen
 inputs, complete-unit ELF builders, the FireSim study runner and the evidence
 rules. The compiler itself is the TVM fork
-[`grammy117/tvm` `gemmini/direct-intrinsics`](https://github.com/grammy117/tvm/tree/gemmini/direct-intrinsics).
+[`grammy117/tvm` `gemmini/direct-intrinsics`](https://github.com/grammy117/tvm/tree/gemmini/direct-intrinsics),
+pinned in this branch as the submodule `third_party/tvm` at `f3cfd1a7d`, the
+exact source of the F2 results.
 
 **Status (2026-11-04):** the ResNet50 + 16-kernel campaign ran on AWS F2 FireSim
 (60 MHz DDR3+LLC image) on 2026-10-28. Results, setup and the recipe are in

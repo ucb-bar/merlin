@@ -6,7 +6,8 @@ measures the result on FireSim. It has two parts:
 
 - a **TVM fork** ([`grammy117/tvm` `gemmini/direct-intrinsics`](https://github.com/grammy117/tvm/tree/gemmini/direct-intrinsics),
   based on TVM v0.19.0 `c4dc0c29`), holding the Gemmini backend and its build
-  tools;
+  tools; this branch pins the F2 revision `f3cfd1a7d` as the submodule
+  `third_party/tvm`;
 - **Merlin orchestration** (this directory), holding the frozen inputs,
   complete-unit ELF builders, the FireSim study runner, budgets, watchdog and
   evidence.

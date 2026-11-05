@@ -18,6 +18,12 @@ External baseline compilers and runtimes are selected from independent checkouts
 environment paths. Their adapters remain in `packages/merlin-analysis`; no baseline source tree is
 tracked below `third_party/`. The selected framework revision remains part of each measurement.
 
+One exception: `third_party/tvm` is a submodule pin (no vendored source) of the TVM fork
+`grammy117/tvm` at `f3cfd1a7d`, the exact compiler behind the published F2 FireSim results
+(`examples/gemmini/comparisons/tvm/REPRODUCING_F2_RESULTS.md`). It records which TVM those
+numbers belong to. Do not move it without new measurements; the comparison still selects its
+TVM through `TVM_SOURCE`, and nothing in Merlin's build consumes it.
+
 ## Interfaces
 
 Consumed by the build system (`CMakeLists.txt`, `build_tools/`).

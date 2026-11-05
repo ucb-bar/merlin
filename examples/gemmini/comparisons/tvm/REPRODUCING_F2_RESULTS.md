@@ -54,8 +54,8 @@ Receipt: `setup/hardware-receipt.json` in the measurement product.
 
 | Component | Pin | How it was verified |
 | --- | --- | --- |
-| TVM compiler | [`grammy117/tvm` `f3cfd1a7d`](https://github.com/grammy117/tvm/commit/f3cfd1a7dc95d00191225fa8ac5fc8aee3a6940d) on `gemmini/direct-intrinsics` (tree-identical to pre-identity-fix `bb4ad9f8d`; base Apache TVM v0.19.0 `c4dc0c29`) | All 62 TVM `compiler_sources` sha256 values in `setup/resnet-study.json` match this commit. The branch tip `fee495aca` is a later Python-only refactor (58 of the 62 files still match; no C++ changes). |
-| Merlin runner and builders | `comparisons/tvm-workload-tuning` `fe0306676` (tree-identical to pre-identity-fix `9530ee83d`) | The 5 Merlin `compiler_sources` match. The comparison builders (`examples/gemmini/comparisons/tvm/*.py`) are unchanged from that commit to `5998ce4ef`. |
+| TVM compiler | [`grammy117/tvm` `f3cfd1a7d`](https://github.com/grammy117/tvm/commit/f3cfd1a7dc95d00191225fa8ac5fc8aee3a6940d) on `gemmini/direct-intrinsics` (tree-identical to pre-identity-fix `bb4ad9f8d`; base Apache TVM v0.19.0 `c4dc0c29`); pinned in this branch as the submodule `third_party/tvm` | All 62 TVM `compiler_sources` sha256 values in `setup/resnet-study.json` match this commit and the submodule checkout. The later `fee495aca` is a Python-only refactor (58 of the 62 files still match; no C++ changes); the branch tip after it adds documentation only. |
+| Merlin runner and builders | `fe0306676` on `mlsys27/feat-SoTA-tvm`, formerly `comparisons/tvm-workload-tuning` (tree-identical to pre-identity-fix `9530ee83d`) | The 5 Merlin `compiler_sources` match. Merlin code (`src/`, `packages/`, the comparison `*.py`) is unchanged from that commit to the branch tip. |
 | Gemmini software for the adapter | gemmini `6ad65b90`, gemmini-rocc-tests `7c540b3a`, rocc-software `fddb795a`, libgemmini `ea8f7ed7` | `setup/adapter-receipt.json` |
 | Cross compiler | `riscv64-unknown-elf-gcc` 16.1.0 (`g6afcc4f6d-dirty`) on the F2 build host | `setup/adapter-receipt.json` |
 | Python | 3.12 virtual environment with the TVM build; single-threaded BLAS (`OMP/OPENBLAS/MKL/TVM_NUM_THREADS=1`) | `tools/env.sh` |
@@ -108,15 +108,17 @@ need a FireSim pool.
 ### 1. Check out the pinned sources
 
 ```sh
-git clone https://github.com/ucb-bar/merlin.git "$EXP/merlin"
-git -C "$EXP/merlin" checkout fe0306676          # or comparisons/tvm-workload-tuning
-git clone https://github.com/grammy117/tvm.git "$EXP/tvm"
-git -C "$EXP/tvm" checkout f3cfd1a7dc95d00191225fa8ac5fc8aee3a6940d
-git -C "$EXP/tvm" submodule update --init --recursive
+git clone -b mlsys27/feat-SoTA-tvm https://github.com/ucb-bar/merlin.git "$EXP/merlin"
+git -C "$EXP/merlin" submodule update --init third_party/tvm        # TVM f3cfd1a7d
+export MERLIN="$EXP/merlin" TVM_SOURCE="$EXP/merlin/third_party/tvm"
+git -C "$TVM_SOURCE" submodule update --init 3rdparty/dlpack 3rdparty/dmlc-core 3rdparty/rang
 ```
 
-Build `libtvm.so` from that tree with LLVM 18 and
-[host-config.cmake](host-config.cmake) (see [USAGE.md](USAGE.md#2-build-tvm)).
+The branch pins the F2 TVM as the `third_party/tvm` submodule. From the F2
+Merlin commit `fe0306676` to the branch tip only documentation, imported
+artifacts, `.gitignore` and that submodule changed, so the tip plus the
+submodule is the F2 source set. Build `libtvm.so` from `$TVM_SOURCE` with LLVM 18
+(see [USAGE.md](USAGE.md#2-build-tvm)).
 Set the environment as in `tools/env.sh`: `MERLIN`, `TVM_SOURCE`, `TVM_BUILD`
 (= `TVM_LIBRARY_PATH`), `PY`, `RISCV_GCC`, `ADAPTER_RECEIPT`, `COMPARISON`,
 `PYTHONPATH="$MERLIN/src:$TVM_SOURCE/python:$TVM_SOURCE/apps/gemmini:$COMPARISON"`
