@@ -33,6 +33,10 @@ The restoration command verifies complete archive checksums, membership, expande
 
 Select one group with `--recipe ID`. The output receipt records script, registry and input hashes. The [calculation guide](../../../docs/guides/reproducing_paper_results.md) defines the numerical rules, timing boundaries and comparison cohorts. Recomputing saved observations does not execute the compiler or remeasure hardware.
 
+## Companion source selections
+
+[companions.json](companions.json) records the `mlsys27/megaphase` source branch for Spike, pinned published `main` commits for AET and model2MLIR, the LLVM submodule, and the example gSIM build source. These are framework source selections. Replaying a historical result requires its recorded simulator binary, accelerator provider, timing profile and build inputs. The source branches do not replace those identities.
+
 ## Inspect the frozen compilers
 
 The included Git bundle preserves all thirty-eight compiler snapshots. The [compiler index](https://github.com/ucb-bar/gemmini-mlir/tree/paper/index) maps original run IDs to source commits, immutable tags, setup records and metrics. The eleven principal experiment branches are convenient entry points. Use the recorded full commit or tag when reproducing a result.
