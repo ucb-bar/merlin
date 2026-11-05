@@ -34,6 +34,7 @@ from ...llvmlower.lower import lower_model_file
 from ...llvmlower.masked_contraction import MaskEffectContract
 from ...llvmlower.source_expression_interval import IntervalEffectContract
 from ...llvmlower.source_scalar_carrier_binding import host_admitted
+from ...targetgen.spike_extension import flags_and_env
 from . import spike as _spike
 from .firesim_runner import FireSimRunner, select_runner
 
@@ -2990,17 +2991,16 @@ def run_on_spike(
     isa: str = DEFAULT_SPIKE_ISA,
     vlen: int | None = None,
     timeout: int = 3600,
+    extension: Any = None,
 ) -> dict[str, Any]:
-    """Run the Zephyr ELF on spike ``-pN``; parse the OUT/ARGMAX/METRIC/DONE markers.
-
-    ``dram_base`` and ``mem_bytes`` describe the selected board's mapped DRAM;
-    ``vlen`` pins the simulated vector length (via :func:`spike_isa`).
-    """
+    """Run the Zephyr ELF on spike ``-pN``; parse the OUT/ARGMAX/METRIC/DONE markers. ``dram_base``/``mem_bytes``
+    describe the board's mapped DRAM; ``vlen`` pins the vector length (:func:`spike_isa`); ``extension`` is a
+    resolved ``spike_extension.SpikeExtension`` (a target's declared, digest-verified model) or None."""
+    flags, env = flags_and_env(extension)
     isa = spike_isa(vlen, isa) if vlen is not None else isa
-    cmd = [_spike.spike_path(), f"--isa={isa}", f"-p{harts}", f"-m{hex(dram_base)}:{hex(mem_bytes)}", str(elf)]
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, timeout=timeout)
-    console = proc.stdout + proc.stderr
-    return _parse_console(console, proc.returncode)
+    cmd = [_spike.spike_path(), f"--isa={isa}", f"-p{harts}", f"-m{hex(dram_base)}:{hex(mem_bytes)}", *flags, str(elf)]
+    proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, timeout=timeout, env=env)
+    return _parse_console(proc.stdout + proc.stderr, proc.returncode)
 
 
 def _verilator_facts(board: str, config: str | None) -> tuple[str | None, str | None]:

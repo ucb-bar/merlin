@@ -48,6 +48,7 @@ __all__ = [
     "SpikeExtension",
     "SpikeExtensionError",
     "declared_extension",
+    "flags_and_env",
     "resolve",
     "spike_invocation",
 ]
@@ -263,6 +264,14 @@ def spike_invocation(
     """
     ext = resolve(target, default_library_dir=default_library_dir, default_extension_name=default_extension_name)
     return ext.spike_flags(), ext.library_dir
+
+
+def flags_and_env(ext: SpikeExtension | None) -> tuple[tuple[str, ...], dict[str, str] | None]:
+    """``(spike argv flags, subprocess env)`` for an already-resolved extension; ``((), None)`` for none,
+    so a caller with no extension builds exactly the invocation it built before."""
+    if ext is None:
+        return (), None
+    return ext.spike_flags(), {**os.environ, "LD_LIBRARY_PATH": library_path_with(ext.library_dir)}
 
 
 def library_path_with(library_dir: str | Path, env: dict[str, str] | None = None) -> str:
