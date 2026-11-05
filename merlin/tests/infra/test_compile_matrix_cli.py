@@ -71,3 +71,31 @@ def test_the_twin_is_what_runs_and_both_binaries_are_reported(tmp_path, monkeypa
     assert out["status"] == "verified" and out["verify"]["of"] == "stand-in twin"
     assert out["matrix"]["opu_mac_share"] == 0.75
     assert out["matrix"]["routing_report"] == str(ship_dir / matrix_image.ROUTING_REPORT)
+
+
+def test_a_multi_hart_block_that_does_not_lower_is_re_derived_once(tmp_path, monkeypatch):
+    """As on the RVV route: the register block is narrowed to the per-hart tile only when the build
+    actually rejects it (`vector.mask`), and only for a multi-hart image."""
+    calls = []
+    pair = matrix_image.MatrixPair(
+        ship={"elf": tmp_path / "s.elf"}, twin={"elf": tmp_path / "t.elf", "ram_bytes": 1}, debug=None,
+        lowering_digest="d", unit_instruction_counts={"ACC": 1}, debug_instruction_counts={},
+        report={}, ship_dir=tmp_path,
+    )
+
+    def fake_pair(bundle, work, **kw):
+        calls.append(sorted(kw["features"]))
+        if len(calls) == 1:
+            raise RuntimeError("'vector.mask' op expects only one operation to mask")
+        return pair
+
+    monkeypatch.setattr(matrix_image, "build_matrix_pair", fake_pair)
+    monkeypatch.setattr(compile_cli, "_workload_features", lambda *a, **k: ["narrow"])
+    monkeypatch.setattr(zm, "run_on_spike", lambda elf, **kw: {"prefix": np.ones(1), "metrics": {}})
+    monkeypatch.setattr(zm, "image_cpus", lambda brd, harts: harts)
+    monkeypatch.setattr("merlin.runtime.boards.board", lambda n: SimpleNamespace(vlen=512, dram_base=0))
+    pkg = SimpleNamespace(schedule_text="s", cflags=[])
+    out = compile_cli._compile_matrix({}, Path("b"), tmp_path, pkg, ["wide"], {}, board="b", harts=2,
+                                      iters=1, warmup=0, timeout=1, matrix=("u", "c", "t"))
+    assert len(calls) == 2 and "narrow" in calls[1] and "wide" not in calls[1]
+    assert out["harts_split_block_retry"] == {"tried": ["wide"], "used": ["narrow"]}

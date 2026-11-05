@@ -795,20 +795,32 @@ def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, 
     brd = _board_desc(board)
     routing = zm.MatrixRouting(unit=unit, config=config, support_target=support)
     cpus = zm.image_cpus(brd, harts)
-    pair = build_matrix_pair(
-        bundle,
-        work,
-        board=board,
-        harts=harts,
-        cpus=cpus,
-        routing=routing,
-        features=frozenset([*feats, OPU_MATMUL_NAME]),
-        rvv_schedule=pkg.schedule_text,
-        cflags=pkg.cflags + [flag for flag in zm._CFLAGS_COMMON if flag not in pkg.cflags],
-        vlen=brd.vlen,
-        iters=iters,
-        warmup=warmup,
-    )
+    def _pair(fs):
+        return build_matrix_pair(
+            bundle,
+            work,
+            board=board,
+            harts=harts,
+            cpus=cpus,
+            routing=routing,
+            features=frozenset([*fs, OPU_MATMUL_NAME]),
+            rvv_schedule=pkg.schedule_text,
+            cflags=pkg.cflags + [flag for flag in zm._CFLAGS_COMMON if flag not in pkg.cflags],
+            vlen=brd.vlen,
+            iters=iters,
+            warmup=warmup,
+        )
+
+    try:
+        pair = _pair(feats)
+    except Exception as exc:  # noqa: BLE001
+        # Same fallback as the RVV route: a contraction left on the vector unit is split across harts
+        # before the schedule runs, and the un-narrowed register block may not lower on the per-hart tile.
+        if harts < 2 or "vector.mask" not in str(exc):
+            raise
+        narrowed = _workload_features(pkg, bundle, out, harts=harts)
+        out["harts_split_block_retry"] = {"tried": list(feats), "used": list(narrowed)}
+        pair = _pair(narrowed)
     out.update(
         {
             "status": "compiled",
