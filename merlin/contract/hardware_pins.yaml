@@ -161,6 +161,7 @@ pins:
       - generators/chipyard/src/main/scala/config/IrisConfigs.scala
     used_by:
       - examples/iris/support/boards.yaml (iris_rtl) and contracts/overlay.yaml (rtl_source IrisConfig)
+      - examples/iris/support/contracts/matrix_units.yaml (host_config_scala: the VME unit's geometry)
     notes: >-
       Its generators/saturn submodule is pinned at saturn_vme. No Iris silicon or bitstream facts are
       claimed against this revision.
@@ -177,14 +178,73 @@ pins:
     branch: vme
     root_env: MERLIN_CHIPYARD_IRIS
     path: generators/saturn
+    nested_in: chipyard_iris
+    nested_path: generators/saturn
     requires_paths:
       - benchmarks/common/vme.h
       - benchmarks/common/vme_gemm.h
       - benchmarks/vme-fused-lm2-gemm-transpose/main.c
+      - src/main/scala/common/Consts.scala
+      - src/main/scala/insns/Instructions.scala
+      - src/main/scala/common/Parameters.scala
+      - src/main/scala/shuttle/Configs.scala
+      - src/main/scala/rocket/Configs.scala
     used_by:
-      - the planned iris VME matrix unit (not yet derived)
+      - examples/iris/support/contracts/matrix_units.yaml (unit saturn_vme), read by the iris package's
+        vme_shim.py through merlin.targetgen.rtl.matrix_isa
     notes: >-
-      Recorded before the unit is modeled so that the first VME derivation has a revision to be read at.
+      The VME unit's decode table (Instructions.scala, opuInsns in Parameters.scala) is the source of its
+      encodings, cross-checked against benchmarks/common/vme.h; the geometry is read from IrisConfigs.scala
+      through the Shuttle vector unit whose params set useOpu. The configuration instructions are decoded
+      by the host core and pinned separately as rocket_chip_iris.
+
+  rocket_chip_iris:
+    description: >-
+      The rocket-chip revision Iris's chipyard records: its Matrix.scala declares the VME configuration
+      instructions (sf.msetmtype, sf.msettn/m/k) as BitPats and the kmax table, which the host core decodes
+      and executes. The VME kernel's configuration words and its reduction depth per sf.mm are read here.
+    repo_canonical: https://github.com/chipsalliance/rocket-chip.git
+    commit: "fc745a8c377fdbf1d278eea81da9ac47b4b5fbc0"
+    targets: [iris]
+    repo_observed_note: >-
+      The commit is the gitlink chipyard iris-cy b4542fa records; on 2026-11-04 no branch head of the
+      canonical repository contained it (it is fetchable by sha), so no branch is declared.
+    root_env: MERLIN_CHIPYARD_IRIS
+    path: generators/rocket-chip
+    nested_in: chipyard_iris
+    nested_path: generators/rocket-chip
+    requires_paths:
+      - src/main/scala/rocket/Matrix.scala
+    used_by:
+      - examples/iris/support/contracts/matrix_units.yaml (unit saturn_vme, `core`)
+
+  spike_zvt:
+    description: >-
+      The riscv-isa-sim revision whose Zvt support (commit 72958551 "Add Zvt support" and its follow-ups)
+      implements the VME/Xsfmm matrix instructions Iris's unit decodes: sf.mm.* (vtmms/vtmmu), sf.vtzero.t,
+      sf.vtmv.v.t, sf.vtdiscard and the sf.msett* configuration. The iris route runs its SHIPPED matrix image
+      on a spike built from this tree (MERLIN_SPIKE_ZVT), and cross-checks the derived encodings against its
+      riscv-opcodes table (riscv/encoding.h). Stock chipyard spike does not carry Zvt.
+    repo_canonical: https://github.com/riscv-software-src/riscv-isa-sim.git
+    commit: "f90d5af53f50b0feec7a7cbcb4411e1e0410c465"
+    targets: [iris]
+    branch: master
+    root_env: MERLIN_SPIKE_ZVT_SRC
+    path: .
+    requires_paths:
+      - riscv/encoding.h
+      - riscv/insns/vtmms_tvv.h
+      - riscv/insns/vtzero.h
+      - riscv/insns/vtmv_v_t.h
+      - riscv/insns/msettn.h
+      - riscv/vector_unit.cc
+    used_by:
+      - examples/iris/support/contracts/matrix_units.yaml (unit saturn_vme, `simulator`)
+    notes: >-
+      A functional model, not the RTL: a shipped-image verdict on it says the instruction words and the
+      kernel's use of them are right under the Zvt draft's semantics, not that Iris's RTL computes them the
+      same way, and its cycle counts are instruction counts. Build: configure --prefix=<dir> && make install
+      (about two minutes on 32 cores).
 
   radiance_muon_rtl:
     description: >-
