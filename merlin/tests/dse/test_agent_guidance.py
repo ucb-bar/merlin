@@ -157,6 +157,60 @@ def test_contract_extension_cannot_escape_or_claim_undeclared_owner(tmp_path, di
         )
 
 
+def test_new_python_components_require_explicit_v2_selection(tmp_path):
+    inventory = inspect_compiler_package(_package(tmp_path))
+    legacy = build_compiler_edit_contract(inventory)
+    assert legacy["schema"] == "compiler_edit_contract_v1"
+    assert "new_python_components" not in legacy
+    assert build_compiler_edit_contract(inventory, new_python_components=None) == legacy
+    selected = build_compiler_edit_contract(inventory, new_python_components=[])
+    assert selected["schema"] == "compiler_edit_contract_v2"
+    assert selected["new_python_components"] == []
+    assert selected["sha256"] != legacy["sha256"]
+    for directory in ("passes", "lowering/passes"):
+        selected = build_compiler_edit_contract(
+            inventory,
+            new_python_components=[
+                {"directory": directory, "surface_ids": ["overlap-policy"], "reason": "checked new transformations"}
+            ],
+        )
+        from merlin.perf.compiler_edit_scope import validate_edit_contract
+
+        validate_edit_contract(selected, tmp_path / "compiler")
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"directory": "."},
+        {"directory": "../passes"},
+        {"directory": "lowering"},
+        {"directory": "lowering/schedule.py"},
+        {"directory": "absent/child"},
+        {"directory": "lowering//passes"},
+        {"directory": "build"},
+        {"directory": "lowering/__pycache__"},
+        {"surface_ids": ["self-authorized"]},
+        {"surface_ids": "overlap-policy"},
+        {"surface_ids": [["overlap-policy"]]},
+        {"reason": " "},
+        {"extra": True},
+    ],
+)
+def test_new_python_component_intent_cannot_widen_frozen_inventory(tmp_path, change):
+    inventory = inspect_compiler_package(_package(tmp_path))
+    component = {"directory": "passes", "surface_ids": ["overlap-policy"], "reason": "new compiler pass"}
+    with pytest.raises(ValueError):
+        build_compiler_edit_contract(inventory, new_python_components=[{**component, **change}])
+
+
+def test_new_python_component_scopes_cannot_repeat(tmp_path):
+    inventory = inspect_compiler_package(_package(tmp_path))
+    component = {"directory": "passes", "surface_ids": ["overlap-policy"], "reason": "new compiler pass"}
+    with pytest.raises(ValueError, match="absent scoped"):
+        build_compiler_edit_contract(inventory, new_python_components=[component, component])
+
+
 def test_global_catalog_exposes_unpriced_abi_arena_and_exact_epilogue_gaps(tmp_path):
     inventory = inspect_compiler_package(_package(tmp_path))
     brief = guidance_for_emission_analysis({}, inventory)

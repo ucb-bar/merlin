@@ -638,7 +638,12 @@ def admit(
             for profile in screened["host_admission"]["profiles"]
             if profile["status"] == "admitted" and profile.get("reviewed") is True
         ]
-        _need(len(sw) == len(profiles) == 1 and len(host) == 1, "scan has no unique reviewed host admission")
+        # The exported accelerator software specification need not duplicate
+        # pure-host operations. The exact selected host profile owns this
+        # admission; any independently declared host software rule must still
+        # be unique and reviewed, never a second source of invented capability.
+        _need(software.get("status") == "reviewed", "selected software specification is unreviewed")
+        _need(len(sw) <= 1 and len(profiles) == len(host) == 1, "scan has no unique reviewed host admission")
         profile = profiles[0]
         decisions = [
             decision
@@ -646,14 +651,14 @@ def admit(
             if decision["status"] == "admitted" and decision.get("review_status") == "reviewed"
         ]
         _need(len(decisions) == 1, "scan host declaration is ambiguous or unreviewed")
-        sw_id, host_id = sw[0]["declaration"], decisions[0]["declaration"]
+        sw_id, host_id = (sw[0]["declaration"] if sw else None), decisions[0]["declaration"]
         sw_rules = [rule for rule in software["operations"] if rule.get("id") == sw_id]
         host_rules = [
             rule for rule in host[profile["profile"]]["capability_spec"]["operations"] if rule.get("id") == host_id
         ]
         _need(
-            len(sw_rules) == len(host_rules) == 1
-            and row["operation"] in sw_rules[0].get("ops", [])
+            len(host_rules) == 1
+            and (sw_id is None or len(sw_rules) == 1 and row["operation"] in sw_rules[0].get("ops", []))
             and row["operation"] in host_rules[0].get("ops", []),
             "scan requires exact reviewed root declarations, not family-only admission",
         )
@@ -746,7 +751,11 @@ def _valid_admissions(witness: Mapping[str, Any]) -> bool:
             return False
         if any(
             not isinstance(record[key], str) or not record[key].strip()
-            for key in ("software_declaration", "host_profile", "host_declaration", "host_dtype_strategy")
+            for key in ("host_profile", "host_declaration", "host_dtype_strategy")
+        ):
+            return False
+        if record["software_declaration"] is not None and (
+            not isinstance(record["software_declaration"], str) or not record["software_declaration"].strip()
         ):
             return False
         if any(

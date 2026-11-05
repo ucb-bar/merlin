@@ -3,7 +3,7 @@ title: Native full-value output readback
 kind: reference
 status: current
 owner: targetgen
-last_verified: 2026-10-08
+last_verified: 2026-10-09
 related: [runtime, experiment_abi]
 code_refs:
   - src/merlin/targetgen/contract/readback_policy.py
@@ -12,6 +12,10 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/native_output_readback.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/native_packet_readback.py
   - src/merlin/runtime/out_packet.py
+  - packages/merlin-experiments/src/merlin/targetgen/capsule_runner.py
+  - src/merlin/runtime/backends/chipyard_rocc.py
+  - src/merlin/runtime/out_digest.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/gsim_digest_readback.py
 ---
 
 # Native full-value output readback
@@ -21,6 +25,73 @@ accepts `--readback-policy out_b64_v1`, `out_bin_v1`, `coherent_dump_v1`, or
 `coherent_packet_v1`.
 Omitting the flag preserves the existing provider behavior. A frozen run keeps
 its selected policy; changing transport requires a new run/tooling identity.
+
+**Outputs on a serial-console engine.** Without an explicit policy, the
+capsule grader's simulator adapter (`capsule_runner.simulator_adapter`) picks
+the readback with `readback_policy.large_output_readback`. On gsim, verilator
+and vcs the console travels HTIF over the elaborated design's TSI port, so every
+printed byte and every formatting instruction costs simulated cycles. For a
+3136x64 i32 output the counts are (spike instruction counts; the kernel itself
+retires 0.8M):
+
+| Transport | Instructions |
+|---|---|
+| Text `OUT` lines | 175.9M |
+| `out_bin_v1` | 26.3M |
+| `coherent_dump_v1` | 1.1M |
+
+This applies to outputs of every size: each console line is one HTIF syscall,
+a TSI round trip through the design. On gSIM a 16x16 i32 output ran 494,792
+cycles (311 s) with text against 21,892 (14.3 s) without serial values, and
+the kernel window was 1,110 cycles. A 16x64 output graded through the adapter
+took 554 s as text and 53 s by memory dump, both exact. Emulator construction
+and load take 1.3 s, so the "~50 s gSIM startup" was the text console.
+
+The grader uses:
+
+- `coherent_dump_v1` when the engine exports memory and every output is a
+  non-scalar dense tensor of a coherent dtype;
+- `out_bin_v1` otherwise.
+
+`MERLIN_LARGE_OUTPUT_READBACK_ELEMENTS` sets a minimum output size; `0` keeps
+text everywhere. Spike and buffers with `console_value_cap` keep the text frame.
+
+A default-logical-ABI buffer is dumped through
+`harness_render.explicit_whole_program`, which writes the same dense pointer
+boundary as an explicit whole-program ABI and renders a byte-identical harness.
+The console transports (`out_b64_v1`, `out_bin_v1`) also accept the default
+logical ABI directly.
+
+The generic chipyard RoCC backend describes its dense caller layout
+(`describe_caller_layout`). Caller-layout inspection admits that installed core
+backend only when the provider's own contract names it, and pins its bytes as
+core.
+
+**Output digests (`out_digest_v1`).** This policy is not a full-value
+transport, and it is not listed in `READBACK_TRANSPORTS`. The grader-rendered
+harness prints one line per output, `OUT_DIGEST <name> <nbytes> <hex>`: an
+XXH64 (seed 0) of the output's dense little-endian container bytes
+(`merlin/runtime/baremetal/out_digest.h`; host side `merlin.runtime.out_digest`).
+
+`run_on_oracle` returns the digests as `output_digests` and refuses:
+
+- a missing or repeated output;
+- a byte count other than the output's container size;
+- any serial value beside a digest.
+
+`readback_policy.digest_mismatches` compares the digests with expected values.
+A digest detects accidental differences; it is not a cryptographic commitment.
+
+Phase 2 gSIM measurement cells use it by default
+(`phase2/gsim_digest_readback.py`; `MERLIN_PHASE2_GSIM_READBACK=full` turns it
+off). A cell checks three things:
+
+1. the full-value build runs on Spike;
+2. the digest ELF on Spike holds exactly those values;
+3. the same ELF bytes on gSIM give the same digests.
+
+The cell then reports the Spike values, labelled as digest-verified. Any
+disagreement falls back to the full gSIM readback.
 
 | Policy | Output mechanism | Build receipt |
 |---|---|---|

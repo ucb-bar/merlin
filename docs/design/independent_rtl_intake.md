@@ -4,8 +4,7 @@ kind: design
 status: current
 owner: merlin-experiments
 last_verified: 2026-10-08
-related:
-  - docs/design/component_compiler_convergence.md
+related: [docs/design/component_compiler_convergence.md]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/command_intake.py

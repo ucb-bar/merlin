@@ -160,3 +160,18 @@ def test_existing_private_decoder_result_is_never_overwritten(tmp_path):
     with pytest.raises(ValueError, match="already exists"):
         invoke(work, elf, cb, Reader(payload))
     assert product.read_bytes() == original
+
+
+
+def test_direct_executions_retain_distinct_original_decoder_products(tmp_path):
+    work, elf, payload, cb = setup(tmp_path)
+    observations=[]
+    for _ in range(2):
+        outputs,evidence,observation=_observed_memory_decode(Reader(payload),"DONE\n",cb=cb,elf=elf,
+            workdir=work,policy=ReadbackPolicy(COHERENT_DUMP_V1),retain_in_invocation=True)
+        observations.append(observation)
+        record=I.verify(Path(observation['record']['path']))
+        assert observation['product'] in record['outputs']
+        assert Path(observation['product']['path']).parent==Path(observation['record']['path']).parent
+    assert observations[0]['product']['path']!=observations[1]['product']['path']
+    assert not (work/'readback_decode.json').exists()

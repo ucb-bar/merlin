@@ -313,57 +313,24 @@ references:
       whole_model_cycles: 33085199302
 
   # ------------------------------------------------------------------------------------------
-  # EXTERNAL CLAIMS. Numbers we did not measure. Never a `status: achieved` reference -- the
-  # lookups only select achieved entries -- but recorded so the distance to them is visible
-  # to a reader and can be shown beside our own measurements. Cite the source; do not round
-  # up a report into a fact.
+  # UNMEASURED PROJECT OBSERVATIONS AND PUBLISHED EXTERNAL CLAIMS. Neither becomes an
+  # achieved reference: lookups only select achieved entries. Preserve qualifications and
+  # cite public sources; compiler observations and reported values are not measurements here.
   # ------------------------------------------------------------------------------------------
-  autocomp_resnet50_external_claim:
-    model: resnet50
-    precision: w8a8
-    design: FireSimGemminiRocketConfig
-    program_identity: UNKNOWN
-    device: UNKNOWN
-    status: external_claim
-    how: >-
-      Reported by the project lead on 2026-09-09 as "about 30,000,000 cycles" for AutoComp on
-      this Gemmini configuration. Not measured by this project; the exact design, input, and
-      warm/cold protocol are unverified. Kept as the bar to beat, labelled as a claim.
-    provenance:
-      source: verbal report, 2026-09-09
-    measured:
-      whole_model_cycles: 30000000
-    context:
-      arithmetic_roofline_cycles: 15976562
-      note: >-
-        4.09e9 MACs / 256 MACs per cycle. The claim is 1.9x the roofline, i.e. ~53% of peak --
-        an ordinary well-scheduled result, not an exotic one. Our best achieved is 1.2% of peak.
-
-
-  tiny_llama_exo_external_claim:
+  tiny_llama_margin_qualified_unmeasured:
     model: tiny_llama
     precision: w8a8
     design: UNRECORDED
     program_identity: UNKNOWN
     device: UNKNOWN
-    status: external_claim
+    status: unmeasured
     how: >-
-      Reported to this project verbally as an Exo result of about 3,000,000,000 cycles for
-      tiny_llama. It is recorded here so the target is written down and attributable, NOT because
-      it has been verified: no tiny_llama measurement exists in the kernel corpus on this host
-      (that corpus covers ResNet-50 only -- resnet50_autocomp.c, gemmini_exo_shims.h -- where Exo
-      measured 30,121,447), and no artifact on this host carries a tiny_llama cycle count.
+      Historical project compiler and numerical-gate observations. No qualified FPGA cycle
+      measurement is available for this entry; it is not a scored performance reference.
     caveats:
       - >-
-        UNVERIFIED and the DESIGN IS UNRECORDED. Cycles are not comparable across designs, so
-        until the design and the program are known this number cannot be scored against. Ask for
-        the source before citing it anywhere that matters.
-      - >-
-        It is not a hardware-limited figure. This network's arithmetic roofline on a 256 MAC/cycle
-        array is 32,325,632 cycles and its DMA floor -- streaming 1,034,420,224 int8 weight bytes
-        once at 16 B/cycle -- is 64,651,264. So 3e9 is about 46x the binding hardware floor, which
-        means it is dominated by host or serial work rather than by the accelerator, for whoever
-        measured it as well as for us.
+        Program identity and device are unrecorded. Numerical qualification and compiler
+        observations do not establish comparable cycle measurements.
     ours:
       host_dynamic_operations: 15710533301
       host_regions: 5558
@@ -376,10 +343,8 @@ references:
         it PASSES (verified on Spike: 7 rows agree, 0 disagree, 1 row the reference cannot
         discriminate; 47,854 of 256,000 elements outside tolerance against a declared bound of
         51,215; digest reproduced; rc=0, METRIC published). What is still missing is the FPGA run.
-        At resnet50's measured 0.556 cycles per host operation, 15,710,533,301 host operations
-        would be about 8.7e9 cycles, so reaching 3e9 needs a 2.91x host reduction -- less than the
-        3.86x already demonstrated on resnet50 by the same lever family, IF those levers transfer
-        to this shape.
+        Host-operation counts are structural evidence, not target-cycle measurements; transfer
+        of host optimizations from other model shapes still requires validation.
       what_the_tie_explains_and_what_it_does_not: >-
         ⚠️ The single round-half-even tie explains the RANKING failure and NOT the value spread.
         Do not describe it as explaining both. Forcing that one activation code -- in BOTH
@@ -405,7 +370,7 @@ references:
         SUBMITTER'S $HOME, and FireSim's manager did not set `env.use_ssh_config`, so fabric never
         read ~/.ssh/config and fell through to a password prompt that cannot be answered in
         parallel mode. With `env.use_ssh_config = True` added to this view's manager, 644 said so
-        outright -- `Unable to load SSH config file '/home/agustin/.ssh/config'` -- and that file
+        outright -- `Unable to load SSH config file '<submitter-home>/.ssh/config'` -- and that file
         does carry the `Host localhost / IdentityFile ~/.ssh/firesim` block but sits under a 0700
         `~/.ssh` the daemon user cannot read. With $HOME also unset, 645 reached a clean 2-second
         `Authentication failed / Needed to prompt for a connection or sudo password (host:

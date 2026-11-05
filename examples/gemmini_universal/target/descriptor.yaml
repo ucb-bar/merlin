@@ -276,7 +276,7 @@ grading:
   #   (ii-a) 36 PROVABLY unwinnable -- max|golden| exceeds int8 at any accumulator scale
   #          (measured range 128..37863; the task brief's 128..567 is the range over a subset):
   #
-  #       B3_conv2d_im2col_i8   C0_mlp_linear1              GC0_conv2d_i8
+  #       B3_conv2d_i8   C0_mlp_linear1              GC0_conv2d_i8
   #       B4_conv2d_relu_i8     C1_mlp_activation_linear2   GC7_conv2d_pad_i8
   #       C2_attention_q_projection   C3_attention_k_projection   C4_attention_v_projection
   #       GM0_deep_k_fits_single_i8   GM1_deep_k_spills_i8        GS0_matmul_spec

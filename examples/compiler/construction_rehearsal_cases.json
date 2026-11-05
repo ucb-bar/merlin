@@ -1,0 +1,161 @@
+{
+  "cases": [
+    {
+      "M_N_K": [
+        16,
+        16,
+        32
+      ],
+      "corpus_relative_path": "isa/SY_contraction_i8_aligned",
+      "name": "SY_contraction_i8_aligned",
+      "numeric_policy": {
+        "compare": "exact_int",
+        "dtype": "i32"
+      },
+      "public_files": {
+        "capsule.interface.mlir": "59a1447c88dcd1f77b5ffa11dde00ace6608bceb48b356da7274615dd5ae686e",
+        "capsule.yaml": "1243c1530cec2c90476ee4caca62d9515851d966a9f1e45f0769984eb6053778"
+      },
+      "required_oracle_tiers": [
+        "L0",
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "source_reference": "synthesized for conformance cell contraction/i8/aligned (basis=observed, admitted_by=['systolic_mesh']); extents from boundaries.extent_probes",
+      "source_role": "derived_sweep",
+      "suite": "core"
+    },
+    {
+      "M_N_K": [
+        32,
+        32,
+        32
+      ],
+      "corpus_relative_path": "layers/G_matmul_m32k32n32_raw",
+      "name": "G_matmul_m32k32n32_raw",
+      "numeric_policy": {
+        "compare": "exact_int",
+        "dtype": "i32"
+      },
+      "public_files": {
+        "capsule.interface.mlir": "0a2276ed75256be4a8c74a5fae8b0f53ab0e54ade2154c71663e3d43a8b2cb29",
+        "capsule.yaml": "aabf68b0387d0194351ec3517090cc03dffa5e2e0162b13399407a015a348f00"
+      },
+      "required_oracle_tiers": [
+        "L0",
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "source_reference": "isolated verification of a device group of SY_micro_model",
+      "source_role": "model_derived",
+      "suite": "core"
+    },
+    {
+      "M_N_K": [
+        512,
+        512,
+        512
+      ],
+      "corpus_relative_path": "_public_scalability/cases/USER_matmul_m512k512n512_raw",
+      "name": "USER_matmul_m512k512n512_raw",
+      "numeric_policy": {
+        "compare": "exact_int",
+        "dtype": "i32"
+      },
+      "public_files": {
+        "capsule.interface.mlir": "1a4b4083d32fe1210fe55ce59627240f9bbf716952452c2bc6681a564d199a9b",
+        "capsule.yaml": "aea80cb4efe058c49fcd1277c1bd4dd868699b1fa1e3599606f46bebc8df8131"
+      },
+      "required_oracle_tiers": [
+        "L0",
+        "L1",
+        "L2"
+      ],
+      "source_reference": "Explicit user request, 2026-10-21; direct MLIR source, not a captured model or a historical generation member.",
+      "source_role": "handauthored_compiler_test",
+      "suite": "scalability"
+    },
+    {
+      "M_N_K": [
+        16,
+        15,
+        31
+      ],
+      "corpus_relative_path": "isa/SY_contraction_i8_partial",
+      "name": "SY_contraction_i8_partial",
+      "numeric_policy": {
+        "compare": "exact_int",
+        "dtype": "i32"
+      },
+      "public_files": {
+        "capsule.interface.mlir": "e924974e0269e99c44d343552e8d696963c006c9ef9fefd6dc18a83225da9b88",
+        "capsule.yaml": "5fd2c44e13bbe7aca2497117626a5d9be064237fa1ea600e0c08facd87d6f601"
+      },
+      "required_oracle_tiers": [
+        "L0",
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "source_reference": "synthesized for conformance cell contraction/i8/partial (basis=observed, admitted_by=['systolic_mesh']); extents from boundaries.extent_probes",
+      "source_role": "derived_sweep",
+      "suite": "core"
+    },
+    {
+      "M_N_K": [
+        16,
+        16,
+        32
+      ],
+      "corpus_relative_path": "layers/SY_group_bias_add_acc_scale_relu_int8",
+      "name": "SY_group_bias_add_acc_scale_relu_int8",
+      "numeric_policy": {
+        "acc_scale": 0.0625,
+        "compare": "exact_int",
+        "dtype": "i8"
+      },
+      "public_files": {
+        "capsule.interface.mlir": "8d7dff61d06440f8ee15db028d75d984ed26bb05bc9227b6810fa8320b53edc5",
+        "capsule.yaml": "10403af95ded1fcb4b60c759d23338185bd5de0bf7a33535e147785da2baac3a"
+      },
+      "required_oracle_tiers": [
+        "L0",
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "source_reference": "synthesized for the group axis: this target's derived output path applies this stage combination to a contraction on move-out, and no per-stage member demands a combination",
+      "source_role": "derived_sweep",
+      "suite": "core"
+    },
+    {
+      "M_N_K": [
+        16,
+        16,
+        16
+      ],
+      "corpus_relative_path": "_public_scalability/cases/PF00_fused_matmul_bias_m16k16n16",
+      "name": "PF00_fused_matmul_bias_m16k16n16",
+      "numeric_policy": {
+        "compare": "exact_int",
+        "dtype": "i8"
+      },
+      "public_files": {
+        "capsule.interface.mlir": "4c32d863beb3332d09c47948d8b34e0a519844bb100ae487b1cb5a60cb3204ac",
+        "capsule.yaml": "e828fa47afa13eaccbedd4844c14285320c00fc33e3494dedaa1819c8a34e5e0"
+      },
+      "required_oracle_tiers": [
+        "L0",
+        "L1",
+        "L2"
+      ],
+      "source_reference": "shared epilogue-fusion group: one fused matmul+bias against the matmul and the bias add it replaces, at one identical shape per group (tile=16; K=16, M=16, N=16; op=fused_matmul_bias)",
+      "source_role": "derived_sweep",
+      "suite": "scalability"
+    }
+  ],
+  "purpose": "bounded existing-case selection; not a suite or numerical contract override",
+  "schema": "merlin.public_construction_rehearsal_cases.v1"
+}

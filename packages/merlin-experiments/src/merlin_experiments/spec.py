@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
+from uuid import uuid4
 
-import jsonschema
 import yaml
 
 
@@ -71,6 +72,25 @@ class ExperimentSpec:
         return list((self.document.get("policy") or {}).get("prohibited_instruction_roles") or ())
 
 
+def default_run_dir(spec: ExperimentSpec, phase: str = "all") -> Path:
+    """Where a new orchestration lives when the operator names no ``--run-dir``.
+
+    A single-phase run is a phase run: ``out/runs/<target>/phase<N>/<TS>_<experiment>_<sha7>/``, so
+    a Phase 0 run owns its evidence, capsules and coverage at the phase address every later phase
+    and the target index cite. A multi-phase orchestration keeps
+    ``out/runs/<target>/<experiment>/<TS>_<uuid8>/``.
+    """
+    from merlin.common.artifacts import phase_run_id
+    from merlin.common.paths import phase_runs_root, runs_dir
+
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    if phase in ("0", "1", "2"):
+        base = phase_runs_root(spec.target, phase)
+        candidate = base / phase_run_id(spec.id, timestamp=stamp)
+        return candidate if not candidate.exists() else base / f"{candidate.name}_{uuid4().hex[:6]}"
+    return runs_dir() / spec.target / spec.id / f"{stamp}_{uuid4().hex[:8]}"
+
+
 def catalog(path: Path | None = None) -> dict[str, Path]:
     """Resolve the shared definition catalog without importing execution or CLI code."""
     from merlin.common.paths import repo_root
@@ -102,13 +122,17 @@ def load_spec(path: str | Path) -> ExperimentSpec:
             raise SpecError("duplicate phase after normalizing numeric keys")
         document["phases"] = normalized
     schema = json.loads(files("merlin_experiments").joinpath("resources/experiment.schema.json").read_text())
+    # Imported here: interpreters that only run broker workers (the model capture Python) need not
+    # carry the schema validator just because they import this package.
+    import jsonschema
+
     try:
         jsonschema.Draft202012Validator(schema).validate(document)
     except jsonschema.ValidationError as exc:
         raise SpecError(f"{source}: {exc.message}") from exc
     roles = (document.get("policy") or {}).get("prohibited_instruction_roles")
     if roles is not None:
-        from merlin.kernels.roles import ROLES
+        from merlin.compile.analysis.instruction_roles import ROLES
 
         unknown = sorted(set(roles) - set(ROLES))
         if unknown:

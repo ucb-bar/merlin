@@ -375,20 +375,20 @@ capsules:
 # --- Conv family: native int8 conv2d (direct-MLIR merlin_iface.conv2d, mined from bareMetalC/conv.c) +
 # the vector-lane conv/pool ops (bf16 pytorch: depthwise MixFFN, pooling, global average).
 - {name: GC0_conv2d_i8, kind: layer, op: conv2d, Himg: 8, Wimg: 8, ci: 4, N: 8, kh: 3, kw: 3,
-   source_role: uplifted_from_bareMetalC, source_reference: 'im2col conv2d int8 (bareMetalC/conv.c)',
+   source_role: uplifted_from_bareMetalC, source_reference: 'conv2d int8 (bareMetalC/conv.c)',
 }
 # Explicit convolution corners: same-padding must zero out-of-bounds taps;
 # stride 2 tests a different input-row reuse pattern.
 - {name: GC7_conv2d_pad_i8, kind: layer, op: conv2d, Himg: 8, Wimg: 8, ci: 4, N: 8,
    kh: 3, kw: 3, padding: [1, 1, 1, 1],
    source_role: derived_sweep,
-   source_reference: 'im2col conv2d int8 at same-padding: the out-of-bounds taps must read as zero
+   source_reference: 'conv2d int8 at same-padding: the out-of-bounds taps must read as zero
      rather than as whatever the staging buffer last held',
 }
 - {name: GC8_conv2d_stride2_i8, kind: layer, op: conv2d, Himg: 8, Wimg: 8, ci: 4, N: 8,
    kh: 3, kw: 3, stride: [2, 2],
    source_role: derived_sweep,
-   source_reference: 'im2col conv2d int8 at stride 2: consecutive output positions share no input tap',
+   source_reference: 'conv2d int8 at stride 2: consecutive output positions share no input tap',
 }
 # Quantized convolution epilogue: four independent geometry/scale cases demand
 # ordered bias_add -> acc_scale -> relu on the mesh store path. Value equality

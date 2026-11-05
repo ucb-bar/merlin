@@ -1,6 +1,7 @@
 """A dependency-free integer tensor with the ops the ToyNPU semantics need.
 
-Pure Python (no numpy) so the runtime substrate has zero heavy dependencies. Tensors are
+Pure Python, so the runtime substrate needs no heavy dependency; when numpy is importable, the
+integer matmul uses it for large products (exact: see :meth:`Tensor.matmul`). Tensors are
 stored as a flat ``list[int]`` plus a shape; only the operations the simulator actually uses
 are implemented: deterministic fill, 2-D matmul (i8 x i8 -> i32 accumulate), per-column bias
 add, requantization (rounding arithmetic shift), relu, and saturating cast to int8.
@@ -14,6 +15,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from merlin.common import stimulus as STIM
+from merlin.compile.logical_abi import pool_out_dims as pool_out_dims
+
+try:
+    import numpy as _np
+except ImportError:  # the dependency-free path below stays complete
+    _np = None
+
+#: Products smaller than this many multiply-adds stay on the pure-Python loop (conversion dominates).
+_ARRAY_MATMUL_MIN_MACS = 1 << 15
 
 DTYPE_BYTES = {"i8": 1, "i16": 2, "i32": 4, "i64": 8, "f32": 4}
 
@@ -22,19 +32,25 @@ def _i8_clamp(x: int) -> int:
     return -128 if x < -128 else (127 if x > 127 else x)
 
 
-def pool_out_dims(H: int, W: int, pool_size, pool_stride, pool_padding) -> tuple[int, int]:
-    """Pooled spatial extent, the floor form (``(H + pt + pb - ph) // sh + 1``).
+def _array_matmul(a: list[int], b: list[int], m: int, k: int, n: int) -> list[int] | None:
+    """The loop matmul's exact result through int64 arrays, or ``None`` when that could overflow.
 
-    Lives here rather than beside ``conv_out_dims`` in :mod:`merlin.runtime.commandbuffer` only because
-    :meth:`Tensor.maxpool2d_rows` needs it and that module imports THIS one; ``commandbuffer`` re-exports
-    it so callers of the conv geometry find the pool geometry in the same place. One definition either
-    way -- an engine that computed its own output extent could disagree with the tensor the golden
-    produced and the mismatch would read as a numeric defect rather than a geometry one.
+    The reference and the simulator evaluated large products element by element in Python -- a
+    32x2048x32000 capsule is two billion multiply-adds -- and that held most of a grade's CPUs.
+    Every partial sum is bounded by ``k * max|a| * max|b|``; below 2**62 int64 accumulation cannot
+    wrap in any order, so the values equal the Python-integer loop's exactly.
     """
-    ph, pw = int(pool_size[0]), int(pool_size[1])
-    sh, sw = int(pool_stride[0]), int(pool_stride[1])
-    pt, pl, pb, pr = (int(x) for x in pool_padding)
-    return (H + pt + pb - ph) // sh + 1, (W + pl + pr - pw) // sw + 1
+    try:
+        left = _np.asarray(a, dtype=_np.int64).reshape(m, k)
+        right = _np.asarray(b, dtype=_np.int64).reshape(k, n)
+    except (OverflowError, TypeError, ValueError):
+        return None  # an element outside int64, or a non-integer: the loop decides
+    if left.size == 0 or right.size == 0:
+        return None
+    bound = k * int(_np.abs(left).max()) * int(_np.abs(right).max())
+    if bound >= 1 << 62:
+        return None
+    return (left @ right).ravel().tolist()
 
 
 @dataclass
@@ -117,6 +133,10 @@ class Tensor:
         k2, n = rhs.shape
         if k != k2:
             raise ValueError(f"matmul shape mismatch: {self.shape} x {rhs.shape}")
+        if _np is not None and m * k * n >= _ARRAY_MATMUL_MIN_MACS:
+            exact = _array_matmul(self.data, rhs.data, m, k, n)
+            if exact is not None:
+                return Tensor((m, n), exact, "i32")
         out = [0] * (m * n)
         a, b = self.data, rhs.data
         for i in range(m):
@@ -182,6 +202,27 @@ class Tensor:
                 y = i if i % 2 == 0 else nxt
             out.append(int(y))
         return Tensor(self.shape, out, self.dtype)
+
+    def requant_acc_scale_by_column(self, scales: list[float]) -> Tensor:
+        """Apply one declared float32 multiplier per final-axis column.
+
+        Every column retains the scalar operation's conversion, multiply and
+        ties-to-even rounding. Narrowing/saturation is a separate operation.
+        """
+        from math import prod
+
+        if not self.shape or not scales or len(scales) != self.shape[-1]:
+            raise ValueError("acc_scale_by_column must name one multiplier per output column")
+        if prod(self.shape) != len(self.data):
+            raise ValueError("acc_scale_by_column tensor storage disagrees with its shape")
+        width = len(scales)
+        rows = len(self.data) // width
+        columns = [
+            Tensor((rows,), self.data[index::width], self.dtype).requant_acc_scale(scale).data
+            for index, scale in enumerate(scales)
+        ]
+        return Tensor(self.shape, [columns[column][row] for row in range(rows) for column in range(width)],
+                      self.dtype)
 
     def residual_add_scaled(self, other: "Tensor", lhs_scale: float, rhs_scale: float) -> "Tensor":
         """``roundeven(self * lhs_scale + other * rhs_scale)``, elementwise, in float32.

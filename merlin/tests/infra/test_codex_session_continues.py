@@ -66,17 +66,22 @@ def test_the_continuation_prompt_carries_no_hint():
 
     src = module_source_path("merlin_experiments.phase1.providers.codex_agent").read_text()
     # Read the assigned string itself, not a text window: the code after it may say anything.
+    # The default is the literal arm of `continuation_prompt if ... else (...)`; the only other
+    # assignment wraps that value with the operator's explicit delegation opt-in.
     values = [
-        node.value
+        node.value.orelse
         for node in ast.walk(ast.parse(src))
         if isinstance(node, ast.Assign)
         and any(isinstance(t, ast.Name) and t.id == "_CONTINUE_MSG" for t in node.targets)
+        and isinstance(node.value, ast.IfExp)
     ]
-    assert len(values) == 1, "expected exactly one _CONTINUE_MSG assignment"
+    assert len(values) == 1, "expected exactly one default _CONTINUE_MSG"
     msg = ast.literal_eval(values[0]).lower()
     for leak in ("golden", "expected", "answer", "hidden", "dma_config", "funct", "opcode"):
         assert leak not in msg, f"continuation prompt leaks {leak!r}"
     assert "qa/verdict.json" in msg and "agent_selfcheck" in msg
+    # The standing workflow, restated: keep working while checks run, then collect them.
+    assert "--wait-budget 5" in msg and "--attach <id>" in msg and "variants/<name>" in msg
 
 
 def test_continuation_is_off_unless_the_schedule_is_continuous():

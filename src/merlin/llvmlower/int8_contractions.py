@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from merlin.kernels.shapes import zero_initialised as zero_initialised
+from merlin.compile.analysis.contraction_shapes import zero_initialised as zero_initialised
 
 __all__ = [
     "ContractionRewrite",
@@ -142,7 +142,7 @@ def routable_contractions(
     This does not widen the rewrite ABI: ``rewrite_contractions`` always selects
     the signed-int8/int32 candidate set.
     """
-    from ..kernels.shapes import observe_contractions
+    from merlin.compile.analysis.contraction_shapes import observe_contractions
 
     want = tuple(dtypes) if dtypes else INT8_DTYPES
     if device is not None:

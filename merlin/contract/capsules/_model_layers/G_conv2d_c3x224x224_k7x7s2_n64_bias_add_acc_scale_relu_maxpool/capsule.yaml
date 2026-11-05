@@ -51,7 +51,7 @@ operation:
     - relu
     - maxpool
     output_dtype: i8
-    semantic: conv2d_im2col
+    semantic: conv2d
     pool_in_dims:
     - 112
     - 112

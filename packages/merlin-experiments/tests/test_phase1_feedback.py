@@ -659,7 +659,8 @@ def test_qa_context_keeps_missing_and_disjoint_actual_inventory_distinct(tmp_pat
         qa.run("submission", str(tmp_path), tmp_path, {"public"}, False, 1, context=context)
 
 
-def test_installed_sync_broker_grades_and_considers_promotion(tmp_path):
+@pytest.mark.parametrize("loop_only", [True, False], ids=["loop-tier-request", "cert-tier-already-ran"])
+def test_installed_sync_broker_grades_and_considers_promotion(tmp_path, loop_only):
     ws, corpus, descriptor, host, env, observer = _inputs(tmp_path)
     shutil.copyfile(module_source_path("merlin_experiments.phase1.tools.selfcheck"), ws / "agent_selfcheck.py")
     log = tmp_path / "sync.log"
@@ -696,6 +697,9 @@ def test_installed_sync_broker_grades_and_considers_promotion(tmp_path):
                     str(ws / "agent_selfcheck.py"),
                     "--sim",
                     "spike",
+                    # The loop tier alone is what promotion serves. A check that already ran the cert
+                    # tier has nothing to promote: buying it again is the duplicate this guards.
+                    *(["--tiers", "L2"] if loop_only else []),
                     "--capsules",
                     "A",
                     "--workers",
@@ -710,16 +714,24 @@ def test_installed_sync_broker_grades_and_considers_promotion(tmp_path):
                 timeout=15,
             )
             assert client.returncode == 0, client.stderr + client.stdout + log.read_text()
-            _wait(lambda: bool(list(channel.glob("simreq_promo*.json"))), process=process, log=log)
+            tiers = ["L2"] if loop_only else ["L2", "L3"]
+            if loop_only:
+                _wait(lambda: bool(list(channel.glob("simreq_promo*.json"))), process=process, log=log)
+            else:
+                _wait(lambda: "[promote] not enqueued" in log.read_text(), process=process, log=log)
             response = json.loads(next(channel.glob("resp_*.json")).read_text())
             assert response["all_pass"] is True
             assert response["selfcheck_protocol"] == 3
+            assert response["oracle_tiers"] == tiers
             assert "PRIVATE_ANSWER_SENTINEL" not in json.dumps(response)
             records = [json.loads(line) for line in observer.read_text().splitlines()]
-            assert records == [{"integrity": "clean", "tiers": ["L2", "L3"], "capsules": 1, "passed": 1}]
-            request = json.loads(next(channel.glob("simreq_promo*.json")).read_text())
-            assert request["promoted"] is True
-            assert request["submission_snapshot"]
+            assert records == [{"integrity": "clean", "tiers": tiers, "capsules": 1, "passed": 1}]
+            if loop_only:
+                request = json.loads(next(channel.glob("simreq_promo*.json")).read_text())
+                assert request["promoted"] is True
+                assert request["submission_snapshot"]
+            else:
+                assert not list(channel.glob("simreq_promo*.json"))
         finally:
             channel.mkdir(exist_ok=True)
             (channel / "STOP").write_text("stop")

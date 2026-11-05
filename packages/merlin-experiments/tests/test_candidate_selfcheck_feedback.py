@@ -7,10 +7,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from merlin.common.paths import data_path
-
 from merlin_experiments.phase1.context import InvocationContext
 from merlin_experiments.phase1.feedback import qa, selfcheck
+from merlin_experiments.phase1.feedback.result_details import hydrate
+
+from merlin.common.paths import data_path
 
 SENTINEL = "PRIVATE_OR_LEGACY_PROGRAM_SENTINEL"
 
@@ -153,7 +154,7 @@ def test_main_selfcheck_does_not_count_legacy_screen_or_publish_legacy_artifacts
         capsules_root=corpus,
         contract=data_path("contract"),
     )
-    report = json.loads(capsys.readouterr().out)
+    report = hydrate(json.loads(capsys.readouterr().out), workspace=tmp_path)
     assert code == 1
     assert report["n_passed"] == report["n_screened_only"] == report["n_certified"] == 0
     assert report["per_capsule"][0]["candidate_native_verification"]["status"] == "incomplete"
@@ -197,6 +198,9 @@ def test_main_selfcheck_uses_only_selected_tier_console(
             "kind": "op",
             "status": "pass" if passing_case else "fail",
             "numeric": {"status": "pass"},
+            # This console-selection control supplies its original independent
+            # structural verdict; numerical screens alone cannot certify it.
+            "trace_check": {"status": "pass", "trace_requirement_status": "pass"},
             "tiers": {"L2": {"status": l2_status, "console_log": "l2_console.log"}},
             "failure": {"category": "TESTBENCH_TIMEOUT", "tier": "L3"},
         }
@@ -227,7 +231,7 @@ def test_main_selfcheck_uses_only_selected_tier_console(
         capsules_root=corpus,
         contract=data_path("contract"),
     )
-    report = json.loads(capsys.readouterr().out)
+    report = hydrate(json.loads(capsys.readouterr().out), workspace=tmp_path)
     assert code == (0 if passing_case else 1)
     row = report["per_capsule"][0]
     assert row["barrier_tier"] == expected_tier
@@ -261,9 +265,64 @@ def test_model_layers_uses_candidate_projection_not_legacy_functional_pass(tmp_p
 
     monkeypatch.setattr(selfcheck.CG, "grade", grade)
     code = selfcheck._model_layers(tmp_path / "submission", "", timeout=1, workers=1, context=_context(tmp_path))
-    report = json.loads(capsys.readouterr().out)
+    report = hydrate(json.loads(capsys.readouterr().out), workspace=tmp_path)
     assert code == 1
     assert report["n_passed_functional_tier"] == 0
     assert report["grade_failure"] is None
     assert report["per_capsule"][0]["candidate_native_verification"]["status"] == "incomplete"
     assert SENTINEL not in json.dumps(report)
+
+
+def test_candidate_emission_string_becomes_actionable_bounded_failure():
+    failure = selfcheck._public_candidate_emission_failure({
+        'candidate_emission_failure': 'eligible source operation lacks unavoidable attributed contraction work; '
+                                      'fused transforms need independent evidence',
+    })
+    assert failure['plane'] == 'candidate_compilation'
+    assert failure['category'] == 'CANDIDATE_EMISSION_FAILED'
+    assert 'unavoidable attributed contraction work' in failure['detail']
+    assert len(failure['detail']) <= 800
+
+
+def test_candidate_emission_feedback_cannot_copy_reference_payload():
+    result = {'candidate_emission_failure': {
+        'detail': 'compiler mismatch expected=123456.75 observed=98765.25',
+        'reference': SENTINEL, 'golden': [SENTINEL], 'capture': {'weights': SENTINEL},
+    }, 'numeric': {'first_mismatch': {'expected': SENTINEL}}, 'status': 'incomplete'}
+    row, certified = selfcheck._candidate_selfcheck_row(result, None, name='public_model', barrier_tier='L2')
+    serialized = json.dumps(row)
+    assert not certified
+    assert row['failure']['category'] == 'CANDIDATE_EMISSION_FAILED'
+    assert SENTINEL not in serialized
+    assert '123456.75' not in serialized and '98765.25' not in serialized
+    assert row['numeric'] == {}
+
+
+def test_public_model_linker_symbol_survives_long_argv_without_copying_private_payload():
+    from merlin_experiments.phase1.feedback import selfcheck_results
+
+    original = {
+        "type": "SpikeModelError", "stage": "owned_host_execution",
+        "detail": "command failed (rc 1): " + "/public/build/object.o " * 50
+        + "\nSTDOUT:\nSTDERR:/private/build/device_shim.o: in function `device_call':\n"
+        + "device_shim.c:(.text+0x124): undefined reference to `logical_kernel_0'\n"
+        + "expected 123456.75 observed 98765.25\ncollect2: error: ld returned 1 exit status\n",
+        "reference": SENTINEL, "golden": [SENTINEL],
+        "recipe": {"path": "/operator/private/compilation_recipe.json", "sha256": "a" * 64},
+    }
+    before = json.dumps(original, sort_keys=True)
+    failure = selfcheck_results._public_candidate_emission_failure({"candidate_emission_failure": original})
+    assert failure["category"] == "CANDIDATE_EMISSION_FAILED"
+    assert failure["detail"].startswith("Linker undefined symbols: logical_kernel_")
+    assert "selected executable entry and per-group symbol binding" in failure["detail"]
+    assert len(failure["detail"]) <= 800
+    assert all(text not in json.dumps(failure) for text in (SENTINEL, "123456.75", "98765.25", "/private/build"))
+    assert json.dumps(original, sort_keys=True) == before  # Original diagnostic/recipe pins are retained unchanged.
+
+
+def test_nonpublic_model_stage_does_not_promote_a_linker_tail():
+    failure = selfcheck._public_candidate_emission_failure({"candidate_emission_failure": {
+        "stage": "prepare_runtime_bundle", "detail": "command failed: " + "x" * 1000
+        + "\nSTDERR:undefined reference to `private_reference_symbol'\n",
+    }})
+    assert "private_reference_symbol" not in failure["detail"]

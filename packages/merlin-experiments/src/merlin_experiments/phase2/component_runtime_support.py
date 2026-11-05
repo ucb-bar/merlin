@@ -436,9 +436,18 @@ class PreparedIndependentRuntimeContext:
         max_workers=1,
         labels=None,
         model_snapshot_root=None,
+        original_members=None,
     ):
         """Execute the shared ordinary source/build/original-full-numeric diagnostic."""
         self.verify()
+        if original_members is not None:
+            from merlin_experiments.phase1.component_original_members import OriginalCandidateMembers
+
+            if type(original_members) is not OriginalCandidateMembers or (
+                original_members.standard_ir.references.schema_intake.software.hardware is not self.hardware_intake
+            ):
+                raise StageGateError("original candidate grading differs from its live original hardware/source owner")
+            original_members.verify()
         if (
             max_workers != 1
             or type(timeout) is not int
@@ -452,19 +461,32 @@ class PreparedIndependentRuntimeContext:
         rows = []
         for capsule in capsules_root:
             capsule = _plain(capsule)
+            original_member = (
+                original_members.member(capsule)
+                if original_members is not None and capsule.is_relative_to(original_members.destination)
+                else None
+            )
             fixture = self._fixture_for(capsule)
             if fixture is not None:
                 self.verify_control(fixture)
             active = package_runtime.active_package_executor()
+            from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
+
+            profile_owner = active_original_execution()
+            compose_profile = profile_owner is not None and type(active) is not ComponentPackageExecutor
             if active is None and (fixture is None or package != fixture.grade_arguments["package_dir"]):
                 raise StageGateError("authored compiler diagnostics require the ordinary isolated package executor")
-            if active is not None and (
-                getattr(active, "container_transport", None) is not self.container_transport
-                or self.container_transport is not None
+            if (
+                active is not None
+                and not compose_profile
                 and (
-                    type(active) is not ComponentPackageExecutor
-                    or active.view != self.compiler_view
-                    or active.runtime != self.compiler_runtime
+                    getattr(active, "container_transport", None) is not self.container_transport
+                    or self.container_transport is not None
+                    and (
+                        type(active) is not ComponentPackageExecutor
+                        or active.view != self.compiler_view
+                        or active.runtime != self.compiler_runtime
+                    )
                 )
             ):
                 raise StageGateError("active compiler executor differs from the prepared command transport/grants")
@@ -479,7 +501,7 @@ class PreparedIndependentRuntimeContext:
                     evidence_root=root,
                     container_transport=self.container_transport,
                 )
-                if active is None and self.container_transport is not None
+                if compose_profile or active is None and self.container_transport is not None
                 else package_runtime.scoped_package_executor(
                     PrivateRuntimeControlExecutor(
                         package,
@@ -522,6 +544,7 @@ class PreparedIndependentRuntimeContext:
                             else {}
                         ),
                         timeout_s=timeout,
+                        **({"original_member": original_member} if original_member is not None else {}),
                         elf_admission=(
                             self.instruction_check.admission_service() if self.instruction_check is not None else None
                         ),
@@ -587,6 +610,8 @@ class PreparedIndependentRuntimeContext:
             }
             rows.append(row)
         self.verify()
+        if original_members is not None:
+            original_members.verify()
         return {
             "integrity_status": "clean",
             "per_capsule": rows,

@@ -1,0 +1,59 @@
+{
+  "original_sha256": "7a908d1870aaeb31ae4a46368250f41fd73a54188d31e20fd08ea62f2b73b9dc",
+  "projection": "historical path roles only",
+  "record": {
+    "entrypoint": "bridge.cpp",
+    "generic_header_sha256": {
+      "timing/core/include/merlin_timing/engine.hpp": "a3ad0ac903e091d5e3384534eec8379f24d42b6294adc1c496eea146082b044d",
+      "timing/core/include/merlin_timing/reservations.hpp": "672ed5be138226533b49a8c38c91b2623494b5162286862ed7fcc48f77e37c65",
+      "timing/provider.hpp": "acc2d0a921a651405ffadd2d52ff6c2ab17e47c95c2fb6265cb3f721076b233a"
+    },
+    "jobs": 1,
+    "library": "${TASK}/merlin/out/build/scratchpad-row-load-v1/libtiming_provider.so",
+    "library_sha256": "363709778c9eccceb75c22bb10706401742eb7af76cca1e44f3618b7174c1dae",
+    "manifest_sha256": "b0de69b28c3e411edc3cead0d496b09488ca7a9d338fda77b8ea9024dfe8a41d",
+    "members": [
+      {
+        "bytes": 18633,
+        "path": "README.md",
+        "sha256": "f3aa8c27d71a512c522be8a23a2ee166c9dc3a96a929e6332b0b9e90fe4affc0"
+      },
+      {
+        "bytes": 20707,
+        "path": "bridge.cpp",
+        "sha256": "f019cc4d59d84fe3d0efca454e526603222a83f683b30ded30f265869a6fc1e5"
+      },
+      {
+        "bytes": 10536,
+        "path": "build_provider.py",
+        "sha256": "5f413ddc95d1ede231d9810808cfab3f0f40d4e83eef73ec27be8f1d57031a00"
+      },
+      {
+        "bytes": 34321,
+        "path": "provider.hpp",
+        "sha256": "14766c6515056a196ce2724f72f52c2d1d3a5c44e9c1a6d2a76bba1cb7617a58"
+      },
+      {
+        "bytes": 3233,
+        "path": "scratchpad_load.hpp",
+        "sha256": "ead520119abf920b6859a033a2c93aea28ef07349acb867b01681c9da6f3042b"
+      },
+      {
+        "bytes": 47442,
+        "path": "staged.hpp",
+        "sha256": "bc9a6973d72e3fe0efd9cc466f3b225457668b40f18e19feb5eb207f481f10e4"
+      },
+      {
+        "bytes": 5440,
+        "path": "streamed_readout.hpp",
+        "sha256": "9b4ba32a70089f91c65727be83408a10fd983a2ae78124c2029bdca06f18e918"
+      }
+    ],
+    "runtime_headers": [
+      "timing/provider.hpp",
+      "timing/core/include/merlin_timing/engine.hpp",
+      "timing/core/include/merlin_timing/reservations.hpp"
+    ],
+    "total_bytes": 141649
+  }
+}

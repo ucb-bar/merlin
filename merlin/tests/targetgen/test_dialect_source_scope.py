@@ -26,7 +26,7 @@ def _inputs(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     (root / "emit.py").write_text(
         "import pathlib, sys\n"
         "assert sys.argv[1] == 'SelectedConfig'\n"
-        "pathlib.Path(sys.argv[2]).write_text('FIRRTL version 3.3.0\\ncircuit Top :%[[]]\\n  module Top :\\n')\n"
+        "pathlib.Path(sys.argv[2]).write_text('FIRRTL version 3.3.0\\ncircuit Top :%[[]]\\n  module Top : @[generators/fixture/Top.scala 1:1]\\n')\n"
     )
     (root / "Instructions.scala").write_text('def ADD = BitPat("b00000000000000000000000000110011")\n')
     controls = ["N"] * 17

@@ -41,6 +41,10 @@ def test_supported_ops_all_render():
     """Every op template renders to valid python source (no torch needed) with a Model + loader."""
     for op in CSrc.supported_ops():
         spec = {"op": op, "M": 16, "K": 16, "N": 16, "Dv": 16, "dtype": "fp32", "seed": 0}
+        if op == "dtype_cast":
+            with pytest.raises(ValueError, match="explicit native source/result declaration"):
+                CSrc.build_loader_src(spec)
+            continue
         src = CSrc.build_loader_src(spec)
         assert "def get_model_and_inputs()" in src
         assert "class Model" in src or "def get_model_and_inputs" in src

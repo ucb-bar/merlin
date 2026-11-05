@@ -3,9 +3,9 @@ title: Compiling a whole model onto an accelerator
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-08
-related: [compilation_strategies, targetgen, adding_a_target, gemmini_experiment, reproducing_whole_model_on_rtl, firesim]
-code_refs: [src/merlin/compile_cli.py, src/merlin/compile/command.py, src/merlin/compile/baremetal_model.py, src/merlin/compile/model_execution_inputs.py, src/merlin/llvmlower/group_offload.py, src/merlin/llvmlower/device_build.py, src/merlin/targetgen/coverage_certificate.py, packages/merlin-experiments/src/merlin/targetgen/native_model_execution.py]
+last_verified: 2026-10-09
+related: [compilation_strategies, targetgen, adding_a_target, phase0_phase1_setup, firesim]
+code_refs: [src/merlin/compile_cli.py, src/merlin/compile/command.py, src/merlin/compile/baremetal_model.py, src/merlin/compile/model_execution_inputs.py, src/merlin/llvmlower/group_offload.py, src/merlin/llvmlower/device_build.py, src/merlin/targetgen/coverage_certificate.py, packages/merlin-experiments/src/merlin/targetgen/native_model_execution.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_full_model_execution.py]
 ---
 
 # Compiling a whole model onto an accelerator
@@ -23,10 +23,6 @@ were accelerated.
 | `compile_saved_model(..., device=routing)` | the same build with an explicit `DeviceRouting` | a static device sidecar and optional complete-output check; dispatch still unproved |
 | `compile_model(..., run="mesh")` | Python-driven whole-model dispatch to per-layer oracles | interpreted mesh/host composition, not one bare-metal ELF |
 | OOT capsule grader | candidate command buffer and emitted artifact against frozen corpus/oracles | independent eligibility, transform, execution and numerical verdicts |
-
-The older [whole-model RTL reproduction](reproducing_whole_model_on_rtl.md) documents a specific
-Gemmini experiment, including an unresolved spike-versus-Verilator numerical difference. Its historical
-kernel and model measurements must not be promoted into a current saved-model or candidate certification.
 
 ## Phase 1 completion is more than capsule success
 
@@ -51,6 +47,20 @@ must retain its synthetic-input and paper-readiness declarations. The gate does
 not turn that capture into attributed-data validation, a paper-accuracy result,
 or whole-model numerical equivalence. Those require separate executed evidence.
 
+That executed evidence is a second, separately declared gate,
+`phase1_gates.whole_model.private_full_models`
+(`merlin_experiments.phase1.feedback.private_full_model_execution`). After the freeze the
+formal grade runs the same linked ELFs the build-only gate verified, each on the engine the
+descriptor names for its program, and holds the printed output to the capture's own
+references: bit-exact against an integer reference the capture binds (where it binds one) and
+within a declared `atol`/`rtol` of the declared end-to-end reference. Every program of the
+roster is declared either with an engine, timeout and optional hang bound, or `deferred` with a
+reason (an output the one-output console protocol cannot carry, weights larger than the
+simulated board's memory, or a run measured in days). A deferral is recorded as a deferral and
+never counts as numerical evidence; a declared, required gate that does not pass keeps the formal
+grade incomplete. The linked program prints one complete output and no per-group check, so this
+gate does not establish per-group exactness.
+
 ## Select and reuse the inputs
 
 Select an existing capture bundle with a materialized, byte-verified `capture_receipt.json`; the build
@@ -60,14 +70,16 @@ the board's byte-pinned elaborated DTS must describe that CPU ISA, DRAM and hart
 requires a bare-metal HTIF board, one hart, a code reserve and one inference. It checks the linked
 ELF ISA against the DTS rather than assuming the build machine's ISA.
 
-Select target support with `MERLIN_TARGET_PATH` pointing at the intended trusted provider; left
-unset, it is the checkout's vendored `examples/<example>/support` provider for the target, if one
-exists. The core's target name or a generated candidate package is not a substitute for that provider. For
-native `gsim` or `verilator`, also select `--rtl-facts` from the same elaborated target/config as the
-board and the selected L3 engine. The executor binds the facts to their FIRRTL bytes and revalidates
-the concrete engine provenance. The provider must expose a public `run_elf` implementation for the
-selected engine; merely having an emulator somewhere on disk is insufficient. A target with another
-selected L3 engine cannot use these two native choices through this command.
+Select the execution contract independently of the candidate device package.
+An admitted `runner.backend: chipyard_rocc` contract uses the
+[neutral runtime](../reference/neutral_runtime_tooling.md), selected through
+`MERLIN_TARGET_CONTRACT` and `MERLIN_RTL_FACTS`, without executable target support.
+Other provider-bound workflows separately select their trusted implementation
+through `MERLIN_TARGET_PATH`. For native `gsim` or `verilator`, also select
+`--rtl-facts` from the same elaborated configuration as the board and L3 engine.
+The executor binds facts to their FIRRTL bytes and revalidates the actual engine.
+The selected backend must expose `run_elf` for that engine; an emulator path alone
+is insufficient. Other L3 engines cannot use these native choices through this command.
 
 Keep the saved bundle, host package, board catalog, DTS, RTL facts and provider selection stable
 across diagnostics. Each `--output` must be a **fresh directory below `MERLIN_OUT_ROOT`**; the receipt
@@ -85,7 +97,8 @@ the arithmetic actually built; a capture's default `golden.npy` is not necessari
 reference. A compile-only run needs no reference.
 
 ```sh
-export MERLIN_TARGET_PATH=/absolute/path/to/trusted-target-support
+export MERLIN_TARGET_CONTRACT=/absolute/path/to/neutral-target-contract.yaml
+export MERLIN_RTL_FACTS=/absolute/path/to/selected/facts.json
 export MERLIN_OUT_ROOT=/absolute/path/to/generated-out
 
 merlin-compile --target "$TARGET" --model-build \
@@ -98,6 +111,41 @@ merlin-compile --target "$TARGET" --model-build \
 `--run none` produces `baremetal_model.json` with status `compiled` and an ELF. It claims neither
 execution nor numerical agreement. It can build a model whose output exceeds the execution gate's
 current 4096-element limit.
+
+For a compiled image with `readback=full`, the development observer executes the
+same image through the selected backend's declared-model Spike route, or rejudges
+an explicitly retained binary console. Select an independent NPZ reference with
+exactly `out0`, `out1`, and so on, and its previously recorded digest:
+
+```sh
+merlin experiment model-observe --receipt "$MODEL_IMAGE/baremetal_model.json" \
+  --reference-npz "$REFERENCE_NPZ" --reference-sha256 "$REFERENCE_SHA256" \
+  --output "$FRESH_OBSERVATION"
+```
+
+Every result must have the reference shape, dtype and exact element bytes,
+including signed zeros. The observer rechecks the receipt, ELF, complete capture
+and selected reference before and after readback. Requested group profiles must
+be complete with zero dropped calls. `--console FILE` rejudges retained bytes
+without executing; their counters default to raw ticks, with an explicit
+`--console-counter-kind spike_retired_instruction_proxy` annotation available.
+Failures remain in `observation.json` and `traceback.txt`. This is development
+evidence: selecting a reference grants no numerical-policy admission, model
+quality, physical timing or Phase 1 certification.
+
+For an image produced by `merlin.model_check.chain_image` with `full_arrays_v1`,
+`merlin experiment chain-observe --image CHAIN_IMAGE_JSON --reference COLLECTION_JSON
+--reference-sha256 DIGEST --target TARGET --output FRESH_DIRECTORY` uses the normal
+chain verifier, declared-model Spike route and typed full-array reader. The
+collection has schema `merlin.complete_chain_output_reference.v1` and an ordered
+`steps` list: each row names `program`, zero-based `step` and `outputs_npz`
+with its absolute `path` and selected `sha256`. Every NPZ contains the complete
+`out0`, `out1`, etc. roster for that step. Missing, repeated, reordered or changed
+references refuse. Every array is compared by exact element bytes; failures and
+raw consoles are retained. The reported sum of forward-invocation counters
+excludes inter-step transfers and output publication, so it is not a complete
+chain latency measurement. Reference selection supplies no numerical-policy or
+model-quality admission.
 
 To run a **separate fresh build** on the selected native engine:
 
@@ -126,6 +174,14 @@ OOT candidate's command buffer. Its flag rules live in `merlin.compile.command`;
 named stage or keep its IR, see [compile_debugging](compile_debugging.md).
 
 ## Candidate model diagnostic is a separate artifact
+
+The Python builder also accepts `host_roundeven=True` for an explicitly selected
+scalar RV64GC/lp64d host package. It links Merlin's existing exact binary32
+roundeven assembly helper through the ordinary object and build-identity path,
+while retaining the generic binary64 helper. This preserves returned values,
+signed zeros, rounding mode and the helper's existing exception-flag behavior;
+it selects no new quantization recipe. Keep a paired full-output control and
+measure the realized model before claiming a performance gain.
 
 A candidate device route must be an explicit input to the Python
 `merlin.compile.baremetal_model.compile_saved_model` API via `device=DeviceRouting(...)`. Derive the
@@ -187,6 +243,6 @@ Treat the following as separate evidence, joined on the **same saved inputs and 
 
 Even a fully graded heterogeneous program need not accelerate every operation: a matmul unit does
 not automatically execute norms or elementwise work. State which regions ran on which lane, which
-were declined, and what numerical and RTL tier actually measured them. For the older experimental
-Gemmini commands and their limitations, use the [reproduction guide](reproducing_whole_model_on_rtl.md);
-do not use its historical spike result as an RTL result.
+were declined, and what numerical and RTL tier actually measured them. See
+[simulator selection](simulator_selection.md) and [FireSim execution](firesim.md)
+for the distinct execution and timing scopes.

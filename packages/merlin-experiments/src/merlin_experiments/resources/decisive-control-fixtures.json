@@ -1,0 +1,4 @@
+{
+  "schema": "merlin.decisive_control_fixtures.v1",
+  "kv_epoch": {"steps": 2, "prefix_tokens": 7, "query_tokens": 1, "kv_heads": 1, "query_heads": 3, "head_dim": 7}
+}

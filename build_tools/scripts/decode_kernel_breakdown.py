@@ -26,10 +26,10 @@ from dataclasses import replace
 from pathlib import Path
 
 from merlin.common.paths import repo_root
+from merlin.compile.analysis.disassembly import tokenize
 from merlin.kernels import cca
 from merlin.kernels.ceiling_drivers import run_expert_gemm as expert
 from merlin.kernels.decode import rvv
-from merlin.kernels.decode.objdump import tokenize
 
 REPO = Path(repo_root())
 VLEN = 256  # the mined K1 target VLEN (board is VLEN=256); spike harness ISA is VLEN=128.

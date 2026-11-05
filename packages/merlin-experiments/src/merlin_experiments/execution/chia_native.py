@@ -34,6 +34,10 @@ class Invitation:
 
 
 def _exchange(endpoint, message, fds=(), *, timeout=10):
+    from merlin_experiments.phase2.external_resources import refuse_unbound_native_executor
+
+    if message.get("operation") in {"session", "reserve", "attach", "start"}:
+        refuse_unbound_native_executor()
     if not math.isfinite(timeout) or timeout <= 0:
         raise TimeoutError("managed native control deadline expired")
     deadline = time.monotonic() + timeout
@@ -165,6 +169,9 @@ class Session:
 
 def setup(invitation: Invitation) -> None:
     """Public Chia setup hook; no subprocess is created in the worker."""
+    from merlin_experiments.phase2.external_resources import refuse_unbound_native_executor
+
+    refuse_unbound_native_executor()
     if getattr(_state, "connection", None) is not None:
         raise RuntimeError("managed native invocation already active on this thread")
     active = active_source_identity()
@@ -212,6 +219,9 @@ def cleanup(invitation: Invitation) -> None:
 
 def run(argv: list[str], *, cwd: str | Path, env: dict[str, str] | None = None) -> int:
     """Run exactly one native command with original worker stdio and explicit env."""
+    from merlin_experiments.phase2.external_resources import refuse_unbound_native_executor
+
+    refuse_unbound_native_executor()
     connection = getattr(_state, "connection", None)
     invitation = getattr(_state, "invitation", None)
     if connection is None or invitation is None:

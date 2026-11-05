@@ -8,6 +8,15 @@ which is the wrong contract for a pass whose vocabulary is deliberately generic 
 
 from __future__ import annotations
 
+from merlin.transforms.dense_planning import (
+    DenseBlock,
+    DenseChoice,
+    DenseProblem,
+    DenseResources,
+    choose_dense_block,
+    dense_blocks,
+)
+
 from .block_schedule import (
     AXES,
     BANK_ALIGNED,
@@ -45,6 +54,12 @@ from .block_schedule import (
 from .derive import geometry_from_address_space
 
 __all__ = [
+    "DenseBlock",
+    "DenseChoice",
+    "DenseProblem",
+    "DenseResources",
+    "choose_dense_block",
+    "dense_blocks",
     "AXES",
     "ConvContraction",
     "GatherRun",

@@ -119,7 +119,7 @@ def test_native_direct_object_override_refuses_archive_supplier_claim(tmp_path):
     recipe, linked, archive, elf = _native_link(tmp_path, override=True)
     with pytest.raises(ValueError, match="defining supplier"):
         recipe.record_link_suppliers({"selected_supplier": archive}, linked)
-    with pytest.raises(ValueError, match="completed v1 observation"):
+    with pytest.raises(ValueError, match="completed observation"):
         verify_completed_recipe(
             recipe.path,
             executable=elf,

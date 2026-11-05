@@ -59,11 +59,14 @@ def test_prototype_manifests_reproduce_residual_plus_inert_family_defaults():
             "endpoint_kind",
             "runner",
             "operation_capabilities",
+            "output_epilogue",
             "capability_evidence",
             "semantic_capabilities_derived",
             "semantic_capabilities_unknown",
             "unmapped_observations",
         }
+        # A prototype grounds no RTL, so its derived output epilogue claims nothing.
+        assert not any(m["output_epilogue"]["stages"].values())
         prof = fam.family_profile(_primary_kind(cu.compute_units(m)))
         assert m["endpoint_kind"] == prof.endpoint_kind_default
         assert m["runner"]["suite"] == f"{name}-capsule-bench"

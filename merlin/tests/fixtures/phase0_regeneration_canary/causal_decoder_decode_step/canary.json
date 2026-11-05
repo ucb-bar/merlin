@@ -1,0 +1,678 @@
+{
+ "accepted_drift": [],
+ "capability_contract": {
+  "bytes": 29997,
+  "file": "target_contract.json.gz",
+  "sha256": "8e4e6eb5aff7e0f92012b9c306f5cc22978342c02fb8cafafee8788d8c517be4"
+ },
+ "datapath": {
+  "compare": "exact_int",
+  "requant_output_dtype": "i8",
+  "requant_shift": 3,
+  "required_oracle_tiers": [
+   "L0",
+   "L1",
+   "L2",
+   "L3"
+  ],
+  "semantic_defaults": {
+   "must_accelerate": true
+  }
+ },
+ "groups": [
+  {
+   "capsule": "layers/G_matmul_m1k48n80_raw",
+   "capsule_record": {
+    "expected": {
+     "instruction_classes": [
+      "LOAD_CMD",
+      "PRELOAD_CMD",
+      "COMPUTE_AND_FLIP_CMD",
+      "STORE_CMD"
+     ],
+     "modes": {
+      "acc_scale": false,
+      "i8": false,
+      "relu": false
+     }
+    },
+    "firesim": "optional",
+    "group_identity_sha256": "62860dd8f07d61560a33199e7ff5adb0c697b5f2e1fe5f59cbd32c9d5f78fb9d",
+    "inputs": [
+     {
+      "dtype": "i8",
+      "name": "W",
+      "role": "weight",
+      "shape": [
+       48,
+       80
+      ]
+     },
+     {
+      "dtype": "i8",
+      "name": "A0",
+      "role": "input",
+      "shape": [
+       1,
+       48
+      ]
+     }
+    ],
+    "integer_partial_sum_bound": {
+     "bound": 432,
+     "formula": "max_abs(initial) + reduction_extent * max_abs(lhs) * max_abs(rhs)",
+     "mac_result_bits": 20,
+     "maximum_absolute_initial_addend": 0,
+     "maximum_absolute_operands": [
+      3,
+      3
+     ],
+     "reduction_extent": 48,
+     "scope": "all partial sums of the supplied contraction and initial addends; not full-kernel execution",
+     "signed_positive_limit": 524287,
+     "status": "proven_safe"
+    },
+    "interface_mlir": "capsule.interface.mlir",
+    "kind": "layer",
+    "label": "public",
+    "name": "G_matmul_m1k48n80_raw",
+    "numeric_policy": {
+     "compare": "exact_int",
+     "dtype": "i32"
+    },
+    "operation": {
+     "attributes": {
+      "epilogue": [],
+      "lhs": "A0",
+      "out": "Y0",
+      "output_dtype": "i32",
+      "weight": "W"
+     },
+     "op": "matmul"
+    },
+    "required_oracle_tiers": [
+     "L0",
+     "L1",
+     "L2",
+     "L3"
+    ],
+    "semantic": {
+     "eligible": "auto",
+     "generalization_axis": "composition",
+     "must_accelerate": true,
+     "semantic_family": "contraction"
+    },
+    "source_reference": "isolated verification of a device group of SY_source_causal_decoder_decode_step",
+    "source_role": "model_derived",
+    "vcs": "optional"
+   },
+   "device_groups": [
+    4,
+    25,
+    29
+   ],
+   "group_identity_sha256": "62860dd8f07d61560a33199e7ff5adb0c697b5f2e1fe5f59cbd32c9d5f78fb9d",
+   "program": "module attributes {merlin_iface.version = \"0.1\", merlin_iface.target = \"gemmini\", merlin_iface.abi_version = \"0.1\"} {\n  %W = merlin_iface.tensor {name = \"W\", role = \"weight\"} : tensor<48x80xi8>\n  %A0 = merlin_iface.tensor {name = \"A0\", role = \"input\"} : tensor<1x48xi8>\n  %W_res = merlin_iface.resident_pack %W {layout = \"packed_rhs\"} : (tensor<48x80xi8>) -> !merlin_iface.resident\n  %acc0 = merlin_iface.matmul %A0, %W_res : (tensor<1x48xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n  %Y0 = merlin_iface.commit %acc0 {name = \"Y0\", epilogue = [], output_dtype = \"i32\"} : (!merlin_iface.acc<i32>) -> tensor<1x80xi32>\n  merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()\n}\n",
+   "sealed_program_sha256": "4619d280d52f3d8a343acd8a59430cf2dac034b783ca6480f310277de36dd33d",
+   "sealed_reason": "every compute operation of the written program has exactly one reviewed lane",
+   "sealed_status": "admitted"
+  },
+  {
+   "capsule": "layers/G_matmul_m1k48n48_raw",
+   "capsule_record": {
+    "expected": {
+     "instruction_classes": [
+      "LOAD_CMD",
+      "PRELOAD_CMD",
+      "COMPUTE_AND_FLIP_CMD",
+      "STORE_CMD"
+     ],
+     "modes": {
+      "acc_scale": false,
+      "i8": false,
+      "relu": false
+     }
+    },
+    "firesim": "optional",
+    "group_identity_sha256": "191204bcd05bf5802816338a6dda1e6f4c6d298b71a182943016ae910880b90d",
+    "inputs": [
+     {
+      "dtype": "i8",
+      "name": "W",
+      "role": "weight",
+      "shape": [
+       48,
+       48
+      ]
+     },
+     {
+      "dtype": "i8",
+      "name": "A0",
+      "role": "input",
+      "shape": [
+       1,
+       48
+      ]
+     }
+    ],
+    "integer_partial_sum_bound": {
+     "bound": 432,
+     "formula": "max_abs(initial) + reduction_extent * max_abs(lhs) * max_abs(rhs)",
+     "mac_result_bits": 20,
+     "maximum_absolute_initial_addend": 0,
+     "maximum_absolute_operands": [
+      3,
+      3
+     ],
+     "reduction_extent": 48,
+     "scope": "all partial sums of the supplied contraction and initial addends; not full-kernel execution",
+     "signed_positive_limit": 524287,
+     "status": "proven_safe"
+    },
+    "interface_mlir": "capsule.interface.mlir",
+    "kind": "layer",
+    "label": "public",
+    "name": "G_matmul_m1k48n48_raw",
+    "numeric_policy": {
+     "compare": "exact_int",
+     "dtype": "i32"
+    },
+    "operation": {
+     "attributes": {
+      "epilogue": [],
+      "lhs": "A0",
+      "out": "Y0",
+      "output_dtype": "i32",
+      "weight": "W"
+     },
+     "op": "matmul"
+    },
+    "required_oracle_tiers": [
+     "L0",
+     "L1",
+     "L2",
+     "L3"
+    ],
+    "semantic": {
+     "eligible": "auto",
+     "generalization_axis": "composition",
+     "must_accelerate": true,
+     "semantic_family": "contraction"
+    },
+    "source_reference": "isolated verification of a device group of SY_source_causal_decoder_decode_step",
+    "source_role": "model_derived",
+    "vcs": "optional"
+   },
+   "device_groups": [
+    19
+   ],
+   "group_identity_sha256": "191204bcd05bf5802816338a6dda1e6f4c6d298b71a182943016ae910880b90d",
+   "program": "module attributes {merlin_iface.version = \"0.1\", merlin_iface.target = \"gemmini\", merlin_iface.abi_version = \"0.1\"} {\n  %W = merlin_iface.tensor {name = \"W\", role = \"weight\"} : tensor<48x48xi8>\n  %A0 = merlin_iface.tensor {name = \"A0\", role = \"input\"} : tensor<1x48xi8>\n  %W_res = merlin_iface.resident_pack %W {layout = \"packed_rhs\"} : (tensor<48x48xi8>) -> !merlin_iface.resident\n  %acc0 = merlin_iface.matmul %A0, %W_res : (tensor<1x48xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n  %Y0 = merlin_iface.commit %acc0 {name = \"Y0\", epilogue = [], output_dtype = \"i32\"} : (!merlin_iface.acc<i32>) -> tensor<1x48xi32>\n  merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()\n}\n",
+   "sealed_program_sha256": "246208c0a035bac7733d7adffd0b9ae6d8442368893c2678e91675c0e08e4972",
+   "sealed_reason": "every compute operation of the written program has exactly one reviewed lane",
+   "sealed_status": "admitted"
+  },
+  {
+   "capsule": "layers/G_matmul_m1k48n64_raw",
+   "capsule_record": {
+    "expected": {
+     "instruction_classes": [
+      "LOAD_CMD",
+      "PRELOAD_CMD",
+      "COMPUTE_AND_FLIP_CMD",
+      "STORE_CMD"
+     ],
+     "modes": {
+      "acc_scale": false,
+      "i8": false,
+      "relu": false
+     }
+    },
+    "firesim": "optional",
+    "group_identity_sha256": "99dc210b374419e1330752a55841f5c1fbc79f6f625ea47b4f4b19f6b655d38b",
+    "inputs": [
+     {
+      "dtype": "i8",
+      "name": "W",
+      "role": "weight",
+      "shape": [
+       48,
+       64
+      ]
+     },
+     {
+      "dtype": "i8",
+      "name": "A0",
+      "role": "input",
+      "shape": [
+       1,
+       48
+      ]
+     }
+    ],
+    "integer_partial_sum_bound": {
+     "bound": 432,
+     "formula": "max_abs(initial) + reduction_extent * max_abs(lhs) * max_abs(rhs)",
+     "mac_result_bits": 20,
+     "maximum_absolute_initial_addend": 0,
+     "maximum_absolute_operands": [
+      3,
+      3
+     ],
+     "reduction_extent": 48,
+     "scope": "all partial sums of the supplied contraction and initial addends; not full-kernel execution",
+     "signed_positive_limit": 524287,
+     "status": "proven_safe"
+    },
+    "interface_mlir": "capsule.interface.mlir",
+    "kind": "layer",
+    "label": "public",
+    "name": "G_matmul_m1k48n64_raw",
+    "numeric_policy": {
+     "compare": "exact_int",
+     "dtype": "i32"
+    },
+    "operation": {
+     "attributes": {
+      "epilogue": [],
+      "lhs": "A0",
+      "out": "Y0",
+      "output_dtype": "i32",
+      "weight": "W"
+     },
+     "op": "matmul"
+    },
+    "required_oracle_tiers": [
+     "L0",
+     "L1",
+     "L2",
+     "L3"
+    ],
+    "semantic": {
+     "eligible": "auto",
+     "generalization_axis": "composition",
+     "must_accelerate": true,
+     "semantic_family": "contraction"
+    },
+    "source_reference": "isolated verification of a device group of SY_source_causal_decoder_decode_step",
+    "source_role": "model_derived",
+    "vcs": "optional"
+   },
+   "device_groups": [
+    38
+   ],
+   "group_identity_sha256": "99dc210b374419e1330752a55841f5c1fbc79f6f625ea47b4f4b19f6b655d38b",
+   "program": "module attributes {merlin_iface.version = \"0.1\", merlin_iface.target = \"gemmini\", merlin_iface.abi_version = \"0.1\"} {\n  %W = merlin_iface.tensor {name = \"W\", role = \"weight\"} : tensor<48x64xi8>\n  %A0 = merlin_iface.tensor {name = \"A0\", role = \"input\"} : tensor<1x48xi8>\n  %W_res = merlin_iface.resident_pack %W {layout = \"packed_rhs\"} : (tensor<48x64xi8>) -> !merlin_iface.resident\n  %acc0 = merlin_iface.matmul %A0, %W_res : (tensor<1x48xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n  %Y0 = merlin_iface.commit %acc0 {name = \"Y0\", epilogue = [], output_dtype = \"i32\"} : (!merlin_iface.acc<i32>) -> tensor<1x64xi32>\n  merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()\n}\n",
+   "sealed_program_sha256": "b5893b9c0331345661d1051c14ccadf2912ae2f864d72b49fc2c2d09913acea7",
+   "sealed_reason": "every compute operation of the written program has exactly one reviewed lane",
+   "sealed_status": "admitted"
+  },
+  {
+   "capsule": "layers/G_matmul_m1k80n48_raw",
+   "capsule_record": {
+    "expected": {
+     "instruction_classes": [
+      "LOAD_CMD",
+      "PRELOAD_CMD",
+      "COMPUTE_AND_FLIP_CMD",
+      "STORE_CMD"
+     ],
+     "modes": {
+      "acc_scale": false,
+      "i8": false,
+      "relu": false
+     }
+    },
+    "firesim": "optional",
+    "group_identity_sha256": "b339e5c544a7ff9af8e111f4286bb27bdc1abb24a36539fdf2ff500cfd4f7dd8",
+    "inputs": [
+     {
+      "dtype": "i8",
+      "name": "W",
+      "role": "weight",
+      "shape": [
+       80,
+       48
+      ]
+     },
+     {
+      "dtype": "i8",
+      "name": "A0",
+      "role": "input",
+      "shape": [
+       1,
+       80
+      ]
+     }
+    ],
+    "integer_partial_sum_bound": {
+     "bound": 720,
+     "formula": "max_abs(initial) + reduction_extent * max_abs(lhs) * max_abs(rhs)",
+     "mac_result_bits": 20,
+     "maximum_absolute_initial_addend": 0,
+     "maximum_absolute_operands": [
+      3,
+      3
+     ],
+     "reduction_extent": 80,
+     "scope": "all partial sums of the supplied contraction and initial addends; not full-kernel execution",
+     "signed_positive_limit": 524287,
+     "status": "proven_safe"
+    },
+    "interface_mlir": "capsule.interface.mlir",
+    "kind": "layer",
+    "label": "public",
+    "name": "G_matmul_m1k80n48_raw",
+    "numeric_policy": {
+     "compare": "exact_int",
+     "dtype": "i32"
+    },
+    "operation": {
+     "attributes": {
+      "epilogue": [],
+      "lhs": "A0",
+      "out": "Y0",
+      "output_dtype": "i32",
+      "weight": "W"
+     },
+     "op": "matmul"
+    },
+    "required_oracle_tiers": [
+     "L0",
+     "L1",
+     "L2",
+     "L3"
+    ],
+    "semantic": {
+     "eligible": "auto",
+     "generalization_axis": "composition",
+     "must_accelerate": true,
+     "semantic_family": "contraction"
+    },
+    "source_reference": "isolated verification of a device group of SY_source_causal_decoder_decode_step",
+    "source_role": "model_derived",
+    "vcs": "optional"
+   },
+   "device_groups": [
+    33
+   ],
+   "group_identity_sha256": "b339e5c544a7ff9af8e111f4286bb27bdc1abb24a36539fdf2ff500cfd4f7dd8",
+   "program": "module attributes {merlin_iface.version = \"0.1\", merlin_iface.target = \"gemmini\", merlin_iface.abi_version = \"0.1\"} {\n  %W = merlin_iface.tensor {name = \"W\", role = \"weight\"} : tensor<80x48xi8>\n  %A0 = merlin_iface.tensor {name = \"A0\", role = \"input\"} : tensor<1x80xi8>\n  %W_res = merlin_iface.resident_pack %W {layout = \"packed_rhs\"} : (tensor<80x48xi8>) -> !merlin_iface.resident\n  %acc0 = merlin_iface.matmul %A0, %W_res : (tensor<1x80xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n  %Y0 = merlin_iface.commit %acc0 {name = \"Y0\", epilogue = [], output_dtype = \"i32\"} : (!merlin_iface.acc<i32>) -> tensor<1x48xi32>\n  merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()\n}\n",
+   "sealed_program_sha256": "eb6140f427be609ed1a645feefe1f41e23cd2a1f61b56356e9a69e0037a36618",
+   "sealed_reason": "every compute operation of the written program has exactly one reviewed lane",
+   "sealed_status": "admitted"
+  },
+  {
+   "capsule": "layers/G_residual_add_m1n48_b1_raw",
+   "capsule_record": {
+    "expected": {
+     "instruction_classes": [
+      "LOAD_CMD",
+      "STORE_CMD"
+     ],
+     "modes": {
+      "relu": false
+     }
+    },
+    "firesim": "optional",
+    "group_identity_sha256": "f29b0f51a2a21ad3e855a9d1a886013d911116882aa11eafe6a6316d5722f855",
+    "inputs": [
+     {
+      "dtype": "i8",
+      "name": "X0",
+      "role": "input",
+      "shape": [
+       1,
+       48
+      ]
+     },
+     {
+      "dtype": "i8",
+      "name": "X1",
+      "role": "input",
+      "shape": [
+       1,
+       48
+      ]
+     }
+    ],
+    "integer_partial_sum_bound": {
+     "reason": "this writer path has no modeled integer contraction",
+     "status": "not_applicable"
+    },
+    "interface_mlir": "capsule.interface.mlir",
+    "kind": "layer",
+    "label": "public",
+    "name": "G_residual_add_m1n48_b1_raw",
+    "numeric_policy": {
+     "atol": 1,
+     "compare": "bounded_int",
+     "dtype": "i8",
+     "rtol": 0
+    },
+    "operation": {
+     "attributes": {
+      "bound_lsb": 1,
+      "epilogue": [],
+      "lhs": "X0",
+      "lhs_scale": 0.8643919359465874,
+      "out": "Y0",
+      "output_dtype": "i8",
+      "rhs": "X1",
+      "rhs_scale": 0.2541000778685623
+     },
+     "op": "residual_add"
+    },
+    "required_oracle_tiers": [
+     "L0",
+     "L1",
+     "L2",
+     "L3"
+    ],
+    "semantic": {
+     "eligible": "auto",
+     "generalization_axis": "composition",
+     "must_accelerate": true,
+     "semantic_family": "elementwise_map"
+    },
+    "source_reference": "isolated verification of a device group of SY_source_causal_decoder_decode_step",
+    "source_role": "model_derived",
+    "stimulus_range": [
+     -128,
+     127
+    ],
+    "vcs": "optional"
+   },
+   "device_groups": [
+    35
+   ],
+   "group_identity_sha256": "f29b0f51a2a21ad3e855a9d1a886013d911116882aa11eafe6a6316d5722f855",
+   "program": "module attributes {merlin_iface.version = \"0.1\", merlin_iface.target = \"gemmini\", merlin_iface.abi_version = \"0.1\"} {\n  %X0 = merlin_iface.tensor {name = \"X0\", role = \"input\"} : tensor<1x48xi8>\n  %X1 = merlin_iface.tensor {name = \"X1\", role = \"input\"} : tensor<1x48xi8>\n  %Y0 = merlin_iface.residual_add %X0, %X1 {name = \"Y0\", epilogue = [], lhs_scale = 0.8643919359465874 : f32, rhs_scale = 0.2541000778685623 : f32, bound_lsb = 1 : i64, output_dtype = \"i8\"} : (tensor<1x48xi8>, tensor<1x48xi8>) -> tensor<1x48xi8>\n}\n",
+   "sealed_program_sha256": "aab7a9c9f0330bca9f1e9a2aa0ddecd3e18f97b4e9597d7346aae59a92c2c2f1",
+   "sealed_reason": "every compute operation of the written program has exactly one reviewed lane",
+   "sealed_status": "admitted"
+  }
+ ],
+ "interface": {
+  "bytes": 204327,
+  "file": "model.interface.mlir.gz",
+  "sha256": "eb108c358e72144d752f0ec1dfa47b18b0f5f206408cd0f716ec78a31230cb17"
+ },
+ "loaded_facts": {
+  "bytes": 92707,
+  "file": "loaded-facts.json.gz",
+  "sha256": "d4267b7be50e2727ebccfef62233a3ead9bfdd96610786b0235d760f885de5a4"
+ },
+ "model": "SY_source_causal_decoder_decode_step",
+ "provenance": {
+  "derivation": "/work/merlin/tasks/phase1-harness-v2/.tmp/phase1-closure-20261018-v1/public-derivation-v2/derivation",
+  "evidence_manifest_sha256": "c2a7c377e7a66b8d13190ed4347d97fa59ac011c03f9a21a7bbcf1e01e4137b5",
+  "model_capsule_sha256": "90006b26fb3cea0e470c225205482aed42d9c59c69f1f3563568f5c90ddca915",
+  "recipe_sha256": "3aa825deba03d08b5b0b39a144c2cc326c6640ba3c3612948be4934423bb4203",
+  "scope": "value-free public slice: programs, declared scales, evidence views; no goldens or weights",
+  "sealed_run": "/work/merlin/tasks/phase1-harness-v2/.tmp/phase1-closure-20261018-v1/phase0-run-v3"
+ },
+ "rtl_facts": {
+  "bytes": 130008,
+  "file": "facts.json.gz",
+  "sha256": "b8ff28edc096392cec356f9fececdf17ba70cd3e4b02e6c5931aedc43bb117af"
+ },
+ "schema": "merlin.phase0_regeneration_canary.v1",
+ "target": "gemmini",
+ "views": {
+  "bytes": 114003,
+  "file": "views.json.gz",
+  "sha256": "5c281a0bafff03ec284f1e1352f06b72a57a740e6db2afc1c3d941270c2e8692"
+ },
+ "weights_manifest": {
+  "0": {
+   "dtype": "float32",
+   "kind": "param",
+   "shape": [
+    64,
+    48
+   ],
+   "weight": "embedding.weight"
+  },
+  "1": {
+   "dtype": "float32",
+   "kind": "param",
+   "shape": [
+    48
+   ],
+   "weight": "norm.weight"
+  },
+  "10": {
+   "dtype": "float32",
+   "kind": "buffer",
+   "shape": [
+    80
+   ],
+   "weight": "_merlin_epilogue_0_scale"
+  },
+  "11": {
+   "dtype": "float32",
+   "kind": "buffer",
+   "shape": [
+    48
+   ],
+   "weight": "_merlin_epilogue_1_scale"
+  },
+  "12": {
+   "dtype": "float32",
+   "kind": "buffer",
+   "shape": [
+    80
+   ],
+   "weight": "_merlin_epilogue_2_scale"
+  },
+  "13": {
+   "dtype": "float32",
+   "kind": "buffer",
+   "shape": [
+    80
+   ],
+   "weight": "_merlin_epilogue_3_scale"
+  },
+  "14": {
+   "dtype": "float32",
+   "kind": "buffer",
+   "shape": [
+    48
+   ],
+   "weight": "_merlin_epilogue_4_scale"
+  },
+  "15": {
+   "dtype": "float32",
+   "kind": "buffer",
+   "shape": [
+    64
+   ],
+   "weight": "_merlin_epilogue_5_scale"
+  },
+  "16": {
+   "kind": "input",
+   "name": "token"
+  },
+  "17": {
+   "kind": "input",
+   "name": "key_cache"
+  },
+  "18": {
+   "kind": "input",
+   "name": "value_cache"
+  },
+  "2": {
+   "dtype": "float32",
+   "kind": "buffer",
+   "shape": [
+    1,
+    8
+   ],
+   "weight": "rope_cos"
+  },
+  "3": {
+   "dtype": "float32",
+   "kind": "buffer",
+   "shape": [
+    1,
+    8
+   ],
+   "weight": "rope_sin"
+  },
+  "4": {
+   "dtype": "int8",
+   "kind": "buffer",
+   "shape": [
+    80,
+    48
+   ],
+   "weight": "_frozen_param0"
+  },
+  "5": {
+   "dtype": "int8",
+   "kind": "buffer",
+   "shape": [
+    48,
+    48
+   ],
+   "weight": "_frozen_param1"
+  },
+  "6": {
+   "dtype": "int8",
+   "kind": "buffer",
+   "shape": [
+    80,
+    48
+   ],
+   "weight": "_frozen_param2"
+  },
+  "7": {
+   "dtype": "int8",
+   "kind": "buffer",
+   "shape": [
+    80,
+    48
+   ],
+   "weight": "_frozen_param3"
+  },
+  "8": {
+   "dtype": "int8",
+   "kind": "buffer",
+   "shape": [
+    48,
+    80
+   ],
+   "weight": "_frozen_param4"
+  },
+  "9": {
+   "dtype": "int8",
+   "kind": "buffer",
+   "shape": [
+    64,
+    48
+   ],
+   "weight": "_frozen_param5"
+  }
+ }
+}

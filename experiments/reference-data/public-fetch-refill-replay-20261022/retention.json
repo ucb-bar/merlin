@@ -1,0 +1,897 @@
+{
+  "schema": "operator.retained_public_replay_artifacts.v1",
+  "files": [
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/build.json",
+        "sha256": "92179295aa776238246946ab6e36b2cf7f8ed63e0b5f3d697d6d33f3d4d90989"
+      },
+      "retained": "build.json",
+      "retained_sha256": "459f290df945b4a6746c518127fd5d1f831eab3811b6a85b167f765f113aab08",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 8064
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/source-binding-correction-v2.json",
+        "sha256": "8ba7e476d823adf013234688616e290dc3fbdd8873e7741c279a864129256c50"
+      },
+      "retained": "source-binding-correction-v2.json",
+      "retained_sha256": "bbb49a60ce9fe5a417825d2397210f469cc4982bacf07c63c5859656511b86fb",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 867
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/runtime-source-bound-v2.json",
+        "sha256": "f5dbab6052be7d0f7fd3a944b6372abd2650732708f62d1795edf08dab94ea92"
+      },
+      "retained": "runtime-source-bound-v2.json",
+      "retained_sha256": "3da529606b66905be6e3726888262909247fd921dba6bb3b7a44551bbe12878d",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 4638
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+        "sha256": "888abf5c5ad4d46bee90129b05ae47a113ec710db9dd389113caa71fd3a16770"
+      },
+      "retained": "model-source-bound-v2.json",
+      "retained_sha256": "888abf5c5ad4d46bee90129b05ae47a113ec710db9dd389113caa71fd3a16770",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 15331
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/completion.json",
+        "sha256": "8489a612a3aed22b753c8b5bfaf17583e7e7f248fbc1e36cce6d73091f6df00a"
+      },
+      "retained": "frontend/completion.json",
+      "retained_sha256": "a2c2c8b54362c4b97a09b3ccb24dc95cfd3ec4cbd61a8e45713b5b32063ef28c",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 32225
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/functional.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/functional.stdout.gz",
+      "retained_sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 968
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/00.json",
+        "sha256": "a4347269d2c160acff69c32aeef8291860cfb2cc7c04987df447ff076e8854b3"
+      },
+      "retained": "frontend/reports/00.json.gz",
+      "retained_sha256": "c542e89c453408a1b1431834e8cc057c72f522177b544d09eecfbdc9e9d7bd7c",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 9700
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/00.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/stdout/00.txt.gz",
+      "retained_sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 968
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/01.json",
+        "sha256": "c112ac0153e45fa0747b366f80a26ab11b1339882768ec672573fa26cc6b7a5c"
+      },
+      "retained": "frontend/reports/01.json.gz",
+      "retained_sha256": "1dc624611bb58b5effa2e67b5cc1c0eeabcefdb5e3f0e5225f3bd1f39e23c828",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 9698
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/01.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/stdout/01.txt.gz",
+      "retained_sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 968
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/02.json",
+        "sha256": "7248b36f00f81b7253e25eaad7ef25dc4ea8761fde7db0a9a0ee7db28a8fd753"
+      },
+      "retained": "frontend/reports/02.json.gz",
+      "retained_sha256": "c09e91b9d4e51aafba48a699b1a0567b253b0dc8e000c5cea58a14a6bd422fd2",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 9702
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/02.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/stdout/02.txt.gz",
+      "retained_sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 968
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/03.json",
+        "sha256": "8e78d5f745409ee37ed378419acb9e0e1b9b3aafb69b57ec6abe45345914644f"
+      },
+      "retained": "frontend/reports/03.json.gz",
+      "retained_sha256": "973f7ce4c45201c6383df27087ada58bc3ef1d58ea3a846fee6f389e7200e610",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 9698
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/03.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/stdout/03.txt.gz",
+      "retained_sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 968
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/04.json",
+        "sha256": "25830a78cc242a40af848c065334ee0042c0c1fbcbd0a5af3c2351f4950f1e4d"
+      },
+      "retained": "frontend/reports/04.json.gz",
+      "retained_sha256": "553d29067cc005b0156b22d74531f06f681f1ee62447f717c834437684384df8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 9702
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/04.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/stdout/04.txt.gz",
+      "retained_sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 968
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/05.json",
+        "sha256": "4512cb5395557e00d29c31b166073c6674e6ffcf8dac644d2e978a6b01474ba6"
+      },
+      "retained": "frontend/reports/05.json.gz",
+      "retained_sha256": "10434c7e1950b3c06a6bdbd663ad2fb1f6b1a8747bd02fa42311d5cf940225bd",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 9698
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/05.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/stdout/05.txt.gz",
+      "retained_sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 968
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/06.json",
+        "sha256": "8cb216fab922edef94c6b3a2fb3a7a159e0ce483aa5ddea5379480940c7b6a12"
+      },
+      "retained": "frontend/reports/06.json.gz",
+      "retained_sha256": "b7804b548c7688fb699a90fad77fcf5e51a492782800de04172511bcbb7817c2",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 9700
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/06.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/stdout/06.txt.gz",
+      "retained_sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 968
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/07.json",
+        "sha256": "d96fb9973aa5ec36d307677ef9e1090ce454e9e32a89094640c3bcb5abad3e0f"
+      },
+      "retained": "frontend/reports/07.json.gz",
+      "retained_sha256": "3fbb9d558c236a413d6ae089584a5265c9aacb33b87d073b7a7a074938e26767",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 9698
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/07.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/stdout/07.txt.gz",
+      "retained_sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 968
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/08.json",
+        "sha256": "0fbb074265f801fe160c4db69480c2b9a8d99b8611b2ae5a7194bca5fdb29eb1"
+      },
+      "retained": "frontend/reports/08.json.gz",
+      "retained_sha256": "c409ec7cf3f093a3f23456df992e3b1beebcf8a05a7ba485f8bb222514d45b15",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 9702
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/08.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/stdout/08.txt.gz",
+      "retained_sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 968
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/09.json",
+        "sha256": "ae39d3f1fbd236642fb230aa6f3c22c241bf5da0accb18f258fc9f1e87588e3b"
+      },
+      "retained": "frontend/reports/09.json.gz",
+      "retained_sha256": "2c3d1ba51d9cf8e9c29b46d1f1cd55297e6be8159161210b5b0f6368debada71",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 9698
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/09.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/stdout/09.txt.gz",
+      "retained_sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 968
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/10.json",
+        "sha256": "b608f5472a047ea796689d3fb9afa63e6d20834c2c248f1881f6a6837e7a3312"
+      },
+      "retained": "frontend/reports/10.json.gz",
+      "retained_sha256": "b430c2e57144883a98e51aaa820997e8b51d5ddb16982a690e6dec1469fdd741",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 9702
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/10.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/stdout/10.txt.gz",
+      "retained_sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 968
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/11.json",
+        "sha256": "8e08159a5424ce94a316a4a2f1aeb3ff63e41ab40b5c0222594f0aff0f861234"
+      },
+      "retained": "frontend/reports/11.json.gz",
+      "retained_sha256": "8d55efd377aa926831d57e8b260ce9a88dc20da1dc3f2f5ef6c021ea082703cf",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 9698
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/11.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/stdout/11.txt.gz",
+      "retained_sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 968
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/completion.json",
+        "sha256": "2dbe7a0a500d45020cd367db5433497426e3ff5a41c410139cb6681429bd9b41"
+      },
+      "retained": "queue/completion.json",
+      "retained_sha256": "87f2a1b46823522f74dc1eddc8c3e238d9a4406adbd7687c00eb07e18dc0040b",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 62083
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/functional.stdout.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/00.json",
+        "sha256": "ddc6b95007c35e63aa63a7e7aa3a97ee03a229393bbc7717ba80ac7dd87a5a9c"
+      },
+      "retained": "queue/reports/00.json.gz",
+      "retained_sha256": "14e043d0fbdeed3a71bd4c6e1b786028e33792bf08d54df142154d428dc3f58b",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11066
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/00.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/00.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/01.json",
+        "sha256": "14fb85c20b2c5aa31086559ac2d27d138a78b374d1ecaf387d58f2c4089c2745"
+      },
+      "retained": "queue/reports/01.json.gz",
+      "retained_sha256": "294f653276889e40fb7eaba30aaf1c7807a7f894b33f3de71205def9cd214d9d",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11064
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/01.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/01.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/02.json",
+        "sha256": "571a1024bfbc4e9c428ba113f408196cfaece9ace30a226b15ed2b9da4ffec2a"
+      },
+      "retained": "queue/reports/02.json.gz",
+      "retained_sha256": "bea2666cfded5e063856f8a78c5078d04e1b3847a8f62bbab5938b66d411a30c",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11064
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/02.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/02.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/03.json",
+        "sha256": "c3335d6891833f91c61fbdc5cd0500a29573515f360e5ce8e8d474eb25f1319c"
+      },
+      "retained": "queue/reports/03.json.gz",
+      "retained_sha256": "b2a46e6ff35b7cd5479030cd6f8a6254ec606c90a5d4c5f9dd22bfe0944b41a7",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11064
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/03.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/03.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/04.json",
+        "sha256": "293c73f73809d25fa9640cce394d6d8f72ee01f42894893fcaf0abe01d4330bc"
+      },
+      "retained": "queue/reports/04.json.gz",
+      "retained_sha256": "aadc99ef5b9b86954c4319dd3aadb8037979ad11f10dfd9e6fb01e3a87d57e86",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11064
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/04.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/04.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/05.json",
+        "sha256": "ad5a0ff3abe0f3531b4bd5ff21cc0e112a2624bedc47125155e78e471f2cf15c"
+      },
+      "retained": "queue/reports/05.json.gz",
+      "retained_sha256": "129a453c5848b681f87808071d2b28a91cf4294e57457ddc2b80bbef14499069",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11064
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/05.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/05.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/06.json",
+        "sha256": "5e208d7e6d36db3c394641ef4dbb182f5f969f4739d578a0af606fd47d4c556b"
+      },
+      "retained": "queue/reports/06.json.gz",
+      "retained_sha256": "4709842157db9dc89c2e1c49dcd02277c9b931f8d69088ecdbd3892dfadd61d6",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11070
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/06.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/06.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/07.json",
+        "sha256": "4f0a71e3a04aaf8cc443167ce1b522bd4ac9d3245ac25766aa6a2f9168e001ed"
+      },
+      "retained": "queue/reports/07.json.gz",
+      "retained_sha256": "7eeb3c6428c854560dc5c7d1fcf5fbf7cc60446e6dbb2cba2b5f2b924c554f90",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11070
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/07.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/07.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/08.json",
+        "sha256": "d03967a132a885d551d9701163212d1a8e7496529c46c53fae64d4e47557f33b"
+      },
+      "retained": "queue/reports/08.json.gz",
+      "retained_sha256": "3b6c40b47afd849229a893b917dbee9f22f2dbae675a9152289e82fb3b32c94b",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11070
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/08.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/08.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/09.json",
+        "sha256": "6e05d80eb5e4c47e1b40183e7925e3e1a57d6f9f20c601380abc6916816747c3"
+      },
+      "retained": "queue/reports/09.json.gz",
+      "retained_sha256": "e5f947ecfa39f2a53bbd4bf1cb4ce2a778819a465b678781eed17e1dbec491aa",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11070
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/09.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/09.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/10.json",
+        "sha256": "458a76e8d85b3bf25ace1271b649d7b53ea1935c9cc6560d2a02efc567a0a930"
+      },
+      "retained": "queue/reports/10.json.gz",
+      "retained_sha256": "45e5c930fb2d0e2b74bf7a40eadd577e825c261cfb5b54d91b86f5145876eaeb",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11072
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/10.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/10.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/11.json",
+        "sha256": "71f5cc630fd6ffb2f72d479a49abf8d3812e3d90114ad6a1eccd80568545fd3b"
+      },
+      "retained": "queue/reports/11.json.gz",
+      "retained_sha256": "358f8ca468d68a5127a5b8182274be3bfaf9fed910e67562420998b1658463d3",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11072
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/11.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/11.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/12.json",
+        "sha256": "092ec181029c49237789a2a24b5eff12915a8f3a22ac96806610eab316f4b8c4"
+      },
+      "retained": "queue/reports/12.json.gz",
+      "retained_sha256": "efb9858ccfba2b864cb01d9044888178b5ab5ed9dc99a70619a714a698503a34",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11081
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/12.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/12.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/13.json",
+        "sha256": "cf9348cebbfd03ea979d85514f8997eb8919bfe1acf92f9900b63db91812496b"
+      },
+      "retained": "queue/reports/13.json.gz",
+      "retained_sha256": "dca1926b41c733f5074a0082b3f3fd1b9caf57cff05574dc3c5b2bda5f24313a",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11081
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/13.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/13.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/14.json",
+        "sha256": "45dd8377efd83cc482b204be19c18a4cecbbd333d66bf8bad6428524588fc468"
+      },
+      "retained": "queue/reports/14.json.gz",
+      "retained_sha256": "ef53600ce78f639fab1019d871ef2e7bbb7b749e8a905c87bd7ac4f721727986",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11081
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/14.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/14.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/15.json",
+        "sha256": "f2c3336f9d8982218bc39f54c05f70d0367066ec11da627a16670946dbe26159"
+      },
+      "retained": "queue/reports/15.json.gz",
+      "retained_sha256": "35c83db7e5bcaf73081eeecb766b6a6dd5f41c23c3bbb3f6bf23f97853827fcb",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11085
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/15.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/15.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/16.json",
+        "sha256": "2190c96df00ee3fe978edb431b85a83a94c07819e4669739ec958dc9da4ff5c9"
+      },
+      "retained": "queue/reports/16.json.gz",
+      "retained_sha256": "d860370766639967d7b6fd58f1a746905682162983420f0829e29dc6d0dad4b6",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11085
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/16.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/16.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/17.json",
+        "sha256": "c51095ac600cfb5163088feeb752d40ddf44352794d932586a3dd8ab6dcc1e62"
+      },
+      "retained": "queue/reports/17.json.gz",
+      "retained_sha256": "713103b11132794e2adae576b76f04626086d362f85d60cfb0fca7fca71a27e4",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11085
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/17.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/17.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/18.json",
+        "sha256": "f904e4b72bad6526401f20999a3cd6feacdea1aed53857bd07330077cb6f68da"
+      },
+      "retained": "queue/reports/18.json.gz",
+      "retained_sha256": "1353471629f4dd5985b3ae8a2e2f5e1ceb6f3273c1283a2f812d67c89de87183",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11089
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/18.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/18.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/19.json",
+        "sha256": "e0f033f93d5c3b25daf3ec79497ac41b660029d5a847f588612cb6b2467638ca"
+      },
+      "retained": "queue/reports/19.json.gz",
+      "retained_sha256": "279ba69be241ddafef621e38c62bf1697ac6db307037a7cea0b46c058b7ab4df",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11089
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/19.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/19.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/20.json",
+        "sha256": "1cbee552a0595bb960be63f7371b53ca5fb34f653595f099b63835fdd14a5e62"
+      },
+      "retained": "queue/reports/20.json.gz",
+      "retained_sha256": "7cb66a7e9ad559334b7f1cdd09a2c3432eeebd4f46af8b71b2d344f14fa74885",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11089
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/20.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/20.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/21.json",
+        "sha256": "446e9f540be7f1f503aa4f07a119e0b982c313897016c4c8f8b563390028f82b"
+      },
+      "retained": "queue/reports/21.json.gz",
+      "retained_sha256": "358dc4ccb676d98f099b005398461ba2baeb0d862ea37e350132c03ef4b024f6",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11092
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/21.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/21.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/22.json",
+        "sha256": "22b4e283c715beb265b61d55d2f1296cda969e0c0a6511e4c7774f2310d3ea94"
+      },
+      "retained": "queue/reports/22.json.gz",
+      "retained_sha256": "f5cdf7d81c7be40c6a27d9b76d64a6a8590c406d68543358176a2b07edb98eb9",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11092
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/22.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/22.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/23.json",
+        "sha256": "c03023fe8707fcf7da928d2e21de4aac25c9655ca1ca28eb921a6599ac1d2d92"
+      },
+      "retained": "queue/reports/23.json.gz",
+      "retained_sha256": "9fa2f4b950dab09ac0c1f52fa0ec767b54f16694267a6147d75ab0409028edfb",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 11092
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay-source-bound-v2/23.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc"
+      },
+      "retained": "queue/stdout/23.txt.gz",
+      "retained_sha256": "1733fc79d47dd3c8afe53ec2b82cb2165afe4f10d61b83667fc719ac163c96a8",
+      "encoding": "gzip_original_bytes",
+      "original_bytes": 1995
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay/stopped-identity-mismatch.json",
+        "sha256": "5169f62b5cf70e0f42e72594bf6e4a4482a6123ae1c9ca3df34b6a8639a3556a"
+      },
+      "retained": "prior-refused-attempt/stop.json",
+      "retained_sha256": "4f74f50490dfa6979ac268a7d59d98aa6a3d8cea5fbadf060ac89a5c0423c24c",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 2777
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay/00.invocation.json",
+        "sha256": "1019a8a18d5ceccaedd09e79aab46d968753018fa58bddbaf4b768da3b6f42b3"
+      },
+      "retained": "prior-refused-attempt/00.invocation.json",
+      "retained_sha256": "00289a17bccd6bd1e71939aba1ed990b01daa56478f824fd5cd3328077f36b3b",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 2113
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay/01.invocation.json",
+        "sha256": "c54600d179a021e63f28195f90aa08a80a11d6e67d62d6d696fd0ad44e63651a"
+      },
+      "retained": "prior-refused-attempt/01.invocation.json",
+      "retained_sha256": "521378894c868f8f3e457ec600a0f6245f63a12782522e66755d5d561c2d2c9f",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 2112
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay/02.invocation.json",
+        "sha256": "caf32a8de303e78e4314d6a5acc6f018173a059c84615d6dbeba0c8dd6596b66"
+      },
+      "retained": "prior-refused-attempt/02.invocation.json",
+      "retained_sha256": "56a81429f79494fd0c0331d7fbac3a3a2e4789381a57a010bf416cae53b5c64a",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 2112
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay/03.invocation.json",
+        "sha256": "89fbd8b123f9ed65003d94422c54f49ed90788d7aac63bb8bb148065c20f61d0"
+      },
+      "retained": "prior-refused-attempt/03.invocation.json",
+      "retained_sha256": "75eca8d0e4eac8776ffcc57cc535885fbf25c79615ebfa2c9ffdf4e3481670d2",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 2113
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay/04.invocation.json",
+        "sha256": "860d244c5155967f10aeeae1af43e2546d6d09a31d123b743e06307264a05fca"
+      },
+      "retained": "prior-refused-attempt/04.invocation.json",
+      "retained_sha256": "525e8766756e315c9955264744502c5b2ba6c7892d6404607e03c35ada30d60f",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 2113
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay/05.invocation.json",
+        "sha256": "028750623a741420c4f585b1ebce0a2d2e91b463e08b936ae0d5f7534a2b2e52"
+      },
+      "retained": "prior-refused-attempt/05.invocation.json",
+      "retained_sha256": "3ad78998cb64343529b452bf23fda8fc30c423b0be595fe4017e159c85c7c694",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 2113
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay/06.invocation.json",
+        "sha256": "270231e4cff8aa16a6b285743dfa5f510e128427594152cc3127c13e9c51c704"
+      },
+      "retained": "prior-refused-attempt/06.invocation.json",
+      "retained_sha256": "f81e1cf9b24edf87aa16d1ea8c58602037693b66d167adc1de50390e6abce1a3",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 2114
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay/07.invocation.json",
+        "sha256": "1cc30832ff6e5ac413ab90ac0eb5b0c318cfa5614c54ae21c2ba0d09a5d0828b"
+      },
+      "retained": "prior-refused-attempt/07.invocation.json",
+      "retained_sha256": "16228e0188c7ac26ddd2dbb00d3c184e0267ffb4883ab15469033dfa935cf35c",
+      "encoding": "json_absolute_paths_portable",
+      "original_bytes": 2114
+    }
+  ],
+  "no_binary_or_toolchain_copied": true,
+  "new_physical_runs": 0
+}

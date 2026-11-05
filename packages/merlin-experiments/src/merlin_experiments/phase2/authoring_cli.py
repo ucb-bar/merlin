@@ -16,7 +16,13 @@ from merlin_experiments.phase2 import campaign as PC
 from merlin_experiments.phase2.contracts import StageGateError
 
 
-def _component_main(argv: list[str] | None, *, suite: str | None) -> int:
+def _component_main(
+    argv: list[str] | None,
+    *,
+    suite: str | None,
+    phase1_origin=None,
+    measurement_support=None,
+) -> int:
     """The component declaration supplies explicit protected/public/runtime owners."""
     from . import component_launch as CL
     from .component_launch_inputs import load_component_launch_inputs
@@ -32,22 +38,42 @@ def _component_main(argv: list[str] | None, *, suite: str | None) -> int:
     parser.add_argument("--wall-budget-seconds", type=int)
     parser.add_argument("--max-tool-calls", type=int, default=100)
     parser.add_argument("--tool-timeout-seconds", type=int, default=600)
+    parser.add_argument("--search-configuration", type=Path)
     if suite is None:
         parser.add_argument("--suite")
     args = parser.parse_args(argv)
     if not args.qualification_only and (args.wall_budget_seconds is None or suite is None and not args.suite):
         parser.error("paid component authoring requires --wall-budget-seconds and --suite")
     try:
-        inputs = load_component_launch_inputs(args.component_launch_inputs)
-        launch = CL.qualify_component_launch(inputs, model=args.model, effort=args.effort)
+        inputs = load_component_launch_inputs(
+            args.component_launch_inputs,
+            phase1_origin=phase1_origin,
+            measurement_support=measurement_support,
+        )
+        author_agents = None
+        if args.search_configuration is not None:
+            from .search_configuration import read_search_configuration
+
+            author_agents = read_search_configuration(args.search_configuration).author_agents
+        launch = CL.qualify_component_launch(
+            inputs,
+            model=args.model,
+            effort=args.effort,
+            **({"max_concurrent_subagents": author_agents} if author_agents is not None else {}),
+        )
         if args.qualification_only:
             print(f"QUALIFIED: {launch.qualification_path}")
             return 0
         authoring.admit_authoring_workflow(BP.COMPONENT_ONLY_V1, component_launch=launch)
         record = CL.run_component_stage(
-            launch, model=args.model, effort=args.effort, wall_budget_seconds=args.wall_budget_seconds,
-            max_tool_calls=args.max_tool_calls, tool_timeout_seconds=args.tool_timeout_seconds,
+            launch,
+            model=args.model,
+            effort=args.effort,
+            wall_budget_seconds=args.wall_budget_seconds,
+            max_tool_calls=args.max_tool_calls,
+            tool_timeout_seconds=args.tool_timeout_seconds,
             suite=suite if suite is not None else args.suite,
+            **({"search_configuration": args.search_configuration} if args.search_configuration is not None else {}),
         )
         document = json.loads(record.read_bytes())
         if document["admission"]["consumable"] is not True:
@@ -65,6 +91,9 @@ def main(
     resolve_layout: Callable[[argparse.Namespace, TargetExperiment], dict[str, Path]] | None = None,
     suite: str | None = None,
     source_root: Path | None = None,
+    phase1_origin=None,
+    measurement_support=None,
+    external_resource_boundary=None,
 ) -> int:
     # An unqualified component request refuses before any legacy model selection.
     # The explicit declaration goes through actual independent prerequisites.
@@ -75,7 +104,12 @@ def main(
     profile_parser.add_argument("--component-launch-inputs", type=Path)
     profile, remaining = profile_parser.parse_known_args(argv)
     if profile.workflow == BP.COMPONENT_ONLY_V1 and profile.component_launch_inputs is not None:
-        return _component_main(argv, suite=suite)
+        return _component_main(
+            argv,
+            suite=suite,
+            phase1_origin=phase1_origin,
+            measurement_support=measurement_support,
+        )
     if profile.workflow == BP.COMPONENT_ONLY_V1 and not {"-h", "--help"}.intersection(remaining):
         try:
             authoring.admit_authoring_workflow(profile.workflow)
@@ -89,6 +123,11 @@ def main(
     os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
     sys.dont_write_bytecode = True
     parser = argparse.ArgumentParser(description=__doc__)
+    from . import compiler_pass_state as PASSES
+    from .compiler_library_state import add_selection_arguments, selection_from_arguments
+
+    add_selection_arguments(parser)
+    PASSES.add_selection_arguments(parser)
     parser.add_argument("--functional-run-id", required=True)
     parser.add_argument("--functional-submission-sha256", required=True)
     parser.add_argument("--published-compiler-root", type=Path)
@@ -108,6 +147,10 @@ def main(
         help="explicit scientific profile; component launch refuses without qualified isolation",
     )
     parser.add_argument("--effort", default="high")
+    parser.add_argument(
+        "--broker-transport", choices=("tcp", "files.v1"), default="tcp",
+        help="explicit ordinary-author transport; files.v1 retains disabled command networking",
+    )
     parser.add_argument("--wall-budget-seconds", type=int, required=True)
     parser.add_argument("--rounds", type=int, default=1)
     parser.add_argument(
@@ -146,6 +189,15 @@ def main(
     parser.add_argument("--gsim-certificate-sha256", required=True)
     parser.add_argument("--rtl-facts", type=Path, required=True)
     parser.add_argument("--telemetry-price-table", type=Path, required=True)
+    parser.add_argument("--search-configuration", type=Path, help="bounded queue budgets for the normal Phase 1 fork")
+    parser.add_argument("--compiler-edit-contract", type=Path, help="approved edit contract required by queued search")
+    parser.add_argument(
+        "--whole-model-profile-inputs",
+        type=Path,
+        default=None,
+        help="operator-only whole-model deployment record (merlin_whole_model_profile_inputs_v1); "
+        "enables the agent's whole-model boundary profile",
+    )
     parser.add_argument(
         "--descriptor",
         type=Path,
@@ -161,7 +213,26 @@ def main(
         }
     )
     try:
+        compiler_library = selection_from_arguments(args)
+        compiler_preparation = PASSES.preparation_from_arguments(args)
+        if args.search_configuration is not None:
+            from .search_configuration import read_search_configuration
+            from .search_resource_launch import prepare_launch_boundary
+
+            external_resource_boundary = prepare_launch_boundary(
+                read_search_configuration(args.search_configuration), external_boundary=external_resource_boundary
+            )
+        compiler_passes = PASSES.selection_from_arguments(
+            args,
+            library=compiler_library,
+            stage_root=layout["stage_root"],
+            external_boundary=external_resource_boundary,
+        )
         record = authoring.run_stage(
+            **({"broker_transport": args.broker_transport} if args.broker_transport != "tcp" else {}),
+            **({"compiler_library_selection": compiler_library} if compiler_library is not None else {}),
+            **({"compiler_pass_selection": compiler_passes} if compiler_passes is not None else {}),
+            **({"compiler_pass_preparation": compiler_preparation} if compiler_preparation is not None else {}),
             **layout,
             suite=suite if suite is not None else args.suite,
             functional_run_id=args.functional_run_id,
@@ -187,6 +258,16 @@ def main(
             rtl_facts=args.rtl_facts,
             telemetry_price_table=args.telemetry_price_table,
             workflow_id=args.workflow,
+            whole_model_profile_inputs=args.whole_model_profile_inputs,
+            **(
+                {
+                    "search_configuration": args.search_configuration,
+                    "compiler_edit_contract": args.compiler_edit_contract,
+                    "external_resource_boundary": external_resource_boundary,
+                }
+                if args.search_configuration is not None
+                else {}
+            ),
         )
     except (StageGateError, PC.CampaignGateError) as exc:
         print(f"NO-GO: {exc}", file=sys.stderr)

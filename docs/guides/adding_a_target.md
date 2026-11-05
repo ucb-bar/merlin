@@ -3,9 +3,9 @@ title: Adding a target
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-07-22
+last_verified: 2026-10-09
 related: [getting_started, targetgen, generated_target_repos]
-code_refs: [src/merlin/targetgen]
+code_refs: [src/merlin/targetgen, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/targetgen/plugins.py]
 ---
 
 # Adding a target
@@ -49,6 +49,19 @@ needs the `circt_firtool` capability (`firtool`/`FileCheck` on PATH) to promote
    platform driver in the target package.
 5. Add target-specific conformance tests to the provider's `tests/`; shared interface
    regressions belong in the relevant `merlin/tests/<subsystem>/` bucket.
+
+**A data-only provider for a chipyard RoCC target.** When the target runs on chipyard's
+toolchain (spike extension, Verilator harness, Merlin's GSIM harness), the provider need not ship
+code. Its contract's `plugin` block names generic core modules (`plugin.backend:
+merlin.runtime.backends.chipyard_rocc`, plus `plugin.rocc_semantics` / `plugin.rtl_checks`) and
+an `isa_headers` spec (schema `merlin.isa_headers.v1`, `merlin.targetgen.isa_headers_spec`) that
+locates the upstream bare-metal runtime by variable, pin and per-file sha256. The backend reads
+`runner.toolchain`, `execution_capabilities`, `readout_semantics` and `counter_semantics` from the
+contract, and generates a minimal facts header (`merlin.targetgen.isa_header_gen`) as the only
+accelerator header on the include path; headers the spec lists under
+`excluded_from_include_path` (a vendor kernel library) are refused. `examples/gemmini/support` is
+the worked example; `build_tools/scripts/sync_support_contract.py <example>` regenerates its
+contract copies from the reviewed ones.
 
 For a RoCC target, the backend exposes a `rocc_semantics` object with three methods:
 

@@ -1,142 +1,62 @@
 ---
-title: "Design: which phase a capsule can serve, derived for every target"
+title: Capsule roles in correctness and performance evaluation
 kind: design
 status: current
 owner: core
-last_verified: 2026-09-05
-related: [perf_corpus_scope_gap, derived_capsule_axes, perf_phase2_wiring, dialect_test_bar]
-code_refs:
-  - src/merlin/targetgen/phase_policy.py
-  - src/merlin/targetgen/cert_cost.py
-  - experiments/templates/phase0/performance.yaml
-  - src/merlin/targetgen/corpus_synth.py
+last_verified: 2026-10-12
+related: [generating_capsules, phase2_test_justification, normal_search_feedback, performance_budget_unit]
+code_refs: [src/merlin/targetgen/phase_policy.py, src/merlin/targetgen/cert_cost.py, experiments/templates/phase0/performance.yaml]
 ---
 
-# Which phase a capsule can serve
+# Capsule roles in correctness and performance evaluation
 
-The corpus grades two different things. Phase 1 asks *is this compiler correct*, which needs an
-independent golden and a cycle-accurate oracle, and that bounds how **big** a member may be. Phase 2
-asks *is this compiler fast*, which needs the member to carry work worth optimising and a lever that
-reaches it, and that bounds how **small** a member may usefully be. The bounds point in opposite
-directions, which is why one corpus cannot serve both by accident.
+Phase 1 establishes functional compilation for the admitted domain. Phase 2
+improves its performance while preserving that domain and numerical contract.
+A capsule may serve either purpose or both; its size alone does not establish
+its role.
 
-Until now the split was not derived anywhere. The functional corpus is synthesized from a conformance
-requirement (`admitted ∩ observed`); the performance corpus is a hand-authored sweep template; and
-nothing relates them. `merlin.targetgen.phase_policy` makes a capsule's phase a computed property of
-the target and the capsule, the same way its tier already is.
+## Admission predicates
 
-## The two predicates
+`phase_policy.certifiable` checks whether the selected correctness tier and
+measured evaluation domain can cover the capsule within the supplied budget.
+Missing engine, unsupported extent or absent cost evidence remains explicit.
+A predicted affordable test has not executed and supplies no correctness result.
 
-**`certifiable`** — can this member's answer be checked at full fidelity? It declares a cycle-accurate
-tier; its largest operand is inside the measured range (`cert_cost.MEASURED_MAX_OPERAND_ELEMENTS`,
-65,536); and its size is inside what a budget affords on **this target's own** certified runs.
+`phase_policy.priceable` checks whether the capsule poses a measurable
+performance question. Its default requires derivable nonzero MAC work. A
+component with genuinely zero MACs can instead receive a typed
+`PerformanceObjective` specifying the metric, unit, direction, complete cost
+boundary and provenance. Unknown work cannot be repaired by supplying a metric.
+This allows movement, conversion and dispatch questions without invented MAC
+utilization.
 
-**`priceable`** — can a performance claim about it be falsified? The default retains countable
-nonzero MAC work. A declaration genuinely deriving zero MACs may instead receive an explicit typed
-`PerformanceObjective`: observable metric, unit, direction, complete cost boundary/basis and
-provenance. This admits a falsifiable question without supplying a measured cost, ceiling or cycle
-certificate. Unknown work derivation remains refused; the objective cannot repair it.
+`phase_of`, `split_report` and `anchors` retain these independent predicates.
+They classify eligibility; they do not issue numerical, timing or convergence
+qualification. Unknown eligibility remains distinct from a demonstrated refusal.
 
-Work is derived from what the capsule declares, never from an operation-name allowlist — an allowlist
-must be edited each time a family becomes priceable, and the edit is the thing that gets forgotten.
-The derivation reads, in order: the `lhs`/`weight` attribute pair; a positional `arg_order`; a
-convolution's declared window and `padding`/`stride`/`dilation` geometry; operand **roles** (a
-weight-stationary member names one weight and several activations, and the reuse is the point, so its
-work is the sum over the activations sharing that weight); two activations sharing a reduction axis (a
-scores block contracts Q against K and neither is a parameter); and finally the semantic family, which
-settles that a non-contracting family's multiply-accumulate work is **zero** — a true quantity, not a
-missing price.
+## Choose tests for the property
 
-Hand-checked against the corpus: a 10×10 input with a 3×3 window, unit stride and no padding gives
-8×8 output positions against a 36-tap 16-output weight, so 36,864 MACs; `attention_qk` at 16×32 by
-16×32 gives 8,192. Both match the arithmetic done by hand.
+- Functional tests exercise arithmetic, encoding, tails, reduction state,
+  initialization, output coverage, resource boundaries and composition.
+- Performance tests retain enough work and pressure to expose the declared
+  bottleneck. Their purpose, comparator and falsifier are recorded during Phase 0.
+- Larger compile-only cases inspect scaling, code size and interfaces without
+  supplying numerical or timing evidence.
+- Connected public programs test interactions that isolated kernels cannot
+  establish. Protected validation programs remain outside authoring inputs.
 
-## `UNKNOWN` is not `NO`, and the distinction is the point
+A small case can reveal a correctness error while failing to expose a transfer
+or residency bottleneck. A large case can expose that bottleneck while being
+expensive to simulate. Use the documented fidelity ladder and qualified models
+to plan development checks; retain all required promotion and final gates.
 
-`phase_of` has **five** outcomes, not four. `neither` says a capsule serves no phase, which is a
-finding about the *corpus*. `undetermined` says a predicate could not be answered, which is a finding
-about the *evidence*. The first is fixed by rewriting a capsule; the second by certifying something.
+## Interpret coverage
 
-This was a real defect in the first version of this module, caught by running it: with no measured
-certification history every target reported `both = 0`, which read as "no capsule serves both phases"
-when it meant "we cannot tell". That is the failure this repo keeps re-encountering — a check that
-could not run reporting a result — and it appeared here within an hour of writing a docstring warning
-against it.
+Report member counts separately from witnessed semantic and interaction
+obligations. Matching a shape or arithmetic form does not prove graph placement,
+whole-program execution or time share. Unknown support and ungenerated required
+families remain visible in the coverage report.
 
-## Measured, all six targets
-
-Budget 300 s, corpus as of the arm4 integration. `cert-fit` is the target's own measured
-certification history, which is what makes the size predicate answerable at all.
-
-| target | capsules | both | phase-1 only | phase-2 only | neither | undetermined | anchored | orphan | cert-fit |
-|---|---|---|---|---|---|---|---|---|---|
-| gemmini | 121 | **61** | 27 | 29 | 4 | 0 | 29 | 0 | n=24 |
-| radiance | 132 | **53** | 50 | 22 | 7 | 0 | 10 | 12 | n=32 |
-| atlas | 100 | 0 | 0 | 0 | 0 | **100** | 0 | 67 | none |
-| mx_gemmini | 42 | 0 | 0 | 0 | 0 | **42** | 0 | 29 | none |
-| saturn_opu | 42 | 0 | 0 | 0 | 0 | **42** | 0 | 35 | none |
-| saturn_opu_rvv | 46 | 0 | 0 | 0 | 0 | **46** | 0 | 40 | none |
-
-Three findings, in the order they matter.
-
-**1. 211 of 509 capsules — 41% — cannot have their phase decided at all**, because four of the six
-targets have never certified anything. This is not a corpus defect and must not be reported as one:
-sizing a capsule against a budget requires a measured history, and the honest answer without one is
-that no size can be shown affordable. The remedy is to certify each target's existing corpus once,
-after which its split becomes computable. Until then, any statement about those targets' phase
-membership is an assertion.
-
-**2. A required-tier list is not a ceiling, and reading it as one produced a confidently wrong
-finding.** An earlier revision of this note reported that one target "can certify nothing" because all
-of its capsules declare `required_oracle_tiers` topping out at `L2`. That was wrong.
-`required_oracle_tiers` is the MANDATORY set, not the runnable one: the tier ladder runs every
-registered adapter, that target's cycle-accurate results carry `"mandatory": false`, and its own runner
-states the policy outright — *"L3 is an RTL-cert tier that NEVER gates a capsule"*. It had certified 32
-members while being reported as certifying none. Corrected, it has 53 capsules serving both phases.
-
-Target capability is therefore derived from evidence (`cycle_accurate_seen`, which reads the same
-per-capsule results the cost model reads) and answers `True` or `None`, never `False` — "nobody has run
-one here" and "this target cannot run one" are different facts, and only the second would justify
-excluding a whole corpus from phase 1.
-
-**3. Where the split IS decided, `both` is the majority.** On gemmini 61 of 121 capsules serve both
-phases, and on the corrected second target 53 of 132. That is the healthy state and it is what the cost arithmetic wants: certification cost is
-dominated by a per-member floor rather than by member size, so a member serving both phases costs one
-floor and yields two verdicts, while two disjoint corpora pay two floors for verdicts that never meet.
-
-### Why the single-phase members are single-phase
-
-The historical default split above was measured without explicit component objectives. Its reasons
-fall into two groups; these measurements do not qualify the new explicit objective route.
-
-**Phase-1 only is dominated by families that do not contract** — movement, elementwise_map, reduction,
-softmax and normalization together account for most of it. These carry zero multiply-accumulate work, so they
-have no MAC utilization to improve and cannot move a MAC-denominated objective. The default therefore
-keeps them phase-1 only. An explicit component latency, movement or another falsifiable cost contract
-can admit the same family to performance search through `priceable`, `phase_of`, `split_report` and
-`anchors`, while the independent certification predicate and sibling obligations remain intact.
-
-**Phase-2 only is entirely size** — either the member exceeds what the budget affords (852 elements
-at 300 s on this target's fit) or its largest operand leaves the measured range (65,536). These are
-exactly the large, representative, perf-facing members that must rest on a certified sibling through
-`extends` rather than replace one. Nothing else makes a member phase-2 only, which is the result the
-design predicted.
-
-Four contractions remain unpriceable and are recorded rather than rounded: whole-model capsules, whose
-declared input is the network's entry tensor rather than a contraction's operands, and a depthwise
-convolution whose weight rank the geometry rule does not cover.
-
-## What this does not yet do
-
-Phase 0 corpus generation does not yet derive and supply these typed zero-MAC objectives from its
-component contracts. The generic API enables the route; it does not automatically select it or
-authorize manually authored corpus members. Generator/schema/consumer wiring must preserve exact
-objective boundaries and unknown costs; MAC-rate and attainment consumers must use the selected
-component objective rather than reinterpret zero MACs as counted compute work.
-
-The predicates cover certifiability and priceability. Two further phase-2 admission conditions from
-the design are **not** implemented here and must not be read as passing: that a member's headroom
-exceeds the cost model's band, and that a declared lever actually reaches it. The second is the one
-that matters most — the measured case is a residency family owning 92.4% of a corpus's cycles whose
-lever no available action touches — and it needs `perf.claim_reach` wired in. Until then a `priceable`
-verdict says the member can be priced, not that optimising it is reachable.
+See [test justification](../guides/phase2_test_justification.md) for derivation
+and representative selection, and [normal search feedback](normal_search_feedback.md)
+for selective development evaluation and complete measured selection.

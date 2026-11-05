@@ -17,6 +17,7 @@ def test_reviewed_bundle_must_come_from_selected_release(tmp_path):
     te = SimpleNamespace(
         path=experiment / "target_experiment.yaml",
         capsule_corpus=experiment / "capsules/isa",
+        graded_roots=lambda: [],
     )
     expected = experiment / "input_bundles/el4/input_bundle_manifest.yaml"
     expected.parent.mkdir(parents=True)

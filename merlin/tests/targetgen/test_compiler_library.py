@@ -7,7 +7,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from merlin.targetgen.compiler_library import CompilerLibraryError, freeze_compiler_library, selected_library_record
+from merlin.targetgen.compiler_library import (
+    CompilerLibraryError,
+    CompilerLibrarySelection,
+    active_compiler_library,
+    freeze_compiler_library,
+    scoped_compiler_library,
+    selected_library_record,
+)
 from merlin.targetgen.package_runtime import CertFailure, _py_imports_merlin, integrity_scan
 
 
@@ -120,3 +127,66 @@ def test_transport_library_selection_requires_the_original_explicit_pair(tmp_pat
     alias.symlink_to(root, target_is_directory=True)
     with pytest.raises(CompilerLibraryError, match="canonical"):
         selected_library_record(library, alias)
+
+
+def test_additional_host_selection_admits_only_its_library_during_integrity_checks(tmp_path):
+    root, library = _library(tmp_path)
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "compiler.py").write_text("from merlin.portable import lower\n")
+    package = SimpleNamespace(directory=candidate, integrity_exempt=False)
+    selection = CompilerLibrarySelection(library, root)
+    with pytest.raises(CertFailure):
+        integrity_scan(package)
+    with scoped_compiler_library(selection):
+        assert active_compiler_library() is selection
+        integrity_scan(package)
+        with scoped_compiler_library(selection):
+            integrity_scan(package)
+        other = CompilerLibrarySelection(library, root)
+        with pytest.raises(CompilerLibraryError, match="replace"):
+            with scoped_compiler_library(other):
+                pass
+        with pytest.raises(CertFailure, match="disagree"):
+            integrity_scan(package, compiler_library=library, compiler_library_root=tmp_path)
+    assert active_compiler_library() is None
+    with pytest.raises(CertFailure):
+        integrity_scan(package)
+
+
+def test_additional_library_scope_reopens_actual_source_and_rejects_mutation(tmp_path):
+    root, library = _library(tmp_path)
+    selection = CompilerLibrarySelection(library, root)
+    with pytest.raises(CompilerLibraryError, match="bytes changed"):
+        with scoped_compiler_library(selection):
+            (root / "merlin/portable.py").write_text("def lower(value):\n return 0\n")
+    assert active_compiler_library() is None
+    with pytest.raises(CompilerLibraryError):
+        CompilerLibrarySelection(None, None)
+
+
+def test_plan_api_requires_exact_reviewed_leaf_and_rejects_harness_siblings(tmp_path):
+    """The public plan grant uses the existing library authority, not a package exemption."""
+    root = tmp_path / 'plan-api'
+    modules = ('merlin', 'merlin.targetgen', 'merlin.targetgen.oot_starterkit')
+    sources = []
+    for module in modules:
+        relative = module.replace('.', '/') + '/__init__.py'
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('')
+        sources.append((relative, module))
+    relative = 'merlin/targetgen/oot_starterkit/plan.py'
+    # Only import admission is under test; native parser/CFG semantics have their
+    # own existing tests and the real exported closure is separately byte pinned.
+    (root / relative).write_text('def source_operation_inventory(source): return source\n')
+    sources.append((relative, 'merlin.targetgen.oot_starterkit.plan'))
+    contract = freeze_compiler_library(root, review_id='exact-plan-api-test',
+        public_modules=('merlin.targetgen.oot_starterkit.plan',), sources=tuple(sources))
+    source = 'from merlin.targetgen.oot_starterkit.plan import source_operation_inventory'
+    assert _py_imports_merlin(source) is not None
+    assert _py_imports_merlin(source, compiler_library=contract) is None
+    for forbidden in ('merlin.targetgen.capsule_grade', 'merlin.runtime.reference',
+                      'merlin.targetgen.oot_starterkit.plan.reference',
+                      'merlin.targetgen.oot_starterkit.llvm_context'):
+        assert _py_imports_merlin('import ' + forbidden, compiler_library=contract) is not None

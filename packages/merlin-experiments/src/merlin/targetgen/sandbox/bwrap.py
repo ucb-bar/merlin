@@ -4,11 +4,8 @@
 arm bundle's ``allowed`` paths bound back, its ``denied`` sub-paths re-masked (deny-wins), the workspace
 writable. On top go the claude runtime binds, the toolchain binds, and finally the derived answer masks.
 
-``apply_answer_masks`` masks EVERY derived answer surface that a legit bind would otherwise re-expose
-(goldens/model weights/hidden live under the bound ``merlin/contract`` tree; memory under the bound
-``~/.claude``). It adds a mask ONLY for a surface that is currently exposed — so a surface already hidden
-by deny-by-default needs no overlay (and we never /dev/null-overlay a path whose parent tmpfs would make
-the mount fail).
+``apply_answer_masks`` hides every derived answer surface re-exposed by a bind, including protected
+contract inputs and runtime memory. It skips already hidden surfaces to avoid invalid overlays.
 
 ``coverage_gap`` is the hermetic guard: it replays the ordered mount table and returns the answer
 surfaces still reachable. Empty == the sandbox masks the full derived answer set. This runs WITHOUT
@@ -28,31 +25,26 @@ from pathlib import Path
 
 from merlin.common import content_store
 from merlin.common.access import contract_resource_roots
+from merlin.common.path_relations import LexicalPathIndex, minimal_roots
 from merlin.common.paths import repo_root
-from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, answer_surfaces
+from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, CapsuleMetadata
+from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces as answer_surfaces
 from merlin.targetgen.target_experiment import TargetExperiment
+from .mount_visibility import _DEVNULL as _DEVNULL
+from .mount_visibility import _EXPOSE_OPS as _EXPOSE_OPS
+from .mount_visibility import _HIDE_DEST_OPS as _HIDE_DEST_OPS
+from .mount_visibility import _mounts as _mounts
+from .mount_visibility import path_kind as path_kind
+from .mount_visibility import _MountVisibility as _MountVisibilityBase
 
-_EXPOSE_OPS = ("--ro-bind", "--bind", "--dev-bind", "--ro-bind-try", "--bind-try")
-_HIDE_DEST_OPS = ("--tmpfs",)  # single-arg-dest hide ops
-_DEVNULL = "/dev/null"
+from .mount_paths import (
+    _MountPathIndex as _MountPathIndex,
+    _CallPathResolution as _CallPathResolution,
+    _resolved_bind_mounts as _resolved_bind_mounts,
+)
+
 _SNAPSHOT_DIR = "bundle_inputs"
 _SNAPSHOT_COMPLETE = "snapshot.json"
-
-
-def path_kind(p: Path) -> str:
-    """``dir`` / ``file`` / ``missing`` -- permission-safe.
-
-    A chmod-000 lock makes ``stat()`` raise; treat that as a present dir so a locked answer surface
-    is still masked rather than crashing the binder.
-    """
-    try:
-        if p.is_dir():
-            return "dir"
-        if p.exists():
-            return "file"
-        return "missing"
-    except PermissionError:
-        return "dir"
 
 
 def resolve_grant(rel: str, repo: Path | None = None) -> Path:
@@ -64,12 +56,8 @@ def resolve_grant(rel: str, repo: Path | None = None) -> Path:
     silently dropped. Returns the un-prefixed candidate when neither exists, so the caller can
     report the path as the manifest declared it.
 
-    EVERY consumer of a manifest must resolve through this. It is module-level for that reason: it
-    was previously private to ``base_argv``, so the sandbox bound the ``merlin/``-shorthand paths
-    while the lock writer -- which resolved ``<repo>/<rel>`` only, and skipped what it could not
-    find -- hashed none of them. 17 grants across all five targets (every target's task, ISA
-    headers, hwbringup contracts and self-check script) were mounted into the arm but absent from
-    the lock meant to pin the arm's exact input bytes.
+    Every manifest consumer, including sandbox and lock writers, must use this resolver so mounted
+    shorthand grants and hashed input identities agree.
     """
     repo = repo or repo_root()
     p = repo / rel
@@ -150,22 +138,101 @@ def bundle_snapshot_root(ws: Path) -> Path:
 
 def _snapshot_path(root: Path, source: Path, repo: Path) -> Path:
     """Stable snapshot location for an absolute grant source."""
-    source = source.absolute()
-    repo = repo.absolute()
-    try:
-        return root / "repo" / source.relative_to(repo)
-    except ValueError:
-        # External grants retain their absolute spelling below a private
-        # namespace.  Path.parts[0] is the filesystem anchor and is omitted.
-        return root / "external" / Path(*source.parts[1:])
+    return root / _snapshot_relative_path(source, repo)
+
+
+def _snapshot_relative_path(source: Path, repo: Path) -> Path:
+    """Map parsed absolute components without constructing every ancestor."""
+    source_parts, repo_parts = source.absolute().parts, repo.absolute().parts
+    if source_parts[: len(repo_parts)] == repo_parts:
+        return Path("repo", *source_parts[len(repo_parts) :])
+    # External grants retain their absolute spelling below a private
+    # namespace. Path.parts[0] is the filesystem anchor and is omitted.
+    return Path("external", *source_parts[1:])
 
 
 def _grant_sources(bundle: dict, repo: Path) -> list[tuple[str, Path]]:
     return [(str(entry["path"]), resolve_grant(str(entry["path"]), repo)) for entry in bundle.get("allowed", [])]
 
 
-def _selected_rtl_facts_file(bundle: dict) -> Path | None:
+def _judge_rtl_facts_selection(bundle: dict, *, repo: Path | None = None) -> tuple[Path, str] | None:
+    """A private facts pin is restricted to the new raw-RTL author profiles.
+
+    This selects host judge bytes, never an author grant or an environment value.
+    Historical bundles keep their existing public-selection behavior.
+    """
+    profile = bundle.get("author_profile") or {}
+    name = profile.get("name") if isinstance(profile, dict) else None
+    restricted = name in ("xs-el-raw-rtl-v2/el1", "xs-el-raw-rtl-v2/el2")
+    declared = "judge_rtl_facts_file" in bundle
+    if not restricted and not declared:
+        return None
+    if not restricted:
+        raise RuntimeError("judge-only RTL facts require a restricted raw-RTL author profile")
+    level = 1 if name.endswith("/el1") else 2
+    disclosure = profile.get("disclosure")
+    if (
+        type(profile.get("level")) is not int
+        or profile["level"] != level
+        or not isinstance(disclosure, dict)
+        or disclosure.get("rtl_facts") is not False
+    ):
+        raise RuntimeError("judge-only RTL facts require the exact restricted disclosure policy")
+    if "selected_rtl_facts_file" in bundle:
+        raise RuntimeError("restricted raw-RTL profiles cannot also select public RTL facts")
+    if not declared:
+        raise RuntimeError("restricted raw-RTL profiles require pinned judge-only RTL facts")
+    value = bundle["judge_rtl_facts_file"]
+    if not isinstance(value, dict) or set(value) != {"path", "sha256"}:
+        raise RuntimeError("judge_rtl_facts_file must contain exactly path and sha256")
+    path, digest = value["path"], value["sha256"]
+    if (
+        not isinstance(path, str)
+        or not isinstance(digest, str)
+        or len(digest) != 64
+        or set(digest) - set("0123456789abcdef")
+    ):
+        raise RuntimeError("judge-only RTL facts require an absolute facts.json path and exact SHA256")
+    selected = Path(path)
+    if (
+        not selected.is_absolute()
+        or str(selected) != path
+        or ".." in selected.parts
+        or selected.name != "facts.json"
+        or selected.resolve() != selected
+        or selected.is_symlink()
+    ):
+        raise RuntimeError("judge-only RTL facts path must be canonical and name facts.json")
+    repo = (repo or repo_root()).absolute()
+    hosts = [(repo / raw).absolute() for raw in _host_input_paths(bundle)]
+    if not any(selected == host or selected.is_relative_to(host) for host in hosts):
+        raise RuntimeError("judge-only RTL facts must be declared under host_inputs")
+    for row in bundle.get("allowed", []):
+        public = resolve_grant(str(row["path"]), repo).absolute()
+        spellings = (public, public.resolve())
+        alias = row.get("as")
+        if isinstance(alias, str) and Path(alias).is_absolute():
+            spellings += (Path(alias), Path(alias).resolve())
+        if any(selected == spelling or selected.is_relative_to(spelling) for spelling in spellings):
+            raise RuntimeError("public grant or alias covers judge-only RTL facts")
+        if public.is_file() and selected.is_file() and public.samefile(selected):
+            raise RuntimeError("public grant aliases judge-only RTL facts bytes")
+    return selected, digest
+
+
+def _verify_judge_rtl_facts_leaf(path: Path, expected_digest: str) -> None:
+    if path.is_symlink() or not path.is_file() or path.resolve() != path.absolute():
+        raise RuntimeError("judge-only RTL facts are absent or indirect in the frozen snapshot")
+    with path.open("rb") as stream:
+        observed = hashlib.file_digest(stream, "sha256").hexdigest()
+    if observed != expected_digest:
+        raise RuntimeError("judge-only RTL facts digest differs from its explicit pin")
+
+
+def _selected_rtl_facts_file(bundle: dict, *, repo: Path | None = None) -> Path | None:
     """Only a declared read-only facts grant may set the agent's facts accessor."""
+    if _judge_rtl_facts_selection(bundle, repo=repo) is not None:
+        return None
     value = bundle.get("selected_rtl_facts_file")
     if value is None:
         return None
@@ -184,12 +251,15 @@ def _selected_rtl_facts_file(bundle: dict) -> Path | None:
 
 def frozen_selected_rtl_facts(ws: Path, bundle: dict, *, repo: Path) -> Path | None:
     """Return the selected facts from the verified host-only input snapshot."""
-    selected = _selected_rtl_facts_file(bundle)
+    judge = _judge_rtl_facts_selection(bundle, repo=repo)
+    selected = judge[0] if judge is not None else _selected_rtl_facts_file(bundle, repo=repo)
     if selected is None:
         return None
     [frozen] = snapshot_input_paths(ws, bundle, [selected], repo=repo)
     if frozen.is_symlink() or not frozen.is_file():
         raise RuntimeError("selected RTL facts are absent from the frozen input snapshot")
+    if judge is not None:
+        _verify_judge_rtl_facts_leaf(frozen, judge[1])
     return frozen
 
 
@@ -204,6 +274,15 @@ def _host_input_paths(bundle: dict) -> list[str]:
     if len(set(paths)) != len(paths) or any(".." in Path(path).parts for path in paths):
         raise RuntimeError("host_inputs must have unique, non-escaping paths")
     return paths
+
+
+def _validate_selected_public_facts(bundle: dict, hosts: list[tuple[str, Path]]) -> None:
+    """Reject contradictory public facts selection only before a new freeze."""
+    selected = _selected_rtl_facts_file(bundle)
+    if selected is not None and any(selected.is_relative_to(source.absolute()) for _, source in hosts):
+        raise RuntimeError(
+            "selected public RTL facts leaf is operator-private; correct the new bundle declaration before freezing"
+        )
 
 
 def _private_validation_paths(bundle: dict) -> list[tuple[Path, str]]:
@@ -239,6 +318,7 @@ def _validate_host_sources(
     if not hosts and not private_denials:
         return
     private = [path.absolute() for _, path in hosts] + [path.absolute() for path in private_denials]
+    private_index = LexicalPathIndex.from_paths(private)
     private_inodes = set()
     for _, path in hosts:
         if path.resolve() != path or path.is_symlink():
@@ -286,12 +366,12 @@ def _validate_host_sources(
                 raise RuntimeError("private validation source has an unsupported member")
 
     def inspect(member: Path, ancestry: tuple[tuple[int, int], ...]) -> None:
-        if any(member == path or path in member.parents for path in private):
+        if private_index.contains(member):
             return  # A private child of a broad grant is always masked.
         resolved = member.resolve()
-        if any(resolved == path or path in resolved.parents for path in private):
+        if private_index.contains(resolved):
             raise RuntimeError("allowed grant contains an alias to host-only inputs")
-        if resolved != member and any(resolved in path.parents for path in private):
+        if resolved != member and resolved in private_index.ancestors:
             raise RuntimeError("allowed grant contains an alias to host-only inputs")
         stat = member.stat()
         key = (stat.st_dev, stat.st_ino)
@@ -313,44 +393,24 @@ def _validate_host_sources(
 
 
 def _validate_host_locations(ws: Path, hosts: list[tuple[str, Path]]) -> None:
+    # These bounds are invariant during this validation call, even for a
+    # toolchain declared as thousands of individual host-only files.
+    resolution = _CallPathResolution()
+    bounds = {ws.absolute(), resolution.resolve(ws), bundle_snapshot_root(ws).absolute(),
+              resolution.resolve(bundle_snapshot_root(ws))}
+    bound_parts = tuple(bound.parts for bound in bounds)
     for _, source in hosts:
-        for private in {source.absolute(), source.resolve()}:
-            for bound in {
-                ws.absolute(),
-                ws.resolve(),
-                bundle_snapshot_root(ws).absolute(),
-                bundle_snapshot_root(ws).resolve(),
-            }:
-                if private == bound or private in bound.parents or bound in private.parents:
+        for private in {source.absolute(), resolution.resolve(source)}:
+            parts = private.parts
+            for bound in bound_parts:
+                if parts[: len(bound)] == bound or bound[: len(parts)] == parts:
                     raise RuntimeError("host-only input overlaps the writable workspace or snapshot storage")
 
 
 def _snapshot_content(root: Path) -> tuple[str, int, int]:
-    """Digest, file count and byte count for the frozen payload (not its marker)."""
-    rows: list[tuple[str, str, int]] = []
-    total = 0
-    marker = root / _SNAPSHOT_COMPLETE
-    members = sorted(root.rglob("*"))
-    if any(path.is_symlink() for path in members):
-        raise RuntimeError("bundle input snapshot contains a symlink")
-    for path in (p for p in members if p.is_file() and p != marker):
-        digest = hashlib.sha256()
-        size = 0
-        with path.open("rb") as stream:
-            while chunk := stream.read(8 * 1024 * 1024):
-                digest.update(chunk)
-                size += len(chunk)
-        rows.append((path.relative_to(root).as_posix(), digest.hexdigest(), size))
-        total += size
-    aggregate = hashlib.sha256()
-    for rel, digest, size in rows:
-        aggregate.update(rel.encode("utf-8"))
-        aggregate.update(b"\0")
-        aggregate.update(str(size).encode("ascii"))
-        aggregate.update(b"\0")
-        aggregate.update(digest.encode("ascii"))
-        aggregate.update(b"\n")
-    return aggregate.hexdigest(), len(rows), total
+    from merlin.common.bundle_snapshot import snapshot_content
+
+    return snapshot_content(root)
 
 
 def _read_snapshot_manifest(ws: Path) -> dict:
@@ -377,13 +437,23 @@ def _snapshot_grants(ws: Path, bundle: dict, repo: Path) -> tuple[dict, list[tup
         raise RuntimeError("bundle input snapshot metadata does not match this run")
     if manifest.get("allowed") != expected_allowed:
         raise RuntimeError("bundle input snapshot grant set does not match this run")
-    grants = _snapshot_records(ws, repo, expected_allowed, manifest.get("grants"), frozen=manifest["version"] == 4)
-    if manifest["version"] == 4:
-        snapshot_support_surfaces(ws, manifest)
+    from merlin.common.bundle_snapshot import guarded_projection
+
+    def frozen_grants():
+        grants = _snapshot_records(ws, repo, expected_allowed, manifest.get("grants"), frozen=manifest["version"] == 4)
+        if manifest["version"] == 4:
+            snapshot_support_surfaces(ws, manifest)
+        return grants
+
+    # Legacy grant resolution consults live fallback paths; those readers are
+    # intentionally outside the immutable projection boundary.
+    grants = (guarded_projection(ws, bundle, repo, ["sandbox.frozen_grants.v1", manifest], frozen_grants)
+              if manifest["version"] == 4 else frozen_grants())
     hosts = _snapshot_host_inputs(ws, bundle, repo, manifest)
     _validate_host_locations(ws, [(path, destination) for path, destination, _ in hosts])
+    private_index = LexicalPathIndex.from_paths(private for _, private, _ in hosts)
     for _, destination, _ in grants:
-        if any(destination == private or private in destination.parents for _, private, _ in hosts):
+        if private_index.contains(destination):
             raise RuntimeError("allowed grant overlaps a host-only input")
     return manifest, grants
 
@@ -396,7 +466,12 @@ def _snapshot_host_inputs(ws: Path, bundle: dict, repo: Path, manifest: dict) ->
         return []
     if manifest.get("host_inputs") != expected:
         raise RuntimeError("bundle input snapshot host-only input set does not match this run")
-    return _snapshot_records(ws, repo, expected, manifest.get("host_records"), canonical=True)
+    from merlin.common.bundle_snapshot import guarded_projection
+
+    return guarded_projection(
+        ws, bundle, repo, ["sandbox.frozen_host_records.v1", expected, manifest.get("host_records")],
+        lambda: _snapshot_records(ws, repo, expected, manifest.get("host_records"), canonical=True),
+    )
 
 
 def _snapshot_records(
@@ -407,6 +482,7 @@ def _snapshot_records(
         raise RuntimeError("bundle input snapshot grant records are incomplete")
     out: list[tuple[str, Path, Path]] = []
     root = bundle_snapshot_root(ws)
+    resolved_root = None
     for expected, record in zip(expected_allowed, records, strict=True):
         if not isinstance(record, dict) or record.get("path") != expected:
             raise RuntimeError("bundle input snapshot grant ordering does not match this run")
@@ -431,20 +507,22 @@ def _snapshot_records(
             raise RuntimeError(f"bundle input snapshot destination is invalid for {expected!r}")
         if snapshot_rel.is_absolute() or ".." in snapshot_rel.parts:
             raise RuntimeError(f"bundle input snapshot path escapes its root for {expected!r}")
-        if snapshot_rel != _snapshot_path(root, destination, repo).relative_to(root):
+        if snapshot_rel != _snapshot_relative_path(destination, repo):
             raise RuntimeError("bundle input snapshot record does not match its declared destination")
         source = root / snapshot_rel
         try:
-            resolved_root = root.resolve(strict=True)
+            if resolved_root is None:
+                resolved_root = root.resolve(strict=True)
             resolved_source = source.resolve(strict=True)
         except OSError as exc:
             raise RuntimeError(f"bundle input snapshot grant is incomplete for {expected!r}") from exc
-        if resolved_source != resolved_root and resolved_root not in resolved_source.parents:
+        root_parts = resolved_root.parts
+        if resolved_source.parts[: len(root_parts)] != root_parts:
             raise RuntimeError(f"bundle input snapshot path escapes its root for {expected!r}")
-        relative_source = source.relative_to(root)
-        if any(
-            (root / Path(*relative_source.parts[:i])).is_symlink() for i in range(1, len(relative_source.parts) + 1)
-        ):
+        # A fresh full resolution must retain the exact lexical relative path.
+        # This detects every internal symlink without separately statting every
+        # shared ancestor again for each sibling in a flat toolchain roster.
+        if resolved_source != resolved_root / snapshot_rel:
             raise RuntimeError(f"bundle input snapshot contains a symlink for {expected!r}")
         if path_kind(source) == "missing":
             raise RuntimeError(f"bundle input snapshot grant is incomplete for {expected!r}")
@@ -551,12 +629,12 @@ def snapshot_input_paths(ws: Path, bundle: dict, sources: list[Path], *, repo: P
     manifest = verify_bundle_snapshot(ws, bundle, repo=repo)
     require_snapshot_ownership(manifest)
     records = [*manifest["grants"], *manifest.get("host_records", [])]
-    destinations = [Path(record["destination"]) for record in records]
+    declarations = LexicalPathIndex.from_paths(Path(record["destination"]) for record in records)
     root = bundle_snapshot_root(ws)
     out = []
     for source in sources:
         source = source.absolute()
-        if ".." in source.parts or not any(source == path or path in source.parents for path in destinations):
+        if ".." in source.parts or not declarations.contains(source):
             raise RuntimeError("requested snapshot input was not declared in the frozen bundle")
         frozen = _snapshot_path(root, source, repo)
         if not frozen.exists():
@@ -616,41 +694,40 @@ def materialize_bundle_inputs(
     descriptor: TargetExperiment | None = None,
     private_sources: Sequence[Path] = (),
 ) -> dict:
-    """Copy every declared allowed input into a run-private immutable snapshot.
+    """Freeze declared inputs into an immutable run-private snapshot.
 
-    The former bwrap path symlinked the workspace and RO-bound grants directly
-    from the working tree.  Read-only protected the source from the agent, but
-    it did not protect a long-running experiment from an operator editing that
-    same source in another session.  This snapshot fixes the experiment's input
-    bytes at setup time.  Nested grants are copied only once through their
-    shallowest declared ancestor.
-
-    A missing grant fails closed.  Silently omitting it would make the executed
-    treatment smaller than the bundle and its lock claim.
-
-    ``private_sources`` supplies additional copy-policy hints captured by the caller:
-    overlapping roots bypass the shared content store and preserve restrictive
-    source permissions while removing write bits. It does not add grants or
-    replace answer ownership/masking, and applies only when creating a new snapshot.
+    Pin bytes against operator edits; copy nested grants only through their shallowest ancestor.
+    Missing grants or contradictory public facts selections refuse before a new freeze.
+    Existing verified snapshots retain their original declarations and private masks.
+    ``private_sources`` are new-freeze copy hints: overlapping roots bypass shared CAS and keep
+    restrictive source modes without write bits; the hints grant nothing and change no masks.
     """
     private_sources = tuple(Path(path) for path in private_sources)
     if any(not path.is_absolute() or ".." in path.parts for path in private_sources):
         raise ValueError("private copy sources must be absolute paths without parent traversal")
     repo = (repo or repo_root()).absolute()
+    judge_facts = _judge_rtl_facts_selection(bundle, repo=repo)
     root = bundle_snapshot_root(ws)
     pending = root.with_name(root.name + ".pending")
     if root.exists() or root.is_symlink():
         previous = verify_bundle_snapshot(ws, bundle, repo=repo)
         require_snapshot_ownership(previous)
+        if judge_facts is not None:
+            _verify_judge_rtl_facts_leaf(_snapshot_path(root, judge_facts[0], repo), judge_facts[1])
         return previous
     if pending.exists() or pending.is_symlink():
         shutil.rmtree(pending) if pending.is_dir() else pending.unlink()
+    from merlin.targetgen.tool_profile_toolchain import validate_private_toolchain_roots
+
+    host_paths = _host_input_paths(bundle)
+    validate_private_toolchain_roots(bundle)
 
     grants = _grant_sources(bundle, repo)
-    hosts = [(path, resolve_grant(path, repo)) for path in _host_input_paths(bundle)]
+    hosts = [(path, resolve_grant(path, repo)) for path in host_paths]
     if any(source.absolute() != (repo / path).absolute() for path, source in hosts):
         raise RuntimeError("host-only inputs require canonical paths, not shorthand or registry aliases")
     _validate_host_locations(ws, hosts)
+    _validate_selected_public_facts(bundle, hosts)
     inputs = [*grants, *hosts]
     missing = [rel for rel, source in inputs if path_kind(source) == "missing"]
     if missing:
@@ -696,12 +773,10 @@ def materialize_bundle_inputs(
 
     # Copy the union, not every overlapping spelling.  For example, a broad
     # contract grant plus its isa/layers children must produce one snapshot.
-    unique_sources = sorted({source.absolute() for _, source in inputs}, key=lambda p: (len(p.parts), str(p)))
-    roots: list[Path] = []
-    for source in unique_sources:
-        if any(parent == source or parent in source.parents for parent in roots):
-            continue
-        roots.append(source)
+    roots = minimal_roots(source for _, source in inputs)
+    private_index = LexicalPathIndex.from_paths(
+        chain((path for _, path in hosts), private_sources, (path for path, _ in private_validation))
+    )
 
     pending.mkdir(parents=True, mode=0o700)
     # One copy of each distinct byte-string, hard-linked here. A campaign's runs declare overlapping
@@ -719,21 +794,15 @@ def materialize_bundle_inputs(
             # A private descendant must never enter the globally shared CAS,
             # even transiently through a broad public parent. Keep that copied
             # root private; disjoint toolchain/public roots still deduplicate.
-            private_copy = any(
-                source == private.absolute()
-                or source in private.absolute().parents
-                or private.absolute() in source.parents
-                for private in [
-                    *(path for _, path in hosts),
-                    *private_sources,
-                    *(path for path, _ in private_validation),
-                ]
-            )
+            private_copy = private_index.overlaps(source)
             input_store = None if private_copy else store
             if source.is_dir():
                 content_store.place_tree(source, dst, input_store, observe=observe, preserve_permissions=private_copy)
             else:
                 content_store.place_file(source, dst, input_store, observe=observe, preserve_permissions=private_copy)
+        validate_private_toolchain_roots(bundle, snapshot_root=pending, repo=repo)
+        if judge_facts is not None:
+            _verify_judge_rtl_facts_leaf(_snapshot_path(pending, judge_facts[0], repo), judge_facts[1])
         digest, n_files, n_bytes = _snapshot_content(pending)
         grant_records = []
         for rel, source in inputs:
@@ -776,7 +845,14 @@ def materialize_bundle_inputs(
         raise
 
 
-def _bundle_mount_args(ws: Path, bundle: dict, repo: Path, *, _policy_test_live_inputs: bool = False) -> list[str]:
+def _bundle_mount_args(
+    ws: Path,
+    bundle: dict,
+    repo: Path,
+    *,
+    _policy_test_live_inputs: bool = False,
+    visibility_prefix: Sequence[str] | None = None,
+) -> list[str]:
     """Frozen allow mounts and deny overlays, ordered so the MOST SPECIFIC declaration wins.
 
     bwrap applies mount operations in argv order, so whichever declaration is emitted LAST decides
@@ -798,6 +874,7 @@ def _bundle_mount_args(ws: Path, bundle: dict, repo: Path, *, _policy_test_live_
     A deny and an allow naming the SAME path still fails closed.
     """
     out: list[str] = []
+    manifest = None
     if not bundle.get("allowed"):
         grants = []
     elif _policy_test_live_inputs:
@@ -816,6 +893,7 @@ def _bundle_mount_args(ws: Path, bundle: dict, repo: Path, *, _policy_test_live_
     ]
     allow_dests = [d.absolute() for d, _ in live]
     deny_dests: list[tuple[Path, str]] = []
+    host_deny_dests: list[tuple[Path, str]] = []
     for denied in bundle.get("denied", []):
         d = resolve_grant(denied["path"], repo).absolute()
         kind = path_kind(d)
@@ -828,9 +906,13 @@ def _bundle_mount_args(ws: Path, bundle: dict, repo: Path, *, _policy_test_live_
             _validate_host_sources(public, private, [path for path, _ in _private_validation_paths(bundle)])
             host_records = [(path, source.absolute(), source) for path, source in private]
         else:
-            manifest, _ = _snapshot_grants(ws, bundle, repo)
+            # This same composition already checked the frozen grants and live
+            # host locations above. Reuse that manifest, not a second complete
+            # host inventory; host-only bundles still perform the check here.
+            if manifest is None:
+                manifest, _ = _snapshot_grants(ws, bundle, repo)
             host_records = _snapshot_host_inputs(ws, bundle, repo, manifest)
-        deny_dests.extend((destination, path_kind(frozen)) for _, destination, frozen in host_records)
+        host_deny_dests.extend((destination, path_kind(frozen)) for _, destination, frozen in host_records)
     for private, kind in _private_validation_paths(bundle):
         if private == ws or private in ws.parents or private.is_relative_to(ws):
             raise RuntimeError("private validation input overlaps the writable authoring workspace")
@@ -879,6 +961,21 @@ def _bundle_mount_args(ws: Path, bundle: dict, repo: Path, *, _policy_test_live_
             ops.append((len(d.parts), 1, ["--tmpfs", str(d)]))
         else:
             ops.append((len(d.parts), 1, ["--ro-bind", _DEVNULL, str(d)]))
+    visibility = None
+    if visibility_prefix is not None:
+        preview = list(visibility_prefix)
+        for _depth, _tie, args in sorted(ops, key=lambda op: (op[0], op[1])):
+            preview.extend(args)
+        visibility = _MountVisibility(preview)
+    for destination, kind in host_deny_dests:
+        # Consult the full actual prefix AND the pending public grants/masks.
+        # System/runtime binds can expose a host file even without a bundle
+        # grant; later reapply calls reconsider their complete composed prefix.
+        # A standalone caller without that prefix retains every legacy denial.
+        if visibility is not None and not visibility.is_exposed(destination):
+            continue
+        args = ["--tmpfs", str(destination)] if kind == "dir" else ["--ro-bind", _DEVNULL, str(destination)]
+        ops.append((len(destination.parts), 1, args))
     for _depth, _tie, args in sorted(ops, key=lambda op: (op[0], op[1])):
         out += args
     return out
@@ -901,7 +998,7 @@ def reapply_bundle_snapshot(argv: list[str], ws: Path, bundle: dict, *, repo: Pa
     submission rather than reporting a setup failure.
     """
     repo = (repo or repo_root()).absolute()
-    return [*argv, *_bundle_mount_args(ws, bundle, repo), "--bind", str(ws), str(ws)]
+    return [*argv, *_bundle_mount_args(ws, bundle, repo, visibility_prefix=argv), "--bind", str(ws), str(ws)]
 
 
 def base_argv(
@@ -969,7 +1066,7 @@ def base_argv(
         "--chdir",
         str(ws),
     ]
-    selected_facts = _selected_rtl_facts_file(bundle)
+    selected_facts = _selected_rtl_facts_file(bundle, repo=repo)
     # Do not inherit an operator's mutable cache selection into the frozen agent.
     parts += (
         ["--setenv", "MERLIN_RTL_FACTS", str(selected_facts)]
@@ -1007,7 +1104,9 @@ def base_argv(
         if Path(projects).exists():
             parts += ["--tmpfs", projects]
 
-    parts += _bundle_mount_args(ws, bundle, repo, _policy_test_live_inputs=_policy_test_live_inputs)
+    parts += _bundle_mount_args(
+        ws, bundle, repo, _policy_test_live_inputs=_policy_test_live_inputs, visibility_prefix=parts
+    )
     # Bind the writable workspace LAST so no mask clobbers it.
     parts += ["--bind", str(ws), str(ws)]
     return parts
@@ -1036,110 +1135,11 @@ def claude_runtime_binds() -> list[str]:
 
 
 # --------------------------------------------------------------------------- mount-table replay
-def _mounts(argv: list[str]) -> list[tuple[str, str, str]]:
-    """Parse the argv into ordered (state, source, dest) mount ops, where state is 'expose' or 'hide'.
-    Only the ops that affect path visibility are kept; everything else (flags, --chdir, --unsetenv…) is
-    ignored. The SOURCE is carried because a bind's dest is not always its own host path (see
-    :func:`is_exposed`); a hide op has no meaningful source and reports ``""``."""
-    ops: list[tuple[str, str, str]] = []
-    i = 0
-    n = len(argv)
-    while i < n:
-        a = argv[i]
-        if a in _EXPOSE_OPS and i + 2 < n:
-            src, dest = argv[i + 1], argv[i + 2]
-            ops.append(("hide", "", dest) if src == _DEVNULL else ("expose", src, dest))
-            i += 3
-            continue
-        if a in _HIDE_DEST_OPS and i + 1 < n:
-            ops.append(("hide", "", argv[i + 1]))
-            i += 2
-            continue
-        if a in ("--dev", "--proc") and i + 1 < n:
-            ops.append(("hide", "", argv[i + 1]))  # devtmpfs/procfs — hides host content under dest
-            i += 2
-            continue
-        i += 1
-    return ops
-
-
-class _MountVisibility:
-    """One-call mount index; never caches filesystem visibility or mutable argv.
-
-    Path-equivalent destinations share a slot, but precedence still uses the
-    original destination STRING length and ordered mount index, not path depth.
-    Guest-visible symlinks can redirect to a later, deeper frozen mount.
-    """
+class _MountVisibility(_MountVisibilityBase):
+    """Retain the original parser lookup for callers overriding mount replay."""
 
     def __init__(self, argv: list[str], mounts: list[tuple[str, str, str]] | None = None):
-        self._destinations: dict[Path, tuple[int, int, str, str, str]] = {}
-        self._next_index = 0
-        for state, src, dest in _mounts(argv) if mounts is None else mounts:
-            self.append(state, src, dest)
-
-    def append(self, state: str, src: str, dest: str) -> None:
-        record = (len(dest), self._next_index, state, src, dest)
-        self._next_index += 1
-        key = Path(dest)
-        previous = self._destinations.get(key)
-        if previous is None or record[:2] >= previous[:2]:
-            self._destinations[key] = record
-
-    @staticmethod
-    def _source_alias(source: Path, destination: Path, relative: Path) -> Path | None:
-        """Rewrite the first guest-visible symlink inside this bind, excluding its source root.
-
-        This handles a live ``lib64 -> lib`` alias whose ``lib`` child is replaced
-        by a pycache-free frozen grant; a late host pyc is not guest-visible.
-        """
-        cursor = source
-        parts = relative.parts
-        for index, part in enumerate(parts):
-            cursor /= part
-            if not cursor.is_symlink():
-                continue
-            try:
-                link = os.readlink(cursor)
-            except OSError:
-                return destination / relative  # changed while observed: fail closed
-            target = Path(link)
-            guest_parent = destination.joinpath(*parts[:index])
-            rewritten = target if target.is_absolute() else guest_parent / target
-            return Path(os.path.normpath(str(rewritten.joinpath(*parts[index + 1 :]))))
-        return None
-
-    def is_exposed(self, path: Path) -> bool:
-        current = path
-        seen: set[Path] = set()
-        # The same bounded traversal as filesystem symlink resolution; cycles
-        # and unstable paths fail closed as exposed, never as a clean mask.
-        for _ in range(41):
-            if current in seen:
-                return True
-            seen.add(current)
-            best = None
-            for ancestor in (current, *current.parents):
-                record = self._destinations.get(ancestor)
-                if record is not None and (best is None or record[:2] >= best[:2]):
-                    best = record
-            if best is None or best[2] == "hide":
-                return False
-            _, _, _, src, dest = best
-            relative = current.relative_to(dest)
-            alias = self._source_alias(Path(src), Path(dest), relative)
-            if alias is not None:
-                current = alias
-                continue
-            # A frozen snapshot may be mounted over a live tree. Test the
-            # effective source bytes, not the destination's host contents.
-            mapped = Path(src) / relative
-            try:
-                return mapped.exists()
-            except PermissionError:
-                return True  # locked-but-present still exposes content
-            except OSError:
-                return False
-        return True
+        super().__init__(argv, _mounts(argv) if mounts is None else mounts)
 
 
 def is_exposed(argv: list[str], path: Path) -> bool:
@@ -1196,6 +1196,12 @@ def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[An
     The caller's surfaces come back unchanged and in order (one row per query), followed by the
     projected denials that name a path no caller surface already names.
     """
+    if not surfaces:
+        return []
+    resolution = _CallPathResolution()
+    exposed = _resolved_bind_mounts(mounts, resolution)
+    source_index = _MountPathIndex(spellings for _, _, spellings in exposed)
+    destination_index = _MountPathIndex((destination,) for _, destination, _ in exposed)
     known = {surface.path for surface in surfaces}
     result: dict[Path, AnswerSurface] = {}
 
@@ -1204,15 +1210,14 @@ def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[An
             result.setdefault(path, surface)
 
     for surface in surfaces:
-        for private in {surface.path.absolute(), surface.path.resolve()}:
+        for private in {surface.path.absolute(), resolution.resolve(surface.path)}:
             exemptions = tuple(private / sub for sub in surface.grantable)
             project(private, AnswerSurface(surface.label, private, surface.kind, surface.origin, surface.grantable))
-            for state, raw_source, raw_destination in mounts:
-                if state != "expose":
-                    continue
-                source, destination = Path(raw_source).absolute(), Path(raw_destination)
+            candidates = source_index.related(private) | destination_index.descendants(private)
+            for mount_id in sorted(candidates):
+                source, destination, spellings = exposed[mount_id]
                 aliases = []
-                for resolved in {source, source.resolve()}:
+                for resolved in spellings:
                     if any(resolved == public or public in resolved.parents for public in exemptions):
                         continue
                     translated = _bind_alias(private, surface.kind, resolved, destination)
@@ -1234,12 +1239,43 @@ def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[An
 def _frozen_support_surfaces(ws: Path, bundle: dict, surfaces: list[AnswerSurface], repo: Path) -> list[AnswerSurface]:
     """Use copy-time ownership even when live providers/aliases disappear or change."""
     manifest, _ = _snapshot_grants(ws, bundle, repo)
-    return snapshot_support_surfaces(ws, manifest)
+    from merlin.common.bundle_snapshot import guarded_projection
+
+    return guarded_projection(ws, bundle, repo, ["sandbox.frozen_support.v1", manifest],
+                              lambda: snapshot_support_surfaces(ws, manifest))
 
 
 def _frozen_answer_surfaces(
-    ws: Path, bundle: dict, te: TargetExperiment, live: list[AnswerSurface], repo: Path
+    ws: Path,
+    bundle: dict,
+    te: TargetExperiment,
+    live: list[AnswerSurface],
+    repo: Path,
+    capsules: CapsuleMetadata | None = None,
 ) -> list[AnswerSurface]:
+    if capsules is not None:
+        # Only the frozen tree contributes filesystem classifications here;
+        # live surfaces and descriptor roots are explicit parts of the key.
+        # Dynamic live-answer discovery still runs independently before this.
+        # Arm path/marker watches BEFORE resolving the records. Reuse that
+        # per-call resolution only if the same guard survives up to consumption.
+        # No guard means the original fresh second reader remains mandatory.
+        frozen_root = bundle_snapshot_root(ws)
+        declaration_facts = capsules.inventory.tree(frozen_root)
+        manifest, grants = _snapshot_grants(ws, bundle, repo)
+        key = ('frozen_answers', repo, te.capsule_corpus, tuple(te.corpus_siblings()),
+               tuple(contract_resource_roots(repo, 'capsules')),
+               tuple(contract_resource_roots(repo, 'examples')), tuple(live),
+               tuple(grants), manifest['content_sha256'])
+        return capsules.derived(key, (bundle_snapshot_root(ws),),
+                                lambda: _classify_frozen_answer_surfaces(
+                                    ws, bundle, te, live, repo, capsules,
+                                    grants=(grants if declaration_facts is not None
+                                            and capsules.inventory.tree(frozen_root) is declaration_facts else None)))
+    return _classify_frozen_answer_surfaces(ws, bundle, te, live, repo, capsules)
+
+
+def _classify_frozen_answer_surfaces(ws, bundle, te, live, repo, capsules, *, grants=None):
     """Classify answer bytes in pinned public grants, independent of mutable live sources.
 
     The snapshot marker fixes grant destinations and sources. Walking only its
@@ -1248,7 +1284,11 @@ def _frozen_answer_surfaces(
     A live golden removed after freezing must still be denied at both its public
     grant destination and any late runtime alias of the snapshot source.
     """
-    _, grants = _snapshot_grants(ws, bundle, repo)
+    # The metadata owner already validated these exact immutable declarations
+    # under the same unchanged path/marker guard. Reuse only within this call,
+    # not across snapshots or callers; byte custody remains external.
+    if grants is None:
+        _, grants = _snapshot_grants(ws, bundle, repo)
     corpus_roots = list(contract_resource_roots(repo, "capsules"))
     if te.capsule_corpus is not None:
         corpus_roots.extend((te.capsule_corpus.parent, te.capsule_corpus))
@@ -1260,20 +1300,26 @@ def _frozen_answer_surfaces(
         if path_kind(path) == kind:
             result[path] = AnswerSurface(f"frozen {origin}:{path.name}", path, kind, origin, grantable)
 
+    live_index = _MountPathIndex((surface.path,) for surface in live)
     for _, destination, source in grants:
         # Preserve every discovered private identity, including registry-owned
         # modules and support providers copied by a broad public grant.
-        for surface in live:
-            if surface.path.is_relative_to(destination):
-                add(
-                    source / surface.path.relative_to(destination),
-                    surface.kind,
-                    surface.origin,
-                    surface.grantable,
-                )
+        for surface_id in sorted(live_index.descendants(destination)):
+            surface = live[surface_id]
+            add(
+                source / surface.path.relative_to(destination),
+                surface.kind,
+                surface.origin,
+                surface.grantable,
+            )
 
         classified_roots = [(path, "corpus") for path in corpus_roots]
         classified_roots.extend((path, "example") for path in example_roots)
+        # These roots may overlap (the selected corpus and its parent, for
+        # example). Inspect each exact lexical member/classification once for
+        # THIS grant only. Keep walks fresh, distinct aliases/classes separate,
+        # and preserve grant ordering; snapshot boundary checks still own bytes.
+        inspected: set[tuple[Path, str]] = set()
         for base, category in classified_roots:
             if base.is_relative_to(destination):
                 frozen_base = source / base.relative_to(destination)
@@ -1283,10 +1329,20 @@ def _frozen_answer_surfaces(
                 continue
             members = chain((frozen_base,), frozen_base.rglob("*")) if frozen_base.is_dir() else (frozen_base,)
             for member in members:
+                key = (member, category)
+                if key in inspected:
+                    continue
+                inspected.add(key)
                 if category == "corpus":
                     if member.is_dir() and member.name == "hidden":
                         add(member, "dir", "hidden")
                     elif member.is_file():
+                        if member.name == "capsule.yaml":
+                            from merlin.targetgen.capsule_privacy import capsule_answer_members
+
+                            declared = {} if capsules is None else {"capsule": capsules.load(member.parent)}
+                            for relative, origin in capsule_answer_members(member.parent, **declared).items():
+                                add(member.parent / relative, "file", origin)
                         if member.name.startswith("golden.") or member.name == "expected_instruction_coverage.yaml":
                             add(member, "file", "golden")
                         elif member.name.endswith((".safetensors", ".safetensors.manifest.json")):
@@ -1308,6 +1364,7 @@ def apply_final_answer_masks(
     bundle: dict,
     *,
     repo: Path | None = None,
+    capsules: CapsuleMetadata | None = None,
     _policy_test_live_inputs: bool = False,
 ) -> list[str]:
     """Withhold descriptor answers and verified private-input aliases after all binds.
@@ -1316,47 +1373,37 @@ def apply_final_answer_masks(
     frozen bundle. This shared final policy examines that complete mount list:
     canonical-path masks alone cannot withhold a private input mounted under a
     different name. No grants or snapshot authority are created here.
-    """
-    from merlin.targetgen.sandbox.host_surfaces import host_input_surfaces
 
-    # The repository resolves here, through this module's binding, exactly as it did before the host
-    # surfaces moved out of it.
-    private = host_input_surfaces(
-        argv, ws, bundle, repo=repo or repo_root(), _policy_test_live_inputs=_policy_test_live_inputs
-    )
-    answers = answer_surfaces(te)
-    frozen_support = (
-        []
-        if _policy_test_live_inputs or not bundle
-        else _frozen_support_surfaces(ws, bundle, answers, (repo or repo_root()).absolute())
-    )
-    frozen_answers = (
-        []
-        if _policy_test_live_inputs or not bundle
-        else _frozen_answer_surfaces(ws, bundle, te, answers, (repo or repo_root()).absolute())
-    )
-    support = [surface for surface in [*answers, *frozen_support] if surface.origin == "backend"]
-    result = apply_answer_masks(argv, [*answers, *frozen_support, *frozen_answers, *private])
-    if coverage_gap(result, support):
-        raise RuntimeError("selected support package remains exposed after final masking")
-    # The host-child context names private source authority. Provider/runtime
-    # extras precede this final pass and may not reintroduce it to a candidate.
-    return [*result, "--unsetenv", "MERLIN_FROZEN_PYTHON_CONTEXT"]
+    ``capsules`` lets one execution scope reuse capsule metadata parsed from
+    byte-identical files; every walk, listing and host-input scan stays fresh.
+    """
+    from merlin.targetgen.sandbox.host_surfaces import _final_answer_policy
+
+    return _final_answer_policy(
+        argv,
+        te,
+        ws,
+        bundle,
+        repo=repo or repo_root(),
+        capsules=capsules,
+        _policy_test_live_inputs=_policy_test_live_inputs,
+    )[0]
 
 
 def full_argv(
     te: TargetExperiment, ws: Path, bundle: dict | None = None, *, _policy_test_live_inputs: bool = False
 ) -> list[str]:
-    """The complete isolation argv for one target+arm: deny-by-default base + claude runtime + toolchain
-    binds + derived answer masks. ``bundle`` may be ``{}``/None for a descriptor-only (bundle-less)
-    target — the answer masks are then driven purely by the descriptor."""
-    from merlin.targetgen.sandbox import toolchain as TC  # local: avoid a heavy import at module load
+    """The complete isolation argv for one target+arm: deny-by-default base + claude runtime (never the
+    operator's Claude state; no caller runs the CLI) + toolchain binds + derived answer masks. ``bundle``
+    may be ``{}``/None for a descriptor-only target — the masks are then driven purely by the descriptor."""
+    from merlin.targetgen.sandbox import claude_home as CH  # local: avoid a heavy import at module load
+    from merlin_experiments.phase1 import author_toolchain
 
     bundle = bundle or {}
     argv = (
-        base_argv(ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs)
-        + claude_runtime_binds()
-        + TC.toolchain_binds(te)
+        base_argv(ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs, include_claude_home=False)
+        + CH.without_operator_state(claude_runtime_binds())
+        + author_toolchain.toolchain_binds(te, bundle)
     )
     if bundle:
         if _policy_test_live_inputs:
@@ -1399,12 +1446,12 @@ def wrap(
     this returns stays short however large the corpus grows. Below the threshold the inline form is
     kept, so nothing changes for a small corpus and the two forms can be compared.
     """
-    from merlin.targetgen.sandbox import toolchain as TC
+    from merlin_experiments.phase1 import author_toolchain
 
     argv = full_argv(te, ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs)
     if argv_guard is not None:
         argv_guard(argv)
-    return compose_command(argv, f" bash -c '{TC.sandbox_env(te, ws)} {inner}'", ws)
+    return compose_command(argv, f" bash -c '{author_toolchain.sandbox_env(te, ws, bundle=bundle or {})} {inner}'", ws)
 
 
 def compose_command(argv: list[str], tail: str, ws: Path) -> str:

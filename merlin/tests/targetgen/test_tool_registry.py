@@ -143,6 +143,10 @@ def test_shared_infrastructure_closes_the_promised_authoring_imports(te):
         f"{py}runtime/tensor.py",
         f"{py}kernels/endpoints.py",
         f"{py}kernels/roles.py",
+        f"{py}compile/__init__.py",
+        f"{py}compile/analysis/__init__.py",
+        f"{py}compile/analysis/compute_endpoints.py",
+        f"{py}compile/analysis/instruction_roles.py",
     }
     infra = set(TR.TOOLS["merlin_infra"].bundle_paths)
     assert expected <= infra

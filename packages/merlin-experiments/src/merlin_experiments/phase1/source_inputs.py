@@ -24,15 +24,31 @@ PREFIXES = ("phase1:client:", "phase1:source:", "phase1:startup:", "phase1:nativ
 SCOPE = "phase1-package-public-clients-startup-and-retained-native-harness-access-policy-v2"
 
 
-def fingerprint(path: str | Path) -> str:
+def fingerprint(path: str | Path, *, leased: bool = False) -> str:
     """Bind files and directory trees without copying models or hardware checkouts.
 
     Directory symlinks are refused to avoid an incomplete closure or cycles. Files
     reached through a symlink bind both the link destination and its current bytes.
     """
-    path = Path(path)
+    if leased:
+        from merlin.common import read_lease_digest
+
+        # Only immutable, operator-owned callers opt in. Membership and link
+        # spelling are still enumerated on every call; no tree identity cache.
+        with read_lease_digest.verification():
+            def digest(member):
+                value = None
+                if member.is_absolute() and member.resolve() == member:
+                    value = read_lease_digest.digest(member)
+                return _sha(member) if value is None else value
+
+            return _fingerprint(Path(path), digest)
+    return _fingerprint(Path(path), _sha)
+
+
+def _fingerprint(path: Path, file_digest) -> str:
     if path.is_file():
-        return _sha(path)
+        return file_digest(path)
     if not path.is_dir():
         raise SpecError(f"input is absent or is not a regular file/directory: {path}")
     digest = hashlib.sha256()
@@ -40,7 +56,7 @@ def fingerprint(path: str | Path) -> str:
         if member.is_symlink() and member.is_dir():
             raise SpecError(f"input directory contains a directory symlink: {member}; name its closure explicitly")
         if member.is_file():
-            row = [str(member.relative_to(path)), _sha(member)]
+            row = [str(member.relative_to(path)), file_digest(member)]
             if member.is_symlink():
                 row.append(os.readlink(member))
             digest.update(json.dumps(row).encode())
@@ -149,8 +165,11 @@ def paths(
         ("frozen_import_resolver", "merlin.common.frozen_imports"),
         ("arrival_stamp", "merlin.common.arrival_stamp"),
         ("sandbox_bwrap", "merlin.targetgen.sandbox.bwrap"),
+        ("sandbox_mount_visibility", "merlin.targetgen.sandbox.mount_visibility"),
+        ("capsule_diagnostics", "merlin.targetgen.capsule_diagnostics"),
         ("sandbox_host_surfaces", "merlin.targetgen.sandbox.host_surfaces"),
         ("sandbox_toolchain", "merlin.targetgen.sandbox.toolchain"),
+        ("sandbox_claude_home", "merlin.targetgen.sandbox.claude_home"),
         ("source_discovery_helper", "merlin.common.source_membership"),
         ("provider_selection", "merlin.targetgen.target_registry"),
         ("provider_identity", "merlin.targetgen.providers"),
@@ -168,19 +187,39 @@ def paths(
         ("benchharness", "merlin.benchharness"),
         ("tree_hash", "merlin.common.tree_hash"),
         ("formal_grader", "merlin_experiments.phase1.feedback.formal"),
+        ("compiler_library_contract", "merlin.targetgen.compiler_library"),
+        ("compiler_library_profile", "merlin.targetgen.compiler_profile_admission"),
+        ("compiler_library_snapshot", "merlin_experiments.phase2.compiler_library_state"),
+        ("compiler_library_overlay", "merlin_experiments.phase2.compiler_libraries"),
+        ("compiler_library_inventory", "merlin_experiments.phase2.compiler_library_guidance"),
+        ("compiler_library_records", "merlin_experiments.phase2.contracts"),
         ("rtl_check_runner", "merlin.targetgen.rtl_check_runner"),
         ("rtl_check_compiler", "merlin.targetgen.rtl_check_compiler"),
         ("rtl_checks", "merlin.targetgen.rtl_checks"),
         ("circt_gate", "merlin.targetgen.circt_gate"),
         ("software_spec", "merlin.targetgen.software_spec"),
+        ("quantization_recipe", "merlin.targetgen.quant_recipe"),
+        ("quantization_methodology", "merlin.targetgen.quant_methodology"),
+        ("numerical_recipe_policy", "merlin.targetgen.quant_recipe_policy"),
+        ("quantization_output_path", "merlin.targetgen.output_path"),
+        ("quantization_formats", "merlin.common.quant_formats"),
         ("task_prompt", "merlin.targetgen.generate_prompt"),
+        ("shared_pass_requirement", "merlin.targetgen.shared_pass_contract"),
+        ("shared_pass_context", "merlin.targetgen.shared_pass_context"),
+        ("target_schedule", "merlin.llvmlower.target_schedule"),
+        ("device_target_passes", "merlin.llvmlower.device_target_passes"),
         ("general_compiler_contract", "merlin.targetgen.generalization_prompt"),
         ("semantic_search", "merlin.targetgen.semantic_search.search"),
         ("linalg_inventory", "merlin.targetgen.contract.linalg_iface"),
+        ("public_compile_sources", "merlin_experiments.phase0.public_compile_sources"),
+        ("public_scale_sources", "merlin_experiments.phase0.public_scale_sources"),
+        ("public_interface_emitter", "merlin.targetgen.contract.interface_emit"),
         ("instruction_semantics", "merlin.targetgen.instruction_semantics"),
         ("readback_policy", "merlin.targetgen.contract.readback_policy"),
         ("readback_codec", "merlin.runtime.out_b64"),
         ("binary_readback_codec", "merlin.runtime.out_bin"),
+        ("simulation_certificate", "merlin.targetgen.simulation_certificate"),
+        ("capsule_source_identity", "merlin.targetgen.capsule_source_identity"),
     ):
         inputs[f"phase1:startup:{key}"] = str(_source(module).resolve())
     try:

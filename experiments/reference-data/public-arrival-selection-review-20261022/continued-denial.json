@@ -1,0 +1,421 @@
+{
+  "deny": [
+    {
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-pipeline-diagnostics-v1/boundaries-v1.json",
+          "sha256": "954c70689bbbd8b0305fb792579a8eb895d0641eb0c44a4fe001c0d2719e1402"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/receipt.json",
+          "sha256": "844954f4ab238edaf36afe5cdef85dc3dffdedbcf5696e630743ddd286a94f4c"
+        }
+      ],
+      "model_sha256": "3beaded8f9215b62121ee93fdedbfb1f93584407cf5b65ea965b25d001cb264d",
+      "price_paths": [
+        [
+          "target",
+          "prices",
+          "compute_ws",
+          "latency_cycles"
+        ],
+        [
+          "target",
+          "prices",
+          "preload",
+          "latency_cycles"
+        ]
+      ],
+      "reason": "Public same-ELF interval evidence shows opposing queued compute-drain overprediction and readout underprediction. WS/PRELOAD latency-only fitting cannot repair this known structural accounting/overlap error. Requires a new reviewed structural model before collecting automatic fit labels. This does not deny separately authorized diagnostics or provisional compiler feedback.",
+      "runtime_versions": [
+        5
+      ]
+    },
+    {
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-pipeline-diagnostics-v1/boundaries-v1.json",
+          "sha256": "954c70689bbbd8b0305fb792579a8eb895d0641eb0c44a4fe001c0d2719e1402"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/receipt.json",
+          "sha256": "844954f4ab238edaf36afe5cdef85dc3dffdedbcf5696e630743ddd286a94f4c"
+        }
+      ],
+      "model_sha256": "a067620283e5d18bd07ead16536da60201abd549b650d16055a20ac183cbbf81",
+      "price_paths": [
+        [
+          "target",
+          "prices",
+          "compute_ws",
+          "latency_cycles"
+        ],
+        [
+          "target",
+          "prices",
+          "preload",
+          "latency_cycles"
+        ]
+      ],
+      "reason": "Public same-ELF interval evidence shows opposing queued compute-drain overprediction and readout underprediction. WS/PRELOAD latency-only fitting cannot repair this known structural accounting/overlap error. Requires a new reviewed structural model before collecting automatic fit labels. This does not deny separately authorized diagnostics or provisional compiler feedback.",
+      "runtime_versions": [
+        6
+      ]
+    },
+    {
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-pipeline-diagnostics-v1/boundaries-v1.json",
+          "sha256": "954c70689bbbd8b0305fb792579a8eb895d0641eb0c44a4fe001c0d2719e1402"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/receipt.json",
+          "sha256": "844954f4ab238edaf36afe5cdef85dc3dffdedbcf5696e630743ddd286a94f4c"
+        }
+      ],
+      "model_sha256": "90fcf232210fd551d906709ec3451f51f9f039333975a56a91145734a7da3b18",
+      "price_paths": [
+        [
+          "target",
+          "prices",
+          "compute_ws",
+          "latency_cycles"
+        ],
+        [
+          "target",
+          "prices",
+          "preload",
+          "latency_cycles"
+        ]
+      ],
+      "reason": "Public same-ELF interval evidence shows opposing queued compute-drain overprediction and readout underprediction. WS/PRELOAD latency-only fitting cannot repair this known structural accounting/overlap error. Requires a new reviewed structural model before collecting automatic fit labels. This does not deny separately authorized diagnostics or provisional compiler feedback.",
+      "runtime_versions": [
+        7
+      ]
+    },
+    {
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-pipeline-diagnostics-v1/boundaries-v1.json",
+          "sha256": "954c70689bbbd8b0305fb792579a8eb895d0641eb0c44a4fe001c0d2719e1402"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/receipt.json",
+          "sha256": "844954f4ab238edaf36afe5cdef85dc3dffdedbcf5696e630743ddd286a94f4c"
+        }
+      ],
+      "model_sha256": "bf0acfa9dd48937bb5fc7af2235314e066d2a209e82a30b12487d33041a89ecc",
+      "price_paths": [
+        [
+          "target",
+          "prices",
+          "compute_ws",
+          "latency_cycles"
+        ],
+        [
+          "target",
+          "prices",
+          "preload",
+          "latency_cycles"
+        ]
+      ],
+      "reason": "Public same-ELF interval evidence shows opposing queued compute-drain overprediction and readout underprediction. WS/PRELOAD latency-only fitting cannot repair this known structural accounting/overlap error. Requires a new reviewed structural model before collecting automatic fit labels. This does not deny separately authorized diagnostics or provisional compiler feedback.",
+      "runtime_versions": [
+        8
+      ]
+    },
+    {
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-pipeline-diagnostics-v1/boundaries-v1.json",
+          "sha256": "954c70689bbbd8b0305fb792579a8eb895d0641eb0c44a4fe001c0d2719e1402"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/receipt.json",
+          "sha256": "844954f4ab238edaf36afe5cdef85dc3dffdedbcf5696e630743ddd286a94f4c"
+        }
+      ],
+      "model_sha256": "b633ef263cd144f042b27b2d917eae895a7fb8e69cc8dcb14a82fed1d500b04e",
+      "price_paths": [
+        [
+          "target",
+          "prices",
+          "compute_ws",
+          "latency_cycles"
+        ],
+        [
+          "target",
+          "prices",
+          "preload",
+          "latency_cycles"
+        ]
+      ],
+      "reason": "Public same-ELF interval evidence shows opposing queued compute-drain overprediction and readout underprediction. WS/PRELOAD latency-only fitting cannot repair this known structural accounting/overlap error. Requires a new reviewed structural model before collecting automatic fit labels. This does not deny separately authorized diagnostics or provisional compiler feedback.",
+      "runtime_versions": [
+        9
+      ]
+    },
+    {
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-pipeline-diagnostics-v1/boundaries-v1.json",
+          "sha256": "954c70689bbbd8b0305fb792579a8eb895d0641eb0c44a4fe001c0d2719e1402"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/receipt.json",
+          "sha256": "844954f4ab238edaf36afe5cdef85dc3dffdedbcf5696e630743ddd286a94f4c"
+        }
+      ],
+      "model_sha256": "50aaab3f6c41de5c9d8cd01bb6616bf189cca711d44d5a5da08399c6c22c725a",
+      "price_paths": [
+        [
+          "target",
+          "prices",
+          "compute_ws",
+          "latency_cycles"
+        ],
+        [
+          "target",
+          "prices",
+          "preload",
+          "latency_cycles"
+        ]
+      ],
+      "reason": "Public same-ELF interval evidence shows opposing queued compute-drain overprediction and readout underprediction. WS/PRELOAD latency-only fitting cannot repair this known structural accounting/overlap error. Requires a new reviewed structural model before collecting automatic fit labels. This does not deny separately authorized diagnostics or provisional compiler feedback.",
+      "runtime_versions": [
+        10,
+        11
+      ]
+    },
+    {
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-pipeline-diagnostics-v1/boundaries-v1.json",
+          "sha256": "954c70689bbbd8b0305fb792579a8eb895d0641eb0c44a4fe001c0d2719e1402"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/receipt.json",
+          "sha256": "844954f4ab238edaf36afe5cdef85dc3dffdedbcf5696e630743ddd286a94f4c"
+        }
+      ],
+      "model_sha256": "d2b49f3e82d479cc5f93373a42786e9d56b91e2eee473148bf9aed791a03d427",
+      "price_paths": [
+        [
+          "target",
+          "prices",
+          "compute_ws",
+          "latency_cycles"
+        ],
+        [
+          "target",
+          "prices",
+          "preload",
+          "latency_cycles"
+        ]
+      ],
+      "reason": "Public same-ELF interval evidence shows opposing queued compute-drain overprediction and readout underprediction. WS/PRELOAD latency-only fitting cannot repair this known structural accounting/overlap error. Requires a new reviewed structural model before collecting automatic fit labels. This does not deny separately authorized diagnostics or provisional compiler feedback.",
+      "runtime_versions": [
+        12
+      ]
+    },
+    {
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-pipeline-diagnostics-v1/boundaries-v1.json",
+          "sha256": "954c70689bbbd8b0305fb792579a8eb895d0641eb0c44a4fe001c0d2719e1402"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/receipt.json",
+          "sha256": "844954f4ab238edaf36afe5cdef85dc3dffdedbcf5696e630743ddd286a94f4c"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-feed-lifetimes-v1/replays/receipt.json",
+          "sha256": "0d5ccffb389061192acbc8d107d748d26e69952d7f27fe08ff8b3ced71378cfa"
+        }
+      ],
+      "model_sha256": "5fe7a49e0b2f4eb84585a885aa718cb5b7393681e1cce57e098527343805e3b4",
+      "price_paths": [
+        [
+          "target",
+          "prices",
+          "compute_ws",
+          "latency_cycles"
+        ],
+        [
+          "target",
+          "prices",
+          "preload",
+          "latency_cycles"
+        ]
+      ],
+      "reason": "Operand lifetime split improves isolated compute drain but does not repair opposing readout structural error. WS/PRELOAD latency-only fitting remains denied; provisional feedback and separately authorized diagnostics unaffected.",
+      "runtime_versions": [
+        "ws-feed-lifetimes-v1 hypothesis"
+      ]
+    },
+    {
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/replays/receipt.json",
+          "sha256": "1d39236993b844a813da3bb1a10e850dbb9046d4acc23de66cc4415158c54a46"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/docs/perf_records/public_ws_pipeline_20261022/private-probe-facts.json",
+          "sha256": "b08a821f432a379e0baf0cc2fd6b0915f4e6efbc087f24f8612b8eb124c5618f"
+        }
+      ],
+      "model_sha256": "483af316aa18410525564e410e62f8625d7a026c1720022e4db56f9cb4754496",
+      "price_paths": [
+        [
+          "target",
+          "prices",
+          "compute_ws",
+          "latency_cycles"
+        ],
+        [
+          "target",
+          "prices",
+          "preload",
+          "latency_cycles"
+        ]
+      ],
+      "reason": "Source-derived private-cache probe service floor and optional WS feed lifetime split remain provisional. Queued compute drain and readout retain opposing structural residuals; diagnostic pair is not independent fit/heldout coverage. WS/PRELOAD-only fitting remains denied pending reviewed structural closure.",
+      "runtime_versions": [
+        "private-probe-observer-v2/probe"
+      ]
+    },
+    {
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/replays/receipt.json",
+          "sha256": "1d39236993b844a813da3bb1a10e850dbb9046d4acc23de66cc4415158c54a46"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/docs/perf_records/public_ws_pipeline_20261022/private-probe-facts.json",
+          "sha256": "b08a821f432a379e0baf0cc2fd6b0915f4e6efbc087f24f8612b8eb124c5618f"
+        }
+      ],
+      "model_sha256": "f1db70a09a3fa854b678c815f48f007c07253842c791b293355e1f7b4981192c",
+      "price_paths": [
+        [
+          "target",
+          "prices",
+          "compute_ws",
+          "latency_cycles"
+        ],
+        [
+          "target",
+          "prices",
+          "preload",
+          "latency_cycles"
+        ]
+      ],
+      "reason": "Source-derived private-cache probe service floor and optional WS feed lifetime split remain provisional. Queued compute drain and readout retain opposing structural residuals; diagnostic pair is not independent fit/heldout coverage. WS/PRELOAD-only fitting remains denied pending reviewed structural closure.",
+      "runtime_versions": [
+        "private-probe-observer-v2/combined"
+      ]
+    },
+    {
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/replays/receipt.json",
+          "sha256": "1d39236993b844a813da3bb1a10e850dbb9046d4acc23de66cc4415158c54a46"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/docs/perf_records/public_ws_pipeline_20261022/private-probe-facts.json",
+          "sha256": "b08a821f432a379e0baf0cc2fd6b0915f4e6efbc087f24f8612b8eb124c5618f"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-integration-20261021/.tmp/pool-relu-review/review.json",
+          "sha256": "82af4a4aaa3c44d64dbd0c74f85912d87ab347b6acfafc819fb8341c4dc91408"
+        }
+      ],
+      "model_sha256": "7790279c5397469fa440520e03ef226316112ac349f251ecde8c0d74ae37dfd3",
+      "price_paths": [
+        [
+          "target",
+          "prices",
+          "compute_ws",
+          "latency_cycles"
+        ],
+        [
+          "target",
+          "prices",
+          "preload",
+          "latency_cycles"
+        ]
+      ],
+      "reason": "Source-derived private-cache probe service floor and optional WS feed lifetime split remain provisional. Queued compute drain and readout retain opposing structural residuals; diagnostic pair is not independent fit/heldout coverage. WS/PRELOAD-only fitting remains denied pending reviewed structural closure. The separately reviewed pooled-ReLU service-equivalence revision does not repair or reprice WS/PRELOAD accounting; continue this denial on its exact new model identity."
+    },
+    {
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/replays/receipt.json",
+          "sha256": "1d39236993b844a813da3bb1a10e850dbb9046d4acc23de66cc4415158c54a46"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/docs/perf_records/public_ws_pipeline_20261022/private-probe-facts.json",
+          "sha256": "b08a821f432a379e0baf0cc2fd6b0915f4e6efbc087f24f8612b8eb124c5618f"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-integration-20261021/.tmp/pool-relu-review/review.json",
+          "sha256": "82af4a4aaa3c44d64dbd0c74f85912d87ab347b6acfafc819fb8341c4dc91408"
+        }
+      ],
+      "model_sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869",
+      "price_paths": [
+        [
+          "target",
+          "prices",
+          "compute_ws",
+          "latency_cycles"
+        ],
+        [
+          "target",
+          "prices",
+          "preload",
+          "latency_cycles"
+        ]
+      ],
+      "reason": "Combined structural accounting is provisional. Independent source-held validation and reviewed native sensitivity remain required; development readout residuals cannot be fitted into compute/preload prices. Diagnostic-only collection remains separate."
+    },
+    {
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/experiments/reference-data/public-scratchpad-request-admission-20261022/index.json",
+          "sha256": "b83b496f209f7827f01821b5d0c2b4cc5c0163363134a766a922f75adbd516c2"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/experiments/reference-data/public-fetch-response-candidate-20261022/candidate.json",
+          "sha256": "ab4cb936400a8af7badbef25a19459da4db389cec72859e7dc8cc5b676c88a30"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/compatibility.json",
+          "sha256": "2a3391911f645fbee3825d31f50c79373b0c2b64b978928be0296ca32c910ea7"
+        }
+      ],
+      "model_sha256": "01971a26e8b367fe22361a294785be31969ec3473735025608d22399b0ac96b6",
+      "price_paths": [
+        [
+          "target",
+          "prices",
+          "compute_ws",
+          "latency_cycles"
+        ],
+        [
+          "target",
+          "prices",
+          "preload",
+          "latency_cycles"
+        ]
+      ],
+      "reason": "Arrival/request and conditional fetch changes remain provisional. Independent source-held validation and identifiable native parameter sensitivities unresolved; two WS/PRELOAD prices cannot fit CPU/cache/arrival structural residuals. No fit or qualification grant; separate diagnostics and provisional estimates remain allowed."
+    }
+  ],
+  "previous_review": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/continued-denial.json",
+    "sha256": "424c7ec4e6cc10572cd71dc6ceb31fa290264349632f3b61cad884c7211a492f"
+  },
+  "review_id": "combined-arrival-v1-continue-calibration-denial",
+  "schema": "merlin.native_calibration_admission_review.v1"
+}

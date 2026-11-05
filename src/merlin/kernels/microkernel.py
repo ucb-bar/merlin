@@ -25,6 +25,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Callable
 
+from merlin.compile.analysis.contraction_shapes import ContractionShape
+
 #: how the vector length is chosen for the inner loop.
 VL_FIXED = "fixed"  # a compile-time vector length (e.g. RVV vsetivli) — simple, wastes tail lanes
 VL_DYNAMIC = "dynamic"  # VL-agnostic loop sizing to the hardware VL with the tail folded in
@@ -175,40 +177,8 @@ def resolve(target: str, spec: MicrokernelSpec) -> Any:
 # ---------------------------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class ContractionShape:
-    """One contraction the micro-kernel space is asked to realize, named by ITERATOR TYPE.
-
-    Deliberately NOT "M/N/K": a target-agnostic policy only needs to know which extents belong to
-    PARALLEL iteration dims (the ones a register block tiles and whose tail must be masked) and which
-    belong to REDUCTION dims (whose tail is harmless). ``op`` is the op class the target schedules
-    separately (``linalg.matmul`` vs ``linalg.batch_matmul`` get independent tile sizes), so a policy
-    can solve each class on its own instead of forcing one blocking on both.
-
-    ``parallel`` is outer-to-inner as the op writes them (matmul -> (M, N); batch_matmul ->
-    (B, M, N)), which is the order a target's tile-size vector uses.
-
-    ``dtypes`` carries the element types as MLIR tokens, positionally ``(lhs, rhs, out)`` — the same
-    triple a target contract's accumulate rule is written in (``{in, weight, acc}``), so a legality
-    question can be asked of a contraction without re-reading the module. It is ``()`` when the
-    observer could not read them, which is the honest reading for a synthetic shape or a policy that
-    predates the field; a consumer that needs a dtype must therefore handle absence rather than
-    assume one. Extents alone cannot answer legality on a unit that computes int8 and not fp32, and
-    the accumulator token is what decides whether a reduction overflows.
-    """
-
-    op: str
-    parallel: tuple[int, ...]
-    reduction: tuple[int, ...] = ()
-    dtypes: tuple[str, ...] = ()
-
-    def __post_init__(self) -> None:
-        for f in ("parallel", "reduction"):
-            v = getattr(self, f)
-            if not isinstance(v, tuple) or any(int(x) <= 0 for x in v):
-                raise ValueError(f"{f} must be a tuple of positive extents, got {v!r}")
-        if not isinstance(self.dtypes, tuple) or any(not str(d) for d in self.dtypes):
-            raise ValueError(f"dtypes must be a tuple of non-empty tokens, got {self.dtypes!r}")
+# The contraction a policy is legal FOR is an IR fact, not a micro-kernel decision; its definition
+# lives with the observer that reads it (merlin.compile.analysis.contraction_shapes).
 
 
 def masked_parallel_dims(block: "tuple[int, ...]", extents: "tuple[int, ...]") -> tuple[int, ...]:

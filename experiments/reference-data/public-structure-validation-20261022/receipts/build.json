@@ -1,0 +1,52 @@
+{
+  "schema": "operator.independent_structure_build.v1",
+  "argv": [
+    "retained/toolchains/llvm-a47bddcc/install/bin/clang",
+    "--target=riscv64-unknown-elf",
+    "-march=rv64gc",
+    "-mabi=lp64d",
+    "-mcmodel=medany",
+    "-O1",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-ffreestanding",
+    "-fno-builtin",
+    "-fno-stack-protector",
+    "-msmall-data-limit=0",
+    "-nostdlib",
+    "--ld-path=retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/bin/riscv64-unknown-elf-ld",
+    "-Wl,-T,retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/link.ld",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/start.S",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/probe.c",
+    "-o",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/program.elf"
+  ],
+  "source": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/probe.c",
+    "sha256": "5c7f188fce274155f932fef943956fc8e851c28dca96a87a5e0a8aa5f367e9de"
+  },
+  "plan": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/plan.json",
+    "sha256": "49e4da97daaabdcad168e25fc96c42af1dd7e2e5934e3d928bc439052f7247d3"
+  },
+  "platform": [
+    {
+      "path": "retained/tasks/el4-joint-performance-feedback-20261021/spike-timing/examples/gemmini/timing/tests/elf/start.S",
+      "sha256": "49a5a04306a2c942447156d02733e5c2a7a4da9323eb67f14534fdc0a2dcfdc8"
+    },
+    {
+      "path": "retained/tasks/el4-joint-performance-feedback-20261021/spike-timing/examples/gemmini/timing/tests/elf/link.ld",
+      "sha256": "e098b845a50cc2f6094db6a2f52df65f47b210b8a8dc89d6f5a7b9470a6553ce"
+    }
+  ],
+  "elf": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/program.elf",
+    "sha256": "3cf3f5607790e126a5b921de0ca54e4e8c160ee96e42f55cd8f6503956edd1b7"
+  },
+  "public_ISA_source": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/spike-timing/examples/gemmini/timing/tests/elf/ws_pipeline.c",
+    "sha256": "58da0ced6bcba2c9467adacd6cccdbdc780ca0b418a9b8bf8cfcfef3f39ee375"
+  },
+  "note": "Instruction/config fact provenance only; this new protocol does not include existing source/kernel code. No physical execution."
+}

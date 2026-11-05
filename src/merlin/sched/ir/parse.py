@@ -246,13 +246,34 @@ def _parse_call(content: str, lineno: int) -> Call:
     )
 
 
-def _parse_for(content: str, lineno: int) -> tuple[str, int]:
+def _parse_for(content: str, lineno: int):
     if not content.endswith(":"):
         raise ParseError(f"line {lineno}: a loop header ends with ':'")
     parts = _split_top(content[4:-1], " in 0..")
     if len(parts) != 2:
         raise ParseError(f"line {lineno}: expected `for <var> in 0..<extent>:`")
-    return parts[0].strip(), _int(parts[1])
+    carried = _split_top(parts[1], " carry")
+    if len(carried) == 1:
+        return parts[0].strip(), _int(parts[1]), (), (), ()
+    if len(carried) != 2:
+        raise ParseError(f"line {lineno}: malformed completion loop bindings")
+    rest = carried[1]
+    values = []
+    for prefix in ("(", " yield(", " result("):
+        if not rest.startswith(prefix):
+            raise ParseError(f"line {lineno}: malformed completion loop bindings")
+        start = len(prefix) - 1
+        end = _match(rest, start)
+        values.append(rest[start + 1:end])
+        rest = rest[end + 1:]
+    if rest:
+        raise ParseError(f"line {lineno}: unexpected completion loop suffix")
+    inputs = tuple(tuple(pair.split("=")) for pair in values[0].split(",") if pair)
+    if any(len(pair) != 2 for pair in inputs):
+        raise ParseError(f"line {lineno}: completion input is local=initial")
+    return (parts[0].strip(), _int(carried[0]), inputs,
+            tuple(values[1].split(",")) if values[1] else (),
+            tuple(values[2].split(",")) if values[2] else ())
 
 
 def _parse_body(lines: list[tuple[int, str, int]], i: int, depth: int) -> tuple[tuple, int]:
@@ -264,9 +285,9 @@ def _parse_body(lines: list[tuple[int, str, int]], i: int, depth: int) -> tuple[
         if level > depth:
             raise ParseError(f"line {lineno}: unexpected indentation")
         if content.startswith("for "):
-            var, extent = _parse_for(content, lineno)
+            var, extent, inputs, yields, results = _parse_for(content, lineno)
             inner, i = _parse_body(lines, i + 1, depth + 1)
-            body.append(Loop(var, extent, inner))
+            body.append(Loop(var, extent, inner, inputs, yields, results))
         else:
             body.append(_parse_call(content, lineno))
             i += 1

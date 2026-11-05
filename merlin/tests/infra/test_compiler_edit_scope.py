@@ -80,11 +80,62 @@ def test_contract_mutation_and_linked_source_fail_closed(tmp_path):
 
 
 def _seal(document):
-    document = dict(document)
+    document = {key: value for key, value in document.items() if key != "sha256"}
     document["sha256"] = hashlib.sha256(
         json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
     return document
+
+
+def test_v2_new_pass_component_uses_frozen_authority_and_preserves_other_source(tmp_path):
+    before, after, contract = setup(tmp_path)
+    contract = _seal(
+        {
+            **contract,
+            "schema": "compiler_edit_contract_v2",
+            "new_python_components": [
+                {"directory": "passes", "surface_ids": ["compile"], "reason": "new checked compiler passes"}
+            ],
+        }
+    )
+    validate_edit_contract(contract, before)
+    (after / "passes").mkdir()
+    (after / "passes/__init__.py").write_text("")
+    (after / "passes/reuse.py").write_text("PANEL_LIMIT=4\ndef run(shape):\n return shape[0] > PANEL_LIMIT\n")
+    assert inspect_compiler_edits(before, after, contract)["status"] == "allowed"
+    (after / "compiler/codegen.py").write_text("LIMIT=16\ndef allowed():\n return 3\ndef protected():\n return 2\n")
+    assert inspect_compiler_edits(before, after, contract)["status"] == "allowed"
+    (after / "compiler/codegen.py").write_text("LIMIT=8\ndef allowed():\n return 3\ndef protected():\n return 2\n")
+    assert inspect_compiler_edits(before, after, contract)["status"] == "refused"
+
+
+@pytest.mark.parametrize("damage", ["v1", "existing", "unowned", "escape", "generated", "data", "link"])
+def test_new_pass_authority_is_versioned_narrow_and_python_only(tmp_path, damage):
+    before, after, original = setup(tmp_path)
+    row = {"directory": "passes", "surface_ids": ["compile"], "reason": "compiler pass source"}
+    schema = "compiler_edit_contract_v2"
+    if damage == "v1":
+        schema = "compiler_edit_contract_v1"
+    elif damage == "existing":
+        row["directory"] = "compiler"
+    elif damage == "unowned":
+        row["surface_ids"] = ["self-granted"]
+    elif damage == "escape":
+        row["directory"] = "../passes"
+    elif damage == "generated":
+        row["directory"] = "build"
+    contract = _seal({**original, "schema": schema, "new_python_components": [row]})
+    if damage not in {"data", "link"}:
+        with pytest.raises(ValueError):
+            validate_edit_contract(contract, before)
+        return
+    validate_edit_contract(contract, before)
+    (after / "passes").mkdir()
+    if damage == "data":
+        (after / "passes/answers.json").write_text("{}")
+    else:
+        (after / "passes/check.py").symlink_to(before / "compiler/codegen.py")
+    assert inspect_compiler_edits(before, after, contract)["status"] == "refused"
 
 
 def round_setup(tmp_path):

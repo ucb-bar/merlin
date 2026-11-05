@@ -43,8 +43,8 @@ REPO = Path(repo_root())
 def _emitted_facts(model_o: Path, keep: Path) -> dict:
     """Decode `model.o` and report the fused-MAC evidence: vfwmacc/vfmacc/vfwcvt counts across the
     whole kernel and the effective vtype histogram. Read from the decoded stream, never guessed."""
+    from merlin.compile.analysis.disassembly import objdump_bin
     from merlin.kernels.decode import rvv as _rvv
-    from merlin.kernels.decode.objdump import objdump_bin
 
     try:
         p = subprocess.run(

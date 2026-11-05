@@ -2,6 +2,9 @@
 # selected facts, software spec and independent iteration captures.
 software_spec: ../target/software-spec.yaml
 capsule_policy: derived_only
+# Keep the historical aligned/tail controls and add one wider independent-column
+# readout source. Timing-model range still requires actual observed counts.
+column_readout_profile: independent_distinct_scales_v2
 # Stable measurement policy, not an availability probe during deterministic
 # derivation. Actual execution still verifies the selected engine and RTL bytes.
 performance_oracles: {L2: spike, L3: verilator}
@@ -11,4 +14,11 @@ datapath:
   requant_output_dtype: i8
   requant_shift: 3
   required_oracle_tiers: [L0, L1, L2, L3]
+# Declared size classes of the correctness cohort: the largest contraction extent of each case, in
+# multiples of the array's tile edge (below one tile is `sub_tile`). Correctness cases stay small on
+# purpose -- tails, partial tiles and epilogues show at a few tiles -- and model-scale work belongs to
+# the performance-demand cohort. Phase 0 records the written distribution against these classes.
+correctness_size_classes:
+  edges: [1, 2, 4, 32]
+  intent: generality at tile boundaries; multi-tile iteration; deep-K and capacity knees only where a requirement asks
 capsules: []

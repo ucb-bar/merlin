@@ -11,6 +11,11 @@ The **Merlin C runtime**: a generic, data-driven driver that executes a compiled
 
 ## What belongs here
 
+- `chain_guest.c` — generated-table-driven retained-object chain execution. It carries actual
+  state, measures the selected invocation callback, and explicitly selects full binary outputs
+  or complete all-element comparison against pinned references. It contains no model schedule
+  or accelerator implementation. Descriptor setup/comparison/UART are outside invocation cycles.
+
 - `merlin_model.h/.c` — the descriptor builder + `merlin_run` (arg table + weights base + input pointers + output buffer → descriptors → `merlin_invoke`).
 - `merlin_host_main.c` — host verification driver (loads `weights.bin`, dumps output).
 - `ordered_fma_bounds.h` — optional target-neutral certificates for zero-seeded

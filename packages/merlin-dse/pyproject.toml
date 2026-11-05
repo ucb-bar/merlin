@@ -7,6 +7,7 @@ name = "merlin-dse"
 version = "0.1.0"
 description = "Optional design-space exploration and design-pressure research tools for Merlin"
 requires-python = ">=3.12"
+license = "Apache-2.0"
 readme = "README.md"
 dependencies = ["merlin", "pyyaml"]
 
@@ -23,6 +24,7 @@ merlin-dse-guidance = "merlin_dse.cli:guidance_main"
 [tool.setuptools]
 package-dir = { "" = "src" }
 include-package-data = false
+license-files = ["LICENSE", "NOTICE"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

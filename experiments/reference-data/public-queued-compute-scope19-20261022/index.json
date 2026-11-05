@@ -1,0 +1,70 @@
+{
+  "active_model_changes": 0,
+  "all16_warmup_calls_pass": true,
+  "all24_numeric_rows_match": true,
+  "annotated_runs": 1,
+  "author_grants": false,
+  "elf_sha256": "9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+  "fit_eligible": false,
+  "full_ancestry": {
+    "original_sha256": "bc7ef567f8823baf38e4f4bf418805f46ab3553ccb00224b54b8f0182bf1155d",
+    "projection": {
+      "path": "full-ancestry.json",
+      "sha256": "60725c0a3cf5f8ce4d0cfe3a95fb81156bf1691ffb4aa34dcfba8b279fcfca65"
+    },
+    "rule": "Workspace/system absolute paths normalized; evidence scalars unchanged"
+  },
+  "guest_report_execution_completed": true,
+  "model_sha256": "9ce62bab015df550d3849f501672dc9a9a1c4ea0c04233029caecf86bb7a56dd",
+  "new_functional_runs": 0,
+  "not_packaged": [
+    "ELF",
+    "input/output arrays",
+    "native hidden answers"
+  ],
+  "observation": {
+    "original_sha256": "dd143140e2b779acb79ee72f18ba6ba7bb8ebf8506c555f8ddcda53142cc9a72",
+    "projection": {
+      "path": "report.json",
+      "sha256": "fd98e56963799188cb247610bbe724934db9035b625f149d43ef93f2e5d24376"
+    },
+    "rule": "Workspace/system absolute paths normalized; evidence scalars unchanged"
+  },
+  "original_functional_sha256": "7859476cf0d0597d3251ad8b67ca02b1c470584843ac8147620fdb71cfd953cb",
+  "os_returncode": "not_retained; do not infer from guest completion",
+  "physical_runs_added": 0,
+  "plan": {
+    "original_sha256": "9fa606dd7abb9ac872ba5138d2b4de4bd6c578f4ddefdc485854cd2989ec221e",
+    "projection": {
+      "path": "plan.json",
+      "sha256": "79ee8972a60a8a60f6ce35dd94e1550634fe2f8c44cf87b424fe8ee81db3b6ff"
+    },
+    "rule": "Workspace/system absolute paths normalized; evidence scalars unchanged"
+  },
+  "qualification_review": {
+    "original_sha256": "33f9b7ab33cc7a6897948bff8343a8bc8803dcae50539eb93a87fca5aa501d99",
+    "projection": {
+      "path": "qualification-review.json",
+      "sha256": "1de8a69f7637362361b013e8e5f236a219040fc1b9ba6cdf3cc7557f9bf43ac7"
+    },
+    "rule": "Workspace/system absolute paths normalized; evidence scalars unchanged"
+  },
+  "qualified": false,
+  "role": "development diagnostic",
+  "schema": "operator.public_queued_compute_trace_evidence.v1",
+  "scope_occurrence": 19,
+  "status": "modeled_guest_completed_transport_marker_refused",
+  "trace_events": 891,
+  "trace_sha256": "6eeb7dcce71062dbf066de261b5f4fe7b528c753f93974e6380ff95e124fab7c",
+  "trace_truncated": false,
+  "transport_record": {
+    "original_sha256": "a23f4a5957219a0342f85ede6c6648bf983585476327c8e56d4e1fe159d021ad",
+    "projection": {
+      "path": "transport-refusal.json",
+      "sha256": "cc58d8a35d68f936f0a5d877a22f053522c82569c05e5354c0df9db856f9484b"
+    },
+    "rule": "Workspace/system absolute paths normalized; evidence scalars unchanged"
+  },
+  "transport_refusal": "Operator runner erroneously requested literal DONE, which this public CAPACITY_TOTAL protocol does not emit. Retained original interrupted invocation and all guest artifacts; no retry or rewritten success.",
+  "transport_success_record": false
+}

@@ -96,7 +96,9 @@ def test_no_capsule_gains_mesh_work_from_the_correction():
     contractions = [d for d in demands if d.family == "contraction"]
     assert len(contractions) <= len(demands)
     # the two gathers are gone from the contraction set, the reducing one remains
-    convs = [d for d in contractions if d.op == "convolution_im2col_matmul"]
+    from merlin.targetgen.legacy_labels import is_gathered_conv_op
+
+    convs = [d for d in contractions if is_gathered_conv_op(d.op)]
     assert len(convs) == 1, f"exactly one of the three conv-tagged generics contracts, got {len(convs)}"
 
 

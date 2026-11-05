@@ -274,7 +274,10 @@ def inspect_compiler_package(
 
 
 def build_compiler_edit_contract(
-    inventory: PackageOptimizationInventory, *, helper_extensions: Sequence[Mapping[str, Any]] = ()
+    inventory: PackageOptimizationInventory,
+    *,
+    helper_extensions: Sequence[Mapping[str, Any]] = (),
+    new_python_components: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Describe a host-frozen edit boundary; candidate manifests cannot expand it.
 
@@ -282,6 +285,10 @@ def build_compiler_edit_contract(
     executing submitted compiler code. Returning a catalog alone is not an edit
     sandbox. Optional new-helper directories are explicit host inputs, never
     inferred from an untrusted candidate's newly declared optimization surfaces.
+    Explicit ``new_python_components`` selects V2 authority for absent Python
+    component directories. The inventory checks ownership and scoped intent;
+    ``validate_edit_contract`` checks actual absence and real parents before
+    freezing. Omitting the argument preserves the V1 document and its identity.
     """
     symbols = {(row.path, row.symbol): row for row in inventory.symbols}
     existing = []
@@ -345,6 +352,42 @@ def build_compiler_edit_contract(
         "enforcement": "requires host pre-execution submitted-change gate; catalog is not enforcement",
         "unmapped_mechanism": "record missing edit surface and request an explicit host-approved contract extension",
     }
+    if new_python_components is not None:
+        if not isinstance(new_python_components, Sequence) or isinstance(new_python_components, (str, bytes)):
+            raise ValueError("new Python components require an explicit sequence of host declarations")
+        components = []
+        component_paths: list[PurePosixPath] = []
+        source_paths = {row.path for row in inventory.symbols}
+        for component in new_python_components:
+            if not isinstance(component, Mapping) or set(component) != {"directory", "surface_ids", "reason"}:
+                raise ValueError("new Python component requires directory, owning surfaces and reason")
+            directory = _safe_relative(component["directory"], "new Python component directory")
+            path = PurePosixPath(directory)
+            if (
+                directory != component["directory"]
+                or directory == "."
+                or directory in directories
+                or directory in source_paths
+                or (str(path.parent) != "." and str(path.parent) not in directories)
+                or any(part in {".git", "out", "build", "__pycache__"} for part in path.parts)
+                or any(path == other or path in other.parents or other in path.parents for other in component_paths)
+            ):
+                raise ValueError("new Python component must reserve one absent scoped compiler directory")
+            owners = component["surface_ids"]
+            reason = component["reason"]
+            if (
+                not isinstance(owners, Sequence)
+                or isinstance(owners, (str, bytes))
+                or not owners
+                or any(not isinstance(owner, str) or owner not in ids for owner in owners)
+            ):
+                raise ValueError("new Python component requires frozen owning surface ids")
+            if not isinstance(reason, str) or not reason.strip():
+                raise ValueError("new Python component requires a host-declared reason")
+            component_paths.append(path)
+            components.append({"directory": directory, "surface_ids": sorted(set(owners)), "reason": reason})
+        contract["schema"] = "compiler_edit_contract_v2"
+        contract["new_python_components"] = components
     contract["sha256"] = hashlib.sha256(
         json.dumps(contract, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()

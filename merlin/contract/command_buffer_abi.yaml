@@ -86,6 +86,16 @@ opcodes:
   # Whole-op opcodes (no residency decomposition). The authoritative enumeration of the interface
   # mnemonics that reach them is targetgen.contract.interface_emit.defined_mnemonics(), read from the
   # parser's own tables; an op the parser does not define now RAISES rather than being dropped.
+  ROW_MAJOR_VIEW:
+    operands: {src: output_tensor, dst: same_output_tensor}
+    attributes: {source_shape: "positive static original shape", shape: "positive static final shape"}
+    semantics: >-
+      A final row-major logical view of an already produced output in the SAME physical buffer.
+      Both names must be identical. Shape products and dtype must agree exactly; the complete tensor
+      declaration carries the final shape. No casting, transpose, copying, distinct-slot alias or input
+      mutation is permitted. Flat element order and all bytes remain unchanged. Both numeric engines
+      re-form the declared nested result shape; target code must have completed the original producer.
+      The view itself adds no memory traffic or arithmetic, and grants no synchronization authority.
   MOVEMENT:
     operands: {src: tensor, dst: output_tensor}
     attributes:
@@ -95,6 +105,22 @@ opcodes:
       identity load->store round-trip through the accelerator: dst holds src's values UNCHANGED,
       only the container dtype widens. No clamp, no requantize -- the point of the capsule is that
       the data survives the trip bit-for-bit.
+  MAXPOOL2D:
+    operands: {src: tensor, dst: output_tensor}
+    attributes:
+      epilogue: "[acc_scale, maxpool]"
+      acc_scale: "positive float32 multiplier; round to nearest even and saturate to signed i8"
+      pool_in_dims: "[height, width]; src has shape [height*width, channels]"
+      pool_size: "[height, width]"
+      pool_stride: "[height, width]"
+      pool_padding: "[top, left, bottom, right]"
+      pool_pad_value: "explicit padding value in the output integer domain"
+      output_dtype: "i8"
+    semantics: >-
+      A closed quantized spatial maximum: widen input i8 values, apply acc_scale,
+      then take the spatial maximum. This is a composition of movement and readout,
+      not evidence for an independent pooling engine. A backend must implement
+      the declared padding and scaling semantics or refuse the form.
   ATTENTION_QK:
     operands: {q: tensor, k: tensor, dst: output_tensor}
     attributes:

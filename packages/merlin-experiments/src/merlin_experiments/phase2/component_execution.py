@@ -29,6 +29,7 @@ from .contracts import StageGateError, document_sha256, exact_tree_record, mappi
 from .edit_authority import FrozenEditAuthority
 
 _ISSUER = object()
+_DEFAULT_VERIFICATION = object()
 
 
 def _candidate_authority(admission, candidate, edit_authority):
@@ -99,7 +100,11 @@ class ComponentIndependentExecution:
             }
         )
 
-    def verify(self):
+    def verify(self, *, retained_revision=_DEFAULT_VERIFICATION):
+        if retained_revision is _DEFAULT_VERIFICATION:
+            from .retained_revisions import executing_candidate_revision
+
+            retained_revision = executing_candidate_revision(self.edit_authority)
         if self._issuer is not _ISSUER:
             raise StageGateError("component execution requires issued independent normal service authority")
         verify_baseline_admission(
@@ -119,7 +124,12 @@ class ComponentIndependentExecution:
             or transport is not self.baseline_admission.qualification.container_transport
         ):
             raise StageGateError("independent execution compiler transport differs from its original qualification")
-        edit_sha = _candidate_authority(self.baseline_admission, self.candidate, self.edit_authority)
+        if retained_revision is None:
+            edit_sha = _candidate_authority(self.baseline_admission, self.candidate, self.edit_authority)
+        else:
+            retained_revision.verify(authority=self.edit_authority)
+            self.baseline_admission.qualification.verify(candidate=self.edit_authority.seed)
+            edit_sha = retained_revision.edit_authority_sha256
         if edit_sha != self.edit_authority_sha256:
             raise StageGateError("independent component execution candidate/edit selection changed")
         verify_component_view(self.view)
@@ -131,7 +141,10 @@ class ComponentIndependentExecution:
 
     def execute(self, *, compiler, member, corpus, workspace, timeout_s):
         """Compile, grade and verify one exact component through ordinary services."""
-        self.verify()
+        from .retained_revisions import executing_revision
+
+        retained = executing_revision(Path(compiler))
+        self.verify(retained_revision=retained)
         self.baseline_admission.verify(corpus=corpus)
         if member not in corpus.capsules:
             raise StageGateError("independent component execution selected another source member")
@@ -154,15 +167,19 @@ class ComponentIndependentExecution:
             raise StageGateError("independent component execution requires exact source and fresh private output")
         before = str(hash_tree(compiler)["sha256"])
         selected_sha = exact_tree_record(compiler)["sha256"]
-        current_sha = exact_tree_record(self.candidate)["sha256"]
+        current_sha = exact_tree_record(self.candidate)["sha256"] if retained is None else None
         seed_sha = exact_tree_record(self.baseline_admission.baseline)["sha256"]
-        if selected_sha not in {seed_sha, current_sha}:
+        if retained is None and selected_sha not in {seed_sha, current_sha}:
             raise StageGateError("independent execution selected neither the fresh seed nor the authorized candidate")
         started = time.monotonic()
         member_binding = _member_binding(self.baseline_admission, member)
         workspace.mkdir(parents=True, mode=0o700)
-        clone = workspace / "compiler"
-        shutil.copytree(compiler, clone)
+        if retained is None:
+            clone = workspace / "compiler"
+            shutil.copytree(compiler, clone)
+        else:
+            retained.verify(authority=self.edit_authority)
+            clone = retained.source
         candidate_sha = exact_tree_record(clone)["sha256"]
         grade_root = workspace / "grade"
         with qualified_package_execution(
@@ -251,10 +268,11 @@ class ComponentIndependentExecution:
         if (
             str(hash_tree(compiler)["sha256"]) != before
             or exact_tree_record(clone)["sha256"] != candidate_sha
-            or exact_tree_record(self.candidate)["sha256"] != current_sha
+            or retained is None
+            and exact_tree_record(self.candidate)["sha256"] != current_sha
         ):
             raise StageGateError("independent component execution changed frozen compiler bytes")
-        self.verify()
+        self.verify(retained_revision=retained)
         receipt = workspace / "execution.json"
         receipt.write_text(
             json.dumps(

@@ -682,9 +682,9 @@ def conv_shapes(src, *, with_strides: bool = False) -> "list[Any]":
     schedule legality. Returns ``[]`` (never raises) on an unreadable module, so an observer failure
     costs a vectorization rather than a build.
     """
+    from merlin.compile.analysis.contraction_shapes import ContractionShape, _iterator_types, _shaped, indexing_maps
+
     from ..common import mlir_query as mq
-    from ..kernels.microkernel import ContractionShape
-    from ..kernels.shapes import _iterator_types, _shaped, indexing_maps
 
     try:
         module = mq.parse(src)

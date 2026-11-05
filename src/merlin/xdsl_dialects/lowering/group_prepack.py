@@ -174,7 +174,7 @@ def module_extents(groups: Sequence[CG.Group]) -> dict[int, tuple] | None:
     """The contraction-extent table of the one module ``groups`` were formed over, read ONCE, so a
     caller stating every group does not walk the whole module per group. ``None`` (each group reads
     its own) when the groups do not name one module."""
-    from merlin.targetgen import model_coverage
+    from merlin.compile.analysis.contraction_shapes import contraction_extents
 
     modules = {
         id(module): module
@@ -184,7 +184,7 @@ def module_extents(groups: Sequence[CG.Group]) -> dict[int, tuple] | None:
     }
     if len(modules) != 1:
         return None
-    return model_coverage._contraction_extents(next(iter(modules.values())))
+    return contraction_extents(next(iter(modules.values())))
 
 
 def prepack(
@@ -214,6 +214,19 @@ def prepack(
     arrays: dict[str, Any] = {}
     for group in groups:
         if group.placement == CG.HOST:
+            continue
+        if group.fusion and group.fusion.get("cut") != "bare":
+            from . import group_output_program as GOP
+
+            try:
+                if accumulator_bits != 32:
+                    raise GN.GroupNumericsError("the selected output statement requires its declared i32 accumulator")
+                stated = group_command.program(group, weight_args=weight_args, extents=extents)
+                row, folded = GOP.prepack(group, stated, manifest, Path(safetensors_path), device_layout=device_layout)
+                rows.append(row)
+                arrays.update(folded)
+            except (CG.NoCapsuleForm, GN.GroupNumericsError) as refusal:
+                skipped.append({"group": group.index, "reason": str(refusal)})
             continue
         if CG.QUANTIZE not in group.stages:
             # A GROUP THAT LEAVES AS THE ACCUMULATOR STILL HAS A DEVICE WEIGHT. This guard skipped
@@ -275,6 +288,9 @@ def prepack(
                     row["weight"] = {"refused": str(refusal)}
                 rows.append(row)
             continue
+        if group.window_pool is not None:
+            rows.append({"group": group.index, "stages": list(group.stages), "window_pool": dict(group.window_pool)})
+            continue
         if group.operand_sum is not None or group.window_mean is not None:
             scalar = _scalar_row(group)
             # A MEAN'S STORED OPERAND IS A REAL ARRAY, not only a sentence about one. The row has
@@ -320,7 +336,32 @@ def prepack(
             }
             if numerics.bias_arg_index is not None:
                 name, bias = _stored_tensor(numerics.bias_arg_index, manifest, Path(safetensors_path))
-                folded = np.rint(bias / numerics.bias_divisor)
+                from . import group_exact_float as GEF
+
+                exact_float = GEF.needs_proof(group)
+                if exact_float:
+                    # The route must split a converted float chain when this
+                    # source/weight-bound proof fails. A surviving fused group
+                    # with no proof is a compiler error, never a silent fold.
+                    proof = GEF.prove(group, manifest, safetensors_path, weight_args=weight_args)
+                    if not proof['exact']:
+                        raise ValueError(
+                            f"group {group.index} has no exact float readout on "
+                            f"{proof['channels'] - proof['accepted_channels']} channels"
+                        )
+                    folded = np.asarray(proof['integer_bias'], dtype=np.int64)
+                    row['multiplier'] = proof['readout_scale']
+                    row['multiplier_f32_bits'] = struct.unpack('<I', struct.pack('<f', proof['readout_scale']))[0]
+                    row['exact_float_proof'] = {
+                        'schema': 'group_exact_float_v1',
+                        'source_weight': proof['weight'],
+                        'source_bias': proof['bias'],
+                        'input_bound': proof['input_bound'],
+                        'channels': proof['channels'],
+                        'method': proof['proof'],
+                    }
+                else:
+                    folded = np.rint(bias / numerics.bias_divisor)
                 if not np.all(np.isfinite(folded)) or np.abs(folded).max(initial=0) > limit:
                     raise GN.GroupNumericsError(
                         f"bias {name!r} folds to a value outside the {accumulator_bits}-bit "
@@ -333,6 +374,9 @@ def prepack(
                     "stored_tensor": name,
                     "arg_index": numerics.bias_arg_index,
                     "divisor": numerics.bias_divisor,
+                    "fold_rule": (
+                        "source_bound_exact_float_transition" if exact_float else "roundeven_bias_over_divisor"
+                    ),
                     "array": key,
                     "elements": int(folded.size),
                     "max_abs": int(np.abs(folded).max(initial=0)),

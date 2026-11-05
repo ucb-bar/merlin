@@ -1,0 +1,72 @@
+diff --git a/chipyard_harness/blackboxes.cpp b/chipyard_harness/blackboxes.cpp
+index 1b2a7cd..1b45467 100644
+--- a/chipyard_harness/blackboxes.cpp
++++ b/chipyard_harness/blackboxes.cpp
+@@ -83,12 +83,17 @@ struct ClockState { uint64_t next; uint64_t half; };
+ static std::unordered_map<uint8_t*, ClockState> clocks;
+ 
+ uint64_t harness_sample_step_ps() {
++  // The FireSim-aligned TestHarness takes its clock directly from the top-level
++  // input, so no ClockSourceAtFreqMHz adapter is instantiated. One nominal
++  // 1 GHz cycle is two 500 ps samples; cycle counting does not claim wall time.
++  if (clocks.empty()) return 500;
+   uint64_t result = 0;
+   for (const auto& clock : clocks) result = std::gcd(result, clock.second.half);
+   if (!result) throw std::runtime_error("no declared free-running clock for the harness");
+   return result;
+ }
+ uint64_t harness_reference_period_ps() {
++  if (clocks.empty()) return 1000;
+   uint64_t result = UINT64_MAX;
+   for (const auto& clock : clocks) result = std::min(result, clock.second.half);
+   if (result > UINT64_MAX / 2) throw std::runtime_error("no representable reference clock");
+@@ -129,17 +134,17 @@ static uint8_t* checked_memory(uint64_t address, size_t size) {
+ void SimDRAM(int64_t address_bits, int64_t chip_id, int64_t clock_hz, int64_t data_bits,
+              int64_t id_bits, int64_t line_size, int64_t base, int64_t size,
+              uint8_t reset, uint8_t& aw_ready, uint8_t aw_valid, uint8_t aw_id,
+-             uint32_t aw_address, uint8_t aw_len, uint8_t aw_size, uint8_t aw_burst,
++             uint64_t aw_address, uint8_t aw_len, uint8_t aw_size, uint8_t aw_burst,
+              uint8_t aw_lock, uint8_t aw_cache, uint8_t aw_prot, uint8_t aw_qos,
+              uint8_t& w_ready, uint8_t w_valid, uint64_t w_data, uint8_t w_strb, uint8_t w_last,
+              uint8_t b_ready, uint8_t& b_valid, uint8_t& b_id, uint8_t& b_resp,
+-             uint8_t& ar_ready, uint8_t ar_valid, uint8_t ar_id, uint32_t ar_address,
++             uint8_t& ar_ready, uint8_t ar_valid, uint8_t ar_id, uint64_t ar_address,
+              uint8_t ar_len, uint8_t ar_size, uint8_t ar_burst, uint8_t ar_lock,
+              uint8_t ar_cache, uint8_t ar_prot, uint8_t ar_qos, uint8_t r_ready,
+              uint8_t& r_valid, uint8_t& r_id, uint64_t& r_data, uint8_t& r_resp, uint8_t& r_last) {
+   static std::unique_ptr<mm_magic_t> model;
+   if (!model) {
+-    if (address_bits != 32 || data_bits != 64 || size <= 0 || base < 0 ||
++    if ((address_bits != 32 && address_bits != 35) || data_bits != 64 || size <= 0 || base < 0 ||
+         chip_id != 0 || clock_hz <= 0 || id_bits < 1 || id_bits > 8 || line_size <= 0)
+       throw std::runtime_error("unsupported native memory adapter parameterization");
+     void* data = mmap(nullptr, size, PROT_READ | PROT_WRITE,
+@@ -163,6 +168,28 @@ void SimDRAM(int64_t address_bits, int64_t chip_id, int64_t clock_hz, int64_t da
+   (void)ar_burst; (void)ar_lock; (void)ar_cache; (void)ar_prot; (void)ar_qos;
+ }
+ 
++void SimBlockDevice(int64_t ntags, uint8_t reset,
++                    uint8_t& req_ready, uint8_t req_valid, uint8_t req_write,
++                    uint32_t req_offset, uint32_t req_len, uint8_t req_tag,
++                    uint8_t& data_ready, uint8_t data_valid, uint64_t data_bits, uint8_t data_tag,
++                    uint8_t resp_ready, uint8_t& resp_valid, uint64_t& resp_bits, uint8_t& resp_tag,
++                    uint32_t& nsectors, uint32_t& max_req_len) {
++  // Phase 1 bare-metal programs do not attach a block image. Refuse any guest
++  // access instead of silently completing it with made-up data.
++  if (ntags != 1) throw std::runtime_error("unsupported block-device tag count");
++  req_ready = 0;
++  data_ready = 0;
++  resp_valid = 0;
++  resp_bits = 0;
++  resp_tag = 0;
++  nsectors = 0;
++  max_req_len = 16;
++  if (!reset && (req_valid || data_valid))
++    throw std::runtime_error("guest accessed an unattached block device");
++  (void)req_write; (void)req_offset; (void)req_len; (void)req_tag;
++  (void)data_bits; (void)data_tag; (void)resp_ready;
++}
++
+ class HostTSI : public testchip_tsi_t {
+ public:
+   HostTSI() : testchip_tsi_t(host_argc, host_argv, true) {

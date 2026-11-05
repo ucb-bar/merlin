@@ -1,0 +1,45 @@
+{
+  "dma_writer": {
+    "claims": [
+      "Transaction IDs allocated before untranslated transfer; released on matching D.fire.",
+      "Power-of-two packet candidates use aligned address and byte masks, maximizing bytes written.",
+      "PutFull/PutPartial selected from mask; translation queues/retry path remain explicit."
+    ],
+    "excerpt_lines": [
+      396,
+      555
+    ],
+    "limit": "Register count alone does not establish complete response latency.",
+    "source": {
+      "provenance_path": "workspace/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/DMA.scala",
+      "sha256": "db6d9d61f8794f6d60508c5844a2b287ffab0cd795a662b84b970dd9615e5dc1"
+    }
+  },
+  "provider_store": {
+    "excerpt_sha256": "b1285138344a024dcfcaf0cb918dea6aad62eed6bac37244416752f15619b2de",
+    "identical": true,
+    "sources": [
+      {
+        "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/source/provider.hpp",
+        "sha256": "d72576a0331aee3a11f4351d9233132ae4b56739406f73533ad5a2c8b47c3d7c"
+      },
+      {
+        "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/scratchpad-request-admission-v2/source/provider.hpp",
+        "sha256": "14766c6515056a196ce2724f72f52c2d1d3a5c44e9c1a6d2a76bba1cb7617a58"
+      }
+    ]
+  },
+  "streamed_readout": {
+    "identical": true,
+    "sources": [
+      {
+        "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/streamed-readout-v4/source/streamed_readout.hpp",
+        "sha256": "9b4ba32a70089f91c65727be83408a10fd983a2ae78124c2029bdca06f18e918"
+      },
+      {
+        "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/scratchpad-request-admission-v2/source/streamed_readout.hpp",
+        "sha256": "9b4ba32a70089f91c65727be83408a10fd983a2ae78124c2029bdca06f18e918"
+      }
+    ]
+  }
+}

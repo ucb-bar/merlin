@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 
+import pytest
 from merlin_experiments.phase1.brokers import selfcheck as selfcheck_broker
 from merlin_experiments.phase1.feedback import lifecycle, selfcheck
 
@@ -56,6 +57,52 @@ def test_staged_client_runs_with_site_packages_disabled(tmp_path):
     assert not (tmp_path / ".qa_channel").exists()
 
 
+@pytest.mark.parametrize("overrides", [None, {"retain": True, "tile": 4}])
+def test_copied_client_submits_reference_trial_through_existing_channel(tmp_path, overrides):
+    client = tmp_path / "agent_selfcheck.py"
+    shutil.copyfile(module_source_path("merlin_experiments.phase1.tools.selfcheck"), client)
+    compiler = tmp_path / "submission"
+    compiler.mkdir()
+    (compiler / "settings.json").write_text('{"retain": false, "tile": 2}')
+    before = (compiler / "settings.json").read_bytes()
+    argv = [sys.executable, "-I", "-S", str(client), "--sim", "spike", "--suite", "scalability",
+            "--capsules", "declared-case", "--wait-budget", "1", "--reference-request", "ref-123"]
+    if overrides:
+        argv.extend(["--tuning-overrides", json.dumps(overrides)])
+    result = subprocess.run(argv, cwd=tmp_path, capture_output=True, text=True, timeout=10)
+    assert result.returncode == 3, result.stderr
+    rid = json.loads(result.stdout)["request_id"]
+    request = json.loads((tmp_path / ".qa_channel" / f"req_{rid}.json").read_text())
+    assert request["reference_experiment_request_id"] == "ref-123"
+    assert request.get("tuning_overrides") == overrides
+    assert request["submission"] == "submission"
+    assert request["suite"] == "scalability" and request["sim"] == "spike"
+    assert (compiler / "settings.json").read_bytes() == before
+
+
+@pytest.mark.parametrize("options", [
+    ["--tuning-overrides", "[]"],
+    ["--tuning-overrides", "{}"],
+    ["--tuning-overrides", '{"k":NaN}'],
+    ["--tuning-overrides", '{"k":Infinity}'],
+    ["--tuning-overrides", '{"k":{}}'],
+    ["--tuning-overrides", json.dumps(dict.fromkeys("abcde", 1))],
+    ["--tuning-overrides", json.dumps({"k": "x" * 65})],
+    ["--tuning-overrides", " " * 8193],
+    ["--reference-request", "../outside"],
+    ["--reference-request", "x" * 161],
+    ["--reference-request", "ref-123", "--attach", "old-id"],
+    ["--tuning-overrides", '{"k":true}', "--list"],
+])
+def test_copied_client_refuses_malformed_or_resumed_trial_before_channel_work(tmp_path, options):
+    client = tmp_path / "agent_selfcheck.py"
+    shutil.copyfile(module_source_path("merlin_experiments.phase1.tools.selfcheck"), client)
+    result = subprocess.run([sys.executable, "-I", "-S", str(client), *options], cwd=tmp_path,
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 2
+    assert not (tmp_path / ".qa_channel").exists()
+
+
 def test_native_staging_copies_package_bytes_without_clobbering_bound_source(tmp_path):
     # Execute the canonical staging owner without importing an agent/hardware driver.
     bound_source = tmp_path / "original.py"
@@ -71,23 +118,25 @@ def test_native_staging_copies_package_bytes_without_clobbering_bound_source(tmp
     assert bound_source.read_text() == "original bound source\n"
 
 
-def test_unpinned_selfcheck_discovers_grade_engine_and_broker_defers_selection(monkeypatch, capsys):
-    monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
-    monkeypatch.setattr(selfcheck, "_target_sim_via", lambda _context: ("synthetic", "chipyard"))
+def test_unflagged_selfcheck_selects_the_grade_adapters_in_worker_and_broker(monkeypatch):
+    """No engine named: the broker forwards the grade's own selection, which the worker resolves to
+    exactly the adapters the official grade uses -- never one engine, pinned or discovered."""
+    for pin in ("", "gsim"):
+        monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", pin)
+        assert selfcheck_broker._default_sim() == selfcheck.REQUIRED_SIM
+        assert selfcheck.REQUIRED_SIM in selfcheck_broker._allowed_sims()
+    official = {"L2": object(), "L3": object()}
+    calls = []
     monkeypatch.setattr(
-        selfcheck.CR,
-        "describe_l3_engine",
-        lambda target, sim_via: {"available": True, "engine": "gsim"},
+        selfcheck.CR, "qa_checkpoint_adapters",
+        lambda target, sim_via, **kwargs: calls.append((target, sim_via, kwargs)) or official,
     )
-    assert selfcheck._default_sim(object()) == "gsim"
-    assert selfcheck_broker._default_sim() is None
-    monkeypatch.setattr(
-        selfcheck.CR,
-        "describe_l3_engine",
-        lambda target, sim_via: {"available": False, "reason": "no RTL engine available"},
-    )
-    assert selfcheck._default_sim(object()) == selfcheck.FALLBACK_RTL_SIM
-    assert "no RTL engine available" in capsys.readouterr().err
+    monkeypatch.setattr(selfcheck.CR, "simulator_adapter", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("the grade's selection must not construct a narrower engine adapter")))
+    adapters, sim = selfcheck._adapters(selfcheck.REQUIRED_SIM, "synthetic", "chipyard", readback_policy="full")
+    assert sim == selfcheck.REQUIRED_SIM
+    assert adapters == official and all(adapters[t] is official[t] for t in official)
+    assert calls == [("synthetic", "chipyard", {"readback_policy": "full"})]
 
 
 def test_legacy_capsule_fallback_names_itself_and_its_cause(tmp_path, capsys):

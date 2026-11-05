@@ -47,7 +47,7 @@ from merlin.targetgen.contract import interface_emit as IE
 from merlin.targetgen.contract.schemas import contract_dir
 
 #: The three shipped capsules whose only compute op is the conv.
-_CONV_CAPSULES = ("B3_conv2d_im2col_i8", "B4_conv2d_relu_i8", "GC0_conv2d_i8")
+_CONV_CAPSULES = ("B3_conv2d_i8", "B4_conv2d_relu_i8", "GC0_conv2d_i8")
 
 _CONV_IFACE = textwrap.dedent("""\
     module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {

@@ -1,0 +1,8 @@
+{
+  "max_members": 256,
+  "max_source_bytes": 131072,
+  "max_reference_elements": 2000000,
+  "max_reference_work": 20000000,
+  "max_total_reference_work": 300000000,
+  "max_total_reference_elements": 12000000
+}

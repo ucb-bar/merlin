@@ -1,0 +1,644 @@
+"""Original-host public source diagnostics, separate from formal Phase 2 admission.
+
+This owner selects the existing retained, boxed, checked-source L2 route only.
+It issues no certificate, timing, placement, incumbent or complete-cohort claim.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import inspect
+import json
+import math
+import sys
+import weakref
+from dataclasses import asdict, dataclass, is_dataclass
+from pathlib import Path
+from time import monotonic
+
+from merlin.common.cpu_pool import AUTHOR, cpu_priority, current_thread_owns_cpu_lease, shared_compute_pool
+from merlin.targetgen.common_transforms import CommonTransformService
+from merlin.targetgen.compiler_library import CompilerLibrarySelection
+from merlin.targetgen.compiler_pass_selection import CompilerPassSelection
+from merlin.targetgen.target_experiment import TargetExperiment
+
+from . import _public_native_count_projection as COUNT_PROJECTION
+from . import campaign as CAMPAIGN
+from . import compiler_libraries as LIBRARIES
+from . import corpus as CORPUS
+from . import diagnostic_pair_check as PAIR
+from . import diagnostic_schedule_metrics as PAIR_METRICS
+from . import ordinary_checked_source as CHECKED
+from . import ordinary_fast_feedback as FAST
+from . import ordinary_numerical_counts as NUMERICAL
+from . import public_diagnostic_corpus as PUBLIC_CORPUS
+from .contracts import StageGateError, canonical_json, document_sha256, sha256_file
+from .edit_authority import FrozenEditAuthority
+from .public_native_exploration import PublicNativeExploration
+from .retained_revisions import RetainedRevision, source_inventory
+
+SCHEMA = "merlin.public_source_diagnostic_policy.v1"
+FEEDBACK_SCHEMA = "merlin.public_source_diagnostic_feedback.v1"
+NATIVE_FEEDBACK_SCHEMA = "merlin.public_source_diagnostic_feedback.v2"
+PAIRED_FEEDBACK_SCHEMA = "merlin.public_source_diagnostic_feedback.v3"
+FULL_SOURCE_FEEDBACK_BUDGET_PROTOCOL = "merlin.public_full_source_feedback_budget.v1"
+NUMERICAL_COUNTS_FEEDBACK_SCHEMA = "merlin.public_source_diagnostic_feedback.v4"
+_ISSUER = object()
+_ISSUED = weakref.WeakKeyDictionary()
+
+
+def _source(path):
+    path = Path(path)
+    if path.is_symlink() or path.resolve(strict=True) != path or not path.is_file():
+        raise StageGateError("public diagnostics require original ordinary source leaves")
+    return {"path": str(path), "sha256": sha256_file(path)}
+
+
+def _portable(value):
+    if isinstance(value, Path):
+        return str(value)
+    if is_dataclass(value):
+        return _portable(asdict(value))
+    if type(value) in (tuple, list):
+        return [_portable(item) for item in value]
+    if type(value) is dict and all(type(key) is str for key in value):
+        return {key: _portable(item) for key, item in value.items()}
+    if value is None or type(value) in (str, bool, int) or type(value) is float and math.isfinite(value):
+        return value
+    raise StageGateError("public diagnostic target declaration is not closed data")
+
+
+def _verify_corpus(corpus):
+    if type(corpus) is PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus:
+        corpus.verify()
+    elif type(corpus) is CORPUS.FrozenPerformanceCorpus:
+        CORPUS.verify_frozen_performance_corpus(corpus)
+    else:
+        raise StageGateError("public diagnostics require their exact original frozen source owner")
+
+
+def _capsule(corpus, member, contract):
+    if type(corpus) is PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus:
+        return corpus.execution_capsule(member, contract=contract)
+    return FAST.CR.load_capsule(member.source_dir, contract=str(contract))
+
+
+def _capsules(corpus, contract):
+    if type(corpus) is PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus:
+        return corpus.execution_capsules(contract=contract)
+    return (_capsule(corpus, member, contract) for member in corpus.capsules)
+
+
+def _inventory(path, *, readonly=False):
+    return source_inventory(path, max_bytes=32 << 20, max_files=8192, readonly=readonly)
+
+
+def _checked_pass_records(passes, selection, *, deadline=None):
+    """Close one original metadata operation before exposing either record."""
+    if type(passes) is not CompilerPassSelection:
+        raise StageGateError("public diagnostic metadata requires its original pass selection")
+    with passes.metadata_operation():
+        records = {
+            "compiler_pass_selection": passes.record(),
+            "checked_source_diagnostic": CHECKED.record(selection, passes, deadline=deadline),
+        }
+    return records
+
+
+@dataclass(frozen=True)
+class PublicDiagnosticExecution:
+    """The actual original profile service, never a synthetic timing evaluator."""
+
+    _compiler_profile_service: CommonTransformService
+    work_root: Path
+    rtl_facts_path: Path
+
+
+class PublicSourceDiagnosticPolicy:
+    workflow_id = "corpus-feedback-v1"
+
+    def __init__(self, *, _issuer, **inputs):
+        if _issuer is not _ISSUER:
+            raise StageGateError("public diagnostics require original host issuance")
+        if inputs.get("_capsule_development_scope") is not None and current_thread_owns_cpu_lease():
+            raise StageGateError("capsule qualification replay cannot inherit a parent metadata CPU lease")
+        with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=120):
+            self.__dict__.update(inputs)
+            self._ordinary_screen = None
+            self.evaluation_pool = self.search_coordinator = None
+            self.build_runtime_view = self.build_product_index = None
+            self._selected_owners = self._owners()
+            self._metric_projector = PAIR_METRICS.project, PAIR_METRICS.project.__code__
+            from merlin_experiments.phase1.feedback import compiler_profile_runtime as PROFILE
+
+            self._functions = tuple(
+                (owner, name, getattr(owner, name))
+                for owner, name in (
+                    (FAST, "evaluate_retained"),
+                    (FAST.CR, "load_capsule"),
+                    (FAST.CR, "run_capsule"),
+                    (CAMPAIGN, "package_sandbox_policy"),
+                    (CAMPAIGN, "boxed_entrypoints"),
+                    (FAST, "validate_feedback"),
+                    (CHECKED, "record"),
+                    (CHECKED, "for_capsule"),
+                    (NUMERICAL, "is_fast"),
+                    (NUMERICAL, "selection_record"),
+                    (NUMERICAL, "grade_matches"),
+                    (NUMERICAL, "pending_effects"),
+                    (NUMERICAL, "validate_projection"),
+                    (NUMERICAL, "recheck_child_result"),
+                    (NUMERICAL.S, "numerical_grade_matches_selection"),
+                    (NUMERICAL.NATIVE, "original_numerical_observation"),
+                    (CORPUS, "verify_frozen_performance_corpus"),
+                    (CommonTransformService, "_verify"),
+                    (PublicSourceDiagnosticPolicy, "_binding"),
+                    (PublicSourceDiagnosticPolicy, "_binding_metadata"),
+                    (PublicSourceDiagnosticPolicy, "validate_search_inputs"),
+                    (PublicSourceDiagnosticPolicy, "binding"),
+                    (PublicSourceDiagnosticPolicy, "compiler_execution"),
+                    (PublicSourceDiagnosticPolicy, "evaluate_retained"),
+                    (PublicSourceDiagnosticPolicy, "_feedback_timeout_seconds"),
+                    (PublicSourceDiagnosticPolicy, "load_capsule"),
+                    (PublicSourceDiagnosticPolicy, "consume_feedback_child_result"),
+                    (PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus, "verify"),
+                    (PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus, "execution_capsule"),
+                    (PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus, "execution_capsules"),
+                    (PROFILE, "original_compiler_execution"),
+                    (PAIR, "observe"),
+                    (PAIR, "validate"),
+                    (PAIR, "recheck_child_result"),
+                    (PAIR_METRICS, "project"),
+                    (PAIR, "project_metrics"),
+                )
+            )
+            self._source_pins = tuple(
+                _source(Path(owner.__file__).resolve())
+                for owner in (FAST, CHECKED, NUMERICAL, NUMERICAL.S, NUMERICAL.NATIVE,
+                              CORPUS, PUBLIC_CORPUS, PROFILE, PAIR, PAIR_METRICS)
+            ) + (
+                _source(Path(__file__).resolve()),
+                _source(Path(inspect.getsourcefile(CommonTransformService)).resolve()),
+            )
+            scope = getattr(self, "_capsule_development_scope", None)
+            self._capsule_function_codes = ()
+            if scope is not None:
+                from . import broker_policy as B
+                from . import capsule_ordinary_scope as C
+                from . import capsule_source_development as D
+                from . import corpus_feedback as CF
+                from . import queued_search_actions as Q
+
+                self._functions += tuple(
+                    (owner, name, getattr(owner, name))
+                    for owner, name in (
+                        (C, "verify"),
+                        (C, "binding"),
+                        (C, "actions"),
+                        (C, "verify_receipts"),
+                        (C, "live_pool"),
+                        (C, "note_submission"),
+                        (D, "broker_execute"),
+                        (Q, "execute"),
+                        (Q, "actions"),
+                        (B.WorkflowPolicy, "admission"),
+                        (CF, "verify_broker_action_receipts"),
+                        (PublicSourceDiagnosticPolicy, "execute"),
+                        (PublicSourceDiagnosticPolicy, "build_registry"),
+                        (PublicSourceDiagnosticPolicy, "enable_evaluation_pool"),
+                        (PublicSourceDiagnosticPolicy, "validate_actions"),
+                        (PublicSourceDiagnosticPolicy, "admission"),
+                    )
+                )
+                self._capsule_function_codes = tuple(
+                    (function, function.__code__) for _, _, function in self._functions
+                )
+                self._source_pins += tuple(_source(module.__file__) for module in (C, D, Q, B, CF))
+        if scope is not None:
+            C.verify(scope)
+        self._selection = canonical_json(self._binding())
+        _ISSUED[self] = self._selection
+        try:
+            self.validate_search_inputs()
+            if scope is not None:
+                C.attach(self, scope)
+        except BaseException:
+            del _ISSUED[self]
+            raise
+
+    def _owners(self):
+        return (
+            self.feedback_evaluator._compiler_profile_service,
+            self.target_experiment,
+            self.edit_authority,
+            self._corpus,
+            self._compiler_library_selection,
+            self._compiler_pass_selection,
+            self._checked_source_diagnostic,
+            self._native_exploration,
+            self._diagnostic_pair_check,
+        ) + (
+            (self._capsule_development_scope,) if getattr(self, "_capsule_development_scope", None) is not None else ()
+        )
+
+    def _feedback_timeout_seconds(self):
+        protocol = getattr(self, "_feedback_budget_protocol", None)
+        if protocol is None:
+            return 900
+        if type(protocol) is str and protocol == FULL_SOURCE_FEEDBACK_BUDGET_PROTOCOL:
+            return 2400
+        raise StageGateError("unknown prospective full-source feedback budget protocol")
+
+    def validate_actions(self, actions):
+        expected = {a.name: a.as_dict() for a in self.build_registry()}
+        if {name: action.as_dict() for name, action in actions.items()} != expected:
+            raise StageGateError("capsule source broker action registry changed")
+
+    def admission(self, name):
+        from .broker_policy import WorkflowPolicy
+
+        if name not in {a.name for a in self.build_registry()}:
+            raise StageGateError("capsule source broker cannot admit another action")
+        return WorkflowPolicy.admission(self, name)
+
+    def enable_evaluation_pool(self, *, revisions, resources, job_resources, root, **kwargs):
+        from . import capsule_ordinary_scope as C
+        from .evaluation_pool import ComponentEvaluationPool
+
+        if not C.enabled(self) or self.evaluation_pool is not None or revisions.authority is not self.edit_authority:
+            raise StageGateError("capsule source queue requires its exact edit authority once")
+        selected_root = Path(root)
+        if (
+            selected_root.resolve() != selected_root
+            or selected_root.is_symlink()
+            or not selected_root.is_relative_to(self.feedback_evaluator.work_root)
+        ):
+            raise StageGateError("public diagnostic queue must remain under its original execution root")
+        C.binding(self)
+        self.evaluation_pool = ComponentEvaluationPool(
+            policy=self, revisions=revisions, resources=resources, job_resources=job_resources, root=root, **kwargs
+        )
+        return self.evaluation_pool
+
+    def build_registry(self):
+        from . import capsule_ordinary_scope as C
+
+        if not C.enabled(self):
+            raise StageGateError("public source broker needs explicit capsule-qualified development")
+        self.validate_search_inputs()
+        return C.actions()
+
+    @LIBRARIES.scoped_policy
+    def execute(self, request, action_name, rendered, call_index, timeout_s, started):
+        from .capsule_source_development import broker_execute
+
+        return broker_execute(self, request, action_name, rendered, call_index, timeout_s, started)
+
+    def verify_receipts(self, path, actions, audit, *, candidate_sha256=None):
+        from . import capsule_ordinary_scope as C
+
+        return C.verify_receipts(self, path, actions, audit, candidate_sha256=candidate_sha256)
+
+    @property
+    def search_corpus(self):
+        return self._corpus
+
+    @property
+    def search_baseline(self):
+        return self._baseline
+
+    def _binding(self, *, deadline=None):
+        scope = getattr(self, "_capsule_development_scope", None)
+        if scope is not None and current_thread_owns_cpu_lease():
+            raise StageGateError("capsule qualification replay cannot inherit a parent metadata CPU lease")
+        limit = CHECKED._deadline(deadline)
+        with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=CHECKED._queue_wait(limit)):
+            native = self._native_exploration
+            operation = contextlib.nullcontext() if native is None else native._metadata_operation()
+            with operation:
+                result = self._binding_metadata(deadline=limit)
+        # The original qualification verifier may launch its own CPU-admitted
+        # child. In a single-CPU queue it must run after releasing our leaf.
+        # Keep its fresh result local to this binding, never in a proof cache.
+        if scope is not None:
+            from . import capsule_ordinary_scope as C
+
+            result = {**result, "capsule_development": C.verify(scope)}
+            if getattr(self, "_capsule_development_scope", None) is not scope:
+                raise StageGateError("public diagnostic capsule qualification owner changed")
+        CHECKED._completed(limit)
+        return result
+
+    def _binding_metadata(self, *, deadline=None):
+        if not current_thread_owns_cpu_lease():
+            raise StageGateError("public diagnostic local metadata requires its original CPU lease")
+        service = self.feedback_evaluator._compiler_profile_service
+        service._verify()
+        self.edit_authority.check_integrity()
+        _verify_corpus(self._corpus)
+        library = self._compiler_library_selection
+        if _source(self.target_experiment.path)["sha256"] != self.target_experiment.descriptor_sha256:
+            raise StageGateError("public diagnostic target changed its selected descriptor")
+        if self._compiler_pass_selection.binding.library != library.contract.sha256:
+            raise StageGateError("public diagnostics changed the selected compiler library release")
+        if self._native_exploration is not None:
+            self._native_exploration.verify_for(self)
+        if self._diagnostic_pair_check is not None:
+            self._diagnostic_pair_check.verify_for(self._compiler_pass_selection)
+        baseline = _inventory(self._baseline, readonly=True)
+        if baseline != self._binding_baseline:
+            raise StageGateError("public diagnostic original baseline binding changed")
+        scope = getattr(self, "_capsule_development_scope", None)
+        return {
+            **({"broker_receipt_path": str(self.receipt_path)} if scope is not None else {}),
+            "schema": "merlin.public_source_diagnostic_policy.v4"
+            if scope is not None
+            else "merlin.public_source_diagnostic_policy.v3"
+            if self._diagnostic_pair_check is not None
+            else (SCHEMA if self._native_exploration is None else "merlin.public_source_diagnostic_policy.v2"),
+            "formal_admission": False,
+            "promotion_authority": "NONE",
+            "timing": "UNKNOWN",
+            **({"feedback_budget": {
+                "protocol": self._feedback_budget_protocol,
+                "maximum_seconds": self._feedback_timeout_seconds(),
+                "scope": "complete selected compile/Spike pair; original queue reserve and job grants remain mandatory",
+            }} if getattr(self, "_feedback_budget_protocol", None) is not None else {}),
+            "target": _source(self.target_experiment.path),
+            "target_name": self.target_experiment.target,
+            "target_declaration": _portable(self.target_experiment),
+            "execution_root": str(self.feedback_evaluator.work_root),
+            "rtl_facts": _source(self.feedback_evaluator.rtl_facts_path),
+            "contract": _inventory(self._contract_root),
+            "corpus": [self._corpus.manifest_sha256, self._corpus.capsules_sha256],
+            "public_execution_views": (
+                [cap["public_diagnostic_execution_view"] for cap in _capsules(self._corpus, self._contract_root)]
+                if type(self._corpus) is PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus
+                else None
+            ),
+            "baseline": baseline,
+            "initial_seed": _inventory(self.edit_authority.seed, readonly=True),
+            "edit_authority": self.edit_authority.binding,
+            "profile": {
+                "archive": _source(service.bundle_manifest),
+                "profile_sha256": service.profile["sha256"],
+                "snapshot_sha256": service.snapshot_digest,
+                "workspace": str(service.workspace),
+                "repo": str(service.repo),
+            },
+            "compiler_library": library.record(),
+            **_checked_pass_records(self._compiler_pass_selection, self._checked_source_diagnostic, deadline=deadline),
+            "runtime_source_pins": self._source_pins,
+            **({"native_exploration": self._native_exploration.record()} if self._native_exploration else {}),
+            **({"diagnostic_pair_check": self._diagnostic_pair_check.record()} if self._diagnostic_pair_check else {}),
+        }
+
+    def validate_search_inputs(self, *, deadline=None):
+        if type(self) is not PublicSourceDiagnosticPolicy or self not in _ISSUED:
+            raise StageGateError("public diagnostic policy was not issued by its original host")
+        if (
+            self._ordinary_screen is not None
+            or any(
+                actual is not original for actual, original in zip(self._owners(), self._selected_owners, strict=True)
+            )
+            or type(self.feedback_evaluator) is not PublicDiagnosticExecution
+            or type(self.feedback_evaluator._compiler_profile_service) is not CommonTransformService
+            or type(self._compiler_library_selection) is not CompilerLibrarySelection
+            or type(self._compiler_pass_selection) is not CompilerPassSelection
+            or type(self.target_experiment) is not TargetExperiment
+            or type(self._corpus) not in (CORPUS.FrozenPerformanceCorpus, PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus)
+            or type(self.edit_authority) is not FrozenEditAuthority
+            or self._native_exploration is not None
+            and type(self._native_exploration) is not PublicNativeExploration
+            or self._diagnostic_pair_check is not None
+            and type(self._diagnostic_pair_check) is not PAIR.DiagnosticSourcePairCheck
+            or self.edit_authority.initial_source != self.candidate
+            or any(function.__code__ is not code for function, code in self._capsule_function_codes)
+            or any(getattr(owner, name) is not function for owner, name, function in self._functions)
+            or (PAIR_METRICS.project, PAIR_METRICS.project.__code__) != self._metric_projector
+            or PAIR.project_metrics is not self._metric_projector[0]
+            or any(_source(row["path"]) != row for row in self._source_pins)
+        ):
+            raise StageGateError("public diagnostic original execution owner or source changed")
+        limit = CHECKED._deadline(deadline)
+        current = canonical_json(self._binding(deadline=limit))
+        CHECKED._completed(limit)
+        if current != self._selection or current != _ISSUED[self]:
+            raise StageGateError("public diagnostic original profile/source/corpus selection changed")
+        return {(row.family, row.capsule) for row in self._corpus.capsules}
+
+    def binding(self, *, deadline=None):
+        self.validate_search_inputs(deadline=deadline)
+        return json.loads(self._selection)
+
+    def load_capsule(self, member, *, deadline):
+        limit = CHECKED._deadline(deadline)
+        with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=CHECKED._queue_wait(limit)):
+            result = _capsule(self._corpus, member, self._contract_root)
+        CHECKED._completed(limit)
+        return result
+
+    def consume_feedback_child_result(self, document, *, work_root, selected_members, deadline):
+        """Keep forked diagnostic checks with the original parent owner."""
+        NUMERICAL.recheck_child_result(
+            self, document, work_root=work_root, selected_members=selected_members, deadline=deadline,
+        )
+        native = self._native_exploration
+        if native is not None and native.count_feedback_protocol is not None:
+            COUNT_PROJECTION.recheck_child_result(
+                native, policy=self, document=document, work_root=work_root,
+                selected_members=selected_members, deadline=deadline,
+            )
+        if self._diagnostic_pair_check is not None:
+            PAIR.recheck_child_result(
+                self._diagnostic_pair_check,
+                policy=self,
+                document=document,
+                work_root=work_root,
+                selected_members=selected_members,
+                deadline=deadline,
+            )
+
+    @property
+    def search_closure_sha256(self):
+        return document_sha256(self.binding())
+
+    @contextlib.contextmanager
+    def compiler_execution(self, package, workspace, *, deadline=None):
+        from merlin_experiments.phase1.feedback.compiler_profile_runtime import original_compiler_execution
+
+        self.validate_search_inputs(deadline=deadline)
+        execution = original_compiler_execution(
+            self.feedback_evaluator._compiler_profile_service,
+            target_experiment=self.target_experiment,
+            candidate=package,
+            work_root=workspace / "original-profile",
+        )
+        # Setup/teardown are metadata work. The package and native child own
+        # their leaf grants; never retain this parent lease while waiting.
+        entered = False
+        try:
+            limit = CHECKED._deadline(deadline)
+            with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=CHECKED._queue_wait(limit)):
+                execution.__enter__()
+                entered = True
+            CHECKED._completed(limit)
+            yield
+        finally:
+            error = sys.exc_info()
+            if entered:
+                # Cleanup retains its own bounded admission even after the
+                # observation deadline. The existing guardian owns hard stop
+                # and descendant cleanup; late metadata never yields feedback.
+                with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=120):
+                    execution.__exit__(*error)
+            self.validate_search_inputs(deadline=deadline)
+
+    def publish_completed_artifacts(self, job_root):
+        """Keep a cleaned diagnostic unscored and outside reusable build caches."""
+        return {"status": "UNAVAILABLE", "published": 0}
+
+    def discard_cleaned_artifacts(self, job_root):
+        """No cache ownership was issued; the queue retains its cleanup receipt."""
+        return {"status": "UNAVAILABLE", "discarded": 0}
+
+    @LIBRARIES.scoped_policy
+    def evaluate_retained(
+        self,
+        revision,
+        baseline_revision,
+        *,
+        work_root,
+        call_index,
+        timeout_s,
+        workers=1,
+        kind=FAST.SELECTED_KIND,
+        selected_members=(),
+        **unsupported,
+    ):
+        if (
+            unsupported
+            or kind != FAST.SELECTED_KIND
+            or type(timeout_s) not in (int, float)
+            or not math.isfinite(timeout_s)
+            or not 1 <= timeout_s <= self._feedback_timeout_seconds()
+            or type(workers) is not int
+            or not 1 <= workers <= 2
+            or type(revision) is not RetainedRevision
+            or type(baseline_revision) is not RetainedRevision
+        ):
+            raise StageGateError("public diagnostics allow only bounded selected compile/Spike feedback")
+        deadline = monotonic() + timeout_s
+        self.validate_search_inputs(deadline=deadline)
+        root = Path(work_root)
+        if (
+            root.exists()
+            or root.is_symlink()
+            or root.resolve() != root
+            or not root.is_relative_to(self.feedback_evaluator.work_root)
+        ):
+            raise StageGateError("public diagnostics require fresh output under their original private root")
+        revision.verify(authority=self.edit_authority)
+        baseline_revision.verify(authority=self.edit_authority)
+        if baseline_revision.inventory != self._binding_baseline:
+            raise StageGateError("public diagnostic baseline differs from its original seed")
+        return FAST.evaluate_retained(
+            self,
+            revision,
+            baseline_revision,
+            work_root=work_root,
+            call_index=call_index,
+            timeout_s=max(0, deadline - monotonic()),
+            workers=workers,
+            selected_members=selected_members,
+        )
+
+
+def prepare_public_source_diagnostic(
+    *,
+    candidate,
+    baseline,
+    corpus,
+    target_experiment,
+    edit_authority,
+    service,
+    compiler_library_selection,
+    compiler_pass_selection,
+    checked_source_diagnostic,
+    contract_root,
+    work_root,
+    native_exploration=None,
+    diagnostic_pair_check=None,
+    capsule_development_scope=None,
+    receipt_path=None,
+    feedback_budget_protocol=None,
+):
+    """Issue public development execution only; the formal constructor is unchanged."""
+    if feedback_budget_protocol is not None and (
+        type(feedback_budget_protocol) is not str or feedback_budget_protocol != FULL_SOURCE_FEEDBACK_BUDGET_PROTOCOL
+    ):
+        raise StageGateError("unknown prospective full-source feedback budget protocol")
+    if (
+        type(corpus) not in (CORPUS.FrozenPerformanceCorpus, PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus)
+        or not corpus.capsules
+        or type(target_experiment) is not TargetExperiment
+        or type(edit_authority) is not FrozenEditAuthority
+        or not edit_authority.configured
+        or type(service) is not CommonTransformService
+        or type(compiler_library_selection) is not CompilerLibrarySelection
+        or type(compiler_pass_selection) is not CompilerPassSelection
+        or native_exploration is not None
+        and type(native_exploration) is not PublicNativeExploration
+        or diagnostic_pair_check is not None
+        and type(diagnostic_pair_check) is not PAIR.DiagnosticSourcePairCheck
+    ):
+        raise StageGateError("public diagnostics require original live source, profile, edit and pass owners")
+    candidate, baseline, work_root = map(Path, (candidate, baseline, work_root))
+    if candidate != edit_authority.initial_source or work_root.exists() or work_root.resolve() != work_root:
+        raise StageGateError("public diagnostic output and edit authority must have their original owners")
+    if any(
+        work_root.is_relative_to(path) or path.is_relative_to(work_root)
+        for path in (candidate, baseline, corpus.root, edit_authority.output, service.workspace)
+    ):
+        raise StageGateError("public diagnostic output overlaps an immutable input or original workspace")
+    if capsule_development_scope is not None and current_thread_owns_cpu_lease():
+        raise StageGateError("capsule qualification replay cannot inherit a parent metadata CPU lease")
+    with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=120):
+        rtl_facts_path = Path(CHECKED.record(checked_source_diagnostic, compiler_pass_selection)["rtl_facts"]["path"])
+        baseline_inventory = _inventory(baseline, readonly=True)
+        if baseline_inventory != _inventory(edit_authority.seed, readonly=True):
+            raise StageGateError("public diagnostics initially compare their exact original frozen seed")
+        for cap in _capsules(corpus, contract_root):
+            if (
+                cap.get("kind") != "model"
+                or cap.get("label") not in {"public", "dev"}
+                or not {"L0", "L1", "L2", "L3"} <= set(cap.get("required_oracle_tiers") or ())
+            ):
+                raise StageGateError("public diagnostics retain complete public model and mandatory tier obligations")
+    return PublicSourceDiagnosticPolicy(
+        _issuer=_ISSUER,
+        _capsule_development_scope=capsule_development_scope,
+        candidate=candidate,
+        _baseline=baseline,
+        _corpus=corpus,
+        target_experiment=target_experiment,
+        edit_authority=edit_authority,
+        feedback_evaluator=PublicDiagnosticExecution(
+            service,
+            work_root,
+            rtl_facts_path,
+        ),
+        _compiler_library_selection=compiler_library_selection,
+        _compiler_pass_selection=compiler_pass_selection,
+        _checked_source_diagnostic=checked_source_diagnostic,
+        _native_exploration=native_exploration,
+        _diagnostic_pair_check=diagnostic_pair_check,
+        _feedback_budget_protocol=feedback_budget_protocol,
+        _contract_root=Path(contract_root),
+        _binding_baseline=baseline_inventory,
+        receipt_path=work_root / "diagnostic-policy.json" if receipt_path is None else Path(receipt_path),
+    )
+
+
+def selected(policy):
+    return type(policy) is PublicSourceDiagnosticPolicy

@@ -1,0 +1,13 @@
+# Reference-only run: the shared kernel files and guidance, without the reference map or the
+# reference-analysis tools (operator decision 2026-10-27). The common base guidance is identical.
+extends: fresh-campaign-fresh8ref-paired.yaml
+id: gemmini-open-compiler-fresh8ref-raw-reference-control
+run:
+  run_id: gemmini-open-compiler-20261027-fresh8ref
+  unit: merlinphase1fresh8ref20261027
+  cpus: 8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27
+  preparation_cpus: 0,1,2,3
+plan:
+  reference_guidance: "off"
+  reference_map: null
+  reference_experiments: null

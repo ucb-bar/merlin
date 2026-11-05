@@ -66,6 +66,29 @@ def test_shape_sweep_forwards_policy_through_entrypoints(candidate, monkeypatch)
             assert corner["detail"].startswith("integrity:" if markers else "build:")
 
 
+def test_shape_sweep_reuses_one_built_submission(tmp_path, monkeypatch):
+    package = tmp_path / "candidate"
+    package.mkdir()
+    tool = package / "compiler"
+    tool.touch()
+    pkg = SimpleNamespace(tool=tool)
+    calls = []
+    monkeypatch.setattr(LC, "_binding", lambda _: SimpleNamespace(
+        operand_dtype="int8", accum_dtype="int32", mlir_dtype=lambda x: "i8" if x == "int8" else "i32"
+    ))
+    monkeypatch.setattr(LC, "tile_edge", lambda _: 16)
+    monkeypatch.setattr(PR, "load_package", lambda *a, **kw: calls.append("load") or pkg)
+    monkeypatch.setattr(PR, "integrity_scan", lambda *a, **kw: calls.append("scan"))
+    monkeypatch.setattr(PR, "build_package", lambda *a, **kw: calls.append("build"))
+    monkeypatch.setattr(LC, "run_entrypoints", lambda prepared, *a, **kw: (
+        calls.append("emit") or prepared, {"commands": [{"op": "matmul"}]}, "llvm.func @kernel"
+    ))
+    result = LC.sweep(package, target="fixture")
+    assert result["all_covered"]
+    assert calls[:3] == ["load", "scan", "build"]
+    assert calls[3:] == ["emit"] * 8
+
+
 @pytest.mark.parametrize("rtl_treatment", [False, True])
 def test_qa_forwards_policy_to_real_capsule_scan(candidate, tmp_path, monkeypatch, rtl_treatment):
     context = InvocationContext(

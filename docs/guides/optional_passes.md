@@ -3,9 +3,10 @@ title: Optional lowering passes — list, select, copy
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-08
+last_verified: 2026-10-21
 related: [model_lowering, whole_model_on_accelerator, extending_the_stack]
 code_refs: [src/merlin/llvmlower/optional_passes.py,
+            src/merlin/llvmlower/repeated_pointwise.py,
             src/merlin/llvmlower/int_softmax_table.py,
             src/merlin/llvmlower/normalization_reassociation.py,
             src/merlin/llvmlower/passes_xdsl.py,
@@ -15,12 +16,15 @@ code_refs: [src/merlin/llvmlower/optional_passes.py,
 
 # Optional lowering passes
 
-Merlin's optional transforms are **global and opt-in**. Each one matches IR structure, never a model,
-shape or target name. You can turn one on by name, or copy it into your own out-of-tree package and
-change it there. `merlin.llvmlower.optional_passes` is the one list of them. For each pass it records
+Merlin's optional transforms expose explicit defaults and controls. They derive eligibility from
+IR semantics, shapes and declared capabilities. Merlin owns reusable algorithms; target-specific
+extensions belong in out-of-tree packages. `merlin.llvmlower.optional_passes` is the one list of them. For each pass it records
 the stage it acts in, whether it is exact, its default, and what it changes in the program.
 
 ## List them
+
+The [shared scalar host guide](shared_host_optimizations.md) describes automatic
+composition, historical recipe coverage and APIs available to compiler generators.
 
 ```bash
 merlin-compile --list-passes          # a table
@@ -59,6 +63,45 @@ Each entry names the switch that already existed, and selecting it flips that sw
   explicit selection wins over the variable, which still works on its own for A/B builds;
 * a pass of the **integer datapath** (`merlin.llvmlower.quant_passes`), added to or removed from the
   set `apply_quant` runs.
+
+## Automatic host destinations
+
+`automatic-host-destinations` defaults on for the supported serial host route.
+It forwards a closed pointwise producer into a fresh padded destination,
+initializing only the exterior. Unknown effects, observed intermediates,
+unsupported regions and exhausted growth/index budgets retain the original
+source. The actual emitted region partition and scalar body are checked before
+ordinary bufferization. Use `--no-pass automatic-host-destinations` for a paired
+control. See [inputs, guarantees and fallback](../reference/host_tensor_destinations.md).
+
+## Automatic host integer rounding
+
+`automatic-host-rounding` selects a compact exact LLVM rounding intrinsic for
+closed bounded integer observations after source destination selection. It
+retains source scaling, numerical order and other observations, and leaves
+unsupported execution/effect contracts on their original route. Use
+`--no-pass automatic-host-rounding` for a paired control. See the
+[inputs, checks and supported scope](../reference/host_integer_rounding.md).
+
+## Exact preparation before repeated broadcasts
+
+`prepare-repeated-pointwise` defaults off. The ordinary whole-model preparation
+stage tracks an explicit identity broadcast through static row-major tensor
+reshapes and transposes. A pure pointwise body moves to the smaller repeated
+domain only when every input has the same coordinate relation or omits that
+dimension. Stored parameter/buffer scales may participate only after their
+complete words match the repeated pattern under the original bundle binding.
+Runtime inputs, differing scale words, output-initializer reads, strict FP,
+fast-math and unknown scalar effects retain the original path.
+
+Every division, rounding, clamp and cast keeps its original type and scalar
+order; division is never replaced with reciprocal multiplication. Public entry
+types and other live uses remain intact. `repeated_pointwise/report.json`
+records source/output identities, exact stored spans, and removed scalar
+evaluations, and joins the ordinary bare-metal compilation recipe. These are
+structural observations; complete numerical gates and target timing remain
+independent. Select `--pass prepare-repeated-pointwise` for an explicit paired
+experiment, or use `MERLIN_PREPARE_REPEATED_POINTWISE=1` in its build environment.
 
 ## int-softmax-table
 

@@ -1,0 +1,200 @@
+{
+  "accumulator_dtype": "int32",
+  "activation": {
+    "block": null,
+    "dtype": "int8",
+    "granularity": "tensor",
+    "mode": "static",
+    "observer": "histogram",
+    "quant_max": 127,
+    "quant_min": -128,
+    "symmetric": true
+  },
+  "bias_domain": "accumulator",
+  "epilogue": {
+    "activation": {
+      "domain": "accumulator",
+      "function": "relu"
+    },
+    "bias": {
+      "dtype": "int32",
+      "mode": "accumulator_preload",
+      "range": [
+        -2147483648,
+        2147483647
+      ],
+      "rounding": "half_even",
+      "scale": "s_x * s_w"
+    },
+    "convert": {
+      "rounding": "half_even",
+      "to": "fp32"
+    },
+    "exits": {
+      "accumulator": true,
+      "requant": true
+    },
+    "order": [
+      "activation",
+      "convert",
+      "scale",
+      "requant",
+      "pool"
+    ],
+    "pool": {
+      "padding": "unknown",
+      "reductions": [
+        "max"
+      ]
+    },
+    "requant": {
+      "clamp": [
+        -128,
+        127
+      ],
+      "rounding": "half_even",
+      "to": "int8"
+    },
+    "scale": {
+      "columns_per_scale": 16,
+      "dtype": "fp32",
+      "granularity": "per_command",
+      "rounding": "half_even"
+    },
+    "schema": "integer_epilogue_v1"
+  },
+  "families": [
+    "contraction"
+  ],
+  "float_island": {
+    "dtype": "fp32",
+    "ops": [
+      "softmax",
+      "layer_norm",
+      "rms_norm",
+      "group_norm",
+      "gelu",
+      "silu",
+      "rotary"
+    ]
+  },
+  "framework_capture_policy": {
+    "basis": "selected framework parameters or existing deterministic adapter policy; not RTL semantics",
+    "calibration_count": 1024,
+    "observer_epsilon": 0.000244140625
+  },
+  "methodology": {
+    "methodology_sha256": "e169ac1b0cd77360e0516ee3ea3cdf98d5a3013fb48f27f7220b5b7c607e0d67",
+    "model": "resnet50",
+    "output_path_sha256": "be69417df214f85279aa25d134d816ad4a9236a9d8c144aac04960c0dda54ab8",
+    "schema": "merlin.quantization_methodology.v1",
+    "variants": [
+      {
+        "changes": [
+          "calibration_count",
+          "families"
+        ],
+        "name": "native-epilogue-contractions-calibration-1024",
+        "reason": "Use contraction-only hardware-order epilogues under the common recovery policy. Keep residual sums and the average pool on the host; the 1024-sample cap observes 260 disjoint calibration images.",
+        "reviewed_by": "Codex operator, user-directed continuation after measured recipe review, 2026-10-18"
+      }
+    ]
+  },
+  "recipe_sha256": "b840ae04104798799670015e39d2a5be692a70bc2a6ada42eb75d6878dd2ffbd",
+  "recovery": {
+    "bias_correction": false,
+    "cross_layer_equalization": false
+  },
+  "schema": "quant_recipe_v1",
+  "software_admission": {
+    "operations": [
+      {
+        "families": [
+          "contraction",
+          "window_mean"
+        ],
+        "id": "contraction",
+        "placement": "accelerator",
+        "signature": {
+          "accumulator_dtype": "i32",
+          "aliasing": [
+            "disjoint_inputs_outputs"
+          ],
+          "broadcasting": [
+            "none",
+            "independent_batches"
+          ],
+          "layouts": [
+            "row_major_contiguous"
+          ],
+          "operand_dtypes": [
+            "int8"
+          ],
+          "ranks": [
+            2,
+            3,
+            4
+          ],
+          "tails": [
+            "zero_pad_valid_window"
+          ]
+        }
+      },
+      {
+        "derived_from_facts": {
+          "family": "elementwise_map",
+          "form": "standalone"
+        },
+        "families": [
+          "elementwise_map",
+          "operand_sum"
+        ],
+        "id": "elementwise_map_standalone",
+        "placement": "accelerator",
+        "signature": {
+          "dtypes": [
+            "int8"
+          ],
+          "scale_granularity": [
+            "tensor"
+          ]
+        }
+      }
+    ],
+    "status": "reviewed",
+    "target": "gemmini"
+  },
+  "software_numerical_engine": "integer_reference",
+  "status": "derived",
+  "target": "gemmini",
+  "underivable": {},
+  "unit": "systolic_mesh",
+  "unquantized": {
+    "operand_sum": "reviewed model variant native-epilogue-contractions-calibration-1024: left in floating point on the host",
+    "window_mean": "reviewed model variant native-epilogue-contractions-calibration-1024: left in floating point on the host"
+  },
+  "weight": {
+    "block": null,
+    "channels_per_scale": 16,
+    "dtype": "int8",
+    "granularity": "channel",
+    "mode": "static",
+    "observer": "minmax",
+    "quant_max": 127,
+    "quant_min": -127,
+    "symmetric": true
+  },
+  "why": {
+    "activation.mode": "a scale the readout holds in a register is a compile-time constant",
+    "activation.observer": "methodology calibration 'mse' (TorchAO's histogram observer minimizes the L2 quantization error)",
+    "activation.range": "the output path clamps its requantized readout to [-128, 127]",
+    "bias_domain": "the output path preloads an i32 value into the accumulator: each bias is the code round_half_even(b / (s_x * s_w)), refused outside i32",
+    "epilogue": "integer-domain epilogue in the output path's order: the contraction and the stages the path performs after it are one pattern, computed as the unit does (integer operands, accumulator plus preloaded bias, rectifier, one f32 multiplier per readout command, round half to even, clamp)",
+    "operand_sum": "the unit's load multiplies each operand into the accumulator (2 operands, rounded half_even), so a sum of two tensors is integer work within 1 output step(s) of the single-rounding reference",
+    "symmetric": "the readout carries no zero point, so both scales are symmetric",
+    "variant.native-epilogue-contractions-calibration-1024": "reviewed model variant: Use contraction-only hardware-order epilogues under the common recovery policy. Keep residual sums and the average pool on the host; the 1024-sample cap observes 260 disjoint calibration images.",
+    "weight.granularity": "the output path applies one scale per readout command of 16 output columns; each run of that many output channels shares the largest range in it",
+    "weight.range": "symmetric weights use the restricted range so a negated weight is representable",
+    "window_mean": "a mean over a window is the unit's own contraction against a constant one, with the reciprocal of the count folded into the readout's one scale"
+  }
+}

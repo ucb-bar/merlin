@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from merlin.kernels import roles as _roles
+from merlin.compile.analysis import instruction_roles as _roles
 
 __all__ = ["TextInsn", "decode_text", "role_histogram", "unresolved_mnemonics"]
 
@@ -89,7 +89,7 @@ def _assembler_bridge(target: str, endpoint) -> dict:
         import inspect
 
         from merlin.common import provenance as _prov
-        from merlin.kernels import endpoints as _ep
+        from merlin.compile.analysis import compute_endpoints as _ep
         from merlin.targetgen import isa_model as _IM
 
         block = (_ep._spec().get("endpoints") or {}).get(getattr(endpoint, "name", "")) or {}

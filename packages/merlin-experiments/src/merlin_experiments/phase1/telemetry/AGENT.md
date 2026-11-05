@@ -1,9 +1,26 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase1/telemetry
 
 Host-owned raw process evidence and measurements are withheld from candidates.
+`startup.py` observes provider startup and continuation calls in the private
+`rounds/author_startup.jsonl` stream. Keep start events durable before the call,
+round/turn and parent stage identities explicit, and errors type-only. Never
+serialize arguments, credentials, argv, prompts or exception messages. Failed
+diagnostic writes cannot alter admission, sandbox verification or callback results.
+This append-only pre-spawn stream is distinct from capsule setup timelines;
+an unmatched start denotes an unfinished observation, not a diagnosed deadlock.
 `timeline.py` owns event boundaries, interval union, token buckets and arrival-time analysis.
 `evidence.py` owns retained workspace/rollout copies, hashes and stream/resource observations.
 `report.py` composes run records and the canonical CLI; importing any owner is target-inert.
+`author_agents.py` accounts every Codex author thread (lead and descendant sub-agents) from its own
+rollout: the exec stream carries the lead only and its usage excludes helpers. A fork's copied
+parent history is excluded by its start ordinal. `agent_requests.py` charges self-check requests,
+promotions and simulator jobs to threads (forwarded thread id, else command window and capsules);
+`agent_commands.py` parses client invocations structurally. The accounting is analysis only:
+`report.py` adds it to the timing record after, and never into, `telemetry_integrity`, then
+annotates the cost record; a defect is recorded there, never raised into either writer.
+`evidence.py` retains every lead and descendant helper rollout with the round snapshot.
+`resilient_output.py` wraps the runner's and brokers' stdout/stderr so a write that fails
+(a full log volume) is dropped and counted, never raised into a grader or broker loop.
 Use the authoritative owner directly, not legacy helper aliases or duplicated token parsers.
 
 Preserve measured versus unavailable/null distinctions, exact event order, deduplication and
@@ -12,3 +29,10 @@ analysis, not a second pricing/billing ledger. Cross-arm context must be explici
 execution; native CLI defaults remain only at the compatibility edge. Codex-cache discovery
 still recognizes the historical ancestor layout, not arbitrary relocated provider caches.
 Do not infer abandoned workspaces or replace their lease/retention semantics from timing data.
+
+The v1 token policy remains advisory. Explicit v2 `managed_turns` admission may
+consume `author_agents.usage_snapshot`: reuse the canonical descendant/response
+parser without request/simulator attribution. This is a lower bound, including
+cached input, not a provider upper bound. Missing usage is not zero; stale open
+turns remain outstanding. The provider supervisor owns admission/checkpoint
+changes, independently of grading and telemetry-integrity authority.

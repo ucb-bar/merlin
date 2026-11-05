@@ -421,8 +421,9 @@ class CommandBufferEncoder:
         A missing or differently-spelled operand is a property of the SUBMITTED buffer, so it is an
         abstention that names both what was wanted and what the buffer actually carries.
 
-        The alias list is not invention: ``mlir_oot_backend_contract.yaml:118`` defines the movement
-        source as "the MOVEMENT/identity-VECTOR_MAP command's ``src`` (or ``lhs``) operand", and
+        The alias list is not invention: the version-1 kernel ABI (``legacy/kernel_abi_v1.yaml``,
+        ``movement_src``) defines the movement source as "the MOVEMENT/identity-VECTOR_MAP command's
+        ``src`` (or ``lhs``) operand", and
         neither engine implemented the documented alternative, so a buffer written to the contract
         crashed the checker rather than being checked.
         """

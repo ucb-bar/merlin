@@ -93,6 +93,23 @@ int main(void) {
   merlin_out_bin_memory_init(&sink, tiny, sizeof(tiny), &used);
   sink.used = sizeof(tiny) + 1;
   if (merlin_out_bin_memory_cstr(&sink, "X") || used != 0) return 13;
+
+  /* A hoisted copy cursor must never overwrite its mutable control object. */
+  merlin_out_bin_memory_init(&sink, (unsigned char *)&sink, sizeof(sink), &used);
+  if (merlin_out_bin_memory_append(&sink, "X", 1) || used != 0 ||
+      merlin_out_bin_memory_finish(&sink)) return 14;
+  merlin_out_bin_memory_init(&sink, (unsigned char *)&used, sizeof(used), &used);
+  if (merlin_out_bin_memory_append(&sink, "X", 1) || used != 0 ||
+      merlin_out_bin_memory_finish(&sink)) return 15;
+
+  /* Reading control bytes is safe when the destination is disjoint. */
+  merlin_out_bin_memory_init(&sink, arena, sizeof(arena), &used);
+  if (!merlin_out_bin_memory_cstr(&sink, "AB") ||
+      !merlin_out_bin_memory_append(&sink, &sink.used, sizeof(sink.used)) ||
+      !merlin_out_bin_memory_finish(&sink) || used != 2 + sizeof(sink.used)) return 16;
+  size_t original_used;
+  memcpy(&original_used, arena + 2, sizeof(original_used));
+  if (original_used != 2) return 17;
   return 0;
 }
 """,

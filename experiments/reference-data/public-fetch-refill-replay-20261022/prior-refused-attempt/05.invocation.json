@@ -1,0 +1,41 @@
+{
+  "occurrence": 5,
+  "arm": 1,
+  "all24_numeric_rows_match": true,
+  "all16_warmups_pass": true,
+  "estimated_cycles": null,
+  "timing_complete": false,
+  "unresolved": [
+    "feature engine source identity differs from selected profile"
+  ],
+  "features": {
+    "scope_instructions": 58,
+    "unresolved": [
+      "feature engine source identity differs from selected profile"
+    ]
+  },
+  "report": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay/05.json",
+    "sha256": "9b20d563cda00149bc50b1589c3c83a1540220338ac061ddd6b6b2181927dbf7"
+  },
+  "scope": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/05.json",
+    "sha256": "d520246b29bf71f36462f08d6fe06131c321dcf81f19b251c119c56b033e581c"
+  },
+  "argv": [
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+    "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+    "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so",
+    "--extension=gemmini",
+    "-p1",
+    "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+    "-m0x80000000:0x400000000",
+    "--instructions=1000000000",
+    "--timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model.json",
+    "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/replay/05.json",
+    "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/05.json",
+    "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+  ],
+  "wall_s": 18.064333921996877
+}

@@ -1,0 +1,128 @@
+# The stages a compiler is constructed in, and which records evidence each one.
+#
+# WHY THIS FILE EXISTS. Compiler construction is organized as an ordered set of stages -- frontend and
+# global optimization, the target-neutral interface, lowering every fused and unfused region, the
+# generated ISA dialect, hooking the out-of-tree dialect (and its scheduling dialect) to the
+# interface, choosing and ordering transformations, and finally tuning. Each stage can be built and
+# tested in parallel, and progress is tracked per stage. Until a construction run writes a stage
+# ledger, the experiment console derives stage progress from the records that already exist; this
+# file is the one place that derivation is declared, so changing it is a reviewed one-line diff
+# rather than an edit to console code.
+#
+# TARGET-AGNOSTIC. Nothing here names a target, an opcode or a capsule. Stages are tied to evidence
+# only through:
+#   construction_boundaries  -- the `boundary` field of merlin.construction_actions.v1 events (the
+#                               public capability inventory's construction_boundaries); every
+#                               boundary belongs to exactly one stage or lane;
+#   pass_requirement_tokens  -- capsule `pass_requirements` classes
+#                               (merlin.xdsl_dialects.lowering.passes); a capsule declaring the token
+#                               is gated by that stage;
+#   record_kinds             -- record schemas (or record field names) whose presence evidences work;
+#   pipeline_commands        -- generic package-manifest command names realizing the stage;
+#   agent_paths              -- explicit agent paths attributed to the stage (empty by default: an
+#                               agent is never mapped to a stage by guessing from its name).
+#
+# THE LEDGER. A construction run may write `merlin.compiler_stage_ledger.v1`
+# (merlin/contract/schemas/compiler_stage_ledger.schema.json) at one of `ledger_locations`
+# (relative to the agent workspace, then the run directory). When present it is authoritative and
+# the console labels every stage `ledger`; otherwise every stage is labelled `derived`.
+version: 1
+
+ledger_schema: merlin.compiler_stage_ledger.v1
+ledger_locations:
+  - workspace: compiler_stage_ledger.json
+  - run_dir: compiler_stage_ledger.json
+
+stages:
+  - id: frontend
+    title: Frontend
+    description: Import and parse workload sources into the typed graph; numeric and shape facts from the source.
+    construction_boundaries: []
+    pass_requirement_tokens: []
+    record_kinds: []
+    pipeline_commands: [parse, consume_computation]
+    agent_paths: []
+    metrics: [parsed_capsules, actions]
+
+  - id: global_optimization
+    title: Global optimization
+    description: Graph-level transformations before the interface -- fusion discovery and realization, region legality, live outputs.
+    construction_boundaries: [graph]
+    pass_requirement_tokens: []
+    record_kinds: [merlin.fusion_workflow.v1, merlin.fusion_cursor.v1]
+    pipeline_commands: []
+    agent_paths: []
+    metrics: [fusion_patterns, fusion_candidates, fusion_routes_matched, fusion_unsupported]
+
+  - id: interface
+    title: Interface
+    description: The target-neutral interface -- region partition and eligibility, numeric contracts, layout and panel plans.
+    construction_boundaries: [numeric_layout]
+    pass_requirement_tokens: [region-partition]
+    record_kinds: [merlin.public_capability_inventory.v1]
+    pipeline_commands: []
+    agent_paths: []
+    metrics: [capsules_required, capsules_passing]
+
+  - id: lowering
+    title: Lowering
+    description: Lower every fused and unfused region from the interface to the target; end-to-end executables per capsule.
+    construction_boundaries: [integration]
+    pass_requirement_tokens: [target-isa-lowering]
+    record_kinds: [merlin.lowering_operation_profile.v1]
+    pipeline_commands: [lower_interface_to_target, lower_target_to_llvm]
+    agent_paths: []
+    metrics: [capsules_required, capsules_passing, actions]
+
+  - id: isa_dialect
+    title: ISA dialect
+    description: Instruction operations generated from the public ISA and RTL facts, their encodings and command legality.
+    construction_boundaries: [isa_lowering]
+    pass_requirement_tokens: []
+    record_kinds: [merlin.isa_generation.v1, merlin.generated_isa_library.v1, merlin.isa_scaffold_readiness.v1]
+    pipeline_commands: [emit_command_buffer]
+    agent_paths: []
+    metrics: [generated_packages, instructions]
+
+  - id: oot_integration
+    title: OOT + scheduling
+    description: Hook the out-of-tree dialect and its scheduling dialect to the interface -- tiling, data movement, storage lifetimes, resource schedules.
+    construction_boundaries: [schedule_storage]
+    pass_requirement_tokens: [tile-schedule, block-movement]
+    record_kinds: [merlin.shared_pass_target_transport.v1]
+    pipeline_commands: [emit_target_bundle, consume_emission]
+    agent_paths: []
+    metrics: [capsules_required, capsules_passing, pass_families]
+
+  - id: transformations
+    title: Transformations
+    description: Select, order and add compiler passes; profile each pass and keep the useful ones.
+    construction_boundaries: []
+    pass_requirement_tokens: []
+    record_kinds: [merlin.compiler_pipeline_policy.v1, merlin.compiler_pipeline_variant.v1, host_pass_profile,
+                   merlin.pass_observation.v1, merlin.compiler_pass_selection.v1, merlin.shared_pass_contract.v2]
+    pipeline_commands: [emit_analysis_bundle]
+    agent_paths: []
+    metrics: [pass_families_declared, pass_families_used, passes_profiled]
+
+  - id: tuning
+    title: Tuning
+    description: Performance tuning against modeled and measured cycles once the compiler is functionally complete.
+    construction_boundaries: []
+    pass_requirement_tokens: []
+    record_kinds: [merlin.phase1.joint_performance.v1, merlin.scoped_performance_feedback.v1]
+    pipeline_commands: []
+    agent_paths: []
+    metrics: [modeled_capsules, provisional, geo_efficiency_pct, worst_efficiency_pct]
+
+# Cross-cutting work that serves every stage rather than sitting between two of them.
+lanes:
+  - id: host_runtime
+    title: Host runtime
+    description: Shared host code generation, dispatch, completion and complete-call execution.
+    construction_boundaries: [host_runtime]
+    pass_requirement_tokens: [host-seam, model-boundary-capstone]
+    record_kinds: []
+    pipeline_commands: []
+    agent_paths: []
+    metrics: [capsules_required, capsules_passing, actions]

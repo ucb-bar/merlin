@@ -11,6 +11,8 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
 - `command.py` — The `merlin-compile` command line: its arguments, the combinations it refuses, and its report.
 - `debug.py` — Compile debugging options (`--list-stages`, `--dump-ir-after/-before`, `--stop-after`, `--trace-dir`), shared by `merlin-compile`, the whole-model builder CLI and launch configs.
 - `host_lane.py` — The RVV host lane: which package a compile uses for each datatype, and its provenance pin.
+- `host_optimizations.py` — Public source-exact tensor and explicitly selected LLVM host rewrites shared with compiler generators.
+- `host_optimization_export.py` — Export an additional source-only host library for explicit review and equal selection by both experiment arms; never alter frozen SDK profiles.
 - `mesh.py` — Execute and certify matmul layers on a target's accelerator mesh.
 - `mesh_backend.py` — Plumbing for running a layer through a target's out-of-tree backend package.
 - `mesh_model.py` — Drivers that run every matmul layer of a whole model, or of an int8 layer chain, on the mesh.
@@ -21,6 +23,13 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Invariants
+
+- `completed_model_link.finalize` may issue a separate completed-object transport
+  record for the precise final device-package tree refusal with `run=none`.
+  Every original source tree must be restored byte-exactly; completed recipe,
+  products and original storage permissions reopen. The failed receipt stays
+  failed, unsupported deferred checks refuse, and saved effects never recreate
+  allocator or device authority.
 
 - `merlin.compile_cli` is the front door: `compile_rvv`, `compile_model`, `compile_oot`, `main`, and the
   steps only they use (`_ensure_bundle`, `_workload_features`, `_session_correctness_gate`,
@@ -45,3 +54,36 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
   numerical regime (comparison, tolerances, scaling and subnormal handling), not hardware evidence.
   Core never discovers a profile by target name. Floating execution without that declaration refuses;
   callers must forward it through recursive tiling, certification, runtime dispatch and device builds.
+- Explicit placement planning forwards the caller's selected linked-ELF admission
+  unchanged into `DeviceRouting`. Automatic `compile_model` planning currently has
+  no independently selected live policy/accessor producer; an active ordinary
+  device build must refuse rather than infer one from a target or package name.
+- `owned_host_model` forwards an explicit complete-group requirement to ordinary
+  source routing. Complete source contracts select every independently admitted
+  accelerator group; host placement and source/numeric legality still apply.
+
+`connected_regions.py` owns source-SSA boundaries, lifetimes and native stage
+compiler selection. `connected_runtime.py` consumes its dense/pointwise products
+through explicit synchronous launch callbacks and checked ordered invocations.
+Retain every external observer and live output. Distinct declared physical
+backings cannot alias through caller buffers; output reuse needs disjoint live
+ranges. This is unfused composition, not on-chip residency or runtime
+qualification. Target pointer ABI, image loading and instruction implementations
+remain caller-owned. Neutral host-buffer execution is not a compiled guest ABI.
+
+`connected_host.py` emits the synchronous caller-owned C byte-view sequence.
+Preflight every view before any stage executes; reject overlapping distinct
+physical backings and metadata aliases. Explicit stage effects include completion
+on failure as well as success. Preserve exact stage products and all source live
+outputs. Binding receipts and asserted effects do not certify target execution.
+
+`owned_spatial_source` is an explicitly frozen public capsule compiler route.
+It rebuilds the original declarative component graph and compares all source
+semantics/interface fields, then prepares its actual SSA grouping and private
+host ownership. Candidate emission still uses ordinary sandboxed entrypoints;
+only literal closed helper/completion regions are retained. Original host and
+descriptor transport are emitted by this fixed compiler, with strict object
+symbol admission and separate tool/input/output custody. It accepts no saved
+ELF or candidate host compiler. Normal capsule structural, stack, full-output
+numeric and selected-engine gates must still execute. This supplement route
+issues no six-model gate credit, physical effects or timing qualification.

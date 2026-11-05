@@ -65,3 +65,19 @@ def test_the_beam_and_the_runner_both_record_it():
         src = (base / name).read_text()
         assert "codegen_env" in src, name
         assert "_codegen_env.digest()" in src, name
+
+
+def test_cache_identity_preserves_values_lost_by_the_display_snapshot():
+    for name, left, right in (
+        ("MERLIN_FUTURE_CONTROL", "x" * 1024, "y" * 1024),
+        ("MERLIN_SECRET_CONTROL", "left", "right"),
+    ):
+        a, b = {name: left}, {name: right}
+        assert ce.snapshot(a) == ce.snapshot(b)
+        assert ce.cache_digest(a) != ce.cache_digest(b)
+        assert left not in ce.cache_digest(a)
+    assert ce.cache_digest({}) != ce.cache_digest({"MERLIN_PASSES": ""})
+    assert ce.cache_digest({"PATH": "a"}) == ce.cache_digest({"PATH": "b"})
+    assert ce.cache_digest({"MERLIN_A": "a\nMERLIN_B=b"}) != ce.cache_digest(
+        {"MERLIN_A": "a", "MERLIN_B": "b"}
+    )

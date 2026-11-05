@@ -17,25 +17,39 @@ Nothing here is target-specific: the same artifacts feed the host and the spike 
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import tempfile
+from math import prod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from .model_runner import parse_forward_signature
+from .weight_payload import WeightPayload
 from .weights_pack import load_safetensors_header
 
 if TYPE_CHECKING:
     from .entry_weight_projection import EntryWeightProjection
 
 DT_BYTES = {"f32": 4, "f64": 8, "bf16": 2, "f16": 2, "i64": 8, "i32": 4, "i16": 2, "i8": 1, "i1": 1}
-NP_OF = {"f32": np.float32, "f64": np.float64, "i64": np.int64, "i32": np.int32, "i8": np.int8, "i1": np.bool_}
+NP_OF = {
+    "f32": np.float32,
+    "f64": np.float64,
+    "i64": np.int64,
+    "i32": np.int32,
+    "i16": np.int16,
+    "i8": np.int8,
+    "i1": np.bool_,
+}
 C_OF = {
     "f32": "float",
     "f64": "double",
     "i64": "long",
     "i32": "int",
+    "i16": "int16_t",
     "i8": "signed char",
     "i1": "signed char",
     "bf16": "unsigned short",
@@ -45,6 +59,62 @@ C_OF = {
 # Existing portable build-time append policy. This describes generated blob
 # placement; it supplies no target DMA, tensor alignment or no-alias fact.
 GENERATED_WEIGHT_ALIGNMENT = 64
+
+
+def _align_weight_rows(rows, blob, appended, append):
+    """Repair native element alignment without changing any weight alias relation.
+
+    Captured byte offsets need not satisfy the native typed-load ABI. Relocate
+    each affected overlapping component together; never split views or infer
+    device DMA alignment. Already aligned components retain their exact bytes
+    and offsets. Lazy span copies keep build memory bounded by the I/O chunk.
+    """
+    payload = WeightPayload()
+    payload.extend(blob)
+    payload.extend(appended)
+    windows = []
+    for index, (kind, start, _rank, shape, elem, _dtype) in enumerate(rows):
+        if kind == "MERLIN_WEIGHT":
+            if any(type(dim) is not int or dim < 0 for dim in shape):
+                raise ValueError("runtime weight descriptor requires static nonnegative dimensions")
+            size = prod(shape) * elem
+            if start < 0 or start > len(payload) or start + size > len(payload):
+                raise ValueError("runtime weight descriptor exceeds actual packed bytes")
+            if size:
+                windows.append((start, start + size, index))
+    groups = []
+    for start, end, index in sorted(windows):
+        if groups and start < groups[-1][1]:
+            groups[-1][1] = max(groups[-1][1], end)
+            groups[-1][2].append((start, index))
+        else:
+            groups.append([start, end, [(start, index)]])
+    repairs = []
+    for low, high, members in groups:
+        if all(start % rows[index][4] == 0 for start, index in members):
+            continue
+        reference, reference_index = max(members, key=lambda item: rows[item[1]][4])
+        alignment = rows[reference_index][4]
+        shift = (-reference) % alignment
+        if GENERATED_WEIGHT_ALIGNMENT % alignment or any((start + shift) % rows[index][4] for start, index in members):
+            raise ValueError("overlapping weight views have incompatible native element alignment")
+        prefix = (low - reference) % alignment
+        copied = WeightPayload.zeros(prefix)
+        copied.extend(payload[low:high])
+        begin = append(copied) + prefix
+        for start, index in members:
+            kind, _offset, *rest = rows[index]
+            rows[index] = (kind, begin + start - low, *rest)
+        repairs.append(
+            dict(
+                descriptor_stage="before_entry_projection",
+                source_start=low,
+                size=high - low,
+                destination_start=begin,
+                arguments=[index for _, index in members],
+            )
+        )
+    return repairs
 
 
 def manifest_requires_weight_blob(manifest: dict) -> bool:
@@ -65,6 +135,7 @@ def manifest_requires_weight_blob(manifest: dict) -> bool:
 
 
 def _out_specs(mlir_path: str | Path) -> list[tuple[list[int], str]]:
+    """Read the result ABI through the shared content-qualified signature cache."""
     from ..common.mlir_query import forward_signature
 
     _, results = forward_signature(mlir_path)
@@ -133,6 +204,17 @@ def _storage_nbytes(arr: np.ndarray, dt: str) -> int:
     return int(arr.size) * DT_BYTES[dt]
 
 
+def _storage_bytes(arr: np.ndarray, dt: str) -> bytes:
+    """Expected embedded storage words, without interpreting them as answers."""
+    if dt == "bf16":
+        value = _bf16_bits(np.ascontiguousarray(arr))
+    elif dt == "f16":
+        value = arr.astype(np.float16).view(np.uint16)
+    else:
+        value = arr.astype(NP_OF[dt])
+    return np.ascontiguousarray(value.astype(value.dtype.newbyteorder("<"))).tobytes()
+
+
 def generate(
     model_dir: str | Path,
     out_dir: str | Path,
@@ -145,6 +227,10 @@ def generate(
     prepared_dir: str | Path | None = None,
     entry_projection: EntryWeightProjection | None = None,
     entry_projection_source: str | Path | None = None,
+    materialize_weights: bool = True,
+    weights_source: str | Path | None = None,
+    readonly_input_indices: tuple[int, ...] = (),
+    max_readonly_input_bytes: int = 1 << 20,
 ) -> dict:
     """Emit the runtime-driving artifacts for a captured model into ``out_dir``.
 
@@ -160,7 +246,22 @@ def generate(
     ``max_session_steps`` caps how many steps of a session corpus are embedded (streams and the
     correctness/quality references together, so step k still meets reference k). ``None`` embeds the
     whole corpus, which is what every existing caller gets.
+
+    Hash-only generation derives the complete blob without writing it. Explicit
+    ``weights_source`` may share immutable bytes only after exact verification.
+    All writes replace atomically, so regenerating an output cannot overwrite
+    an existing shared inode. Mutable invocation state is never shared here.
     """
+    if type(materialize_weights) is not bool:
+        raise TypeError("materialize_weights must be a bool")
+    from merlin.runtime.input_observation import validate_selection
+
+    validate_selection(readonly_input_indices, max_readonly_input_bytes)
+    if weights_source is not None and not materialize_weights:
+        raise ValueError("weights_source requires materialize_weights=True")
+    weight_storage = os.environ.get("MERLIN_WEIGHT_PAYLOAD_STORAGE", "streamed")
+    if weight_storage not in {"streamed", "materialized"}:
+        raise ValueError("MERLIN_WEIGHT_PAYLOAD_STORAGE requires streamed or materialized")
     model_dir, out_dir = Path(model_dir).resolve(), Path(out_dir).resolve()
     prepared_dir = Path(prepared_dir).resolve() if prepared_dir is not None else out_dir
     if entry_projection is not None:
@@ -185,7 +286,25 @@ def generate(
 
     guard_planned_pack(model_dir, out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    readonly_sources = []
+    if readonly_input_indices:
+        from merlin.runtime.input_observation import snapshot_sources
+
+        source_paths = [model_dir / "model.mlir", inputs_npz, model_dir / "weights.safetensors.manifest.json", __file__]
+        source_paths.extend(
+            path
+            for path in (
+                model_dir / "weights.safetensors",
+                model_dir / "session_contract.yaml",
+                model_dir / "input_order.json",
+                Path(extra_npz or model_dir / "extra.npz"),
+            )
+            if path.is_file()
+        )
+        readonly_sources = snapshot_sources(source_paths)
     sig = parse_forward_signature(model_dir / "model.mlir")
+    if any(i >= len(sig) for i in readonly_input_indices):
+        raise ValueError("readonly input index is outside the original capture arguments")
     man = json.loads((model_dir / "weights.safetensors.manifest.json").read_text())
     weights_path = model_dir / "weights.safetensors"
     if manifest_requires_weight_blob(man):
@@ -194,13 +313,22 @@ def generate(
                 f"manifest declares stored parameters but the weight blob is absent: {weights_path}"
             )
         hdr, payload_off = load_safetensors_header(weights_path)
-        blob = weights_path.read_bytes()[payload_off:]
+        blob = WeightPayload.file(weights_path, payload_off, weights_path.stat().st_size - payload_off)
     else:
         # A compiled ABI-only stage can be a pure identity/view with no parameters. Captures still
         # carry the argument manifest, but emitting a dummy safetensors container is neither part of
         # the model contract nor necessary for the runtime: qinner/stub bytes, if any, are appended
         # below exactly as for an ordinary blob.
-        hdr, payload_off, blob = {}, 0, b""
+        hdr, payload_off, blob = {}, 0, WeightPayload()
+    # BLOB WEIGHTS (merlin.llvmlower.blob_weights): device-layout weights the preparation bound as
+    # trailing arguments, and the original arguments only they replaced, whose bytes are dropped here.
+    from . import blob_weights as _blob_weights
+
+    blob_plan = _blob_weights.read(prepared_dir)
+    if blob_plan.args and entry_projection is not None:
+        raise ValueError("blob weights and an entry weight projection cannot share one argument table")
+    if blob_plan.dead_args:
+        hdr, blob = _blob_weights.compact(hdr, blob, man, blob_plan.dead_args, appended=blob_plan.nbytes)
     inputs = np.load(inputs_npz)
     extra_path = extra_npz or (model_dir / "extra.npz")
     extra = np.load(extra_path) if Path(extra_path).is_file() else {}
@@ -218,12 +346,12 @@ def generate(
     # quantized-subclass inner tensors, the zero region a stubbed argument's dead descriptor points
     # at -- is APPENDED here and addressed by its offset past the payload, so it costs no C literals
     # and rides the same mmap/embed path the weights already use.
-    appended = bytearray()
+    appended = WeightPayload()
 
-    def _append_blob(data: bytes) -> int:
+    def _append_blob(data: WeightPayload) -> int:
         """Place ``data`` after the weights payload (64-byte aligned) and return its blob offset."""
-        pad = (-len(appended)) % GENERATED_WEIGHT_ALIGNMENT
-        appended.extend(b"\0" * pad)
+        pad = (-(len(blob) + len(appended))) % GENERATED_WEIGHT_ALIGNMENT
+        appended.extend(WeightPayload.zeros(pad))
         begin = len(blob) + len(appended)
         appended.extend(data)
         return begin
@@ -264,7 +392,7 @@ def generate(
                 # a zero region instead, shared between equally sized stubs since they are read-only.
                 nbytes = max(1, int(np.prod(shape)) * elem)
                 if nbytes not in stub_zero_offsets:
-                    stub_zero_offsets[nbytes] = _append_blob(bytes(nbytes))
+                    stub_zero_offsets[nbytes] = _append_blob(WeightPayload.zeros(nbytes))
                 rows.append(("MERLIN_WEIGHT", stub_zero_offsets[nbytes], len(shape), shape, elem, dt))
                 continue
             begin, _ = hdr[meta["weight"]]["data_offsets"]
@@ -307,9 +435,19 @@ def generate(
 
     qinner_args = _qinner.plan_for_bundle(model_dir / "model.mlir")
     if qinner_args:
-        for arg, arr in zip(qinner_args, _qinner.resolve(extra, qinner_args)):
-            begin = _append_blob(np.ascontiguousarray(arr).tobytes())
+        for arg in qinner_args:
+            size = int(np.prod(arg.shape)) * DT_BYTES[arg.dtype]
+            begin = _append_blob(WeightPayload.array(size, lambda arg=arg: _qinner.resolve(extra, [arg])[0]))
             rows.append(("MERLIN_WEIGHT", begin, len(arg.shape), list(arg.shape), DT_BYTES[arg.dtype], arg.dtype))
+    # The device group rewrite binds its blob weights after qinner's arguments and before quant-hoist's.
+    blob_values = np.load(blob_plan.directory / _blob_weights.VALUES_FILE) if blob_plan.args else {}
+
+    for arg in blob_plan.args:
+        size = int(np.prod(arg["shape"])) * DT_BYTES[arg["dtype"]]
+        begin = _append_blob(WeightPayload.array(size, lambda arg=arg: blob_plan.array(arg, blob_values)))
+        rows.append(
+            ("MERLIN_WEIGHT", begin, len(arg["shape"]), list(arg["shape"]), DT_BYTES[arg["dtype"]], arg["dtype"])
+        )
     # BUILD-TIME WEIGHT-INVARIANT RESULTS. `quant_hoist.apply` appends these after qinner's
     # arguments in the prepared @forward signature. The plan and bytes live in `prepared_dir`
     # because they are products of preparation, not capture or C generation. Reading either without
@@ -338,7 +476,8 @@ def generate(
             "i8": np.int8,
             "u8": np.uint8,
         }
-        for arg in quant_hoist_args:
+
+        def hoist_array(arg):
             if arg.dtype not in numpy_dtype:
                 raise ValueError(f"quant-hoist argument {arg.key!r} has unsupported {arg.dtype}")
             arr = np.ascontiguousarray(quant_hoist_values[arg.key])
@@ -347,9 +486,13 @@ def generate(
                     f"quant-hoist argument {arg.key!r} bytes are {arr.shape}x{arr.dtype}, "
                     f"plan requires {arg.shape}x{arg.dtype}"
                 )
-            begin = _append_blob(arr.tobytes())
+            return arr
+
+        for arg in quant_hoist_args:
+            size = int(np.prod(arg.shape)) * DT_BYTES[arg.dtype]
+            begin = _append_blob(WeightPayload.array(size, lambda arg=arg: hoist_array(arg)))
             rows.append(("MERLIN_WEIGHT", begin, len(arg.shape), list(arg.shape), DT_BYTES[arg.dtype], arg.dtype))
-    n_sig_args = len(sig) + len(qinner_args) + len(quant_hoist_args)
+    n_sig_args = len(sig) + len(qinner_args) + len(blob_plan.args) + len(quant_hoist_args)
     # Output rows follow the input/weight rows in MLIR result order. Keeping every result is what
     # lets a captured decoder/LSTM expose its updated state instead of the runtime silently dropping
     # all but result zero.
@@ -397,6 +540,8 @@ def generate(
         stream_path = model_dir / str(session.get("inputs", "session_inputs.npz"))
         if not stream_path.is_file():
             raise FileNotFoundError(f"{session_path}: session input corpus is absent: {stream_path}")
+        if readonly_input_indices:
+            readonly_sources.extend(snapshot_sources([stream_path]))
         stream_data = np.load(stream_path)
         for j, stream in enumerate(streams):
             if not isinstance(stream, dict):
@@ -473,6 +618,8 @@ def generate(
             if quality_values is not None:
                 quality_values = quality_values[:session_steps]
 
+    weight_alignment = _align_weight_rows(rows, blob, appended, _append_blob)
+
     # Project all ABI consumers together after their original source derivation.
     # Embedded array names remain keyed by original capture indices; descriptor
     # indices, state maps and stream pointer updates follow the same projection.
@@ -481,12 +628,68 @@ def generate(
     if entry_projection is not None:
         from .entry_weight_projection import compact_runtime_rows
 
-        rows, packed = compact_runtime_rows(rows, bytes(blob) + bytes(appended), entry_projection)
-        blob, appended = packed, bytearray()
+        combined = WeightPayload()
+        combined.extend(blob)
+        combined.extend(appended)
+        rows, packed = compact_runtime_rows(rows, combined, entry_projection)
+        blob, appended = packed, WeightPayload()
         runtime_indices = entry_projection.retained_original_indices
         descriptor_index = {original: index for index, original in enumerate(runtime_indices)}
         state_pairs = [(descriptor_index[input_arg], output_index) for input_arg, output_index in state_pairs]
         n_sig_args = len(runtime_indices)
+
+    readonly_observation = None
+    if readonly_input_indices:
+        from merlin.runtime.input_observation import write_observation
+
+        combined = WeightPayload()
+        combined.extend(blob)
+        combined.extend(appended)
+        arguments, observed_bytes = [], 0
+        for original_index in readonly_input_indices:
+            if original_index not in descriptor_index:
+                raise ValueError("readonly input observation cannot observe a projected-away argument")
+            meta = man[str(original_index)]
+            if meta.get("access") not in (None, "read", "readonly") or meta.get("mutable") is True:
+                raise ValueError("readonly input selection contradicts declared argument mutability")
+            runtime_index = descriptor_index[original_index]
+            kind, offset, rank, shape, elem, dtype = rows[runtime_index]
+            size = prod(shape) * elem
+            observed_bytes += size
+            if size <= 0 or observed_bytes > max_readonly_input_bytes:
+                raise ValueError("readonly input observation exceeds its complete byte budget")
+            if kind == "MERLIN_WEIGHT":
+                for other, other_runtime in descriptor_index.items():
+                    declared = man.get(str(other), {})
+                    if not (declared.get("access") in ("write", "readwrite") or declared.get("mutable") is True):
+                        continue
+                    other_kind, start, _rank, dims, width, _dtype = rows[other_runtime]
+                    if other_kind == "MERLIN_WEIGHT" and start < offset + size and offset < start + prod(dims) * width:
+                        raise ValueError("readonly input aliases a declared mutable weight argument")
+                data = bytes(combined[offset : offset + size])
+            elif kind == "MERLIN_INPUT":
+                array, dt = embedded_arrays[original_index]
+                array = next((arr[0] for arg, arr, _dt in stream_specs if arg == original_index), array)
+                data = _storage_bytes(array, dt)
+            else:
+                raise ValueError("readonly input selection does not identify an original input or weight")
+            if len(data) != size:
+                raise ValueError("readonly input bytes disagree with their actual runtime descriptor")
+            arguments.append(
+                {
+                    "original_index": original_index,
+                    "runtime_index": runtime_index,
+                    "kind": kind,
+                    "weight_offset": offset if kind == "MERLIN_WEIGHT" else None,
+                    "shape": list(shape),
+                    "dtype": dtype,
+                    "data": data,
+                }
+            )
+        readonly_observation = write_observation(
+            out_dir, arguments=arguments, sources=readonly_sources, max_bytes=max_readonly_input_bytes
+        )
+        static_io_bytes += observed_bytes + 8 * len(arguments)
 
     # model_gen.h
     h = [
@@ -655,7 +858,41 @@ def generate(
         f"void {invoke_name}(void **d) {{ _mlir_ciface_{ciface_name}({call}); }}",
     ]
 
-    (out_dir / "weights.bin").write_bytes(bytes(blob) + bytes(appended))
+    weight_digest = hashlib.sha256()
+    sources = (blob, appended) if weight_storage == "streamed" else (bytes(blob), bytes(appended))
+
+    def write_weights(stream=None):
+        for source in sources:
+            chunks = source.chunks() if isinstance(source, WeightPayload) else (memoryview(source),)
+            for chunk in chunks:
+                weight_digest.update(chunk)
+                if stream is not None:
+                    stream.write(chunk)
+
+    if materialize_weights:
+        weights = out_dir / "weights.bin"
+        # The temporary directory also makes link publication atomic when an
+        # earlier generated destination already exists.
+        with tempfile.TemporaryDirectory(dir=out_dir, prefix="weights-") as temporary:
+            pending = Path(temporary) / "weights.bin"
+            if weights_source is not None:
+                write_weights()
+                source = Path(weights_source).resolve(strict=True)
+                with source.open("rb") as stream:
+                    digest = hashlib.file_digest(stream, "sha256").hexdigest()
+                if source.stat().st_size != len(blob) + len(appended) or digest != weight_digest.hexdigest():
+                    raise ValueError("selected weight blob differs from this stage's derived bytes")
+                os.link(source, pending)
+            else:
+                with pending.open("wb") as stream:
+                    write_weights(stream)
+            with pending.open("rb") as stream:
+                actual_digest = hashlib.file_digest(stream, "sha256").hexdigest()
+            if pending.stat().st_size != len(blob) + len(appended) or actual_digest != weight_digest.hexdigest():
+                raise ValueError("realized weight blob changed or disagrees with derived bytes")
+            pending.replace(weights)
+    else:
+        write_weights()
     (out_dir / "model_gen.h").write_text("\n".join(h) + "\n")
     (out_dir / "model_io.h").write_text("\n".join(io) + "\n")
     (out_dir / "model_call.c").write_text("\n".join(call_c) + "\n")
@@ -680,8 +917,12 @@ def generate(
         "n_qinner": len(qinner_args),
         "n_quant_hoist": len(quant_hoist_args),
         "weights_bytes": len(blob) + len(appended),
+        "weights_sha256": weight_digest.hexdigest(),
+        "weight_alignment_repairs": weight_alignment,
         "static_io_bytes": static_io_bytes + output_bytes,
     }
+    if readonly_observation is not None:
+        info["readonly_input_observation"] = readonly_observation
     if entry_projection is not None:
         info["entry_projection"] = {
             "original_arguments": len(entry_projection.argument_table.entries),

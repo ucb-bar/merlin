@@ -1,63 +1,103 @@
 ---
-title: FireSim — whole-model cycle truth on the FPGA
+title: Run whole programs on FireSim
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-09-29
-related: [zephyr, tinyllama_int8_rvv_zephyr, getting_started, reproducibility, reproducing_whole_model_on_rtl, whole_model_on_accelerator]
+last_verified: 2026-10-25
+related: [zephyr, tinyllama_int8_rvv_zephyr, getting_started, reproducibility, whole_model_on_accelerator]
 code_refs: [src/merlin/runtime/backends/zephyr_model.py, src/merlin/runtime/backends/firesim_runner.py, src/merlin/perf/firesim_receipt.py, src/merlin/perf/firesim_checkpoint.py, build_tools/chipyard/setup_multicore_saturn.py, build_tools/chipyard/MerlinSaturnConfigs.scala, build_tools/scripts/firesim_sweep.py, build_tools/scripts/fsq.py, build_tools/firesim/README.md, build_tools/firesim/preflight.py, examples/firesim_modelblaster/README.md]
 ---
 
-# FireSim — whole-model cycle truth on the FPGA
+# Run whole programs on FireSim
 
-## What FireSim is for here
+For a workhorse that drives a remote manager through a locked SSM document, use
+the [post-freeze workhorse workflow](../../examples/gemmini/validation/README.md).
+That deployment offers direct `~/bin/fpga-run-elf ELF NAME` / `FsimRunElf`
+transport and the legacy `~/bin/fpga-run WORKLOAD` interface. It has no local
+queue; the local queue/manager commands below do not apply to it. Each direct
+ELF contains the complete model chain; upload removes per-model registration,
+not frozen-input, uploaded-byte, manager-result or numerical proof requirements. The workflow
+prepares source-bound requests after either phase's compiler freeze and imports
+observations without replacing the model checker's numerical or placement gates.
 
-Merlin has several rungs of execution truth, and each one runs out of road somewhere:
+## Execution and timing scope
 
-| Rung | Gives you | Runs out at |
-|---|---|---|
-| host / numpy | functional truth, instantly | no cycles at all |
-| spike | functional truth on the real ISA | no timing (functional model) |
-| Verilator | cycle-accurate RTL | **~10⁴ cycles/s** — a whole-model inference is ~10¹⁰ cycles, i.e. weeks |
-| **FireSim** | cycle-accurate RTL, whole model | hours per model; one FPGA, shared |
-| SpacemiT K1 board | wall-clock on real silicon | not *our* SoC — fixed vendor design |
+FireSim executes a selected RTL design on an FPGA. Use it for frozen complete
+program checks when the required runtime and design are qualified. Functional
+simulators such as Spike provide ISA/numerical evidence; CPU RTL engines provide
+selected RTL execution and counter evidence. Their wall costs depend on the
+actual design, program and worker, so measure tool cost before choosing a tier.
 
-FireSim is the only rung where **our own RTL** executes a **whole model**. Verilator certifies
-the mechanism (a kernel, a dispatch, a multicore hand-off); the K1 answers "is it fast on
-silicon someone else built". Only FireSim answers "how many cycles does the SoC we designed
-take on the model we care about".
+Bind every result to its exact design, configuration, bitstream, executable,
+inputs, output checks and timer boundary. Cycles from different host cores or
+memory configurations are not interchangeable. Measure effective simulation
+rate per run from the heartbeat; a historical rate is not a new worker's limit.
 
-The rate is the whole point. Measured on this host on 2026-07-26, with the dual-Saturn
-bitstream: **25.08 MHz effective** (3.67 G target cycles in 148 s, read off `heartbeat.csv`).
-That is roughly 2500× Verilator. A 10¹⁰-cycle inference is ~7 minutes; a 10¹¹-cycle one is
-~1.1 hours. Both are impossible in RTL simulation and routine here.
+Build or runner-selection checks do not qualify hardware execution. Keep model
+results and deployment qualification records in generated run artifacts. A
+missing bitstream, engine, output check or required oracle remains unavailable.
 
-A second measurement, 2026-08-29 on `alveo_u250_firesim_shuttle_gemmini_opu`: **30.0 MHz host frequency, FMR 1.00**, 567,348,497 target cycles in **18.9 s** wallclock. Same order as the dual-Saturn figure and from a different design, which is the point of the next paragraph.
+## Gemmini on AWS F2: identify the complete configuration
 
-That design is **not** the `GemminiRocketConfig` the Verilator numbers come from: it reports two cores, vector-load channels, and `MainMemory_0 -> [0x0, 0x3FFFFFFFF]` (**16 GB**, against 256 MB on the Verilator target). Cycle counts from the two are **not interchangeable** — the same capsule reads 510 cycles here and 317 on Verilator, same accelerator, different host core. Keep them in separate columns.
+The on-demand F2 deployment observed on 2026-10-25 uses the following image.
+The target name, platform/memory configuration, source revisions and loaded image
+are separate identities; `FireSimGemminiRocketConfig` alone does not specify them.
 
-Do not carry that number forward as a constant. The effective clock is a property of the
-design + bitstream + host, and it is *measured per run* (see [Reading a run](#reading-a-run)).
-An earlier single-vector-unit bitstream ran considerably slower.
-
-## What is verified, and what is not
-
-Be exact about this before planning work on it.
-The runner selection and installed-wheel path were checked without an FPGA;
-they do not revalidate the historical hardware measurements below.
-
-| Claim | Status |
+| Layer | Recorded selection |
 |---|---|
-| The dual-Saturn bitstream exists, is registered in hwdb, and is the current `default_hw_config` | **verified** (config files read 2026-07-26) |
-| It closes timing at 25 MHz and the FPGA sustains ~25 MHz effective | **verified** — recipe `fpga_frequency: 25`, heartbeat slope 25.08 MHz |
-| 28.65% LUT utilisation (495k/1.73M), FF 6.7%, BRAM 8.9%, DSP 1.7%, WNS +0.034 ns | reported from the build; **not re-derived here** |
-| Whole models run end-to-end on FireSim through the **Zephyr** path, accuracy-gated | **verified**, RVV backend, `small_llama` int8: 1 hart `cos=0.9999999`, 362,862,321 cycles |
-| The **RVV** backend on a real Saturn tile under Zephyr | **verified** (2026-07-26) — see below; this was previously recorded as unsolved |
-| **Multicore** RVV (OpenMP over 2 pinned harts, both Saturn tiles) | **verified** — `cos=0.9999999`, 230,548,059 cycles, **bit-identical** to the 1-hart run, **1.574×** |
-| The **bare-metal** ELF path on FireSim | **verified** (2026-08-29) — a gemmini capsule ELF (`A2_single_tile_matmul`, LOAD at `0x80000000`) ran on `alveo_u250_firesim_shuttle_gemmini_opu` and its `OUT Y0` line is **byte-identical** to the cycle-accurate Verilator run of the same capsule |
-| Gemmini / capsule-bench L5 FireSim **oracle** | still **not wired** — a run is manual (submit an ELF, read `OUT`/`METRIC` from the uartlog). `heavy_oracles.firesim_adapter` builds the ELF and then reports `OracleUnavailable` rather than fabricate a result |
-| **Radiance** on FireSim | **impossible today** — no radiance/vortex/muon bitstream exists in `config_hwdb.yaml`. Radiance's ladder is `{L2: cyclotron, L3: verilator}`; FireSim is not on it |
-| Multi-GB (>2 GB) images booting and loading on the FPGA | links, but **HW-unconfirmed** |
+| FPGA image | `agfi-09268e63eac5f1c08` (`afi-07e1e0eedf1d9560f`) |
+| Hardware database entry | `firesim_rocket_singlecore_gemmini_no_nic_l2_llc4mb_ddr3` |
+| Target configuration | `WithDefaultFireSimBridges_WithFireSimConfigTweaks_chipyard.GemminiRocketConfig`, the composition named `FireSimGemminiRocketConfig` |
+| Platform configuration | `WithAutoILA_FRFCFS16GBQuadRankLLC4MB_BaseF2Config` |
+| Memory timing model | FASED **First-Ready FCFS** DDR3 model, with the modeled LLC; not the default latency pipe of bare `BaseF2Config` |
+| Host platform | AWS F2; archived build summary reports 110 MHz FPGA frequency |
+| Submission | `fpga-run-elf ELF NAME`, one job at a time; wrapper owns startup and teardown |
+
+The archived build log identifies `First-Ready FCFS MAS` and records these build
+defaults: scheduler window 8, transaction queue depth 8, open-page policy enabled,
+backend latency 2, and DDR timing values `tCAS=14`, `tRCD=14`, `tRP=14`. LLC defaults
+are 8 ways, 4,096 sets, 128-byte blocks and 8 active MSHRs (4 MiB modeled capacity).
+These are FASED model settings, not a description of the physical F2 host DRAM.
+The retained launch command has no explicit `+mm_*` overrides; retain the driver
+identity and actual runtime arguments when reproducing a run. FPGA host MHz is
+not the target architectural clock or a replacement for the modeled DDR timings.
+
+### Source revisions: F2 and the historical pins are different
+
+The [`gemmini_rocket_*` pins](../../merlin/contract/hardware_pins.yaml) describe
+the older U250/source lineage. They must not be silently relabeled as the F2 build.
+
+| Component | Historical Rocket+Gemmini lineage | F2 build evidence |
+|---|---|---|
+| Chipyard | `009e85b05ca817a15fcd6c3fe4eedd86cc2a3617` | Build summary reports Chipyard 1.14.0, `0acc1e1`; matching local object is `0acc1e1de2d3284bcd4d876956932a013ffe1949` |
+| Rocket | Gitlink `885dd5966a49ce19512e3cc3275515926e729ba2` | Gitlink at `0acc1e1`: `55bcad0f59436de98ea510334121de8546b9e9d7` |
+| Gemmini | `63f0b68a68f185a016a2993f2fb32e1661ea9e6c` | Build summary reports `8c3f9923`; matching object/gitlink is `8c3f9923a44a2fe2c7930587be297d6d4f8c09ca` |
+| FireSim | Gitlink `b084672c2f8cf32e55d78f73a001074c23f8a2b8` | Gitlink at `0acc1e1`: `da2a1cbcebbb96e21c551ebef513fd95a9d73403` |
+
+The F2 Rocket and FireSim entries above are **recorded gitlinks**, not separately
+witnessed builder checkout HEADs or clean-tree attestations. The available build
+archive does not establish all nested source bytes or the deployed driver hash.
+Both Gemmini revisions have the same `Configs.scala` contents and default 16×16
+array geometry; that does not establish whole-SoC timing equivalence. The local
+FireSim-aligned gSIM checkout at `3e9bfb4bf58a7dfe6e1082496a9578a5dcd83831`
+is the historical Chipyard pin plus a committed harness-config addition. It is
+not the F2 image's source revision. Keep gSIM/model qualification attached to its
+actual elaboration and memory service, independently of F2 measurements.
+
+### Obtain the deployment evidence
+
+With read access to the deployment's artifact bucket, download the archived
+`firesim-builds/gemmini-rocket-1.14.0/{SUMMARY.txt,hwdb-entry.yaml,build.log}` from
+`s3://mb-artifacts-366258938248-usw2/`. The summary joins the build to the AGFI;
+the build log records the actual target/platform configuration and FASED defaults.
+For each execution, retain `HW_CFG_SUMMARY`, `sim-run.sh` and `uartlog` under its
+exact `firesim-runs/<timestamp>/` prefix, alongside the ELF hash and output check.
+Fetching these records is read-only and does not require starting the manager.
+
+For another deployment, record the same identities rather than copying this
+image's name. Updating a FireSim checkout does not change an existing AGFI. A new
+build needs its own source, platform/memory, driver and runtime records before
+its results can be compared as the same machine.
 
 ## Prerequisites
 
@@ -137,8 +177,8 @@ point `config_runtime.yaml`'s `default_hw_config` at it.
 
 ## Running — always through the queue
 
-There is **one** physical FPGA. Every run goes through the job queue; a direct `firesim
-runworkload` collides with whatever is already on the board.
+On a shared FPGA deployment, submit every run through its job queue. Direct
+`firesim runworkload` can collide with another user's active job.
 
 ```bash
 Q=$MERLIN_EXT_FIRESIM_QUEUE           # set per host; see .env.example
@@ -152,9 +192,8 @@ $Q/bin/firesim-queue stop-daemon
 
 The daemon holds an `flock` on `fpga.lock` for the whole duration of a job and dispatches by
 priority, then round-robin across users. **It must be alive** — nothing moves otherwise, and the
-queue simply fills up silently. It has been found down for two weeks with jobs waiting behind
-it. Before starting it, run `status` and look for work that has been PENDING since before you
-arrived; that is someone else's job about to start the moment you bring the daemon up.
+queue can retain pending jobs without execution. Before starting it, inspect
+`status`; existing pending work may start as soon as the daemon is available.
 
 Install the optional [ModelBlaster runner example](../../examples/firesim_modelblaster/README.md)
 or a separately maintained runner distribution, and select its entry-point name
@@ -387,18 +426,18 @@ programs linked into ONE boot binary. A queue job that itself calls `firesim inf
 
 ### Before you submit
 
-Three checks, in order. Each has silently cost hours here.
+Check the queue and executable before submission:
 
 1. **`firesim-queue status` must say `daemon: ALIVE`.** A dead daemon strands every submission as
-   `QUEUED` forever, with no error on your side — indistinguishable from a slow job. It has been found
-   down for ten days.
+   `QUEUED` until a daemon is available. Pending state alone does not indicate
+   that simulation has started.
 2. **Look for an orphaned `RUNNING` row.** A daemon that dies mid-job leaves one behind permanently.
    Check `cancel_requested` and `pid` in `queue.db`: a row with `pid: None` and a cancel already
    requested is a zombie its owner asked to end, and clearing it (`cancel <id> --force`) completes
    their request rather than killing live work. Never assume a `RUNNING` row means a running job.
 3. **Pre-flight the ELF**, seconds well spent against an hour of simulation: `readelf -lW` for LOAD
    segments inside the design's DRAM, and `objdump -d | grep -c` for instructions the core does not
-   implement. See [reproducing_whole_model_on_rtl](reproducing_whole_model_on_rtl.md).
+   implement. See [whole-program build and execution](whole_model_on_accelerator.md).
 
 A daemon this host runs cannot write another user's job dir; it logs `not runnable by this daemon …
 skipping it and continuing` and moves on. Their queued jobs neither run nor block yours.
@@ -451,7 +490,7 @@ See [`build_tools/firesim/README.md`](../../build_tools/firesim/README.md). The 
 carry in your head: the **Zephyr** path takes **no linker script** from that directory —
 `zephyr.lds` owns the link, and a large weights blob is placed by a devicetree memory region
 that `zephyr_model.py` emits. The linker script and specs there are for the **bare-metal** path
-only, which has not run on the FPGA yet.
+only. Each selected path needs its own deployment qualification.
 
 The shared constraint behind both is `-mcmodel=medany`: every reference is PC-relative within
 ±2 GB, so a multi-GB weights blob linked next to the code pushes ordinary symbols out of reach
@@ -477,7 +516,7 @@ a host-admin action, not something merlin does.
 password (host: localhost)".** FireSim's fabric manager does not read `~/.ssh/config` unless
 `env.use_ssh_config` is set, so a `Host localhost` key block is inert and authentication falls
 through to a password prompt it cannot answer. The fix is `env.use_ssh_config = True` in
-`deploy/firesim`'s `main()` — already applied in this checkout (line ~465). If `ssh localhost`
+`deploy/firesim`'s manager configuration. Verify the selected manager revision; if `ssh localhost`
 works but fabric does not, this is why.
 
 **Nothing runs and nothing fails.** The queue daemon is dead. `daemon.pid` outliving the process
@@ -489,21 +528,15 @@ over-large `ram0` devicetree overlay: at the stock 256 MB a model boots, and the
 `&ram0` override when the model genuinely needs more than the default. Note also
 `zero_out_dram: false` — never rely on DRAM being zero.
 
-**A run hangs with no fault printed.** Several distinct causes, all now identified — none of them
-is "RVV does not work on FireSim", which is what the symptom used to be recorded as.
+**A run hangs with no fault printed.** Inspect the selected runtime, trap handling,
+console transport and worker publication state. A progressing cycle counter does
+not prove program progress.
 
-- `CONFIG_FPU_SHARING=y` mis-routes a V-illegal-instruction trap to the FP path, which retries
-  forever, silently. merlin's generated `prj.conf` sets `=n`.
-- `CONFIG_UART_HTIF_BUFFERED_OUTPUT=y` + `CONFIG_UART_HTIF_SYSCALL_PRINT=y`: direct-putchar HTIF
-  races under SMP and wedges.
-- **Multicore only:** the OpenMP shim used to hang on *nested* parallel regions, and then to
-  corrupt the master's stack once that was fixed. Both are fixed (`bf5052db`); the signature to
-  recognise is a 22.4M-cycle model running past 11.4 **billion** cycles with nothing after the
-  pool banner. If you see that again, build with `MERLIN_OMP_DEBUG_SPLIT=1` — the shim now reports
-  which worker it is waiting on and what that worker last published, and gives up on a wall-clock
-  deadline instead of spinning forever.
-
-The RVV backend is the working FireSim path as of 2026-07-26, single- and multi-hart.
+- Check that floating-point and vector trap handling matches the selected ISA.
+- Under SMP, verify that the selected console implementation supports concurrent
+  output without racing its transport.
+- For the supported OpenMP shim, `MERLIN_OMP_DEBUG_SPLIT=1` records worker waits
+  and publication state. Keep the original deadline and numerical/output gates.
 
 **`KeyError: 'bit_builder_recipe'` at buildbitstream.** The recipe is missing
 `bit_builder_recipe` and/or `metasim_customruntimeconfig`. Copy a working recipe.

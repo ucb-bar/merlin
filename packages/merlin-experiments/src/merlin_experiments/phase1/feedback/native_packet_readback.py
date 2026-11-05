@@ -40,11 +40,18 @@ def _expected(outputs: list[dict]) -> tuple[ExpectedOutput, ...]:
     )
 
 
-def admit_coherent_packet_storage(*, admission: dict, **source_kwargs) -> dict:
+def admit_coherent_packet_storage(*, admission: dict, version: int = 1, **source_kwargs) -> dict:
     """Prove exact bounded packet symbols before requesting any native memory."""
     current = _verified_layout(admission, **source_kwargs)
     fixed = admit_fixed_address_output_layout(admission=admission, **source_kwargs)
-    capacity = out_bin_packet_capacity(_expected(current["outputs"]))
+    if version == 1:
+        capacity = out_bin_packet_capacity(_expected(current["outputs"]))
+    elif version == 2:
+        from merlin.runtime.out_packet_v2 import out_packet_v2_capacity
+
+        capacity = out_packet_v2_capacity(_expected(current["outputs"]))
+    else:
+        raise ValueError("coherent packet version is unsupported")
     elf_path = Path(source_kwargs["elf_path"])
     raw = elf_path.read_bytes()
     if _sha256(raw) != current["elf_sha256"]:
@@ -64,7 +71,7 @@ def admit_coherent_packet_storage(*, admission: dict, **source_kwargs) -> dict:
     if _canonical(after) != _canonical(current):
         raise ValueError("coherent packet output layout changed during preflight")
     return {
-        "schema": "coherent_packet_storage_v1",
+        "schema": f"coherent_packet_storage_v{version}",
         "status": "prelaunch_only",
         "scope": "bounded packet/source storage only; no execution, numerical or physical-padding claim",
         "layout_admission_sha256": _sha256(_canonical(current)),
@@ -108,14 +115,15 @@ def _bounded_dump_bytes(path: Path, bound: int) -> bytes:
     return raw
 
 
-def decode_coherent_packet_dump(*, admission: dict, packet_admission: dict, dump_path: Path, **source_kwargs) -> dict:
+def decode_coherent_packet_dump(*, admission: dict, packet_admission: dict, dump_path: Path,
+                                version: int = 1, **source_kwargs) -> dict:
     """Decode the exact complete native envelope and every typed logical value.
 
     Packet DONE is only a wire terminator. The caller must independently check
     the actual simulator's normal exit and console completion, selected engine
     receipt and unchanged kernel/harness/build bytes before grading these values.
     """
-    current = admit_coherent_packet_storage(admission=admission, **source_kwargs)
+    current = admit_coherent_packet_storage(admission=admission, version=version, **source_kwargs)
     if _canonical(current) != _canonical(packet_admission):
         raise ValueError("coherent packet prelaunch storage changed before decoding")
     dump_path = Path(dump_path)
@@ -140,7 +148,14 @@ def decode_coherent_packet_dump(*, admission: dict, packet_admission: dict, dump
     ):
         raise ValueError("coherent packet envelope differs from the admitted storage or exact used length")
     roster = _expected(admission["outputs"])
-    decoded = decode_out_bin_packet(raw[40:-8], roster)
+    if version == 1:
+        decoded = decode_out_bin_packet(raw[40:-8], roster)
+    elif version == 2:
+        from merlin.runtime.out_packet_v2 import decode_out_packet_v2
+
+        decoded = decode_out_packet_v2(raw[40:-8], roster)
+    else:
+        raise ValueError("coherent packet version is unsupported")
     outputs = {}
     for row in roster:
         # Keep f32 in its exact unsigned source-bit form. The existing shared
@@ -150,11 +165,11 @@ def decode_coherent_packet_dump(*, admission: dict, packet_admission: dict, dump
         outputs[row.name] = [list(flat[index : index + row.cols]) for index in range(0, len(flat), row.cols)]
     if _sha256(_bounded_dump_bytes(dump_path, 48 + current["capacity"])) != digest:
         raise ValueError("coherent packet dump changed during decoding")
-    after = admit_coherent_packet_storage(admission=admission, **source_kwargs)
+    after = admit_coherent_packet_storage(admission=admission, version=version, **source_kwargs)
     if _canonical(after) != _canonical(current):
         raise ValueError("coherent packet storage changed during decoding")
     return {
-        "schema": "coherent_packet_output_values_v1",
+        "schema": f"coherent_packet_output_values_v{version}",
         "source": "coherent_packet",
         "scope": "all logical actual output values; no physical-padding or numerical-equivalence claim",
         "layout_admission_sha256": current["layout_admission_sha256"],

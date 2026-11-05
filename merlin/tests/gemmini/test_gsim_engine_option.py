@@ -20,15 +20,17 @@ import stat
 from pathlib import Path
 
 import pytest
+import selected_driver
 
 from merlin.runtime.backends import base as _backends
 
 
 @pytest.fixture()
 def G():
-    """The gemmini backend MODULE (not the re-exporting package): `run_elf` resolves `gsim_path` and
-    friends through its own globals, so a monkeypatch has to land there to be seen."""
-    return _backends.get_backend("gemmini").gemmini
+    """The selected gemmini backend MODULE -- the generic chipyard RoCC backend instance serving it.
+    `run_elf` resolves `gsim_path` and friends through its own globals, so a monkeypatch lands there."""
+    selected_driver.require_support("gemmini")
+    return _backends.get_backend("gemmini")
 
 
 @pytest.fixture()
@@ -103,7 +105,7 @@ def test_an_unknown_engine_still_raises(G):
     """Adding gsim must not turn every unknown name into a bland False: `test_chipyard_l3_engine_is_selected`
     depends on an engine this backend does not implement being distinguishable from one whose build is
     merely absent."""
-    with pytest.raises(G.GemminiError):
+    with pytest.raises(G.ChipyardRoccError):
         G.available("vcs")
 
 
@@ -182,14 +184,14 @@ def test_a_nonzero_gsim_exit_is_an_error_not_a_silent_empty_console(monkeypatch,
         stderr = "assert"
 
     monkeypatch.setattr(G.subprocess, "run", lambda cmd, **kw: _Proc())
-    with pytest.raises(G.GemminiError):
+    with pytest.raises(G.ChipyardRoccError):
         G.run_elf(elf, simulator="gsim")
 
 
 def test_run_elf_still_rejects_an_unknown_simulator(G, tmp_path):
     elf = tmp_path / "kernel.elf"
     elf.write_text("", encoding="utf-8")
-    with pytest.raises(G.GemminiError):
+    with pytest.raises(G.ChipyardRoccError):
         G.run_elf(elf, simulator="vcs")
 
 

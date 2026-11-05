@@ -24,7 +24,13 @@ class CommandBufferBuilder:
     validates them. (No target opcode set is baked in.)
     """
 
-    def __init__(self, target: str, backend: str = "", abi_version: str = "0.1"):
+    def __init__(
+        self, target: str, backend: str = "", abi_version: str = "0.1", *, schema_path: str | Path | None = None
+    ):
+        # Component distributions need not contain package data. The caller can
+        # select the same public schema already supplied by its environment.
+        self._schema_path = _SCHEMA if schema_path is None else Path(schema_path)
+        self._explicit_schema = schema_path is not None
         self._cb: dict[str, Any] = {"abi_version": abi_version, "target": target, "tensors": {}, "commands": []}
         if backend:
             self._cb["backend"] = backend
@@ -53,7 +59,9 @@ class CommandBufferBuilder:
 
     def validate(self) -> list[str]:
         """Return a list of schema problems (empty = valid). Uses jsonschema if available, else a
-        minimal required-field check so it works in any environment."""
+        minimal required-field check for the default packaged path. An explicit
+        schema selection requires jsonschema and a readable, valid schema; those
+        failures propagate rather than silently weakening validation."""
         problems: list[str] = []
         if not self._cb.get("commands"):
             problems.append("commands: must be non-empty")
@@ -66,11 +74,12 @@ class CommandBufferBuilder:
         try:
             import jsonschema  # optional, stronger
 
-            schema = json.loads(_SCHEMA.read_text())
+            schema = json.loads(self._schema_path.read_text())
             for e in jsonschema.Draft7Validator(schema).iter_errors(self._cb):
                 problems.append(f"schema: {e.message} at {'/'.join(map(str, e.path))}")
         except ImportError:
-            pass
+            if self._explicit_schema:
+                raise  # An explicitly selected schema must never become a weaker check.
         return problems
 
     def to_dict(self) -> dict[str, Any]:

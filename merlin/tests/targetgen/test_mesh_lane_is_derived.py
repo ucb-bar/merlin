@@ -103,14 +103,34 @@ def test_the_datapath_carries_the_targets_declared_facts_not_dataclass_defaults(
                 )
 
 
+def _model_capsules(target: str):
+    root = repo_root() / "merlin" / "contract" / "capsules"
+    d = (root / target / "model") if (root / target / "model").is_dir() else (root / "model")
+    for cf in sorted(d.glob("*/capsule.yaml")) if d.is_dir() else []:
+        lin = cf.parent / "capsule.interface.mlir"
+        if lin.is_file():
+            yield cf.parent.name, yaml.safe_load(cf.read_text()), lin.read_text()
+
+
 @pytest.mark.parametrize("target", TARGETS)
 def test_a_model_routes_its_contractions_to_the_mesh(target):
-    """Routed on the format the capsule DECLARES, which is the one the runner threads."""
-    cap, lin = _model_capsule(target)
-    declared = ((cap.get("operation") or {}).get("attributes") or {}).get("dtype")
-    assert declared, "a model capsule must declare its datapath format"
-    plan = R.route_plan(CSRC.model_op_demands(lin, declared), target)
-    assert len(plan.get("mesh") or []) > 0, f"{target}: 0 contractions routed on its own declared format {declared!r}"
+    """Routed on the format the capsule DECLARES, which is the one the runner threads.
+
+    Not every model capsule must route: one whose contractions are CAPTURED in another format (an
+    interop capsule dequantizing to f32 before its matmuls) correctly routes none, because a declared
+    datapath does not convert a captured float contraction into an integer one. The regression this
+    guards -- a declared ``i8`` failing to match a contract's ``int8`` -- routes nothing anywhere, so
+    the corpus must hold at least one capsule whose own-format contractions reach the mesh.
+    """
+    routed, seen = {}, 0
+    for name, cap, lin in _model_capsules(target):
+        declared = ((cap.get("operation") or {}).get("attributes") or {}).get("dtype")
+        assert declared, f"{name}: a model capsule must declare its datapath format"
+        seen += 1
+        routed[name] = len(R.route_plan(CSRC.model_op_demands(lin, declared), target).get("mesh") or [])
+    if not seen:
+        pytest.skip(f"no model capsule generated for {target}")
+    assert any(routed.values()), f"{target}: no model capsule routed a contraction on its declared format: {routed}"
 
 
 def test_an_alias_routes_but_a_different_format_still_does_not():

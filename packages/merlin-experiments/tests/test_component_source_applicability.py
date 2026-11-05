@@ -23,7 +23,9 @@ def _observe(tmp_path, text=SOURCE, frontend="mlir"):
     source = tmp_path / "source.mlir"
     source.write_text(text)
     return S.evaluate_component_source_applicability(
-        source=source, source_program_sha256=sha256_file(source), frontend=frontend,
+        source=source,
+        source_program_sha256=sha256_file(source),
+        frontend=frontend,
     )
 
 
@@ -40,14 +42,32 @@ def test_registered_tensor_value_semantics_derive_source_only_absence(tmp_path):
     assert record["numerical_finiteness"] == "UNKNOWN"
 
 
-@pytest.mark.parametrize("source", [
-    "module {}",
-    SOURCE.replace("tensor<2x3xi32>", "tensor<?x3xi32>"),
-    SOURCE.replace("tensor<2x3xi32>", "memref<2x3xi32>"),
-    SOURCE.replace("linalg.copy", "unknown.unregistered"),
-    SOURCE.replace("%initial = tensor.empty() : tensor<2x3xi32>",
-                   "%initial = func.call @evaluate(%a) : (tensor<2x3xi32>) -> tensor<2x3xi32>"),
-])
+@pytest.mark.parametrize("dtype", ["f32", "i64"])
+def test_rank_zero_tensor_retains_its_tensor_abi_and_unknown_runtime_effects(tmp_path, dtype):
+    observation = _observe(tmp_path, SOURCE.replace("2x3xi32", dtype))
+    observation.verify()
+    record = observation.record()
+    assert not record["unresolved"]
+    assert record["inputs"] == record["outputs"] == [f"tensor<{dtype}>"]
+    assert record["facts"]["static_input_domain"]["status"] == "PASS"
+    assert record["runtime_effects"] == dict.fromkeys(REQUIRED_EXECUTION_EFFECTS, "UNKNOWN")
+    assert record["numerical_finiteness"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "module {}",
+        SOURCE.replace("tensor<2x3xi32>", "tensor<?x3xi32>"),
+        SOURCE.replace("tensor<2x3xi32>", "memref<2x3xi32>"),
+        SOURCE.replace("tensor<2x3xi32>", "memref<f32>"),
+        SOURCE.replace("linalg.copy", "unknown.unregistered"),
+        SOURCE.replace(
+            "%initial = tensor.empty() : tensor<2x3xi32>",
+            "%initial = func.call @evaluate(%a) : (tensor<2x3xi32>) -> tensor<2x3xi32>",
+        ),
+    ],
+)
 def test_unavailable_or_effectful_source_never_receives_not_applicable_credit(tmp_path, source):
     record = _observe(tmp_path, source).record()
     assert record["unresolved"]

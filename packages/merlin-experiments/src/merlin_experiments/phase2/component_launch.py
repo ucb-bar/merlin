@@ -213,6 +213,7 @@ class QualifiedComponentLaunch:
     selected_model: str
     selected_effort: str
     _issuer: object
+    selected_subagent_count: int | None = None
 
     def verify(self) -> None:
         if self._issuer is not _ISSUER:
@@ -225,6 +226,8 @@ class QualifiedComponentLaunch:
             raise C.StageGateError("component launch identity differs from evaluated isolation/readiness")
         if document.get("model") != self.selected_model or document.get("effort") != self.selected_effort:
             raise C.StageGateError("component model transport selection changed")
+        if document.get("max_concurrent_subagents") != self.selected_subagent_count:
+            raise C.StageGateError("component native author concurrency selection changed")
 
 
 def _bindings(inputs: ComponentLaunchInputs) -> dict:
@@ -339,9 +342,14 @@ def qualify_component_launch(
     model: str,
     effort: str,
     timeout_s: int = 45,
+    max_concurrent_subagents: int | None = None,
 ) -> QualifiedComponentLaunch:
     """No-model probes of the same tool namespace and native control boundary."""
     inputs.verify(require_baseline=True)
+    if max_concurrent_subagents is not None and (
+        type(max_concurrent_subagents) is not int or not 1 <= max_concurrent_subagents <= 3
+    ):
+        raise C.StageGateError("component search allows at most three native author agents")
     if type(timeout_s) is not int or not 0 < timeout_s <= 60 or not model.strip() or not effort.strip():
         raise C.StageGateError("component launch needs explicit model/effort and a bounded probe")
     if inputs.stage_root.exists() or inputs.stage_root.is_symlink():
@@ -402,7 +410,8 @@ def qualify_component_launch(
         )
         home = inputs.stage_root / "probe_home"
         home_info = CA.prepare_codex_home(
-            home, model=model, effort=effort, workspace=inputs.candidate, candidate_read_paths=_read_paths(inputs)
+            home, model=model, effort=effort, workspace=inputs.candidate, candidate_read_paths=_read_paths(inputs),
+            **({"max_concurrent_subagents": max_concurrent_subagents} if max_concurrent_subagents is not None else {}),
         )
         CA._verify_frozen_config(home, home_info["config_sha256"])
         rounds = inputs.stage_root / "probe_rounds"
@@ -461,13 +470,15 @@ def qualify_component_launch(
             "readiness_results": results,
             "model": model,
             "effort": effort,
+            **({"max_concurrent_subagents": max_concurrent_subagents} if max_concurrent_subagents is not None else {}),
             "refusal": refusal,
         },
     )
     receipt.chmod(0o400)
     if status != "qualified":
         raise C.StageGateError("component authoring isolation/readiness remains unavailable: " + str(refusal))
-    return QualifiedComponentLaunch(inputs, receipt, C.sha256_file(receipt), model, effort, _ISSUER)
+    return QualifiedComponentLaunch(inputs, receipt, C.sha256_file(receipt), model, effort, _ISSUER,
+                                    max_concurrent_subagents)
 
 
 def run_component_stage(
@@ -479,6 +490,7 @@ def run_component_stage(
     max_tool_calls: int,
     tool_timeout_seconds: int,
     suite: str,
+    search_configuration: Path | None = None,
 ) -> Path:
     """Preserve the public launch entrypoint over the ordinary stage controller."""
     from .component_stage import run_component_stage as run
@@ -491,4 +503,5 @@ def run_component_stage(
         max_tool_calls=max_tool_calls,
         tool_timeout_seconds=tool_timeout_seconds,
         suite=suite,
+        **({"search_configuration": search_configuration} if search_configuration is not None else {}),
     )

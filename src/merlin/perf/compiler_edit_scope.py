@@ -6,8 +6,9 @@ import ast
 import copy
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 import yaml
 
@@ -22,8 +23,13 @@ def _relative(value: str) -> PurePosixPath:
 def validate_edit_contract(contract: Mapping[str, Any], initial: Path) -> dict[str, Any]:
     body = {key: value for key, value in contract.items() if key != "sha256"}
     digest = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    if contract.get("schema") != "compiler_edit_contract_v1" or contract.get("sha256") != digest:
+    if (
+        contract.get("schema") not in ("compiler_edit_contract_v1", "compiler_edit_contract_v2")
+        or contract.get("sha256") != digest
+    ):
         raise ValueError("host edit contract schema or canonical identity is invalid")
+    if contract["schema"] == "compiler_edit_contract_v1" and "new_python_components" in contract:
+        raise ValueError("new compiler components require explicit version 2 edit authority")
     identities = set()
     for owner in contract["existing_symbols"]:
         path, symbol = _relative(owner["path"]), owner["symbol"]
@@ -52,6 +58,34 @@ def validate_edit_contract(contract: Mapping[str, Any], initial: Path) -> dict[s
             raise ValueError("helper extension must name an existing initial compiler component")
         if set(extension["surface_ids"]) - identities:
             raise ValueError("helper extension has no host-frozen owning surface")
+    components = contract.get("new_python_components", [])
+    if not isinstance(components, list):
+        raise ValueError("new compiler components require an explicit list")
+    directories = []
+    for component in components:
+        if not isinstance(component, Mapping) or set(component) != {"directory", "surface_ids", "reason"}:
+            raise ValueError("new compiler component requires directory, owning surfaces and reason")
+        directory = _relative(component["directory"])
+        selected = initial / str(directory)
+        owners = component["surface_ids"]
+        if (
+            str(directory) != component["directory"]
+            or any(part in {".git", "out", "build", "__pycache__"} for part in directory.parts)
+            or selected.exists()
+            or selected.is_symlink()
+            or not selected.parent.is_dir()
+            or any(path.is_symlink() for path in (selected.parent, *selected.parent.parents))
+            or not isinstance(owners, list)
+            or not owners
+            or any(owner not in identities for owner in owners)
+            or not isinstance(component["reason"], str)
+            or not component["reason"].strip()
+            or any(
+                directory == other or directory in other.parents or other in directory.parents for other in directories
+            )
+        ):
+            raise ValueError("new compiler component must be absent, scoped and owned by frozen surfaces")
+        directories.append(directory)
     for ancillary in contract.get("ancillary_paths", []):
         path = _relative(ancillary)
         if path.parts[0] not in ("docs", "tests"):
@@ -98,7 +132,7 @@ def inspect_compiler_edits(initial: Path, candidate: Path, contract: Mapping[str
     authorized: dict[str, set[str]] = {}
     for owner in contract["existing_symbols"]:
         authorized.setdefault(owner["path"], set()).add(owner["symbol"])
-    extensions = [_relative(row["directory"]) for row in contract.get("helper_extensions", [])]
+    extensions = [_relative(row["directory"]) for row in helper_extensions(contract)]
     ancillary = [_relative(row) for row in contract.get("ancillary_paths", [])]
 
     def files(root):
@@ -154,6 +188,15 @@ def inspect_compiler_edits(initial: Path, candidate: Path, contract: Mapping[str
         "candidate_manifest_grants_authority": False,
         "scope": "edit ownership only; no semantic correctness or performance claim",
     }
+
+
+def helper_extensions(contract: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+    """Existing helper scopes plus explicitly versioned candidate pass components."""
+    return tuple(contract.get("helper_extensions", ())) + (
+        tuple(contract.get("new_python_components", ()))
+        if contract.get("schema") == "compiler_edit_contract_v2"
+        else ()
+    )
 
 
 _MECHANISM_SELECTOR_KINDS = frozenset({"imports", "module", "class", "function", "method", "helper"})
@@ -314,7 +357,7 @@ def validate_mechanism_catalog(
         raise ValueError("mechanism catalog schema, contract, or canonical identity is invalid")
     authority = [(owner["path"], owner["symbol"]) for owner in contract["existing_symbols"]]
     authority_paths = {path for path, _symbol in authority}
-    extensions = {_relative(row["directory"]): set(row["surface_ids"]) for row in contract.get("helper_extensions", [])}
+    extensions = {_relative(row["directory"]): set(row["surface_ids"]) for row in helper_extensions(contract)}
     ids: set[str] = set()
     selector_owners: dict[tuple[Any, ...], str] = {}
     helper_owners: list[tuple[PurePosixPath, str]] = []

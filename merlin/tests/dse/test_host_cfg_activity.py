@@ -201,3 +201,43 @@ def test_prepared_dominance_matches_xdsl_for_every_block_pair():
         for left in fn.body.blocks
         for right in fn.body.blocks
     )
+
+
+def posttested_function(*, initial=0, step=16, bound=96, wrong_backedge=False, dynamic_bound=False):
+    entry = Block(arg_types=[llvm.LLVMPointerType(), i64])
+    body, end = Block(arg_types=[i64]), Block()
+    region = Region([entry, body, end])
+    constants = [llvm.ConstantOp(IntegerAttr(v, i64), i64) for v in (initial, step, bound)]
+    entry.add_ops(constants)
+    start, increment, limit = [op.results[0] for op in constants]
+    entry.add_op(llvm.BrOp(body, start))
+    load = llvm.LoadOp(entry.args[0], i32)
+    update = llvm.AddOp(body.args[0], increment)
+    comparison = llvm.ICmpOp(update.results[0], entry.args[1] if dynamic_bound else limit, IntegerAttr(2, i64))
+    body.add_ops([load, update, comparison, llvm.CondBrOp(
+        comparison, body, [body.args[0] if wrong_backedge else update.results[0]], end, []
+    )])
+    end.add_op(llvm.ReturnOp())
+    fn = llvm.FuncOp("posttested", llvm.LLVMFunctionType([llvm.LLVMPointerType(), i64]), body=region)
+    ModuleOp([fn]).verify()
+    return fn
+
+
+def test_posttested_exact_update_counts_six_body_and_comparison_executions():
+    report = analyze_host_cfg_activity(posttested_function())
+    assert report["status"] == "derived", report["problems"]
+    assert report["dynamic_operations"]["load"] == 6
+    assert report["dynamic_operations"]["comparison"] == 6
+    once = analyze_host_cfg_activity(posttested_function(initial=96))
+    assert once["status"] == "derived"
+    assert once["dynamic_operations"]["load"] == 1
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"wrong_backedge": True}, {"dynamic_bound": True}, {"step": 0},
+    {"initial": (1 << 63) - 8, "bound": (1 << 63) - 1},
+])
+def test_posttested_refuses_unproved_or_overflowing_induction(kwargs):
+    report = analyze_host_cfg_activity(posttested_function(**kwargs))
+    assert report["status"] == "UNKNOWN"
+    assert report["dynamic_operations"] is None

@@ -59,7 +59,7 @@ class EvidencePath:
 
 
 def _evidence_paths(raw: Any, unit_name: str, family: str) -> tuple[EvidencePath, ...]:
-    from merlin.kernels.roles import ROLES
+    from merlin.compile.analysis.instruction_roles import ROLES
 
     if raw in (None, []):
         return ()

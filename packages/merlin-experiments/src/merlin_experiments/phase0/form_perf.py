@@ -201,6 +201,13 @@ def application_members(target: str, module, binding, *, weight_args=None, oracl
 #: tolerance: a single element has no spread, so a constant answer can always be placed inside it.
 MIN_TOLERANCE_GRADED_ELEMENTS = 2
 SKIPPED_UNFALSIFIABLE = "skipped_unfalsifiable"
+#: A class Phase 0 placed on the host. Merlin's own host package compiles it, so it is never a Phase 2
+#: performance obligation: no capsule is minted for it and it carries no share of accelerator cycles.
+MERLIN_SUPPLIED_HOST = "merlin_supplied_host"
+
+
+def _host_placed(member: Mapping[str, Any]) -> bool:
+    return member.get("placement") == "host"
 
 
 def _output_elements(entry: Mapping[str, Any]) -> int | None:
@@ -241,14 +248,19 @@ def aggregate(applications: Mapping[str, Mapping[str, Any]], *, tolerance_graded
     ``tolerance_graded`` is the target's compare policy (anything but exact integer comparison): it
     restricts the representative to members whose device output has at least two elements, and marks
     a class with none ``skipped_unfalsifiable`` instead of minting a capsule no grade can falsify.
+
+    Host-placed members are Merlin-supplied host compute (``docs/design/merlin_supplied_host_placement.md``).
+    They neither enter an application's accelerator total nor make it unpriced, and a class made of
+    them is ``merlin_supplied_host``: recorded with its host work, never a Phase 2 obligation.
     """
     classes: dict[str, dict[str, Any]] = {}
     shares: dict[str, dict[str, Any]] = {}
     for label in sorted(applications):
         members = applications[label]["members"]
-        priced = all(m["price"].get("predicted_cycles") is not None for m in members)
+        accelerator = [m for m in members if not _host_placed(m)]
+        priced = all(m["price"].get("predicted_cycles") is not None for m in accelerator)
         basis = "predicted_cycles" if priced else "macs"
-        total = sum(float(m["price"]["predicted_cycles"] if priced else m["price"]["macs"]) for m in members)
+        total = sum(float(m["price"]["predicted_cycles"] if priced else m["price"]["macs"]) for m in accelerator)
         shares[label] = {
             "basis": basis,
             "total": total,
@@ -257,13 +269,18 @@ def aggregate(applications: Mapping[str, Mapping[str, Any]], *, tolerance_graded
                 if priced
                 else "unpriced mixed-form work proxy; not a cycle share"
             ),
+            "scope": "accelerator-placed groups only; host-placed groups are Merlin-supplied and excluded",
+            "merlin_supplied_host_groups": len(members) - len(accelerator),
         }
         for member in members:
             cid = class_id(member["key"])
             row = classes.setdefault(
                 cid, {"class_id": cid, "label": class_label(member["key"]), "key": member["key"], "members": []}
             )
-            weight = float(member["price"]["predicted_cycles"] if priced else member["price"]["macs"])
+            if _host_placed(member):
+                weight = 0.0
+            else:
+                weight = float(member["price"]["predicted_cycles"] if priced else member["price"]["macs"])
             row["members"].append(
                 {
                     "application": label,
@@ -278,6 +295,25 @@ def aggregate(applications: Mapping[str, Mapping[str, Any]], *, tolerance_graded
                 }
             )
     for row in classes.values():
+        if all(_host_placed(member) for member in row["members"]):
+            row.update(
+                share_by_application={},
+                share_basis_by_application={},
+                unpriced_applications=[],
+                max_share=0.0,
+                occurrences=len(row["members"]),
+                representative=None,
+                status=MERLIN_SUPPLIED_HOST,
+                reason=(
+                    "every member is host-placed: Merlin's host package compiles it, so it is excluded from "
+                    "the accelerator shares and is not a Phase 2 performance obligation"
+                ),
+                merlin_supplied_host_macs={
+                    label: sum(int(m["price"]["macs"]) for m in row["members"] if m["application"] == label)
+                    for label in sorted({m["application"] for m in row["members"]})
+                },
+            )
+            continue
         per_app: dict[str, float] = {}
         for member in row["members"]:
             total = shares[member["application"]]["total"]
@@ -305,8 +341,18 @@ def derive_form_scope(
     held_out: Sequence[str],
     facts: Mapping[str, Any] | None = None,
     oracle=None,
+    performance_scale: Mapping[str, Path] | None = None,
+    performance_scale_roster: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """``scope.performance.forms``: form classes of the ITERATION captures, priced and shared."""
+    """``scope.performance.forms``: form classes of the ITERATION captures, priced and shared.
+
+    ``performance_scale`` optionally adds independent captures declared ONLY as Phase 2 sources
+    (``workload_spec.performance_applications``): the same forms at the extents where a target's
+    on-chip capacities, tiling and movement decide the cost. They join this scope and nothing else --
+    the Phase 1 model forms and source capsules still read the iteration roster alone -- so the two
+    phases get deliberately different cohorts. They are refused exactly like any other source when
+    they name a held-out model, and may not reuse an iteration label.
+    """
     from merlin.common import mlir_query as mq
     from merlin.perf.derived_bound import machine_from_facts
     from merlin.xdsl_dialects.lowering import stream_plan
@@ -318,13 +364,24 @@ def derive_form_scope(
             f"form-perf classes derive from the iteration roster only: got {sorted(captures)}, "
             f"declared {sorted(iteration_roster)}"
         )
-    for label in captures:
+    scale = dict(performance_scale or {})
+    if set(scale) != set(performance_scale_roster):
+        raise ValueError(
+            f"performance-scale captures must match the declared performance roster: got {sorted(scale)}, "
+            f"declared {sorted(performance_scale_roster)}"
+        )
+    if overlap := sorted(set(scale) & set(captures)):
+        raise ValueError(f"performance-scale applications {overlap} reuse iteration labels")
+    sources = {**{label: Path(path) for label, path in captures.items()}, **{k: Path(v) for k, v in scale.items()}}
+    if len({str(path.resolve()) for path in sources.values()}) != len(sources):
+        raise ValueError("an iteration and a performance-scale application select the same capture")
+    for label in sources:
         if is_held_out(label, held_out) is not None:
             raise ValueError(f"{label!r} is a held-out model; its forms may be evaluated, never derived")
     machine = machine_from_facts(target, facts=dict(facts) if facts is not None else None, measure_fill=False)
     applications: dict[str, dict[str, Any]] = {}
-    for label in sorted(captures):
-        path = Path(captures[label])
+    for label in sorted(sources):
+        path = Path(sources[label])
         manifest = path.with_name("weights.safetensors.manifest.json")
         weights = (
             stream_plan.weight_args_of(json.loads(manifest.read_text(encoding="utf-8"))) if manifest.is_file() else None
@@ -338,17 +395,19 @@ def derive_form_scope(
     return {
         "schema": SCHEMA,
         "grouping": "merlin.xdsl_dialects.lowering.compute_groups.form_groups + group_command.program",
-        "workload_role": "iteration",
+        "workload_role": "iteration_and_performance_scale" if scale else "iteration",
         "applications": {
             label: {
                 "capture_sha256": app["capture_sha256"],
                 "groups": app["groups"],
                 "device_form_members": len(app["members"]),
                 "unstated": app["unstated"],
+                "workload_role": "performance_scale" if label in scale else "iteration",
                 **summary["application_totals"][label],
             }
             for label, app in applications.items()
         },
+        **({"performance_scale_roster": sorted(scale)} if scale else {}),
         "machine": {key: machine.to_dict()[key] for key in ("array_rows", "array_cols")},
         "classes": summary["classes"],
         "qualification": (
@@ -367,6 +426,8 @@ def validate_form_scope_declaration(sweep: Mapping[str, Any], *, owner: str) -> 
     threshold = declared.get("min_predicted_cycle_share") if isinstance(declared, dict) else None
     if not isinstance(threshold, (int, float)) or isinstance(threshold, bool) or not 0.0 < float(threshold) <= 1.0:
         raise ValueError(f"{owner}: requires_form_scope.min_predicted_cycle_share must be in (0, 1]")
+    if "stratify_geometry" in declared and not isinstance(declared["stratify_geometry"], bool):
+        raise ValueError(f"{owner}: requires_form_scope.stratify_geometry must be a boolean")
     if sweep.get("axes"):
         raise ValueError(f"{owner}: a form-scope family takes its extents from the derived forms, not from axes")
     arms = ((sweep.get("base") or {}).get("performance") or {}).get("arms") or {}
@@ -418,6 +479,52 @@ def _joint_extent_witness_index(row: Mapping[str, Any]) -> int | None:
     )[0]
 
 
+GEOMETRY_WITNESS = "observed_geometry_stratum_witness"
+
+
+def member_geometry(member: Mapping[str, Any]) -> str | None:
+    """The GEMM geometry stratum of one device contraction member, or ``None`` when it has none."""
+    from merlin.capture.shape_taxonomy import classify_geometry
+
+    entry = member.get("entry") or {}
+    if member.get("placement") == "host" or entry.get("op") not in ("matmul", "conv2d"):
+        return None
+    rows, depth, cols = gemm_extents(entry)
+    return classify_geometry(int(rows), int(cols), int(depth))
+
+
+def geometry_witness_indices(row: Mapping[str, Any], *, exclude: Sequence[int | None] = ()) -> list[tuple[str, int]]:
+    """``(stratum, member index)`` for the costliest observed member of every geometry stratum the
+    class's representative does not already sit in, in stratum order.
+
+    Only falsifiable device contractions qualify; an excluded index (an already-emitted witness) and
+    any member whose GEMM extents repeat an emitted one are skipped, so no paired measurement is
+    minted twice for the same work.
+    """
+    representative = row.get("representative")
+    if type(representative) is not int:
+        return []
+    members = row["members"]
+    emitted = {gemm_extents(members[i]["entry"]) for i in (representative, *exclude) if type(i) is int}
+    covered = {member_geometry(members[i]) for i in (representative, *exclude) if type(i) is int}
+    best: dict[str, int] = {}
+    for index, member in enumerate(members):
+        stratum = member_geometry(member)
+        if stratum is None or stratum in covered or index in exclude:
+            continue
+        if (_output_elements(member["entry"]) or 0) < MIN_TOLERANCE_GRADED_ELEMENTS:
+            continue
+        if gemm_extents(member["entry"]) in emitted:
+            continue
+        current = best.get(stratum)
+        if current is None or (float(member["share_weight"]), -index) > (
+            float(members[current]["share_weight"]),
+            -current,
+        ):
+            best[stratum] = index
+    return sorted(best.items())
+
+
 def form_perf_entries(
     sweep: Mapping[str, Any],
     requirement: Mapping[str, Any] | None,
@@ -460,7 +567,7 @@ def form_perf_entries(
     base = copy.deepcopy(sweep.get("base") or {})
     out: list[dict[str, Any]] = []
 
-    def append_form_entry(row: Mapping[str, Any], member: Mapping[str, Any], *, name: str, witness: bool) -> None:
+    def append_form_entry(row: Mapping[str, Any], member: Mapping[str, Any], *, name: str, witness: bool | str) -> None:
         entry = copy.deepcopy(base)
         # The member's arithmetic comes from the derived group; its identity, category and role are
         # the template family's, so a group's own statement cannot relabel what kind of capsule it is.
@@ -495,7 +602,10 @@ def form_perf_entries(
             ],
             "requirement_basis": {"sha256": requirement_sha256, "axis": "scope.performance.forms"},
         }
-        if witness:
+        if witness == GEOMETRY_WITNESS:
+            performance[FORM_BLOCK]["mechanism"] = GEOMETRY_WITNESS
+            performance[FORM_BLOCK]["geometry"] = member_geometry(member)
+        elif witness:
             performance[FORM_BLOCK]["mechanism"] = "observed_joint_extent_witness"
         vendor = performance["arms"]["vendor_reference"]
         vendor["demand_equal_entry"] = {k: member["entry"][k] for k in _EXTENT_KEYS if k in member["entry"]}
@@ -512,6 +622,16 @@ def form_perf_entries(
 
     index = 0
     for row in classes:
+        members = row.get("members") or []
+        if members and all(_host_placed(member) for member in members) and row.get("status") != MERLIN_SUPPLIED_HOST:
+            # A scope frozen before host classes were excluded still names a representative; the
+            # exclusion is decided by placement, so it holds for that scope too.
+            row = {
+                **row,
+                "representative": None,
+                "status": MERLIN_SUPPLIED_HOST,
+                "reason": "every member is host-placed; Merlin-supplied host compute is not a Phase 2 obligation",
+            }
         if row.get("representative") is None:
             if skipped is not None:
                 skipped.append(
@@ -537,6 +657,18 @@ def form_perf_entries(
             continue
         member = row["members"][witness_index]
         append_form_entry(row, member, name=f"{family}J{len(out):02d}_{row['label']}", witness=True)
+    # Optional, declared by the template: one observed member per further GEMM geometry stratum of a
+    # class. A form class is keyed by operation and readout, so a tall convolution-as-GEMM, a wide
+    # projection and a one-row product can share one class and one representative; their costs are
+    # decided by different tiling and movement regimes. Each stratum's member is an observed group.
+    if (sweep.get("requires_form_scope") or {}).get("stratify_geometry"):
+        for row in classes:
+            taken = [_joint_extent_witness_index(row)]
+            for stratum, index in geometry_witness_indices(row, exclude=taken):
+                member = row["members"][index]
+                append_form_entry(
+                    row, member, name=f"{family}G{len(out):02d}_{row['label']}_{stratum}", witness=GEOMETRY_WITNESS
+                )
     # Integerization can erase a source convolution's window into im2col + matmul. The regular
     # device-form census then cannot represent its padding and stride. Reuse the independently
     # synthesized *functional* window member, rather than inventing a form from a claim model.
@@ -641,6 +773,28 @@ def _emitted_contraction_extents(capsule: Mapping[str, Any]) -> tuple[int, int, 
     return extents if all(type(value) is int and value > 0 for value in extents) else None
 
 
+def _geometry_strata(row: Mapping[str, Any], capsules: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Observed GEMM geometry strata of a class against those its emitted members exercise.
+
+    Diagnostic only: a stratum without a member is reported, never required, because the template
+    decides whether strata are minted (``requires_form_scope.stratify_geometry``).
+    """
+    from merlin.capture.shape_taxonomy import classify_geometry
+
+    observed = sorted({stratum for stratum in map(member_geometry, row.get("members") or []) if stratum})
+    represented = set()
+    for capsule in capsules:
+        extents = _emitted_contraction_extents(capsule)
+        if extents is not None:
+            rows, depth, cols = extents
+            represented.add(classify_geometry(int(rows), int(cols), int(depth)))
+    return {
+        "observed": observed,
+        "represented": sorted(represented & set(observed)),
+        "unrepresented": sorted(set(observed) - represented),
+    }
+
+
 def _joint_extent_diagnostic(row: Mapping[str, Any], capsules: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Check the *iteration* groups' joint size envelope, without consulting claim models.
 
@@ -685,8 +839,28 @@ def form_perf_coverage(
         form = ((capsule.get("performance") or {}).get(FORM_BLOCK) or {}) if isinstance(capsule, Mapping) else {}
         if form.get("class_id"):
             by_class.setdefault(str(form["class_id"]), []).append(capsule)
-    rows, missing, unfalsifiable = [], [], []
+    rows, missing, unfalsifiable, merlin_host = [], [], [], []
     for row in classes:
+        members = row.get("members") or []
+        if row.get("status") == MERLIN_SUPPLIED_HOST or (members and all(_host_placed(m) for m in members)):
+            merlin_host.append(row["class_id"])
+            rows.append(
+                {
+                    "class_id": row["class_id"],
+                    "label": row.get("label"),
+                    "required": False,
+                    "status": MERLIN_SUPPLIED_HOST,
+                    "reason": "host-placed: Merlin-supplied host compute is excluded from Phase 2 scoring",
+                    "max_share": 0.0,
+                    "share_by_application": {},
+                    "unpriced_applications": [],
+                    "capsules": [],
+                    "vendor_bar": False,
+                    "ours_over_vendor": None,
+                    "ratio_status": "not_applicable",
+                }
+            )
+            continue
         unpriced_applications = row.get("unpriced_applications") or []
         required = threshold is not None and (
             bool(unpriced_applications) or float(row.get("max_share") or 0.0) >= float(threshold)
@@ -714,6 +888,7 @@ def form_perf_coverage(
             "ours_over_vendor": None,
             "ratio_status": "unmeasured",
             "joint_extent_diagnostic": _joint_extent_diagnostic(row, found),
+            "geometry_strata": _geometry_strata(row, found),
         }
         if row.get("status") == SKIPPED_UNFALSIFIABLE:
             # A declared skip with its reason, not a silent gap: listed apart from `missing`.
@@ -802,6 +977,7 @@ def form_perf_coverage(
         "source_windows_without_form": sorted(set(source_windows_without_form)),
         "source_windows": source_window_rows,
         "skipped_unfalsifiable": unfalsifiable,
+        "merlin_supplied_host": merlin_host,
         "claim_model_check": {
             "visibility": "owner_only_after_phase1_freeze",
             "mode": "statistics_only",
@@ -857,13 +1033,16 @@ def claim_model_form_statistics(
     )
     public_classes = {str(row["class_id"]): row for row in scope.get("classes") or []}
     covered = set(public_classes)
-    priced = all(m["price"].get("predicted_cycles") is not None for m in found["members"])
+    # Merlin-supplied host compute is not the candidate's work, so the statistic is over accelerator
+    # groups only, exactly as the public shares are.
+    accelerator = [m for m in found["members"] if not _host_placed(m)]
+    priced = all(m["price"].get("predicted_cycles") is not None for m in accelerator)
     basis = "predicted_cycles" if priced else "macs"
-    total = sum(float(m["price"][basis]) for m in found["members"]) or 0.0
-    inside = sum(float(m["price"][basis]) for m in found["members"] if class_id(m["key"]) in covered)
+    total = sum(float(m["price"][basis]) for m in accelerator) or 0.0
+    inside = sum(float(m["price"][basis]) for m in accelerator if class_id(m["key"]) in covered)
     # A form-class match does not imply that the public iteration workloads exercised the scale of
     # this claim model. Keep this owner-only and aggregate: claim extents never become capsule inputs.
-    within_extents, outside_extents = _iteration_extent_shares(found["members"], public_classes, basis)
+    within_extents, outside_extents = _iteration_extent_shares(accelerator, public_classes, basis)
     return {
         "schema": STATISTICS_SCHEMA,
         "visibility": "owner_only_after_phase1_freeze",

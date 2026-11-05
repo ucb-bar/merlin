@@ -1,0 +1,23 @@
+[
+  {
+    "name": "decoder",
+    "url": "https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/config.json",
+    "revision": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+    "sha256": "486bedda3a6988332e60d9638a09ca4b260d34ebcf1b19e22cf3b140b63d8fe9",
+    "bytes": 608
+  },
+  {
+    "name": "vision_action",
+    "url": "https://huggingface.co/lerobot/smolvla_base/resolve/c83c3163b8ca9b7e67c509fffd9121e66cb96205/config.json",
+    "revision": "c83c3163b8ca9b7e67c509fffd9121e66cb96205",
+    "sha256": "650584b56c104720f7a3c91d1ec6bec9e8de8ac11e60c92ba2fa82d93eda147d",
+    "bytes": 2299
+  },
+  {
+    "name": "vision_language",
+    "url": "https://huggingface.co/HuggingFaceTB/SmolVLM2-500M-Video-Instruct/resolve/main/config.json",
+    "revision": "7b375e1b73b11138ff12fe22c8f2822d8fe03467",
+    "sha256": "ea6bc1237e96247f6258de3e202e2e62b93d6f386dc47e7b36b5588bf3a15e17",
+    "bytes": 3767
+  }
+]

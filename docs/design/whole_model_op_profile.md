@@ -1,142 +1,133 @@
 ---
-title: "Design note: whole-model per-op profiler and where model time actually goes"
+title: Whole-program operation profiling
 kind: design
 status: current
 owner: core
-last_verified: 2026-07-19
-related: [expert_gap_attribution, runtime_escape_audit]
-code_refs: [src/merlin/llvmlower/op_profile.py, merlin/runtime/c/merlin_op_prof.c, src/merlin/mining/k1.py, build_tools/scripts/k1_op_profile.py, packages/merlin-analysis/src/merlin/baselines/contract.py]
+last_verified: 2026-10-18
+related: [normal_search_feedback, runtime_escape_audit, compile_debugging]
+code_refs: [src/merlin/llvmlower/op_profile.py, src/merlin/llvmlower/op_profile_structural.py, src/merlin/llvmlower/lower.py, src/merlin/runtime/backends/spike_model.py, src/merlin/runtime/operation_profile.py, src/merlin/compile/baremetal_model.py, src/merlin/model_check/full_build.py, merlin/runtime/c/merlin_op_prof.c, build_tools/scripts/k1_op_profile.py]
 ---
 
-# Whole-model per-op profiler: where model time actually goes
+# Whole-program operation profiling
 
-## Why this instrument was missing
+Operation profiling attributes a selected function's execution to its top-level
+IR operations. It complements a complete program timer; it does not establish
+accelerator placement or a hardware-cycle cost by itself.
 
-The only whole-model instrumentation the repo had was a **two-way** split — a matmul bucket
-(`-DMERLIN_DISPATCH_TIMING`, `rdtime` inside the routed GEMM shim) versus "everything else"
-(`out/artifacts/kernel-mining/rvv/bench/dispatch_breakdown_measured.json`). Measured on the K1, the
-matmul bucket is **1.3-6 %** of a model once the kernel is fast. So 94-97 % of model time had never
-been attributed to *anything*. This note documents the profiler that closes that gap and the ranked
-breakdown it produced.
+## Instrument a typed function
 
-## The profiler (default-OFF, framework-agnostic join key)
+`merlin.llvmlower.op_profile.instrument(text, functions=("forward",),
+structural=True)` returns instrumented MLIR and a marker table. The structural
+route parses complete typed operation boundaries and supports exactly one
+selected function. Unsupported syntax or multiple selected functions refuse.
+The legacy text-based multi-function API remains separately available; it does
+not acquire the typed route's scope.
 
-The board runs one monolithic `_mlir_ciface_forward`, so there is no call boundary to hook.
-`merlin.llvmlower.op_profile.instrument` creates one by rewriting the IR: it interleaves a
-one-instruction-cost `call @merlin_prof_mark(%id)` between the **top-level ops of `func.func
-@forward`** (plus a sentinel before `func.return`). The shim `runtime/c/merlin_op_prof.c` samples
-`rdtime` at each mark and credits the elapsed ticks to the *previous* op — one call per op, so
-`ticks[i]` is op `i`'s cost. `build_k1_binary(..., op_profile=True)` splices this in **after** any
-kernel-backend rewrite and links the shim; the harness prints `PROF <id> <ticks> <hits>`.
+The typed emitter checks the actual marker sequence and callback declaration,
+then removes those additions from a private clone and compares the complete
+remaining IR with its original source. Arithmetic, effects, typed metadata
+(including signed zero), interfaces and dataflow must remain unchanged. The
+table must describe the actual retained operations. This establishes source
+correspondence, not runtime counter semantics or machine scheduling.
 
-Each op record carries the **cross-compiler join key** (`op_profile.join_key`): `prov.fqn` when
-present (the deepest `nn.Module` path that aligns a Merlin region with the SAME layer in an
-ExecuTorch/GGUF/ONNX export — see `baselines/contract.py` / `baselines/_et_export.py`), else
-`prov.region_id`, else the MLIR op name. So the breakdown is a framework-agnostic *graph-node -> IR
--> emitted-asm -> measured-cycles* chain, not a Merlin-only scheme. (Today's captures carry
-`region_id`/`family`/`aten` but not yet `fqn`; the key degrades gracefully and upgrades for free once
-the frontend tags fqn.)
+Marker calls sample the selected runtime counter and credit elapsed ticks to the
+previous operation. A sentinel closes the final interval before return. The
+runtime emits `PROF <id> <ticks> <hits>` observations that join to the same
+build's marker table. Preserve the selected timer's units and scope; counter
+ticks must not be relabeled as processor or accelerator cycles.
 
-Two subtleties that make it correct:
+The table records operation, result type and available `prov.*` attributes.
+`join_key` prefers `prov.fqn`, then `prov.region_id`, then the operation name.
+These keys support correspondence; a matching key alone does not prove equal
+semantics or a common execution boundary across compilers.
 
-- **Op-boundary detection** keys on SSA-assignment lines (`%r = <op>`) at the function's own brace
-  depth. `linalg.reduce` opens its reduction region `(%a,%b){...}` on the line *after* its
-  brace-balanced first line; keying on `%r =` avoids splicing a marker into the middle of it (which
-  would produce invalid IR). Covered by `merlin/tests/rvv/test_op_profile.py`.
-- The default K1 RVV pipeline does **not** run `linalg-fuse-elementwise-ops` (it is env-gated behind
-  `MERLIN_FUSE_POST`), so interleaving side-effecting calls cannot suppress a fusion that would
-  otherwise have happened.
+## Check perturbation and attribution
 
-### Perturbation guard (the profiler must not move what it measures)
+Build an uninstrumented control through the same source and option selection.
+The profiling driver compares whole-program wall measurements against that
+control using its declared perturbation threshold. Marker calls can alter
+optimization, layout and scheduling, so a passing finite control is scoped
+experimental evidence, not a proof that every operation is unaffected.
 
-Every model is also built and run **without** instrumentation (byte-identical path). The driver
-reports the profiled-vs-unprofiled median-wall delta and applies a **one-sided** guard: since
-instrumentation can only *add* cost, it fails only when the profiled wall is *slower* than the
-control by more than the board noise floor (default 1.9 %). Measured deltas:
+Allocation hoisting can move cost into another marker interval. Short operations
+can fall below counter resolution, and nested work belongs to the enclosing
+interval unless separately instrumented. Report aggregate coverage, missing
+observations, repetitions and complete timer boundaries. Pipeline vectorization
+intent is not evidence of the instructions actually emitted.
 
-| config | profiled wall | control wall | delta | verdict |
-|---|---|---|---|---|
-| bitvla native | 2497.6 ms | 2503.7 ms | **-0.245 %** | ok |
-| openvla native | 5846.7 ms | 5855.9 ms | **-0.156 %** | ok |
-| openvla ours-routed | 692.7 ms | 689.3 ms | **+0.494 %** | ok |
-| bitvla ours-routed | 178.2 ms | 182.4 ms | -2.289 % (profiled faster) | ok (noise, not a cost) |
+For the supported board workflow, use `build_tools/scripts/k1_op_profile.py`
+with explicitly selected model inputs and runtime. Keep measured breakdowns in
+run artifacts, including source/object/ELF identities and control observations.
+Protected programs remain outside pre-freeze tuning feedback.
 
-Profiler coverage (`sum(per-op ticks) / rd_time bracket`) is 0.997-1.000 across all runs — the marks
-account for essentially the whole compute region.
+## Saved-model and functional-simulator builds
 
-## What the breakdown shows
+The ordinary `compile_saved_model` Python API accepts `op_profile=True` alongside
+its existing capture, hardware, host-package, numerical and execution selection.
+The default is false. Compile-only runs retain the actual
+`build/op_profile_table.json` path and SHA256 in `baremetal_model.json`; this
+makes no execution claim. Executed runs retain `operation_profile.json` after
+the original complete-output gate. Full binary output frames are parsed as
+frames before reading their text diagnostics, so payload bytes cannot create
+false profiler records.
 
-Two regimes, because the answer flips completely with kernel quality.
+The functional-simulator builder now delegates marker insertion to
+`lower_model(..., op_profile=True)`. Graph, automatic row and automatic
+destination transforms run first, with their original selections and checks;
+markers follow them before upstream preprocessing. `lower/operation-profile.json`
+binds the source at that boundary, emitted instrumented source and operation
+table by SHA256. The existing table beside the image contains identical bytes.
+IR audits record `operation-profiled` after the source transformation stages.
+An unsupported typed profiler request fails rather than silently dropping marks.
 
-### Regime 1 — default compiler path (`hand_v0` native RVV): the matmul *lowering* dominates
+This ordering prevents marker calls from suppressing these source transforms.
+It does not make profiling transparent to later bufferization, vectorization,
+allocation, LLVM optimization or execution. Direct callers that instrument
+before lowering, including the existing board/debug workflows, retain their
+earlier boundary; compare their own transformation records. Moving those
+workflows requires preserving their selected fallback and debug behavior.
 
-| model | wall | contraction | scalar (non-contraction) |
-|---|---|---|---|
-| bitvla | 2497.9 ms | **2415.9 ms (96.7 %)** | 82.1 ms |
-| openvla | 5854.7 ms | **5457.1 ms (93.2 %)** | 397.6 ms |
+For the existing build-once/relink model path, select
+`BuildSettings(..., op_profile=True)` (or the explicit keyword to
+`BuildSettings.of`). The flag participates in image reuse, and a missing,
+changed or indirect operation table prevents reuse. This is a programmatic
+diagnostic selection; it changes no model-check CLI or numerical admission.
+Typed preprocessing retains the existing descriptor-interface route for shaped
+functions and preserves private scalar callback ABIs. Explicit interfaces remain
+as written. A private scalar marker must not acquire a wrapper ABI merely
+because a model uses the typed scalar preprocessing route. This does not remove
+the implicit descriptor interface used by existing routed buffer declarations.
+When running or relinking those images separately, join their own table and
+complete console explicitly:
 
-On our *own* default codegen the matmul is not 6 %, it is 93-97 %. Individual small-M matmuls are
-catastrophic: one bitvla `linalg.matmul -> tensor<32x1024xf32>` measures **478 ms**; openvla's
-72 matmuls sum to 5.5 s. An `rvv_audit` cross-check of the emitted `forward` symbol shows only
-**20.8 % static vector coverage** — even the "contraction" ops are scalar-dominated (addressing,
-per-tile `memrefCopy`, masked tails). This is the same defect named in `expert_gap_attribution` and
-the K1-PMU memory (per-tile `memrefCopy`) and the small-M scalar-fallback finding — now *measured*
-per op. It is the province of the kernel-gap workstream (`cg_`); this profiler quantifies it but does
-not duplicate the fix.
+```python
+import json
+from merlin.runtime.operation_profile import summarize
+from merlin.runtime.out_bin import binary_console_diagnostics
 
-### Regime 2 — fast kernel routed in (`ours` v3 shim): the non-matmul 94% is exposed
+table = json.loads(table_path.read_text())
+report = summarize(table, binary_console_diagnostics(console_bytes).decode())
+```
 
-Routing the 2-D f32 matmuls to our accumulator-resident v3 shim drops openvla to 692 ms (matches the
-existing dispatch-breakdown wall) and bitvla to 178 ms. *Now* the per-op profiler answers the
-question the two-way split never could:
+The closed reader supports a single selected straight-line function. Every
+operation must have the same positive execution count; observations, marker
+totals, accumulated ticks and the terminal DONE must agree. Overflow, duplicate
+records and incomplete traces refuse. Between invocations, the sentinel
+accumulates harness gaps; these ticks remain separate from operation categories.
+Marker bookkeeping, startup, output and the final dump are not attributed to
+operations. Equal hit counts check consistency, not recursive-call legality or
+source-to-machine equivalence.
 
-**openvla (692 ms), ranked by measured ms:**
+All reported values use `raw_counter_ticks`, with no frequency or milliseconds
+conversion and no timing qualification. The bare-metal marker implementation
+reads `mcycle`; its meaning depends on the selected executor. Functional Spike
+counts do not establish hardware or accelerator latency. Actual calibrated
+timer semantics require independent runtime evidence, not RTL structure alone.
 
-| op | ms | % model | vectorized? |
-|---|---|---|---|
-| `linalg.transpose` (45 ops) | **392.8** | **56.7 %** | scalar |
-| `call` (26 routed matmuls) | 149.0 | 21.5 % | v3 kernel |
-| `linalg.generic` (190 ops) | 142.5 | 20.6 % | mixed (conv2d 41 ms, attention `batch_matmul`, elementwise) |
-
-The two largest single ops are transposes: `576x2304` = **198 ms** and `1536x384` = **122 ms**.
-**openvla spends more time transposing (393 ms) than doing all its matmuls (149 ms).**
-
-**bitvla (178 ms):** `linalg.generic` 90.6 ms (incl. 4 attention `batch_matmul` at ~15 ms each = 61 ms,
-which are *not* routed — only 2-D matmul routes), `linalg.transpose` 45.1 ms, routed matmul `call`
-36.7 ms. Scalar non-matmul is **66 %**.
-
-## Prioritized: what is left on the table (ranked by measured ms)
-
-1. **`linalg.transpose` — ~393 ms on openvla (57 % of the model), ~45 ms on bitvla.** Scalar,
-   unvectorized layout transposition, falling through `convert-linalg-to-loops`. The RVV schedule
-   vectorizes only `matmul`/`batch_matmul`, so every transpose is scalar. Biggest lever by far: fold
-   the transpose into its consumer matmul (transpose-`b` GEMM, so it never materializes) or emit a
-   vectorized transpose. This is a *compiler-general* capability, not a kernel hand-tune.
-2. **Non-2-D contractions stay on the slow native path — ~60-80 ms.** The fast routing (ours/xnnpack)
-   covers only rank-2 `linalg.matmul`; attention `batch_matmul` (bitvla 61 ms, openvla ~37 ms) and
-   `conv2d` (openvla 41 ms) still use the native lowering with the 20.8 %-coverage defect. Extending
-   the routable set (or fixing the native contraction lowering) recovers this.
-3. **The matmul lowering itself — 2.4-5.5 s on the default path.** Owned by `cg_`; measured here for
-   completeness. Routing to the v3 shim already recovers ~8-14x, so the win is in the *lowering*
-   (memrefCopy / scalar addressing), not the ISA.
-4. **Elementwise `linalg.generic` — bitvla ~25 ms.** Smaller; a post-matmul fusion lever
-   (`MERLIN_FUSE_POST`) already exists to collapse these.
-
-## Honest limits
-
-- `rdtime` is the 24 MHz platform counter (~41.7 ns/tick, `cycle_accurate=false`); per-op numbers are
-  meaningful only in aggregate (by op/family), which is how they are reported.
-- `buffer-hoisting` moves allocs toward the entry, so allocation cost drifts to the first mark
-  interval; allocation is captured in aggregate by the wall, not per-op.
-- The `vectorized` flag is the pipeline's *intent* (contraction family), not proof the asm is vector;
-  the `rvv_coverage` cross-check (20.8 % on `forward`) is the measured corrective.
-- Runs are `n=3`, cos-gated `>= 0.9999` each; for the 178 ms bitvla-routed config, board noise (~2 %)
-  exceeds the floor, so its perturbation is inconclusive in magnitude (but negative — no slowdown).
-
-## Artifacts
-
-`out/artifacts/measurements/k1_spacemit/{bitvla,openvla}_fp32_consistent/op_profile.json` (native) and
-`op_profile_ours.json` (fast-kernel), each with the full per-op table, family/op/join-key rollups, the
-perturbation control, and the rvv-coverage cross-check. Regenerate:
-`MERLIN_COMPILE_TIMEOUT_S=3600 .venv/bin/python build_tools/scripts/k1_op_profile.py --model <dir>
-[-n 3] [--kernel-backend ours]`.
+Semantic category names retain their derivation (provenance, typed operation or
+scalar body). They never assign CPU/device ownership. An opaque call stays
+unclassified; packing, conversions, copies and dispatch nested inside it remain
+unresolved. Hoisted allocations can move between intervals. Measure a paired
+uninstrumented control, record compilation/memory/code growth separately, and
+inspect actual pass reports before using a profile to prioritize optimization.
+Instrumentation does not guarantee unchanged fusion or row scheduling.

@@ -24,6 +24,8 @@ def host(monkeypatch):
     """A 48-core host with ample memory and nothing else running, unless a test says otherwise."""
     monkeypatch.delenv("MERLIN_GRADE_WORKERS", raising=False)
     monkeypatch.delenv("MERLIN_GRADE_WORKER_BYTES", raising=False)
+    monkeypatch.delenv("MERLIN_COMPUTE_CPUS", raising=False)
+    monkeypatch.delenv("MERLIN_COMPUTE_CPU_SLOTS", raising=False)
     monkeypatch.setattr(CG.os, "sched_getaffinity", lambda pid: set(range(CPUS)))
     monkeypatch.setattr(CG, "_available_memory_bytes", lambda: 120 * GB)
     monkeypatch.setattr(CG, "_cores_in_use", lambda: 0.0)
@@ -81,6 +83,19 @@ def test_an_operator_who_names_a_number_gets_it(host):
     host.setattr(CG, "_cores_in_use", lambda: float(CPUS))
     host.setenv("MERLIN_GRADE_WORKERS", "24")
     assert CG.default_grade_workers() == 24
+
+
+def test_a_shared_compute_pool_alone_sizes_the_grade(host, tmp_path):
+    """The pool's slots arbitrate every step, so its size replaces the share and load courtesies."""
+    host.setenv("MERLIN_COMPUTE_CPUS", ",".join(map(str, range(4, 36))))
+    host.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "slots"))
+    host.setattr(CG, "_cores_in_use", lambda: float(CPUS))  # a busy host no longer narrows it
+    assert CG.default_grade_workers() == 32
+    assert CG.default_grade_workers(5) == 5
+    host.setattr(CG, "_available_memory_bytes", lambda: 2 * GB)  # memory still bounds it
+    assert CG.default_grade_workers() == 2 * GB // CG.GRADE_WORKER_BYTES
+    host.setenv("MERLIN_GRADE_WORKERS", "3")  # an explicit count still wins
+    assert CG.default_grade_workers() == 3
 
 
 def test_never_more_workers_than_capsules(host):

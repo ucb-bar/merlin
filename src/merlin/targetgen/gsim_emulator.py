@@ -39,8 +39,10 @@ directory is derived from it, and the digests come from the bytes on disk.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -216,10 +218,126 @@ class Resolution:
     flavour: str = "binary"
 
 
-def _digest(path: Path) -> str:
-    from merlin.common import provenance
+def _lease_dropped(subject: str, error: BaseException) -> None:
+    """One line saying a cached digest stopped being reusable and the bytes are being read again."""
+    print(
+        f"[gsim] {subject}: cached read-lease digest no longer reusable ({error}); re-reading the bytes",
+        file=sys.stderr,
+        flush=True,
+    )
 
+
+def _digest(path: Path) -> str:
+    """SHA-256 of ``path`` now. A lost lease is a cache miss: the bytes are read again, never assumed."""
+    from merlin.common import provenance, read_lease_digest
+
+    if read_lease_digest.enabled():
+        try:
+            with read_lease_digest.verification():
+                value = read_lease_digest.digest(path)
+        except read_lease_digest.CustodyChanged as error:
+            _lease_dropped(f"file {path}", error)
+            value = None
+        if value is not None:
+            return value
     return provenance.file_digest(path)
+
+
+def _pin_digest(path: Path) -> str:
+    """One receipt pin's SHA-256: leased at any size when the cache is selected, else a full read.
+
+    A receipt is a closed pin set that one process re-verifies many times (every engine selection and
+    every pre/post-launch identity check), so rechecking a held lease is cheaper than re-reading even a
+    small header. Paths that are not already canonical keep the ordinary full read rather than tripping
+    the lease cache's canonical-path refusal; the caller still checks symlinks and file type first.
+    """
+    from merlin.common import provenance, read_lease_digest
+
+    if read_lease_digest.enabled():
+        try:
+            canonical = path.resolve() == path
+        except (OSError, RuntimeError):
+            canonical = False
+        if canonical:
+            value = read_lease_digest.digest(path, minimum_bytes=0)
+            if value is not None:
+                return value
+    return provenance.file_digest(path)
+
+
+#: Parsed ``Path`` objects for receipt pin strings. Pure lexical parsing only (no filesystem state),
+#: kept so thousands of pins are not re-parsed by every check; bounded and dropped wholesale.
+_PIN_PATHS: dict[str, Path] = {}
+_PIN_PATHS_MAX = 1 << 16
+
+
+def _pin_path(raw: Any) -> Path:
+    text = str(raw or "")
+    path = _PIN_PATHS.get(text)
+    if path is None:
+        if len(_PIN_PATHS) >= _PIN_PATHS_MAX:
+            _PIN_PATHS.clear()
+        path = _PIN_PATHS[text] = Path(text)
+    return path
+
+
+def _pin_error(rows: list[tuple[str, Any]], *, subject: str = "v3 receipt") -> str | None:
+    """The first malformed, absent or changed pin, in receipt order; each distinct path is read once.
+
+    With ``MERLIN_SNAPSHOT_LEASE_CACHE=1`` every pin this process already hashed under a live Linux read
+    lease is reused only after :func:`read_lease_digest.reuse` rechecks its kernel-resolved canonical
+    name, inode/size/owner identity and lease, which also proves the regular-file and no-symlink
+    checks below. A pin outside the cache (first use, unsupported, over capacity) takes the original
+    per-row checks and is hashed once per call; if any cached pin fails its recheck the whole call takes
+    that original path. Without the cache every distinct path is fully read once per call.
+
+    A lease that lost custody (a writer opened a pinned file, a name was replaced, the custodian died)
+    means only that the cached digests may not be reused. The whole check is then repeated with full
+    reads of every pin, so a changed file is reported as ``pin changed`` from its current bytes and an
+    unchanged one still verifies; nothing from the leased attempt is kept, and no exception leaves here.
+    """
+    from merlin.common import read_lease_digest
+
+    leased = read_lease_digest.enabled()
+    try:
+        return _checked_pins(rows, leased=leased)
+    except read_lease_digest.CustodyChanged as error:
+        if not leased:
+            raise
+        _lease_dropped(subject, error)
+        return _checked_pins(rows, leased=False)
+
+
+def _checked_pins(rows: list[tuple[str, Any]], *, leased: bool) -> str | None:
+    """:func:`_pin_error` with (``leased``) or without the read-lease cache; custody loss raises."""
+    from merlin.common import provenance, read_lease_digest
+
+    candidates: dict[Path, None] = {}
+    if leased:
+        for _, row in rows:
+            if isinstance(row, dict) and isinstance(row.get("sha256"), str):
+                path = _pin_path(row.get("path"))
+                if path.is_absolute():
+                    candidates[path] = None
+    reused = (read_lease_digest.reuse(candidates) or {}) if leased else {}
+    digests = dict(reused)
+    slower = len(reused) < len(candidates)
+    scope = read_lease_digest.verification() if slower and leased else contextlib.nullcontext()
+    with scope:
+        for label, row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("sha256"), str):
+                return f"v3 receipt has a malformed {label} pin"
+            path = _pin_path(row.get("path"))
+            if path not in reused:
+                if not path.is_absolute() or path.is_symlink() or not path.is_file():
+                    return f"v3 receipt {label} pin is absent, relative, or a symlink: {path}"
+                if path not in digests:
+                    digests[path] = _pin_digest(path) if leased else provenance.file_digest(path)
+            if digests[path] != row["sha256"]:
+                return f"v3 receipt {label} pin changed: {path}"
+    if slower and reused and read_lease_digest.reuse(reused, required=True) != reused:
+        raise read_lease_digest.CustodyChanged("original snapshot read lease custody changed")
+    return None
 
 
 def _receipt_block(doc: dict[str, Any], path: Path, digest: str) -> dict[str, Any]:
@@ -252,8 +370,8 @@ def _canonical_sha(value: Any) -> str:
     return _mjson.canonical_sha256(value, ensure_ascii=False, allow_nan=True)
 
 
-def _strict_receipt_error(doc: dict[str, Any]) -> str | None:
-    """Validate every byte/transcript commitment introduced by the v3 receipt."""
+def _strict_receipt_error(doc: dict[str, Any], *, receipt: Path | None = None) -> str | None:
+    """Validate every byte/transcript commitment introduced by the v3 receipt (``receipt`` names it)."""
     artifacts, tools, inputs, commands = (
         doc.get("artifacts"),
         doc.get("tools"),
@@ -267,15 +385,16 @@ def _strict_receipt_error(doc: dict[str, Any]) -> str | None:
     if not isinstance(inputs, list) or not inputs:
         return "v3 receipt has no sealed harness/support/library inputs"
 
-    for label, rows in (("artifact", artifacts.values()), ("tool", tools.values()), ("input", inputs)):
-        for row in rows:
-            if not isinstance(row, dict) or not isinstance(row.get("sha256"), str):
-                return f"v3 receipt has a malformed {label} pin"
-            path = Path(str(row.get("path") or ""))
-            if not path.is_absolute() or path.is_symlink() or not path.is_file():
-                return f"v3 receipt {label} pin is absent, relative, or a symlink: {path}"
-            if _digest(path) != row["sha256"]:
-                return f"v3 receipt {label} pin changed: {path}"
+    pin_error = _pin_error(
+        [
+            (label, row)
+            for label, rows in (("artifact", artifacts.values()), ("tool", tools.values()), ("input", inputs))
+            for row in rows
+        ],
+        subject=f"v3 receipt {receipt}" if receipt is not None else "v3 receipt",
+    )
+    if pin_error is not None:
+        return pin_error
     expected_top = {
         "firrtl_sha256": artifacts["firrtl"]["sha256"],
         "model_manifest_sha256": artifacts["model_manifest"]["sha256"],
@@ -390,7 +509,7 @@ def _validate_receipt(target: str, binary: Path, digest: str, receipt: Path) -> 
             None,
         )
     if schema == STRICT_RECEIPT_SCHEMA:
-        strict_error = _strict_receipt_error(doc)
+        strict_error = _strict_receipt_error(doc, receipt=receipt)
         if strict_error is not None:
             return "invalid", strict_error, None
     return "bound", f"lineage bound by {receipt.name}", _receipt_block(doc, receipt, digest)
@@ -477,8 +596,16 @@ def _adoption_status(home: Path, path: Path, digest: str) -> tuple[str, str]:
     )
 
 
-def resolve(target: str, *, env_var: str | None = None) -> Resolution:
-    """Resolve ``target``'s GSIM emulator and decide whether it may certify. Never raises."""
+def resolve(target: str, *, env_var: str | None = None, backend=None) -> Resolution:
+    """Resolve gSIM bytes; malformed explicit backend resolutions refuse."""
+    selected = getattr(backend, "gsim_resolution", None)
+    if selected is not None:
+        if not callable(selected):
+            raise ValueError("selected backend has no callable gSIM resolution")
+        model = selected()
+        if type(model) is not Resolution or model.target != target:
+            raise ValueError("selected backend returned a mismatched gSIM resolution")
+        return model
     path = emulator_path(target, env_var=env_var)
     source = "derived"
     for name in _override_names(target, env_var):
@@ -564,7 +691,7 @@ def resolve(target: str, *, env_var: str | None = None) -> Resolution:
     )
 
 
-def selected_firrtl_status(target: str, *, env_var: str | None = None) -> tuple[bool, str]:
+def selected_firrtl_status(target: str, *, env_var: str | None = None, backend=None) -> tuple[bool, str]:
     """Whether the receipted model represents this run's selected FIRRTL.
 
     A receipt binding the emulator binary alone does not establish that it was
@@ -572,7 +699,19 @@ def selected_firrtl_status(target: str, *, env_var: str | None = None) -> tuple[
     ``MERLIN_RTL_FACTS`` to their verified input snapshot.  Legacy invocations
     without that selection retain their existing availability semantics, but
     cannot cite this check as evidence of source identity.
+
+    Selected facts require v3 file and saved-transcript validation before the
+    digest comparison.  That validation does not establish actual producer,
+    emitter-build, counter, runtime or physical correspondence.
     """
+    selected = getattr(backend, "gsim_selected_firrtl_status", None)
+    if selected is not None:
+        if not callable(selected):
+            return False, "selected backend has no callable FIRRTL status"
+        result = selected()
+        if type(result) is not tuple or len(result) != 2 or type(result[0]) is not bool or type(result[1]) is not str:
+            return False, "selected backend returned malformed FIRRTL status"
+        return result
     facts_path = os.environ.get("MERLIN_RTL_FACTS", "").strip()
     if not facts_path:
         return True, "no selected FIRRTL facts supplied; source identity unverified"
@@ -593,12 +732,19 @@ def selected_firrtl_status(target: str, *, env_var: str | None = None) -> tuple[
     if not model.ok:
         return False, model.reason
     receipt = model.receipt or {}
+    if model.receipt_status == "bound" and receipt.get("schema_version") != STRICT_RECEIPT_SCHEMA:
+        return False, "gsim selected FIRRTL comparison has no strict v3 build receipt"
     actual = receipt.get("firrtl_sha256")
     if model.receipt_status != "bound" or not isinstance(actual, str) or len(actual) != 64:
         return False, "gsim has no bound FIRRTL build receipt for the selected RTL facts"
-    if actual.lower() != expected.lower():
-        return False, f"gsim selected FIRRTL {expected[:12]} differs from model receipt {actual[:12]}"
-    return True, f"gsim FIRRTL {expected[:12]} matches the selected RTL facts"
+    if actual.lower() == expected.lower():
+        return True, f"gsim FIRRTL {expected[:12]} matches the selected RTL facts"
+    from .rtl.unit_correspondence import bound_firrtl_digests
+
+    # Facts of another configuration admit only the FIRRTL of their verified simulation correspondence.
+    if actual.lower() in bound_firrtl_digests(facts):
+        return True, f"gsim FIRRTL {actual[:12]} is the verified simulation of the selected RTL facts"
+    return False, f"gsim selected FIRRTL {expected[:12]} differs from model receipt {actual[:12]}"
 
 
 def probe(target: str, *, env_var: str | None = None) -> tuple[bool, str]:
@@ -607,14 +753,14 @@ def probe(target: str, *, env_var: str | None = None) -> tuple[bool, str]:
     return r.ok, r.reason
 
 
-def citation(target: str, *, env_var: str | None = None) -> dict[str, Any]:
+def citation(target: str, *, env_var: str | None = None, backend=None) -> dict[str, Any]:
     """The block a run record embeds so a GSIM verdict says which emulator produced it.
 
     Recorded whether or not the emulator is usable — "GSIM was refused because ..." is exactly as much a
     fact about a run as "GSIM certified these capsules", and only one of the two currently survives into
     any artifact.
     """
-    r = resolve(target, env_var=env_var)
+    r = resolve(target, env_var=env_var, backend=backend)
     return {
         "target": r.target,
         "engine": "gsim",

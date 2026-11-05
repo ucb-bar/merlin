@@ -26,6 +26,7 @@ from merlin.frontends.linalg_f32_maximum_patterns import (
 from merlin.frontends.linalg_patterns import InvalidLinalgPattern
 from merlin.llvmlower.target_data_layout import selected_index_bits
 from merlin_experiments.phase1.feedback import private_control_support as control
+from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 from merlin_experiments.phase1.feedback.private_index_source import _same_json_value
 
 FIELD = "f32_maximum_host_support"
@@ -250,7 +251,7 @@ def _screen(path: Path, witness: Mapping[str, Any]) -> bool:
             or receipt.get("output_sha256") != normalized_sha
         ):
             return False
-        module = mq.parse(normalized)
+        module = preparation.parse(path, normalized, raw=raw)
         module.verify()
         parsed = tuple(mq.walk(module))
         actual_roots = [

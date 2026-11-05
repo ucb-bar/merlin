@@ -19,12 +19,68 @@ silently assumed eligible.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
+import hashlib
+import os
+import threading
 from dataclasses import dataclass, replace
 from typing import Any
 
 from merlin.common import quant_formats as qf
 from merlin.targetgen import semantic_families as sf
 from merlin.targetgen.compute_units import SemanticCapability
+
+_ORIGINAL_RESULT_FORMAT = contextvars.ContextVar("merlin_original_result_format", default=None)
+
+
+@dataclass
+class _ResultFormatScope:
+    proof: Any
+    pid: int
+    thread: threading.Thread
+    active: bool = True
+
+
+@contextlib.contextmanager
+def original_result_format_scope(proof, *, target, original_contract_bytes, original_facts_bytes):
+    """Use one original source-verified negative result-format proof.
+
+    This scope grants no positive capability. Coarse calls lacking an actual
+    output format cannot consume it. Source revalidation occurs once before
+    publication, not once per observed operation.
+    """
+    from merlin.targetgen.rtl.result_format_ceiling import NativeResultFormatCeiling
+
+    if type(proof) is not NativeResultFormatCeiling:
+        raise TypeError("native result selection requires its exact original proof")
+    if type(original_contract_bytes) is not bytes or type(original_facts_bytes) is not bytes:
+        raise TypeError("native result selection requires original source bytes")
+    record = proof.record()
+    if (record.get("target") != target
+        or record.get("contract_sha256") != hashlib.sha256(original_contract_bytes).hexdigest()
+        or record.get("facts_sha256") != hashlib.sha256(original_facts_bytes).hexdigest()):
+        raise ValueError("native result proof differs from original target/contract/facts selection")
+    active = _ORIGINAL_RESULT_FORMAT.get()
+    if active is not None and (not active.active or active.proof is not proof):
+        raise ValueError("nested native result selection cannot replace the original proof")
+    owner = _ResultFormatScope(proof, os.getpid(), threading.current_thread())
+    token = _ORIGINAL_RESULT_FORMAT.set(owner)
+    try:
+        yield proof
+        proof.revalidate_sources()
+    finally:
+        owner.active = False
+        _ORIGINAL_RESULT_FORMAT.reset(token)
+
+
+def _original_result_refusal(family, out_dtype, cap_map):
+    active = _ORIGINAL_RESULT_FORMAT.get()
+    if active is None:
+        return None
+    if not active.active or active.pid != os.getpid() or active.thread is not threading.current_thread():
+        raise ValueError("native result scope is expired or belongs to another process or thread")
+    return active.proof.refusal(family, out_dtype, cap_map)
 
 
 @dataclass(frozen=True)
@@ -244,6 +300,7 @@ def is_eligible(
     ``undetermined`` so the caller can report it as unmeasured instead of scoring it either way.
     """
     family = region.resolved_family()
+    native_refusal = _original_result_refusal(family, region.out_dtype, cap_map)
     if family is None:
         return EligibilityVerdict(
             False, None, "unrecognized semantic family (fail-closed)", refusal="unrecognized_family"
@@ -312,6 +369,11 @@ def is_eligible(
                 f"input/weight pair ({region.in_dtype!r}, {region.weight_dtype!r}) "
                 f"not supported by {c.family}; declared pairs {list(c.operand_pairs)}",
                 refusal="operand_pair",
+            )
+        if native_refusal is not None:
+            return EligibilityVerdict(
+                False, family, "actual output format is outside the original source-verified native result domain",
+                refusal="result_dtype",
             )
         if region.out_dtype is not None and c.result_dtypes is not None:
             if not _dtype_ok(region.out_dtype, c.result_dtypes):

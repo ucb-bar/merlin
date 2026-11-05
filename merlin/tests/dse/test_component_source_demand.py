@@ -51,6 +51,37 @@ def test_equal_work_and_operand_bytes_do_not_identify_logical_live_demand():
     assert sequential["authority"] == "none" and sequential["physical_costs"] == "UNKNOWN"
 
 
+def test_existing_v2_cast_reduction_metadata_has_complete_logical_demand():
+    program = {
+        "schema": component_program.SCHEMA_V2,
+        "inputs": [{"name": "X", "role": "input", "shape": [2, 3], "dtype": "i8"}],
+        "nodes": [
+            {"name": "wide", "op": "cast", "inputs": ["X"], "dtype": "i32"},
+            {"name": "sum", "op": "reduce_sum", "inputs": ["wide"], "axis": 1, "dtype": "i32"},
+            {"name": "narrow", "op": "cast", "inputs": ["sum"], "dtype": "i8"},
+        ],
+        "outputs": [{"name": "out", "value": "narrow"}],
+    }
+    result = profile(program)
+    assert result["status"] == "observed" and result["schema"] == "merlin.component_source_demand.v2"
+    assert result["demand"]["conversion_elements"] == 8
+    assert result["demand"]["reduction_input_elements"] == 6
+    assert result["demand"]["reduction_combines"] == 4
+    assert result["demand"]["operand_payload_bytes"] == 38
+    assert result["demand"]["publication_payload_bytes"] == 2
+    assert result["typed_program_sha256"] == component_program_hash(program)
+    assert result["physical_costs"] == "UNKNOWN"
+    changed = copy.deepcopy(program)
+    changed["nodes"][1]["axis"] = True
+    assert profile(changed)["status"] == "UNKNOWN"
+
+
+def component_program_hash(program):
+    from merlin.common.jsonio import canonical_sha256
+
+    return canonical_sha256(component_program.analyze(program, operand_dtype="i8", accumulator_dtype="i32"))
+
+
 def test_original_alias_epoch_and_published_old_snapshot_stay_distinct():
     program = {
         "inputs": [{"name": "X", "role": "input", "shape": [1, 5], "dtype": "i8"}],

@@ -1,0 +1,52 @@
+--- retained_memory_observation.py
++++ operator_reused_functional_trace.py
+@@ -150,7 +150,7 @@
+             'guards': {'status': 'not_declared', 'claim': 'all declared output bytes; no invented guard coverage'}}, expected
+ 
+ 
+-def observe(result_path, *, runtime, bwrap_pin, directory, tool_pins=(), remaining_s=120):
++def observe(result_path, *, runtime, bwrap_pin, directory, tool_pins=(), remaining_s=120, reuse_pin=None):
+     """Bounded operator prototype: unchanged executable, private exact output export.
+ 
+     The namespace contains only the numerically admitted ELF, two generated
+@@ -174,6 +174,19 @@
+         raise ValueError('requires frozen runtime and bounded operator observation')
+     runtime.verify()
+     before, expected = reopen(result_path)
++    if reuse_pin is None or pin(Path(reuse_pin['path'])) != reuse_pin:
++        raise ValueError('trace requires exact completed ordinary comparison')
++    reused = json.loads(Path(reuse_pin['path']).read_bytes())
++    if (reused['original'] != before or reused['runtime_sha256'] != runtime.sha256
++            or reused['model'] != pin(runtime.model_path) or not reused['functional_console_equal']):
++        raise ValueError('reused ordinary comparison differs from selected source/runtime')
++    ordinary = reused['runs'][0]
++    if (pin(Path(ordinary['signature']['path'])) != ordinary['signature']
++            or signature_bytes(Path(ordinary['signature']['path']).read_bytes(), len(expected)) != expected
++            or pin(Path(ordinary['invocation']['path'])) != ordinary['invocation']):
++        raise ValueError('reused ordinary output/invocation changed')
++    invocation_doc=json.loads(Path(ordinary['invocation']['path']).read_bytes())
++    ordinary_console=Path(ordinary['invocation']['path']).parent/'stdout.bin'
+     model = json.loads(runtime.model_json)
+     if before['physical_engine']['sha256'] != model['domain']['label_engine_sha256']:
+         raise ValueError('physical and model hardware engine domains differ')
+@@ -241,8 +254,9 @@
+     prefix = (*prefix, '--ro-bind', str(scope), str(scope))
+     report_path = workspace/'report.json'
+     commands = runtime.commands(elf, report_path, scope)
+-    consoles, records = [], []
+-    for index, argv in enumerate(commands):
++    consoles, records = [ordinary_console.read_bytes()], [ordinary]
++    for index, argv in [(1, commands[1])]:
++        argv = [*argv[:-1], "--timing-event-trace="+str(workspace/"events.jsonl"), argv[-1]]
+         signature = workspace / f'output-{index}.signature'
+         # HTIF options precede the primary ELF; unlike payload,
+         # symbol-elf is read through nop_memif and cannot modify guest memory.
+@@ -269,7 +283,7 @@
+     value = {'schema':'operator.retained_same_elf_observation.v1','original':before,
+         'runtime_sha256':runtime.sha256,'model':pin(runtime.model_path),'observer':pin(runtime.observer),
+         'namespace_launcher':bwrap_pin,'runtime_helpers':list(tool_pins),'transport':'existing_htif_symbol_elf_signature',
+-        'symbol_supplement':pin(supplement),'scope_binding':binding,'report':pin(report_path),
++        'reused_functional_receipt':reuse_pin,'symbol_supplement':pin(supplement),'scope_binding':binding,'report':pin(report_path),
+         'runs':records,'functional_console_equal':True,'physical_cycles':before['physical_cycles'],
+         'estimated_cycles':cycles,'relative_error':None if cycles is None else cycles/before['physical_cycles']-1,
+         'timing_complete':report.get('timing_complete'),'unresolved':report.get('unresolved'),

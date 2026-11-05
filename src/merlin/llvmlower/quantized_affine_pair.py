@@ -7,6 +7,8 @@ certificate. The correction never changes source rounding or reassociates it.
 
 import hashlib
 import math
+from dataclasses import dataclass
+from fractions import Fraction
 
 import numpy as np
 
@@ -43,6 +45,85 @@ def source_table(lhs_scale, rhs_scale, output_scale, *, relu=False):
     return np.clip(np.rint(scaled), 0 if relu else -128, 127).astype(np.int8)
 
 
+def prove_loaded_sum(lhs_scale, rhs_scale, *, load_lhs_scale, load_rhs_scale, store_scale, bound_lsb, relu=False):
+    """Check an explicitly proposed scaled-load/add/readout on every i8 pair.
+
+    Load semantics are separate binary32 RNE products saturated to signed i8,
+    then sign-extended and added exactly in i32. Readout is binary32 RNE with
+    signed-i8 saturation and optional ReLU. These are declared target semantics,
+    not facts inferred from instruction names; independent execution is required.
+    No error budget is invented and no coefficients are chosen by this check.
+    """
+    return _prove_loaded_sum(
+        lhs_scale, rhs_scale, 1.0, load_lhs_scale=load_lhs_scale,
+        load_rhs_scale=load_rhs_scale, store_scale=store_scale, bound_lsb=bound_lsb, relu=relu,
+    )
+
+
+def prove_ordered_loaded_sum(
+    lhs_scale, rhs_scale, output_scale, *, load_lhs_scale, load_rhs_scale, store_scale, relu=False
+):
+    """Prove a zero-error loaded sum against the ORIGINAL ordered scale triple.
+
+    Effective coefficient ratios do not replace the separate source products,
+    addition and reciprocal multiply. Unsupported proposals raise; callers may
+    retain another independently checked lowering. This certificate supplies
+    no load/accumulate/readout implementation or target authority.
+    """
+    proof = _prove_loaded_sum(
+        lhs_scale, rhs_scale, output_scale, load_lhs_scale=load_lhs_scale,
+        load_rhs_scale=load_rhs_scale, store_scale=store_scale, bound_lsb=0, relu=relu,
+    )
+    return {**proof, "schema": "merlin.ordered_loaded_operand_sum.v1"}
+
+
+def _prove_loaded_sum(
+    lhs_scale, rhs_scale, output_scale, *, load_lhs_scale, load_rhs_scale, store_scale, bound_lsb, relu
+):
+    if type(bound_lsb) is not int or not 0 <= bound_lsb <= 255:
+        raise ValueError("explicit signed-i8 source error bound required")
+    source, _ = _scales(lhs_scale, rhs_scale, output_scale, relu)
+    proposal = tuple(f32(x) for x in (load_lhs_scale, load_rhs_scale, store_scale))
+    if any(not math.isfinite(x) or x <= 0 for x in proposal):
+        raise ValueError("positive finite declared load/readout scales required")
+    values = np.arange(-128, 128, dtype=np.float32)
+    with np.errstate(over="ignore", invalid="ignore"):
+        left = np.multiply(values, np.float32(proposal[0]), dtype=np.float32)
+        right = np.multiply(values, np.float32(proposal[1]), dtype=np.float32)
+        if not np.isfinite(left).all() or not np.isfinite(right).all():
+            raise ValueError("declared load arithmetic overflows binary32")
+        left = np.clip(np.rint(left), -128, 127).astype(np.int32)
+        right = np.clip(np.rint(right), -128, 127).astype(np.int32)
+        sums = left[:, None] + right[None, :]
+        actual = np.multiply(sums.astype(np.float32), np.float32(proposal[2]), dtype=np.float32)
+        if not np.isfinite(actual).all():
+            raise ValueError("declared readout overflows binary32")
+        actual = np.clip(np.rint(actual), 0 if relu else -128, 127).astype(np.int8)
+    expected = source_table(**source)
+    errors = np.abs(actual.astype(np.int16) - expected.astype(np.int16))
+    worst = int(errors.max())
+    location = np.argwhere(errors == worst)[0]
+    if worst > bound_lsb:
+        pair = tuple(int(x) - 128 for x in location)
+        raise ValueError(
+            f"scaled-load sum exceeds source error bound: {worst}>{bound_lsb} at {pair}"
+        )
+    return dict(
+        schema="merlin.loaded_operand_sum.v1",
+        source=source,
+        load_scales=list(proposal[:2]),
+        store_scale=proposal[2],
+        bound_lsb=bound_lsb,
+        max_error_lsb=worst,
+        checked_pairs=65536,
+        accumulator_range=[int(sums.min()), int(sums.max())],
+        source_sha256=hashlib.sha256(expected.tobytes()).hexdigest(),
+        proposed_sha256=hashlib.sha256(actual.tobytes()).hexdigest(),
+        proof="Complete signed-i8 Cartesian input domain; declared f32 RNE and saturation order",
+        target_execution="not_established",
+    )
+
+
 def predictor_table(p, q, scale, *, relu=False):
     """Exact i32 affine sum, i32-to-f32, f32 product, RNE and signed-i8 clamp."""
     if type(p) is not int or type(q) is not int or 128 * (abs(p) + abs(q)) > (1 << 31) - 1:
@@ -60,6 +141,154 @@ def predictor_table(p, q, scale, *, relu=False):
     if not np.isfinite(scaled).all():
         raise ValueError("predictor pair arithmetic may overflow binary32")
     return np.clip(np.rint(scaled), 0 if relu else -128, 127).astype(np.int8)
+
+
+@dataclass(frozen=True)
+class ExactAffinePairPlan:
+    """Source-exact dot product proposal, without a target execution grant.
+
+    Each term copies one immutable input byte and multiplies it by a positive
+    constant. Repeated operands are real terms, not arithmetic performed by a
+    packing loop. The backend must independently bind every copied byte,
+    constant, accumulator bound and final readout to its emitted program.
+    """
+
+    source_scales: tuple[float, float, float]
+    relu: bool
+    p: int
+    q: int
+    scale: float
+    terms: tuple[tuple[int, int], ...]
+    coefficient_max: int
+    accumulator_abs_max: int
+    source_table_sha256: str
+
+    def revalidate(self):
+        if (
+            type(self.source_scales) is not tuple
+            or len(self.source_scales) != 3
+            or type(self.terms) is not tuple
+            or any(type(term) is not tuple or len(term) != 2 for term in self.terms)
+        ):
+            raise ValueError("immutable ordered source and constant terms required")
+        source, _ = _scales(*self.source_scales, self.relu)
+        if self.source_scales != tuple(source[k] for k in ("lhs_scale", "rhs_scale", "output_scale")):
+            raise ValueError("unchanged ordered binary32 source scales required")
+        if (
+            type(self.coefficient_max) is not int
+            or not 1 <= self.coefficient_max <= 32767
+            or type(self.accumulator_abs_max) is not int
+            or self.accumulator_abs_max <= 0
+            or type(self.p) is not int
+            or type(self.q) is not int
+            or min(self.p, self.q) <= 0
+            or self.scale != f32(self.scale)
+            or not math.isfinite(self.scale)
+            or self.scale <= 0
+        ):
+            raise ValueError("explicit bounded integer predictor required")
+        if (
+            not self.terms
+            or any(
+                type(axis) is not int
+                or axis not in (0, 1)
+                or type(weight) is not int
+                or not 1 <= weight <= self.coefficient_max
+                for axis, weight in self.terms
+            )
+            or tuple(sum(w for a, w in self.terms if a == axis) for axis in (0, 1)) != (self.p, self.q)
+            or 128 * (self.p + self.q) > self.accumulator_abs_max
+        ):
+            raise ValueError("constant terms or accumulator bound differ from predictor")
+        expected = source_table(**source)
+        actual = predictor_table(self.p, self.q, self.scale, relu=self.relu)
+        if (
+            not np.array_equal(expected, actual)
+            or hashlib.sha256(expected.tobytes()).hexdigest() != self.source_table_sha256
+        ):
+            raise ValueError("predictor does not preserve every ordered source pair")
+        return dict(
+            schema="merlin.exact_affine_pair_plan.v1",
+            source=source,
+            predictor=dict(p=self.p, q=self.q, scale=self.scale),
+            terms=[list(term) for term in self.terms],
+            checked_pairs=65536,
+            source_table_sha256=self.source_table_sha256,
+            coefficient_max=self.coefficient_max,
+            accumulator_abs_max=self.accumulator_abs_max,
+            required_accumulator_abs=128 * (self.p + self.q),
+            target_execution="not_established",
+        )
+
+
+def propose_exact_affine_pair(
+    lhs_scale, rhs_scale, output_scale, *, max_denominator, coefficient_max, max_terms, accumulator_abs_max, relu=False
+):
+    """Bounded source-derived proposals; return None if none proves exact.
+
+    Rational approximation only proposes candidates. Every admitted candidate
+    is compared against all 65,536 pairs using the ORIGINAL separate binary32
+    products, addition and output reciprocal multiply. No error is budgeted.
+    Limits are supplied by a caller's actual source/resource contract.
+    """
+    for value, ceiling in ((max_denominator, 4096), (coefficient_max, 32767), (max_terms, 256)):
+        if type(value) is not int or not 1 <= value <= ceiling:
+            raise ValueError("explicit finite affine proposal limits required")
+    if type(accumulator_abs_max) is not int or not 1 <= accumulator_abs_max <= (1 << 31) - 1:
+        raise ValueError("explicit signed accumulator bound required")
+    source, reciprocal = _scales(lhs_scale, rhs_scale, output_scale, relu)
+    ordered = tuple(source[k] for k in ("lhs_scale", "rhs_scale", "output_scale"))
+    expected = source_table(**source)
+    digest = hashlib.sha256(expected.tobytes()).hexdigest()
+    alpha, beta = source["lhs_scale"] * reciprocal, source["rhs_scale"] * reciprocal
+    ratio, seen, accepted = Fraction(alpha / beta), set(), []
+    for limit in range(1, max_denominator + 1):
+        fraction = ratio.limit_denominator(limit)
+        p, q = fraction.numerator, fraction.denominator
+        if min(p, q) <= 0:
+            continue
+        if (p, q) in seen:
+            continue
+        seen.add((p, q))
+        if (
+            128 * (p + q) > accumulator_abs_max
+            or (p + coefficient_max - 1) // coefficient_max + (q + coefficient_max - 1) // coefficient_max > max_terms
+        ):
+            continue
+        terms = []
+        for axis, total in enumerate((p, q)):
+            while total:
+                weight = min(total, coefficient_max)
+                terms.append((axis, weight))
+                total -= weight
+        guesses = {f32(alpha / p), f32(beta / q), f32((alpha / p + beta / q) / 2)}
+        # The original reciprocal and the two products round independently.
+        # Adjacent binary32 values are only additional proposals; the complete
+        # original ordered table, never proximity, decides their admission.
+        scales = guesses | {
+            float(np.nextafter(np.float32(value), direction))
+            for value in guesses
+            for direction in (np.float32(0), np.float32(np.inf))
+        }
+        for scale in sorted(scales):
+            if not math.isfinite(scale) or scale <= 0:
+                continue
+            if not np.array_equal(expected, predictor_table(p, q, scale, relu=relu)):
+                continue
+            plan = ExactAffinePairPlan(
+                ordered, relu, p, q, scale, tuple(terms), coefficient_max, accumulator_abs_max, digest
+            )
+            plan.revalidate()
+            accepted.append(plan)
+    # After the real resource costs tie, prefer the original effective
+    # coefficients over a gratuitously perturbed neighboring-float witness.
+    # This only ranks already exhaustive-proved candidates: closeness is never
+    # an admission criterion or a substitute for the ordered binary32 table.
+    return min(accepted, key=lambda plan: (
+        len(plan.terms), plan.p + plan.q, plan.p, plan.q,
+        max(abs(plan.p * plan.scale - alpha), abs(plan.q * plan.scale - beta)),
+        plan.scale,
+    ), default=None)
 
 
 def _centered_guard(values):

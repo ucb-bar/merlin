@@ -1,0 +1,42 @@
+{
+  "schema": "merlin.curated_path_redaction.v1",
+  "description": "Non-executable placeholders replace machine root strings; original raw byte hashes retained. Measurements/source/ELF/scope hashes unchanged. No runtime activation or model qualification.",
+  "records": [
+    {
+      "curated": "readout-passive-stages.json",
+      "raw_sha256": "5b8b440b735c1cc554fadaa198135737e0b7e1b9fcc329ddca43ee0319e2659f",
+      "raw_locator": "out/artifacts/public-readout-passive-v2/stage-analysis.json",
+      "machine_paths_replaced": [
+        "<WORKSPACE>",
+        "<USER_HOME>"
+      ]
+    },
+    {
+      "curated": "readout-response-comparison.json",
+      "raw_sha256": "ec769af9c100cd33e974c6e68dfea08f104251cc7b27330bcce3f3364bca2481",
+      "raw_locator": "out/artifacts/public-readout-response-v1/comparison.json",
+      "machine_paths_replaced": [
+        "<WORKSPACE>",
+        "<USER_HOME>"
+      ]
+    },
+    {
+      "curated": "readout-response-holdouts.json",
+      "raw_sha256": "c1b8398e836e92ecc4461dd761b41908a3bd0d0742d973999e70fedd6c59688f",
+      "raw_locator": "out/artifacts/public-readout-response-v1/holdouts.json",
+      "machine_paths_replaced": [
+        "<WORKSPACE>",
+        "<USER_HOME>"
+      ]
+    },
+    {
+      "curated": "readout-response-build.json",
+      "raw_sha256": "282f127d3514ed569200ff4ebd0ea047754174f42b425e878f6a10da3d96e096",
+      "raw_locator": "out/artifacts/public-readout-response-v1/build.json",
+      "machine_paths_replaced": [
+        "<WORKSPACE>",
+        "<USER_HOME>"
+      ]
+    }
+  ]
+}

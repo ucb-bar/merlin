@@ -1,0 +1,27 @@
+--- original/main.cpp
++++ observer/main.cpp
+@@ -14,6 +14,8 @@
+ uint64_t harness_sample_step_ps();
+ uint64_t harness_reference_period_ps();
+ 
++#include "refill_observer.hpp"
++
+ int main(int argc, char** argv) {
+   try {
+     uint64_t maximum_cycles = 20000000;
+@@ -27,6 +29,7 @@
+         reference_period_ps = std::stoull(arg.substr(std::string("+gsim-reference-period-ps=").size()));
+     }
+     harness_args(argc, argv);
++    RefillRecorder recorder(argc, argv);
+     auto dut = std::make_unique<STestHarness>();
+     dut->set_reset(1);
+     dut->set_clock(0);
+@@ -48,6 +51,7 @@
+       dut->set_clock((gsim_time_ps / (reference_period_ps / 2)) & 1);
+       if (gsim_time_ps == reset_until_ps) dut->set_reset(0);
+       dut->step();
++      recorder.sample(*dut, gsim_time_ps, reference_period_ps);
+       if (gsim_done || dut->get_io$$success()) {
+         fprintf(stderr, "GSIM model finished execution.\nCycles: %llu\n",
+                 static_cast<unsigned long long>(gsim_time_ps / reference_period_ps));

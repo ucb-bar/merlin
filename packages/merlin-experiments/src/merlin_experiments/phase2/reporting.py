@@ -117,6 +117,8 @@ def load_current_experiment(
             corpus_manifest = holdout.get("manifest_sha256")
             corpus_bytes = holdout.get("capsules_sha256")
             certificate = (parent.get("heldout_gsim_certificate") or {}).get("sha256")
+        from .measurement_library_binding import binding_arguments
+
         binding = ME.MeasurementBinding(
             phase,
             handoff.functional_run_id,
@@ -126,6 +128,7 @@ def load_current_experiment(
             corpus_manifest,
             corpus_bytes,
             certificate,
+            **binding_arguments(handoff),
         )
         if not digest.is_sha256(receipt.get("sha256")):
             raise ReportingGateError("current measurement child lacks its parent hash pin")
@@ -133,8 +136,6 @@ def load_current_experiment(
             verified = ME.verify_paired_measurement(child_path, expected=binding, manifest_sha256=receipt["sha256"])
         except (ValueError, RuntimeError, OSError) as exc:
             raise ReportingGateError(f"current paired measurement is invalid: {exc}") from exc
-        if verified.manifest.get("schema") != "paired_arm4_performance_campaign_v2":
-            raise ReportingGateError("current experiment child has an unsupported paired schema")
         rows.extend(ME.statistics_rows(verified.rows, trial=trial))
     predeclared = read_immutable_json(
         parent_path.parent / "statistics_predeclaration.json",

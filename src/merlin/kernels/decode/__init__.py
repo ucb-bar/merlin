@@ -26,20 +26,20 @@ def decode_for_endpoint(raws, target: str, endpoint):
     assembled, not disassembled) -- distinguishable from "decoded and found nothing" by being empty
     rather than role-less.
     """
-    from merlin.kernels import endpoints as _ep
+    from merlin.compile.analysis import compute_endpoints as _ep
 
     block = (_ep._spec().get("endpoints") or {}).get(getattr(endpoint, "name", "")) or {}
     enc_block = block.get("encoding") or {}
     kind = str(enc_block.get("source") or "")
 
     if kind == "rtl_facts":
-        from merlin.kernels.decode import rocc as _rocc
+        from merlin.compile.analysis import rocc_commands as _rocc
 
         return _rocc.decode_stream(raws, _rocc.funct_table_for(target), endpoint.roles_of)
 
     if kind == "isa_encoding":
+        from merlin.compile.analysis import intrinsics_header as _ih
         from merlin.kernels.decode import derived_isa as _isa
-        from merlin.kernels.decode import insn_header as _ih
 
         enc = dict(_isa.encoding_for(target))
         width = enc_block.get("stream_width")
@@ -69,8 +69,8 @@ def decode_for_endpoint(raws, target: str, endpoint):
         from pathlib import Path as _Path
 
         from merlin.common import provenance as _prov
+        from merlin.compile.analysis import rocc_commands as _rocc
         from merlin.kernels import asm_audit as _aa
-        from merlin.kernels.decode import rocc as _rocc
         from merlin.targetgen.rtl.circt_introspect import _functs_from_headers
 
         try:
@@ -118,7 +118,7 @@ def disasm_settings(target: str, endpoint) -> dict:
     A probe that does not pin these reports the tool's ignorance as the corpus's nature: the same
     omission once put radiance's unknown-word rate at 76% where pinning ``--mattr`` put it at 15%.
     """
-    from merlin.kernels import endpoints as _ep
+    from merlin.compile.analysis import compute_endpoints as _ep
 
     enc = ((_ep._spec().get("endpoints") or {}).get(getattr(endpoint, "name", "")) or {}).get("encoding") or {}
     return {"triple": str(enc.get("disasm_triple") or "riscv64"), "mattr": enc.get("disasm_mattr")}

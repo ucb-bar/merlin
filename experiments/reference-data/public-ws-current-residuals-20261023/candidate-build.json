@@ -1,0 +1,73 @@
+{
+  "schema": "merlin.isolated_native_provider_candidate.v1",
+  "source_commit": "c8998427f3ca6df1d7007d75f11234e381e4c824",
+  "sources": [
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/examples/gemmini/timing/bridge.cpp",
+      "sha256": "0c995689322dad68e4ffb2567e928a9d2570a46a3c652eae73224e00eb7113a0"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/examples/gemmini/timing/provider.hpp",
+      "sha256": "14766c6515056a196ce2724f72f52c2d1d3a5c44e9c1a6d2a76bba1cb7617a58"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/examples/gemmini/timing/staged.hpp",
+      "sha256": "69f584eea556f2195d07c4d2feedda68baaca7b301dd307e65f1fd2f5dadf9f3"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/examples/gemmini/timing/scratchpad_load.hpp",
+      "sha256": "73f8346198a7285e2002d83341871fbae2d4e12939af79d46198a55544e7677a"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/examples/gemmini/timing/streamed_readout.hpp",
+      "sha256": "9b4ba32a70089f91c65727be83408a10fd983a2ae78124c2029bdca06f18e918"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/timing/provider.hpp",
+      "sha256": "acc2d0a921a651405ffadd2d52ff6c2ab17e47c95c2fb6265cb3f721076b233a"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/timing/core/include/merlin_timing/engine.hpp",
+      "sha256": "a3ad0ac903e091d5e3384534eec8379f24d42b6294adc1c496eea146082b044d"
+    },
+    {
+      "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/spike-timing/timing/core/include/merlin_timing/reservations.hpp",
+      "sha256": "672ed5be138226533b49a8c38c91b2623494b5162286862ed7fcc48f77e37c65"
+    }
+  ],
+  "compiler": "c++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+  "build_command": [
+    "taskset",
+    "-c",
+    "29,30",
+    "c++",
+    "-std=c++17",
+    "-O2",
+    "-fPIC",
+    "-shared",
+    "-Iexamples/gemmini/timing",
+    "-Itiming/core/include",
+    "-I.",
+    "examples/gemmini/timing/bridge.cpp",
+    "-o",
+    "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/libtiming_provider.so"
+  ],
+  "provider": {
+    "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/libtiming_provider.so",
+    "sha256": "524f9ec01affbb2a1ebf93fe3edc4f06fc906a7127a2b48c889a5d10a41ee498"
+  },
+  "model": {
+    "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/model.json",
+    "sha256": "a0c5565fb7fbfc5778d2664640de104cd19f6ecb4b8a0f0935b910132392670b"
+  },
+  "parent_model": {
+    "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+    "sha256": "8089fb9a2ea325ff2e61508ad9a78a23b92a9620099839cbcba0a221470e7c1c"
+  },
+  "model_delta": [
+    "libraries[1]: candidate provider content identity only"
+  ],
+  "parameters_unchanged": true,
+  "selected_runtime_unchanged": true,
+  "calibration_promotion_authorized": false
+}

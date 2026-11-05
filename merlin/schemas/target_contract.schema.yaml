@@ -46,7 +46,42 @@ validation_notes: >-
   the type and width come from that exact field, never a contract numeric literal.
   `boolean_feature_gate` has `feature`, `module`, `node`, `dynamic_operand_contains`, and
   `config_field`; the literal build-gate value is still read from exact elaborated FIRRTL.
+  `timing_structure` anchors `merlin.targetgen.rtl.timing_structure`: `dispatch: {module, classes:
+  {<class>: <issue port prefix>}}`, `memory_protocol: {request, response, id, data, size,
+  size_encoding}` (the bus field vocabulary), `memory_clients: {<client>: {module, port_prefix}}`,
+  `dataflow: {cell_module, select_port}`, `latencies: {<name>: {module, from, to, mode?|pins?}}`,
+  `array_paths: {<name>: {module, from_prefix, to_prefix, mode?}}` and `profile_resources:
+  {<resource>: {capacity, queue_capacity, basis}}`, whose terms are dotted paths into the derived
+  record, `{buffer_instance: <path>}` or `{from, minus}` (`null` leaves a field to fitting). Only names
+  are declared; entries, widths, ID spaces, stage counts and modes are read from the elaborated HW,
+  and an anchor the RTL does not contain records that fact UNKNOWN.
+  `dispatch.ordering: {reset, allocate: {valid, ready, funct, rs1, rs2}, issue: {valid, ready, id,
+  funct, rs1, rs2} (suffixes after each class prefix), completion: {valid, id}, config_fields:
+  [{bundle, operand}]}` anchors `merlin.targetgen.rtl.command_ordering`, which drives that module
+  alone to observe each command's queue, same- and cross-queue release points and span formulas.
   Missing declarations disable their optional reader, while malformed declarations fail closed.
+  `output_epilogue: {module, value, scale, activation}` names the elaborated module that moves the
+  accumulator out and, inside it, the accumulator element, the scale operand and the activation
+  selector; what that module does with them is read by `merlin.targetgen.rtl.output_epilogue`.
+
+  OPTIONAL `output_epilogue` (schema `output_epilogue_v1`, written by contract derivation, never
+  authored): what the contraction unit's output path applies on move-out. Four capabilities, each
+  `{status: derived|UNKNOWN, evidence: [{rung, observed}], ...}`: `scale` (`dtype` and `format` of the
+  scale read from its sign/exponent/fraction split, `accumulator_dtype`, `output_dtypes`, `rounding`,
+  `saturation`, the register `carriers` and the instance `combined_by` that multiplies),
+  `activation` (`functions: {relu: {codes, applied_to}}`, `unrecognized_codes`, `before_scale`),
+  `accumulate` (the `accumulate_on_load` fact) and `pool` (`reductions`, `carriers`). `stages` maps
+  each command-buffer stage an output path can apply (`acc_scale`, `relu`, `maxpool`) to whether it
+  is derived, and `unknown` gives the reason for every capability no rung established. A stage that
+  is not derived licenses nothing; it is never a refusal by the hardware either. Optional
+  `bias_preload` (`dtype`, `bits`, `range`, `rounding: none`: a full-width value loaded unchanged into
+  the accumulator a contraction then adds onto) and `full_width_readout` (the raw accumulator leaves
+  the readout unmodified) are read the same way, and `scale.columns_per_scale` is the number of
+  accumulator elements one scale operand covers. `output_path` (schema `output_path_v1`,
+  `merlin.targetgen.output_path`) restates all of it as one ordered, target-neutral sequence:
+  `accumulator_stages` (`preload`, `accumulate`), `readout` (`activation` with its domain,
+  `convert`, `scale` with granularity and `columns_per_scale`, `requant` with rounding and clamp,
+  `pool`) and `exits` (`accumulator`, `requant`). The fusion pass reads only this sequence.
 
   OPTIONAL `operation_capabilities`: the common operation registry shared by generated target
   dialects, RVV or other instruction sets, and target-specific machine dialects. Shape:
@@ -60,6 +95,11 @@ validation_notes: >-
   (for example `{kind: memory, scope: scalar, direction, address_space, width_bytes, addressing}`), so
   scalar memory, vector, and future operation families extend the same registry instead of adding
   parallel capability schemas. `effects` uses the shared Phase-2 optimization-effect vocabulary.
+  Existing selected readout declarations also project `domain: composition` records.
+  Their semantics carry the selector, applied stages, numerical rules, stage routes,
+  selected configuration and available source references. Stage membership does not
+  establish order or executable support: projections start unknown, and a supported
+  composition observation must match the explicitly selected configuration.
   A selected target may project a typed MLIR dialect from these same records by declaring
   `dialect_name`, custom `types`, and a `semantics.mlir_signature` for every record with
   `{domain: dialect, dialect: <dialect_name>}`. The signature gives explicit operands,
@@ -70,13 +110,43 @@ validation_notes: >-
 
   OPTIONAL `harness_abi` (how a runner-owned harness calls into this target's kernel; parsed by
   `merlin.targetgen.contract.harness_abi`): `{entry_symbol (REQUIRED), fence_symbol, includes: [...],
-  cycle_window_metric, extern_decls: [...]}`. These are conventions of the target's own bare-metal test
+  cycle_window_metric, extern_decls: [...], kernel_abi_version}`. `kernel_abi_version` is 2 (the default:
+  the logical ABI in `merlin/contract/mlir_oot_backend_contract.yaml`) or 1 (the version-1 resident ABI in
+  `merlin/contract/legacy/kernel_abi_v1.yaml`, selected only by a support package whose harness implements it). These are conventions of the target's own bare-metal test
   environment, NOT RTL facts — nothing in a fact bundle says a kernel is called `foo_kernel` rather than
   `bar_entry` — which is exactly why the target declares them and why the parser refuses rather than
   substituting a default. A default here would produce a harness that compiles and then fails to link,
   with the error pointing at the linker instead of at the missing declaration. Omit `cycle_window_metric`
   when the target does not distinguish an accelerator region: an absent metric and one printed as 0 are
   read identically by the runner's parser, so emitting a falsy one says nothing.
+
+  OPTIONAL `runner.backend: chipyard_rocc` selects shared runtime tooling before executable
+  provider discovery. Its closed `runner.chipyard_rocc` v1 data pins the compiler, fixed core
+  runtime units/headers, linker script, flags, load address and explicit Spike/gSIM engines.
+  Optional `execution_resources: {max_native_timeout_s: N,
+  max_model_spike_timeout_s?: M}` selects reviewed host process ceilings. N is an
+  integer 1..3600 seconds; M is an integer 1..172800 seconds. Omitted selection
+  retains 600 for each engine class. Native and Spike engine `max_timeout_s` must
+  not exceed their corresponding selected ceilings.
+  gSIM requires its existing strict-v3 build receipt; Spike requires a pinned extension.
+  No selected tool is executed during metadata binding, and no missing field inherits a
+  provider or environment default. See docs/reference/neutral_runtime_tooling.md.
+
+  This route requires logical `harness_abi` v2: `{version: 2, kind: logical_pointer,
+  entry_symbol, fence_symbol, tensor_alignment, byte_order, main_convention,
+  readback_transport, prelude_symbol?}`. Buffers are dense logical tensors without padding
+  or device layout preparation. Legacy includes/extern snippets refuse in this mode.
+  The shared backend currently admits B64 readback only; coherent transport needs
+  a separately connected trusted memory reader and refuses backend binding here.
+
+  OPTIONAL `rocc_operand_roles` v1: `{version: 1, word_bits: 32|64, instructions:
+  [{funct, class, operands: {rs1?: {bundle}, rs2?: {bundle}}}]}`. Codes must occur in
+  selected `funct_decode_table` facts; operand field offsets/widths come only from
+  selected `register_bundle_layouts`. Unknown widths, overlapping fields and ambiguous
+  interfaces refuse. Labels do not establish numerical or temporal semantics.
+  `rtl_checks` is a nonempty unique list of supported hardware checks. Generic v1 supports
+  `decode_clean` and `legal_funct`; universal legality requires complete funct7 coverage.
+  Strategy rules (tiling, reuse, issue order, balance) and unimplemented checks refuse.
 
   OPTIONAL `plugin` (the package's extension points; recognised keys are declared once in
   `merlin.targetgen.plugins.PLUGIN_KEYS` and validated by `load_target`). A reference is a path

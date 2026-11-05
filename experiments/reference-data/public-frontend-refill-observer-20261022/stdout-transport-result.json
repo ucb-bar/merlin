@@ -1,0 +1,156 @@
+{
+  "status": "matching_original_numerics_and_cycles_trace_complete",
+  "rows": [
+    {
+      "layout": 0,
+      "state": 0,
+      "rep": 0,
+      "cycles": 177,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 0,
+      "state": 1,
+      "rep": 0,
+      "cycles": 126,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 0,
+      "state": 0,
+      "rep": 1,
+      "cycles": 177,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 0,
+      "state": 1,
+      "rep": 1,
+      "cycles": 126,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 0,
+      "state": 0,
+      "rep": 2,
+      "cycles": 177,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 0,
+      "state": 1,
+      "rep": 2,
+      "cycles": 126,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 44,
+      "state": 0,
+      "rep": 0,
+      "cycles": 177,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 44,
+      "state": 1,
+      "rep": 0,
+      "cycles": 126,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 44,
+      "state": 0,
+      "rep": 1,
+      "cycles": 177,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 44,
+      "state": 1,
+      "rep": 1,
+      "cycles": 126,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 44,
+      "state": 0,
+      "rep": 2,
+      "cycles": 177,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 44,
+      "state": 1,
+      "rep": 2,
+      "cycles": 126,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    }
+  ],
+  "matrix_values_checked": 4608,
+  "guards_checked": 576,
+  "scope_marker_count": 36,
+  "trace": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/events.jsonl",
+    "sha256": "7f478d5917996b46478a4a739a057af00eefa2e6c83f12b0caef47f29e0720e9"
+  },
+  "footer": {
+    "kind": "footer",
+    "observed_events": 26689,
+    "written_events": 26689,
+    "dropped": 0,
+    "truncated": false,
+    "simulator_done": true,
+    "exit_code": 0,
+    "record_bytes": 5858078
+  },
+  "console": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/physical.stdout",
+    "sha256": "60a6e73dac2566c56595dad21a69ee77d6aa0625a9d7571a215c2c518b2de445"
+  },
+  "attribution": "pending independent offline parser; no cache-timing qualification",
+  "elapsed_s": 21.738018256961368,
+  "elf": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf",
+    "sha256": "cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e"
+  },
+  "plan": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/plan.json",
+    "sha256": "59d0f776601de3d33786ea0d8d21de97cd60650dc33ddafc84c3cde6fe1fd389"
+  },
+  "calibration_eligible": false,
+  "original_document": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/physical-result.json",
+    "sha256": "6829752976396209e4517b7737f519d2d79e1ac0805b522816b95c9b66ca772d",
+    "bytes": 19391
+  },
+  "ledger_reserved_s_after": 1125.459292357089,
+  "ledger_active_count_after": 0,
+  "projection_omissions": [
+    "duplicated engine receipts",
+    "historical ledger admissions/active records"
+  ]
+}

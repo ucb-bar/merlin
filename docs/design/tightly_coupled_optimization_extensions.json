@@ -1,0 +1,204 @@
+{
+  "schema": "merlin.tightly_coupled_capability_extensions.v1",
+  "selected_contract": {
+    "sha256": "3db4e13d3cc512123f96839d82cb3e24ee45e97a38e4ba565552f8f6a2f3eb8e",
+    "description": "Selected v13 bare-metal integer target contract; interface applicability, not claims about all Gemmini hardware"
+  },
+  "status_definitions": {
+    "unsupported": "Contradicts the selected supported execution/format contract; not a global hardware impossibility claim.",
+    "not_exposed": "No selected public ISA/compiler/runtime interface grants this mechanism; hardware presence may still be unknown.",
+    "unknown": "Selected evidence is insufficient to establish the underlying capability or its absence."
+  },
+  "scope": "Additional mechanisms for the same CPU-issued tightly coupled accelerator category. These are intentionally not automatically applicable to the selected Gemmini experiment. Unrelated asynchronous GPU runtime starter sets remain separate. A broad catalog alone does not prove compiler generalization; that requires implementing adapters and passing source-bound varied-workload validation.",
+  "entries": [
+    {
+      "id": "coherent_zero_copy",
+      "category": "CPU-issued tightly coupled accelerator",
+      "additional_capability_predicates": [
+        "accelerator participates in declared host coherence domain",
+        "shared buffer accesses have specified acquire/release visibility"
+      ],
+      "mechanism": "Pass shared host tensor storage directly and omit staging/cache-maintenance copies when ownership permits",
+      "selected_gemmini": {
+        "status": "unknown",
+        "scope": "selected experiment contract and exposed compiler/runtime interface; not a claim about every Gemmini implementation",
+        "reason": "The selected memory_model and hardware_promises are empty. DMA readback named coherent_dump_v1 is an observation transport, not a CPU/accelerator coherence proof.",
+        "contract_evidence": [
+          "memory_model: {}",
+          "hardware_promises: []",
+          "runner.chipyard_rocc.engines.gsim.readback_transport"
+        ]
+      },
+      "generic_extension_points": [
+        "Memory-effect/ownership dialect with coherence-domain attribute",
+        "Zero-copy legality pass",
+        "Shared-buffer ABI adapter"
+      ],
+      "required_validation": [
+        "Read/write alias and lifetime proof",
+        "CPU\u2194accelerator visibility litmus tests on selected hardware",
+        "Include cache-line traffic and false sharing in cost model"
+      ],
+      "implementation_claim": "proposal only; named extension points do not assert an existing implementation"
+    },
+    {
+      "id": "interrupt_completion",
+      "category": "CPU-issued tightly coupled accelerator",
+      "additional_capability_predicates": [
+        "per-job completion interrupts",
+        "interrupt delivery and acknowledgement ABI",
+        "race-free sleep/wakeup protocol"
+      ],
+      "mechanism": "Yield the host while work runs and resume from a completion interrupt",
+      "selected_gemmini": {
+        "status": "not_exposed",
+        "scope": "selected experiment contract and exposed compiler/runtime interface; not a claim about every Gemmini implementation",
+        "reason": "Selected harness exposes entry and completion function calls, with no interrupt registration, event or wait ABI. This does not establish absence of interrupt wiring.",
+        "contract_evidence": [
+          "harness_abi.entry_symbol",
+          "harness_abi.fence_symbol",
+          "runtime_promises: []"
+        ]
+      },
+      "generic_extension_points": [
+        "Runtime completion-event abstraction",
+        "Interrupt-backed wait adapter",
+        "Host blocking versus polling policy"
+      ],
+      "required_validation": [
+        "Lost-wakeup/error/cancellation protocol",
+        "Completion visibility proof",
+        "CPU occupancy and interrupt overhead measurements"
+      ],
+      "implementation_claim": "proposal only; named extension points do not assert an existing implementation"
+    },
+    {
+      "id": "autonomous_command_buffers",
+      "category": "CPU-issued tightly coupled accelerator",
+      "additional_capability_predicates": [
+        "device fetches commands from memory",
+        "command-list encoding and bounds",
+        "submission doorbell and list completion"
+      ],
+      "mechanism": "Compile reusable command lists for autonomous execution, amortizing CPU instruction issue",
+      "selected_gemmini": {
+        "status": "not_exposed",
+        "scope": "selected experiment contract and exposed compiler/runtime interface; not a claim about every Gemmini implementation",
+        "reason": "The selected endpoint is inline_asm_insn. No device-fetch command-list ABI is granted; recorded software command_buffer.json is not evidence of autonomous hardware execution.",
+        "contract_evidence": [
+          "endpoint_kind: inline_asm_insn",
+          "harness_abi.kind: logical_pointer"
+        ]
+      },
+      "generic_extension_points": [
+        "Command-list dialect/backend",
+        "Relocation and pointer patching pass",
+        "List submission/completion runtime adapter"
+      ],
+      "required_validation": [
+        "Exact command-list decoder and effects",
+        "List memory lifetime and fetch bounds",
+        "Host submission cost versus device execution latency"
+      ],
+      "implementation_claim": "proposal only; named extension points do not assert an existing implementation"
+    },
+    {
+      "id": "programmable_vector_epilogues",
+      "category": "CPU-issued tightly coupled accelerator",
+      "additional_capability_predicates": [
+        "independently programmable vector ALU",
+        "lane masks and accumulator-to-vector transport",
+        "supported elementwise numeric formats"
+      ],
+      "mechanism": "Fuse wider pointwise/reduction epilogues into vector execution without scalar host roundtrips",
+      "selected_gemmini": {
+        "status": "not_exposed",
+        "scope": "selected experiment contract and exposed compiler/runtime interface; not a claim about every Gemmini implementation",
+        "reason": "Selected compute_units declares a systolic int8 unit; existing composed elementwise/reduction support does not expose an independent vector instruction set.",
+        "contract_evidence": [
+          "compute_units[0].kind: systolic",
+          "compute_units[0].dtypes: [int8]",
+          "compute_units[0].semantic_capabilities"
+        ]
+      },
+      "generic_extension_points": [
+        "Vector-epilogue dialect",
+        "Contraction-to-vector ownership/transport adapter",
+        "Mask-aware fusion and register allocation"
+      ],
+      "required_validation": [
+        "Exact lane and exceptional-value semantics",
+        "Accumulator handoff and live-range proof",
+        "Vector utilization, transfer and register spill costs"
+      ],
+      "implementation_claim": "proposal only; named extension points do not assert an existing implementation"
+    },
+    {
+      "id": "floating_matrix_compute",
+      "category": "CPU-issued tightly coupled accelerator",
+      "additional_capability_predicates": [
+        "floating operand and accumulator modes with exact arithmetic contract",
+        "format conversion and scale behavior specified"
+      ],
+      "mechanism": "Select floating matrix instructions directly instead of integer quantization or host decomposition",
+      "selected_gemmini": {
+        "status": "unsupported",
+        "scope": "selected experiment contract and exposed compiler/runtime interface; not a claim about every Gemmini implementation",
+        "reason": "Selected contraction runtime is explicitly i8xi8_i32 and the exposed matrix dtype is int8. FP scale fields for readout do not authorize floating matrix multiplication. This is unsupported in this selected interface; broader hardware possibility remains unproven.",
+        "contract_evidence": [
+          "runner.dtype: i8xi8_i32",
+          "compute_units[0].dtypes: [int8]",
+          "output_epilogue"
+        ]
+      },
+      "generic_extension_points": [
+        "Floating contraction type/rounding dialect",
+        "Format-aware instruction selection",
+        "Overflow/underflow and error-budget proof interface"
+      ],
+      "required_validation": [
+        "FP16/BF16/FP8 mode-specific reference semantics",
+        "NaN/subnormal/rounding behavior",
+        "Operand, accumulator and conversion bandwidth accounting"
+      ],
+      "implementation_claim": "proposal only; named extension points do not assert an existing implementation"
+    },
+    {
+      "id": "scatter_gather_dma",
+      "category": "CPU-issued tightly coupled accelerator",
+      "additional_capability_predicates": [
+        "hardware transfer descriptor supports indexed/segmented addresses",
+        "bounded segment count and alignment",
+        "defined fault/completion behavior"
+      ],
+      "mechanism": "Transfer sparse/noncontiguous tensor regions without scalar packing when descriptor setup is cheaper",
+      "selected_gemmini": {
+        "status": "not_exposed",
+        "scope": "selected experiment contract and exposed compiler/runtime interface; not a claim about every Gemmini implementation",
+        "reason": "Selected movement support declares copy; no indexed descriptor ABI or scatter/gather semantics are exposed. Ordinary strided matrix loads are insufficient evidence for arbitrary scatter/gather.",
+        "contract_evidence": [
+          "compute_units[0].semantic_capabilities movement.forms: [copy]",
+          "corpus_instruction_roles.by_role.memory"
+        ]
+      },
+      "generic_extension_points": [
+        "Segmented transfer dialect",
+        "Descriptor construction/coalescing pass",
+        "Scatter/gather legality adapter"
+      ],
+      "required_validation": [
+        "Segment aliasing and bounds checks",
+        "Duplicate destination ordering and fault semantics",
+        "Descriptor cost and actual transferred bytes"
+      ],
+      "implementation_claim": "proposal only; named extension points do not assert an existing implementation"
+    }
+  ],
+  "validation": {
+    "kind": "static selected-contract review only",
+    "entries": 6,
+    "target_runs": 0,
+    "tests_run": 0,
+    "implementation": "proposals, not new target support"
+  }
+}

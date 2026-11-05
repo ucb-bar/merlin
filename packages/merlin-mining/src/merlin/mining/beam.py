@@ -113,7 +113,7 @@ def _undef_syms(run_dir: "Path") -> "tuple[str, ...] | None":
     """Undefined symbols of a run's emitted object, so the CCA envelope facet can NAME the runtime
     helpers the kernel escapes to. Without this the beam sees only that a call exists, not that it
     is `memrefCopy`, and the routed PASS that removes it never fires."""
-    from ..kernels.decode.objdump import undefined_symbols
+    from merlin.compile.analysis.disassembly import undefined_symbols
 
     obj = Path(run_dir) / "generated" / "model.o"
     return undefined_symbols(obj) if obj.is_file() else None

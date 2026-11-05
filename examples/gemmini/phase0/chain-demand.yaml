@@ -1,0 +1,28 @@
+# Declared policy of the Phase 0 chain-demand stage (merlin_experiments.phase0.chain_demand): which
+# producer-to-consumer chains of the captured programs become connected test cases. Every knob is a
+# reviewed choice.
+schema: merlin.phase0.chain_demand_policy.v1
+families: [conv_requant_pool, contraction_residual, shared_input_siblings, sibling_feed, shared_kv_heads]
+performance:
+  # Per selection group (a family, the residual family split by producer kind), the signatures with
+  # the largest share of their program's contraction MACs, at most one per model.
+  members_per_group: 3
+  # The same bounds the performance-demand cohort is held to.
+  admissibility:
+    logical_storage_budget_bytes: 134217728
+    max_case_macs: 2097152000
+  # The primary-ranking volume of a public scalability case (phase1 workload roles); a smaller chain
+  # is a correctness form, not a performance member.
+  minimum_input_elements: 65536
+  # A program of more nodes is too large a declaration to author against.
+  max_program_nodes: 64
+correctness:
+  # Reduced variants cap each extent at this many tiles of the array edge read from the RTL facts.
+  reduced_tiles: 2
+  # Edge variants put this many elements past one tile on every extent.
+  edge_tail: 1
+# Independent deterministic stimuli, the range the generated cohort uses.
+stimulus_range: [-4, 3]
+# Readout scales aim the requantized values at this magnitude (operand steps).
+readout_rms: 24
+name_prefix: CH

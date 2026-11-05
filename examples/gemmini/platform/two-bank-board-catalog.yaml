@@ -1,0 +1,20 @@
+# Host declaration for the fixed-capacity scratchpad-bank evolution experiment.
+# The accelerator facts and native simulator are separate pinned selections.
+schema_version: 1
+boards:
+  gemmini_rocket_gsim_two_bank:
+    target: gemmini
+    rtl_sim_config: GemminiGsimTwoBankFireSimAlignedConfig
+    host_dts_sha256: c4a2009a405945ea98f731713e0f4e7dc483031ab8cd5156d871e4eb7594f1df
+    dram_bytes: 16 GiB
+    dram_base: 0x80000000
+    harts: 1
+    vector_harts: 0
+    console: htif
+    flow: baremetal
+    code_reserve: 64 MiB
+    notes: >-
+      The newly emitted two-bank FireSim and gSIM DTS files exactly match the
+      retained host DTS. This declares the host ISA and address map for the new
+      native gSIM configuration. It supplies no FPGA identity, whole-model
+      qualification, measured capacity, upload loader or timing certificate.

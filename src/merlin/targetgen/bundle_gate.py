@@ -606,13 +606,10 @@ def gate_for(
 
 @dataclass(frozen=True)
 class ReferenceSpread:
-    """How far apart a capture's OWN two references are, on the array a gate grades.
+    """Numerical separation of two stored arrays, without reference-provenance authority.
 
-    A capture that ships both an ``eager_same_precision`` and an ``eager_fp32`` reference has
-    already measured its own quantization spread. That number is the floor on any meaningful
-    tolerance: asserting the DEVICE is closer to the same-precision reference than that reference is
-    to its own full-precision sibling is asserting the device is more faithful than the arithmetic
-    it implements.
+    Array equality or different filenames cannot establish independent FP quality.
+    The session quality gate additionally requires an observed supplied reference.
     """
 
     max_absolute: float
@@ -680,6 +677,19 @@ def reference_digest(golden_path: Any, key: str) -> str:
     return hashlib.sha256(values.tobytes()).hexdigest()
 
 
+def _observed_quality(spec: Mapping[str, Any]) -> bool:
+    """A supplied reference is distinct from the writer's correctness fallback.
+
+    Equality of array bytes and input provenance say nothing about this branch.
+    The capture's source owner must establish how the supplied reference arose.
+    """
+    return spec.get("observation") == {
+        "schema": "m2m.session_quality_observation.v1",
+        "status": "observed",
+        "origin": "provided_quality_reference",
+    }
+
+
 def gate_from_session_contract(
     contract: Mapping[str, Any],
     *,
@@ -724,6 +734,12 @@ def gate_from_session_contract(
         raise GateError(
             f"{model}: the session contract declares no {field!r} block, so it declares no "
             f"{channel} reference; a gate invented here would be a gate chosen by the grader"
+        )
+    if channel == "quality" and not _observed_quality(spec):
+        raise GateError(
+            f"{model}: independent FP quality is unavailable or unknown; the capture must "
+            "record a provided quality-reference observation. A correctness fallback or a "
+            "legacy reference label does not establish an independent quality measurement"
         )
 
     scope = str(spec.get("scope") or "")
@@ -802,7 +818,20 @@ def gate_from_session_contract(
     spread = None
     other = "quality" if channel == "correctness" else "correctness"
     other_spec = contract.get(other)
-    if isinstance(other_spec, Mapping) and other_spec.get("golden"):
+    other_observation = other_spec.get("observation") if isinstance(other_spec, Mapping) else None
+    if (
+        isinstance(other_spec, Mapping)
+        and other_spec.get("golden")
+        and not (
+            other == "quality"
+            and other_observation
+            == {
+                "schema": "m2m.session_quality_observation.v1",
+                "status": "unavailable",
+                "origin": "correctness_fallback",
+            }
+        )
+    ):
         other_golden = Path(bundle_dir) / str(other_spec["golden"])
         if other_golden.is_file() and str(other_spec.get("key") or "") == key:
             spread = reference_spread(golden, other_golden, key)
@@ -827,6 +856,11 @@ def gate_from_session_contract(
             f"{spread.max_absolute:.6g} (cosine {spread.cosine:.9f}), which is the floor "
             f"this tolerance was checked against"
             if spread is not None
+            else ""
+        )
+        + (
+            "; quality reference independence is unknown; the paired spread is only an artifact comparison"
+            if channel == "correctness" and spread is not None and not _observed_quality(other_spec)
             else ""
         )
     )

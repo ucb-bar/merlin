@@ -1,0 +1,17 @@
+{
+  "schema": "merlin.native_pair_admission_checks.v1",
+  "checks": [
+    {
+      "name": "staged_test with address/undefined sanitizers",
+      "exit_code": 0,
+      "command": "taskset -c 29,30 c++ -std=c++17 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -Iexamples/gemmini/timing -Itiming/core/include -I. examples/gemmini/timing/tests/staged_test.cpp -o <TASK_TMP>/staged-pair-test"
+    },
+    {
+      "name": "new regression against original staged.hpp",
+      "exit_code": 134,
+      "expected_failure": "queued_starts[0]==queued_starts[1]"
+    }
+  ],
+  "native_replays": 8,
+  "gsim_runs_added": 0
+}

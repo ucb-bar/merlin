@@ -107,7 +107,7 @@ def load_selected_accumulate(
 
 def validated_roles(declared: Any, roles_by_name: Mapping[str, list[str]]) -> dict[str, Any]:
     """The declared roles, each in the closed vocabulary, with the instructions that carry it."""
-    from merlin.kernels.roles import ROLES
+    from merlin.compile.analysis.instruction_roles import ROLES
 
     if not isinstance(declared, list) or not declared or not all(isinstance(r, str) for r in declared):
         raise Unreadable("the probe declares no `roles` list for the commands that use this capability")

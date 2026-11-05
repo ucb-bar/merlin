@@ -215,7 +215,7 @@ def _role_dtypes(role: str, units: list[dict], fallback: tuple[str, ...]) -> tup
     facet = _ROLE_ENGINE.get(role)
     if facet is None:
         return fallback
-    from merlin.kernels import engines as _eng
+    from merlin.compile.analysis import engine_facets as _eng
 
     owned = [u for u in units if _eng.ENGINE_FACET.get(str(u.get("kind"))) == facet]
     formats = tuple(dict.fromkeys(d for u in owned for d in _unit_dtypes(u)))
@@ -632,16 +632,27 @@ def _from_unit_intent(contract: dict, out: DerivedCapabilities) -> None:
 
 
 def derive(
-    target: str, contract: dict, facts: dict | None = None, *, taxonomy: dict | None = None
+    target: str,
+    contract: dict,
+    facts: dict | None = None,
+    *,
+    taxonomy: dict | None = None,
+    data_only: bool = False,
 ) -> DerivedCapabilities:
     """Run the evidence ladder for one target. Never raises on missing evidence — a rung that cannot
-    run simply contributes nothing, and every family no rung decided is reported ``unknown``."""
+    run simply contributes nothing, and every family no rung decided is reported ``unknown``.
+
+    ``data_only`` uses only supplied declarations/facts/taxonomy, without discovering
+    ISA headers or treating a compiler's lowering as hardware capability evidence.
+    """
+    if type(data_only) is not bool:
+        raise TypeError("data_only must be a bool")
     out = DerivedCapabilities()
     units = [u for u in (contract.get("compute_units") or ()) if isinstance(u, dict)]
     dtypes = tuple(dict.fromkeys(d for u in units for d in _unit_dtypes(u)))
 
     conclusive = False
-    if taxonomy is None:
+    if taxonomy is None and not data_only:
         try:
             from merlin.targetgen import isa_taxonomy as _it
 
@@ -654,7 +665,8 @@ def derive(
     _from_isa_classes(contract, out, dtypes)
     _from_rtl_facts(facts or {}, out)
     _from_unit_intent(contract, out)
-    _from_lowering(target, out)
+    if not data_only:
+        _from_lowering(target, out)
 
     # Anything still unplaced is UNKNOWN unless a conclusive compute census ran and did not find it.
     for fam in _sf.PRIMITIVES:

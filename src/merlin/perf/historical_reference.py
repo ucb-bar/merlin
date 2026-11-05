@@ -118,12 +118,20 @@ def bind_historical_reference(
         command_buffer = _object(artifacts[command_buffer_name])
         work_location = command_buffer_name
     elif isinstance(doc.get("command_buffer_artifact"), Mapping):
+        from merlin.perf.command_buffer_store import REFERENCE_KEY, load_command_buffer
+
         embedded = doc["command_buffer_artifact"]
-        if isinstance(embedded.get("command_buffer"), Mapping):
-            command_buffer = embedded["command_buffer"]
+        # A stored buffer is digest-checked as it is read (CommandBufferIntegrityError is a ValueError).
+        loaded = load_command_buffer(embedded)
+        if isinstance(loaded, Mapping):
+            command_buffer = loaded
             if embedded.get("artifact_sha256") != _document_digest(command_buffer):
                 raise ValueError("embedded historical command buffer identity changed")
-            work_location = "receipt#/command_buffer_artifact/command_buffer"
+            work_location = (
+                "receipt#/command_buffer_artifact/command_buffer"
+                if isinstance(embedded.get("command_buffer"), Mapping)
+                else f"receipt#/command_buffer_artifact/{REFERENCE_KEY}"
+            )
     if command_buffer is not None:
         work = work_from_command_buffer(command_buffer).to_dict()
         historical_work = doc.get("work_volume") or {}

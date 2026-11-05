@@ -3,7 +3,7 @@ title: "Fresh compiler origin and Phase 2 lineage"
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-08
+last_verified: 2026-10-09
 related: [component_compiler_convergence, component_phase2_workflow, component_final_evaluation]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/component_origin.py

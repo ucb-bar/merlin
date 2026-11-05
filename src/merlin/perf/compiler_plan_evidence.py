@@ -79,7 +79,7 @@ def verify_compiler_global_plan(*, source_text: str, lowered_text: str,
     instruction decoding avoids reparsing large artifacts. Candidate-supplied objects or a cached
     module without an exact byte identity must never be passed here. Verification still runs.
     """
-    from merlin.frontends.linalg_mlir import make_context, parse_mlir_text
+    from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.xdsl_dialects.lowering.dispatch_program import lower_model_to_dispatch_program
     from merlin.xdsl_dialects.lowering.global_plan_emission import dispatch_digest
 
@@ -347,10 +347,9 @@ def verify_compiler_global_plan(*, source_text: str, lowered_text: str,
 
     lowered = parsed_lowered_module
     if lowered is None:
-        from xdsl.dialects.llvm import LLVM
-        context = make_context()
-        context.load_dialect(LLVM)
-        lowered = parse_mlir_text(lowered_text, context)
+        from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
+
+        lowered = parse_mlir_text(lowered_text, make_llvm_context())
     lowered.verify()
     emitted_counts: Counter[int] = Counter()
     shared_constants = 0

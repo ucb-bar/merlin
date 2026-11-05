@@ -247,12 +247,21 @@ def run(invocation: PortfolioInvocation, config: Mapping[str, Any], *, context: 
     ):
         raise ValueError("worker target descriptor differs from the frozen campaign selection")
     run_root = context.functional_runs_root
-    functional = FI.inspect_stage_functional_run(
-        run_root,
-        str(config["functional_run_id"]),
-        str(config["functional_submission_sha256"]),
-        waive=tuple(config["waive_functional_gate"]),
-    )
+    validation_scope = config.get("phase1_validation_scope", "full")
+    if validation_scope not in {"full", "capsules"}:
+        raise ValueError("unknown Phase-1 validation scope for portfolio authoring")
+    phase1 = None
+    if validation_scope == "capsules":
+        from .capsule_iteration import selected_functional_run
+
+        functional, phase1 = selected_functional_run(run_root, config, descriptor)
+    else:
+        functional = FI.inspect_stage_functional_run(
+            run_root,
+            str(config["functional_run_id"]),
+            str(config["functional_submission_sha256"]),
+            waive=tuple(config["waive_functional_gate"]),
+        )
     gaps = tuple(
         sorted(str(row["capsule"]) for row in functional.public_score["per_capsule"] if row.get("status") != "pass")
     )
@@ -266,7 +275,12 @@ def run(invocation: PortfolioInvocation, config: Mapping[str, Any], *, context: 
             "campaign config must declare functional_expected_public_passed and "
             "functional_expected_public_total for the pinned phase-1 run"
         ) from exc
-    phase1 = FrozenPhase1(
+    if validation_scope == "capsules" and (
+        (functional.public_score["n_passed"], functional.public_score["n_capsules"])
+        != (expected_passed, expected_total)
+    ):
+        raise ValueError("capsule iteration counts differ from independent operator selection")
+    phase1 = phase1 or FrozenPhase1(
         run_root,
         functional.run_id,
         functional.digest,

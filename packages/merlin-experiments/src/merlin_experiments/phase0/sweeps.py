@@ -11,7 +11,14 @@ from merlin.runtime.backends.base import EXECUTION_CAPABILITIES, execution_capab
 from merlin.targetgen import corpus_spec as CS  # noqa: E402
 
 from .capture_residency import _bound_capture_inventory, _capture_residency_sweep
-from .profiles import _DERIVED_AXES, _comparison_roles, _validate_performance_block
+from .profiles import (
+    _DERIVED_AXES,
+    _comparison_roles,
+    _cross_product,
+    _render_variant,
+    _validate_performance_block,
+    pending_host_source_basis,
+)
 from .provenance import _document_digest
 
 #: Extent tokens a sweep axis may use, resolved against the binding's tile edge.
@@ -27,6 +34,10 @@ _MAX_SWEEP_CAPSULES = 128
 
 #: Entry keys whose value is a SHAPE EXTENT, and may therefore be written tile-relative.
 _EXTENT_KEYS = ("M", "K", "N", "H", "Skv", "Dv", "B")
+
+
+class OracleSelectionError(ValueError):
+    """Required performance evidence has no consistent concrete execution route."""
 
 
 def _resolve_flat_extents(entry: dict, binding) -> dict:
@@ -69,6 +80,16 @@ def _resolve_flat_extents(entry: dict, binding) -> dict:
             for mm in matmuls
         ]
     resolved = out if out is not None else entry
+    prelude = resolved.get("prelude")
+    if isinstance(prelude, dict) and any(isinstance(prelude.get(key), str) for key in _EXTENT_KEYS):
+        # A residual-state prelude is sized in the same tile-relative tokens as the entry it precedes.
+        resolved = {
+            **resolved,
+            "prelude": {
+                key: (resolve_extent(value, tile) if key in _EXTENT_KEYS and isinstance(value, str) else value)
+                for key, value in prelude.items()
+            },
+        }
     # A POOLING EPILOGUE NEEDS ITS SPATIAL SHAPE, and this is the first point at which it can be had:
     # the entry's rows are known only after the tile-relative tokens resolve. A synthesized entry
     # declares the pool WINDOW (a 2x2 with stride 2 is the shape every pooling datapath has) and leaves
@@ -378,7 +399,10 @@ def evaluate_gate(gate: dict, trait_facts: dict | None) -> tuple[bool, dict]:
     if "requires" in gate:
         raise ValueError("performance gate.requires is not accepted; use canonical gate.traits")
     names = gate.get("traits")
-    if not isinstance(names, list) or not names or any(not isinstance(name, str) or not name for name in names):
+    source_decision = pending_host_source_basis(gate)
+    if not isinstance(names, list) or (not names and source_decision is None):
+        raise ValueError("performance gate.traits must be a non-empty list")
+    if any(not isinstance(name, str) or not name for name in names):
         raise ValueError("performance gate.traits must be a non-empty list")
     unknown = sorted(set(names) - set(TRAITS))
     if unknown:
@@ -433,7 +457,7 @@ def evaluate_gate(gate: dict, trait_facts: dict | None) -> tuple[bool, dict]:
     execution_unestablished = [name for name, fact in selected_execution.items() if fact["satisfied"] is None]
     execution_satisfied = [name for name, fact in selected_execution.items() if fact["satisfied"] is True]
     any_refuted = bool(refuted or execution_refuted)
-    any_unknown = bool(unestablished or execution_unestablished)
+    any_unknown = bool(unestablished or execution_unestablished or source_decision)
     outcome = "refuted" if any_refuted else ("unestablished" if any_unknown else "satisfied")
     decision = {
         "outcome": outcome,
@@ -448,6 +472,8 @@ def evaluate_gate(gate: dict, trait_facts: dict | None) -> tuple[bool, dict]:
         "unestablished_execution_capabilities": execution_unestablished,
         "execution_capability_facts": selected_execution,
     }
+    if source_decision is not None:
+        decision["source_execution_basis"] = source_decision
     return outcome == "satisfied", decision
 
 
@@ -516,15 +542,15 @@ def _resolve_target_oracle_evidence(
     for key, placeholder in pending.items():
         tier = placeholder[len(prefix) :]
         if not tier:
-            raise ValueError(f"{target}: empty tier in performance evidence placeholder {placeholder!r}")
+            raise OracleSelectionError(f"{target}: empty tier in performance evidence placeholder {placeholder!r}")
         concrete = None
         if oracle_selection is not None:
             concrete = oracle_selection.get(tier) or declared.get(tier)
             if not isinstance(concrete, str) or not concrete or concrete == "elaborated_rtl":
-                raise ValueError(f"{target}: explicit Phase 0 inputs have no concrete {tier} oracle")
+                raise OracleSelectionError(f"{target}: explicit Phase 0 inputs have no concrete {tier} oracle")
             declared_engine = declared.get(tier)
             if declared_engine and declared_engine != "elaborated_rtl" and concrete != declared_engine:
-                raise ValueError(
+                raise OracleSelectionError(
                     f"{target}: selected {tier} oracle {concrete!r} conflicts with target contract {declared_engine!r}"
                 )
         elif tier == "L3":
@@ -541,7 +567,7 @@ def _resolve_target_oracle_evidence(
         if oracle_selection is None and concrete is None and declared.get(tier):
             concrete = str(declared[tier])
         if not concrete or concrete == "elaborated_rtl":
-            raise ValueError(
+            raise OracleSelectionError(
                 f"{target}: target oracle route does not resolve {tier} to a concrete simulator "
                 f"(declared={declared.get(tier)!r})"
             )
@@ -551,14 +577,14 @@ def _resolve_target_oracle_evidence(
         kind_tier = kind_placeholder.partition(":")[2]
         simulator = evidence.get("timing_simulator")
         if kind_tier != "L3" or evidence.get("timing_tier") != kind_tier:
-            raise ValueError(f"{target}: timing oracle kind must name the selected L3 tier")
+            raise OracleSelectionError(f"{target}: timing oracle kind must name the selected L3 tier")
         if (
             not isinstance(simulator, str)
             or not simulator
             or simulator.startswith("$")
             or simulator == "elaborated_rtl"
         ):
-            raise ValueError(f"{target}: selected L3 timing simulator cannot name an oracle kind")
+            raise OracleSelectionError(f"{target}: selected L3 timing simulator cannot name an oracle kind")
         evidence["timing_oracle_kind"] = f"rtl_{simulator}"
         resolved_from["timing_oracle_kind"] = kind_placeholder
     evidence["resolved_from"] = resolved_from
@@ -566,7 +592,7 @@ def _resolve_target_oracle_evidence(
     if isinstance(fit, dict) and fit.get("dependent_metric") == "$target_oracle_metric:L3":
         simulator = evidence.get("timing_simulator")
         if not isinstance(simulator, str) or evidence.get("timing_tier") != "L3":
-            raise ValueError(f"{target}: selected L3 timing oracle cannot name an affine metric")
+            raise OracleSelectionError(f"{target}: selected L3 timing oracle cannot name an affine metric")
         fit["dependent_metric"] = f"{simulator}_L3_cycles"
     return performance
 
@@ -1137,16 +1163,16 @@ def expand_sweeps(
                         }
                     )
                 continue
-        if sweep.get("requires_form_scope") is not None:
-            # The FORM-PERF tier: members come from the frozen requirement's derived form classes,
-            # never from axes, and are materialized onto the same runnable direct corpus path.
-            from .form_perf import form_perf_entries
+        if sweep.get("requires_form_scope") is not None or sweep.get("requires_capacity_scope") is not None:
+            # Form-perf and capacity members are derived (form classes / RTL facts), never from axes.
+            from .capacity_families import scope_members
 
-            for entry in form_perf_entries(
+            for entry in scope_members(
                 sweep,
-                selected_requirement,
-                requirement_sha256,
-                source_window_entries=entries,
+                binding=binding,
+                evidence=evidence,
+                requirement=(selected_requirement, requirement_sha256),
+                entries=entries,
                 skipped=skipped,
                 blocked=blocked_unimplemented,
             ):
@@ -1158,6 +1184,8 @@ def expand_sweeps(
                         _materialize_performance_entry(entry, binding, oracle_selection=profile["_performance_oracles"])
                     else:
                         _materialize_performance_entry(entry, binding)
+                except OracleSelectionError:
+                    raise  # Selection is a run prerequisite, not a per-member generation error.
                 except Exception as exc:  # noqa: BLE001 - persisted as a generation error
                     if errors is None:
                         raise
@@ -1370,13 +1398,17 @@ def expand_sweeps(
                 if is_performance:
                     try:
                         if source_preparation is not None:
-                            entry = source_performance.materialize(entry, binding, point=combo, gate=gate_decision)
+                            entry = source_performance.materialize(
+                                entry, binding, point=combo, gate=gate_decision, selection=source_preparation
+                            )
                         elif "_performance_oracles" in profile:
                             _materialize_performance_entry(
                                 entry, binding, oracle_selection=profile["_performance_oracles"]
                             )
                         else:
                             _materialize_performance_entry(entry, binding)
+                    except OracleSelectionError:
+                        raise  # Refuse before any later capsule capture work.
                     except Exception as exc:  # noqa: BLE001 - persisted as a generation error
                         if errors is None:
                             raise
@@ -1457,29 +1489,3 @@ def expand_sweeps(
             generated = kept
 
     return entries + generated
-
-
-def _render_variant(variant: dict, combo: dict) -> dict:
-    """A variant override with its string fields resolved against the shape point it is paired with.
-
-    Only ``{extent}`` substitution, one level into a nested mapping -- enough for a comparison group to
-    name the shape its members share (``fmb_{M}x{K}x{N}``) without any entry writing that shape down.
-    A field with no placeholder is copied through untouched.
-    """
-    out: dict = {}
-    for key, value in variant.items():
-        if isinstance(value, str):
-            out[key] = value.format(**combo)
-        elif isinstance(value, dict):
-            out[key] = {k: (v.format(**combo) if isinstance(v, str) else v) for k, v in value.items()}
-        else:
-            out[key] = value
-    return out
-
-
-def _cross_product(axes: dict) -> list[dict]:
-    """Cross-product of ``{axis: [values]}`` preserving declaration order."""
-    combos: list[dict] = [{}]
-    for axis, values in axes.items():
-        combos = [{**combo, axis: value} for combo in combos for value in values]
-    return combos

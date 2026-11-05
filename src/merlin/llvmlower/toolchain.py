@@ -85,7 +85,7 @@ def _resolve_clang(install: Path, lookup: Callable[[str], str | None], iree: Cal
     if env:
         return Path(env)
     local = install / "bin" / "clang-23"
-    if local.exists():
+    if lookup("MERLIN_MLIR_INSTALL") or local.exists():
         return local
     iree_bin = iree()
     if iree_bin and (iree_bin / "clang-23").exists():
@@ -166,6 +166,11 @@ def llvm_link() -> Path:
 
 
 def available() -> bool:
+    driver = _env("MERLIN_COMPILER_DRIVER", "python")
+    if driver == "stock-cli":
+        return all(tool.is_file() for tool in (llvm_install() / "bin" / "mlir-opt", mlir_translate(), clang()))
+    if driver != "python":
+        return False
     return m2m_python().is_file() and clang().is_file()
 
 

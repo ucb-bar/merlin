@@ -57,6 +57,13 @@ def validate_quantization_declarations(spec: Mapping) -> list[dict]:
         return []
     if not isinstance(declaration, Mapping) or not isinstance(declaration.get("formats"), list):
         raise ValueError("quantization.formats must be a list")
+    unknown = set(declaration) - {"formats", "methodology"}
+    if unknown:
+        raise ValueError(f"quantization has unknown fields {sorted(unknown)}")
+    if "methodology" in declaration:
+        from merlin.targetgen.quant_methodology import validate as validate_methodology
+
+        validate_methodology(declaration["methodology"])
     operation_ids = {row.get("id") for row in spec.get("operations") or [] if isinstance(row, Mapping)}
     result, seen = [], set()
     for index, original in enumerate(declaration["formats"]):
@@ -347,7 +354,12 @@ def capture_recipe_candidates(spec: Mapping, quantization_contract: Mapping) -> 
             # facts derive the format, not the reference semantics.
             recipe["software_numerical_engine"] = spec["numerical_semantics"]["model"]["engine"]
             framework = selected.get("framework") or {}
-            unsupported = set(framework) - {"activation_observer", "weight_observer", "observer_epsilon"}
+            unsupported = set(framework) - {
+                "activation_observer",
+                "weight_observer",
+                "observer_epsilon",
+                "calibration_count",
+            }
             if unsupported:
                 raise ValueError(f"capture adapter cannot enforce framework parameters: {sorted(unsupported)!r}")
             for role in ("activation", "weight"):
@@ -359,15 +371,37 @@ def capture_recipe_candidates(spec: Mapping, quantization_contract: Mapping) -> 
                 "observer_epsilon": framework.get("observer_epsilon", DEFAULT_OBSERVER_EPSILON),
                 "basis": "selected framework parameters or existing deterministic adapter policy; not RTL semantics",
             }
+            if "calibration_count" in framework:
+                # How many samples of the loader's calibration stream the static observers see.
+                # Absent, the adapter's own default holds and the recipe's digest is unchanged.
+                count = framework["calibration_count"]
+                if type(count) is not int or count < 1:
+                    raise ValueError("framework calibration_count must be a positive integer")
+                recipe["framework_capture_policy"]["calibration_count"] = count
             recipe["recipe_sha256"] = digest(recipe)
-            result.append(
-                {
-                    "format_id": selected["id"],
-                    "unit": match["unit"],
-                    "recipe": recipe,
-                    "qualification": "diagnostic prospective transformation; no target admission",
-                }
-            )
+            row = {
+                "format_id": selected["id"],
+                "unit": match["unit"],
+                "recipe": recipe,
+                "qualification": "diagnostic prospective transformation; no target admission",
+            }
+            methodology = quantization_contract.get("methodology")
+            if methodology is not None:
+                # The target's declared methodology over the derived output path. A recipe it cannot derive
+                # stays ``underivable`` with the reasons, never the hardware-only recipe it replaces.
+                from merlin.targetgen import quant_methodology as QM
+
+                declared, path = methodology["declaration"], methodology.get("output_path")
+                row["recipe"] = QM.derive(recipe, declared, path)
+                row["model_variants"] = [
+                    {
+                        "model": variant["model"],
+                        "name": variant["name"],
+                        "recipe": QM.derive(recipe, declared, path, model=variant["model"]),
+                    }
+                    for variant in declared.get("model_variants") or ()
+                ]
+            result.append(row)
     return result
 
 
@@ -555,6 +589,17 @@ def build_quantization_contract(
         "scope": "operation candidates only; no blanket dtype support, "
         "model-layer admission, or TorchAO realization proof",
     }
+    methodology = (software_spec.get("quantization") or {}).get("methodology")
+    if methodology is not None:
+        from merlin.targetgen import quant_methodology as QM
+
+        path = QM.output_path_of(hardware_snapshot.get("contract"))
+        body["methodology"] = {
+            "declaration": QM.validate(methodology),
+            "output_path": path,
+            "status": "selected" if path is not None else "unresolved",
+            "reason": None if path is not None else "the selected contract declares no derived output path",
+        }
     body["sha256"] = hashlib.sha256(
         json.dumps(body, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     ).hexdigest()

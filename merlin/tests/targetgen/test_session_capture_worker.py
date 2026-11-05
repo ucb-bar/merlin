@@ -1,5 +1,6 @@
 """One joined capture/ABI/lineage check over an actual recurrent three-stage model."""
 
+import hashlib
 import json
 import os
 import subprocess
@@ -9,6 +10,7 @@ import pytest
 
 from merlin.llvmlower.session_bundle import load
 from merlin.targetgen import _m2m_capture_worker as worker
+from merlin.targetgen._m2m_capture_artifacts import frontend_trace_bytes
 from merlin.targetgen.application_inventory import verify_capture_receipt
 from merlin.targetgen.quant_recipe import digest as recipe_digest
 
@@ -69,18 +71,26 @@ def get_model_and_inputs():
 
 @pytest.mark.slow
 @pytest.mark.parametrize("dtype", ["fp32", "int8"])
-@pytest.mark.parametrize("variant", ["plain", "shared", "mixed"])
+@pytest.mark.parametrize("variant", ["plain", "shared", "mixed", "paper", "mixed_staged"])
 def test_worker_captures_the_entire_declared_session_with_owned_sidecars(tmp_path, dtype, variant):
     python = os.environ.get("MERLIN_M2M_PYTHON")
     root = os.environ.get("MERLIN_M2M_DIR")
     if not python or not root:
         pytest.skip("an explicit trace-capable capture interpreter is required")
     loader = tmp_path / "loader.py"
-    shared = variant == "shared"
+    paper = variant == "paper"
+    staged = variant == "mixed_staged"
+    if staged and dtype != "int8":
+        pytest.skip("FP32 staging before a recipe is the int8 deployment path")
+    shared = variant in {"shared", "paper"}
     text = LOADER
     if shared:
         text = text.replace("value = torch.randn", "step.layer = prefix.layer\n        value = torch.randn")
-    elif variant == "mixed":
+    if paper:
+        # A paper-ready recurrent stage that the recipe quantizes: the writer only ever sees the
+        # quantized program, so the worker must supply the pre-quantization reference trajectory.
+        text = text.replace("paper_ready=False", "paper_ready=True")
+    elif variant in {"mixed", "mixed_staged"}:
         text = text.replace(
             "self.layer = nn.Linear(4, 4)",
             "self.layer = nn.Linear(4, 4)\n        self.bf16_layer = nn.Linear(4, 4).bfloat16()",
@@ -117,6 +127,7 @@ def test_worker_captures_the_entire_declared_session_with_owned_sidecars(tmp_pat
             "--dtype",
             dtype,
             *recipe_args,
+            *(["--stage-fp32"] if staged else []),
             "--seed",
             "7",
             "--materialize-bundle",
@@ -134,21 +145,62 @@ def test_worker_captures_the_entire_declared_session_with_owned_sidecars(tmp_pat
     assert session.program_names == ("prefix", "step", "final")
     assert len(session.bindings) == 2
     receipt = json.loads((out / "session-receipt.json").read_bytes())
+    integrity = subprocess.run(
+        [python, "-c", "import sys;sys.path.insert(0,sys.argv[1]);"
+         "from m2m.capture.bundle_integrity import verify_bundle_integrity;verify_bundle_integrity(sys.argv[2])",
+         root, str(out)],
+        cwd=tmp_path, capture_output=True, text=True, timeout=60,
+    )
+    assert integrity.returncode == 0, integrity.stderr
     assert receipt["agentic"] is False
     assert receipt["determinism"]["seed"] == 7
     if dtype == "int8":
         assert receipt["recipe_sha256"] == recipe["recipe_sha256"]
+        deployments = {row["name"]: row.get("numeric_deployment") for row in receipt["programs"]}
+        prefix = deployments["prefix"]
+        assert prefix["form"] == ("fp32_staged_then_recipe_w8a8" if staged else "recipe_w8a8")
+        if staged:
+            # The deployment states the exact-source FP32 retyping it quantized after.
+            staging = prefix["precision_staging"]
+            assert staging["target_dtype"] == "torch.float32" and staging["audit_status"] == "complete"
+            assert staging["non_target_floating_values"] == 0 and staging["retyped_dtype_decisions"] >= 1
+        assert prefix["contractions"]["linear"]["integerized"] == prefix["integer_contractions"] >= 1
+        # The mixed variant's bf16 layer is selected but kept as dequantized float, and says why.
+        kept = 1 if variant == "mixed" else 0
+        assert prefix["contractions"]["linear"]["selected_kept_float"] == kept
+        assert sum(prefix["selected_kept_float_reasons"].values()) == kept
+        if kept:
+            assert prefix["selected_kept_float_reasons"] == {"preserve_float_qdq:linear:torch.bfloat16": 1}
         assert [row["precision_selection"] for row in receipt["programs"]] == [
             "recipe",
             "recipe" if shared else "no_recipe_work",
             "no_recipe_work",
         ]
+    if paper:
+        import numpy as np
+        import yaml
+
+        step = out / "stages" / "step"
+        contract = yaml.safe_load((step / "session_contract.yaml").read_text())
+        assert contract["paper_ready"] is True
+        assert contract["quality"]["reference"] == "eager_fp32"
+        with np.load(step / "session_quality_fp32.npz") as quality, np.load(step / "session_goldens.npz") as golden:
+            reference, observed = quality[contract["quality"]["key"]], golden[contract["correctness"]["key"]]
+        assert reference.shape == observed.shape and np.isfinite(reference).all()
+        if dtype == "int8":
+            # Independently generated: the float trajectory, not the quantized program's own golden.
+            assert not np.array_equal(reference, observed)
+        else:
+            np.testing.assert_array_equal(reference, observed)
     for program in session.programs:
         stage = program.bundle
         assert verify_capture_receipt(stage / "model.mlir")["status"] == "verified_materialized"
         assert f'prov.weights_file = "{stage / "weights.safetensors"}"' in (stage / "model.mlir").read_text()
-        assert json.loads((stage / "frontend-trace.json").read_bytes())["status"] == "complete"
+        trace_raw = (stage / "frontend-trace.json").read_bytes()
+        trace = json.loads(trace_raw)
+        assert trace["status"] == "complete" and frontend_trace_bytes(trace) == trace_raw
         metadata = json.loads((stage / "meta.json").read_bytes())
+        assert metadata["frontend_trace"]["sha256"] == hashlib.sha256(trace_raw).hexdigest()
         assert metadata["input_abi"]
         assert len(metadata["output_abi"]) == (2 if program.name == "step" else 1)
         assert all(row["dtype"] == "f32" for row in metadata["output_abi"])

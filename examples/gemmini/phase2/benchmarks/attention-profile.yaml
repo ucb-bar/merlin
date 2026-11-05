@@ -1,0 +1,33 @@
+schema: merlin.example.public_phase2_attention.v1
+scope: supplemental_public_phase2_only
+arithmetic: signed_i8_i32_qk_then_f32_scaled_masked_softmax_pv_semantic_diagnostic
+comparison:
+  compiler_candidates: exact_complete_output_bytes_against_cpu_source
+  carried_kv: exact_int
+  independent_floating_reference: report_error_without_inventing_tolerance
+  selected_full_model_numerical_qualification: not_established
+campaign:
+  max_wall_seconds: 10800
+  target_roofline_fraction: 0.3
+  priority: lowest_available_attainment_first
+  unknown_attainment: retain_member_and_prioritize_measurement
+  incomplete_roofline_may_stop_as_converged: false
+members:
+  - id: gqa_prefill32_decode1
+    geometry:
+      query_heads: 32
+      kv_heads: 4
+      head_dim: 64
+      value_dim: 64
+      prefix_tokens: 0
+      query_tokens: [32, 1]
+      mask: causal
+  - id: gqa_tails
+    geometry:
+      query_heads: 6
+      kv_heads: 2
+      head_dim: 17
+      value_dim: 19
+      prefix_tokens: 3
+      query_tokens: [5, 1]
+      mask: causal

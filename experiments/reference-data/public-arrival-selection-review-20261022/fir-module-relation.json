@@ -1,0 +1,3132 @@
+{
+  "schema": "operator.selected_rtl_module_relation.v1",
+  "method": "Exact original module byte comparison including declarations, ports, statements and source annotations; no renaming or semantic normalization",
+  "selected_gsim": {
+    "path": "/work/merlin/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig.fir",
+    "sha256": "6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149",
+    "bytes": 50137114
+  },
+  "firesim_reference": {
+    "path": "/work/merlin/tasks/phase1-harness-v2/merlin/out/artifacts/probes/gemmini/fire-aligned-30mhz/firesim-target/elaboration/firechip.chip.FireSim.FireSimGemminiRocketConfig.fir",
+    "sha256": "b7d9826b1c9f16fd00bc757b4334a7f330a842c6a494e0c28608dc351b305bf0",
+    "bytes": 50795386
+  },
+  "roots": [
+    "StreamReaderCore",
+    "StreamReader",
+    "LoadController",
+    "Scratchpad",
+    "ICache"
+  ],
+  "reachable_module_count": 252,
+  "all_reachable_modules_byte_identical": true,
+  "modules": [
+    {
+      "module": "AccPipe",
+      "selected_gsim_sha256": "afbcaee884b703b4b99782df8ac0f7019b23a1b1a4cec8716490e695ce7af1b5",
+      "firesim_sha256": "afbcaee884b703b4b99782df8ac0f7019b23a1b1a4cec8716490e695ce7af1b5",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161600,
+      "firesim_first_line": 183223,
+      "bytes": 1172,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipeShared",
+      "selected_gsim_sha256": "5a08866d1d0a7aca1446b7f234478e00882e254b64c04533482bd9f6655b9c47",
+      "firesim_sha256": "5a08866d1d0a7aca1446b7f234478e00882e254b64c04533482bd9f6655b9c47",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161808,
+      "firesim_first_line": 183431,
+      "bytes": 66140,
+      "dependencies_identical": true,
+      "dependencies": [
+        "AccPipe",
+        "AccPipe_1",
+        "AccPipe_10",
+        "AccPipe_11",
+        "AccPipe_12",
+        "AccPipe_13",
+        "AccPipe_14",
+        "AccPipe_15",
+        "AccPipe_2",
+        "AccPipe_3",
+        "AccPipe_4",
+        "AccPipe_5",
+        "AccPipe_6",
+        "AccPipe_7",
+        "AccPipe_8",
+        "AccPipe_9"
+      ]
+    },
+    {
+      "module": "AccPipe_1",
+      "selected_gsim_sha256": "27effbbfbb2a0a289ab0238d89749da9af0e59df0781dfb002a545859b942bf8",
+      "firesim_sha256": "27effbbfbb2a0a289ab0238d89749da9af0e59df0781dfb002a545859b942bf8",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161613,
+      "firesim_first_line": 183236,
+      "bytes": 1174,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipe_10",
+      "selected_gsim_sha256": "e887ff261849aa578addc032f6b0c9f1f28b697a76ce203ccff7a5ba1c8e8cfb",
+      "firesim_sha256": "e887ff261849aa578addc032f6b0c9f1f28b697a76ce203ccff7a5ba1c8e8cfb",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161730,
+      "firesim_first_line": 183353,
+      "bytes": 1175,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipe_11",
+      "selected_gsim_sha256": "f5099578015ce93783a876e312c8b1a48e1d09e63883f7999ddf56b427a3e03a",
+      "firesim_sha256": "f5099578015ce93783a876e312c8b1a48e1d09e63883f7999ddf56b427a3e03a",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161743,
+      "firesim_first_line": 183366,
+      "bytes": 1175,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipe_12",
+      "selected_gsim_sha256": "dacd3ad8b37bd8a1bbad5b78774686206e5ecd9b5b365daf6329b8f313db9696",
+      "firesim_sha256": "dacd3ad8b37bd8a1bbad5b78774686206e5ecd9b5b365daf6329b8f313db9696",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161756,
+      "firesim_first_line": 183379,
+      "bytes": 1175,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipe_13",
+      "selected_gsim_sha256": "970a44041fc22507cbe4c49a54d34f7b133062d31e1e386304300d5c17373170",
+      "firesim_sha256": "970a44041fc22507cbe4c49a54d34f7b133062d31e1e386304300d5c17373170",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161769,
+      "firesim_first_line": 183392,
+      "bytes": 1175,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipe_14",
+      "selected_gsim_sha256": "cd99e772fb0abd027e861ebf9eecd6566c734120903887d00738ab0d762f0a75",
+      "firesim_sha256": "cd99e772fb0abd027e861ebf9eecd6566c734120903887d00738ab0d762f0a75",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161782,
+      "firesim_first_line": 183405,
+      "bytes": 1175,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipe_15",
+      "selected_gsim_sha256": "cc078f22fb46d17d908ce509afd7ce4917a4ec2199980879c8ed193e216d6ab6",
+      "firesim_sha256": "cc078f22fb46d17d908ce509afd7ce4917a4ec2199980879c8ed193e216d6ab6",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161795,
+      "firesim_first_line": 183418,
+      "bytes": 1175,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipe_2",
+      "selected_gsim_sha256": "425b811df44bc4bf77ff56bdc8b541d95169a086e8b6e3031202bb0f12446dba",
+      "firesim_sha256": "425b811df44bc4bf77ff56bdc8b541d95169a086e8b6e3031202bb0f12446dba",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161626,
+      "firesim_first_line": 183249,
+      "bytes": 1174,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipe_3",
+      "selected_gsim_sha256": "d051f39c780d39094073b7232bfacf50f80d1cb2b997eee4c7f85bf13429e092",
+      "firesim_sha256": "d051f39c780d39094073b7232bfacf50f80d1cb2b997eee4c7f85bf13429e092",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161639,
+      "firesim_first_line": 183262,
+      "bytes": 1174,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipe_4",
+      "selected_gsim_sha256": "9029dc36fc62f7bdf001cda80682b3a42ec9fdd1fd449e5e721b6e81bf6c5461",
+      "firesim_sha256": "9029dc36fc62f7bdf001cda80682b3a42ec9fdd1fd449e5e721b6e81bf6c5461",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161652,
+      "firesim_first_line": 183275,
+      "bytes": 1174,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipe_5",
+      "selected_gsim_sha256": "a147945aa6bf1b1a440e97866e6596d95ea375bf45649000b662924cc081e994",
+      "firesim_sha256": "a147945aa6bf1b1a440e97866e6596d95ea375bf45649000b662924cc081e994",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161665,
+      "firesim_first_line": 183288,
+      "bytes": 1174,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipe_6",
+      "selected_gsim_sha256": "87eec7ed452cc0e557b4f60c0170fcaee3d237665e810db1c12827e814cdb716",
+      "firesim_sha256": "87eec7ed452cc0e557b4f60c0170fcaee3d237665e810db1c12827e814cdb716",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161678,
+      "firesim_first_line": 183301,
+      "bytes": 1174,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipe_7",
+      "selected_gsim_sha256": "a3559cd28ec2cafbd8f807baf73add95b07942e69318f8217e74e9476832a7f6",
+      "firesim_sha256": "a3559cd28ec2cafbd8f807baf73add95b07942e69318f8217e74e9476832a7f6",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161691,
+      "firesim_first_line": 183314,
+      "bytes": 1174,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipe_8",
+      "selected_gsim_sha256": "c5f5e486ba60d2883516b8cccd934fe98dee8d1277815576d33a8fa709aa14f3",
+      "firesim_sha256": "c5f5e486ba60d2883516b8cccd934fe98dee8d1277815576d33a8fa709aa14f3",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161704,
+      "firesim_first_line": 183327,
+      "bytes": 1174,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccPipe_9",
+      "selected_gsim_sha256": "b8d18e91be82ce8fb83f8a5ecf7c85ff5cb1f6b58e7b910212b8ce34c45afedf",
+      "firesim_sha256": "b8d18e91be82ce8fb83f8a5ecf7c85ff5cb1f6b58e7b910212b8ce34c45afedf",
+      "byte_identical": true,
+      "selected_gsim_first_line": 161717,
+      "firesim_first_line": 183340,
+      "bytes": 1174,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "AccumulatorMem",
+      "selected_gsim_sha256": "246aa2de914756358a173d3664f9ffcca4271ccaaf738008382060e6684fc45f",
+      "firesim_sha256": "246aa2de914756358a173d3664f9ffcca4271ccaaf738008382060e6684fc45f",
+      "byte_identical": true,
+      "selected_gsim_first_line": 163044,
+      "firesim_first_line": 184667,
+      "bytes": 32916,
+      "dependencies_identical": true,
+      "dependencies": [
+        "Queue1_AccumulatorReadResp",
+        "TwoPortSyncMem"
+      ]
+    },
+    {
+      "module": "AccumulatorMem_1",
+      "selected_gsim_sha256": "a78387223e5f5edc6c765381b5a26eef9e65e977e1e05a1ab6fb250ca9030703",
+      "firesim_sha256": "a78387223e5f5edc6c765381b5a26eef9e65e977e1e05a1ab6fb250ca9030703",
+      "byte_identical": true,
+      "selected_gsim_first_line": 163788,
+      "firesim_first_line": 185411,
+      "bytes": 32922,
+      "dependencies_identical": true,
+      "dependencies": [
+        "Queue1_AccumulatorReadResp_1",
+        "TwoPortSyncMem_1"
+      ]
+    },
+    {
+      "module": "AccumulatorScale",
+      "selected_gsim_sha256": "cffe616e932200ba37a41d038dae2d7ac7fa08ee52590cf43b1846582104c380",
+      "firesim_sha256": "cffe616e932200ba37a41d038dae2d7ac7fa08ee52590cf43b1846582104c380",
+      "byte_identical": true,
+      "selected_gsim_first_line": 159077,
+      "firesim_first_line": 180700,
+      "bytes": 478179,
+      "dependencies_identical": true,
+      "dependencies": [
+        "INToRecFN_i32_e8_s24",
+        "INToRecFN_i32_e8_s24_1",
+        "INToRecFN_i32_e8_s24_10",
+        "INToRecFN_i32_e8_s24_11",
+        "INToRecFN_i32_e8_s24_12",
+        "INToRecFN_i32_e8_s24_13",
+        "INToRecFN_i32_e8_s24_14",
+        "INToRecFN_i32_e8_s24_15",
+        "INToRecFN_i32_e8_s24_2",
+        "INToRecFN_i32_e8_s24_3",
+        "INToRecFN_i32_e8_s24_4",
+        "INToRecFN_i32_e8_s24_5",
+        "INToRecFN_i32_e8_s24_6",
+        "INToRecFN_i32_e8_s24_7",
+        "INToRecFN_i32_e8_s24_8",
+        "INToRecFN_i32_e8_s24_9",
+        "MulAddRecFN_e8_s24_10",
+        "MulAddRecFN_e8_s24_11",
+        "MulAddRecFN_e8_s24_12",
+        "MulAddRecFN_e8_s24_13",
+        "MulAddRecFN_e8_s24_14",
+        "MulAddRecFN_e8_s24_15",
+        "MulAddRecFN_e8_s24_16",
+        "MulAddRecFN_e8_s24_17",
+        "MulAddRecFN_e8_s24_18",
+        "MulAddRecFN_e8_s24_19",
+        "MulAddRecFN_e8_s24_4",
+        "MulAddRecFN_e8_s24_5",
+        "MulAddRecFN_e8_s24_6",
+        "MulAddRecFN_e8_s24_7",
+        "MulAddRecFN_e8_s24_8",
+        "MulAddRecFN_e8_s24_9",
+        "Pipeline_1",
+        "RecFNToIN_e8_s24_i32",
+        "RecFNToIN_e8_s24_i32_1",
+        "RecFNToIN_e8_s24_i32_10",
+        "RecFNToIN_e8_s24_i32_11",
+        "RecFNToIN_e8_s24_i32_12",
+        "RecFNToIN_e8_s24_i32_13",
+        "RecFNToIN_e8_s24_i32_14",
+        "RecFNToIN_e8_s24_i32_15",
+        "RecFNToIN_e8_s24_i32_2",
+        "RecFNToIN_e8_s24_i32_3",
+        "RecFNToIN_e8_s24_i32_4",
+        "RecFNToIN_e8_s24_i32_5",
+        "RecFNToIN_e8_s24_i32_6",
+        "RecFNToIN_e8_s24_i32_7",
+        "RecFNToIN_e8_s24_i32_8",
+        "RecFNToIN_e8_s24_i32_9"
+      ]
+    },
+    {
+      "module": "Arbiter2_TLBundleAWithInfo",
+      "selected_gsim_sha256": "cde165de0b598fe05f0a7a01d369886af9d76afffeb57e355245e96afe2d9442",
+      "firesim_sha256": "cde165de0b598fe05f0a7a01d369886af9d76afffeb57e355245e96afe2d9442",
+      "byte_identical": true,
+      "selected_gsim_first_line": 121792,
+      "firesim_first_line": 143415,
+      "bytes": 3272,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Arbiter3_TLBundleAWithInfo",
+      "selected_gsim_sha256": "4193e1da52dd81bd6dc448610d614196d93df7fc9eb1c6e7d9c73984ee60ea60",
+      "firesim_sha256": "4193e1da52dd81bd6dc448610d614196d93df7fc9eb1c6e7d9c73984ee60ea60",
+      "byte_identical": true,
+      "selected_gsim_first_line": 123618,
+      "firesim_first_line": 145241,
+      "bytes": 3986,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "BeatMerger",
+      "selected_gsim_sha256": "c52e3cd7a1f6e34ec62dd772b7335d4bdf531aef4faf4a0f9715b0a4964365ea",
+      "firesim_sha256": "c52e3cd7a1f6e34ec62dd772b7335d4bdf531aef4faf4a0f9715b0a4964365ea",
+      "byte_identical": true,
+      "selected_gsim_first_line": 122693,
+      "firesim_first_line": 144316,
+      "bytes": 86797,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "DMACommandTracker",
+      "selected_gsim_sha256": "06e7fb143210839768c7caaaee537fa5b9446626e8fe9ac65de66f640e3bd3dd",
+      "firesim_sha256": "06e7fb143210839768c7caaaee537fa5b9446626e8fe9ac65de66f640e3bd3dd",
+      "byte_identical": true,
+      "selected_gsim_first_line": 207417,
+      "firesim_first_line": 229040,
+      "bytes": 8383,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "ICache",
+      "selected_gsim_sha256": "777a9bec9a9375bdbf843f96d6400564a735c2eff504d7a60b38a5444846ed00",
+      "firesim_sha256": "777a9bec9a9375bdbf843f96d6400564a735c2eff504d7a60b38a5444846ed00",
+      "byte_identical": true,
+      "selected_gsim_first_line": 305689,
+      "firesim_first_line": 327312,
+      "bytes": 168509,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MaxPeriodFibonacciLFSR_2"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24",
+      "selected_gsim_sha256": "c1e41de480cb2dc1affb6b12a6b6c0e0a30527a6e0e5bb69e207e0fd7865f043",
+      "firesim_sha256": "c1e41de480cb2dc1affb6b12a6b6c0e0a30527a6e0e5bb69e207e0fd7865f043",
+      "byte_identical": true,
+      "selected_gsim_first_line": 139086,
+      "firesim_first_line": 160709,
+      "bytes": 16155,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_1",
+      "selected_gsim_sha256": "420106fa68becbcc7cc012735da208ad2feab0ef8e6b99e5e03a3236ad56c4a7",
+      "firesim_sha256": "420106fa68becbcc7cc012735da208ad2feab0ef8e6b99e5e03a3236ad56c4a7",
+      "byte_identical": true,
+      "selected_gsim_first_line": 140337,
+      "firesim_first_line": 161960,
+      "bytes": 16159,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_1"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_10",
+      "selected_gsim_sha256": "d240d2f173be34f13726070b3d886f6f99cce628584eb8b75d8ca9d8e5e1a51b",
+      "firesim_sha256": "d240d2f173be34f13726070b3d886f6f99cce628584eb8b75d8ca9d8e5e1a51b",
+      "byte_identical": true,
+      "selected_gsim_first_line": 151596,
+      "firesim_first_line": 173219,
+      "bytes": 16161,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_10"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_11",
+      "selected_gsim_sha256": "aab15d1c4fb709ed3684b6139bb46d30d5aa34068eaf38891b9f2500e1ae411a",
+      "firesim_sha256": "aab15d1c4fb709ed3684b6139bb46d30d5aa34068eaf38891b9f2500e1ae411a",
+      "byte_identical": true,
+      "selected_gsim_first_line": 152847,
+      "firesim_first_line": 174470,
+      "bytes": 16161,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_11"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_12",
+      "selected_gsim_sha256": "bc3df5af1c924c83b4fb3b86e418f38eb8879a73aa5b75fbdb94706d2b5048a4",
+      "firesim_sha256": "bc3df5af1c924c83b4fb3b86e418f38eb8879a73aa5b75fbdb94706d2b5048a4",
+      "byte_identical": true,
+      "selected_gsim_first_line": 154098,
+      "firesim_first_line": 175721,
+      "bytes": 16161,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_12"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_13",
+      "selected_gsim_sha256": "c0e3d3121770e2faca7692cc97fc95d163c4c4d1808961451c3983b4b374a06e",
+      "firesim_sha256": "c0e3d3121770e2faca7692cc97fc95d163c4c4d1808961451c3983b4b374a06e",
+      "byte_identical": true,
+      "selected_gsim_first_line": 155349,
+      "firesim_first_line": 176972,
+      "bytes": 16161,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_13"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_14",
+      "selected_gsim_sha256": "f5115f43272f3750837f2fc667d5a7bea76f33339998b700a485565d4ee2ad29",
+      "firesim_sha256": "f5115f43272f3750837f2fc667d5a7bea76f33339998b700a485565d4ee2ad29",
+      "byte_identical": true,
+      "selected_gsim_first_line": 156600,
+      "firesim_first_line": 178223,
+      "bytes": 16161,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_14"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_15",
+      "selected_gsim_sha256": "97aa52584e201c1afaee43e324cf328b8364c9758b7b4657e0ff4d0a67d31116",
+      "firesim_sha256": "97aa52584e201c1afaee43e324cf328b8364c9758b7b4657e0ff4d0a67d31116",
+      "byte_identical": true,
+      "selected_gsim_first_line": 157851,
+      "firesim_first_line": 179474,
+      "bytes": 16161,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_15"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_2",
+      "selected_gsim_sha256": "1a4dfe7e2e520c04173132c1d13d18c9a9001ae3b64e7804f762ebc7c928c8dd",
+      "firesim_sha256": "1a4dfe7e2e520c04173132c1d13d18c9a9001ae3b64e7804f762ebc7c928c8dd",
+      "byte_identical": true,
+      "selected_gsim_first_line": 141588,
+      "firesim_first_line": 163211,
+      "bytes": 16159,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_2"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_3",
+      "selected_gsim_sha256": "f8264e919270e6889f2f7c9817ffba1306f9e1d1979ea7eb9cd33f88e6cc2165",
+      "firesim_sha256": "f8264e919270e6889f2f7c9817ffba1306f9e1d1979ea7eb9cd33f88e6cc2165",
+      "byte_identical": true,
+      "selected_gsim_first_line": 142839,
+      "firesim_first_line": 164462,
+      "bytes": 16159,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_3"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_4",
+      "selected_gsim_sha256": "9d4401e2fc7d532ad00110be5d04d65d6a41c0e924b234a178ae0f03d634273e",
+      "firesim_sha256": "9d4401e2fc7d532ad00110be5d04d65d6a41c0e924b234a178ae0f03d634273e",
+      "byte_identical": true,
+      "selected_gsim_first_line": 144090,
+      "firesim_first_line": 165713,
+      "bytes": 16159,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_4"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_5",
+      "selected_gsim_sha256": "95c459218c14dd31de3aa4340295f0503a4a98c38e0aa819cc950cb7de8c64ed",
+      "firesim_sha256": "95c459218c14dd31de3aa4340295f0503a4a98c38e0aa819cc950cb7de8c64ed",
+      "byte_identical": true,
+      "selected_gsim_first_line": 145341,
+      "firesim_first_line": 166964,
+      "bytes": 16159,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_5"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_6",
+      "selected_gsim_sha256": "d9ecd2e3b0dfde39a4e6af42da41e4501bb0cc6062145a32c2fb0b1608925ae4",
+      "firesim_sha256": "d9ecd2e3b0dfde39a4e6af42da41e4501bb0cc6062145a32c2fb0b1608925ae4",
+      "byte_identical": true,
+      "selected_gsim_first_line": 146592,
+      "firesim_first_line": 168215,
+      "bytes": 16159,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_6"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_7",
+      "selected_gsim_sha256": "b31863b47a424cece4552043bf30462d9ee4fb7dd2ea604790c18e2b69b5cbc5",
+      "firesim_sha256": "b31863b47a424cece4552043bf30462d9ee4fb7dd2ea604790c18e2b69b5cbc5",
+      "byte_identical": true,
+      "selected_gsim_first_line": 147843,
+      "firesim_first_line": 169466,
+      "bytes": 16159,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_7"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_8",
+      "selected_gsim_sha256": "052fbe318d3c3809452d93b44951a5efb176a8a8a487f29e000ca08344064789",
+      "firesim_sha256": "052fbe318d3c3809452d93b44951a5efb176a8a8a487f29e000ca08344064789",
+      "byte_identical": true,
+      "selected_gsim_first_line": 149094,
+      "firesim_first_line": 170717,
+      "bytes": 16159,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_8"
+      ]
+    },
+    {
+      "module": "INToRecFN_i32_e8_s24_9",
+      "selected_gsim_sha256": "9e8ac1d0e68bba507582df06e16e5f19101a83062d95ec30f64ec9415651a35f",
+      "firesim_sha256": "9e8ac1d0e68bba507582df06e16e5f19101a83062d95ec30f64ec9415651a35f",
+      "byte_identical": true,
+      "selected_gsim_first_line": 150345,
+      "firesim_first_line": 171968,
+      "bytes": 16159,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_9"
+      ]
+    },
+    {
+      "module": "INToRecFN_i8_e8_s24",
+      "selected_gsim_sha256": "b24bfc1168b9655a2ae171f6dabb30ffa431d9c2b7ad3075da956ef0e68f38d2",
+      "firesim_sha256": "b24bfc1168b9655a2ae171f6dabb30ffa431d9c2b7ad3075da956ef0e68f38d2",
+      "byte_identical": true,
+      "selected_gsim_first_line": 128734,
+      "firesim_first_line": 150357,
+      "bytes": 7828,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie4_is8_oe8_os24"
+      ]
+    },
+    {
+      "module": "INToRecFN_i8_e8_s24_1",
+      "selected_gsim_sha256": "986e29f33bdc65d41324f8392d95b14740306ace3adc34577cdae6aa9d5fcba4",
+      "firesim_sha256": "986e29f33bdc65d41324f8392d95b14740306ace3adc34577cdae6aa9d5fcba4",
+      "byte_identical": true,
+      "selected_gsim_first_line": 130240,
+      "firesim_first_line": 151863,
+      "bytes": 7832,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie4_is8_oe8_os24_1"
+      ]
+    },
+    {
+      "module": "INToRecFN_i8_e8_s24_2",
+      "selected_gsim_sha256": "6b39ce7ecd891bcf3e9700db34c8124eab6f36cf939d7f623ce253421e74c204",
+      "firesim_sha256": "6b39ce7ecd891bcf3e9700db34c8124eab6f36cf939d7f623ce253421e74c204",
+      "byte_identical": true,
+      "selected_gsim_first_line": 131746,
+      "firesim_first_line": 153369,
+      "bytes": 7832,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie4_is8_oe8_os24_2"
+      ]
+    },
+    {
+      "module": "INToRecFN_i8_e8_s24_3",
+      "selected_gsim_sha256": "e37bbf8927a5920a4aab5dac0abade80a6ac044870aec148774dbac80f7e2a3a",
+      "firesim_sha256": "e37bbf8927a5920a4aab5dac0abade80a6ac044870aec148774dbac80f7e2a3a",
+      "byte_identical": true,
+      "selected_gsim_first_line": 133252,
+      "firesim_first_line": 154875,
+      "bytes": 7832,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie4_is8_oe8_os24_3"
+      ]
+    },
+    {
+      "module": "LoadController",
+      "selected_gsim_sha256": "18128ff2f56fd3f5db822ff1d60abe821e3c1bd7170666e8b0ceb2098c39bf5d",
+      "firesim_sha256": "18128ff2f56fd3f5db822ff1d60abe821e3c1bd7170666e8b0ceb2098c39bf5d",
+      "byte_identical": true,
+      "selected_gsim_first_line": 207480,
+      "firesim_first_line": 229103,
+      "bytes": 48096,
+      "dependencies_identical": true,
+      "dependencies": [
+        "DMACommandTracker",
+        "Queue8_GemminiCmd"
+      ]
+    },
+    {
+      "module": "MaxPeriodFibonacciLFSR_2",
+      "selected_gsim_sha256": "28146afc9c2b4142471e2057fb737c7fb3e7a1f1ad8cdd9c9a5d196bcd8c9522",
+      "firesim_sha256": "28146afc9c2b4142471e2057fb737c7fb3e7a1f1ad8cdd9c9a5d196bcd8c9522",
+      "byte_identical": true,
+      "selected_gsim_first_line": 305627,
+      "firesim_first_line": 327250,
+      "bytes": 5662,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24",
+      "selected_gsim_sha256": "f4ad431efba65f9f1281bda672fcff3731fb0e3e0c2060e4b2d34c8f3704a5a8",
+      "firesim_sha256": "f4ad431efba65f9f1281bda672fcff3731fb0e3e0c2060e4b2d34c8f3704a5a8",
+      "byte_identical": true,
+      "selected_gsim_first_line": 128991,
+      "firesim_first_line": 150614,
+      "bytes": 58456,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_1",
+      "selected_gsim_sha256": "19d55d3183cc377861cb89cf1ce169c1dcd622e9d71697dbcc9fbb504edf6a18",
+      "firesim_sha256": "19d55d3183cc377861cb89cf1ce169c1dcd622e9d71697dbcc9fbb504edf6a18",
+      "byte_identical": true,
+      "selected_gsim_first_line": 130497,
+      "firesim_first_line": 152120,
+      "bytes": 58458,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_10",
+      "selected_gsim_sha256": "56e1326bd988ced2089650fd4fbad178475fd5e200524550243cd1d5b41dd3b3",
+      "firesim_sha256": "56e1326bd988ced2089650fd4fbad178475fd5e200524550243cd1d5b41dd3b3",
+      "byte_identical": true,
+      "selected_gsim_first_line": 146897,
+      "firesim_first_line": 168520,
+      "bytes": 58459,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_11",
+      "selected_gsim_sha256": "f6c0768d70f7a68fc64e4a06dcc292eb5719acca8f686a363c19fbcd22c5f1de",
+      "firesim_sha256": "f6c0768d70f7a68fc64e4a06dcc292eb5719acca8f686a363c19fbcd22c5f1de",
+      "byte_identical": true,
+      "selected_gsim_first_line": 148148,
+      "firesim_first_line": 169771,
+      "bytes": 58459,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_12",
+      "selected_gsim_sha256": "08c5d989f67186e882a5b56c579f593aa355f88d12e325bcec4a045fc0279bd7",
+      "firesim_sha256": "08c5d989f67186e882a5b56c579f593aa355f88d12e325bcec4a045fc0279bd7",
+      "byte_identical": true,
+      "selected_gsim_first_line": 149399,
+      "firesim_first_line": 171022,
+      "bytes": 58459,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_13",
+      "selected_gsim_sha256": "9354967e06408b844173b05be9910c1e80525ea1ff403701fdae5f1cd1a45687",
+      "firesim_sha256": "9354967e06408b844173b05be9910c1e80525ea1ff403701fdae5f1cd1a45687",
+      "byte_identical": true,
+      "selected_gsim_first_line": 150650,
+      "firesim_first_line": 172273,
+      "bytes": 58459,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_14",
+      "selected_gsim_sha256": "c16fd33cabb432db76fccdb16ceec15d3b664fb783916eaadd69bb8d44d7c414",
+      "firesim_sha256": "c16fd33cabb432db76fccdb16ceec15d3b664fb783916eaadd69bb8d44d7c414",
+      "byte_identical": true,
+      "selected_gsim_first_line": 151901,
+      "firesim_first_line": 173524,
+      "bytes": 58459,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_15",
+      "selected_gsim_sha256": "d27dfd57985dd0518c9932e8050b849cbed691f2b6db9174af7b6d96dbd86be2",
+      "firesim_sha256": "d27dfd57985dd0518c9932e8050b849cbed691f2b6db9174af7b6d96dbd86be2",
+      "byte_identical": true,
+      "selected_gsim_first_line": 153152,
+      "firesim_first_line": 174775,
+      "bytes": 58459,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_16",
+      "selected_gsim_sha256": "3a4dd3ab546c8a9537fa26a3497e376b167548061daf5a12de6036bf95f0ef9c",
+      "firesim_sha256": "3a4dd3ab546c8a9537fa26a3497e376b167548061daf5a12de6036bf95f0ef9c",
+      "byte_identical": true,
+      "selected_gsim_first_line": 154403,
+      "firesim_first_line": 176026,
+      "bytes": 58459,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_17",
+      "selected_gsim_sha256": "b201b598e13330363d6ae71b7f22f64bd7a4ccf8a73895a0d64e7da5e88e3a47",
+      "firesim_sha256": "b201b598e13330363d6ae71b7f22f64bd7a4ccf8a73895a0d64e7da5e88e3a47",
+      "byte_identical": true,
+      "selected_gsim_first_line": 155654,
+      "firesim_first_line": 177277,
+      "bytes": 58459,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_18",
+      "selected_gsim_sha256": "c4bfdb7ebdcdb106ded6a1a7976a4427c3ec037ae4cf45af92768ff0ddf5e9ec",
+      "firesim_sha256": "c4bfdb7ebdcdb106ded6a1a7976a4427c3ec037ae4cf45af92768ff0ddf5e9ec",
+      "byte_identical": true,
+      "selected_gsim_first_line": 156905,
+      "firesim_first_line": 178528,
+      "bytes": 58459,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_19",
+      "selected_gsim_sha256": "2b3b5b38f2d792e21b23e64ef2d7fa3213f549cc31cd6b7e52957561f99ad860",
+      "firesim_sha256": "2b3b5b38f2d792e21b23e64ef2d7fa3213f549cc31cd6b7e52957561f99ad860",
+      "byte_identical": true,
+      "selected_gsim_first_line": 158156,
+      "firesim_first_line": 179779,
+      "bytes": 58459,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_2",
+      "selected_gsim_sha256": "7ddbf281ec92ea4f268d0cfc126768a2fd76ee1b6a9b96e1910f69a868ecb037",
+      "firesim_sha256": "7ddbf281ec92ea4f268d0cfc126768a2fd76ee1b6a9b96e1910f69a868ecb037",
+      "byte_identical": true,
+      "selected_gsim_first_line": 132003,
+      "firesim_first_line": 153626,
+      "bytes": 58458,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_3",
+      "selected_gsim_sha256": "23f345e213f23f225cea92a46f2f5b6ada57a62e85fcd2c438242dc5a09c222d",
+      "firesim_sha256": "23f345e213f23f225cea92a46f2f5b6ada57a62e85fcd2c438242dc5a09c222d",
+      "byte_identical": true,
+      "selected_gsim_first_line": 133509,
+      "firesim_first_line": 155132,
+      "bytes": 58458,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_4",
+      "selected_gsim_sha256": "e859341bd8cb70ef4059df8e749b572b546d34f2ec493d999e838e5c0ea6298e",
+      "firesim_sha256": "e859341bd8cb70ef4059df8e749b572b546d34f2ec493d999e838e5c0ea6298e",
+      "byte_identical": true,
+      "selected_gsim_first_line": 139391,
+      "firesim_first_line": 161014,
+      "bytes": 58458,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_5",
+      "selected_gsim_sha256": "e53d6228e5205d29d0d08583d94a3d982e9e16e94cb0f9c3c6a2e9729cd48e29",
+      "firesim_sha256": "e53d6228e5205d29d0d08583d94a3d982e9e16e94cb0f9c3c6a2e9729cd48e29",
+      "byte_identical": true,
+      "selected_gsim_first_line": 140642,
+      "firesim_first_line": 162265,
+      "bytes": 58458,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_6",
+      "selected_gsim_sha256": "4dd1692d786508c07711b7a0af5194ce29523f48227b3b1d082a9c467d618bfc",
+      "firesim_sha256": "4dd1692d786508c07711b7a0af5194ce29523f48227b3b1d082a9c467d618bfc",
+      "byte_identical": true,
+      "selected_gsim_first_line": 141893,
+      "firesim_first_line": 163516,
+      "bytes": 58458,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_7",
+      "selected_gsim_sha256": "8e4bc36bbbecf22ff4fa4071a5a51658eb9ee9f8335dbc59f803c5c6f0a07d8b",
+      "firesim_sha256": "8e4bc36bbbecf22ff4fa4071a5a51658eb9ee9f8335dbc59f803c5c6f0a07d8b",
+      "byte_identical": true,
+      "selected_gsim_first_line": 143144,
+      "firesim_first_line": 164767,
+      "bytes": 58458,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_8",
+      "selected_gsim_sha256": "3f3939533bc3a9baceb778d0434136f69225eb7113e523654a33e86ca64d2992",
+      "firesim_sha256": "3f3939533bc3a9baceb778d0434136f69225eb7113e523654a33e86ca64d2992",
+      "byte_identical": true,
+      "selected_gsim_first_line": 144395,
+      "firesim_first_line": 166018,
+      "bytes": 58458,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_postMul_e8_s24_9",
+      "selected_gsim_sha256": "bd9f1eb0c8b23403b7d7ac4d84ff8c07e8edf6e9dfa96c56706aeedf99593e62",
+      "firesim_sha256": "bd9f1eb0c8b23403b7d7ac4d84ff8c07e8edf6e9dfa96c56706aeedf99593e62",
+      "byte_identical": true,
+      "selected_gsim_first_line": 145646,
+      "firesim_first_line": 167269,
+      "bytes": 58458,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24",
+      "selected_gsim_sha256": "772e9ba32cdb833cc75f0e59c5301d8407f3a0b12154568f1f997a8f062b6033",
+      "firesim_sha256": "772e9ba32cdb833cc75f0e59c5301d8407f3a0b12154568f1f997a8f062b6033",
+      "byte_identical": true,
+      "selected_gsim_first_line": 128788,
+      "firesim_first_line": 150411,
+      "bytes": 28060,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_1",
+      "selected_gsim_sha256": "005e66510220f58a6c304039dc037038956e2838db3fb9e1f89a40eec628fb43",
+      "firesim_sha256": "005e66510220f58a6c304039dc037038956e2838db3fb9e1f89a40eec628fb43",
+      "byte_identical": true,
+      "selected_gsim_first_line": 130294,
+      "firesim_first_line": 151917,
+      "bytes": 28062,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_10",
+      "selected_gsim_sha256": "2c7c9e6ceec829f75d45767085364d239b7dc8ff5fb5b152018744645f72afe9",
+      "firesim_sha256": "2c7c9e6ceec829f75d45767085364d239b7dc8ff5fb5b152018744645f72afe9",
+      "byte_identical": true,
+      "selected_gsim_first_line": 146694,
+      "firesim_first_line": 168317,
+      "bytes": 28063,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_11",
+      "selected_gsim_sha256": "b0851d7fa4cb7be29330d895b280f65137733a753a0f46a397f5a4614103aa06",
+      "firesim_sha256": "b0851d7fa4cb7be29330d895b280f65137733a753a0f46a397f5a4614103aa06",
+      "byte_identical": true,
+      "selected_gsim_first_line": 147945,
+      "firesim_first_line": 169568,
+      "bytes": 28063,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_12",
+      "selected_gsim_sha256": "809fcbaee40e698dca60e523e9c7fd6bf5e2a1a940b5eb0819cc946b708152e8",
+      "firesim_sha256": "809fcbaee40e698dca60e523e9c7fd6bf5e2a1a940b5eb0819cc946b708152e8",
+      "byte_identical": true,
+      "selected_gsim_first_line": 149196,
+      "firesim_first_line": 170819,
+      "bytes": 28063,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_13",
+      "selected_gsim_sha256": "7e1e4029a53538d947792a6daf2379063c71e438cd43f699b601ef5b425a87e4",
+      "firesim_sha256": "7e1e4029a53538d947792a6daf2379063c71e438cd43f699b601ef5b425a87e4",
+      "byte_identical": true,
+      "selected_gsim_first_line": 150447,
+      "firesim_first_line": 172070,
+      "bytes": 28063,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_14",
+      "selected_gsim_sha256": "e8aeb0d1b05acf89e0aca97cf8eae45f44aa1d9de371526bb5db3467ac1874a2",
+      "firesim_sha256": "e8aeb0d1b05acf89e0aca97cf8eae45f44aa1d9de371526bb5db3467ac1874a2",
+      "byte_identical": true,
+      "selected_gsim_first_line": 151698,
+      "firesim_first_line": 173321,
+      "bytes": 28063,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_15",
+      "selected_gsim_sha256": "4d628c8698a9baa290536f0fb22af770dbf864c07afa0535cb4f6784b46e9edc",
+      "firesim_sha256": "4d628c8698a9baa290536f0fb22af770dbf864c07afa0535cb4f6784b46e9edc",
+      "byte_identical": true,
+      "selected_gsim_first_line": 152949,
+      "firesim_first_line": 174572,
+      "bytes": 28063,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_16",
+      "selected_gsim_sha256": "ae0db0629b628e59ba13b305b82ed869f3cf8f1816f0bf943d95ecbc888858d4",
+      "firesim_sha256": "ae0db0629b628e59ba13b305b82ed869f3cf8f1816f0bf943d95ecbc888858d4",
+      "byte_identical": true,
+      "selected_gsim_first_line": 154200,
+      "firesim_first_line": 175823,
+      "bytes": 28063,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_17",
+      "selected_gsim_sha256": "b7149cac1afd186843c41de1c83a5e9bbde28685b7d5e67bd31f3314041ab079",
+      "firesim_sha256": "b7149cac1afd186843c41de1c83a5e9bbde28685b7d5e67bd31f3314041ab079",
+      "byte_identical": true,
+      "selected_gsim_first_line": 155451,
+      "firesim_first_line": 177074,
+      "bytes": 28063,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_18",
+      "selected_gsim_sha256": "098b67fe9b8c0bb74c14cec63c6d3fa4e268dba4c9eb9b7474d246b9041b4dc8",
+      "firesim_sha256": "098b67fe9b8c0bb74c14cec63c6d3fa4e268dba4c9eb9b7474d246b9041b4dc8",
+      "byte_identical": true,
+      "selected_gsim_first_line": 156702,
+      "firesim_first_line": 178325,
+      "bytes": 28063,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_19",
+      "selected_gsim_sha256": "17e799eff63aa31c840b69f9a82bc6caca58815c26df24f474cbdab6b2a89358",
+      "firesim_sha256": "17e799eff63aa31c840b69f9a82bc6caca58815c26df24f474cbdab6b2a89358",
+      "byte_identical": true,
+      "selected_gsim_first_line": 157953,
+      "firesim_first_line": 179576,
+      "bytes": 28063,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_2",
+      "selected_gsim_sha256": "10c0044d7909b3c001eadb40c1d49b66da8ff5a826da32fa03afd28567b84eb0",
+      "firesim_sha256": "10c0044d7909b3c001eadb40c1d49b66da8ff5a826da32fa03afd28567b84eb0",
+      "byte_identical": true,
+      "selected_gsim_first_line": 131800,
+      "firesim_first_line": 153423,
+      "bytes": 28062,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_3",
+      "selected_gsim_sha256": "d8e5897108907a91ecf2b0d993451960138ad01c70f5f316f0a656ef442d9196",
+      "firesim_sha256": "d8e5897108907a91ecf2b0d993451960138ad01c70f5f316f0a656ef442d9196",
+      "byte_identical": true,
+      "selected_gsim_first_line": 133306,
+      "firesim_first_line": 154929,
+      "bytes": 28062,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_4",
+      "selected_gsim_sha256": "11fb411840ad00e316db51d5018a919b8cd37ba97aaa3834b619bfe0efe2d6d1",
+      "firesim_sha256": "11fb411840ad00e316db51d5018a919b8cd37ba97aaa3834b619bfe0efe2d6d1",
+      "byte_identical": true,
+      "selected_gsim_first_line": 139188,
+      "firesim_first_line": 160811,
+      "bytes": 28062,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_5",
+      "selected_gsim_sha256": "2b363f94c1d575c9921a81ba8b176c6658811c716ae3eb8b19f02ec2c4bbdb58",
+      "firesim_sha256": "2b363f94c1d575c9921a81ba8b176c6658811c716ae3eb8b19f02ec2c4bbdb58",
+      "byte_identical": true,
+      "selected_gsim_first_line": 140439,
+      "firesim_first_line": 162062,
+      "bytes": 28062,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_6",
+      "selected_gsim_sha256": "5146e8129316aac2d798482b462ead1dc50044fbd6b4010290d8f62ce542d43c",
+      "firesim_sha256": "5146e8129316aac2d798482b462ead1dc50044fbd6b4010290d8f62ce542d43c",
+      "byte_identical": true,
+      "selected_gsim_first_line": 141690,
+      "firesim_first_line": 163313,
+      "bytes": 28062,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_7",
+      "selected_gsim_sha256": "8f6c3212186e5761991e938944b30fe854692df654213523217684179ae00325",
+      "firesim_sha256": "8f6c3212186e5761991e938944b30fe854692df654213523217684179ae00325",
+      "byte_identical": true,
+      "selected_gsim_first_line": 142941,
+      "firesim_first_line": 164564,
+      "bytes": 28062,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_8",
+      "selected_gsim_sha256": "d1bbbc57c3220b71b402f3dd1a7f1216b71d7f156ccf9543d10735ac3ff6e1f4",
+      "firesim_sha256": "d1bbbc57c3220b71b402f3dd1a7f1216b71d7f156ccf9543d10735ac3ff6e1f4",
+      "byte_identical": true,
+      "selected_gsim_first_line": 144192,
+      "firesim_first_line": 165815,
+      "bytes": 28062,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFNToRaw_preMul_e8_s24_9",
+      "selected_gsim_sha256": "fdaf0d60bac41fabb3d1f21e2920374c94564999036b397ced5d9d032716d1a5",
+      "firesim_sha256": "fdaf0d60bac41fabb3d1f21e2920374c94564999036b397ced5d9d032716d1a5",
+      "byte_identical": true,
+      "selected_gsim_first_line": 145443,
+      "firesim_first_line": 167066,
+      "bytes": 28062,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "MulAddRecFN_e8_s24",
+      "selected_gsim_sha256": "e675c514dc0751e7bc4e5d0a4d214a778da21ed15ec2dd85dae21cd87e0f07c8",
+      "firesim_sha256": "e675c514dc0751e7bc4e5d0a4d214a778da21ed15ec2dd85dae21cd87e0f07c8",
+      "byte_identical": true,
+      "selected_gsim_first_line": 129618,
+      "firesim_first_line": 151241,
+      "bytes": 6592,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24",
+        "MulAddRecFNToRaw_preMul_e8_s24",
+        "RoundRawFNToRecFN_e8_s24"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_1",
+      "selected_gsim_sha256": "b9488fbdc4968f03eae95c1f523a9fa823f7f62498d819f2a0770ffbf8b2bbbe",
+      "firesim_sha256": "b9488fbdc4968f03eae95c1f523a9fa823f7f62498d819f2a0770ffbf8b2bbbe",
+      "byte_identical": true,
+      "selected_gsim_first_line": 131124,
+      "firesim_first_line": 152747,
+      "bytes": 6600,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_1",
+        "MulAddRecFNToRaw_preMul_e8_s24_1",
+        "RoundRawFNToRecFN_e8_s24_1"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_10",
+      "selected_gsim_sha256": "f83a364ba11a0ecb291a47e5bd5508e32092556bbd23415968d19fba7ced86ee",
+      "firesim_sha256": "f83a364ba11a0ecb291a47e5bd5508e32092556bbd23415968d19fba7ced86ee",
+      "byte_identical": true,
+      "selected_gsim_first_line": 147524,
+      "firesim_first_line": 169147,
+      "bytes": 6604,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_10",
+        "MulAddRecFNToRaw_preMul_e8_s24_10",
+        "RoundRawFNToRecFN_e8_s24_10"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_11",
+      "selected_gsim_sha256": "6f61f14cb9cb66116b6dc5dffecfd5ef0c9f0a203dbc9c7541a272069f2ddd9f",
+      "firesim_sha256": "6f61f14cb9cb66116b6dc5dffecfd5ef0c9f0a203dbc9c7541a272069f2ddd9f",
+      "byte_identical": true,
+      "selected_gsim_first_line": 148775,
+      "firesim_first_line": 170398,
+      "bytes": 6604,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_11",
+        "MulAddRecFNToRaw_preMul_e8_s24_11",
+        "RoundRawFNToRecFN_e8_s24_11"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_12",
+      "selected_gsim_sha256": "942f12e0813008732dc2371090a48031c88c898fbcd99a4d4ca5e8df0e9db25f",
+      "firesim_sha256": "942f12e0813008732dc2371090a48031c88c898fbcd99a4d4ca5e8df0e9db25f",
+      "byte_identical": true,
+      "selected_gsim_first_line": 150026,
+      "firesim_first_line": 171649,
+      "bytes": 6604,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_12",
+        "MulAddRecFNToRaw_preMul_e8_s24_12",
+        "RoundRawFNToRecFN_e8_s24_12"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_13",
+      "selected_gsim_sha256": "e81021fcbaaa45dbead47ee356297d1f774fd993eef6383c74dc56b3edaf1789",
+      "firesim_sha256": "e81021fcbaaa45dbead47ee356297d1f774fd993eef6383c74dc56b3edaf1789",
+      "byte_identical": true,
+      "selected_gsim_first_line": 151277,
+      "firesim_first_line": 172900,
+      "bytes": 6604,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_13",
+        "MulAddRecFNToRaw_preMul_e8_s24_13",
+        "RoundRawFNToRecFN_e8_s24_13"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_14",
+      "selected_gsim_sha256": "853be3fa9c70b0eb0ab9a929188565742d8f78540310ec71ad25119d63373c36",
+      "firesim_sha256": "853be3fa9c70b0eb0ab9a929188565742d8f78540310ec71ad25119d63373c36",
+      "byte_identical": true,
+      "selected_gsim_first_line": 152528,
+      "firesim_first_line": 174151,
+      "bytes": 6604,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_14",
+        "MulAddRecFNToRaw_preMul_e8_s24_14",
+        "RoundRawFNToRecFN_e8_s24_14"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_15",
+      "selected_gsim_sha256": "9f1a775792a2d19429b3926e6dffa9473516e9ea956c323460b418dc359f42f6",
+      "firesim_sha256": "9f1a775792a2d19429b3926e6dffa9473516e9ea956c323460b418dc359f42f6",
+      "byte_identical": true,
+      "selected_gsim_first_line": 153779,
+      "firesim_first_line": 175402,
+      "bytes": 6604,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_15",
+        "MulAddRecFNToRaw_preMul_e8_s24_15",
+        "RoundRawFNToRecFN_e8_s24_15"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_16",
+      "selected_gsim_sha256": "c2acaa04596a80d60d1142dd2d6f660cea6dc6ccbc44452d7fb6d8945831d093",
+      "firesim_sha256": "c2acaa04596a80d60d1142dd2d6f660cea6dc6ccbc44452d7fb6d8945831d093",
+      "byte_identical": true,
+      "selected_gsim_first_line": 155030,
+      "firesim_first_line": 176653,
+      "bytes": 6604,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_16",
+        "MulAddRecFNToRaw_preMul_e8_s24_16",
+        "RoundRawFNToRecFN_e8_s24_16"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_17",
+      "selected_gsim_sha256": "f1b8219c7ac015a0a77fb77ddb0ef0ac5fee3ca2bbae5664de1bd0db93bbf714",
+      "firesim_sha256": "f1b8219c7ac015a0a77fb77ddb0ef0ac5fee3ca2bbae5664de1bd0db93bbf714",
+      "byte_identical": true,
+      "selected_gsim_first_line": 156281,
+      "firesim_first_line": 177904,
+      "bytes": 6604,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_17",
+        "MulAddRecFNToRaw_preMul_e8_s24_17",
+        "RoundRawFNToRecFN_e8_s24_17"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_18",
+      "selected_gsim_sha256": "4e3240f80925ce6bf08eb5068381ec57e3ccb554a0569dca873c608289baf83b",
+      "firesim_sha256": "4e3240f80925ce6bf08eb5068381ec57e3ccb554a0569dca873c608289baf83b",
+      "byte_identical": true,
+      "selected_gsim_first_line": 157532,
+      "firesim_first_line": 179155,
+      "bytes": 6604,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_18",
+        "MulAddRecFNToRaw_preMul_e8_s24_18",
+        "RoundRawFNToRecFN_e8_s24_18"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_19",
+      "selected_gsim_sha256": "5d3403368832ff3ae71ee173fa85a4944872b4733f697d4f3e9dcabd9ffc3708",
+      "firesim_sha256": "5d3403368832ff3ae71ee173fa85a4944872b4733f697d4f3e9dcabd9ffc3708",
+      "byte_identical": true,
+      "selected_gsim_first_line": 158783,
+      "firesim_first_line": 180406,
+      "bytes": 6604,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_19",
+        "MulAddRecFNToRaw_preMul_e8_s24_19",
+        "RoundRawFNToRecFN_e8_s24_19"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_2",
+      "selected_gsim_sha256": "35402f4bc75593b5e0d9f6a61081674242c7f3504f118b23580c0b47bda40ff5",
+      "firesim_sha256": "35402f4bc75593b5e0d9f6a61081674242c7f3504f118b23580c0b47bda40ff5",
+      "byte_identical": true,
+      "selected_gsim_first_line": 132630,
+      "firesim_first_line": 154253,
+      "bytes": 6600,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_2",
+        "MulAddRecFNToRaw_preMul_e8_s24_2",
+        "RoundRawFNToRecFN_e8_s24_2"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_3",
+      "selected_gsim_sha256": "766100ebcd9afb5543ce9b42b6620cbb1a9388086d1a3389e77c49cfafaa6b23",
+      "firesim_sha256": "766100ebcd9afb5543ce9b42b6620cbb1a9388086d1a3389e77c49cfafaa6b23",
+      "byte_identical": true,
+      "selected_gsim_first_line": 134136,
+      "firesim_first_line": 155759,
+      "bytes": 6600,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_3",
+        "MulAddRecFNToRaw_preMul_e8_s24_3",
+        "RoundRawFNToRecFN_e8_s24_3"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_4",
+      "selected_gsim_sha256": "33cb177615e85281269d17288c1816da550eefcc186b4cc3f4d8b9f37d7d2301",
+      "firesim_sha256": "33cb177615e85281269d17288c1816da550eefcc186b4cc3f4d8b9f37d7d2301",
+      "byte_identical": true,
+      "selected_gsim_first_line": 140018,
+      "firesim_first_line": 161641,
+      "bytes": 6600,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_4",
+        "MulAddRecFNToRaw_preMul_e8_s24_4",
+        "RoundRawFNToRecFN_e8_s24_4"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_5",
+      "selected_gsim_sha256": "157ddcd24b5a0748da2faa34bcf683f0e1e32ca7bd0c23eeb851c98cde3be1f4",
+      "firesim_sha256": "157ddcd24b5a0748da2faa34bcf683f0e1e32ca7bd0c23eeb851c98cde3be1f4",
+      "byte_identical": true,
+      "selected_gsim_first_line": 141269,
+      "firesim_first_line": 162892,
+      "bytes": 6600,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_5",
+        "MulAddRecFNToRaw_preMul_e8_s24_5",
+        "RoundRawFNToRecFN_e8_s24_5"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_6",
+      "selected_gsim_sha256": "bada6da70f8d478ceba969a63d5f362bc2205a08ea6fe495f1ce7b6bafd8add8",
+      "firesim_sha256": "bada6da70f8d478ceba969a63d5f362bc2205a08ea6fe495f1ce7b6bafd8add8",
+      "byte_identical": true,
+      "selected_gsim_first_line": 142520,
+      "firesim_first_line": 164143,
+      "bytes": 6600,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_6",
+        "MulAddRecFNToRaw_preMul_e8_s24_6",
+        "RoundRawFNToRecFN_e8_s24_6"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_7",
+      "selected_gsim_sha256": "56e7708454b2bc01b78bf4372f41a39f977981d28e7f67865adbab60df76824c",
+      "firesim_sha256": "56e7708454b2bc01b78bf4372f41a39f977981d28e7f67865adbab60df76824c",
+      "byte_identical": true,
+      "selected_gsim_first_line": 143771,
+      "firesim_first_line": 165394,
+      "bytes": 6600,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_7",
+        "MulAddRecFNToRaw_preMul_e8_s24_7",
+        "RoundRawFNToRecFN_e8_s24_7"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_8",
+      "selected_gsim_sha256": "edd97fa94330f6f972f097f2eeef9824ecf7435aa83bd1072b0916e57e73160d",
+      "firesim_sha256": "edd97fa94330f6f972f097f2eeef9824ecf7435aa83bd1072b0916e57e73160d",
+      "byte_identical": true,
+      "selected_gsim_first_line": 145022,
+      "firesim_first_line": 166645,
+      "bytes": 6600,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_8",
+        "MulAddRecFNToRaw_preMul_e8_s24_8",
+        "RoundRawFNToRecFN_e8_s24_8"
+      ]
+    },
+    {
+      "module": "MulAddRecFN_e8_s24_9",
+      "selected_gsim_sha256": "ece9afb86827724e998bbaed85e48664e02dd3be0cbbf6dbf3ea6045385210d8",
+      "firesim_sha256": "ece9afb86827724e998bbaed85e48664e02dd3be0cbbf6dbf3ea6045385210d8",
+      "byte_identical": true,
+      "selected_gsim_first_line": 146273,
+      "firesim_first_line": 167896,
+      "bytes": 6600,
+      "dependencies_identical": true,
+      "dependencies": [
+        "MulAddRecFNToRaw_postMul_e8_s24_9",
+        "MulAddRecFNToRaw_preMul_e8_s24_9",
+        "RoundRawFNToRecFN_e8_s24_9"
+      ]
+    },
+    {
+      "module": "Pipeline",
+      "selected_gsim_sha256": "002088ed11be53be20b88d410f553921c236ca97ba6b6b472a996d9e0bef1176",
+      "firesim_sha256": "002088ed11be53be20b88d410f553921c236ca97ba6b6b472a996d9e0bef1176",
+      "byte_identical": true,
+      "selected_gsim_first_line": 137257,
+      "firesim_first_line": 158880,
+      "bytes": 1530,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Pipeline_1",
+      "selected_gsim_sha256": "d5aa5daeb1bcd00cbf62d5aaa66edeaceb9fa04b5f2b8838cfe3a6a61b06f94b",
+      "firesim_sha256": "d5aa5daeb1bcd00cbf62d5aaa66edeaceb9fa04b5f2b8838cfe3a6a61b06f94b",
+      "byte_identical": true,
+      "selected_gsim_first_line": 158956,
+      "firesim_first_line": 180579,
+      "bytes": 12962,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "PixelRepeater",
+      "selected_gsim_sha256": "7339ae5bb7a463056c846a8cd6e78774778e3a930f43f548ad8c9db0de667e25",
+      "firesim_sha256": "7339ae5bb7a463056c846a8cd6e78774778e3a930f43f548ad8c9db0de667e25",
+      "byte_identical": true,
+      "selected_gsim_first_line": 128231,
+      "firesim_first_line": 149854,
+      "bytes": 30857,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "PixelRepeater_1",
+      "selected_gsim_sha256": "1757789b6aa4e044e50d126cc11683a2e4e1b70ff8398b85000c3a04220e4ea5",
+      "firesim_sha256": "1757789b6aa4e044e50d126cc11683a2e4e1b70ff8398b85000c3a04220e4ea5",
+      "byte_identical": true,
+      "selected_gsim_first_line": 137452,
+      "firesim_first_line": 159075,
+      "bytes": 28837,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue1_AccumulatorReadResp",
+      "selected_gsim_sha256": "b989c0fde482cc8680b0c1978f3a3e3d03cf42a2992d0090d33391816ae791a1",
+      "firesim_sha256": "b989c0fde482cc8680b0c1978f3a3e3d03cf42a2992d0090d33391816ae791a1",
+      "byte_identical": true,
+      "selected_gsim_first_line": 162985,
+      "firesim_first_line": 184608,
+      "bytes": 5841,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue1_AccumulatorReadResp_1",
+      "selected_gsim_sha256": "6a825153f045028344a3a17edfaf44f88c02b3398e02cceffadc1cadcfdca3b7",
+      "firesim_sha256": "6a825153f045028344a3a17edfaf44f88c02b3398e02cceffadc1cadcfdca3b7",
+      "byte_identical": true,
+      "selected_gsim_first_line": 163729,
+      "firesim_first_line": 185352,
+      "bytes": 5843,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue1_ScratchpadReadResp",
+      "selected_gsim_sha256": "a42f6d82c481bc9567c86ef282bca5b075a0cbc217726143e96c17472307ffa2",
+      "firesim_sha256": "a42f6d82c481bc9567c86ef282bca5b075a0cbc217726143e96c17472307ffa2",
+      "byte_identical": true,
+      "selected_gsim_first_line": 137685,
+      "firesim_first_line": 159308,
+      "bytes": 5354,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue1_ScratchpadReadResp_1",
+      "selected_gsim_sha256": "123033f2ac9a6bf82fe8e097c5ec88043c04a6ed5f49930f20f4dc189118e992",
+      "firesim_sha256": "123033f2ac9a6bf82fe8e097c5ec88043c04a6ed5f49930f20f4dc189118e992",
+      "byte_identical": true,
+      "selected_gsim_first_line": 137880,
+      "firesim_first_line": 159503,
+      "bytes": 5356,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue1_ScratchpadReadResp_2",
+      "selected_gsim_sha256": "212541776369490583c17a20ee0cc86a070480b13f8159e676cbf16f624beccf",
+      "firesim_sha256": "212541776369490583c17a20ee0cc86a070480b13f8159e676cbf16f624beccf",
+      "byte_identical": true,
+      "selected_gsim_first_line": 138075,
+      "firesim_first_line": 159698,
+      "bytes": 5356,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue1_ScratchpadReadResp_3",
+      "selected_gsim_sha256": "c86735b9587e3104a272f018a31c8b68122ed1dafcdeb3272dd07cff92df2278",
+      "firesim_sha256": "c86735b9587e3104a272f018a31c8b68122ed1dafcdeb3272dd07cff92df2278",
+      "byte_identical": true,
+      "selected_gsim_first_line": 138270,
+      "firesim_first_line": 159893,
+      "bytes": 5356,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue1_TLBundleAWithInfo",
+      "selected_gsim_sha256": "4fdadd78885e10bf54aac225735c0a9f0fa425af57ccf4c85528fc86205b3dc2",
+      "firesim_sha256": "4fdadd78885e10bf54aac225735c0a9f0fa425af57ccf4c85528fc86205b3dc2",
+      "byte_identical": true,
+      "selected_gsim_first_line": 121811,
+      "firesim_first_line": 143434,
+      "bytes": 7174,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue1_TLBundleAWithInfo_1",
+      "selected_gsim_sha256": "930adca583bb7af2d0dff3c1c5554b8241e2eb0eeed06ee7e77115725f254d16",
+      "firesim_sha256": "930adca583bb7af2d0dff3c1c5554b8241e2eb0eeed06ee7e77115725f254d16",
+      "byte_identical": true,
+      "selected_gsim_first_line": 121865,
+      "firesim_first_line": 143488,
+      "bytes": 7176,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue1_TLBundleAWithInfo_2",
+      "selected_gsim_sha256": "fadf7997688122743894cbdf3bfe5277fc04b3a822dab1106003be3be166303c",
+      "firesim_sha256": "fadf7997688122743894cbdf3bfe5277fc04b3a822dab1106003be3be166303c",
+      "byte_identical": true,
+      "selected_gsim_first_line": 123565,
+      "firesim_first_line": 145188,
+      "bytes": 7183,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue1_TLBundleAWithInfo_3",
+      "selected_gsim_sha256": "9f56741454531353b960f0e9f4f437d0f67ffa3b34a1b0ba4a57495b2a662987",
+      "firesim_sha256": "9f56741454531353b960f0e9f4f437d0f67ffa3b34a1b0ba4a57495b2a662987",
+      "byte_identical": true,
+      "selected_gsim_first_line": 123644,
+      "firesim_first_line": 145267,
+      "bytes": 7356,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue1_TLBundleAWithInfo_4",
+      "selected_gsim_sha256": "5a070a245656b8f14cfd05b75b006cfbdb100463aed07460227aa4b38ef2288a",
+      "firesim_sha256": "5a070a245656b8f14cfd05b75b006cfbdb100463aed07460227aa4b38ef2288a",
+      "byte_identical": true,
+      "selected_gsim_first_line": 123699,
+      "firesim_first_line": 145322,
+      "bytes": 7356,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue2_NormalizedInput",
+      "selected_gsim_sha256": "583b8e8e2cdcb5afacea5254896c068ac01766c34054eb19c3fff7bb0a9311b4",
+      "firesim_sha256": "583b8e8e2cdcb5afacea5254896c068ac01766c34054eb19c3fff7bb0a9311b4",
+      "byte_identical": true,
+      "selected_gsim_first_line": 138889,
+      "firesim_first_line": 160512,
+      "bytes": 5593,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue2_ScratchpadMemWriteRequest",
+      "selected_gsim_sha256": "e35097e0ace088cd6a8b53186ff6677ac77ffe660cb5cf2894b92766ea5d35aa",
+      "firesim_sha256": "e35097e0ace088cd6a8b53186ff6677ac77ffe660cb5cf2894b92766ea5d35aa",
+      "byte_identical": true,
+      "selected_gsim_first_line": 127832,
+      "firesim_first_line": 149455,
+      "bytes": 7928,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue2_TLBundleA_a35d128s4k4z4u",
+      "selected_gsim_sha256": "32ac683f25b63fd105aa803f83089d2161a4fcd8470d043ed0249d233b7c7f4c",
+      "firesim_sha256": "32ac683f25b63fd105aa803f83089d2161a4fcd8470d043ed0249d233b7c7f4c",
+      "byte_identical": true,
+      "selected_gsim_first_line": 126897,
+      "firesim_first_line": 148520,
+      "bytes": 5299,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue2_TLBundleA_a35d128s4k4z4u_1",
+      "selected_gsim_sha256": "9f0e370f4953216c0e278c44a734755a6f37b09b76a70f3110727dd37be29aac",
+      "firesim_sha256": "9f0e370f4953216c0e278c44a734755a6f37b09b76a70f3110727dd37be29aac",
+      "byte_identical": true,
+      "selected_gsim_first_line": 127161,
+      "firesim_first_line": 148784,
+      "bytes": 5301,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue2_TLBundleA_a35d128s5k4z4u",
+      "selected_gsim_sha256": "4bc8d18aa36ae5e0f6115bd83709be6b73ef49a2c4d48c6171d23e912b86205d",
+      "firesim_sha256": "4bc8d18aa36ae5e0f6115bd83709be6b73ef49a2c4d48c6171d23e912b86205d",
+      "byte_identical": true,
+      "selected_gsim_first_line": 127568,
+      "firesim_first_line": 149191,
+      "bytes": 5299,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue2_TLBundleD_a35d128s4k4z4u",
+      "selected_gsim_sha256": "26c118771afddef0dbf7e587012007d5188f10dcd40196dd6940704d7d308e68",
+      "firesim_sha256": "26c118771afddef0dbf7e587012007d5188f10dcd40196dd6940704d7d308e68",
+      "byte_identical": true,
+      "selected_gsim_first_line": 126948,
+      "firesim_first_line": 148571,
+      "bytes": 5290,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue2_TLBundleD_a35d128s4k4z4u_1",
+      "selected_gsim_sha256": "0be867500abe7a4e829b91864d091347ff85f5c761fadaac6881d7f3979f217b",
+      "firesim_sha256": "0be867500abe7a4e829b91864d091347ff85f5c761fadaac6881d7f3979f217b",
+      "byte_identical": true,
+      "selected_gsim_first_line": 127212,
+      "firesim_first_line": 148835,
+      "bytes": 5292,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue2_TLBundleD_a35d128s5k4z4u",
+      "selected_gsim_sha256": "fe545a2ed2f5f014f33aafea26ea09f5999d3d3036a011f38f9a623bfae22417",
+      "firesim_sha256": "fe545a2ed2f5f014f33aafea26ea09f5999d3d3036a011f38f9a623bfae22417",
+      "byte_identical": true,
+      "selected_gsim_first_line": 127619,
+      "firesim_first_line": 149242,
+      "bytes": 5290,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue2_VectorScalarMultiplierReq",
+      "selected_gsim_sha256": "177108b307dcfd38c20f9fe5cd247ee43826438b09b841d8d209d0e7a5147d01",
+      "firesim_sha256": "177108b307dcfd38c20f9fe5cd247ee43826438b09b841d8d209d0e7a5147d01",
+      "byte_identical": true,
+      "selected_gsim_first_line": 137206,
+      "firesim_first_line": 158829,
+      "bytes": 5924,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue2_VectorScalarMultiplierReq_1",
+      "selected_gsim_sha256": "7ff3daf647afabda2267c1077d433c1d9f35ca8473d5579e7d75c34a71b85460",
+      "firesim_sha256": "7ff3daf647afabda2267c1077d433c1d9f35ca8473d5579e7d75c34a71b85460",
+      "byte_identical": true,
+      "selected_gsim_first_line": 137401,
+      "firesim_first_line": 159024,
+      "bytes": 5896,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue4_ScratchpadReadResp",
+      "selected_gsim_sha256": "da2a7ea4f89b6bec1b50b9951d07c6473fb25a0b5ef63ca25dd2a604dd8e536a",
+      "firesim_sha256": "da2a7ea4f89b6bec1b50b9951d07c6473fb25a0b5ef63ca25dd2a604dd8e536a",
+      "byte_identical": true,
+      "selected_gsim_first_line": 138465,
+      "firesim_first_line": 160088,
+      "bytes": 5076,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue4_ScratchpadReadResp_1",
+      "selected_gsim_sha256": "b9030853769225944f8fb8387d1c95eb93c003f730b62d2ebf28b134438168ce",
+      "firesim_sha256": "b9030853769225944f8fb8387d1c95eb93c003f730b62d2ebf28b134438168ce",
+      "byte_identical": true,
+      "selected_gsim_first_line": 138518,
+      "firesim_first_line": 160141,
+      "bytes": 5078,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue4_ScratchpadReadResp_2",
+      "selected_gsim_sha256": "55e99e10667bd99b8d6ace3e760b158472a92c4a46a8c07c283ac694ef314d4a",
+      "firesim_sha256": "55e99e10667bd99b8d6ace3e760b158472a92c4a46a8c07c283ac694ef314d4a",
+      "byte_identical": true,
+      "selected_gsim_first_line": 138571,
+      "firesim_first_line": 160194,
+      "bytes": 5078,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue4_ScratchpadReadResp_3",
+      "selected_gsim_sha256": "d678e604391799272eeac41193db4f47b4255a9752a87ac918e49db62664fcb6",
+      "firesim_sha256": "d678e604391799272eeac41193db4f47b4255a9752a87ac918e49db62664fcb6",
+      "byte_identical": true,
+      "selected_gsim_first_line": 138624,
+      "firesim_first_line": 160247,
+      "bytes": 5078,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue4_ScratchpadReadResp_4",
+      "selected_gsim_sha256": "0132da8c61b4c4634ae1f3d54e0db1a7bad7d7e703adaa2581e51fecc54b7d1f",
+      "firesim_sha256": "0132da8c61b4c4634ae1f3d54e0db1a7bad7d7e703adaa2581e51fecc54b7d1f",
+      "byte_identical": true,
+      "selected_gsim_first_line": 138677,
+      "firesim_first_line": 160300,
+      "bytes": 5078,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue4_ScratchpadReadResp_5",
+      "selected_gsim_sha256": "0b69832a64f4979a55b56a64ed728a604cc5ebf3f4ed88248606151d7dcdb779",
+      "firesim_sha256": "0b69832a64f4979a55b56a64ed728a604cc5ebf3f4ed88248606151d7dcdb779",
+      "byte_identical": true,
+      "selected_gsim_first_line": 138730,
+      "firesim_first_line": 160353,
+      "bytes": 5078,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue4_ScratchpadReadResp_6",
+      "selected_gsim_sha256": "d26981a08ce05146a900a98ddff45717c04cf1aaeb87bfe16aa681bd0b2f84f6",
+      "firesim_sha256": "d26981a08ce05146a900a98ddff45717c04cf1aaeb87bfe16aa681bd0b2f84f6",
+      "byte_identical": true,
+      "selected_gsim_first_line": 138783,
+      "firesim_first_line": 160406,
+      "bytes": 5078,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue4_ScratchpadReadResp_7",
+      "selected_gsim_sha256": "90a7ce0e224713f0bb9bec59a00908ae8da20d5e9825f86f0663e828a91d9736",
+      "firesim_sha256": "90a7ce0e224713f0bb9bec59a00908ae8da20d5e9825f86f0663e828a91d9736",
+      "byte_identical": true,
+      "selected_gsim_first_line": 138836,
+      "firesim_first_line": 160459,
+      "bytes": 5078,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue5_ScratchpadMemReadRequest",
+      "selected_gsim_sha256": "fda9d090f6a2215c376f90e7cad3468afb3f68e4977f12dc5ea39dc76cd4f69a",
+      "firesim_sha256": "fda9d090f6a2215c376f90e7cad3468afb3f68e4977f12dc5ea39dc76cd4f69a",
+      "byte_identical": true,
+      "selected_gsim_first_line": 128059,
+      "firesim_first_line": 149682,
+      "bytes": 8452,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue5_ScratchpadMemWriteRequest",
+      "selected_gsim_sha256": "344a8e654d4fa4e9d4a823bc91ed517eefef7802f6f0ec0f0ce03497912ffeb5",
+      "firesim_sha256": "344a8e654d4fa4e9d4a823bc91ed517eefef7802f6f0ec0f0ce03497912ffeb5",
+      "byte_identical": true,
+      "selected_gsim_first_line": 127999,
+      "firesim_first_line": 149622,
+      "bytes": 8783,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue6_ScratchpadMemWriteRequest",
+      "selected_gsim_sha256": "7cf5e832588e32195752da952883f640324e53658777bf8d5f9efd5f9b480e26",
+      "firesim_sha256": "7cf5e832588e32195752da952883f640324e53658777bf8d5f9efd5f9b480e26",
+      "byte_identical": true,
+      "selected_gsim_first_line": 127883,
+      "firesim_first_line": 149506,
+      "bytes": 8610,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue6_ScratchpadMemWriteRequest_1",
+      "selected_gsim_sha256": "ee8d0fe9cf54e8148d934874e304162f25e62c993b296e82401207d0a43573c5",
+      "firesim_sha256": "ee8d0fe9cf54e8148d934874e304162f25e62c993b296e82401207d0a43573c5",
+      "byte_identical": true,
+      "selected_gsim_first_line": 127941,
+      "firesim_first_line": 149564,
+      "bytes": 8612,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "Queue8_GemminiCmd",
+      "selected_gsim_sha256": "425339d30cc6a2a7d41629eab341d70d843d8d95e3d09f9a1b6f85a46fef3626",
+      "firesim_sha256": "425339d30cc6a2a7d41629eab341d70d843d8d95e3d09f9a1b6f85a46fef3626",
+      "byte_identical": true,
+      "selected_gsim_first_line": 207366,
+      "firesim_first_line": 228989,
+      "bytes": 7331,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RRArbiter",
+      "selected_gsim_sha256": "c75b19d42542faff3f260f8727f7ad448a6a823b4e9853aec42e05df7a505657",
+      "firesim_sha256": "c75b19d42542faff3f260f8727f7ad448a6a823b4e9853aec42e05df7a505657",
+      "byte_identical": true,
+      "selected_gsim_first_line": 128464,
+      "firesim_first_line": 150087,
+      "bytes": 17859,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RRArbiter_1",
+      "selected_gsim_sha256": "a334353279a6daa6b0bffff8ccf82b71c417f6d6c330f405d0aceda4f28faef9",
+      "firesim_sha256": "a334353279a6daa6b0bffff8ccf82b71c417f6d6c330f405d0aceda4f28faef9",
+      "byte_identical": true,
+      "selected_gsim_first_line": 129970,
+      "firesim_first_line": 151593,
+      "bytes": 17861,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RRArbiter_2",
+      "selected_gsim_sha256": "22fd7fc43dacfed31f7c12503b2ee2ce97729ff038250d8375a421a502cd0376",
+      "firesim_sha256": "22fd7fc43dacfed31f7c12503b2ee2ce97729ff038250d8375a421a502cd0376",
+      "byte_identical": true,
+      "selected_gsim_first_line": 131476,
+      "firesim_first_line": 153099,
+      "bytes": 17861,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RRArbiter_3",
+      "selected_gsim_sha256": "de5f9436c97521d3275f5049f054acfa0371e148d55af066e8a726f6044472cf",
+      "firesim_sha256": "de5f9436c97521d3275f5049f054acfa0371e148d55af066e8a726f6044472cf",
+      "byte_identical": true,
+      "selected_gsim_first_line": 132982,
+      "firesim_first_line": 154605,
+      "bytes": 17861,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32",
+      "selected_gsim_sha256": "ac0e081d9a8e632d174e16fefc9648b918de8d67a654a263194fb00251d0f377",
+      "firesim_sha256": "ac0e081d9a8e632d174e16fefc9648b918de8d67a654a263194fb00251d0f377",
+      "byte_identical": true,
+      "selected_gsim_first_line": 140061,
+      "firesim_first_line": 161684,
+      "bytes": 17194,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_1",
+      "selected_gsim_sha256": "47646027ee95ccb11357e2da57c9c2490b46055ce12fb40a9264f3df9528f25a",
+      "firesim_sha256": "47646027ee95ccb11357e2da57c9c2490b46055ce12fb40a9264f3df9528f25a",
+      "byte_identical": true,
+      "selected_gsim_first_line": 141312,
+      "firesim_first_line": 162935,
+      "bytes": 17196,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_10",
+      "selected_gsim_sha256": "2c6fb29c443d8d1b63aa50666c3a1df1b62879fb67f3ca150134961dd10bdc9e",
+      "firesim_sha256": "2c6fb29c443d8d1b63aa50666c3a1df1b62879fb67f3ca150134961dd10bdc9e",
+      "byte_identical": true,
+      "selected_gsim_first_line": 152571,
+      "firesim_first_line": 174194,
+      "bytes": 17197,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_11",
+      "selected_gsim_sha256": "435a0016fe5279ca43799cf6f650cf04502c1862a9c7ac5a7f9793b7526d4f36",
+      "firesim_sha256": "435a0016fe5279ca43799cf6f650cf04502c1862a9c7ac5a7f9793b7526d4f36",
+      "byte_identical": true,
+      "selected_gsim_first_line": 153822,
+      "firesim_first_line": 175445,
+      "bytes": 17197,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_12",
+      "selected_gsim_sha256": "a42a3c1220c2b943b0e2e735643581722faa7b11d845d9ac355b80d0e474cb44",
+      "firesim_sha256": "a42a3c1220c2b943b0e2e735643581722faa7b11d845d9ac355b80d0e474cb44",
+      "byte_identical": true,
+      "selected_gsim_first_line": 155073,
+      "firesim_first_line": 176696,
+      "bytes": 17197,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_13",
+      "selected_gsim_sha256": "f9eb5d68576f752d59ac91cf409dc56326d46241307c47de8690010fdae94fec",
+      "firesim_sha256": "f9eb5d68576f752d59ac91cf409dc56326d46241307c47de8690010fdae94fec",
+      "byte_identical": true,
+      "selected_gsim_first_line": 156324,
+      "firesim_first_line": 177947,
+      "bytes": 17197,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_14",
+      "selected_gsim_sha256": "41516a3353706e8515412f86b0c08ce643cd17d091142b8cbe71314385f13115",
+      "firesim_sha256": "41516a3353706e8515412f86b0c08ce643cd17d091142b8cbe71314385f13115",
+      "byte_identical": true,
+      "selected_gsim_first_line": 157575,
+      "firesim_first_line": 179198,
+      "bytes": 17197,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_15",
+      "selected_gsim_sha256": "7eba6bafc775ca3e2f95dc2a8e381453862cb3984d43c21619245e1455783bcd",
+      "firesim_sha256": "7eba6bafc775ca3e2f95dc2a8e381453862cb3984d43c21619245e1455783bcd",
+      "byte_identical": true,
+      "selected_gsim_first_line": 158826,
+      "firesim_first_line": 180449,
+      "bytes": 17197,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_2",
+      "selected_gsim_sha256": "ec820047d8be161517039d51f3db882fadeee324ecf98883da49fc2d1c8f1c4a",
+      "firesim_sha256": "ec820047d8be161517039d51f3db882fadeee324ecf98883da49fc2d1c8f1c4a",
+      "byte_identical": true,
+      "selected_gsim_first_line": 142563,
+      "firesim_first_line": 164186,
+      "bytes": 17196,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_3",
+      "selected_gsim_sha256": "ebd03f56027eca44f253881054dc7750d81834a27fd8934516c417464d731e7b",
+      "firesim_sha256": "ebd03f56027eca44f253881054dc7750d81834a27fd8934516c417464d731e7b",
+      "byte_identical": true,
+      "selected_gsim_first_line": 143814,
+      "firesim_first_line": 165437,
+      "bytes": 17196,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_4",
+      "selected_gsim_sha256": "ea4b488c16f368475b1f7e25f6b8095b1107b0fb7366fe3af39266b45bf6bdd6",
+      "firesim_sha256": "ea4b488c16f368475b1f7e25f6b8095b1107b0fb7366fe3af39266b45bf6bdd6",
+      "byte_identical": true,
+      "selected_gsim_first_line": 145065,
+      "firesim_first_line": 166688,
+      "bytes": 17196,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_5",
+      "selected_gsim_sha256": "b6009f03234bb9c717c3ad34a246bbc8ea24182a858da73b36036780aa2b6ce1",
+      "firesim_sha256": "b6009f03234bb9c717c3ad34a246bbc8ea24182a858da73b36036780aa2b6ce1",
+      "byte_identical": true,
+      "selected_gsim_first_line": 146316,
+      "firesim_first_line": 167939,
+      "bytes": 17196,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_6",
+      "selected_gsim_sha256": "070388881017b0d9ccf9f2f4c1acb6fd214e584eac40afc96c23d7563f0e8ebf",
+      "firesim_sha256": "070388881017b0d9ccf9f2f4c1acb6fd214e584eac40afc96c23d7563f0e8ebf",
+      "byte_identical": true,
+      "selected_gsim_first_line": 147567,
+      "firesim_first_line": 169190,
+      "bytes": 17196,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_7",
+      "selected_gsim_sha256": "827ccff3f71a4bf99e2fe72a365a0f4d20dd2c05d84642f4dbe3c56543fdd2a0",
+      "firesim_sha256": "827ccff3f71a4bf99e2fe72a365a0f4d20dd2c05d84642f4dbe3c56543fdd2a0",
+      "byte_identical": true,
+      "selected_gsim_first_line": 148818,
+      "firesim_first_line": 170441,
+      "bytes": 17196,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_8",
+      "selected_gsim_sha256": "514f7f303fee7b2981191753ec7c0d4c4452201ce8fc0c659359578f70a5c049",
+      "firesim_sha256": "514f7f303fee7b2981191753ec7c0d4c4452201ce8fc0c659359578f70a5c049",
+      "byte_identical": true,
+      "selected_gsim_first_line": 150069,
+      "firesim_first_line": 171692,
+      "bytes": 17196,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i32_9",
+      "selected_gsim_sha256": "e2895aa5fe81234350afa791a9efa72f3dc5e028dff38ba91fed4629d89db901",
+      "firesim_sha256": "e2895aa5fe81234350afa791a9efa72f3dc5e028dff38ba91fed4629d89db901",
+      "byte_identical": true,
+      "selected_gsim_first_line": 151320,
+      "firesim_first_line": 172943,
+      "bytes": 17196,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i8",
+      "selected_gsim_sha256": "3930b8f1d4a6b473562c7cc401ac97a18196b3d99eee76c8d15e4e18a37fe11f",
+      "firesim_sha256": "3930b8f1d4a6b473562c7cc401ac97a18196b3d99eee76c8d15e4e18a37fe11f",
+      "byte_identical": true,
+      "selected_gsim_first_line": 129661,
+      "firesim_first_line": 151284,
+      "bytes": 17170,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i8_1",
+      "selected_gsim_sha256": "c1f52f1a7cb031db48f28724bdb2194ee6c7fded1739b0d5b689e19a38f63413",
+      "firesim_sha256": "c1f52f1a7cb031db48f28724bdb2194ee6c7fded1739b0d5b689e19a38f63413",
+      "byte_identical": true,
+      "selected_gsim_first_line": 131167,
+      "firesim_first_line": 152790,
+      "bytes": 17172,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i8_2",
+      "selected_gsim_sha256": "43ed481b1502c633143893a51bbf989758778321a7bbcc94ef8be67a531e20f1",
+      "firesim_sha256": "43ed481b1502c633143893a51bbf989758778321a7bbcc94ef8be67a531e20f1",
+      "byte_identical": true,
+      "selected_gsim_first_line": 132673,
+      "firesim_first_line": 154296,
+      "bytes": 17172,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RecFNToIN_e8_s24_i8_3",
+      "selected_gsim_sha256": "95b93b66aa0796f9ca2826811b2ae14b85d03dc1df1afe1a69c42c0f7d021e7c",
+      "firesim_sha256": "95b93b66aa0796f9ca2826811b2ae14b85d03dc1df1afe1a69c42c0f7d021e7c",
+      "byte_identical": true,
+      "selected_gsim_first_line": 134179,
+      "firesim_first_line": 155802,
+      "bytes": 17172,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie4_is8_oe8_os24",
+      "selected_gsim_sha256": "e4b29ffae910fd860211d4c34dffcecd3438984966621258d590251602b03897",
+      "firesim_sha256": "e4b29ffae910fd860211d4c34dffcecd3438984966621258d590251602b03897",
+      "byte_identical": true,
+      "selected_gsim_first_line": 128641,
+      "firesim_first_line": 150264,
+      "bytes": 13073,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie4_is8_oe8_os24_1",
+      "selected_gsim_sha256": "fae62ca8283fa7b5fe56ab4f322c2b2e55fa41006322d2ea29ad695d90a677f1",
+      "firesim_sha256": "fae62ca8283fa7b5fe56ab4f322c2b2e55fa41006322d2ea29ad695d90a677f1",
+      "byte_identical": true,
+      "selected_gsim_first_line": 130147,
+      "firesim_first_line": 151770,
+      "bytes": 13075,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie4_is8_oe8_os24_2",
+      "selected_gsim_sha256": "fe3c8afc17634a46030199d57887f572a362c26b253164826fee3af0856361d4",
+      "firesim_sha256": "fe3c8afc17634a46030199d57887f572a362c26b253164826fee3af0856361d4",
+      "byte_identical": true,
+      "selected_gsim_first_line": 131653,
+      "firesim_first_line": 153276,
+      "bytes": 13075,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie4_is8_oe8_os24_3",
+      "selected_gsim_sha256": "3dd78b9293406facab21e54802e67c3bd2f4914f75e5cab00f69f12baa8bc0eb",
+      "firesim_sha256": "3dd78b9293406facab21e54802e67c3bd2f4914f75e5cab00f69f12baa8bc0eb",
+      "byte_identical": true,
+      "selected_gsim_first_line": 133159,
+      "firesim_first_line": 154782,
+      "bytes": 13075,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24",
+      "selected_gsim_sha256": "d2aba88d1fe3d8daf5f09813d218d4b9ab0d8869501a9558c7ab2851b5a0c36e",
+      "firesim_sha256": "d2aba88d1fe3d8daf5f09813d218d4b9ab0d8869501a9558c7ab2851b5a0c36e",
+      "byte_identical": true,
+      "selected_gsim_first_line": 138940,
+      "firesim_first_line": 160563,
+      "bytes": 20839,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_1",
+      "selected_gsim_sha256": "b48a4a8a9e4787cead9a0047e2c0c2a578d0dc2ea6b00df1fb256a3d8a98ec60",
+      "firesim_sha256": "b48a4a8a9e4787cead9a0047e2c0c2a578d0dc2ea6b00df1fb256a3d8a98ec60",
+      "byte_identical": true,
+      "selected_gsim_first_line": 140191,
+      "firesim_first_line": 161814,
+      "bytes": 20841,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_10",
+      "selected_gsim_sha256": "ba6a1a73d4951873557866fa546fcc82bf382196b03d68b27d63fee0c46e067d",
+      "firesim_sha256": "ba6a1a73d4951873557866fa546fcc82bf382196b03d68b27d63fee0c46e067d",
+      "byte_identical": true,
+      "selected_gsim_first_line": 151450,
+      "firesim_first_line": 173073,
+      "bytes": 20842,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_11",
+      "selected_gsim_sha256": "6b4a6e4338e26ca28a20905210fdefbe38db3ae340584cfc89ff6f5aa6a00eb5",
+      "firesim_sha256": "6b4a6e4338e26ca28a20905210fdefbe38db3ae340584cfc89ff6f5aa6a00eb5",
+      "byte_identical": true,
+      "selected_gsim_first_line": 152701,
+      "firesim_first_line": 174324,
+      "bytes": 20842,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_12",
+      "selected_gsim_sha256": "78f951738454cf221b435fb9e8ba4a39587689438e5f238186c3e57d53f772e7",
+      "firesim_sha256": "78f951738454cf221b435fb9e8ba4a39587689438e5f238186c3e57d53f772e7",
+      "byte_identical": true,
+      "selected_gsim_first_line": 153952,
+      "firesim_first_line": 175575,
+      "bytes": 20842,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_13",
+      "selected_gsim_sha256": "5fcf09f6fcd90f7f55ede4b92cc5a86907d2bb153c25a093b09872bb85690946",
+      "firesim_sha256": "5fcf09f6fcd90f7f55ede4b92cc5a86907d2bb153c25a093b09872bb85690946",
+      "byte_identical": true,
+      "selected_gsim_first_line": 155203,
+      "firesim_first_line": 176826,
+      "bytes": 20842,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_14",
+      "selected_gsim_sha256": "0ada102885467394724915aa425be38d84c4b075a9bfa25d4666e88f3deed869",
+      "firesim_sha256": "0ada102885467394724915aa425be38d84c4b075a9bfa25d4666e88f3deed869",
+      "byte_identical": true,
+      "selected_gsim_first_line": 156454,
+      "firesim_first_line": 178077,
+      "bytes": 20842,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_15",
+      "selected_gsim_sha256": "170a527e212a278ab089d82db68d87a3a148001e2ca2e5b35f3ddb658b3969da",
+      "firesim_sha256": "170a527e212a278ab089d82db68d87a3a148001e2ca2e5b35f3ddb658b3969da",
+      "byte_identical": true,
+      "selected_gsim_first_line": 157705,
+      "firesim_first_line": 179328,
+      "bytes": 20842,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_2",
+      "selected_gsim_sha256": "d69c0269e241afe2f8249effbd9768991414a14cfe6308399d4d6e20553a40c9",
+      "firesim_sha256": "d69c0269e241afe2f8249effbd9768991414a14cfe6308399d4d6e20553a40c9",
+      "byte_identical": true,
+      "selected_gsim_first_line": 141442,
+      "firesim_first_line": 163065,
+      "bytes": 20841,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_3",
+      "selected_gsim_sha256": "d4496c63ab1cf1f3b045e717adf1d35675cb238ab7f2b173e60d844946333c9e",
+      "firesim_sha256": "d4496c63ab1cf1f3b045e717adf1d35675cb238ab7f2b173e60d844946333c9e",
+      "byte_identical": true,
+      "selected_gsim_first_line": 142693,
+      "firesim_first_line": 164316,
+      "bytes": 20841,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_4",
+      "selected_gsim_sha256": "dd127bd8350f105153bbe1fc53aa52e0542ff74f3884435bded16b22c2b0ffca",
+      "firesim_sha256": "dd127bd8350f105153bbe1fc53aa52e0542ff74f3884435bded16b22c2b0ffca",
+      "byte_identical": true,
+      "selected_gsim_first_line": 143944,
+      "firesim_first_line": 165567,
+      "bytes": 20841,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_5",
+      "selected_gsim_sha256": "9cdb81c99a6af70bf11799f1f513c55703cc4a154cec15ebbc06b9bafb0a0ff0",
+      "firesim_sha256": "9cdb81c99a6af70bf11799f1f513c55703cc4a154cec15ebbc06b9bafb0a0ff0",
+      "byte_identical": true,
+      "selected_gsim_first_line": 145195,
+      "firesim_first_line": 166818,
+      "bytes": 20841,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_6",
+      "selected_gsim_sha256": "a8a072bde8d83b6c79d27a235c765c05789299dde58e7830e6a3826b48717f9a",
+      "firesim_sha256": "a8a072bde8d83b6c79d27a235c765c05789299dde58e7830e6a3826b48717f9a",
+      "byte_identical": true,
+      "selected_gsim_first_line": 146446,
+      "firesim_first_line": 168069,
+      "bytes": 20841,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_7",
+      "selected_gsim_sha256": "2a5b0f3a139b83860b33a41a8593abc394baab78b33b96da885cfcb781f0c43b",
+      "firesim_sha256": "2a5b0f3a139b83860b33a41a8593abc394baab78b33b96da885cfcb781f0c43b",
+      "byte_identical": true,
+      "selected_gsim_first_line": 147697,
+      "firesim_first_line": 169320,
+      "bytes": 20841,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_8",
+      "selected_gsim_sha256": "12b3045f8929540f196298913931041dd8566582789cb794323c9d5e1664865b",
+      "firesim_sha256": "12b3045f8929540f196298913931041dd8566582789cb794323c9d5e1664865b",
+      "byte_identical": true,
+      "selected_gsim_first_line": 148948,
+      "firesim_first_line": 170571,
+      "bytes": 20841,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24_9",
+      "selected_gsim_sha256": "c79946a69a8a0f1603000cc09ba2d597d3bfdee5c9731175999659bc849b92ab",
+      "firesim_sha256": "c79946a69a8a0f1603000cc09ba2d597d3bfdee5c9731175999659bc849b92ab",
+      "byte_identical": true,
+      "selected_gsim_first_line": 150199,
+      "firesim_first_line": 171822,
+      "bytes": 20841,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24",
+      "selected_gsim_sha256": "1f3411dfaf587904900d818df687cc9f298ff7be368bf86bd770d92a584c01ad",
+      "firesim_sha256": "1f3411dfaf587904900d818df687cc9f298ff7be368bf86bd770d92a584c01ad",
+      "byte_identical": true,
+      "selected_gsim_first_line": 129354,
+      "firesim_first_line": 150977,
+      "bytes": 34603,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_1",
+      "selected_gsim_sha256": "939a642fb626cc000d7842263fba919cbc3af5a0b97db37f794e39c2e3f27dd9",
+      "firesim_sha256": "939a642fb626cc000d7842263fba919cbc3af5a0b97db37f794e39c2e3f27dd9",
+      "byte_identical": true,
+      "selected_gsim_first_line": 130860,
+      "firesim_first_line": 152483,
+      "bytes": 34605,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_10",
+      "selected_gsim_sha256": "d074ad87e9cd921b853b3ecd5c20065a91c2edeee8a5c526ce2492cab9b15eb3",
+      "firesim_sha256": "d074ad87e9cd921b853b3ecd5c20065a91c2edeee8a5c526ce2492cab9b15eb3",
+      "byte_identical": true,
+      "selected_gsim_first_line": 147260,
+      "firesim_first_line": 168883,
+      "bytes": 34606,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_11",
+      "selected_gsim_sha256": "165ec477128292434e4e44c7d7495065b3df6bdb00af1932095cf1e475980b63",
+      "firesim_sha256": "165ec477128292434e4e44c7d7495065b3df6bdb00af1932095cf1e475980b63",
+      "byte_identical": true,
+      "selected_gsim_first_line": 148511,
+      "firesim_first_line": 170134,
+      "bytes": 34606,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_12",
+      "selected_gsim_sha256": "78276ded406e5e4fe7b793ce8561bb21ed818d91327c43da38b95c18961def43",
+      "firesim_sha256": "78276ded406e5e4fe7b793ce8561bb21ed818d91327c43da38b95c18961def43",
+      "byte_identical": true,
+      "selected_gsim_first_line": 149762,
+      "firesim_first_line": 171385,
+      "bytes": 34606,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_13",
+      "selected_gsim_sha256": "f4d44fd6487a3845e045008a5587307c7e54b1561467edac7075230f605d4a2d",
+      "firesim_sha256": "f4d44fd6487a3845e045008a5587307c7e54b1561467edac7075230f605d4a2d",
+      "byte_identical": true,
+      "selected_gsim_first_line": 151013,
+      "firesim_first_line": 172636,
+      "bytes": 34606,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_14",
+      "selected_gsim_sha256": "89df25a924d8f8d40827a93d92d4f05e810b0b5d1a63bd2a524a168311b249a6",
+      "firesim_sha256": "89df25a924d8f8d40827a93d92d4f05e810b0b5d1a63bd2a524a168311b249a6",
+      "byte_identical": true,
+      "selected_gsim_first_line": 152264,
+      "firesim_first_line": 173887,
+      "bytes": 34606,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_15",
+      "selected_gsim_sha256": "88c6b88d83468b17733045ada666c39ea7180964bb476801e1e42bf7b2527aa0",
+      "firesim_sha256": "88c6b88d83468b17733045ada666c39ea7180964bb476801e1e42bf7b2527aa0",
+      "byte_identical": true,
+      "selected_gsim_first_line": 153515,
+      "firesim_first_line": 175138,
+      "bytes": 34606,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_16",
+      "selected_gsim_sha256": "3957d015e549fc37eaf74e49f304ea1b3de0d8ebd51406ff252c17bf19a28f97",
+      "firesim_sha256": "3957d015e549fc37eaf74e49f304ea1b3de0d8ebd51406ff252c17bf19a28f97",
+      "byte_identical": true,
+      "selected_gsim_first_line": 154766,
+      "firesim_first_line": 176389,
+      "bytes": 34606,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_17",
+      "selected_gsim_sha256": "34d54fe41dfdf5695e9cdfe4bbac1ee1ad5b657905c8e16cb570e684ca8f78ae",
+      "firesim_sha256": "34d54fe41dfdf5695e9cdfe4bbac1ee1ad5b657905c8e16cb570e684ca8f78ae",
+      "byte_identical": true,
+      "selected_gsim_first_line": 156017,
+      "firesim_first_line": 177640,
+      "bytes": 34606,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_18",
+      "selected_gsim_sha256": "68efc1180c64795fd977c3ed0751f000b8cae66bf774ec63db9102003988f011",
+      "firesim_sha256": "68efc1180c64795fd977c3ed0751f000b8cae66bf774ec63db9102003988f011",
+      "byte_identical": true,
+      "selected_gsim_first_line": 157268,
+      "firesim_first_line": 178891,
+      "bytes": 34606,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_19",
+      "selected_gsim_sha256": "1501d3e421ea273c8bf003704df9b8d68c2d71749a82ad5655ae56c112b85c83",
+      "firesim_sha256": "1501d3e421ea273c8bf003704df9b8d68c2d71749a82ad5655ae56c112b85c83",
+      "byte_identical": true,
+      "selected_gsim_first_line": 158519,
+      "firesim_first_line": 180142,
+      "bytes": 34606,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_2",
+      "selected_gsim_sha256": "57aab1d986e295eb061cc70fdaf2dbff99b8a82262e04220373a6a7a7f8bfddd",
+      "firesim_sha256": "57aab1d986e295eb061cc70fdaf2dbff99b8a82262e04220373a6a7a7f8bfddd",
+      "byte_identical": true,
+      "selected_gsim_first_line": 132366,
+      "firesim_first_line": 153989,
+      "bytes": 34605,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_3",
+      "selected_gsim_sha256": "dc682d1332220c4eb3f6e18e433cf5ee712a8f65eafc92e9c8e9698f655290d5",
+      "firesim_sha256": "dc682d1332220c4eb3f6e18e433cf5ee712a8f65eafc92e9c8e9698f655290d5",
+      "byte_identical": true,
+      "selected_gsim_first_line": 133872,
+      "firesim_first_line": 155495,
+      "bytes": 34605,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_4",
+      "selected_gsim_sha256": "4b0840c15500ee545ac42529d8558f39372a276e97ff6e46f5ebc8201eefaa4f",
+      "firesim_sha256": "4b0840c15500ee545ac42529d8558f39372a276e97ff6e46f5ebc8201eefaa4f",
+      "byte_identical": true,
+      "selected_gsim_first_line": 139754,
+      "firesim_first_line": 161377,
+      "bytes": 34605,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_5",
+      "selected_gsim_sha256": "0074178c0e6fc0518dce888e5190c6dc9e6f0512ff87080e699a8c6f55c9fb67",
+      "firesim_sha256": "0074178c0e6fc0518dce888e5190c6dc9e6f0512ff87080e699a8c6f55c9fb67",
+      "byte_identical": true,
+      "selected_gsim_first_line": 141005,
+      "firesim_first_line": 162628,
+      "bytes": 34605,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_6",
+      "selected_gsim_sha256": "4769f753944b76ca9dee1d486a43d1102bca47926dd435b50320cd87e0079479",
+      "firesim_sha256": "4769f753944b76ca9dee1d486a43d1102bca47926dd435b50320cd87e0079479",
+      "byte_identical": true,
+      "selected_gsim_first_line": 142256,
+      "firesim_first_line": 163879,
+      "bytes": 34605,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_7",
+      "selected_gsim_sha256": "f5aa8b4ad8932134b71c86b6f9fcf87819bcc5a04b4c62724d00db3cde1c2c3c",
+      "firesim_sha256": "f5aa8b4ad8932134b71c86b6f9fcf87819bcc5a04b4c62724d00db3cde1c2c3c",
+      "byte_identical": true,
+      "selected_gsim_first_line": 143507,
+      "firesim_first_line": 165130,
+      "bytes": 34605,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_8",
+      "selected_gsim_sha256": "f46c5936244b83a45afa90c5f351ddfe4eab7014f4910f45048a6153612d4308",
+      "firesim_sha256": "f46c5936244b83a45afa90c5f351ddfe4eab7014f4910f45048a6153612d4308",
+      "byte_identical": true,
+      "selected_gsim_first_line": 144758,
+      "firesim_first_line": 166381,
+      "bytes": 34605,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_9",
+      "selected_gsim_sha256": "9f9f9deb106a989c8c33f3866501378d8d20d211a47217032185f513f8388b93",
+      "firesim_sha256": "9f9f9deb106a989c8c33f3866501378d8d20d211a47217032185f513f8388b93",
+      "byte_identical": true,
+      "selected_gsim_first_line": 146009,
+      "firesim_first_line": 167632,
+      "bytes": 34605,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24",
+      "selected_gsim_sha256": "b9d16195c9ed5e61161b76e3ba0f42bdc0d9061a42d98b41e78d08e45f626ea1",
+      "firesim_sha256": "b9d16195c9ed5e61161b76e3ba0f42bdc0d9061a42d98b41e78d08e45f626ea1",
+      "byte_identical": true,
+      "selected_gsim_first_line": 129601,
+      "firesim_first_line": 151224,
+      "bytes": 2365,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_1",
+      "selected_gsim_sha256": "ecdca35c8262dd8effdc128f3b29286549bbe52d3be671d82eef48a8ac106df6",
+      "firesim_sha256": "ecdca35c8262dd8effdc128f3b29286549bbe52d3be671d82eef48a8ac106df6",
+      "byte_identical": true,
+      "selected_gsim_first_line": 131107,
+      "firesim_first_line": 152730,
+      "bytes": 2369,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_1"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_10",
+      "selected_gsim_sha256": "521ec83cfa81882642bbe10c975492abacf4fa28825e57c6a36e2072dd5f5e0d",
+      "firesim_sha256": "521ec83cfa81882642bbe10c975492abacf4fa28825e57c6a36e2072dd5f5e0d",
+      "byte_identical": true,
+      "selected_gsim_first_line": 147507,
+      "firesim_first_line": 169130,
+      "bytes": 2371,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_10"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_11",
+      "selected_gsim_sha256": "c4f5022c24c30dbae4098a7aa8eb215e46ef5cd8e2f437c52e22669b2403c597",
+      "firesim_sha256": "c4f5022c24c30dbae4098a7aa8eb215e46ef5cd8e2f437c52e22669b2403c597",
+      "byte_identical": true,
+      "selected_gsim_first_line": 148758,
+      "firesim_first_line": 170381,
+      "bytes": 2371,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_11"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_12",
+      "selected_gsim_sha256": "ba1baf021e758b3357a5f37d3206f125139102a57441da745baedab4abb723bc",
+      "firesim_sha256": "ba1baf021e758b3357a5f37d3206f125139102a57441da745baedab4abb723bc",
+      "byte_identical": true,
+      "selected_gsim_first_line": 150009,
+      "firesim_first_line": 171632,
+      "bytes": 2371,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_12"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_13",
+      "selected_gsim_sha256": "6b2712cdbcd6fc738d9ec09e6782ca1beca5b5f312123d93522748c92c663f45",
+      "firesim_sha256": "6b2712cdbcd6fc738d9ec09e6782ca1beca5b5f312123d93522748c92c663f45",
+      "byte_identical": true,
+      "selected_gsim_first_line": 151260,
+      "firesim_first_line": 172883,
+      "bytes": 2371,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_13"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_14",
+      "selected_gsim_sha256": "9c6f8ac91bf6b5727935c4ace999c2e14707d86108af48ce823f24b30d170fa8",
+      "firesim_sha256": "9c6f8ac91bf6b5727935c4ace999c2e14707d86108af48ce823f24b30d170fa8",
+      "byte_identical": true,
+      "selected_gsim_first_line": 152511,
+      "firesim_first_line": 174134,
+      "bytes": 2371,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_14"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_15",
+      "selected_gsim_sha256": "2c5eed4d8c4441b7c070454b58c16dbab8d7ecec74577a1c271a2b346197f82b",
+      "firesim_sha256": "2c5eed4d8c4441b7c070454b58c16dbab8d7ecec74577a1c271a2b346197f82b",
+      "byte_identical": true,
+      "selected_gsim_first_line": 153762,
+      "firesim_first_line": 175385,
+      "bytes": 2371,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_15"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_16",
+      "selected_gsim_sha256": "1a2d7833d82de0231ece3a03a693851f451f1155392563ec18526e46cd8198eb",
+      "firesim_sha256": "1a2d7833d82de0231ece3a03a693851f451f1155392563ec18526e46cd8198eb",
+      "byte_identical": true,
+      "selected_gsim_first_line": 155013,
+      "firesim_first_line": 176636,
+      "bytes": 2371,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_16"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_17",
+      "selected_gsim_sha256": "67fdbf8199e47a74e4c6032375d36b41dad90adf1a4e77d5c105e1292e01832a",
+      "firesim_sha256": "67fdbf8199e47a74e4c6032375d36b41dad90adf1a4e77d5c105e1292e01832a",
+      "byte_identical": true,
+      "selected_gsim_first_line": 156264,
+      "firesim_first_line": 177887,
+      "bytes": 2371,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_17"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_18",
+      "selected_gsim_sha256": "90624022d30abeb7f9b1acf0211271568a4875eca63d7f874d525a1e411a12bd",
+      "firesim_sha256": "90624022d30abeb7f9b1acf0211271568a4875eca63d7f874d525a1e411a12bd",
+      "byte_identical": true,
+      "selected_gsim_first_line": 157515,
+      "firesim_first_line": 179138,
+      "bytes": 2371,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_18"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_19",
+      "selected_gsim_sha256": "90582123a5a17a3785a769cca9f58c0ca6029d20700064c6eeb09c8a4898ef67",
+      "firesim_sha256": "90582123a5a17a3785a769cca9f58c0ca6029d20700064c6eeb09c8a4898ef67",
+      "byte_identical": true,
+      "selected_gsim_first_line": 158766,
+      "firesim_first_line": 180389,
+      "bytes": 2371,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_19"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_2",
+      "selected_gsim_sha256": "c054f060f63be245540b3a12c1cba98d66e9237ea88cb2030d6a5fd06c3b934f",
+      "firesim_sha256": "c054f060f63be245540b3a12c1cba98d66e9237ea88cb2030d6a5fd06c3b934f",
+      "byte_identical": true,
+      "selected_gsim_first_line": 132613,
+      "firesim_first_line": 154236,
+      "bytes": 2369,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_2"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_3",
+      "selected_gsim_sha256": "2af59e2e9506f79397bc229e14c1a196af18b7f01302b64b5a1ce3957a36838c",
+      "firesim_sha256": "2af59e2e9506f79397bc229e14c1a196af18b7f01302b64b5a1ce3957a36838c",
+      "byte_identical": true,
+      "selected_gsim_first_line": 134119,
+      "firesim_first_line": 155742,
+      "bytes": 2369,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_3"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_4",
+      "selected_gsim_sha256": "1719e0e79c87c64f3f947d76e6bf17fa8986f9a042fec2ff1c60b76dd123742e",
+      "firesim_sha256": "1719e0e79c87c64f3f947d76e6bf17fa8986f9a042fec2ff1c60b76dd123742e",
+      "byte_identical": true,
+      "selected_gsim_first_line": 140001,
+      "firesim_first_line": 161624,
+      "bytes": 2369,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_4"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_5",
+      "selected_gsim_sha256": "39b6374207faa04bc5e4ffb5c0e00ed811b1e4fe6fe8420800618fc97131ad18",
+      "firesim_sha256": "39b6374207faa04bc5e4ffb5c0e00ed811b1e4fe6fe8420800618fc97131ad18",
+      "byte_identical": true,
+      "selected_gsim_first_line": 141252,
+      "firesim_first_line": 162875,
+      "bytes": 2369,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_5"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_6",
+      "selected_gsim_sha256": "1135a836621f151f28caee909a60d6aecdb579a6e6d5af8fca70124136ef8927",
+      "firesim_sha256": "1135a836621f151f28caee909a60d6aecdb579a6e6d5af8fca70124136ef8927",
+      "byte_identical": true,
+      "selected_gsim_first_line": 142503,
+      "firesim_first_line": 164126,
+      "bytes": 2369,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_6"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_7",
+      "selected_gsim_sha256": "509a45baaa10387177ce84153a874aa184593fb740f732f42ace67deff8e24f8",
+      "firesim_sha256": "509a45baaa10387177ce84153a874aa184593fb740f732f42ace67deff8e24f8",
+      "byte_identical": true,
+      "selected_gsim_first_line": 143754,
+      "firesim_first_line": 165377,
+      "bytes": 2369,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_7"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_8",
+      "selected_gsim_sha256": "3c79340214646d3ebd0e178f1ff7a34dd91f07b74b4ed89405154e5131e5d7ee",
+      "firesim_sha256": "3c79340214646d3ebd0e178f1ff7a34dd91f07b74b4ed89405154e5131e5d7ee",
+      "byte_identical": true,
+      "selected_gsim_first_line": 145005,
+      "firesim_first_line": 166628,
+      "bytes": 2369,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_8"
+      ]
+    },
+    {
+      "module": "RoundRawFNToRecFN_e8_s24_9",
+      "selected_gsim_sha256": "cb8b5e0575a286a3b0fd7e5e7089a575fdff9aaa57786c0a0a79ac23ad5f174e",
+      "firesim_sha256": "cb8b5e0575a286a3b0fd7e5e7089a575fdff9aaa57786c0a0a79ac23ad5f174e",
+      "byte_identical": true,
+      "selected_gsim_first_line": 146256,
+      "firesim_first_line": 167879,
+      "bytes": 2369,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_9"
+      ]
+    },
+    {
+      "module": "ScalePipe",
+      "selected_gsim_sha256": "541ce027d6530869c83a2a4e3ea128e2c9d329ae1e2455589e2f21a387411fcc",
+      "firesim_sha256": "541ce027d6530869c83a2a4e3ea128e2c9d329ae1e2455589e2f21a387411fcc",
+      "byte_identical": true,
+      "selected_gsim_first_line": 129791,
+      "firesim_first_line": 151414,
+      "bytes": 28246,
+      "dependencies_identical": true,
+      "dependencies": [
+        "INToRecFN_i8_e8_s24",
+        "MulAddRecFN_e8_s24",
+        "RecFNToIN_e8_s24_i8"
+      ]
+    },
+    {
+      "module": "ScalePipe_1",
+      "selected_gsim_sha256": "acd68056d4a0eb276e5eac28b99d99fa0d134c8e35541dc0c775bc92219e1c57",
+      "firesim_sha256": "acd68056d4a0eb276e5eac28b99d99fa0d134c8e35541dc0c775bc92219e1c57",
+      "byte_identical": true,
+      "selected_gsim_first_line": 131297,
+      "firesim_first_line": 152920,
+      "bytes": 28254,
+      "dependencies_identical": true,
+      "dependencies": [
+        "INToRecFN_i8_e8_s24_1",
+        "MulAddRecFN_e8_s24_1",
+        "RecFNToIN_e8_s24_i8_1"
+      ]
+    },
+    {
+      "module": "ScalePipe_2",
+      "selected_gsim_sha256": "766aa754fbd56306d912b8820f099bba7c95ba92ecedfa7ecd6734d131748f77",
+      "firesim_sha256": "766aa754fbd56306d912b8820f099bba7c95ba92ecedfa7ecd6734d131748f77",
+      "byte_identical": true,
+      "selected_gsim_first_line": 132803,
+      "firesim_first_line": 154426,
+      "bytes": 28254,
+      "dependencies_identical": true,
+      "dependencies": [
+        "INToRecFN_i8_e8_s24_2",
+        "MulAddRecFN_e8_s24_2",
+        "RecFNToIN_e8_s24_i8_2"
+      ]
+    },
+    {
+      "module": "ScalePipe_3",
+      "selected_gsim_sha256": "0ac9e867b803830b604b0ebe87fa791c52ff6874321f53fafe5e5d80cc3b1126",
+      "firesim_sha256": "0ac9e867b803830b604b0ebe87fa791c52ff6874321f53fafe5e5d80cc3b1126",
+      "byte_identical": true,
+      "selected_gsim_first_line": 134309,
+      "firesim_first_line": 155932,
+      "bytes": 28254,
+      "dependencies_identical": true,
+      "dependencies": [
+        "INToRecFN_i8_e8_s24_3",
+        "MulAddRecFN_e8_s24_3",
+        "RecFNToIN_e8_s24_i8_3"
+      ]
+    },
+    {
+      "module": "Scratchpad",
+      "selected_gsim_sha256": "7d8dc6fbf2d7a27a383f1576cde918195a9c10e5c5be46121fc3e4adc123fc55",
+      "firesim_sha256": "7d8dc6fbf2d7a27a383f1576cde918195a9c10e5c5be46121fc3e4adc123fc55",
+      "byte_identical": true,
+      "selected_gsim_first_line": 164042,
+      "firesim_first_line": 185665,
+      "bytes": 761366,
+      "dependencies_identical": true,
+      "dependencies": [
+        "AccPipeShared",
+        "AccumulatorMem",
+        "AccumulatorMem_1",
+        "AccumulatorScale",
+        "PixelRepeater",
+        "PixelRepeater_1",
+        "Queue2_NormalizedInput",
+        "Queue2_ScratchpadMemWriteRequest",
+        "Queue2_VectorScalarMultiplierReq",
+        "Queue2_VectorScalarMultiplierReq_1",
+        "Queue4_ScratchpadReadResp",
+        "Queue4_ScratchpadReadResp_1",
+        "Queue4_ScratchpadReadResp_2",
+        "Queue4_ScratchpadReadResp_3",
+        "Queue4_ScratchpadReadResp_4",
+        "Queue4_ScratchpadReadResp_5",
+        "Queue4_ScratchpadReadResp_6",
+        "Queue4_ScratchpadReadResp_7",
+        "Queue5_ScratchpadMemReadRequest",
+        "Queue5_ScratchpadMemWriteRequest",
+        "Queue6_ScratchpadMemWriteRequest",
+        "Queue6_ScratchpadMemWriteRequest_1",
+        "ScratchpadBank",
+        "ScratchpadBank_1",
+        "ScratchpadBank_2",
+        "ScratchpadBank_3",
+        "StreamReader",
+        "StreamWriter",
+        "TLBuffer_a35d128s4k4z4u",
+        "TLBuffer_a35d128s4k4z4u_1",
+        "TLBuffer_a35d128s5k4z4u",
+        "TLWidthWidget16_3",
+        "TLXbar_i2_o1_a35d128s5k4z4u",
+        "VectorScalarMultiplier",
+        "VectorScalarMultiplier_1",
+        "ZeroWriter"
+      ]
+    },
+    {
+      "module": "ScratchpadBank",
+      "selected_gsim_sha256": "d4f1def4439945d8c96c8e97d2ae6a988ccefbc4f3eb4d2f238bf8a97256c0b2",
+      "firesim_sha256": "d4f1def4439945d8c96c8e97d2ae6a988ccefbc4f3eb4d2f238bf8a97256c0b2",
+      "byte_identical": true,
+      "selected_gsim_first_line": 137744,
+      "firesim_first_line": 159367,
+      "bytes": 15105,
+      "dependencies_identical": true,
+      "dependencies": [
+        "Queue1_ScratchpadReadResp"
+      ]
+    },
+    {
+      "module": "ScratchpadBank_1",
+      "selected_gsim_sha256": "808bcecb48f24bca0495292a4637f84d8a369752f70c2ba8f886b2dd45851251",
+      "firesim_sha256": "808bcecb48f24bca0495292a4637f84d8a369752f70c2ba8f886b2dd45851251",
+      "byte_identical": true,
+      "selected_gsim_first_line": 137939,
+      "firesim_first_line": 159562,
+      "bytes": 15109,
+      "dependencies_identical": true,
+      "dependencies": [
+        "Queue1_ScratchpadReadResp_1"
+      ]
+    },
+    {
+      "module": "ScratchpadBank_2",
+      "selected_gsim_sha256": "5e1cb621840d883c8bd9ca8fbcfe18b4dcdbba0c637c19e4768579a9c60e03f6",
+      "firesim_sha256": "5e1cb621840d883c8bd9ca8fbcfe18b4dcdbba0c637c19e4768579a9c60e03f6",
+      "byte_identical": true,
+      "selected_gsim_first_line": 138134,
+      "firesim_first_line": 159757,
+      "bytes": 15109,
+      "dependencies_identical": true,
+      "dependencies": [
+        "Queue1_ScratchpadReadResp_2"
+      ]
+    },
+    {
+      "module": "ScratchpadBank_3",
+      "selected_gsim_sha256": "8c42c58e71f887c67a8abacd69605994131f0b5cf43a3134cd13d98f028587ac",
+      "firesim_sha256": "8c42c58e71f887c67a8abacd69605994131f0b5cf43a3134cd13d98f028587ac",
+      "byte_identical": true,
+      "selected_gsim_first_line": 138329,
+      "firesim_first_line": 159952,
+      "bytes": 15109,
+      "dependencies_identical": true,
+      "dependencies": [
+        "Queue1_ScratchpadReadResp_3"
+      ]
+    },
+    {
+      "module": "StreamReader",
+      "selected_gsim_sha256": "da1c6519276de3e91e20eb30683d4ea77badc712a060a5c1c61448694bf78961",
+      "firesim_sha256": "da1c6519276de3e91e20eb30683d4ea77badc712a060a5c1c61448694bf78961",
+      "byte_identical": true,
+      "selected_gsim_first_line": 123411,
+      "firesim_first_line": 145034,
+      "bytes": 20346,
+      "dependencies_identical": true,
+      "dependencies": [
+        "BeatMerger",
+        "StreamReaderCore",
+        "XactTracker"
+      ]
+    },
+    {
+      "module": "StreamReaderCore",
+      "selected_gsim_sha256": "cc02c5d60dec5bd9652315055b91f5692ce7f63c64061d1792db367c8289492a",
+      "firesim_sha256": "cc02c5d60dec5bd9652315055b91f5692ce7f63c64061d1792db367c8289492a",
+      "byte_identical": true,
+      "selected_gsim_first_line": 121919,
+      "firesim_first_line": 143542,
+      "bytes": 76486,
+      "dependencies_identical": true,
+      "dependencies": [
+        "Arbiter2_TLBundleAWithInfo",
+        "Queue1_TLBundleAWithInfo",
+        "Queue1_TLBundleAWithInfo_1"
+      ]
+    },
+    {
+      "module": "StreamWriter",
+      "selected_gsim_sha256": "2486ba10e3d228ac03f98aac882d4b42cef02c6f0d685480028c770f8dced69b",
+      "firesim_sha256": "2486ba10e3d228ac03f98aac882d4b42cef02c6f0d685480028c770f8dced69b",
+      "byte_identical": true,
+      "selected_gsim_first_line": 123754,
+      "firesim_first_line": 145377,
+      "bytes": 432800,
+      "dependencies_identical": true,
+      "dependencies": [
+        "Arbiter3_TLBundleAWithInfo",
+        "Queue1_TLBundleAWithInfo_2",
+        "Queue1_TLBundleAWithInfo_3",
+        "Queue1_TLBundleAWithInfo_4"
+      ]
+    },
+    {
+      "module": "TLBuffer_a35d128s4k4z4u",
+      "selected_gsim_sha256": "23bc542c9544527e0f506f17ae7e3df4682c1577b7375024f608855d7a173d64",
+      "firesim_sha256": "23bc542c9544527e0f506f17ae7e3df4682c1577b7375024f608855d7a173d64",
+      "byte_identical": true,
+      "selected_gsim_first_line": 126999,
+      "firesim_first_line": 148622,
+      "bytes": 21107,
+      "dependencies_identical": true,
+      "dependencies": [
+        "Queue2_TLBundleA_a35d128s4k4z4u",
+        "Queue2_TLBundleD_a35d128s4k4z4u"
+      ]
+    },
+    {
+      "module": "TLBuffer_a35d128s4k4z4u_1",
+      "selected_gsim_sha256": "628855ee076d2ef575ab7093c11078e1a42dbfa791f351edba87c0cb52e11af2",
+      "firesim_sha256": "628855ee076d2ef575ab7093c11078e1a42dbfa791f351edba87c0cb52e11af2",
+      "byte_identical": true,
+      "selected_gsim_first_line": 127263,
+      "firesim_first_line": 148886,
+      "bytes": 21113,
+      "dependencies_identical": true,
+      "dependencies": [
+        "Queue2_TLBundleA_a35d128s4k4z4u_1",
+        "Queue2_TLBundleD_a35d128s4k4z4u_1"
+      ]
+    },
+    {
+      "module": "TLBuffer_a35d128s5k4z4u",
+      "selected_gsim_sha256": "db0146a0908ad4b67a5a19ec56928f934bb6ecbab68e3a80b76d20ca16820612",
+      "firesim_sha256": "db0146a0908ad4b67a5a19ec56928f934bb6ecbab68e3a80b76d20ca16820612",
+      "byte_identical": true,
+      "selected_gsim_first_line": 127670,
+      "firesim_first_line": 149293,
+      "bytes": 21107,
+      "dependencies_identical": true,
+      "dependencies": [
+        "Queue2_TLBundleA_a35d128s5k4z4u",
+        "Queue2_TLBundleD_a35d128s5k4z4u"
+      ]
+    },
+    {
+      "module": "TLWidthWidget16_3",
+      "selected_gsim_sha256": "70508ff2cfef871e46c822562239837f5d1a2af2d4a6f390f98d65329d7c14f5",
+      "firesim_sha256": "70508ff2cfef871e46c822562239837f5d1a2af2d4a6f390f98d65329d7c14f5",
+      "byte_identical": true,
+      "selected_gsim_first_line": 127425,
+      "firesim_first_line": 149048,
+      "bytes": 19398,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "TLXbar_i2_o1_a35d128s5k4z4u",
+      "selected_gsim_sha256": "289f422e5a07d38817d453bc9f16509967f2a2806f33845c6f8bb83b323eabe9",
+      "firesim_sha256": "289f422e5a07d38817d453bc9f16509967f2a2806f33845c6f8bb83b323eabe9",
+      "byte_identical": true,
+      "selected_gsim_first_line": 120425,
+      "firesim_first_line": 142048,
+      "bytes": 181073,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "TwoPortSyncMem",
+      "selected_gsim_sha256": "32f49e8487d2a0973dd3645b8391005edb06475111a1e3da013ada28c2902103",
+      "firesim_sha256": "32f49e8487d2a0973dd3645b8391005edb06475111a1e3da013ada28c2902103",
+      "byte_identical": true,
+      "selected_gsim_first_line": 162554,
+      "firesim_first_line": 184177,
+      "bytes": 46547,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "TwoPortSyncMem_1",
+      "selected_gsim_sha256": "b877ef3d5a05c6328e074db6888b035ea2925862a17273d9362f8abff4dc9dc2",
+      "firesim_sha256": "b877ef3d5a05c6328e074db6888b035ea2925862a17273d9362f8abff4dc9dc2",
+      "byte_identical": true,
+      "selected_gsim_first_line": 163298,
+      "firesim_first_line": 184921,
+      "bytes": 46549,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "VectorScalarMultiplier",
+      "selected_gsim_sha256": "4440cbc6325cc8014018d9a05bbd15ff7ab16ea40a2908bbf490db8ab9b483db",
+      "firesim_sha256": "4440cbc6325cc8014018d9a05bbd15ff7ab16ea40a2908bbf490db8ab9b483db",
+      "byte_identical": true,
+      "selected_gsim_first_line": 134488,
+      "firesim_first_line": 156111,
+      "bytes": 352309,
+      "dependencies_identical": true,
+      "dependencies": [
+        "RRArbiter",
+        "RRArbiter_1",
+        "RRArbiter_2",
+        "RRArbiter_3",
+        "ScalePipe",
+        "ScalePipe_1",
+        "ScalePipe_2",
+        "ScalePipe_3"
+      ]
+    },
+    {
+      "module": "VectorScalarMultiplier_1",
+      "selected_gsim_sha256": "e6029ba11a21d3088b331577f75ef09f511b9de296d89d6120991a0c07798adf",
+      "firesim_sha256": "e6029ba11a21d3088b331577f75ef09f511b9de296d89d6120991a0c07798adf",
+      "byte_identical": true,
+      "selected_gsim_first_line": 137267,
+      "firesim_first_line": 158890,
+      "bytes": 18662,
+      "dependencies_identical": true,
+      "dependencies": [
+        "Pipeline"
+      ]
+    },
+    {
+      "module": "XactTracker",
+      "selected_gsim_sha256": "373d41ec73ac6b434281d92146fada834c3431b7d7f44e06c19aea250eee8725",
+      "firesim_sha256": "373d41ec73ac6b434281d92146fada834c3431b7d7f44e06c19aea250eee8725",
+      "byte_identical": true,
+      "selected_gsim_first_line": 122493,
+      "firesim_first_line": 144116,
+      "bytes": 25166,
+      "dependencies_identical": true,
+      "dependencies": []
+    },
+    {
+      "module": "ZeroWriter",
+      "selected_gsim_sha256": "c9da9b6dde60c87e61ce8bb6463c6df528a889aa85916b16ba076f271f7f29f5",
+      "firesim_sha256": "c9da9b6dde60c87e61ce8bb6463c6df528a889aa85916b16ba076f271f7f29f5",
+      "byte_identical": true,
+      "selected_gsim_first_line": 128119,
+      "firesim_first_line": 149742,
+      "bytes": 17690,
+      "dependencies_identical": true,
+      "dependencies": []
+    }
+  ],
+  "scope": "Only named modules and their instantiated child closure. Top-level clock/reset/interconnect/system equivalence is NOT inferred; complete FIR hashes remain distinct.",
+  "physical_engine_sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651",
+  "simulation_runs": 0
+}

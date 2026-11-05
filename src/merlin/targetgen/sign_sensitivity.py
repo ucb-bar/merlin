@@ -20,3 +20,23 @@ def is_sign_sensitive(entry: Mapping[str, Any]) -> bool:
         return True
     commands = [entry, *(c for c in entry.get("matmuls") or () if isinstance(c, Mapping))]
     return any(str(stage) in EPILOGUE_STAGE_SET for command in commands for stage in command.get("epilogue") or ())
+
+
+def has_signed_integer_operands(entry: Mapping[str, Any]) -> bool:
+    """``entry`` feeds a signed, element-scaled integer format to the unit.
+
+    Operand sign extension is itself sign-sensitive: a load that zero-extends where it should
+    sign-extend reads ``-4`` as ``252``, and on the non-negative default stimulus the two agree on
+    every element. Kept separate from :func:`is_sign_sensitive`, which is about readout stages and is
+    the rule the corpus sign-coverage gate holds historical capsules to.
+    """
+    from merlin.common import quant_formats
+
+    token = entry.get("operand_dtype")
+    if not isinstance(token, str) or not token:
+        return False
+    try:
+        fmt = quant_formats.get(token)
+    except KeyError:
+        return False
+    return bool(fmt.signed) and not fmt.is_float and not fmt.is_block_scaled

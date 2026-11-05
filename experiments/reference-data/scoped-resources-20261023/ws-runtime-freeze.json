@@ -1,0 +1,161 @@
+{
+  "schema": "merlin.phase2.archive_spike_runtime.v4",
+  "review_id": "INACTIVE provisional current WS model plus opt-in same-window modeled bookings; unchanged prices/provider/functional Spike; no timing qualification",
+  "functional_argv": [
+    "<machine-path-047>",
+    "--extlib=<machine-path-048>",
+    "--extension=gemmini",
+    "-p1",
+    "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+    "-m0x80000000:0x400000000",
+    "--instructions=1000000000"
+  ],
+  "observer": "<machine-path-029>",
+  "disassembler": "<machine-path-044>",
+  "model": "<machine-path-032>",
+  "source_manifest": "<machine-path-039>",
+  "libraries": [
+    "<machine-path-048>",
+    "<machine-path-022>"
+  ],
+  "dependencies": [
+    "<machine-path-001>",
+    "<machine-path-002>",
+    "<machine-path-003>",
+    "<machine-path-004>",
+    "<machine-path-005>",
+    "<machine-path-006>",
+    "<machine-path-007>",
+    "<machine-path-008>",
+    "<machine-path-009>",
+    "<machine-path-010>",
+    "<machine-path-011>",
+    "<machine-path-042>",
+    "<machine-path-043>",
+    "<machine-path-046>"
+  ],
+  "entry_symbol": "kernel_entry",
+  "completion_symbol": "kernel_complete",
+  "timing_selection": {
+    "boundary": "immediately before kernel entry through explicitly selected completion",
+    "cold_warm": "UNKNOWN",
+    "counter_asm": "csrr %0, mcycle",
+    "counter_semantics": {
+      "clock": "Rocket core cycle CSR on one guest hart in GemminiGsimFireSimAlignedConfig; no wall-clock or FPGA-frequency conversion",
+      "source_pins": [
+        {
+          "path": "<machine-path-045>",
+          "sha256": "10fbf32035cf5eece8c802f16b189afbec824287cddc8b8f1218c1d8209ed61f"
+        }
+      ],
+      "unit": "cycles",
+      "width_bits": 64,
+      "wrap": "modulo"
+    },
+    "excluded": [
+      "input staging",
+      "output publication",
+      "metric formatting",
+      "parent readback"
+    ],
+    "max_delta_cycles": 1000000000000,
+    "schema": "merlin.kernel_call_timing.v1",
+    "selection_sha256": "bd1919e1156df33271f6579921273d51fc655dc0f59a135b5327237fdc3d1180"
+  },
+  "files": [
+    {
+      "path": "<machine-path-047>",
+      "sha256": "5df9c82ca3e921823da8606284a258b491541defbafee4586fb938639e03c6b9"
+    },
+    {
+      "path": "<machine-path-029>",
+      "sha256": "e4e90609f3a2d907c7244322d7f96c5fd0e0dd74e30137177a97fd750157e87f"
+    },
+    {
+      "path": "<machine-path-044>",
+      "sha256": "1c0a65ea4d86a0fdc57e22a49b777f80881b0a3df9b2ac0634dc651b295c0410"
+    },
+    {
+      "path": "<machine-path-032>",
+      "sha256": "8089fb9a2ea325ff2e61508ad9a78a23b92a9620099839cbcba0a221470e7c1c"
+    },
+    {
+      "path": "<machine-path-039>",
+      "sha256": "c8f95573e76c4a6121cec1df085e0a575bfd4f69e3974c9108e813baabcd708c"
+    },
+    {
+      "path": "<machine-path-048>",
+      "sha256": "2dbd8445376cdda0df63abcf217c7a19f974d34a16ada21b549ed82fffd718eb"
+    },
+    {
+      "path": "<machine-path-022>",
+      "sha256": "df933c6e52036f86b4208795a40eecddb9f828acab8c759906cb747bf2b498b2"
+    },
+    {
+      "path": "<machine-path-001>",
+      "sha256": "41daf7836f7fce21a40ca63a00c5caf21b05a35a76ccc075d86f1716212cdf01"
+    },
+    {
+      "path": "<machine-path-002>",
+      "sha256": "b2cf6c33b74d2f22543b7a469a75b538911e690f769d0b238843a49465b83793"
+    },
+    {
+      "path": "<machine-path-003>",
+      "sha256": "7cc817ff1841b59516d684f357bc0c3fc2cc52c3fa9b4ffb8ce8bdc215f02915"
+    },
+    {
+      "path": "<machine-path-004>",
+      "sha256": "3eaaa4aefd9c28f3867c96a427c3cbec9191cb61c4c9d0a2cb4a765d66064499"
+    },
+    {
+      "path": "<machine-path-005>",
+      "sha256": "334f871dfe528301a82186d0ba5c07c2a92dcadaacf3dceda792373b0c1c433d"
+    },
+    {
+      "path": "<machine-path-006>",
+      "sha256": "c1404396288e178c8db2f30203cb8150e4d2c14cacee9a2883e0092f45399cc8"
+    },
+    {
+      "path": "<machine-path-007>",
+      "sha256": "24fa78caa9b66c10c90711c51089f45273b643f132031172d54a3e98d711d48e"
+    },
+    {
+      "path": "<machine-path-008>",
+      "sha256": "4683f3623dc47a92e862dc3c8770caff81c9f4c7e116bb672fc439737b06d88a"
+    },
+    {
+      "path": "<machine-path-009>",
+      "sha256": "3dd5511ae94785c9f921429b0f2b2f7aabb461b6f0e6de6dfdbef15f24bdfee6"
+    },
+    {
+      "path": "<machine-path-010>",
+      "sha256": "fbed9505adacada2abb37c6b43be2df6de81e742712c6025694ba48de62c7e78"
+    },
+    {
+      "path": "<machine-path-011>",
+      "sha256": "7d03c9686574bad9ee3590450fc441481b2ee01c97ee13647a72cad0637143c8"
+    },
+    {
+      "path": "<machine-path-042>",
+      "sha256": "e2b8b67932a6ab53544c7da1e6421fe7e75571feae5218d586b5c69d62ea1c49"
+    },
+    {
+      "path": "<machine-path-043>",
+      "sha256": "0f56e521cd437dd7415763a0b22c2a5cf05a29027c343724123770b16fb939f9"
+    },
+    {
+      "path": "<machine-path-046>",
+      "sha256": "e2b8b67932a6ab53544c7da1e6421fe7e75571feae5218d586b5c69d62ea1c49"
+    },
+    {
+      "path": "<machine-path-045>",
+      "sha256": "10fbf32035cf5eece8c802f16b189afbec824287cddc8b8f1218c1d8209ed61f"
+    }
+  ],
+  "scope": "count-only public kernel-call observation; native event timing unqualified",
+  "observation_resources": {
+    "protocol": "merlin.archive_count_observation.resources.900s.v1",
+    "per_command_wall_seconds": 900,
+    "parent_deadline_preserved": true
+  }
+}

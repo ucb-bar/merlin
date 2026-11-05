@@ -1,84 +1,230 @@
-"""Tests for the RTL-derived checks layer (task #131).
+"""Hardware-legality checks of the GENERIC RoCC rule engine, on the Gemmini contract + RTL facts.
 
-Predicate-based, synthetic traces/capsules ONLY — no per-capsule golden fixtures (honours the
-abstract-into-compiler-not-overfit principle). We assert the INVARIANT ("illegal funct ⇒ fail",
-"over-commit ⇒ tile-coverage fail"), never "capsule X must have N MVOUTs".
+``RC`` is :mod:`merlin.targetgen.rtl_checks_generic` evaluating the Gemmini contract's declared
+``rtl_checks`` protocol (see ``rocc_generic_test_support``); ``P`` is that protocol.
+
+Three gates, none of which consults any compiler's output:
+
+(a) a MINIMAL LEGAL PROGRAM, written here from the public Gemmini ISA command semantics and encoded
+    through the RTL-extracted register-bundle layouts, decodes cleanly and passes every legality rule;
+(b) MUTATIONS of that program that each break one legality property (an RTL-illegal funct, a missing
+    fence, use before configuration, an out-of-bounds local address, a missing store) are flagged by
+    exactly the rule that owns the property;
+(c) the decode agrees with the RTL facts for every funct.
+
+Everything else is predicate-based on synthetic traces: the invariant, never "capsule X has N MVOUTs".
 """
 
 from __future__ import annotations
 
 import copy
+import os
+import struct
+from pathlib import Path
 
 import pytest
-from gemmini_rtl_test_support import checks as RC
+from rocc_generic_test_support import checks as RC
+from rocc_generic_test_support import protocol as P
+from rocc_generic_test_support import selected as SELECTED
 
 from merlin.targetgen import rtl_check_compiler as CC
 from merlin.targetgen import rtl_check_runner as RUN
-from merlin.targetgen.rtl import circt_introspect as CI
+from merlin.targetgen.rocc import decode
+from merlin.targetgen.rocc import semantics as S
 from merlin.targetgen.rtl.facts import load_facts
 
-
-# --------------------------------------------------------------------------------- synthetic fixtures
-def _matmul_capsule(M=16, K=16, N=16, dtype="i32"):
-    return {
-        "name": "synthetic_matmul",
-        "operation": {"op": "matmul", "attributes": {"output_dtype": dtype}},
-        "inputs": [{"role": "weight", "shape": [K, N]}, {"role": "input", "shape": [M, K]}],
-    }
+TARGET = "gemmini"
+FACTS = load_facts(TARGET)
+#: Extra fact bundles to cross-check decoding against, ``os.pathsep``-separated (operator-selected).
+_FACT_SETS = [p for p in os.environ.get("MERLIN_TEST_EXTRA_RTL_FACTS", "").split(os.pathsep) if p and Path(p).is_file()]
 
 
-def _pooled_matmul_capsule():
-    c = _matmul_capsule(25, 16, 17, "i8")
-    c["inputs"][0]["name"] = "W"
-    c["inputs"][1]["name"] = "A0"
-    c["numeric_policy"] = {"dtype": "i8", "compare": "exact_int"}
-    c["operation"]["attributes"].update(
-        {
-            "lhs": "A0",
-            "weight": "W",
-            "out": "Y0",
-            "epilogue": ["maxpool"],
-            "pool_in_dims": [5, 5],
-            "pool_size": [2, 2],
-            "pool_stride": [2, 2],
-            "pool_padding": [0, 0, 0, 0],
-        }
+@pytest.fixture(autouse=True)
+def _generic_decoder(monkeypatch):
+    """Decode through the generic semantics (no support backend needs to be selected)."""
+    monkeypatch.setattr(decode, "_semantics", lambda target: S)
+
+
+# ======================================================================= a minimal legal program
+def _f32(v: float) -> int:
+    return struct.unpack("<I", struct.pack("<f", v))[0]
+
+
+def _pack(bundle: str, **values: int) -> int:
+    """Encode named fields with the RTL-extracted bundle layout (no offset is written in this test)."""
+    layouts = S.bundle_layouts(FACTS)
+    word = 0
+    for name, value in values.items():
+        offset, width = S.field_slot(layouts.get(bundle), name)
+        assert 0 <= value < (1 << width), (bundle, name, value)
+        word |= value << offset
+    return word
+
+
+def _subtype(code: int) -> int:
+    return _pack("ConfigMvoutRs1", cmd_type=code)  # the CONFIG selector field the RTL decodes
+
+
+def _program() -> list[tuple]:
+    """A 16x16 i8 x i8 -> i32 product C = A @ W, from the public ISA command semantics.
+
+    Entries are ``("fence",)`` or ``(class, rs1, rs2[, funct])``; an operand is an int or
+    ``("arg", i, byte_offset)``. CONFIG_EX picks the dataflow; CONFIG_LD / CONFIG_ST set the DRAM row
+    stride (and scale) the load / store paths use; MVIN moves rows x cols from DRAM to a local address;
+    PRELOAD latches the B tile and names the C address; COMPUTE_PRELOADED multiplies an A tile against it
+    (an all-ones B/D operand loads nothing new); MVOUT reads the accumulator back to DRAM.
+    """
+    isa = S.isa_constants(TARGET)
+    acc, full, one = isa["ACC_I8"], isa["FULL_C_BIT"], _f32(1.0)
+    tile = {"num_rows": 16, "num_cols": 16}
+    sub = {name: code for code, name in isa["CONFIG_SUBTYPE"].items()}
+    return [
+        ("fence",),
+        ("CONFIG_EX", _subtype(sub["CONFIG_EX"]) | _pack("ConfigExRs1", dataflow=1, acc_scale=one), 0),
+        ("CONFIG_LD", _subtype(sub["CONFIG_LD"]) | _pack("ConfigMvinRs1", scale=one), 16),
+        ("CONFIG_ST", _subtype(sub["CONFIG_ST"]), _pack("ConfigMvoutRs2", stride=64, acc_scale=one)),
+        ("MVIN", ("arg", 0, 0), _pack("MvinRs2", local_addr=0, **tile)),
+        ("MVIN", ("arg", 1, 0), _pack("MvinRs2", local_addr=16, **tile)),
+        ("PRELOAD", _pack("PreloadRs", local_addr=16, **tile), _pack("PreloadRs", local_addr=acc, **tile)),
+        ("COMPUTE_PRELOADED", _pack("ComputeRs", local_addr=0, **tile), isa["RETAIN_SENTINEL"]),
+        ("MVOUT", ("arg", 2, 0), _pack("MvoutRs2", local_addr=acc | full, **tile)),
+        ("fence",),
+    ]
+
+
+CAPSULE = {
+    "name": "minimal_legal_matmul",
+    "operation": {"op": "matmul", "attributes": {"lhs": "A", "weight": "W", "out": "C", "output_dtype": "i32"}},
+    "inputs": [
+        {"name": "A", "role": "input", "shape": [16, 16], "dtype": "i8"},
+        {"name": "W", "role": "weight", "shape": [16, 16], "dtype": "i8"},
+    ],
+}
+
+
+def _mlir(program: list[tuple]) -> str:
+    """The program as the ``lowered.llvm.mlir`` a backend emits: ``.insn r`` inline asm over SSA operands."""
+    isa = S.isa_constants(TARGET)
+    body, asm = [], []
+    counter = [3]
+
+    def ssa(text: str) -> str:
+        name = f"%{counter[0]}"
+        counter[0] += 1
+        body.append(f"    {name} = {text}")
+        return name
+
+    def operand(v) -> str:
+        if isinstance(v, tuple):
+            base = ssa(f"llvm.ptrtoint %{v[1]} : !llvm.ptr to i64")
+            return ssa(f"llvm.add {base}, {ssa(f'llvm.mlir.constant({v[2]}) : i64')} : i64") if v[2] else base
+        return ssa(f"llvm.mlir.constant({v}) : i64")
+
+    for ins in program:
+        if ins[0] == "fence":
+            asm.append('    llvm.inline_asm has_side_effects "fence", "" : () -> ()')
+            continue
+        cls, rs1, rs2 = ins[:3]
+        funct = ins[3] if len(ins) > 3 else S.instruction_funct(cls, rs1 if isinstance(rs1, int) else 0, isa)
+        a, b = operand(rs1), operand(rs2)
+        asm.append(
+            f'    llvm.inline_asm has_side_effects ".insn r {isa["CUSTOM_OPCODE"]:#x}, {isa["FUNCT3"]:#x}, '
+            f'{funct:#x}, x0, $0, $1", "r,r" {a}, {b} : (i64, i64) -> ()'
+        )
+    head = "builtin.module {\n  llvm.func @gemmini_kernel(%0: !llvm.ptr, %1: !llvm.ptr, %2: !llvm.ptr) {\n"
+    return head + "\n".join(body + asm) + "\n    llvm.return\n  }\n}\n"
+
+
+def _screen(program: list[tuple]):
+    trace = decode.decode_text(_mlir(program), source="minimal", target=TARGET)
+    return trace, RC.screen(trace, CAPSULE, target=TARGET)
+
+
+def test_a_minimal_legal_program_decodes_cleanly_and_passes_every_legality_rule():
+    trace, rep = _screen(_program())
+    assert [i["class"] for i in trace["instructions"]] == [
+        "FENCE",
+        "CONFIG_EX",
+        "CONFIG_LD",
+        "CONFIG_ST",
+        "MVIN",
+        "MVIN",
+        "PRELOAD",
+        "COMPUTE_PRELOADED",
+        "MVOUT",
+        "FENCE",
+    ]
+    assert trace["instructions"][4]["decoded"]["dram"]["kind"] == "argbase"
+    assert trace["instructions"][4]["decoded"]["rows"] == 16
+    assert trace["instructions"][8]["decoded"]["readout"] == "i32"
+    assert rep.verdict == "ok", [c.to_dict() for c in rep.checks if c.status != "pass"]
+    assert {c.status for c in rep.checks} == {"pass"}
+    assert [s["id"] for s in P.rules] == [c.id for c in rep.checks]
+
+
+def _without(program, cls):
+    k = next(k for k, ins in enumerate(program) if ins[0] == cls)
+    return program[:k] + program[k + 1 :]
+
+
+def _mvin_at(program, row):
+    k = next(k for k, ins in enumerate(program) if ins[0] == "MVIN")
+    return (
+        program[:k]
+        + [("MVIN", program[k][1], _pack("MvinRs2", local_addr=row, num_rows=16, num_cols=16))]
+        + program[k + 1 :]
     )
-    return c
 
 
-def _pooled_store_trace(*, pocols=2, omit_field=None):
-    config = {
-        "out_stride_bytes": 32,
-        "pool_stride": 2,
-        "pool_size": 2,
-        "pool_out_dim": 2,
-        "porows": 2,
-        "pocols": pocols,
-        "orows": 5,
-        "ocols": 5,
-        "upad": 0,
-        "lpad": 0,
-    }
-    if omit_field:
-        config.pop(omit_field)
-    t = _trace([("CONFIG_ST", 0), ("MVOUT", 3), ("MVOUT", 3)])
-    t["instructions"][0]["decoded"] = config
-    t["instructions"][1]["decoded"] = {
-        "dram": {"kind": "argbase", "arg_index": 2, "offset": 0},
-        "rows": 0,
-        "cols": 16,
-    }
-    t["instructions"][2]["decoded"] = {
-        "dram": {"kind": "argbase", "arg_index": 2, "offset": 16},
-        "rows": 0,
-        "cols": 1,
-    }
-    return t
+SPAD_ROWS = RC.load_default_facts(TARGET)["scratchpad_rows"]
+
+MUTATIONS = {
+    "illegal_funct": (lambda p: p[:-1] + [("FLUSH", 0, 0, 99), p[-1]], {"T0.decode_funct_legal", "T0.decode_clean"}),
+    "missing_leading_fence": (lambda p: p[1:], {"T0.fence_bracket"}),
+    "missing_trailing_fence": (lambda p: p[:-1], {"T0.fence_bracket"}),
+    "store_before_config": (lambda p: _without(p, "CONFIG_ST"), {"T0.config_before_use"}),
+    "compute_before_config": (lambda p: _without(p, "CONFIG_EX"), {"T0.config_before_use"}),
+    "load_before_config": (lambda p: _without(p, "CONFIG_LD"), {"T0.config_before_use"}),
+    "compute_without_preload": (lambda p: _without(p, "PRELOAD"), {"T0.preload_before_compute"}),
+    "spad_out_of_bounds": (lambda p: _mvin_at(p, SPAD_ROWS - 8), {"T0.local_address_bounds"}),
+    "missing_store": (lambda p: _without(p, "MVOUT"), {"T0.output_store_coverage"}),
+}
 
 
+@pytest.mark.parametrize("name", sorted(MUTATIONS))
+def test_each_illegal_mutation_is_flagged_by_the_rule_that_owns_it(name):
+    mutate, owners = MUTATIONS[name]
+    _trace, rep = _screen(mutate(_program()))
+    assert {c.id for c in rep.checks if c.status == "fail"} == owners, [c.to_dict() for c in rep.checks]
+    assert rep.verdict == ("reject" if any(c.severity == "error" for c in rep.checks if c.id in owners) else "warn")
+
+
+# ============================================================================ decode vs RTL facts
+@pytest.mark.parametrize("facts_path", _FACT_SETS or [None])
+def test_decode_agrees_with_the_rtl_facts_for_every_funct(monkeypatch, facts_path):
+    if facts_path is not None:
+        monkeypatch.setenv("MERLIN_RTL_FACTS", facts_path)
+    table = next(i for i in load_facts(TARGET)["facts"]["interfaces"] if i["name"] == "funct_decode_table")
+    legal = set(table["legal_funct"])
+    isa = S.isa_constants(TARGET)
+    declared = isa["FUNCT_CLASS"]
+    assert set(declared) <= legal, f"the encoding declares functs the RTL decoder rejects: {set(declared) - legal}"
+    config = next(k for k, v in declared.items() if v == isa["CONFIG_CLASS"])
+    zero = {"raw": 0, "kind": "const", "arg_index": None, "offset": None}
+    for funct in range(1 << S.ROCC_FUNCT7_WIDTH):
+        cls, _dec = S.decode_instruction(funct, zero, zero, isa)
+        if funct == config:
+            assert cls in isa["CONFIG_SUBTYPE"].values()
+        else:
+            assert cls == declared.get(funct, "UNKNOWN"), funct
+        if funct in declared and funct != config:
+            assert S.instruction_funct(cls, 0, isa) == funct
+    # The legality rule reads exactly the decoder's legal set of the selected facts.
+    assert set(RC.load_default_facts(TARGET)["legal_funct"]) == legal
+
+
+# =================================================================== local-address bounds (units)
 def _trace(classes_functs):
-    """classes_functs: list of (class, funct|None) -> a minimal decoded-trace dict."""
     return {
         "source": "synthetic",
         "abi": {"custom_opcode": "0x7b", "funct3": "0x3"},
@@ -88,130 +234,38 @@ def _trace(classes_functs):
     }
 
 
-def _good_single_tile_trace():
-    # a valid WS single-tile sequence: configs precede use, PRELOAD precedes COMPUTE, one MVOUT tile.
-    return _trace(
-        [
-            ("FENCE", None),
-            ("CONFIG_EX", 0),
-            ("CONFIG_LD", 0),
-            ("MVIN", 2),
-            ("MVIN", 2),
-            ("CONFIG_ST", 0),
-            ("PRELOAD", 6),
-            ("COMPUTE_PRELOADED", 4),
-            ("MVOUT", 3),
-            ("FENCE", None),
-        ]
-    )
+def test_accumulator_space_is_decoded_before_the_bound_is_applied():
+    facts = RC.load_default_facts(TARGET)
+    t = _trace([("MVIN", 2), ("MVIN", 2)])
+    t["instructions"][0]["decoded"] = {"spad_addr": facts["accumulator_select_bit"], "rows": 16}
+    t["instructions"][1]["decoded"] = {"spad_addr": facts["accumulator_select_bit"] | 16, "rows": 16}
+    check = RC._check_local_address_bounds(t, facts, P)
+    assert check.status == "pass", check.to_dict()
+    assert check.evidence["accumulator_max_row"] == 16
+    assert check.evidence["accumulator_row_mask"] == facts["accumulator_rows"] - 1
 
 
-# Source facts from the regenerating accessor (the CIRCT-generated artifact) rather than a degenerate
-# empty-interfaces fallback: the legacy SoC HW-dialect cache is optional, but load_facts always yields a
-# real funct_decode_table (mlc extraction, or the header fallback), so the decode-table checks stay
-# runnable. The per-target cache path is resolved from the target name (no baked const to import).
-_HW_CACHE = CI._soc_hw_path("gemmini")
-FACTS = CI.build_facts(target="gemmini") if _HW_CACHE.is_file() else load_facts("gemmini")
+def test_accumulator_overflow_and_noncanonical_payload_are_rejected():
+    facts = RC.load_default_facts(TARGET)
+    select = facts["accumulator_select_bit"]
+    t = _trace([("MVIN", 2), ("PRELOAD", 6)])
+    t["instructions"][0]["decoded"] = {"spad_addr": select | (facts["accumulator_rows"] - 8), "rows": 16}
+    t["instructions"][1]["decoded"] = {"c_addr": select | (facts["accumulator_row_mask"] + 1)}
+    check = RC._check_local_address_bounds(t, facts, P)
+    assert check.status == "fail", check.to_dict()
+    assert check.evidence["accumulator_max_row_exclusive"] == facts["accumulator_rows"] + 8
+    assert check.evidence["noncanonical_accumulator_instruction_indices"] == [1]
 
 
-# ----------------------------------------------------------------------------- circt_introspect facts
-@pytest.mark.skipif(not _HW_CACHE.is_file(), reason="cached HW MLIR not present")
-def test_circt_facts_reproduce_contract_and_decode_table():
-    import yaml
-
-    from merlin.targetgen.rocc import decode as rocc_decode
-
-    rec = CI.build_facts(target="gemmini")
-    contract = yaml.safe_load((CI._REPO / "examples/gemmini/target/contracts/target_contract.yaml").read_text())
-    res = CI.validate(rec, contract, rocc_decode.funct_class_for("gemmini"))
-    assert not res["diverge"], f"RTL facts diverge from curated sources: {res['diverge']}"
-    # accumulator depth/bytes were extracted from the HW dialect (the v1 grep gap)
-    acc = next(m for m in rec["facts"]["memories"] if m["name"] == "accumulator")
-    assert acc["bytes"] and acc["banks"] >= 1 and acc["addr_width"] > 0
-    # legal funct set is the GemminiISA block and is a superset of what rocc_decode classifies
-    legal = set(next(i for i in rec["facts"]["interfaces"] if i["name"] == "funct_decode_table")["legal_funct"])
-    assert set(rocc_decode.funct_class_for("gemmini")) <= legal
+def test_the_retain_sentinel_is_not_an_address():
+    facts = RC.load_default_facts(TARGET)
+    t = _trace([("COMPUTE_PRELOADED", 4)])
+    t["instructions"][0]["decoded"] = {"a_spad": 0, "bd": facts["local_address_sentinel"]}
+    assert RC._check_local_address_bounds(t, facts, P).status == "pass"
 
 
-# ------------------------------------------------------------------------------- Python screen() checks
-def test_screen_passes_good_single_tile():
-    rep = RC.screen(_good_single_tile_trace(), _matmul_capsule(), target="gemmini")
-    assert rep.verdict == "ok", [c.to_dict() for c in rep.checks if c.status == "fail"]
-
-
-def test_screen_catches_illegal_funct():
-    t = _good_single_tile_trace()
-    t["instructions"].append({"index": 99, "class": "UNKNOWN", "funct": 99, "decoded": {}})
-    rep = RC.screen(t, _matmul_capsule(), target="gemmini")
-    fails = {c.id for c in rep.checks if c.status == "fail"}
-    assert "T0.decode_funct_legal" in fails and rep.verdict == "reject"
-
-
-def test_screen_catches_over_commit_tiles():
-    t = _good_single_tile_trace()
-    t["instructions"].append({"index": 50, "class": "MVOUT", "funct": 3, "decoded": {}})  # 2 != 1 tile
-    rep = RC.screen(t, _matmul_capsule(16, 16, 16), target="gemmini")
-    assert "T0.tile_coverage" in {c.id for c in rep.checks if c.status == "fail"}
-
-
-def test_screen_catches_over_capacity_spad():
-    t = _good_single_tile_trace()
-    spad_rows = RC.load_default_facts("gemmini")["scratchpad_rows"]
-    t["instructions"].append(
-        {"index": 51, "class": "MVIN", "funct": 2, "decoded": {"spad_addr": spad_rows - 8, "rows": 16}}
-    )
-    rep = RC.screen(t, _matmul_capsule(), target="gemmini")
-    assert "T0.spad_capacity" in {c.id for c in rep.checks if c.status == "fail"}
-
-
-def test_screen_decodes_mvin_accumulator_space_before_capacity_check():
-    """MVIN may target the accumulator: its high address bit is a space tag, not a row bit."""
-    t = _good_single_tile_trace()
-    t["instructions"][3]["decoded"] = {"spad_addr": 0x80000000, "rows": 16}
-    t["instructions"][4]["decoded"] = {"spad_addr": 0x80000010, "rows": 16}
-    rep = RC.screen(t, _matmul_capsule(), target="gemmini")
-    capacity = next(c for c in rep.checks if c.id == "T0.spad_capacity")
-    assert capacity.status == "pass", capacity.to_dict()
-    assert capacity.evidence["accumulator_max_row"] == 16
-    assert capacity.evidence["accumulator_row_mask"] == (RC.load_default_facts("gemmini")["accumulator_rows"] - 1)
-
-
-def test_screen_catches_over_capacity_accumulator_mvin_after_decoding_space():
-    t = _good_single_tile_trace()
-    acc_rows = RC.load_default_facts("gemmini")["accumulator_rows"]
-    t["instructions"][3]["decoded"] = {
-        "spad_addr": 0x80000000 | (acc_rows - 8),
-        "rows": 16,
-    }
-    rep = RC.screen(t, _matmul_capsule(), target="gemmini")
-    capacity = next(c for c in rep.checks if c.id == "T0.spad_capacity")
-    assert capacity.status == "fail"
-    assert capacity.evidence["accumulator_max_row"] == acc_rows - 8
-    assert capacity.evidence["accumulator_max_row_exclusive"] == acc_rows + 8
-    assert capacity.evidence["scratchpad_max_row"] is None
-
-
-def test_screen_rejects_noncanonical_accumulator_payload_bits():
-    """Bits carried by LocalAddr.data but ignored by full_acc_addr silently alias accumulator rows."""
-    facts = RC.load_default_facts("gemmini")
-    acc_mask = facts["accumulator_row_mask"]
-    data_mask = facts["local_address_data_mask"]
-    assert data_mask > acc_mask
-    t = _good_single_tile_trace()
-    t["instructions"][3]["decoded"] = {
-        "spad_addr": facts["accumulator_select_bit"] | (acc_mask + 1),
-        "rows": 1,
-    }
-    rep = RC.screen(t, _matmul_capsule(), target="gemmini")
-    capacity = next(c for c in rep.checks if c.id == "T0.spad_capacity")
-    assert capacity.status == "fail", capacity.to_dict()
-    assert capacity.evidence["noncanonical_accumulator_instruction_indices"] == [3]
-
-
-def test_capacity_unknown_accumulator_selector_does_not_misclassify_tagged_address_as_spad():
+def test_unknown_selector_never_reads_a_tagged_address_as_scratchpad():
     facts = {
-        "mesh": [8, 8],
-        "scratchpad_bytes": 512,
         "scratchpad_rows": 64,
         "scratchpad_row_mask": 0x3F,
         "accumulator_rows": 8,
@@ -219,183 +273,104 @@ def test_capacity_unknown_accumulator_selector_does_not_misclassify_tagged_addre
         "local_address_data_mask": 0x3F,
         "accumulator_select_bit": None,
     }
-    trace = _trace([("MVIN", 2)])
-    trace["instructions"][0]["decoded"] = {"spad_addr": 0x100, "rows": 1}
-    check = RC._check_spad_capacity(trace, facts)
+    t = _trace([("MVIN", 2)])
+    t["instructions"][0]["decoded"] = {"spad_addr": 0x100, "rows": 1}
+    check = RC._check_local_address_bounds(t, facts, P)
     assert check.status == "skipped", check.to_dict()
     assert check.evidence["unresolved_address_space_instruction_indices"] == [0]
 
 
-@pytest.mark.parametrize("rows", [0, -1])
-def test_capacity_rejects_nonpositive_mvin_row_count(rows):
-    facts = RC.load_default_facts("gemmini")
-    trace = _trace([("MVIN", 2)])
-    trace["instructions"][0]["decoded"] = {"spad_addr": 0, "rows": rows}
-    check = RC._check_spad_capacity(trace, facts)
-    assert check.status == "fail", check.to_dict()
-    assert check.evidence["invalid_row_count_instruction_indices"] == [0]
-
-
-def test_capacity_skips_undecodable_mvin_row_count():
-    facts = RC.load_default_facts("gemmini")
-    trace = _trace([("MVIN", 2)])
-    trace["instructions"][0]["decoded"] = {"spad_addr": 0}
-    check = RC._check_spad_capacity(trace, facts)
-    assert check.status == "skipped", check.to_dict()
-    assert check.evidence["unresolved_row_count_instruction_indices"] == [0]
-
-
-def test_capacity_space_decode_uses_derived_selector_not_a_bit31_literal():
-    facts = {
-        "mesh": [8, 8],
-        "scratchpad_bytes": 512,
-        "scratchpad_rows": 64,
-        "accumulator_rows": 8,
-        "accumulator_select_bit": 0x100,
-        "accumulator_row_mask": 0x7,
-    }
-    trace = _trace([("MVIN", 2)])
-    # Bits outside the low three row bits model additional LocalAddr metadata; the checker must use
-    # the derived row mask, not merely clear the selector/control bits it happens to know about.
-    trace["instructions"][0]["decoded"] = {"spad_addr": 0x1C0 | 7, "rows": 1}
-    check = RC._check_spad_capacity(trace, facts)
+def test_selector_comes_from_facts_not_a_bit31_literal():
+    facts = {"scratchpad_rows": 64, "accumulator_rows": 8, "accumulator_select_bit": 0x100, "accumulator_row_mask": 0x7}
+    t = _trace([("MVIN", 2)])
+    t["instructions"][0]["decoded"] = {"spad_addr": 0x1C0 | 7, "rows": 1}
+    check = RC._check_local_address_bounds(t, facts, P)
     assert check.status == "pass"
     assert check.evidence["accumulator_max_row"] == 7
 
 
-def test_screen_applies_operand_load_checks_to_mvin2():
-    t = _good_single_tile_trace()
-    spad_rows = RC.load_default_facts("gemmini")["scratchpad_rows"]
-    t["instructions"][3] = {
-        "index": 3,
-        "class": "MVIN2",
-        "funct": 1,
-        "decoded": {"spad_addr": spad_rows - 8, "rows": 16},
-    }
-    rep = RC.screen(t, _matmul_capsule(), target="gemmini")
-    assert "T0.spad_capacity" in {c.id for c in rep.checks if c.status == "fail"}
-
-
-def test_pooled_store_coverage_uses_config_geometry_and_channel_tail():
-    capsule = _pooled_matmul_capsule()
-    trace = _pooled_store_trace()
-    pool_facts = {"mesh": [16, 16], "config_mvout_fields": list(RC._POOL_CONFIG_FIELDS), "max_pool_supported": True}
-    pool = RC._check_pool_config(trace, capsule, pool_facts)
-    assert pool.status == "pass", pool.to_dict()
-    outputs, why = RC.declared_outputs(capsule)
-    assert outputs, why
-    coverage = RC._store_coverage(trace, outputs, capsule, pool_facts)["Y0"]
-    assert coverage["status"] == "covered", coverage
-    assert coverage["covered_cells"] == coverage["declared_cells"] == 68
-    assert RC.expected_mvout_count(capsule, pool_facts)[0] == 2
-    assert RC.expected_mvout_count(_matmul_capsule(25, 16, 17), {"mesh": [16, 16]})[0] == 4
-
-
 @pytest.mark.parametrize(
-    "trace",
+    ("rows", "status", "key"),
     [
-        pytest.param(_pooled_store_trace(pocols=3), id="geometry-mismatch"),
-        pytest.param(_pooled_store_trace(omit_field="porows"), id="underived-field"),
+        (0, "fail", "invalid_row_count_instruction_indices"),
+        (-1, "fail", "invalid_row_count_instruction_indices"),
+        (None, "skipped", "unresolved_row_count_instruction_indices"),
     ],
 )
-def test_pooled_store_config_mismatch_never_manufactures_coverage(trace):
-    capsule = _pooled_matmul_capsule()
-    facts = {"max_pool_supported": True}
-    pool = RC._check_pool_config(trace, capsule, facts)
-    assert pool.status == "fail", pool.to_dict()
-    outputs, _ = RC.declared_outputs(capsule)
-    coverage = RC._store_coverage(trace, outputs, capsule, facts)["Y0"]
-    assert coverage["status"] == "unknown", coverage
-    assert "CONFIG_ST" in coverage["unknown_reason"]
+def test_transfer_row_counts_must_be_positive_and_decoded(rows, status, key):
+    facts = RC.load_default_facts(TARGET)
+    t = _trace([("MVIN2", 1)])
+    t["instructions"][0]["decoded"] = {"spad_addr": 0} if rows is None else {"spad_addr": 0, "rows": rows}
+    check = RC._check_local_address_bounds(t, facts, P)
+    assert check.status == status, check.to_dict()
+    assert check.evidence[key] == [0]
 
 
-@pytest.mark.parametrize(("supported", "status"), [(False, "fail"), (None, "skipped")])
-def test_pool_capability_false_or_unknown_never_manufactures_coverage(supported, status):
-    capsule, trace = _pooled_matmul_capsule(), _pooled_store_trace()
-    facts = {"mesh": [16, 16], "config_mvout_fields": list(RC._POOL_CONFIG_FIELDS), "max_pool_supported": supported}
-    pool = RC._check_pool_config(trace, capsule, facts)
-    assert pool.status == status, pool.to_dict()
-    outputs, _ = RC.declared_outputs(capsule)
-    coverage = RC._store_coverage(trace, outputs, capsule, facts)["Y0"]
-    assert coverage["status"] == "unknown", coverage
-    assert RC.expected_mvout_count(capsule, facts) is None
+# ====================================================================== store coverage (units)
+def _store_trace(pocols=None):
+    config = {"out_stride_bytes": 64}
+    if pocols is not None:
+        config.update(pool_stride=2, porows=2, pocols=pocols)
+    t = _trace([("CONFIG_ST", 0), ("MVOUT", 3)])
+    t["instructions"][0]["decoded"] = config
+    t["instructions"][1]["decoded"] = {"dram": {"kind": "argbase", "arg_index": 2, "offset": 0}, "rows": 16, "cols": 16}
+    return t
 
 
-def test_filecheck_pooled_and_plain_matmul_share_store_count_derivation():
-    pooled = CC.compile_trace_checks(FACTS, _pooled_matmul_capsule(), target="gemmini")
-    plain = CC.compile_trace_checks(FACTS, _matmul_capsule(25, 16, 17), target="gemmini")
-    assert "MVOUT_COUNT 2{{$}}" in pooled
-    assert "MVOUT_COUNT 4{{$}}" in plain
-    without_layout = copy.deepcopy(FACTS)
-    body = without_layout.get("facts", without_layout)
-    body["interfaces"] = [i for i in body.get("interfaces", []) if i.get("name") != "register_bundle_layouts"]
-    assert "MVOUT_COUNT" not in CC.compile_trace_checks(without_layout, _pooled_matmul_capsule(), target="gemmini")
+def test_store_footprint_follows_the_encoded_pooling_fields():
+    pooled = copy.deepcopy(CAPSULE)
+    pooled["operation"]["attributes"].update(
+        epilogue=["maxpool"], pool_in_dims=[4, 4], pool_size=[2, 2], pool_stride=[2, 2]
+    )
+    supported = {"max_pool_supported": True}
+    assert RC._check_output_store_coverage(_store_trace(pocols=2), pooled, supported, None, P).status == "pass"
+    assert RC._check_output_store_coverage(_store_trace(pocols=1), pooled, supported, None, P).status == "fail"
+    unknown = {"max_pool_supported": None}
+    assert RC._check_output_store_coverage(_store_trace(pocols=2), pooled, unknown, None, P).status == "skipped"
+    # An elaboration without the pooling feature ignores those fields: the encoded rows are stored.
+    disabled = {"max_pool_supported": False}
+    assert RC._check_output_store_coverage(_store_trace(pocols=2), CAPSULE, disabled, None, P).status == "pass"
 
 
-def test_filecheck_render_counts_all_mvin_load_states():
-    t = _trace([("MVIN", 2), ("MVIN2", 1), ("MVIN3", 14)])
-    rendered = RUN.render_trace(t, FACTS, target="gemmini")
-    assert "MVIN_COUNT 3" in rendered
-    assert "MVIN_PRESENT yes" in rendered
+def test_a_store_past_the_declared_extent_is_flagged():
+    t = _store_trace()
+    t["instructions"][1]["decoded"]["rows"] = 32
+    check = RC._check_output_store_coverage(t, CAPSULE, {}, None, P)
+    assert check.status == "fail" and "past the extent" in check.message
 
 
-def test_screen_catches_compute_before_preload():
-    t = _trace(
-        [
-            ("CONFIG_EX", 0),
-            ("CONFIG_LD", 0),
-            ("MVIN", 2),
-            ("CONFIG_ST", 0),
-            ("COMPUTE_PRELOADED", 4),
-            ("PRELOAD", 6),
-            ("MVOUT", 3),
-        ]
-    )  # compute precedes preload
-    rep = RC.screen(t, _matmul_capsule(), target="gemmini")
-    assert "T0.preload_before_compute" in {c.id for c in rep.checks if c.status == "fail"}
+# ========================================================================= FileCheck assertions
+def test_filecheck_asserts_only_facts_grounded_legality():
+    compiled = CC.compile_trace_checks(FACTS, CAPSULE, target=TARGET, checks=RC)
+    assert "ILLEGAL_FUNCT_COUNT 0{{$}}" in compiled and "UNKNOWN_COUNT 0{{$}}" in compiled
+    for schedule_dependent in ("MVOUT_COUNT", "MVIN_COUNT", "COMPUTE_PRESENT", "MVIN_PRESENT"):
+        assert schedule_dependent not in compiled
 
 
-def test_screen_catches_use_before_config():
-    t = _trace(
-        [("CONFIG_EX", 0), ("MVIN", 2), ("PRELOAD", 6), ("COMPUTE_PRELOADED", 4), ("MVOUT", 3)]
-    )  # MVOUT with no preceding CONFIG_ST
-    rep = RC.screen(t, _matmul_capsule(), target="gemmini")
-    assert "T0.config_before_use" in {c.id for c in rep.checks if c.status == "fail"}
-
-
-# --------------------------------------------------------------------------------- FileCheck compiler
 @pytest.mark.skipif(RUN.find_filecheck() is None, reason="FileCheck binary not found")
-def test_filecheck_trace_passes_good_and_catches_corruptions():
+def test_filecheck_passes_the_legal_program_and_catches_illegal_ones():
     fc = RUN.find_filecheck()
-    cap = _matmul_capsule(16, 16, 16)
-    cc = CC.compile_checks(FACTS, cap, "gemmini")
+    cc = CC.compile_checks(FACTS, CAPSULE, TARGET, checks=RC)
 
-    def trace_ok(t):
-        ok, _ = RUN.run_filecheck(fc, cc["trace"], RUN.render_trace(t, FACTS, target="gemmini"), "TRACE")
-        return ok
+    def ok(program):
+        trace = decode.decode_text(_mlir(program), target=TARGET)
+        return RUN.run_filecheck(fc, cc["trace"], RUN.render_trace(trace, FACTS, target=TARGET, checks=RC), "TRACE")[0]
 
-    good = _good_single_tile_trace()
-    assert trace_ok(good)  # no false reject
-
-    over = copy.deepcopy(good)
-    over["instructions"].append({"index": 50, "class": "MVOUT", "funct": 3, "decoded": {}})
-    assert not trace_ok(over)  # over-commit caught (MVOUT_COUNT 2 != 1)
-
-    illegal = copy.deepcopy(good)
-    illegal["instructions"].append({"index": 99, "class": "UNKNOWN", "funct": 99, "decoded": {}})
-    assert not trace_ok(illegal)  # illegal funct caught
-
-    nocompute = _trace([("MVIN", 2), ("MVOUT", 3)])
-    assert not trace_ok(nocompute)  # missing COMPUTE caught
+    program = _program()
+    assert ok(program)
+    assert not ok(MUTATIONS["illegal_funct"][0](program))
+    assert ok(program[:-1] + [program[-2], program[-1]])  # more stores than one schedule emits is not illegal
 
 
-def test_filecheck_exact_count_not_substring():
-    """Regression: MVOUT_COUNT 1 must NOT substring-match MVOUT_COUNT 16 (needs the {{$}} anchor)."""
-    fc = RUN.find_filecheck()
-    if fc is None:
-        pytest.skip("FileCheck not found")
-    cc = CC.compile_checks(FACTS, _matmul_capsule(16, 16, 16), "gemmini")  # expects MVOUT_COUNT 1
-    # 16 MVOUTs -> rendered "MVOUT_COUNT 16"; must fail the "MVOUT_COUNT 1" check
-    t = _trace([("PRELOAD", 6), ("COMPUTE_PRELOADED", 4)] + [("MVOUT", 3)] * 16)
-    ok, _ = RUN.run_filecheck(fc, cc["trace"], RUN.render_trace(t, FACTS, target="gemmini"), "TRACE")
-    assert not ok
+# ============================================================================ selected capability
+def test_generic_semantics_expose_the_rule_engine_as_rtl_checks():
+    for name in ("isa_constants", "decode_instruction", "instruction_funct"):
+        assert callable(getattr(S, name))
+    assert S.rtl_checks is RC
+    for name in ("load_default_facts", "project_facts", "screen", "compile_trace_checks", "render_trace"):
+        assert callable(getattr(S.rtl_checks, name))
+
+
+@pytest.mark.skipif(SELECTED is None, reason="no explicit Gemmini support selection")
+def test_selected_gemmini_support_resolves_the_generic_rule_engine():
+    assert SELECTED is RC

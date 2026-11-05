@@ -35,4 +35,3 @@ merlin/python/merlin/targetgen/capsule_grade.py  # cyclotron
 merlin/python/merlin/targetgen/families.py  # opu
 merlin/python/merlin/targetgen/rtl/facts.py  # opu
 merlin/python/merlin/targetgen/rtl/mlc_bridge.py  # opu
-merlin/python/merlin/targetgen/rtl/spatial_introspect.py  # opu

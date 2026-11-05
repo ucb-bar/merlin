@@ -1,0 +1,262 @@
+{
+  "schema": "merlin.public_pair_admission_candidate.v1",
+  "rows": [
+    {
+      "name": "0-submit",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/0-submit.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/0-submit.scope.json",
+        "--timing-input-sha256=c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/program.elf"
+      ],
+      "report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/0-submit.report.json",
+        "sha256": "81ad4094b497d672dd270efd2738ee8d2a70163fe9457e565c7f1d43ce6f3c2a"
+      },
+      "baseline_report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/0-submit.report.json",
+        "sha256": "17da5a50dc9a7d87d65a5df94d0467bf7239cbdbb24393afa9057a2218958519"
+      },
+      "baseline_cycles": 88,
+      "candidate_cycles": 88,
+      "physical_cycles": 83,
+      "relative_error": 0.06024096385542177,
+      "functional_stdout_identical": true
+    },
+    {
+      "name": "0-drain",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/0-drain.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/0-drain.scope.json",
+        "--timing-input-sha256=c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/program.elf"
+      ],
+      "report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/0-drain.report.json",
+        "sha256": "5ecf374dedf78949a513f1f5c155c110705621ea4ff0332da7e9004f2bbe796e"
+      },
+      "baseline_report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/0-drain.report.json",
+        "sha256": "f6ea8bbbbb1ac7a5cba2e1ab00735cbb7289e65b92e079ce1ca6512f44dc9a71"
+      },
+      "baseline_cycles": 146,
+      "candidate_cycles": 129,
+      "physical_cycles": 130,
+      "relative_error": -0.007692307692307665,
+      "functional_stdout_identical": true
+    },
+    {
+      "name": "0-readout",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/0-readout.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/0-readout.scope.json",
+        "--timing-input-sha256=c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/program.elf"
+      ],
+      "report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/0-readout.report.json",
+        "sha256": "77939973bc1f5ae0204492dc69667860f7b7af4a9fa6da95ab5e00d871830979"
+      },
+      "baseline_report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/0-readout.report.json",
+        "sha256": "e3ba44f5436b907ffb818b368d52dd9e34bf38d025f3f7c68105e2ed8b2d8b22"
+      },
+      "baseline_cycles": 1473,
+      "candidate_cycles": 1473,
+      "physical_cycles": 1521,
+      "relative_error": -0.0315581854043393,
+      "functional_stdout_identical": true
+    },
+    {
+      "name": "1-submit",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/1-submit.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/1-submit.scope.json",
+        "--timing-input-sha256=c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/program.elf"
+      ],
+      "report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/1-submit.report.json",
+        "sha256": "da7d40fd86f25796d3c31215355b272cc200b660b243f0c500dd11cd9281a5e7"
+      },
+      "baseline_report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/1-submit.report.json",
+        "sha256": "01eb16868dc9cb43b13d5971a4b4e022e7f79da06ea38c2ed2c98e44c7d8c8f4"
+      },
+      "baseline_cycles": 663,
+      "candidate_cycles": 663,
+      "physical_cycles": 683,
+      "relative_error": -0.029282576866764276,
+      "functional_stdout_identical": true
+    },
+    {
+      "name": "1-drain",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/1-drain.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/1-drain.scope.json",
+        "--timing-input-sha256=c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/program.elf"
+      ],
+      "report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/1-drain.report.json",
+        "sha256": "2faece67c868cdc35c0554aae37c0c3691eada8bdd1503daec46cf972fe3e0b1"
+      },
+      "baseline_report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/1-drain.report.json",
+        "sha256": "a46e5f2b5319c22e78035f3abcbfbcc9f78dd77f70c4802188b722df6269b184"
+      },
+      "baseline_cycles": 4,
+      "candidate_cycles": 4,
+      "physical_cycles": 3,
+      "relative_error": 0.33333333333333326,
+      "functional_stdout_identical": true
+    },
+    {
+      "name": "1-readout",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/1-readout.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/1-readout.scope.json",
+        "--timing-input-sha256=c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/program.elf"
+      ],
+      "report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/1-readout.report.json",
+        "sha256": "447ac2d02a8b62d848b6d240880879b5c9671c21c690edeb44ac5e2d271a2e8a"
+      },
+      "baseline_report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/1-readout.report.json",
+        "sha256": "cf9e6da9a147eb5298d9ce8e48f21c267e983571723c123e07fab69d5826f140"
+      },
+      "baseline_cycles": 1473,
+      "candidate_cycles": 1473,
+      "physical_cycles": 1603,
+      "relative_error": -0.08109794135995008,
+      "functional_stdout_identical": true
+    },
+    {
+      "name": "unfenced",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/unfenced.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-pipeline-probe-v4/unfenced/scope-v11.json",
+        "--timing-input-sha256=777b46abb0d568e476d74b04eef32b5c2224e0a0acf26e1829a58d20d5bc8952",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-pipeline-probe-v4/unfenced/program.elf"
+      ],
+      "report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/unfenced.report.json",
+        "sha256": "691af22e0be8931c62f652b101449f8c2f874c300e2b0e6abd910f7be6a2e389"
+      },
+      "baseline_report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/unfenced.report.json",
+        "sha256": "0bfc3ef01dc659cdb3407449413402d4616375ed3529515b6e131483709ebd7a"
+      },
+      "baseline_cycles": 1717,
+      "candidate_cycles": 1700,
+      "physical_cycles": 1740,
+      "relative_error": -0.02298850574712641,
+      "functional_stdout_identical": true
+    },
+    {
+      "name": "fenced",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/fenced.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-pipeline-probe-v5/fenced/scope-v11.json",
+        "--timing-input-sha256=7ef1547d70f47fdd54e5a319d8f8859557c75ed135f81586482ef51a5409c6e0",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-pipeline-probe-v5/fenced/program.elf"
+      ],
+      "report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/fenced.report.json",
+        "sha256": "29c744d92720ab27781582dac4bbb293eb0bc32fb5657744085af9675b268270"
+      },
+      "baseline_report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/fenced.report.json",
+        "sha256": "a6b4819da9d43a939c88adaf5a5223eecab13c27566af7d8234b221b3a620afe"
+      },
+      "baseline_cycles": 2153,
+      "candidate_cycles": 2153,
+      "physical_cycles": 2245,
+      "relative_error": -0.04097995545657018,
+      "functional_stdout_identical": true
+    }
+  ],
+  "provider": {
+    "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-pair-admission-candidate-20261023/libtiming_provider.so",
+    "sha256": "524f9ec01affbb2a1ebf93fe3edc4f06fc906a7127a2b48c889a5d10a41ee498"
+  },
+  "calibration_eligible": false,
+  "qualification_issued": false,
+  "runtime_activated": false,
+  "gsim_runs_added": 0,
+  "private_labels_used": false
+}

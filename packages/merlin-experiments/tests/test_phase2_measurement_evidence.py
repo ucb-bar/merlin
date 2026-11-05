@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -33,6 +34,8 @@ from merlin.common.paths import merlin_dir, python_import_roots
 
 @pytest.fixture
 def produced(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import compiler_profile_runtime as RUNTIME
+
     scripts = merlin_dir() / "experiments/gemmini_perf_bench/scripts"
     monkeypatch.syspath_prepend(str(scripts))
     pair = importlib.import_module("merlin_experiments.phase2.paired_cli")
@@ -121,6 +124,7 @@ def produced(tmp_path, monkeypatch):
     functional = SimpleNamespace(
         run_id="functional",
         digest=baseline_sha,
+        run_dir=tmp_path / "synthetic-functional-run",
         frozen_at=None,
         public_score={"per_capsule": [{"capsule": "public", "tiers": {"L3": "pass"}}]},
         hidden_score={"per_capsule": [{"capsule": "hidden", "tiers": {"L3": "pass"}}]},
@@ -175,6 +179,10 @@ def produced(tmp_path, monkeypatch):
         }
 
     monkeypatch.setattr(PME, "execute_schedule", lambda *a, **kw: execute(*a, **kw, executor=engine))
+    # This fixture substitutes the admitted handoff and engine. It has no original
+    # frozen compiler service to import; production still requires that owner.
+    monkeypatch.setattr(RUNTIME, "functional_service", lambda path: path)
+    monkeypatch.setattr(RUNTIME, "original_compiler_imports", lambda service: nullcontext())
     trials = [f"trial_{index:02d}" for index in range(3)]
     handoffs, receipts, verified_children = {}, [], []
     for index, trial in enumerate(trials):

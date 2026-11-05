@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 
-from .objdump import RawInsn, tokenize
+from merlin.compile.analysis.disassembly import RawInsn, tokenize
 
 
 @dataclass(frozen=True)
@@ -364,6 +364,6 @@ def decode(obj_path, triple: str = "riscv64", mattr: str | None = None) -> InsnS
 def decode_text(text: str) -> InsnStream:
     """Already-disassembled objdump text -> InsnStream (no toolchain needed). Lets a CCA be lifted
     from a saved objdump.txt (e.g. a beam fork's generated/objdump.txt) via cca.lift_asm(decode_text(...))."""
-    from .objdump import tokenize_text
+    from merlin.compile.analysis.disassembly import tokenize_text
 
     return _stream_from_raws(tokenize_text(text))

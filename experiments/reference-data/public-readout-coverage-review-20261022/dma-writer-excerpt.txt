@@ -1,0 +1,160 @@
+    val xactBusy = RegInit(0.U(nXacts.W))
+    val xactOnehot = PriorityEncoderOH(~xactBusy)
+    val xactId = OHToUInt(xactOnehot)
+
+    val xactBusy_fire = WireInit(false.B)
+    val xactBusy_add = Mux(xactBusy_fire, (1.U << xactId).asUInt, 0.U)
+    val xactBusy_remove = ~Mux(tl.d.fire, (1.U << tl.d.bits.source).asUInt, 0.U)
+    xactBusy := (xactBusy | xactBusy_add) & xactBusy_remove.asUInt
+
+    val state_machine_ready_for_req = WireInit(state === s_idle)
+    io.req.ready := state_machine_ready_for_req
+    io.busy := xactBusy.orR || (state =/= s_idle)
+
+    val vaddr = req.vaddr
+
+    // Select the size and mask of the TileLink request
+    class Packet extends Bundle {
+      val size = UInt(log2Ceil(maxBytes+1).W)
+      val lg_size = UInt(log2Ceil(log2Ceil(maxBytes+1)+1).W)
+      val mask = Vec(maxBeatsPerReq, Vec(beatBytes, Bool()))
+      val vaddr = UInt(vaddrBits.W)
+      val is_full = Bool()
+
+      val bytes_written = UInt(log2Up(maxBytes+1).W)
+      val bytes_written_per_beat = Vec(maxBeatsPerReq, UInt(log2Up(beatBytes+1).W))
+
+      def total_beats(dummy: Int = 0) = Mux(size < beatBytes.U, 1.U, size / beatBytes.U(size.getWidth.W)) // The width expansion is added here solely to satsify Verilator's linter
+    }
+
+    val smallest_write_size = aligned_to max beatBytes
+    val write_sizes = (smallest_write_size to maxBytes by aligned_to).
+      filter(s => isPow2(s)).
+      filter(s => s % beatBytes == 0) /*.
+      filter(s => s <= dataBytes*2 || s == smallest_write_size)*/
+    val write_packets = write_sizes.map { s =>
+      val lg_s = log2Ceil(s)
+      val vaddr_aligned_to_size = if (s == 1) vaddr else Cat(vaddr(vaddrBits-1, lg_s), 0.U(lg_s.W))
+      val vaddr_offset = if (s > 1) vaddr(lg_s - 1, 0) else 0.U
+
+      val mask = (0 until maxBytes).map { i => i.U >= vaddr_offset && i.U < vaddr_offset +& bytesLeft && (i < s).B }
+
+      val bytes_written = {
+        Mux(vaddr_offset +& bytesLeft > s.U, s.U - vaddr_offset, bytesLeft)
+      }
+
+      val packet = Wire(new Packet())
+      packet.size := s.U
+      packet.lg_size := lg_s.U
+      packet.mask := VecInit(mask.grouped(beatBytes).map(v => VecInit(v)).toSeq)
+      packet.vaddr := vaddr_aligned_to_size
+      packet.is_full := mask.take(s).reduce(_ && _)
+
+      packet.bytes_written := bytes_written
+      packet.bytes_written_per_beat.zipWithIndex.foreach { case (b, i) =>
+        val start_of_beat = i * beatBytes
+        val end_of_beat = (i+1) * beatBytes
+
+        val left_shift = Mux(vaddr_offset >= start_of_beat.U && vaddr_offset < end_of_beat.U,
+          vaddr_offset - start_of_beat.U,
+          0.U)
+
+        val right_shift = Mux(vaddr_offset +& bytesLeft >= start_of_beat.U && vaddr_offset +& bytesLeft < end_of_beat.U,
+          end_of_beat.U - (vaddr_offset +& bytesLeft),
+          0.U)
+
+        val too_early = vaddr_offset >= end_of_beat.U
+        val too_late = vaddr_offset +& bytesLeft <= start_of_beat.U
+
+        b := Mux(too_early || too_late, 0.U, beatBytes.U - (left_shift +& right_shift))
+      }
+
+      packet
+    }
+    val best_write_packet = write_packets.reduce { (acc, p) =>
+      Mux(p.bytes_written > acc.bytes_written, p, acc)
+    }
+    val write_packet = RegEnableThru(best_write_packet, state === s_writing_new_block)
+
+    val write_size = write_packet.size
+    val lg_write_size = write_packet.lg_size
+    val write_beats = write_packet.total_beats()
+    val write_vaddr = write_packet.vaddr
+    val write_full = write_packet.is_full
+
+    val beatsLeft = Reg(UInt(log2Up(maxBytes/aligned_to).W))
+    val beatsSent = Mux(state === s_writing_new_block, 0.U, write_beats - beatsLeft)
+
+    val write_mask = write_packet.mask(beatsSent)
+    val write_shift = PriorityEncoder(write_mask)
+
+    val bytes_written_this_beat = write_packet.bytes_written_per_beat(beatsSent)
+
+    // Firing off TileLink write requests
+    val putFull = edge.Put(
+      fromSource = RegEnableThru(xactId, state === s_writing_new_block),
+      toAddress = 0.U,
+      lgSize = lg_write_size,
+      data = (data >> (bytesSent * 8.U)).asUInt
+    )._2
+
+    val putPartial = edge.Put(
+      fromSource = RegEnableThru(xactId, state === s_writing_new_block),
+      toAddress = 0.U,
+      lgSize = lg_write_size,
+      data = ((data >> (bytesSent * 8.U)) << (write_shift * 8.U)).asUInt,
+      mask = write_mask.asUInt
+    )._2
+
+    class TLBundleAWithInfo extends Bundle {
+      val tl_a = tl.a.bits.cloneType
+      val vaddr = Output(UInt(vaddrBits.W))
+      val status = Output(new MStatus)
+      val passthrough = Output(Bool())
+    }
+
+    val untranslated_a = Wire(Decoupled(new TLBundleAWithInfo))
+    xactBusy_fire := untranslated_a.fire && state === s_writing_new_block
+    untranslated_a.valid := (state === s_writing_new_block || state === s_writing_beats) && !xactBusy.andR
+    untranslated_a.bits.tl_a := Mux(write_full, putFull, putPartial)
+    untranslated_a.bits.vaddr := write_vaddr
+    untranslated_a.bits.status := req.status
+    untranslated_a.bits.passthrough := req.physical
+
+    // 0 goes to retries, 1 goes to state machine
+    val retry_a = Wire(Decoupled(new TLBundleAWithInfo))
+    val shadow_retry_a = Module(new Queue(new TLBundleAWithInfo, 1))
+    shadow_retry_a.io.enq.valid := false.B
+    shadow_retry_a.io.enq.bits := DontCare
+    val tlb_arb = Module(new Arbiter(new TLBundleAWithInfo, 3))
+    tlb_arb.io.in(0) <> retry_a
+    tlb_arb.io.in(1) <> shadow_retry_a.io.deq
+    tlb_arb.io.in(2) <> untranslated_a
+
+    val tlb_q = Module(new Queue(new TLBundleAWithInfo, 1, pipe=true))
+    tlb_q.io.enq <> tlb_arb.io.out
+
+    io.tlb.req.valid := tlb_q.io.deq.fire
+    io.tlb.req.bits := DontCare
+    io.tlb.req.bits.tlb_req.vaddr := tlb_q.io.deq.bits.vaddr
+    io.tlb.req.bits.tlb_req.passthrough := tlb_q.io.deq.bits.passthrough
+    io.tlb.req.bits.tlb_req.size := 0.U // send_size
+    io.tlb.req.bits.tlb_req.cmd := M_XWR
+    io.tlb.req.bits.status := tlb_q.io.deq.bits.status
+
+    val translate_q = Module(new Queue(new TLBundleAWithInfo, 1, pipe=true))
+    translate_q.io.enq <> tlb_q.io.deq
+    when (retry_a.valid) {
+      translate_q.io.enq.valid := false.B
+      shadow_retry_a.io.enq.valid := tlb_q.io.deq.valid
+      shadow_retry_a.io.enq.bits  := tlb_q.io.deq.bits
+    }
+    translate_q.io.deq.ready := tl.a.ready || io.tlb.resp.miss
+
+    retry_a.valid := translate_q.io.deq.valid && io.tlb.resp.miss
+    retry_a.bits := translate_q.io.deq.bits
+    assert(!(retry_a.valid && !retry_a.ready))
+
+    tl.a.valid := translate_q.io.deq.valid && !io.tlb.resp.miss
+    tl.a.bits := translate_q.io.deq.bits.tl_a
+    tl.a.bits.address := RegEnableThru(io.tlb.resp.paddr, RegNext(io.tlb.req.fire))

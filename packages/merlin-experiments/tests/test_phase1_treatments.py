@@ -236,3 +236,40 @@ def test_rtl_checks_remain_advisory_in_real_wrapper(tmp_path, monkeypatch, all_p
     assert {key: result[key] for key in base} == base
     assert result["rtl_checks"] == [{"verdict": "fail", "findings": [{"id": "fixture"}]}]
     assert "ADVISORY" in result["rtl_checks_note"]
+
+
+@pytest.mark.parametrize("deferral", ["absent", "default", True, False])
+def test_rtl_treatment_preserves_grading_deferral_and_progress(tmp_path, monkeypatch, deferral):
+    from merlin_experiments.phase1.feedback import rtlchecks
+
+    context = SimpleNamespace(target="fixture")
+    calls = []
+
+    def base_grade(*args, **kwargs):
+        calls.append(kwargs)
+        return {"all_pass": False, "n_capsules": 1, "n_passed": 0}
+
+    monkeypatch.setattr(rtlchecks._base, "run", base_grade)
+    monkeypatch.setattr(rtlchecks, "feedback", lambda *args, **kwargs: [])
+
+    def probe():
+        return "superseded"
+
+    completed = []
+    callback = completed.append
+    options = {"on_capsule_complete": callback, "max_workers": 2}
+    if deferral != "absent":
+        options["defer_pending"] = probe
+        if deferral != "default":
+            options["defer_running"] = deferral
+    runner = rtlchecks.treatment(context).qa_runner
+    result = runner("submission", "public", tmp_path, {"public"}, True, 1, **options)
+    assert result["all_pass"] is False and result["n_passed"] == 0
+    forwarded = calls[0]
+    assert forwarded["context"] is context
+    assert forwarded["on_capsule_complete"] is callback and forwarded["max_workers"] == 2
+    if deferral == "absent":
+        assert "defer_pending" not in forwarded and "defer_running" not in forwarded
+    else:
+        assert forwarded["defer_pending"] is probe
+        assert forwarded["defer_running"] is (True if deferral == "default" else deferral)

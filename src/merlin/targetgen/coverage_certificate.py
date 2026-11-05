@@ -32,7 +32,6 @@ import json
 from dataclasses import replace
 
 from merlin.targetgen import eligibility as _el
-from merlin.targetgen import semantic_families as _sf
 
 
 def _decision_map(plan: dict) -> dict[int, str]:
@@ -78,17 +77,15 @@ def _typed_source_witnesses(linalg_mlir: str | None, results: list) -> list[dict
 
         from merlin.common import mlir_query as mq
         from merlin.common.ir_lock import IR_LOCK
+        from merlin.targetgen.source_demand_inventory import indexed_demand_operations
 
         with IR_LOCK:
             module = mq.parse(linalg_mlir)
             funcs = [op for op in module.body.block.ops if mq.op_name(op) == "func.func"]
             if len(funcs) != 1 or len(funcs[0].body.blocks) != 1:
                 return absent
-            ops = [
-                op
-                for op in funcs[0].body.blocks[0].ops
-                if mq.op_name(op) not in ("func.return", "linalg.fill")
-            ]
+            all_ops = [op for op in funcs[0].body.blocks[0].ops if mq.op_name(op) != "func.return"]
+            ops = [op for _, op in indexed_demand_operations(all_ops)]
             if len(ops) != len(results):
                 return absent
 
@@ -181,7 +178,8 @@ def denominator_completeness(linalg_mlir: str | None, *, demands: list | None = 
         try:
             fmt = demands[0].in_fmt if demands else "unknown"
             checked = model_op_demands_checked(linalg_mlir, fmt)
-            identity = lambda d: (d.op, d.batch, d.m, d.k, d.n, d.captured_input_formats)
+            def identity(d):
+                return d.op, d.batch, d.m, d.k, d.n, d.captured_input_formats
             inventory_verified = Counter(identity(d) for d in checked if d.family == "contraction") == Counter(
                 identity(d) for d in demands if d.family == "contraction"
             )
@@ -476,7 +474,8 @@ def source_region_execution(regions: list[dict], execution: dict | None) -> dict
         "outlined_dispatches_sha256": content_hash(manifest) if isinstance(manifest, list) else None,
         "dispatch_ledger_sha256": content_hash(ledger),
         "evidence": "source_operation_inventory_to_runtime_outline_to_completed_dispatch_ledger",
-        "scope": "static operation accounting and lane execution only; no arithmetic or transformation equivalence proof",
+        "scope": ("static operation accounting and lane execution only; "
+                  "no arithmetic or transformation equivalence proof"),
     }
 
 
@@ -518,9 +517,15 @@ def build(
         observed = d.captured_input_formats
         captured_input = observed[0] if observed else d.elem_fmt
         captured_weight = observed[1] if observed is not None and len(observed) > 1 else None
+        # A region tag can name an enclosing convolution while this carrier is
+        # a nonreducing gather. A deliberately absent operation family must
+        # not be recovered from that discarded enclosing-region name.
+        semantic_op = d.carrier_op if d.family is None and d.carrier_op is not None else d.op
+        result_elements = source_witness["result_element_types"] if source_witness is not None else []
+        captured_output = result_elements[0] if result_elements and len(set(result_elements)) == 1 else None
         desc = _el.RegionDescriptor(
             source=d.site or d.op,
-            op=d.op,
+            op=semantic_op,
             family=d.family,
             in_dtype=d.admission_input_fmt,
             weight_dtype=d.admission_weight_fmt,
@@ -530,6 +535,7 @@ def build(
             rank=d.rank,
             batch=d.batch or 1,
             form=d.form,
+            out_dtype=captured_output,
         )
         verdict = (
             _el.is_eligible(desc, cap_map)
@@ -542,7 +548,7 @@ def build(
                 refusal="input_dtype",
             )
         )
-        family = verdict.family or _sf.from_op(d.op)
+        family = verdict.family
         decision = dec.get(id(r), "cpu_fallback")
         accelerated = decision == "accelerator"
         flops = _flops(d, family)
@@ -612,6 +618,7 @@ def build(
             "requested_input_format": d.in_fmt,
             "captured_input_format": captured_input,
             "captured_weight_format": captured_weight,
+            "captured_result_format": captured_output,
             "eligibility_input_format": d.admission_input_fmt,
             "eligibility_weight_format": d.admission_weight_fmt,
             "requested_format_mismatch": bool(
@@ -625,6 +632,7 @@ def build(
             "precision_transform_required": precision_transform_required,
             "target_eligible": verdict.eligible,
             "eligibility_reason": verdict.reason,
+            "eligibility_undetermined": verdict.undetermined,
             "decision": decision,
             "unit": r.unit,
             "gap": r.gap,
@@ -704,7 +712,8 @@ def build(
                 if any(r["precision_transform_required"] is None for r in regions)
                 else "not_required"
             ),
-            "scope": "capture operand format versus effective routing format; no conversion proof is supplied by placement",
+            "scope": ("capture operand format versus effective routing format; "
+                      "no conversion proof is supplied by placement"),
         },
         "n_regions": len(regions),
         "n_eligible": n_eligible,

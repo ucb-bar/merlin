@@ -188,16 +188,17 @@ def test_a_record_predating_the_containment_fields_is_read_but_never_sealed() ->
 
 
 # ------------------------------------------------------------------ an inert deny rule is reported
-def test_a_required_path_that_resolves_to_nothing_is_reported() -> None:
-    """MUTATION: a nonexistent declared backend is named as a dropped rule."""
+def test_an_absent_prior_backend_keeps_explicit_namespace_deny_coverage() -> None:
+    """An absent name has an inventory row, while its namespace stays denied."""
     te = _gemmini_experiment()
     missing = "a_package_nobody_minted_for_this_test"
     changed = replace(te, prior_backends=(*te.prior_backends, missing))
     new_drops = [d for d in AS.dropped_declarations(changed) if d.declared == missing]
-    assert len(new_drops) == 1
-    assert new_drops[0].origin == "prior_backend"
-    assert new_drops[0].reason == AS.DROP_PATH_ABSENT
-    assert new_drops[0].as_record()["reason"] == AS.DROP_PATH_ABSENT
+    assert new_drops == []
+    coverage = [row for row in AS.absent_declaration_coverage(changed) if row["declared"] == missing]
+    assert len(coverage) == 1
+    assert coverage[0]["status"] == "absent_with_retained_namespace_deny"
+    assert any(str(s.path) == coverage[0]["namespace"] for s in AS.answer_surfaces(changed))
 
 
 def test_the_coverage_guard_alone_cannot_see_a_dropped_rule(
@@ -504,3 +505,48 @@ def test_the_operator_entry_point_answers_with_its_exit_status(
 
     monkeypatch.setattr(PF, "probe_sandbox", lambda *_a, **_k: _OK_PROBE)
     assert PF._main() == 0
+
+
+def _timeouts_then(monkeypatch: pytest.MonkeyPatch, timeouts: int, returncode: int = 0) -> list:
+    import subprocess
+
+    calls, waits = [], []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if len(calls) <= timeouts:
+            raise subprocess.TimeoutExpired(argv, kwargs.get("timeout"))
+        return subprocess.CompletedProcess(argv, returncode, "", "" if returncode == 0 else "denied")
+
+    monkeypatch.setattr(PF.subprocess, "run", run)
+    monkeypatch.setattr(PF.time, "sleep", waits.append)
+    return calls, waits
+
+
+def test_a_probe_that_times_out_once_asks_again_before_refusing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    binary = tmp_path / "bwrap"
+    binary.write_text("")
+    calls, waits = _timeouts_then(monkeypatch, timeouts=1)
+    probe = PF.probe_sandbox(binary, use_cache=False)
+    assert probe.status == PF.SANDBOX_OK and len(calls) == 2
+    assert waits == [PF.PROBE_TIMEOUT_RETRY_WAITS_S[0]]
+
+
+def test_a_probe_that_keeps_timing_out_stays_unknown_after_bounded_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    binary = tmp_path / "bwrap"
+    binary.write_text("")
+    calls, waits = _timeouts_then(monkeypatch, timeouts=99)
+    probe = PF.probe_sandbox(binary, use_cache=False)
+    assert (probe.status, probe.reason) == (PF.SANDBOX_UNKNOWN, "probe_timed_out")
+    assert len(calls) == len(PF.PROBE_TIMEOUT_RETRY_WAITS_S) + 1
+    assert waits == list(PF.PROBE_TIMEOUT_RETRY_WAITS_S)
+
+
+def test_a_refusing_probe_is_not_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    binary = tmp_path / "bwrap"
+    binary.write_text("")
+    calls, waits = _timeouts_then(monkeypatch, timeouts=0, returncode=1)
+    probe = PF.probe_sandbox(binary, use_cache=False)
+    assert probe.status == PF.SANDBOX_INOPERABLE and len(calls) == 1 and not waits

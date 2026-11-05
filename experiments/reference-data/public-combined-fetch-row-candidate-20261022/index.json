@@ -1,0 +1,96 @@
+{
+  "schema": "operator.combined_fetch_row_candidate.v1",
+  "status": "inactive_conditional_provisional",
+  "model": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/model.json",
+    "sha256": "01971a26e8b367fe22361a294785be31969ec3473735025608d22399b0ac96b6"
+  },
+  "runtime": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/runtime-selection-v2.json",
+    "sha256": "318f9a631735b6e31481de4d406a32d3af3df6a667af6a658479a4a49560ddb9"
+  },
+  "frozen_runtime_sha256": "7099fdf2e0d0469cfdc798ed2ee51f1afcf743ecbc8853116be28ff91708d476",
+  "actual_native_freeze_pass": true,
+  "replay_runtime_equivalence": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/runtime-selection-v2-equivalence.json",
+    "sha256": "1c65d721399728c994111c7cffb8b5e58ef2d7f680e9b968b4a523e5009ba332"
+  },
+  "frontend_replays": [
+    {
+      "occurrence": 0,
+      "layout": 0,
+      "state": 0,
+      "rep": 0,
+      "estimated_cycles": 173,
+      "timing_complete": true,
+      "unresolved": [],
+      "all18_call_numerics": true,
+      "fetch_refills_applied": 0
+    },
+    {
+      "occurrence": 1,
+      "layout": 0,
+      "state": 1,
+      "rep": 0,
+      "estimated_cycles": 122,
+      "timing_complete": true,
+      "unresolved": [],
+      "all18_call_numerics": true,
+      "fetch_refills_applied": 0
+    },
+    {
+      "occurrence": 2,
+      "layout": 0,
+      "state": 0,
+      "rep": 1,
+      "estimated_cycles": 161,
+      "timing_complete": true,
+      "unresolved": [],
+      "all18_call_numerics": true,
+      "fetch_refills_applied": 3
+    }
+  ],
+  "native_contraction": {
+    "capsule": "SY_contraction_i8_aligned",
+    "estimated_cycles": 657,
+    "physical_cycles": 564,
+    "timing_complete": true,
+    "unresolved": [],
+    "output_bytes": 1024,
+    "all_declared_outputs_exact": true,
+    "fetch_refills_applied": 0
+  },
+  "interaction_coverage": "Both mechanisms enabled in same observer/provider, exact shared ABI headers; each exercised in different measured windows. Simultaneous fetch-refill/device-response contention is NOT validated.",
+  "price_changes": false,
+  "new_physical_runs": 0,
+  "selected_live": false,
+  "qualification": false,
+  "denial_status": "Inherited denial remains an explicit activation obligation; this artifact does not edit, replace or waive active qualification policy. A changed model digest alone cannot clear it.",
+  "remaining_qualification_blockers": [
+    {
+      "gap": "Independent evidence",
+      "detail": "Frontend6/1response and native movement/matmul/conv cases informed these candidates; replay is development evidence, not a new holdout."
+    },
+    {
+      "gap": "Frontend initial state and replay",
+      "detail": "Modeled first-use L2 misses persist; actual speculative fetch, FQ/replay and response backpressure are not reconstructed. Queue first-use/paired-throughput criteria remain failed."
+    },
+    {
+      "gap": "Reader admission",
+      "detail": "TLB hits, A-ready with transaction credit, FIFO responses and bounded identity scaling assumed. Arbitrary interconnect/MSHR pressure is outside proof."
+    },
+    {
+      "gap": "Simultaneous shared response contention",
+      "detail": "No selected retained window here has both applied fetch refills and row response arrivals; no additive error guarantee."
+    },
+    {
+      "gap": "Other target operations",
+      "detail": "Eligible aligned identity scratchpad loads only; other shapes/types retain explicitly legacy estimator scope; no broad accuracy claim."
+    }
+  ],
+  "smallest_next_existing_evidence_use": [
+    "Use newly passing public native source-bound pairs not previously consumed in these development trials, with full declared output equality and exact ELF/counter boundary; choose aligned row-load reuse and a distinct request-depth regime.",
+    "Prespecify scoped error and pair-order conditions against current fixed candidate before reading independent labels; retain unknown unsupported scopes and existing denial.",
+    "For frontend residual, retained112response trace already bounds first/lastD; replay/FQ/retire causality remains unknown. Do not fit16cycle residual or ask another uninstrumented total-cycle run."
+  ]
+}

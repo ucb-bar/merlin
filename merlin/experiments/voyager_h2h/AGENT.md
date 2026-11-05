@@ -19,7 +19,7 @@ DAC 2026 / arXiv 2509.15205). It answers two questions separately and never mixe
 ## Hard rules
 
 - **Public sources only.** Voyager evidence comes from the pinned public repositories, the paper, and
-  our own runs. Never read or reuse anything under `/scratch/jack`; tell every sub-agent so. One
+  our own runs. Never read or reuse anything in external private workspaces; tell every sub-agent so. One
   exception, approved by the user (2026-09-14): FireSim runs use the existing submit tool as-is
   (`run_firesim.sh` + `prepare_queue_view.sh`, driven by `scripts/firesim_h2h.py`), whose per-job
   queue view takes the host driver, FireSim manager and workload template from that tree. Touch it

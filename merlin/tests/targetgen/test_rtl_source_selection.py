@@ -8,6 +8,8 @@ from contextlib import nullcontext
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
+import pytest
+
 from merlin.targetgen.rtl import circt_introspect, source_selection
 from merlin.targetgen.rtl.extract_module import extract
 from merlin.targetgen.rtl.introspect import census_facts
@@ -146,6 +148,100 @@ def test_selected_generic_hw_is_generated_with_facts_not_into_source_bundle(tmp_
     monkeypatch.setattr(circt_introspect, "_build_facts", inspect_selected)
     monkeypatch.setattr("merlin.targetgen.rtl.facts.write_facts_guarded", lambda out, record: None)
     circt_introspect.dump_facts(facts, target="demo", source_bundle=bundle)
+
+
+_CHIPYARD_STYLE = """FIRRTL version 3.3.0
+circuit TestHarness :%[[]]
+  module Tile : @[generators/accel/src/main/scala/accel/Tile.scala 1:1]
+    input a : UInt<8>
+  module Mesh : @[generators/accel/src/main/scala/accel/Mesh.scala 1:1]
+    inst t0 of Tile
+    inst t1 of Tile
+  module Spad : @[generators/accel/src/main/scala/accel/Spad.scala 1:1]
+    smem mem : UInt<8>[4] [16] @[generators/accel/src/main/scala/accel/Spad.scala 3:1]
+  module Accel : @[generators/accel/src/main/scala/accel/Controller.scala 9:7]
+    inst mesh of Mesh
+    inst spad of Spad
+  module Queue2_Cmd : @[src/main/scala/chisel3/util/Decoupled.scala 243:7]
+  module RocketTile : @[generators/rocket-chip/src/main/scala/tile/RocketTile.scala 1:1]
+    inst accel of Accel
+    inst q of Queue2_Cmd
+  module DigitalTop : @[generators/chipyard/src/main/scala/DigitalTop.scala 1:1]
+    inst tile of RocketTile
+  module ChipTop : @[generators/chipyard/src/main/scala/ChipTop.scala 1:1]
+    inst system of DigitalTop
+  module TestHarness : @[generators/chipyard/src/main/scala/harness/TestHarness.scala 1:1]
+    inst chiptop of ChipTop
+  module Split : @[generators/one/A.scala 1:1, generators/two/B.scala 2:2]
+  module Bare :
+"""
+
+
+def _chipyard_style(tmp_path):
+    fir, hierarchy = tmp_path / "soc.fir", tmp_path / "hierarchy.json"
+    fir.write_text(_CHIPYARD_STYLE)
+    hierarchy.write_text(json.dumps(derive_hierarchy(fir)))
+    return fir, hierarchy
+
+
+def test_chipyard_hierarchy_scopes_the_accelerator_unit(tmp_path):
+    fir, hierarchy = _chipyard_style(tmp_path)
+    scope = source_selection.generator_scope(fir, hierarchy, "Accel")
+    assert (scope["generator"], scope["unit_roots"], scope["unit_instances"]) == ("accel", ["Accel"], 1)
+    facts = census_facts(fir, hierarchy, generator=scope["generator"])
+    assert facts["census"]["unit_root"] == "Accel"
+    assert [row["name"] for row in facts["memories"]] == ["spad.mem"]
+    # The SoC's elaboration entry point names no source tree: it censuses nothing.
+    assert census_facts(fir, hierarchy, generator="chipyard.Generator")["census"]["unit_root"] is None
+
+
+def test_generator_scope_fails_closed_when_ambiguous(tmp_path):
+    fir, hierarchy = _chipyard_style(tmp_path)
+    with pytest.raises(ValueError, match="outermost dominant unit"):
+        # DigitalTop shares its tree with the harness above it: TestHarness would be the unit.
+        source_selection.generator_scope(fir, hierarchy, "DigitalTop")
+    with pytest.raises(ValueError, match="names 2 generator source trees"):
+        source_selection.generator_scope(fir, hierarchy, "Split")
+    with pytest.raises(ValueError, match="names 0 generator source trees"):
+        source_selection.generator_scope(fir, hierarchy, "Bare")
+    with pytest.raises(ValueError, match="exactly one FIRRTL module declaration"):
+        source_selection.generator_scope(fir, hierarchy, "Absent")
+
+
+def _fake_firtool(tmp_path):
+    firtool = tmp_path / "firtool"
+    firtool.write_text(
+        "#!/usr/bin/env python3\n"
+        "import pathlib, sys\n"
+        "pathlib.Path(sys.argv[-1]).write_text('module {\\n  hw.module @Accel() {\\n    hw.output\\n  }\\n}\\n')\n"
+    )
+    firtool.chmod(0o755)
+    return firtool
+
+
+def test_produced_selection_derives_and_checks_the_generator(tmp_path):
+    fir, _ = _chipyard_style(tmp_path)
+    firtool = _fake_firtool(tmp_path)
+    common = {"target": "accel", "firrtl": fir, "config": "AccelConfig", "core_root": "Accel", "firtool": firtool}
+    with pytest.raises(ValueError, match="does not scope core root"):
+        source_selection.produce_selection(generator="chipyard.Generator", output=tmp_path / "refused", **common)
+    assert not (tmp_path / "refused").exists()
+    path = source_selection.produce_selection(output=tmp_path / "derived", **common)
+    selection = load_selection(path, target="accel")
+    assert selection["generator"] == "accel"
+    assert selection["production"]["generator_scope"]["core_root_locator"].startswith("@[generators/accel/")
+    consistency = source_selection.production_consistency(selection)
+    assert consistency["status"] == "verified", consistency["errors"]
+    assert consistency["generator_scope"]["status"] == "verified"
+    assert source_selection.require_generator_scope(selection)["generator"] == "accel"
+    # A bundle that declares another scope is a recorded inconsistency, never a silent empty census.
+    selection["generator"] = "chipyard.Generator"
+    with pytest.raises(ValueError, match="is declared under generators/accel/"):
+        source_selection.require_generator_scope(selection)
+    consistency = source_selection.production_consistency(selection)
+    assert consistency["status"] == "unverified"
+    assert consistency["generator_scope"]["status"] == "mismatch"
+    assert any("does not scope core root" in error for error in consistency["errors"])
 
 
 def test_genericization_receipt_is_independent_of_launch_directory(tmp_path, monkeypatch):

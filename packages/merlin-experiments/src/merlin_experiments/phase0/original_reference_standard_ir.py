@@ -24,6 +24,8 @@ from .rtl_intake import RtlIntakePin
 
 SCHEMA = "merlin.original_reference_standard_ir.v1"
 POINTWISE_SCHEMA = "merlin.original_reference_standard_ir.v2"
+TRANSPOSE_SCHEMA = "merlin.original_reference_standard_ir.v3"
+BROADCAST_SCHEMA = "merlin.original_reference_standard_ir.v4"
 _SCOPE = (
     "complete original source/reference/standard-IR ABI observations only; no compiler, runtime or release authority"
 )
@@ -47,6 +49,10 @@ _ISSUED = weakref.WeakKeyDictionary()
 
 
 def schemas(references):
+    if references.record_without_verification()["schema"] == R.BROADCAST_SCHEMA:
+        return BROADCAST_SCHEMA, "merlin.original_standard_ir_request.v4", "merlin.native_original_standard_ir.v4"
+    if references.record_without_verification()["schema"] == R.TRANSPOSE_SCHEMA:
+        return TRANSPOSE_SCHEMA, "merlin.original_standard_ir_request.v3", "merlin.native_original_standard_ir.v3"
     if references.record_without_verification()["schema"] == R.POINTWISE_SCHEMA:
         return POINTWISE_SCHEMA, "merlin.original_standard_ir_request.v2", "merlin.native_original_standard_ir.v2"
     return SCHEMA, "merlin.original_standard_ir_request.v1", "merlin.native_original_standard_ir.v1"
@@ -142,7 +148,18 @@ def ordered_abi(source, metadata, budget):
     return result
 
 
-def _pin_sources(selection, capture):
+def _tool_pin(path, pin_replay=None):
+    path = R._plain(path)
+    if pin_replay is not None:
+        from merlin.common.selected_pin_replay import replayed_pin
+
+        selected = replayed_pin(pin_replay, path)
+        if selected is not None:
+            return selected
+    return R._pin(path)
+
+
+def _pin_sources(selection, capture, pin_replay=None):
     modules = [
         *_READERS,
         "merlin.targetgen.frontend_trace",
@@ -152,10 +169,16 @@ def _pin_sources(selection, capture):
         "merlin.xdsl_dialects._common",
         "merlin.xdsl_dialects.fp8",
     ]
+    selected = loads(Path(selection).read_bytes())
+    if selected["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
+        modules += [I.__name__, "merlin.common.selected_pin_replay"]
     paths = {module_source_path(name) for name in modules}
     paths.update(module_source_path("xdsl").parent.rglob("*.py"))
-    selected = loads(Path(selection).read_bytes())
-    return [R._pin(path) for path in sorted(paths)] + [R._pin(selection), R._pin(selected["mlir_opt"]), *capture]
+    return [R._pin(path) for path in sorted(paths)] + [
+        R._pin(selection),
+        _tool_pin(selected["mlir_opt"], pin_replay),
+        *capture,
+    ]
 
 
 def _native(references, selected, request, destination, source_pins, deadline):
@@ -297,7 +320,7 @@ def prepare(*, references, selection, destination):
     return owner
 
 
-def _evaluate(original, selected, owner, returncode, *, references, run_parse=True, deadline=None):
+def _evaluate(original, selected, owner, returncode, *, references, run_parse=True, deadline=None, pin_replay=None):
     from xdsl.utils.exceptions import ParseError, VerifyException
 
     if deadline is not None:
@@ -346,7 +369,7 @@ def _evaluate(original, selected, owner, returncode, *, references, run_parse=Tr
             _stock_verify(paths, selected, owner, deadline)
         from .original_standard_ir_products import parse_invocation
 
-        parse, parse_returncode = parse_invocation(owner, paths, selected)
+        parse, parse_returncode = parse_invocation(owner, paths, selected, pin_replay=pin_replay)
         if paths["verified"].is_file():
             if paths["verified"].stat().st_size > budget["max_source_bytes"]:
                 raise ValueError("stock parser output exceeds its explicit product byte budget")
@@ -386,7 +409,10 @@ def _contract(original, references):
         source,
         extent=original["extent"],
         policy=original_reference_plan.policy(
-            original["policy"], pointwise=selected["schema"] == original_reference_plan.POINTWISE_SCHEMA
+            original["policy"],
+            pointwise=selected["schema"]
+            in {original_reference_plan.POINTWISE_SCHEMA, original_reference_plan.TRANSPOSE_SCHEMA},
+            transpose=selected["schema"] == original_reference_plan.TRANSPOSE_SCHEMA,
         ),
         budget=OriginalReferenceBudget(**selected["reference_budget"]),
         output_byteorder=selected["byteorder"],
@@ -412,4 +438,10 @@ def _stock_verify(paths, selected, owner, deadline):
 def verify(document, *, references, selection):
     from .original_standard_ir_products import verify as replay
 
-    return replay(document, references=references, selection=selection)
+    if schemas(references)[0] not in {POINTWISE_SCHEMA, TRANSPOSE_SCHEMA}:
+        return replay(document, references=references, selection=selection)
+    from merlin.common.selected_pin_replay import replay_selected_pins
+
+    selected = P.validate(loads(R._plain(selection).read_bytes()), references)
+    with replay_selected_pins((Path(selected["mlir_opt"]),), max_pins=1) as pin_replay:
+        return replay(document, references=references, selection=selection, pin_replay=pin_replay)

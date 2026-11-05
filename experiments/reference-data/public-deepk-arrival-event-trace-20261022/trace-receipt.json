@@ -1,0 +1,25 @@
+{
+  "observation": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/.tmp/arrival-deepk-trace-v1/observed/receipt.json",
+    "sha256": "9f36fb5174211f3f06df98604ee009da64bc18a7c9f81ababf8ef9ee7a333d45"
+  },
+  "trace": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/.tmp/arrival-deepk-trace-v1/observed/workspace/events.jsonl",
+    "sha256": "c3188256f6363d6ce1cae5569582865013a2b3da0ee8d3886eae25cc13d428ff"
+  },
+  "summary": {
+    "summary": true,
+    "events": 24744,
+    "truncated": false,
+    "execution_completed": true
+  },
+  "runtime": {
+    "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/runtime-selection-v2.json",
+    "sha256": "318f9a631735b6e31481de4d406a32d3af3df6a667af6a658479a4a49560ddb9"
+  },
+  "estimate_unchanged": 39404,
+  "new_annotated_runs": 1,
+  "new_functional_runs": 0,
+  "physical_runs": 0,
+  "trace_truncation_retained": false
+}

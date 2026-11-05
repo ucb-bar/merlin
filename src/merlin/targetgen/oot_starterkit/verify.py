@@ -30,7 +30,6 @@ def verify_module(module) -> list[str]:
     in every entrypoint instead of hand-rolling dicts, and structural bugs surface at construction, not
     at grade time."""
     try:
-        from xdsl.ir import Operation
 
         if isinstance(module, str):
             from xdsl.context import Context
@@ -107,16 +106,19 @@ def validate(
     *,
     isa_header: str | Path | None = None,
     define_prefix: str | None = None,
+    schema_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """One-call pre-sim structural gate (the agent's compile-time-equivalent check). Returns
-    {ok, findings} — run it BEFORE the sim; a non-empty findings means fix structure first."""
+    {ok, findings} — run it BEFORE the sim; a non-empty findings means fix structure first.
+    schema_path explicitly selects an already supplied public command-buffer schema
+    when this component distribution has no packaged schema data."""
     findings = []
     if module is not None:
         findings += verify_module(module)
     if cb is not None:
         from .cmdbuf import CommandBufferBuilder  # reuse the schema validator
 
-        b = CommandBufferBuilder(cb.get("target", ""))
+        b = CommandBufferBuilder(cb.get("target", ""), schema_path=schema_path)
         b._cb = cb
         findings += b.validate()
     if trace is not None:

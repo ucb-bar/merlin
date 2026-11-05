@@ -249,7 +249,7 @@ def test_resident_pointer_binding_uses_interface_dataflow_and_validates_contract
     wrong_result_type = interface.replace("tensor<4x8xi32>", "tensor<4x8xi8>")
     with pytest.raises(ValueError, match="fully typed round trip"):
         bind_single_resident_matmul(wrong_result_type, target="atlas")
-    contract = yaml.safe_load((repo_root() / "merlin/contract/mlir_oot_backend_contract.yaml").read_bytes())
+    contract = yaml.safe_load((repo_root() / "merlin/contract/legacy/kernel_abi_v1.yaml").read_bytes())
     rows = contract["kernel_abi"]["arg_order_by_command_shape"]
     resident = next(row for row in rows if row["shape"] == "resident_matmul")
     resident["order"] = list(reversed(resident["order"]))

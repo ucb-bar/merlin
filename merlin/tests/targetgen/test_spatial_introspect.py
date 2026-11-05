@@ -6,8 +6,8 @@ Two things are proven here:
   :func:`merlin.targetgen.rtl.mlc_bridge.fact_bundle_for` dispatches on (systolic/vector/scalar ->
   the CIRCT static bundle, simt -> muon, spatial -> the OPU state-manifest introspect), and
 * the STRUCTURAL facts extracted from the OuterProductUnit state manifest — the ``cluster x cell`` tile
-  geometry read from the cell count (NOT ``discover_mesh_dim``, which mis-derives DIM=4), the MRF depth,
-  the int8/fp8 element widths + datapaths, and the FP8 FMA latency.
+  geometry read from the cell count (NOT ``discover_mesh_dim``, which mis-derives DIM=4), MRF depth
+  and storage widths. Arithmetic and latency remain unknown without a dataflow observation.
 
 The systolic path must be provably untouched: ``fact_bundle_for("gemmini")`` routes to the unchanged
 ``target_fact_bundle`` and (when mlc is available) is byte-identical to it.
@@ -150,13 +150,52 @@ def test_unavailable_bundle_is_honest(monkeypatch):
     assert all(f["derived"] is False and f["value"] is None for f in b["fields"].values())
 
 
+def _synthetic_spatial_inputs(tmp_path, monkeypatch, *, operand_bits, accumulator_bits, pipe=None):
+    names = [f"io_op_in_{side}_0_{i}" for side in ("l", "t") for i in range(2)]
+    states = [{"name": name, **({"numBits": operand_bits} if operand_bits is not None else {})} for name in names]
+    states += [
+        {"name": f"clusters_0_0/cells_{r}_{c}/regs_{bank}",
+         **({"numBits": accumulator_bits} if accumulator_bits is not None else {})}
+        for r in range(2) for c in range(2) for bank in range(2)
+    ]
+    states += [{"name": "io_op_macc_0", "numBits": 1}]
+    manifest = tmp_path / "states.json"
+    manifest.write_text(json.dumps({"name": "Variant", "states": states}))
+    hw = tmp_path / "model.hw.mlir"
+    hw.write_text("" if pipe is None else f"hw.module private @MulAddRecFNPipe_l{pipe}_e8_s24() {{}}\n")
+    monkeypatch.setattr(B, "opu_artifact_paths", lambda _target: {"man": manifest, "hw": hw})
+
+
+@pytest.mark.parametrize("operand_bits,accumulator_bits", [(8, 32), (16, 48), (None, 32), (16, None)])
+def test_arithmetic_facts_never_come_from_width_defaults(tmp_path, monkeypatch, operand_bits, accumulator_bits):
+    _synthetic_spatial_inputs(tmp_path, monkeypatch, operand_bits=operand_bits, accumulator_bits=accumulator_bits)
+    bundle = SI.build_fact_bundle("synthetic_spatial")
+    widths = bundle["fields"]["element_widths"]
+    assert widths["value"] == {"operand_bits": operand_bits, "accumulator_bits": accumulator_bits}
+    assert widths["derived"] is (operand_bits is not None and accumulator_bits is not None)
+    for name in ("dtypes", "accum_kind", "fma_latency"):
+        assert bundle["fields"][name]["value"] is None and bundle["fields"][name]["derived"] is False
+    artifact = SI.spatial_facts("synthetic_spatial")
+    assert "datapaths" not in artifact["facts"] and "timing" not in artifact["facts"]
+    assert {"dtypes", "accum_kind", "fma_latency"} <= set(artifact["unknown"])
+
+
+@pytest.mark.parametrize("pipe", [None, 0, 3])
+def test_module_names_do_not_establish_mac_latency(tmp_path, monkeypatch, pipe):
+    _synthetic_spatial_inputs(tmp_path, monkeypatch, operand_bits=16, accumulator_bits=48, pipe=pipe)
+    latency = SI.build_fact_bundle("synthetic_spatial")["fields"]["fma_latency"]
+    assert latency["value"] is None and latency["derived"] is False
+    assert "register boundaries" in latency["evidence"]
+
+
 # -------------------------------------------------------- Stage 1: real RTL extraction (mlc-gated)
 @pytest.mark.skipif(not _opu_available(), reason="mlc / OuterProductUnit arc artifacts not present")
 def test_opu_facts_from_real_state_manifest():
     """The decisive Stage-1 result: the 16x16 = 256-cell tile geometry read from the OPU state manifest,
     NOT the DIM=4 that discover_mesh_dim mis-derives from the cluster layer."""
     b = B.fact_bundle_for(_OPU_TARGET)
-    assert b["kind"] == "spatial" and b["n_derived"] == len(b["fields"])
+    assert b["kind"] == "spatial"
+    assert b["n_derived"] == len(b["fields"]) - 3
     td = b["fields"]["tile_dim"]
     assert td["value"]["rows"] == 16 and td["value"]["cols"] == 16 and td["value"]["cells"] == 256
     assert td["value"]["clusters"] == {"rows": 4, "cols": 4}
@@ -166,26 +205,20 @@ def test_opu_facts_from_real_state_manifest():
 
     assert b["fields"]["mrf_depth"]["value"] == 16
     assert b["fields"]["element_widths"]["value"] == {"operand_bits": 8, "accumulator_bits": 32}
-    names = [d["name"] for d in b["fields"]["dtypes"]["value"]]
-    # int8 base MAC + an fp8 datapath. saturn's RTL names NO 8-bit float format (only e8_s24 = the fp32
-    # accumulate), so the fp8 sub-format identity is UNKNOWN -> reported width-only as float8, never a
-    # fabricated fp8_e4m3/fp8_e5m2 pair conjured from io_op_altfmt_ port presence.
-    assert names == ["int8", "float8"]
-    fp8_entry = b["fields"]["dtypes"]["value"][1]
-    assert fp8_entry["identity_derived"] is False and fp8_entry["modes"] == 2
-    assert b["fields"]["fma_latency"]["value"] == {"int8_mac_cycles": 0, "fp8_fma_cycles": 1}
+    for name in ("dtypes", "fma_latency", "accum_kind"):
+        assert b["fields"][name]["derived"] is False
+        assert b["fields"][name]["value"] is None
     assert b["fields"]["op_categories"]["value"] == ["macc", "mvin", "shift"]
-    assert b["fields"]["accum_kind"]["value"] == {"int8": "i32", "fp8": "f32"}
 
 
 @pytest.mark.skipif(not _opu_available("saturn_opu_v128d64"), reason="mlc / v128d64 arc artifacts not present")
-def test_opu_int8_only_config_has_no_fp8_datapath():
+def test_second_spatial_config_keeps_arithmetic_unknown():
     b = B.fact_bundle_for("saturn_opu_v128d64")
     td = b["fields"]["tile_dim"]["value"]
     assert td["rows"] == 8 and td["cols"] == 8 and td["cells"] == 64
-    assert [d["name"] for d in b["fields"]["dtypes"]["value"]] == ["int8"]
-    assert b["fields"]["fma_latency"]["value"]["fp8_fma_cycles"] is None
-    assert b["fields"]["accum_kind"]["value"] == {"int8": "i32"}
+    for name in ("dtypes", "fma_latency", "accum_kind"):
+        assert b["fields"][name]["derived"] is False
+        assert b["fields"][name]["value"] is None
 
 
 @pytest.mark.skipif(not B.mlc_available()[0], reason="mlc not available")

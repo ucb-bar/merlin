@@ -47,7 +47,7 @@ operation:
     layout: nhwc
     epilogue: []
     output_dtype: i32
-    semantic: conv2d_im2col
+    semantic: conv2d
 numeric_policy:
   compare: exact_int
   dtype: i32
@@ -117,7 +117,7 @@ performance:
     why: this member's verdict is the cycle count of the program the compiler emitted,
       so every operand that program contracts over must be produced by that program.
       The command-buffer ABI also lets a buffer DECLARE an operand the harness derives
-      (params.im2col_recipes gathers the conv windows out of the NHWC activation),
+      (a derived-operand recipe that gathers the conv windows out of the NHWC activation),
       and a member that contracts over one of those is measuring a plain matmul over
       a matrix it never built -- the window gather this family's lever is named for
       is absent from the emitted code, which the task contract's own rule ("a lever

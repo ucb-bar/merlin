@@ -18,7 +18,9 @@ from typing import Any
 from merlin.targetgen.target_experiment import TargetExperiment, load_target_experiment
 from merlin_experiments.phase2 import bottleneck_priority as BP
 from merlin_experiments.phase2 import campaign as PC
+from merlin_experiments.phase2 import gsim_gate as GATE
 from merlin_experiments.phase2 import measurement_evidence as ME
+from merlin_experiments.phase2 import measurement_library_binding as MB
 from merlin_experiments.phase2 import measurement_support as MS
 from merlin_experiments.phase2 import paired_inputs as PI
 from merlin_experiments.phase2 import paired_measurement as PM
@@ -31,6 +33,16 @@ def main(
     source_root: Path | None = None,
 ) -> int:
     parser = argparse.ArgumentParser()
+    from . import compiler_pass_state as PASSES
+    from .compiler_library_state import add_selection_arguments, selection_from_arguments
+
+    add_selection_arguments(parser)
+    PASSES.add_selection_arguments(parser)
+    parser.add_argument(
+        "--compiler-preparation-verification-root",
+        type=Path,
+        help="fresh operator directory for independently reapplying both original preparation policies",
+    )
     parser.add_argument(
         "--source-root",
         type=Path,
@@ -84,7 +96,27 @@ def main(
         metavar="N",
         help="how many executions may run at once (default 1 = serial)",
     )
+    parser.add_argument(
+        "--single-observation-above-roofline-cycles",
+        type=int,
+        default=None,
+        metavar="CYCLES",
+        help="members whose roofline floor exceeds CYCLES get one gSIM observation cited by both "
+        "replicate identities (gSIM is deterministic); recorded in the plan (default: every replicate observed)",
+    )
+    parser.add_argument(
+        "--reference-cycles",
+        type=Path,
+        default=None,
+        metavar="JSON",
+        help="operator-only: a merlin_perf_reference_v1 document; writes reference_comparison.json "
+        "beside the campaign (never agent-visible, never a gate)",
+    )
     args = parser.parse_args(argv)
+    compiler_library = selection_from_arguments(args)
+    compiler_preparation = PASSES.preparation_from_arguments(args)
+    if (compiler_preparation is None) != (args.compiler_preparation_verification_root is None):
+        raise PC.CampaignGateError("prepared paired evaluation requires its fresh original verification root")
     PM.simple_component(args.run_id, label="run id")
     if args.timeout <= 0:
         raise PC.CampaignGateError("timeout must be positive")
@@ -102,6 +134,21 @@ def main(
     out_dir = layout["measurement_root"] / args.run_id
     if out_dir.exists() or out_dir.is_symlink():
         raise PC.CampaignGateError(f"run directory must be fresh: {out_dir}")
+    verification_root = args.compiler_preparation_verification_root
+    if verification_root is not None:
+        immutable = (compiler_library.root,) if compiler_library is not None else ()
+        disjoint = (out_dir.absolute(), *immutable)
+        if (
+            not verification_root.is_absolute()
+            or verification_root.resolve() != verification_root
+            or verification_root.exists()
+            or verification_root.is_symlink()
+            or any(
+                verification_root.is_relative_to(root) or root.is_relative_to(verification_root) for root in disjoint
+            )
+        ):
+            raise PC.CampaignGateError("compiler preparation verification needs a fresh disjoint original directory")
+    compiler_passes = PASSES.selection_from_arguments(args, library=compiler_library, stage_root=out_dir)
     inputs = PI.load_paired_inputs(
         args.candidate_record,
         args.functional_run_id,
@@ -116,15 +163,32 @@ def main(
         gsim_certificate_sha256=args.gsim_certificate_sha256,
         waive_functional_gate=tuple(args.waive_functional_gate or ()),
         functional_runs_root=layout["functional_runs_root"],
+        **({"compiler_library_selection": compiler_library} if compiler_library is not None else {}),
+        **(
+            {
+                "compiler_pass_selection": compiler_passes,
+                "compiler_pass_preparation": compiler_preparation,
+                "compiler_preparation_verification_root": args.compiler_preparation_verification_root,
+            }
+            if compiler_passes is not None
+            else {}
+        ),
     )
-    plan = PM.build_measurement_plan(inputs)
+    policy = PM.replicate_policy(
+        args.single_observation_above_roofline_cycles,
+        rtl_facts=args.rtl_facts,
+        certificate=inputs.gsim_certificate,
+        target=target.target,
+    )
+    plan = PM.build_measurement_plan(inputs, **({"replicate_policy": policy} if policy is not None else {}))
     fanout = PM.schedule_fanout(args.sim_workers, plan, hardware_counters=args.hardware_counters)
     rtl = MS.load_rtl_identity(args.rtl_facts, target.target)
     counter_binding = MS.probe_counter_byte_bindings(rtl, target=target.target) if args.hardware_counters else None
     out_dir.mkdir(parents=True)
     before = PI.identity_guard(inputs)
     fork = PC.functional_fork(inputs.functional)
-    fork_before = PC.check_fork(fork, inputs.baseline).to_dict()
+    original_baseline = PI.original_baseline(inputs) if compiler_preparation is not None else inputs.baseline
+    fork_before = PC.check_fork(fork, original_baseline).to_dict()
     if fork_before.get("ok") is not True:
         raise PC.CampaignGateError("functional fork does not hold")
     manifest: dict[str, Any] = {
@@ -133,7 +197,7 @@ def main(
         "refusal": "campaign has not completed",
         "phase": args.phase,
         "functional_run_id": inputs.functional.run_id,
-        "functional_submission_sha256": inputs.baseline_sha256,
+        "functional_submission_sha256": inputs.functional.digest,
         "candidate_record_sha256": inputs.handoff.record_sha256,
         "candidate_sha256": inputs.candidate_sha256,
         "gsim_certificate": inputs.gsim_certificate.to_dict(),
@@ -150,6 +214,7 @@ def main(
             "rtl_execution_backends": ["gsim"],
             "timing_authority": "gsim",
             "verilator": "prelaunch_certificate_qualification_only",
+            "certification": GATE.certification_of(inputs.gsim_certificate),
         },
         "execution_fanout": dict(fanout),
         "rtl_identity": rtl,
@@ -161,21 +226,34 @@ def main(
         "raw_results": None,
         "roofline_evidence": None,
     }
+    if compiler_preparation is not None:
+        manifest.update(
+            schema="paired_arm4_prepared_performance_campaign_v1",
+            comparison_baseline_sha256=inputs.baseline_sha256,
+            compiler_passes=compiler_passes.record(),
+            compiler_preparation=compiler_preparation.record(),
+        )
     PM.write_json(out_dir / "campaign_manifest.json", manifest)
     rows: list[dict[str, Any]] = []
     refusal = None
     try:
-        rows, roofline_cells = PM.execute_schedule(
-            plan,
-            out_dir,
-            contract_root=layout["contract_root"],
-            timeout=args.timeout,
-            target_experiment=target,
-            rtl_identity=rtl,
-            hardware_counters=args.hardware_counters,
-            counter_binding=counter_binding,
-            fanout=fanout,
+        from merlin_experiments.phase1.feedback.compiler_profile_runtime import (
+            functional_service,
+            original_compiler_imports,
         )
+
+        with original_compiler_imports(functional_service(inputs.functional.run_dir)):
+            rows, roofline_cells = PM.execute_schedule(
+                plan,
+                out_dir,
+                contract_root=layout["contract_root"],
+                timeout=args.timeout,
+                target_experiment=target,
+                rtl_identity=rtl,
+                hardware_counters=args.hardware_counters,
+                counter_binding=counter_binding,
+                fanout=fanout,
+            )
         manifest["completion"] = ME.completion_report(rows, plan.expected)
         if not manifest["completion"]["complete"]:
             raise PC.CampaignGateError(f"paired completion failed: {manifest['completion']}")
@@ -224,7 +302,8 @@ def main(
             manifest["identity_after"] = after
             if after != before:
                 raise PC.CampaignGateError("input identities changed")
-            manifest["fork_after"] = PC.check_fork(fork, inputs.baseline).to_dict()
+            original_after = PI.original_baseline(inputs) if compiler_preparation is not None else inputs.baseline
+            manifest["fork_after"] = PC.check_fork(fork, original_after).to_dict()
             if manifest["fork_after"].get("ok") is not True:
                 raise PC.CampaignGateError("functional fork changed")
             if MS.load_rtl_identity(args.rtl_facts, target.target) != rtl:
@@ -251,12 +330,13 @@ def main(
                 expected=ME.MeasurementBinding(
                     phase=args.phase,
                     functional_run_id=inputs.functional.run_id,
-                    functional_submission_sha256=inputs.baseline_sha256,
+                    functional_submission_sha256=inputs.functional.digest,
                     candidate_record_sha256=inputs.handoff.record_sha256,
                     candidate_sha256=inputs.candidate_sha256,
                     corpus_manifest_sha256=inputs.corpus.manifest_sha256,
                     corpus_capsules_sha256=inputs.corpus.capsules_sha256,
                     certificate_sha256=inputs.gsim_certificate.sha256,
+                    **MB.binding_arguments(inputs.handoff),
                 ),
             )
             if priority["status"] in {"written", "already_present"}:
@@ -265,6 +345,17 @@ def main(
                 print(f"bottleneck priority unavailable: {priority['reason']}")
         except Exception as exc:
             print(f"bottleneck priority unavailable: {type(exc).__name__}: {exc}")
+    if args.reference_cycles is not None:
+        # OPERATOR REPORT COLUMN: the candidate's cycles over a reference implementation's, joined in
+        # the host-side campaign directory after GO. It is not part of the campaign's evidence.
+        try:
+            from merlin_experiments.phase2 import reference_comparison as RC  # noqa: PLC0415
+
+            pin = (getattr(inputs.gsim_certificate, "pins", None) or {}).get("gsim_binary") or {}
+            path = RC.write_comparison(out_dir, args.reference_cycles, campaign_engine_sha256=pin.get("sha256"))
+            print(f"reference comparison: {path}")
+        except Exception as exc:
+            print(f"reference comparison unavailable: {type(exc).__name__}: {exc}")
     print(f"GO: {manifest['completion']['expected']} cells")
     return 0
 

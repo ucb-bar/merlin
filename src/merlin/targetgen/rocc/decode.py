@@ -104,33 +104,101 @@ def _const_value(op) -> int | None:
         return None
 
 
-def _resolve(val, _depth: int = 0) -> _Val:
+def _resolve(val, _depth: int = 0, *, _word_bits: int | None = None, _bindings=None) -> _Val:
     """Resolve an SSA value to a ``_Val`` by walking its defining op STRUCTURALLY: a block/function
     argument (``argbase``), an ``llvm.mlir.constant`` (``const``), a transparent ``llvm.ptrtoint`` (pass
     through to the pointer it converts), or an ``llvm.add`` of base+constant (``argbase`` with an offset)
-    / two constants (folded ``const``). Anything else fails closed to ``unknown`` — never a guessed
+    / two constants (folded ``const``), a constant byte GEP, or a closed read-only module global.
+    Selected register width must survive pointer-to-integer conversion. Anything else fails closed
+    to ``unknown`` — never a guessed
     value. This replaces the old SSA line-table plumbing with def-use walking on the parsed IR. A depth
     bound keeps a pathological/adversarial def chain from ever hanging the grader (fail-closed to
     ``unknown`` past the bound — valid scalar-address chains are shallow)."""
+    from xdsl.dialects.builtin import IntegerType, ModuleOp
+    from xdsl.dialects.llvm import GEP_USE_SSA_VAL, GlobalOp
     from xdsl.ir import BlockArgument
 
     if _depth > 64:
         return _Val("unknown")
+    if _bindings is not None and val in _bindings:
+        return _Val("const", value=_bindings[val])
     if isinstance(val, BlockArgument):
-        return _Val("argbase", arg_index=val.index, offset=0)
+        parent = val.owner.parent_op()
+        if parent is not None and parent.name == "llvm.func" and val.owner is parent.body.blocks.first:
+            return _Val("argbase", arg_index=val.index, offset=0)
+        return _Val("unknown")
     op = val.owner
     name = getattr(op, "name", "")
     if name == "llvm.mlir.constant":
         iv = _const_value(op)
         return _Val("const", value=iv) if iv is not None else _Val("unknown")
+    if name in {"llvm.add", "llvm.sub", "llvm.mul", "llvm.and", "llvm.or", "llvm.xor",
+                "llvm.shl", "llvm.lshr", "llvm.ashr", "llvm.trunc", "llvm.sext", "llvm.zext"}:
+        from .static_operands import fold_integer
+
+        folded = fold_integer(val, _bindings or {})
+        if folded is not None:
+            return _Val("const", value=folded)
+        flags = op.properties.get("overflowFlags")
+        # xDSL materializes an explicit zero for ordinary modular arithmetic.
+        # Preserve base+constant pointer identity for that spelling; nonzero
+        # poison-producing promises still need an independent proof.
+        from xdsl.dialects.builtin import IntegerAttr
+
+        if flags is not None and (not isinstance(flags, IntegerAttr) or flags.value.data != 0):
+            return _Val("unknown")
     if name == "llvm.ptrtoint" and len(op.operands) >= 1:
-        return _resolve(op.operands[0], _depth + 1)
+        if _word_bits is not None and op.results[0].type != IntegerType(_word_bits):
+            return _Val("unknown")
+        return _resolve(op.operands[0], _depth + 1, _word_bits=_word_bits, _bindings=_bindings)
+    if name == "llvm.mlir.addressof":
+        reference = op.properties.get("global_name")
+        if reference is None or reference.nested_references.data:
+            return _Val("unknown")
+        module = op.parent_op()
+        while module is not None and not isinstance(module, ModuleOp):
+            module = module.parent_op()
+        if module is None:
+            return _Val("unknown")
+        symbol = reference.root_reference.data
+        definitions = [member for member in module.body.block.ops
+                       if getattr(member.properties.get("sym_name"), "data", None) == symbol]
+        if len(definitions) != 1 or not isinstance(storage := definitions[0], GlobalOp):
+            return _Val("unknown")
+        if (storage.constant is None or storage.linkage.linkage.data not in {"internal", "private"}
+                or storage.thread_local_ is not None or storage.addr_space.value.data != 0
+                or (storage.value is None and not storage.body.blocks)):
+            return _Val("unknown")
+        return _Val("global", symbol=symbol, offset=0)
+    if name == "llvm.getelementptr":
+        indices = tuple(op.properties["rawConstantIndices"].get_values())
+        # Only byte addressing has a target-independent scale. Aggregate/multi-index layout and
+        # runtime indices need their own proof; they must not acquire a guessed source identity.
+        if op.properties.get("elem_type") != IntegerType(8) or len(indices) != 1:
+            return _Val("unknown")
+        if indices[0] == GEP_USE_SSA_VAL:
+            if len(op.operands) != 2:
+                return _Val("unknown")
+            index = _resolve(op.operands[1], _depth + 1, _word_bits=_word_bits, _bindings=_bindings)
+            if index.kind != "const":
+                return _Val("unknown")
+            offset = index.value
+        else:
+            if len(op.operands) != 1:
+                return _Val("unknown")
+            offset = indices[0]
+        base = _resolve(op.operands[0], _depth + 1, _word_bits=_word_bits, _bindings=_bindings)
+        if base.kind in {"argbase", "global"}:
+            return _Val(base.kind, arg_index=base.arg_index, symbol=base.symbol, offset=(base.offset or 0) + offset)
+        return _Val("unknown")
     if name == "llvm.add" and len(op.operands) == 2:
-        a, b = _resolve(op.operands[0], _depth + 1), _resolve(op.operands[1], _depth + 1)
-        base = a if a.kind == "argbase" else (b if b.kind == "argbase" else None)
+        a = _resolve(op.operands[0], _depth + 1, _word_bits=_word_bits, _bindings=_bindings)
+        b = _resolve(op.operands[1], _depth + 1, _word_bits=_word_bits, _bindings=_bindings)
+        base = a if a.kind in {"argbase", "global"} else (b if b.kind in {"argbase", "global"} else None)
         const = a if a.kind == "const" else (b if b.kind == "const" else None)
         if base is not None and const is not None:
-            return _Val("argbase", arg_index=base.arg_index, offset=(base.offset or 0) + (const.value or 0))
+            return _Val(base.kind, arg_index=base.arg_index, symbol=base.symbol,
+                        offset=(base.offset or 0) + (const.value or 0))
         if a.kind == "const" and b.kind == "const":
             return _Val("const", value=(a.value or 0) + (b.value or 0))
         return _Val("unknown")
@@ -170,10 +238,12 @@ def _parse_insn(template: str, custom_opcode: int | None) -> tuple[int, bool] | 
 
 @dataclass
 class _Val:
-    kind: str  # "const" | "argbase" | "unknown"
+    kind: str  # "const" | "argbase" | "global" | "unknown"
     value: int | None = None  # for const
     arg_index: int | None = None
     offset: int | None = None
+    symbol: str | None = None  # original module's closed, read-only global
+    known_bits: dict | None = None  # finite original scalar bit facts; never a whole raw word
 
 
 def _operand(v: _Val | None) -> dict:
@@ -183,7 +253,10 @@ def _operand(v: _Val | None) -> dict:
         return {"raw": v.value, "kind": "const", "arg_index": None, "offset": None}
     if v.kind == "argbase":
         return {"raw": None, "kind": "argbase", "arg_index": v.arg_index, "offset": v.offset}
-    return {"raw": None, "kind": "unknown", "arg_index": None, "offset": None}
+    if v.kind == "global":
+        return {"raw": None, "kind": "global", "arg_index": None, "offset": v.offset, "symbol": v.symbol}
+    return {"raw": None, "kind": "unknown", "arg_index": None, "offset": None,
+            **({"known_bits": dict(v.known_bits)} if v.known_bits is not None else {})}
 
 
 @dataclass
@@ -211,29 +284,49 @@ class Trace:
         }
 
 
-def decode_module(module, *, target: str, source: str | None = None) -> dict:
+def decode_module(module, *, target: str, source: str | None = None, semantics=None) -> dict:
     """Decode a parsed MLIR module's RoCC instruction stream into a structured trace, using ``target``'s
     RTL-derived ISA facts. Walks the IR in program order; each ``llvm.inline_asm`` op is classified by its
     ``.insn`` template (func7 -> class) with operands resolved structurally from the SSA graph. Fail-
     closed: an inline-asm whose template is neither a custom-opcode ``.insn`` nor ``fence`` is recorded
     UNKNOWN, never dropped."""
-    semantics = _semantics(target)
+    # Diagnostics may bind the original contract/facts directly, without
+    # registering or importing a compiler-bearing runtime backend. This is
+    # decoding only; supplying a capability grants no execution authority.
+    semantics = _semantics(target) if semantics is None else semantics
     isa = semantics.isa_constants(target)
     trace = Trace(source=source, custom_opcode=isa["CUSTOM_OPCODE"], funct3=isa["FUNCT3"])
+    word_bits = getattr(semantics, "word_bits", getattr(semantics, "_width", None))
+    if type(word_bits) is not int:
+        word_bits = None  # Historical external providers retain their original unselected behavior.
+    from .static_operands import counted_loop_facts, known_integer_bits
+
+    loops = counted_loop_facts(module)
+    loop_observation, bindings, ranges = loops["observation"], loops["bindings"], loops["ranges"]
+    executions = loops["executions"]
     idx = 0
     for op in module.walk():
         if getattr(op, "name", "") != "llvm.inline_asm":
             continue
         template = _asm_template(op)
         if template == "fence":
-            trace.instructions.append({"index": idx, "class": "FENCE", "funct": None, "decoded": {}})
+            trace.instructions.append(
+                {"index": idx, "class": "FENCE", "funct": None, "decoded": {},
+                 "executions": executions.get(op.parent_block())}
+            )
         elif template.startswith(".insn"):
             parsed = _parse_insn(template, isa["CUSTOM_OPCODE"])
             if parsed is not None:
                 funct, _rd_is_x0 = parsed
                 ops = list(op.operands)  # SSA source operands, in order (rs1, rs2) — spelling-agnostic
-                rs1 = _resolve(ops[0]) if len(ops) >= 1 else None
-                rs2 = _resolve(ops[1]) if len(ops) >= 2 else None
+                block_bindings = bindings.get(op.parent_block())
+                rs1 = _resolve(ops[0], _word_bits=word_bits, _bindings=block_bindings) if len(ops) >= 1 else None
+                rs2 = _resolve(ops[1], _word_bits=word_bits, _bindings=block_bindings) if len(ops) >= 2 else None
+                for original, resolved in zip(ops[:2], (rs1, rs2)):
+                    if resolved is not None and resolved.kind == "unknown":
+                        known = known_integer_bits(original, bindings.get(op.parent_block(), {}), ranges)
+                        if known is not None and known[0] and (word_bits is None or known[2] == word_bits):
+                            resolved.known_bits = dict(mask=known[0], value=known[1], width=known[2])
                 klass, dec = semantics.decode_instruction(funct, _operand(rs1), _operand(rs2), isa)
                 trace.instructions.append(
                     {
@@ -243,6 +336,9 @@ def decode_module(module, *, target: str, source: str | None = None) -> dict:
                         "rs1": _operand(rs1),
                         "rs2": _operand(rs2),
                         "decoded": dec,
+                        # Times this site runs per kernel call (None: not proved), from the
+                        # counted-loop proof; the row itself stays one static site.
+                        "executions": executions.get(op.parent_block()),
                     }
                 )
             else:
@@ -254,7 +350,9 @@ def decode_module(module, *, target: str, source: str | None = None) -> dict:
             # an inline-asm we do not recognize (not .insn, not fence): fail-closed.
             trace.instructions.append({"index": idx, "class": "UNKNOWN", "funct": None, "raw": template, "decoded": {}})
         idx += 1
-    return trace.to_dict()
+    result = trace.to_dict()
+    result["summary"]["counted_loops"] = loop_observation
+    return result
 
 
 # --- tolerant text-scan fallback --------------------------------------------------------------

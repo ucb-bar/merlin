@@ -12,7 +12,8 @@ self-check uses, so goldens never enter the box.
 Subcommands (same channel, simjob_* prefixes):
   submit  --sim <accepted-engine> --capsules <csv|all> [--debug NAME...] [--workers N]
             -> prints {"job_id","state":"queued","n_capsules"} and returns immediately
-  poll    --job-id ID        -> {"job_id","state":queued|running|done|error, "result": <redacted|null>}
+  poll    --job-id ID        -> {"job_id","state":queued|running|pending|done|error,
+                                "result": <redacted|null>}
   wait    --job-id ID [--timeout S]   -> poll-loop (bounded; default short so a turn can't hang), prints result
   list                        -> this workspace's jobs + states
 
@@ -25,7 +26,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 import time
 from pathlib import Path
 
@@ -46,6 +46,9 @@ def _state(jid: str) -> tuple[str, dict | None]:
     if (CH / f"simdone_{jid}").exists():
         return "done", _read(CH / f"simresp_{jid}.json")
     if (CH / f"simrun_{jid}").exists():
+        progress = _read(CH / f"progress_{jid}.json")
+        if isinstance(progress, dict) and progress.get("status") in {"running", "grading_complete"}:
+            return "pending", progress
         return "running", None
     if (CH / f"simreq_{jid}.json").exists():
         return "queued", None
@@ -75,7 +78,7 @@ def _submit(a) -> int:
                 "state": "queued",
                 "sim": a.sim,
                 "n_capsules": n,
-                "note": "poll with: simjob.py poll --job-id %s" % jid,
+                "note": f"poll with: simjob.py poll --job-id {jid}",
             }
         )
     )
@@ -96,15 +99,12 @@ def _wait(a) -> int:
             print(json.dumps({"job_id": a.job_id, "state": st, "result": res}))
             return 0 if (res or {}).get("all_pass") else 1
         time.sleep(1.0)
-    print(
-        json.dumps(
-            {
-                "job_id": a.job_id,
-                "state": "running",
-                "note": "still running after --timeout; keep polling (verilator is slow)",
-            }
-        )
-    )
+    st, progress = _state(a.job_id)
+    if st in ("done", "error"):
+        print(json.dumps({"job_id": a.job_id, "state": st, "result": progress}))
+        return 0 if (progress or {}).get("all_pass") else 1
+    print(json.dumps({"job_id": a.job_id, "state": st, "result": progress,
+                      "note": "still pending after --timeout; keep polling"}))
     return 0
 
 

@@ -91,6 +91,59 @@ def integer_partial_sum_bound(
     }
 
 
+def integer_matrix_partial_sum_bound(
+    semantics: dict, *, lhs_shape, rhs_shape, lhs_values, rhs_values, initial_values=(), max_products=1 << 28
+) -> dict:
+    """Bound every concrete matrix partial sum without cancellation or order.
+
+    Global operand maxima can combine values that never multiply each other.
+    This computes the tighter nonnegative envelope ``abs(A) @ abs(B)`` and
+    adds the largest absolute initial addend. Every subset/order of a dot
+    product is bounded by that envelope. No signed result is evaluated here.
+    The work cap is a host proof budget, not a target capacity or wider MAC law.
+    """
+    shapes = (lhs_shape, rhs_shape)
+    if any(
+        not isinstance(shape, (tuple, list)) or len(shape) != 2
+        or any(type(value) is not int or value < 1 for value in shape)
+        for shape in shapes
+    ) or lhs_shape[1] != rhs_shape[0]:
+        raise ValueError("concrete matrix bound requires matching positive rank-2 extents")
+    if type(max_products) is not int or max_products < 1:
+        raise ValueError("concrete matrix bound requires a positive host proof budget")
+    lhs, rhs, initial = list(lhs_values), list(rhs_values), list(initial_values)
+    if len(lhs) != lhs_shape[0] * lhs_shape[1] or len(rhs) != rhs_shape[0] * rhs_shape[1]:
+        raise ValueError("concrete matrix bound operands differ from their complete shapes")
+    coarse = integer_partial_sum_bound(
+        semantics, reduction_extent=lhs_shape[1], lhs_values=lhs, rhs_values=rhs, initial_values=initial
+    )
+    if coarse["status"] == "unknown":
+        return coarse
+    products = lhs_shape[0] * lhs_shape[1] * rhs_shape[1]
+    if products > max_products or coarse["bound"] >= 1 << 63:
+        return {
+            "status": "unknown",
+            "reason": "concrete matrix proof exceeds its host work or exact signed-i64 arithmetic budget",
+            "products": products,
+            "max_products": max_products,
+        }
+    import numpy as np
+
+    a = np.abs(np.asarray(lhs, dtype=np.int64).reshape(lhs_shape))
+    b = np.abs(np.asarray(rhs, dtype=np.int64).reshape(rhs_shape))
+    bound = int((a @ b).max()) + coarse["maximum_absolute_initial_addend"]
+    return {
+        **coarse,
+        "status": "proven_safe" if bound <= coarse["signed_positive_limit"] else "may_overflow",
+        "bound": bound,
+        "global_maximum_bound": coarse["bound"],
+        "matrix_shapes": [list(lhs_shape), list(rhs_shape)],
+        "method": "concrete_absolute_product_envelope",
+        "formula": "max(abs(lhs) @ abs(rhs)) + max_abs(initial)",
+        "scope": "every partial sum in every reduction order for these exact matrix operands and initial addends",
+    }
+
+
 def _unknowns(value, path="semantics") -> list[str]:
     if isinstance(value, dict):
         return [unknown for key, member in value.items() for unknown in _unknowns(member, f"{path}.{key}")]

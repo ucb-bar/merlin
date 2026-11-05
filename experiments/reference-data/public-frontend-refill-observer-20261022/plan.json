@@ -1,0 +1,116 @@
+{
+  "schema": "operator.public_refill_observation_plan.v1",
+  "status": "prepared_not_authorized_or_executed",
+  "purpose": "Observe L1I requests/refill beats and independent inclusive-cache service events to distinguish actual response latency/cache state from aggregate-cycle hypotheses. No price fitting.",
+  "elf": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf",
+    "sha256": "cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e",
+    "n_bytes": 8960
+  },
+  "expected_physical_console": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/physical.stdout",
+    "sha256": "3b16012ebdf9a87f409ca298c1801dbd0324ed09a6ab61d0912aafe0419bb65a",
+    "n_bytes": 969
+  },
+  "original_physical_result": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/physical-result.json",
+    "sha256": "6aa429da82cca66bcd296864c8c96266b8f57d7e197e10d4e4c6a8696e74269b",
+    "n_bytes": 15072
+  },
+  "original_engine": {
+    "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/emulator",
+    "sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651",
+    "n_bytes": 5293168
+  },
+  "diagnostic_engine": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/emulator",
+    "sha256": "bbde8b0bda803b953fe2a70d9da33fe85f3d214f1fbdfb703c2126b697e7ebf1",
+    "n_bytes": 5306112
+  },
+  "strict_relink_receipt": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/build_receipt.json",
+    "sha256": "7fbd124daf99c94332fb38fbc5624f412fc8fb262ab3f3667a7e49e7e524fc0a",
+    "n_bytes": 1544096
+  },
+  "phase_review": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/phase-proof.json",
+    "sha256": "19772ed37f60d17f4a0c6a482e611bb03706031526f83bdc54926159988d8285",
+    "n_bytes": 35716
+  },
+  "signal_map": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/signal-map.json",
+    "sha256": "db9fe1846cf3b6fd67a7d4775a9d6b92f9feab819014659b101fac0657290f11",
+    "n_bytes": 3121
+  },
+  "event_schema": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/schema.json",
+    "sha256": "b873d3c54893db8f8e9f9388c3757335abb7752fc966bc8140400ed7090324a4",
+    "n_bytes": 7031
+  },
+  "host_only_check": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/host-check.json",
+    "sha256": "a4889e33c1ae4317b78380065488ee90eecf0141d72cba5224e46c0ee7e8e147",
+    "n_bytes": 748
+  },
+  "main_diff": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/main.diff",
+    "sha256": "6892a42becfe0c91185062abda24182d04f9a0ef3e946c0312a3a223d8257c9f",
+    "n_bytes": 1010
+  },
+  "limits": {
+    "max_physical_runs": 1,
+    "max_wall_s": 1200,
+    "max_event_records": 65536,
+    "max_event_payload_bytes": 33554432,
+    "cpu": 1,
+    "target_code_or_inputs_changed": false
+  },
+  "cost_estimate": {
+    "original_physical_wall_s": 22.830453633039724,
+    "observer_compile_s": 0.512737629993353,
+    "observer_link_s": 0.056036219000816345,
+    "expected_new_run": "tens of seconds to a few minutes; unmeasured, hard deadline1200s",
+    "buffering": "bounded in-memory event collection; serialize after guest completion, no host stream writes during timed guest work"
+  },
+  "acceptance": [
+    "Exactly one authorized physical attempt; any failure retained, no automatic retry.",
+    "All18 complete256-output+32-guard checks remain exact; console rows and aggregate warmup completion match original.",
+    "All12 raw mcycle values match the original same-ELF physical run exactly; otherwise report observation perturbation or nondeterminism and do not attribute timing.",
+    "Trace footer normal completion, exit0, dropped0,truncatedfalse.",
+    "All18 begin/end markers with correct PCs/instructions and declared12 measured scopes present.",
+    "Every ICache D beat must have a unique preceding same-local-source request with correct address/4-beat framing; missing/ambiguous histories UNKNOWN.",
+    "No automatic L2,bank,SourceD joins from coincident timing. No model qualification or fit."
+  ],
+  "budget": "Original current clean campaign clock and cumulative diagnostic ledger preserved; previous actual physical observation consumed110.1520710229525worker seconds, ledger now at least1104.3491142271087. New physical execution requires separate explicit authorization.",
+  "execution_boundary": "New private BoundRoCCBackend identical contract/config except diagnostic binary/receipt and +refill-trace=stdout. No changes to author/model engine selection.",
+  "transport": {
+    "kind": "tagged_stdout_after_guest_completion",
+    "prefix": "REFILL_EVENT_JSON ",
+    "max_record_payload_bytes": 33554432,
+    "max_events": 65536,
+    "max_prefix_bytes": 1179684,
+    "combined_native_stdout_stderr_limit": 67108864,
+    "selected_backend_console_limit": 67108864,
+    "extraction": "Retain raw stdout unchanged; remove exactly one prefix from complete tagged lines to separate events.jsonl. Strict JSON/header/footer/count checks; truncated trace unqualified.",
+    "host_only_native_check": {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/native-transport-host-check.json",
+      "sha256": "c76fa5b4c418355a96b6ca4ca948464d8e83422b59d46fbc238e0fba1f2265f3"
+    },
+    "no_file_output": true
+  },
+  "prior_physical_attempt": {
+    "result": {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-v1/attempt-v2/physical-result.json",
+      "sha256": "e2a4b0291d2883d293293c356041c3ce5cb467e2f9666adb1b54ac9e5e1d20cb"
+    },
+    "console": {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-v1/attempt-v2/physical.stdout",
+      "sha256": "3b16012ebdf9a87f409ca298c1801dbd0324ed09a6ab61d0912aafe0419bb65a"
+    },
+    "stderr": {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/invocations/9b1ea41712dd42dab8aab03d574bc60d/stderr.bin",
+      "sha256": "e8e92bb2539228a42739750a8574572ee22dcc70a43441e4bd0fb8d2482b98ac"
+    },
+    "outcome": "All12 cycle/numerical rows matched original; all18 call numeric checks passed; observer file write failed. Trace unavailable, no attribution or qualification."
+  }
+}

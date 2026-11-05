@@ -8,7 +8,10 @@ import selected_driver
 
 from merlin.targetgen.rtl import semantic_facts as SF
 
-pytestmark = pytest.mark.target("gemmini")
+# semantic_probes.yaml is consumed only by merlin.perf.whole_model_gate (full-width readout machines),
+# never by Phase 0, corpus generation or readiness; the generic data provider ships no probes, so
+# these tests run against an explicitly selected package-owned provider only.
+pytestmark = [pytest.mark.target("gemmini"), selected_driver.requires_package_owned_support("gemmini")]
 _TARGET = "gemmini"
 
 

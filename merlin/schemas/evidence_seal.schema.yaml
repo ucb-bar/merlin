@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Sealed Evidence Record
+purpose: >-
+  The seal an operator places beside a reviewed Phase 0 derivation
+  (`<derivation>.evidence-seal.json`): the digest of every member, so verification can name each
+  missing or tampered file -- including members no other record pins -- plus what immutability the
+  host granted. Sealing clears write bits and asks for the immutable attribute (chattr +i); a seal
+  records whether that was granted rather than claiming it. Its `protects` list makes the sealed
+  tree cited evidence for every cleanup that consults merlin.common.cited_evidence.
+required_top_level_fields:
+  - schema
+  - root
+  - protects
+  - at
+  - by
+  - note
+  - tool
+  - members
+  - immutability
+producer: merlin_experiments.corpus.evidence_custody.seal
+consumers:
+  - merlin_experiments.corpus.evidence_custody.verify
+  - merlin.common.cited_evidence (protects)
+validation_notes: >-
+  `schema` is merlin.evidence_seal.v1. `members` maps each path relative to `root` to its sha256 and
+  byte count. `immutability.read_only` counts files and directories made read-only;
+  `immutability.immutable` records the requested mode (attempt, sudo, off), whether chattr was
+  attempted, how many members it was requested for and how many the host granted, and the first error.
+example: |
+  schema: merlin.evidence_seal.v1
+  root: /work/project/tasks/t/.tmp/closure/public-derivation-v2/derivation
+  protects: [/work/project/tasks/t/.tmp/closure/public-derivation-v2/derivation]
+  at: "2026-10-26T04:00:00+00:00"
+  by: operator@example.com
+  note: reviewed public derivation
+  tool: {module: merlin_experiments.corpus.evidence_custody, git_sha7: 3968bab, user: ubuntu, pid: 1}
+  pinned_by_records: 167
+  members:
+    derivation.json: {sha256: 5f7415046afda0e335d884bf74e5b81c041d0b13d711405f3f85249cb134c552, bytes: 2735}
+  immutability:
+    read_only: {files: 175, directories: 24, changed: 199, shared_skipped: 0}
+    immutable: {mode: attempt, attempted: true, requested: 199, granted: 0, error: "Operation not permitted", complete: false}

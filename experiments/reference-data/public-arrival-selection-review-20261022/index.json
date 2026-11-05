@@ -1,0 +1,109 @@
+{
+  "continued_denial": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/protocols/gemmini/combined-arrival-revision-v1/continued-denial.json",
+    "sha256": "abaf37d9314c6ba78e3f6e23c000548841ff928186cfef4d8b86179e96c67123"
+  },
+  "grants": {
+    "author_source": false,
+    "fit": false,
+    "live_selection_change": false,
+    "qualification": false
+  },
+  "implementation_commit": "26e68af68",
+  "next_minimal_evidence": [
+    "Freeze this candidate before evaluating an unused, source-independent public retained physical ELF from the14-pair index; exact caller counter scope and complete outputs required. No physical rerun merely to obtain another harness.",
+    "If retained evidence does not cover requester pressure, request a separate question-labelled public aligned-row credit-pressure pair with matched cache state and separate banks. No authorization or dispatch issued by this review.",
+    "Keep numeric correctness and broader compiler generalization running independently of timing-model qualification."
+  ],
+  "no_runtime_hot_swap": "Native selection and environment are immutable; enabling this native selection requires a reviewed model epoch and drain. Operator-side alternate-model reports need no author restart but cannot replace native objective.",
+  "origins": {
+    "continued-denial.json": {
+      "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/protocols/gemmini/combined-arrival-revision-v1/continued-denial.json",
+      "sha256": "abaf37d9314c6ba78e3f6e23c000548841ff928186cfef4d8b86179e96c67123"
+    },
+    "fetch-facts.json": {
+      "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/protocols/gemmini/combined-arrival-revision-v1/fetch-facts.json",
+      "sha256": "d1b99a976fcd81c33529a5d051268b39fae613e214509976a8252ee3170b5fab"
+    },
+    "fir-module-relation.json": {
+      "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/fir-module-relation.json",
+      "sha256": "03a7521342e18bbe01c49f8cd526b1f7a26000d85d76a06dddc653f92ab6b12c"
+    },
+    "replays.json": {
+      "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/protocols/gemmini/combined-arrival-revision-v1/replays.json",
+      "sha256": "2fb3436a8aec5bd4a390c6ac07e3c1ad0d61a338ead569e426e0d8b9b8b5c410"
+    },
+    "review.json": {
+      "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/protocols/gemmini/combined-arrival-revision-v1/review.json",
+      "sha256": "e0b3e1f23a631a475ee0b60747d7144d66dd7f8fb61bd2e3393496df50f5103a"
+    },
+    "row-facts.json": {
+      "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/protocols/gemmini/combined-arrival-revision-v1/row-facts.json",
+      "sha256": "bcc713ff7c37bd651ed2c4435ebfc7d6026445f524b0e04e0b0d657d8e67b514"
+    },
+    "selection.json": {
+      "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/protocols/gemmini/combined-arrival-revision-v1/selection.json",
+      "sha256": "71c9daa22a7a2da7e638eb6b2f33e8fd0e800622b0a32527877539478f7667c1"
+    }
+  },
+  "preserved": [
+    "all existing service prices",
+    "cache capacities and geometry",
+    "conservative dependencies",
+    "functional executable/extension and ISA",
+    "public250 source ancestry",
+    "original calibration profile and continued fit denial"
+  ],
+  "provenance": {
+    "relation": {
+      "path": "fir-module-relation.json",
+      "sha256": "03a7521342e18bbe01c49f8cd526b1f7a26000d85d76a06dddc653f92ab6b12c"
+    },
+    "reviewed_source_elaboration": "6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149",
+    "scope": "252 byte-identical reachable modules only. Entire FireSim and selected gSIM FIRs differ. No top-level clock/interconnect equivalence inferred."
+  },
+  "qualification_blockers": [
+    "Row requester assumes translation hits, FIFO responses and A-ready when transaction credit exists; no physical pressure qualification beyond narrow development scopes.",
+    "Fetch6-cycle first response and1-cycle beat service are provisional public observations, not transaction-joined proof of physical L2-hit-only behavior; immediate replay/no-backpressure assumptions remain.",
+    "Original independent7-arm validation failed prespecified stability for single and delayed cases even though aggregate residuals were small. No automatic qualification or threshold relaxation.",
+    "Three retained candidate comparisons used for structural development are development evidence, not new independent heldout families.",
+    "The fixed two-price WS/PRELOAD fitter cannot identify CPU/cache/FP/translation/arrival parameters. Global whole-SoC qualification is unsupported.",
+    "Capacity-crossing and host packing/FP regimes remain coverage gaps; UNKNOWN or legacy modeled domain must remain explicit."
+  ],
+  "replay_scope": {
+    "combined_matmul_cycles": 657,
+    "combined_replays_pin": {
+      "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/experiments/reference-data/public-combined-fetch-row-candidate-20261022/index.json",
+      "sha256": "5adda1e4c402624a07958b61a2822cddb52002f8e8d3d4ec4259ab3558bda2ff"
+    },
+    "complete_output_bytes": 1024,
+    "frontend_outputs": "all12 numeric rows and6 warmups exact in each replay; see upstream receipt",
+    "frontend_scopes_cycles": [
+      173,
+      122,
+      161
+    ],
+    "new_physical_runs": 0,
+    "qualification": false
+  },
+  "review": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/protocols/gemmini/combined-arrival-revision-v1/review.json",
+    "sha256": "e0b3e1f23a631a475ee0b60747d7144d66dd7f8fb61bd2e3393496df50f5103a"
+  },
+  "runtime_revision_kind": "provisional_arrival_pipeline",
+  "schema": "operator.public_arrival_selection_review.v1",
+  "selected_model_sha256": "01971a26e8b367fe22361a294785be31969ec3473735025608d22399b0ac96b6",
+  "selected_runtime_sha256": "318f9a631735b6e31481de4d406a32d3af3df6a667af6a658479a4a49560ddb9",
+  "selection": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/protocols/gemmini/combined-arrival-revision-v1/selection.json",
+    "sha256": "71c9daa22a7a2da7e638eb6b2f33e8fd0e800622b0a32527877539478f7667c1"
+  },
+  "status": "inactive_conditional_provisional_untuned",
+  "validation": {
+    "code_scope": "Direct read-only integrated validator; no import overlay or live edits",
+    "focused_checks": 9,
+    "full_original_profile_source_and_runtime_ancestry": "PASS",
+    "integration_head": "a21a285eb",
+    "validation_s": 2.5
+  }
+}

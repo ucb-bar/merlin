@@ -96,7 +96,9 @@ def _validate_handoff(
         raise PC.CampaignGateError(
             f"measurement requires exactly the {len(PM.REPLICATES)} identities {list(PM.REPLICATES)}"
         )
-    if handoff.candidate_initial_sha256 != functional.digest:
+    prepared = getattr(handoff, "compiler_pass_preparation", None)
+    initial = functional.digest if prepared is None else prepared["candidate_seed"]["sha256"]
+    if handoff.candidate_initial_sha256 != initial:
         raise PC.CampaignGateError("candidate was not forked from the functional baseline")
     if Path(handoff.candidate_path).resolve() == Path(handoff.functional_base_path).resolve():
         raise PC.CampaignGateError("candidate and baseline are the same path")
@@ -182,6 +184,10 @@ def load_paired_inputs(
     gsim_certificate_sha256: str,
     waive_functional_gate: tuple[str, ...] = (),
     functional_runs_root: Path,
+    compiler_library_selection=None,
+    compiler_pass_selection=None,
+    compiler_pass_preparation=None,
+    compiler_preparation_verification_root=None,
 ) -> PM.PairedInputs:
     """Load a sealed candidate plus an explicit tuning or host-only held-out corpus."""
     functional = PC.inspect_functional_run(
@@ -192,7 +198,23 @@ def load_paired_inputs(
     )
     try:
         handoff = VERIFY.verify_candidate_handoff(
-            record_path, verify_authoring_tools=False, target_experiment=target_experiment
+            record_path,
+            verify_authoring_tools=False,
+            target_experiment=target_experiment,
+            **(
+                {"compiler_library_selection": compiler_library_selection}
+                if compiler_library_selection is not None
+                else {}
+            ),
+            **(
+                dict(
+                    compiler_pass_selection=compiler_pass_selection,
+                    compiler_pass_preparation=compiler_pass_preparation,
+                    compiler_preparation_verification_root=compiler_preparation_verification_root,
+                )
+                if compiler_pass_selection is not None or compiler_pass_preparation is not None
+                else {}
+            ),
         )
         if phase == "tuning":
             expected_manifest = Path(corpus_root) / "performance_corpus_manifest.json"
@@ -220,6 +242,14 @@ def load_paired_inputs(
     if certificate.target != getattr(target_experiment, "target"):
         raise PC.CampaignGateError("GSIM certificate names a different target")
     baseline = _assert_immutable_tree(handoff.functional_base_path, functional.digest, label="functional baseline")
+    baseline_digest = functional.digest
+    prepared = getattr(handoff, "compiler_pass_preparation", None)
+    if prepared is not None:
+        from .compiler_pass_preparation import handoff_selection
+
+        handoff_selection(handoff)
+        baseline_digest = prepared["baseline"]["sha256"]
+        baseline = _assert_immutable_tree(prepared["baseline"]["path"], baseline_digest, label="prepared baseline")
     candidate = _assert_immutable_tree(handoff.candidate_path, handoff.candidate_sha256, label="sealed candidate")
     return PM.PairedInputs(
         functional,
@@ -227,7 +257,7 @@ def load_paired_inputs(
         corpus,
         phase,
         baseline,
-        functional.digest,
+        baseline_digest,
         candidate,
         handoff.candidate_sha256,
         certificate,
@@ -235,6 +265,12 @@ def load_paired_inputs(
 
 
 def identity_guard(inputs: PM.PairedInputs) -> dict[str, Any]:
+    from .compiler_library_state import handoff_selection
+
+    library = handoff_selection(inputs.handoff)
+    from . import compiler_pass_preparation as PREPARATION
+
+    passes = PREPARATION.handoff_selection(inputs.handoff)
     _verify_measurement_corpus(inputs.corpus, inputs.phase)
     GATE.load_certificate(inputs.gsim_certificate.path, expected_sha256=inputs.gsim_certificate.sha256)
     return {
@@ -244,4 +280,27 @@ def identity_guard(inputs: PM.PairedInputs) -> dict[str, Any]:
         "corpus_capsules_sha256": inputs.corpus.capsules_sha256,
         "candidate_record_sha256": inputs.handoff.record_sha256,
         "gsim_certificate_sha256": inputs.gsim_certificate.sha256,
+        **(
+            {"compiler_library_binding_sha256": inputs.handoff.compiler_library_binding["sha256"]}
+            if library is not None
+            else {}
+        ),
+        **(
+            {"compiler_pass_preparation_sha256": inputs.handoff.compiler_pass_preparation["sha256"]}
+            if passes is not None
+            else {}
+        ),
     }
+
+
+def original_baseline(inputs: PM.PairedInputs) -> Path:
+    """Keep original Phase 1 fork checks independent of derived comparison bytes."""
+    original = _assert_immutable_tree(
+        inputs.handoff.functional_base_path, inputs.functional.digest, label="original Phase 1 baseline"
+    )
+    prepared = getattr(inputs.handoff, "compiler_pass_preparation", None)
+    if prepared is not None and (
+        prepared["original"]["path"] != str(original) or prepared["original"]["sha256"] != inputs.functional.digest
+    ):
+        raise PC.CampaignGateError("prepared measurement has a different original Phase 1 fork")
+    return original

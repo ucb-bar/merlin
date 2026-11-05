@@ -20,6 +20,8 @@ judgement:
 
 Everything else is left alone and merely reported, because "probably finished" is not a property of
 a run directory that this tool can read off the filesystem. Dry-run is the default; ``--apply`` acts.
+Every plan and removal also refuses a path a seal, release, run record or derivation still cites
+(:mod:`merlin.common.cited_evidence`); ``cited PATH...`` asks that question before a manual delete.
 
 Three commands reach past ``out/`` (:mod:`merlin.common.storage_ops`): ``move`` relocates a tree to
 another disk behind a relative symlink after a checksum-verified copy, ``dedup --peers`` hard-links
@@ -36,7 +38,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from merlin.common import content_store, storage_lifecycle, storage_ops
+from merlin.common import cited_evidence, content_store, storage_lifecycle, storage_ops
 from merlin.common.artifacts import declared_product_roots
 from merlin.common.artifacts import storage_contract as contract
 from merlin.common.paths import artifacts_dir, build_dir, out_dir, runs_dir
@@ -748,7 +750,7 @@ def retention_reasons(path: Path) -> list[str]:
 
 def _protection_reasons(path: Path, *, require_terminal: bool = False) -> list[str]:
     reasons = storage_lifecycle.blockers(path, require_terminal=require_terminal)
-    reasons += retention_reasons(path)
+    reasons += retention_reasons(path) + cited_evidence.blockers(path)
     if _holds_tracked_files(path):
         reasons.append("tracked files or an uninspectable Git index")
     return reasons
@@ -941,6 +943,7 @@ def dedup(groups: list[tuple[int, list[Path]]], *, checker=None) -> dict:
                     raise PermissionError(f"refusing to replace a symlink, tracked, or uninspectable file: {path}")
                 restore = _writable_parents([path])
                 try:
+
                     def before_replace():
                         if checker is not None:
                             holders = storage_ops.holders_now(checker, path)
@@ -1079,6 +1082,7 @@ def _remove(path: Path, *, require_terminal: bool = False, store_object: bool = 
             raise PermissionError(f"storage path changed while waiting for ownership: {path}")
         if _holds_tracked_files(path):
             raise PermissionError(f"refusing to remove tracked or uninspectable state: {path}")
+        cited_evidence.require_uncited(path)  # a seal, release, run record or derivation still cites it
         latest = path.parent / "latest"
         if require_terminal and latest.is_symlink() and latest.resolve() == candidate:
             raise PermissionError(f"latest pointer now retains this output: {path}")
@@ -1407,7 +1411,11 @@ def main(argv: list[str] | None = None) -> int:
     prune.add_argument("classes", nargs="*", choices=CLASSES, help="which classes to reclaim (default: all of them)")
     prune.add_argument("--apply", action="store_true", help="actually remove; without it nothing is touched")
 
+    cited_evidence.add_arguments(sub)
+
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
+    if args.command == "cited":
+        return cited_evidence.run(args)
 
     if args.command == "report":
         report = collect()

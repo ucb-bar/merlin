@@ -1,0 +1,877 @@
+{
+  "schema": "merlin.paper-kernel-replay.v1",
+  "artifact_root": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb",
+  "cases": {
+    "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/cases.json",
+    "sha256": "3b75c1bed23621764cbe5e7196f4c90d91da34ab0b46f8b67de1b39f15f8336e"
+  },
+  "study": {
+    "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/study.json",
+    "sha256": "c206c9b59ac175a5abbf270f063dad6bc9c88027131e9a30400b345cc5b81be1"
+  },
+  "object_roots": [
+    "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/kernels",
+    "additional-compiled-kernels"
+  ],
+  "images": {
+    "cca-all-full-v1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-all-full-v1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-all-full-v1/image-manifest.json",
+        "sha256": "f9ec9c685b784a409227f0e2b2c9fca616b45ad8bb52bf718d3667e1e2f8991b"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-all-full-v1/uploaded.elf",
+        "sha256": "2fa6a1b2836cd29218cf9021bd2882a659cc1c78867ecdc08b44ae57fb6eb094"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-all-full-v1/hardware.json",
+        "sha256": "c0cf344b13ad33a84ea75dfd051a42a7851566a5bdfbc28766f564b9667b32fb"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-all-full-v1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-all-full-v1/summary.json",
+        "sha256": "c3ef7ce7b622e060f3111258777961539c70c7bc1ae189062813371ea260b097"
+      }
+    },
+    "cca-all-r2-full-v1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-all-r2-full-v1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-all-r2-full-v1/image-manifest.json",
+        "sha256": "9541a5d05a0f19778456b8fea12017c1f423aa383abdf83de85c8d4adca2cdae"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-all-r2-full-v1/uploaded.elf",
+        "sha256": "dae9ce2f3320223d448b0e967df5c74634b8ab2af616bdd679ba263dc67f7ac3"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-all-r2-full-v1/hardware.json",
+        "sha256": "280efba2d75c5a126b8444145ad32f3533013a435267503e10f865d650b102c2"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-all-r2-full-v1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-all-r2-full-v1/summary.json",
+        "sha256": "86e45744d84253ed4740f4527254137c481f3413a253ffe6758ef597b713db90"
+      }
+    },
+    "cca-exo-full-v1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-full-v1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-full-v1/image-manifest.json",
+        "sha256": "5e89d43d91cfc0ba1878b2321666fb5377e14680479d40c07bfe5aeb9458bc0c"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-full-v1/uploaded.elf",
+        "sha256": "d382f35fe19b842ad25ae9023407a7132e39b07da9bc36cef6ed8996656af85e"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-full-v1/hardware.json",
+        "sha256": "d55d1f58e91bd97d721a55799769f9b01c34cd31b1dadade1577731a2137c25a"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-full-v1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-full-v1/summary.json",
+        "sha256": "9bf7455aa0afe30daace74d8536f2a1e22b68731c8dff4f43f55df5abe5767e1"
+      }
+    },
+    "cca-exo-r2-full-v1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-r2-full-v1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-r2-full-v1/image-manifest.json",
+        "sha256": "c9b5c518ce3994297890963481fef73de1c09910a9f3c1bad1407ec9cb02d4a9"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-r2-full-v1/uploaded.elf",
+        "sha256": "c48123003c5eab50569cf701d62f30e6f910ad37cce73fa51261c848952b5cd6"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-r2-full-v1/hardware.json",
+        "sha256": "4e66d119c7bf54dceb03d9c149b10fe7aa5311d855bd0cd2fcfcd5d35e15080b"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-r2-full-v1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-r2-full-v1/summary.json",
+        "sha256": "522a3fed0a596b15c332476aed36f2d1b81322164710ce797052b667b3d6eadf"
+      }
+    },
+    "cca-exo-r3-full-v1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-r3-full-v1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-r3-full-v1/image-manifest.json",
+        "sha256": "761b05bc308555e1067a04f2134eca3127cb712de72e71ce69db29e123586692"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-r3-full-v1/uploaded.elf",
+        "sha256": "13e2886a060b5ff75b2d07c7e3a3273c0c96e655b257fe5fb997bd5ea4bbfc70"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-r3-full-v1/hardware.json",
+        "sha256": "bc28ac209ff5543ff0faf6bd1cb8a66314ecd6f198b64a15ee8f6090a6eb8742"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-r3-full-v1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-r3-full-v1/summary.json",
+        "sha256": "95f33ae9cf5bdf03f0e45b1d45b0663219025c266a48c01afe98dc3e23bfe09c"
+      }
+    },
+    "cca-raw-full-v1-s1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s1/image-manifest.json",
+        "sha256": "9cc46ba36006c0fd349f90014af97dbbd7bd23d27912cf5c27ef1ce679456ef8"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s1/uploaded.elf",
+        "sha256": "a659903ddf56ea8656a8af2a7b7a516c9dce93d202d7916d2d434f5b36962c60"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s1/hardware.json",
+        "sha256": "77284f16c2342e6fcd2b0ff0da2270544a6080850afe9d56cad87703de9b45df"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s1/summary.json",
+        "sha256": "e4d4e9c7d175d3466c9147fbe4ca755682620f44ea12f715cde8ccee588f5e26"
+      }
+    },
+    "cca-raw-full-v1-s2": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s2",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s2/image-manifest.json",
+        "sha256": "0e8508b976af4d51c2d8af12316c830f46cf041b5f413d899f4154feaa4aa1f7"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s2/uploaded.elf",
+        "sha256": "2b13ff86a6122fde52c8a46eabfbd756d84251b0828e001fea2f4f5acc2861b1"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s2/hardware.json",
+        "sha256": "840cce54fee84870c518057e63e0a08bdd14b3353b2c79ebf0b406a072f90289"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s2/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s2/summary.json",
+        "sha256": "900dd0ca1b6985245fb9b697b07efaa2bc1b75a1fe3e39707ffecd4092c83de0"
+      }
+    },
+    "cca-raw-full-v1-s3": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s3",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s3/image-manifest.json",
+        "sha256": "d6aea4447ba38c95bc6c57ca44f6045bf90e25581693cb645e4aaf174fcd3e8e"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s3/uploaded.elf",
+        "sha256": "866a9b99fe72e2300450573697b30b358ef2a7ebaa11deb70eb2db90b6f30af0"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s3/hardware.json",
+        "sha256": "d7770f0adae6f9f0afd5bc680a0e84b85a33405a7015c1fa86df9979afd1a998"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s3/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-raw-full-v1-s3/summary.json",
+        "sha256": "3d6d569d38b3b7cf1330c640ab971adfd33ad4d886729830b31797c20d0e22b8"
+      }
+    },
+    "cca-resnet50-full-v1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-resnet50-full-v1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-resnet50-full-v1/image-manifest.json",
+        "sha256": "06441edf2431c53b05d0fd249f011e09566b54d7aece71dafdc0599f50c7da10"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-resnet50-full-v1/uploaded.elf",
+        "sha256": "2fc53a1b6dee4dcea6810d398c7f48b1286037b77902bf05f9edbc5dfa940b84"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-resnet50-full-v1/hardware.json",
+        "sha256": "ec4fb20f439fcf2a0b5e5c1ebb072a4f5af74320f343526957150d9d8d9376b2"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-resnet50-full-v1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-resnet50-full-v1/summary.json",
+        "sha256": "dddf7abfe945f7284f28016eaeaa4a7054b1b3ddc240c8b2a3bf8c18074c87c8"
+      }
+    },
+    "cca-resnet50-r2-full-v1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-resnet50-r2-full-v1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-resnet50-r2-full-v1/image-manifest.json",
+        "sha256": "73626ef07fac68d0432da4d380614ff611543271e04e43dd25c10aad21013415"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-resnet50-r2-full-v1/uploaded.elf",
+        "sha256": "35d5fd042453c6b8420af19f62c265edeb6ad137295a8839be6f0a86b2564388"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-resnet50-r2-full-v1/hardware.json",
+        "sha256": "d8b2bfb98690870c294978273abcb5af10e666842e7f39079ae413b61b3ffd55"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-resnet50-r2-full-v1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-resnet50-r2-full-v1/summary.json",
+        "sha256": "68d999b47754b1d69db294a37e1c651d05344a74b87b77cb909a7442817607c1"
+      }
+    },
+    "cca-tinyllama-full-v1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-tinyllama-full-v1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-tinyllama-full-v1/image-manifest.json",
+        "sha256": "40774af8163d43134379163bd96ee087ae8b26ccd9cb658b70783ac861cbd9ef"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-tinyllama-full-v1/uploaded.elf",
+        "sha256": "fec863095d34281a17ba0de5e475332da116e54b85fb19b4e4158a812cc74887"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-tinyllama-full-v1/hardware.json",
+        "sha256": "6f8d2ce44bc68e28d77f875e6276a91ccdaa6a23bc540f54f8055e58869cf388"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-tinyllama-full-v1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-tinyllama-full-v1/summary.json",
+        "sha256": "29f0ef9866c3489acc216d08403201333e5e8d7a0214536fd1cfd869a0285408"
+      }
+    },
+    "cca-tinyllama-r2-full-v1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-tinyllama-r2-full-v1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-tinyllama-r2-full-v1/image-manifest.json",
+        "sha256": "114b5b26523df79ad1ba3558c3fc660bf50172933da017352156b762f32e6bd3"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-tinyllama-r2-full-v1/uploaded.elf",
+        "sha256": "18fb9932b22ac9c46fa6ad476985707e728be8aed55abe5188a023c2818fd189"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-tinyllama-r2-full-v1/hardware.json",
+        "sha256": "fac22b7ba91dffaea91b47c35b3379fb6bbdbb8717e811d5fda6ce11d8c21a93"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-tinyllama-r2-full-v1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-tinyllama-r2-full-v1/summary.json",
+        "sha256": "ac2c9cf274d13b06c61978bfb92385c2ea4aa90b9de5557019b6043102e03a44"
+      }
+    },
+    "el123-r5-el3-final-c01": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-final-c01",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-final-c01/image-manifest.json",
+        "sha256": "c7b1236cb4137506d1fd85037557d7cbd7a7ef8d7a38ec82c097bce4c5888c69"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-final-c01/uploaded.elf",
+        "sha256": "dfb5f277e6f4e0f971ef00e2fb07eead90b96cf4535d2d2f6883967b85a6216c"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-final-c01/hardware.json",
+        "sha256": "2535ac9d02804838322a885c37264fcdb982b43cf201db947bb6387de85a1d6f"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-final-c01/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-final-c01/summary.json",
+        "sha256": "70e1279fbe4f5ddae3174efc8f303d148e6951ab542ffd6c68aa5b8698267e48"
+      }
+    },
+    "el123-r5-el3-final-safe": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-final-safe",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-final-safe/image-manifest.json",
+        "sha256": "f8b44e0d702d1d35a2d4ec4b6f225a9a40ffa433d731cf69612b5fffed34220a"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-final-safe/uploaded.elf",
+        "sha256": "763ae19214cb5f6b8fb61804c7921be1a0ef93171064787ed4729d2eee89c678"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-final-safe/hardware.json",
+        "sha256": "3ee874ce7ccb11346c54520e1fa58f74ea2f55e1213c37329cd9dc7c3fe3a489"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-final-safe/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-final-safe/summary.json",
+        "sha256": "800c12afe478c1bb3353a10ae4ebfbd818bb623e39cdd3bb17d824980ec61691"
+      }
+    },
+    "el123-r5-el3-rerun-s1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-rerun-s1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-rerun-s1/image-manifest.json",
+        "sha256": "399bd1d2526cbe61f4fe5db1a95b659b725ab6413c31137a849737da632d3c9e"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-rerun-s1/uploaded.elf",
+        "sha256": "055e5203f66aba189aa42d89c6fc0ce2b0167e56f17d5b8028dee99aba05ca9f"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-rerun-s1/hardware.json",
+        "sha256": "cd330f231b1db74afaa307eefb77b8c78cf748afca45287217e0d984ff090a8c"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-rerun-s1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-el3-rerun-s1/summary.json",
+        "sha256": "028dc37bd1946404f494aecd06cb66739d4b2a320e66af2099abf0088c5aefc2"
+      }
+    },
+    "el123-r5-full-v2-s2": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-full-v2-s2",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-full-v2-s2/image-manifest.json",
+        "sha256": "10f6408950c1d5f7aa16e8fee7d7340696525298d792f92b12d63a1996d310b3"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-full-v2-s2/uploaded.elf",
+        "sha256": "bd47afe6a8d8ae0388ed255ac2471542dbc3252bcbbe756e3b69b26274926855"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-full-v2-s2/hardware.json",
+        "sha256": "dda995ad7158ca76dc1179007a516212f25ceebd24b72c59590a8768eccc4f75"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-full-v2-s2/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-full-v2-s2/summary.json",
+        "sha256": "ddefc9c19eb563497da4107f487bd7a3deb2a824b6c08be3e54c248f62bcdf18"
+      }
+    },
+    "el123-r5-per-system-el1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-per-system-el1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-per-system-el1/image-manifest.json",
+        "sha256": "231c37ed049550a182001c7f541ed73023728c0518ff1eb1ac42ac498be32602"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-per-system-el1/uploaded.elf",
+        "sha256": "2cd06214bd47bd5dbcdb4a241e96216b7a503683cc86cb6edd3f0fd203625752"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-per-system-el1/hardware.json",
+        "sha256": "6f699a15373dba6805a3d63fa5e85ce2e964c64f2dc62c3ef191a503f83a334f"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-per-system-el1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-per-system-el1/summary.json",
+        "sha256": "5cb45625b23f092582d90fba605f3236ee4183e05b6d791a3297dc9c5a739f4d"
+      }
+    },
+    "el123-r5-per-system-el2": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-per-system-el2",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-per-system-el2/image-manifest.json",
+        "sha256": "276dca916e672678b43ced030624aeb6d50458e37f358ef1d017349f55b31fb2"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-per-system-el2/uploaded.elf",
+        "sha256": "c99e46a8512a13f4dc2e452aab018119f3fa75910683b1429128af574b6fadf5"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-per-system-el2/hardware.json",
+        "sha256": "04a7b95370d3201efd9432765a2160df6b4ab68bf07f15f5f5ed5edbfe2b0064"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-per-system-el2/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-per-system-el2/summary.json",
+        "sha256": "affad58b3eaf4302b09b3e690ba58d6390b98d3caac1b8e07048c60aa1e170c2"
+      }
+    },
+    "el123-r5-suspect-el1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el1/image-manifest.json",
+        "sha256": "df41529f79f4e67f0502ca0d78ce843931c4d42ba98a408132a316384079f754"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el1/uploaded.elf",
+        "sha256": "0a8baa13fd9c00328a30fac0c597811df154bce9c0850acafaccd2703d26bc58"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el1/hardware.json",
+        "sha256": "c9ff0c8540463ec1da3701cf9ab942f86b4e8b505ba395a591f7e586cdac4735"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el1/summary.json",
+        "sha256": "493ec534a8f6fe66d4943be9386176c71d78bfba489a1d06746905fdd0e04f1c"
+      }
+    },
+    "el123-r5-suspect-el2": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el2",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el2/image-manifest.json",
+        "sha256": "d1bf3efc1d43926dcd4c279794a555e829d75c906bfe9a2fd1c1bfd4fc76750a"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el2/uploaded.elf",
+        "sha256": "6028b8aca396d55539f0964f57735a9d93a285246d30d356038591c7ff71b7ec"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el2/hardware.json",
+        "sha256": "2480a78a5a9808ea2c9b30404d36578dc077124433bff0473d707397f0556f1d"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el2/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el2/summary.json",
+        "sha256": "163080f1cf26aa2f6f98a6dc345332105829091c3ce16564182bc3c3c5cdfa5b"
+      }
+    },
+    "el123-r5-suspect-el3": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el3",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el3/image-manifest.json",
+        "sha256": "39965aecec89f20c75965588727b64b52312bfc881dfd165d40f113577afe658"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el3/uploaded.elf",
+        "sha256": "ec8f998374f5d5fdb238d23898cc3fddb3da2564111477177d7b04bc29f5b286"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el3/hardware.json",
+        "sha256": "0e7c2109835753bb926d1be41d3c6888939dd1f8eb34a50610abea8fcb540412"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el3/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/el123-r5-suspect-el3/summary.json",
+        "sha256": "aaca38fde9024529612b5f5bfd71e78b42691e2fbf056ac5ad811247bff769cf"
+      }
+    },
+    "full-ref-4h-full-v1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/full-ref-4h-full-v1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/full-ref-4h-full-v1/image-manifest.json",
+        "sha256": "4b7a7b3d4a1fe5b8f5b6ded1c89a5d71080a263552160fc040a434dddb605f3d"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/full-ref-4h-full-v1/uploaded.elf",
+        "sha256": "6cf2c91ceadcf6cb4aa92d7e1ef72bc217199f04acdfedaa6cfa4c9545e66aed"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/full-ref-4h-full-v1/hardware.json",
+        "sha256": "43e5575d5cda7e0019811cbee3a484e3dc931c9a0f87010291d257c4ec2c735e"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/full-ref-4h-full-v1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/full-ref-4h-full-v1/summary.json",
+        "sha256": "431969c0b177f6877b18b9b78ed8c8991b1dadaf89488d9b0b786a0e598135d9"
+      }
+    },
+    "full-ref-full-v1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/full-ref-full-v1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/full-ref-full-v1/image-manifest.json",
+        "sha256": "b267c3c9ebec4fd9ab7d3d2ac07ed31165cc7de15a17f5cf2f19b436a0319848"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/full-ref-full-v1/uploaded.elf",
+        "sha256": "c31e917bfafdb4df42ded389e2470318e9dbc300473a1d2daabbd33f347bbb57"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/full-ref-full-v1/hardware.json",
+        "sha256": "dee17f5ed267165fdd3157805b53e4bd470f1dfe6a25611ff264b684a7b719a3"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/full-ref-full-v1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/full-ref-full-v1/summary.json",
+        "sha256": "579a14606fb7cc0d79dd04028623bdbac43df90b2d19c6e11385b7d5482e7a24"
+      }
+    },
+    "t07-hang-confirm-v2": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/t07-hang-confirm-v2",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/t07-hang-confirm-v2/image-manifest.json",
+        "sha256": "6363b7e3f55b6752cc39e4d92339710527e7e203bf64f0e8d1179ca91d1d30fe"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/t07-hang-confirm-v2/uploaded.elf",
+        "sha256": "f129ededbfcb45af1f8a2adfbd0ad8b4e923e42a5ad2321cb6a4561784a4ee85"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/t07-hang-confirm-v2/hardware.json",
+        "sha256": "c93643513035662bdbd7e95550593ea1ecc18a85e796bae19478bacd9beb36cb"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/t07-hang-confirm-v2/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/t07-hang-confirm-v2/summary.json",
+        "sha256": "b2c5f9a33d463f1dcb9107913e111cb9aa0bc4818ed70fc051d6fe684e2420ca"
+      }
+    },
+    "tooling-ablation-full-v3-s1": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s1",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s1/image-manifest.json",
+        "sha256": "82de7327c4502de2bd865e4dd2dcd6c2cbd3e3c52f9d7ac5dd275f6fbb8df5e3"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s1/uploaded.elf",
+        "sha256": "727b1d7feeafff7c37e15a5aa9a3e168ae47c4432b5afbc6f8f66a490defe14c"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s1/hardware.json",
+        "sha256": "b1416c603377021c5baa6e46ca87acd32e80fef542872059d19e57daa095510b"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s1/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s1/summary.json",
+        "sha256": "c10b1deeb757e69f0a793471de1ff794d86b9ae045e25bf5cf3be6d0adba5587"
+      }
+    },
+    "tooling-ablation-full-v3-s2": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s2",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s2/image-manifest.json",
+        "sha256": "9377f3ada471de68b2766e5cdf757eb563dd8d69cd8b006337005d11cc7e0ee3"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s2/uploaded.elf",
+        "sha256": "5a9f4672e11cce508bff8e48e0c2a2dad90aecbacb90f9026102c432a4e5e5c3"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s2/hardware.json",
+        "sha256": "ce7c3bb27ba46460eec0679524a80b67edbe132a4e740e88c79f799b08d26317"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s2/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s2/summary.json",
+        "sha256": "d2fc94ff796fb38758574c95ba9edd431291131c9d3cea7f44a4b612556b8fc5"
+      }
+    },
+    "tooling-ablation-full-v3-s3": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s3",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s3/image-manifest.json",
+        "sha256": "1439d5253da92c6727be23d4abb4fe78bd632d66f2064677fa4d00e4f3f6b1a9"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s3/uploaded.elf",
+        "sha256": "bc63b2dd8a07b910184f94c1a628132384b3230de14fb728ce7306a3631d139c"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s3/hardware.json",
+        "sha256": "87cf6449b0e8c1fd12dd14e52dcac5c3cb73b65bd7ab2dddcbe629fb9d3e3b04"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s3/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/tooling-ablation-full-v3-s3/summary.json",
+        "sha256": "be8a257b23f6886b5e1b914267c440d1ddc183a1df8ae5ee6a10ff621ff29b87"
+      }
+    },
+    "upstream-exo-firesim-v2": {
+      "directory": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/upstream-exo-firesim-v2",
+      "manifest": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/upstream-exo-firesim-v2/image-manifest.json",
+        "sha256": "64698363cd91128f42e94c2eab108bd2a87874863599f9a14e13d982edfe9c66"
+      },
+      "elf": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/upstream-exo-firesim-v2/uploaded.elf",
+        "sha256": "f95db7e333199274d8b09b571d72c784c0afd014748df14ef589e7b907241886"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/upstream-exo-firesim-v2/hardware.json",
+        "sha256": "b012654d3721c8383a77813eaafefffaec4fbd79897fa3df0255eb6cce4e9196"
+      },
+      "hardware_summary": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/upstream-exo-firesim-v2/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/upstream-exo-firesim-v2/summary.json",
+        "sha256": "e00958cb081fc8f84b65e2d5b86ba476e1209728aa03357bdb4fdbe31af1cdb4"
+      }
+    },
+    "fsm-current-library-89": {
+      "directory": "fsm-rerun",
+      "manifest": {
+        "path": "fsm-rerun/rerun-manifest.json",
+        "sha256": "9fbf79e3fe693883a18a9622e7b5be155d109bbfa9cabdca9af1105cac602949"
+      },
+      "elf": {
+        "path": "fsm-rerun/fsm-currentdev-w20-n20-reversed-v1.elf",
+        "sha256": "aca627aa070a23393e16ee054951ab3b13012c306714e6ea205d80c7029dbe32"
+      },
+      "hardware": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/measurements/cca-exo-r3-full-v1/hardware.json",
+        "sha256": "bc28ac209ff5543ff0faf6bd1cb8a66314ecd6f198b64a15ee8f6090a6eb8742"
+      },
+      "hardware_summary": {
+        "path": "fsm-rerun/observed/HW_CFG_SUMMARY",
+        "sha256": "92e1976ffc4b8218119e96ea19d80bbb156ea375f6267b69d8eaedad44900ec0"
+      },
+      "historical_execution": {
+        "path": "fsm-rerun/hardware-validation-summary.json",
+        "sha256": "b1ab470ec2cf7385f3d46e59906cad3ff99e14b36a84b870a0d7cc06ff720a79"
+      },
+      "source_image": "cca-exo-r3-full-v1"
+    }
+  },
+  "rebuild": {
+    "compile_script": {
+      "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/scripts/compile_one.py",
+      "sha256": "6315a625c63d1a310de6a466665970b0f4bc74031173c8df845dd9a561585d8f"
+    },
+    "batch_script": {
+      "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/scripts/build_batch_v2.py",
+      "sha256": "364e6e100a8d1d687e97e15539faf22c16324a490a50505a42a6ecf375a7765b"
+    },
+    "script_study": {
+      "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/scripts/study.json",
+      "sha256": "6a9540bb425756681d050513b7d7e76cf87a3dd9f8e09745b1c2e5935c37317a"
+    },
+    "dependency_mounts": [
+      {
+        "source": "dependencies/llvm",
+        "inventory": {
+          "path": "dependencies/llvm.inventory.json",
+          "sha256": "9ee1d92f1a6f63f9017febb2abbbba1894d5ed4372258d02a98f1263102fc48b"
+        },
+        "destination_from": {
+          "script": "compile_script",
+          "name": "LLVM"
+        }
+      },
+      {
+        "source": "dependencies/compiler-python",
+        "inventory": {
+          "path": "dependencies/compiler-python.inventory.json",
+          "sha256": "eed6b653c1f54e4e6a1f1a263ae6f2d411ce7eb154454134af1f89998077df00"
+        },
+        "destination_from": {
+          "script": "compile_script",
+          "name": "RUNTIME"
+        }
+      },
+      {
+        "source": "dependencies/riscv-conda",
+        "inventory": {
+          "path": "dependencies/riscv-conda.inventory.json",
+          "sha256": "53cedf40960e3cf9d21519b57295af2b29065d81b2c0de97002db2783c3bf7f5"
+        },
+        "destination_from": {
+          "script": "compile_script",
+          "name": "CONDA"
+        }
+      },
+      {
+        "source": "dependencies/uv-python",
+        "inventory": {
+          "path": "dependencies/uv-python.inventory.json",
+          "sha256": "7e3de84fd52513ecb227972576966376f2b704645d46bb62345e6fe8f74c5de1"
+        },
+        "destination_from": {
+          "script": "compile_script",
+          "name": "UNNAMED_PYTHON_ROOT"
+        }
+      },
+      {
+        "source": "dependencies/runtime-vendor",
+        "inventory": {
+          "path": "dependencies/runtime-vendor.inventory.json",
+          "sha256": "5e93fd78d8f3158d9e03378f51456777a1a5843021ca2420d6c04038b21a805d"
+        },
+        "destination_from": {
+          "script": "batch_script",
+          "name": "VENDOR"
+        }
+      }
+    ],
+    "toolchains": {
+      "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/toolchains.json",
+      "sha256": "cc6c8b2610add978878f197e3ff62353f0e394e5e31c7be820b8ccd7a37a7dd3"
+    },
+    "source_libraries": {
+      "fresh10cca-live": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/f9d7fb5c3d6f/generic-library",
+        "source_sha256": "5d527ca8d01210f2d6078122f82736be498e45bd045fa3b1f344efd2002efa35",
+        "framework_relative": "out/artifacts/fresh-inputs-xs_capsules-cca/author-library/generic-library"
+      },
+      "fresh10seed-live": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/afcf34be293c/generic-library",
+        "source_sha256": "1a964161e73ec2f2874610ef9f4ca40436d70794476b4276f119b5ef58bde52e",
+        "framework_relative": "out/artifacts/fresh-inputs-xs_capsules/author-library/generic-library"
+      },
+      "fresh10cca-final12h": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/f9d7fb5c3d6f/generic-library",
+        "source_sha256": "5d527ca8d01210f2d6078122f82736be498e45bd045fa3b1f344efd2002efa35",
+        "framework_relative": "out/artifacts/fresh-inputs-xs_capsules-cca/author-library/generic-library"
+      },
+      "fresh10seed-final12h": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/afcf34be293c/generic-library",
+        "source_sha256": "1a964161e73ec2f2874610ef9f4ca40436d70794476b4276f119b5ef58bde52e",
+        "framework_relative": "out/artifacts/fresh-inputs-xs_capsules/author-library/generic-library"
+      },
+      "F10-INFRA-REF-NOCCA": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/F10-INFRA-REF-NOCCA/generic-library",
+        "source_sha256": "5d527ca8d01210f2d6078122f82736be498e45bd045fa3b1f344efd2002efa35"
+      },
+      "F10-SCHED-REF-NOCCA": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/F10-SCHED-REF-NOCCA/generic-library",
+        "source_sha256": "5d527ca8d01210f2d6078122f82736be498e45bd045fa3b1f344efd2002efa35"
+      },
+      "F10-FULL-NOREF-NOCCA": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/F10-FULL-NOREF-NOCCA/generic-library",
+        "source_sha256": "5d527ca8d01210f2d6078122f82736be498e45bd045fa3b1f344efd2002efa35"
+      },
+      "EL1-r5": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/EL1-r5/generic-library",
+        "source_sha256": "1dcd3640a5e651602104ab614251701ad29149c586699466f2b39fd00d1160bc"
+      },
+      "EL2-r5": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/EL2-r5/generic-library",
+        "source_sha256": "1dcd3640a5e651602104ab614251701ad29149c586699466f2b39fd00d1160bc"
+      },
+      "EL3-r5": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/EL3-r5/generic-library",
+        "source_sha256": "1dcd3640a5e651602104ab614251701ad29149c586699466f2b39fd00d1160bc"
+      },
+      "CCA-RAW": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/CCA-RAW/generic-library",
+        "source_sha256": "4077cf33eee482c3d2b94889847d97ae33d64b74a1cccc7933ee068155bb3370"
+      },
+      "CCA-EXO": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/CCA-EXO/generic-library",
+        "source_sha256": "4077cf33eee482c3d2b94889847d97ae33d64b74a1cccc7933ee068155bb3370"
+      },
+      "CCA-TINYLLAMA": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/CCA-TINYLLAMA/generic-library",
+        "source_sha256": "7ecf4546584b85fda8e0b76a87645c809f985e396ede1833338f86eabd72edfa"
+      },
+      "CCA-RESNET50": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/CCA-RESNET50/generic-library",
+        "source_sha256": "7ecf4546584b85fda8e0b76a87645c809f985e396ede1833338f86eabd72edfa"
+      },
+      "CCA-ALL": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/CCA-ALL/generic-library",
+        "source_sha256": "7ecf4546584b85fda8e0b76a87645c809f985e396ede1833338f86eabd72edfa"
+      },
+      "FULL-REF-4H": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/FULL-REF-4H/generic-library",
+        "source_sha256": "7ecf4546584b85fda8e0b76a87645c809f985e396ede1833338f86eabd72edfa"
+      },
+      "FULL-REF": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/FULL-REF/generic-library",
+        "source_sha256": "7ecf4546584b85fda8e0b76a87645c809f985e396ede1833338f86eabd72edfa"
+      },
+      "CCA-ALL-R2": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/CCA-ALL-R2/generic-library",
+        "source_sha256": "ae25c7ee1017586f40679f6e17b33a6ae1ee880067b8a87d4a038eb9496d7833"
+      },
+      "CCA-TINYLLAMA-R2": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/CCA-TINYLLAMA-R2/generic-library",
+        "source_sha256": "ae25c7ee1017586f40679f6e17b33a6ae1ee880067b8a87d4a038eb9496d7833"
+      },
+      "CCA-EXO-R3": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/CCA-EXO-R3/generic-library",
+        "source_sha256": "ae25c7ee1017586f40679f6e17b33a6ae1ee880067b8a87d4a038eb9496d7833"
+      },
+      "CCA-RESNET50-R2": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/CCA-RESNET50-R2/generic-library",
+        "source_sha256": "ae25c7ee1017586f40679f6e17b33a6ae1ee880067b8a87d4a038eb9496d7833"
+      },
+      "CCA-EXO-R2": {
+        "path": "perf-studies_gemmini_v4_20261028T232951Z_744bcbb/compiler-libraries/CCA-EXO-R2/generic-library",
+        "source_sha256": "7ecf4546584b85fda8e0b76a87645c809f985e396ede1833338f86eabd72edfa"
+      }
+    },
+    "vendor_headers": [
+      {
+        "path": "include/gemmini.h",
+        "sha256": "007826db4fdaf35783e5d91ad3f21c2df9a310c1c51d53499f7745fc379974de"
+      },
+      {
+        "path": "include/gemmini_params.h",
+        "sha256": "3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924"
+      },
+      {
+        "path": "include/gemmini_counter.h",
+        "sha256": "5826242287784b9a383d45fdcb6791f8a1651d9d320a1a5f011585a9885b5669"
+      },
+      {
+        "path": "rocc-software/src/xcustom.h",
+        "sha256": "9582eb00cee774e4680fde6408a0d607bba85196a0a4fd803f7b7ddd801aad69"
+      },
+      {
+        "path": "rocc-software/src/riscv_test_rocc.h",
+        "sha256": "c7f53ca7c6c8b2db79b9a79b8cf56234381c45f96f441b21f4ce53689a322f29"
+      }
+    ]
+  }
+}

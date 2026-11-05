@@ -1,0 +1,45 @@
+{
+  "status": "authorized",
+  "maximum_runs": 1,
+  "calibration_eligible": false,
+  "authorized_at": "2026-10-22T12:52:48.498928+00:00",
+  "maximum_seconds": 1200,
+  "reason": "One bounded public diagnostic to resolve ICache refill timing; prior file transport failure retained and stdout transport now proven with normal and overflow fixtures inside native sandbox. No fitting, hardware, program or sampling changes.",
+  "plan": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/plan.json",
+    "sha256": "59d0f776601de3d33786ea0d8d21de97cd60650dc33ddafc84c3cde6fe1fd389"
+  },
+  "state": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/physical-state-prepared.json",
+    "sha256": "0a1bb5d23912c127cce938592d351821caec4f596bbfa62e7371047ba1b1e0e3"
+  },
+  "backend": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/diagnostic-backend.json",
+    "sha256": "ebed8cf45c76bfb36401ab9330c65302c217ee34c2a931f9a999fac8964bc5ce"
+  },
+  "launcher": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/.tmp/run_refill_observer_stdout_once.py",
+    "sha256": "ca9b83327e30161808d57be8e38f783eea1901ce26e6719570a917b37edc1dbc"
+  },
+  "diagnostic_engine": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/emulator",
+    "sha256": "bbde8b0bda803b953fe2a70d9da33fe85f3d214f1fbdfb703c2126b697e7ebf1"
+  },
+  "elf": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf",
+    "sha256": "cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e",
+    "n_bytes": 8960
+  },
+  "phase_review": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/phase-proof.json",
+    "sha256": "19772ed37f60d17f4a0c6a482e611bb03706031526f83bdc54926159988d8285"
+  },
+  "transport_fixture": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/native-transport-host-check.json",
+    "sha256": "c76fa5b4c418355a96b6ca4ca948464d8e83422b59d46fbc238e0fba1f2265f3"
+  },
+  "previous_attempt": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-v1/attempt-v2/physical-result.json",
+    "sha256": "e2a4b0291d2883d293293c356041c3ce5cb467e2f9666adb1b54ac9e5e1d20cb"
+  }
+}

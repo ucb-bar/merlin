@@ -9,6 +9,7 @@ Every process launch is forbidden; no native controller imports are used.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import subprocess
 from pathlib import Path
@@ -19,8 +20,10 @@ from merlin_experiments.phase2 import checkpoint_admission as AD
 from merlin_experiments.phase2 import checkpoint_controller as CTRL
 from merlin_experiments.phase2 import contracts as C
 from merlin_experiments.phase2 import corpus as CORPUS
+from merlin_experiments.phase2 import form_holdout as FORM
 from merlin_experiments.phase2 import functional_cohort as FC
 from merlin_experiments.phase2 import gsim_gate as GATE
+from merlin_experiments.phase2 import gsim_workload as WORKLOAD
 from merlin_experiments.phase2 import holdout_corpus as HOLDOUT
 from merlin_experiments.phase2 import measurement_support as MS
 from merlin_experiments.phase2 import paired_cli as pair
@@ -35,10 +38,64 @@ def lifecycle(tmp_path, monkeypatch):
     return build_lifecycle(tmp_path, monkeypatch)
 
 
+def _synthetic_reveal(root, *, target_name, descriptor, name, family, cohort, shape):
+    """A frozen v2 reveal of one member, read back through the paired-input loader."""
+    member = root / "_perf" / name
+    member.mkdir(parents=True)
+    m, k, n = shape
+    member_descriptor = {
+        **descriptor,
+        "name": name,
+        "performance": {**descriptor["performance"], "family": family},
+        "inputs": [
+            {"name": "X", "role": "input", "shape": [m, k], "dtype": "i8"},
+            {"name": "W", "role": "weight", "shape": [k, n], "dtype": "i8"},
+        ],
+    }
+    (member / "capsule.yaml").write_text(json.dumps(member_descriptor))
+    tree = PI.holdout_tree_record(root)
+    manifest = root / "holdout_manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "kind": "generated_performance_holdout_reveal",
+                "domain": {"target": target_name},
+                "cohorts": {cohort: {"family": family, "member_count": 1}},
+                "members": [
+                    {"name": name, "path": f"_perf/{name}", "family": family, "cohort": cohort, "M": m, "N": n, "K": k}
+                ],
+                "corpus": tree,
+            }
+        )
+    )
+    for path in reversed([root, *root.rglob("*")]):
+        path.chmod(0o555 if path.is_dir() else 0o444)
+    return PI.load_holdout_corpus(
+        root,
+        manifest,
+        manifest_sha256=C.sha256_file(manifest),
+        capsules_sha256=tree["sha256"],
+        expected_target=target_name,
+    )
+
+
 def build_lifecycle(
-    tmp_path, monkeypatch, *, functional_run=None, target_name="fixture", published_compiler_root=None
+    tmp_path,
+    monkeypatch,
+    *,
+    functional_run=None,
+    target_name="fixture",
+    published_compiler_root=None,
+    form_holdout=False,
+    form_shape=(32, 17, 16),
+    form_generated_root=None,
 ):
-    """Run the real checkpoint owner, optionally consuming a Phase-1 formal handoff."""
+    """Run the real checkpoint owner, optionally consuming a Phase-1 formal handoff.
+
+    With ``form_holdout`` the campaign also commits and reveals a synthetic form-scale cohort of
+    one member of ``form_shape`` (M, K, N); its private generated root is ``form_generated_root``.
+    """
 
     def forbidden(*args, **kwargs):
         pytest.fail("synthetic lifecycle attempted a native process")
@@ -151,8 +208,36 @@ def build_lifecycle(
         members={GATE.workload_sha256(workload): {}},
         to_dict=lambda: {"sha256": "c" * 64},
     )
+    form_corpus = form_certificate = None
+    if form_holdout:
+        form_corpus = _synthetic_reveal(
+            tmp_path / "heldout-form",
+            target_name=target_name,
+            descriptor=descriptor,
+            name="form_case",
+            family="PW",
+            cohort=FORM.COHORT,
+            shape=form_shape,
+        )
+        form_workload = WORKLOAD.derive_workload(form_corpus.root / "_perf/form_case/capsule.yaml")
+        # The form cohort's own same-build extension: the tuning envelope plus its one revealed workload.
+        form_certificate = SimpleNamespace(
+            **{
+                **vars(certificate),
+                "sha256": "f" * 64,
+                "path": tmp_path / "experiment/heldout_gsim_qualification_form/certificate.json",
+                "members": {**certificate.members, GATE.workload_sha256(form_workload): {}},
+                "to_dict": lambda: {"sha256": "f" * 64},
+            }
+        )
+
+    def load_certificate(path, *_a, **_k):
+        if form_certificate is not None and Path(path).resolve() == form_certificate.path.resolve():
+            return form_certificate
+        return certificate
+
     monkeypatch.setattr(pair, "load_target_experiment", lambda _, **kw: target)
-    monkeypatch.setattr(GATE, "load_certificate", lambda *_a, **_k: certificate)
+    monkeypatch.setattr(GATE, "load_certificate", load_certificate)
     monkeypatch.setattr(MS, "load_rtl_identity", lambda *_a: {"fixture": "external RTL facts"})
     monkeypatch.setattr(MS, "roofline_auxiliary_requirements", lambda *_a: {"fixture": "not qualified"})
     runs = tmp_path / "runs"
@@ -235,6 +320,15 @@ def build_lifecycle(
         waive_functional_gsim_certificate=True,
         published_compiler_root=published_compiler_root,
     )
+    if form_holdout:
+        if form_generated_root is None:
+            form_generated_root = tmp_path / "private-form-run"
+            form_generated_root.mkdir()
+        config = dataclasses.replace(
+            config,
+            form_holdout_generated_root=form_generated_root,
+            form_holdout_applications=("private_application",),
+        )
     treatment = {"identity": "synthetic-external-agent"}
     contracts = {trial: {"trial": trial, "treatment_identity": treatment} for trial in AD.TRIALS}
     declaration = {
@@ -247,6 +341,8 @@ def build_lifecycle(
             "chia_trace_sha256": "t" * 64,
         },
     }
+    if form_holdout:
+        declaration["form_holdout"] = AD.form_holdout_declaration(config)
     if published_compiler_root is not None:
         from merlin_experiments.phase2 import published_payload
 
@@ -281,6 +377,9 @@ def build_lifecycle(
     def paired_inputs(record, *args, **kwargs):
         handoff = read_handoff(record)
         corpus = tuning if kwargs["phase"] == "tuning" else holdout
+        if form_corpus is not None and Path(kwargs["corpus_root"]) == form_corpus.root:
+            corpus = form_corpus
+        selected = load_certificate(kwargs["gsim_certificate"])
         assert Path(kwargs["functional_runs_root"]) == context.functional_runs_root
         return PME.PairedInputs(
             functional,
@@ -291,7 +390,7 @@ def build_lifecycle(
             baseline_sha,
             handoff.candidate_path,
             handoff.candidate_sha256,
-            certificate,
+            selected,
         )
 
     monkeypatch.setattr(PI, "load_paired_inputs", paired_inputs)
@@ -373,6 +472,9 @@ def build_lifecycle(
 
     def commit(public_path, private_path, **kwargs):
         assert stages() == ["predeclared"]
+        failure = interruptions.pop("commit", None)
+        if failure is not None:
+            raise failure
         events.append("commit")
         public_path.write_text("synthetic holdout commitment")
         private_path.mkdir()
@@ -384,13 +486,43 @@ def build_lifecycle(
         events.append("reveal")
         return holdout.manifest_path
 
-    def qualify(manifest, destination, tuning_certificate):
+    def commit_form(generated_root, public_path, private_path, **kwargs):
+        assert stages() == ["predeclared", "holdout_committed"]
+        assert generated_root == config.form_holdout_generated_root
+        assert kwargs["applications"] == config.form_holdout_applications
+        assert kwargs["candidate_ids"] == AD.TRIALS
+        assert kwargs["agent_view_root"] == config.root / "agent_visible"
+        assert kwargs["tuning_root"] == public.parent.resolve()
+        assert public_path.parent == kwargs["agent_view_root"]
+        assert private_path.parent == config.root
+        failure = interruptions.pop("commit_form", None)
+        if failure is not None:
+            raise failure
+        events.append("commit_form")
+        public_path.write_text("synthetic form-scale commitment")
+        private_path.mkdir()
+        return {"public_commitment": public_path, "host_private_dir": private_path, "state": private_path / "state"}
+
+    def reveal_form(public_path, private_path, destination, **kwargs):
         assert stages()[-1] == "holdout_revealed"
-        events.append("qualify")
+        assert set(kwargs["candidate_seals"]) == set(AD.TRIALS)
+        assert destination.parent == config.root
+        failure = interruptions.pop("reveal_form", None)
+        if failure is not None:
+            raise failure
+        events.append("reveal_form")
+        return form_corpus.manifest_path
+
+    def qualify(manifest, destination, tuning_certificate):
+        form = form_corpus is not None and Path(manifest) == form_corpus.manifest_path
+        assert stages()[-1] == (
+            "heldout_gsim_certificate" if form else "form_holdout_revealed" if form_holdout else "holdout_revealed"
+        )
+        events.append("qualify_form" if form else "qualify")
         destination.mkdir()
         path = destination / "certificate.json"
         path.write_text("synthetic external certificate")
-        return path, certificate.sha256
+        return path, (form_certificate if form else certificate).sha256
 
     def run():
         return CTRL.run(
@@ -399,10 +531,18 @@ def build_lifecycle(
             commit_holdout=commit,
             reveal_holdout=reveal,
             heldout_certificate_provider=qualify,
+            commit_form_holdout=commit_form,
+            reveal_form_holdout=reveal_form,
         )
 
     return SimpleNamespace(
-        run=run, config=config, events=events, stages=stages, handoffs=handoffs, interruptions=interruptions
+        run=run,
+        config=config,
+        events=events,
+        stages=stages,
+        handoffs=handoffs,
+        interruptions=interruptions,
+        declaration=declaration,
     )
 
 
@@ -482,3 +622,121 @@ def test_interrupted_measurement_resumes_without_repeating_completed_phases(life
     assert first_manifest.read_bytes() == first_bytes
     assert len(final["measurement_manifests"]) == 6
     assert final["statistics"]["status"] == "admitted"
+
+
+# --- Form-scale holdout beside the PK holdout -------------------------------------------------------
+
+_FORM_LABELS = ("tuning", "held_out", AD.FORM_HOLDOUT_MEASUREMENT_LABEL)
+_FORM_STAGES = (
+    ["predeclared", "holdout_committed", "form_holdout_committed"]
+    + ["candidate:" + trial for trial in AD.TRIALS]
+    + ["functional_regrade:" + trial for trial in AD.TRIALS]
+    + ["holdout_revealed", "form_holdout_revealed", "heldout_gsim_certificate", "form_heldout_gsim_certificate"]
+    + ["statistics_predeclared"]
+    + [f"measurement:{trial}:{label}" for trial in AD.TRIALS for label in _FORM_LABELS]
+)
+
+
+@pytest.fixture
+def form_lifecycle(tmp_path, monkeypatch):
+    return build_lifecycle(tmp_path, monkeypatch, form_holdout=True)
+
+
+def test_form_holdout_is_committed_revealed_qualified_and_measured_beside_pk(form_lifecycle):
+    path = form_lifecycle.run()
+    document = json.loads(path.read_bytes())
+    assert form_lifecycle.stages() == _FORM_STAGES
+    assert form_lifecycle.events[:12] == ["commit", "commit_form"] + ["author:" + trial for trial in AD.TRIALS] + [
+        "regrade:" + trial for trial in AD.TRIALS
+    ] + ["reveal", "reveal_form", "qualify", "qualify_form"]
+    measured = [event for event in form_lifecycle.events if event.startswith("measure:")]
+    assert measured == [f"measure:lifecycle__{trial}__{label}" for trial in AD.TRIALS for label in _FORM_LABELS]
+    assert len(document["measurement_manifests"]) == 9
+    assert document["statistics"]["status"] == "admitted"
+    assert document["holdout_verdict"] == "complete_pk_and_form_scale"
+    form = document["form_holdout"]
+    assert form["measurement_label"] == AD.FORM_HOLDOUT_MEASUREMENT_LABEL
+    assert form["heldout_gsim_certificate"]["sha256"] == "f" * 64
+    assert document["heldout_gsim_certificate"]["sha256"] == "c" * 64
+    assert Path(form["commitment"]["public"]).parent == form_lifecycle.config.root / "agent_visible"
+    assert Path(form["commitment"]["private"]).parent == form_lifecycle.config.root
+    assert document["declaration"]["form_holdout"] == AD.form_holdout_declaration(form_lifecycle.config)
+    declared = (form_lifecycle.config.root / "statistics_predeclaration.json").read_text()
+    assert "held_out:PW" in declared and "form_case" in declared
+    events = list(form_lifecycle.events)
+    assert form_lifecycle.run() == path
+    assert form_lifecycle.events == events
+
+
+def test_pk_only_campaign_records_carry_no_form_holdout(lifecycle):
+    document = AD._config_document(lifecycle.config)
+    assert not any(key.startswith("form_holdout") for key in document)
+    assert AD.form_holdout_declaration(lifecycle.config) is None
+    final = json.loads(lifecycle.run().read_bytes())
+    assert "form_holdout" not in final and "holdout_verdict" not in final
+    assert not any("form" in stage for stage in lifecycle.stages())
+
+
+def test_form_holdout_binds_the_campaign_identity_by_roster_digest(form_lifecycle):
+    document = AD._config_document(form_lifecycle.config)
+    assert "private_application" not in json.dumps(document)
+    assert document["form_holdout"]["roster_sha256"] == FORM.roster_sha256(["private_application"])
+    other = dataclasses.replace(form_lifecycle.config, form_holdout_applications=("another_application",))
+    assert AD._canonical(AD._config_document(other)) != AD._canonical(document)
+
+
+def test_a_half_declared_form_holdout_is_refused(lifecycle):
+    with pytest.raises(AD.ExperimentError, match="both its private generated root and its private roster"):
+        AD.form_holdout_configured(dataclasses.replace(lifecycle.config, form_holdout_applications=("a",)))
+    with pytest.raises(AD.ExperimentError, match="absolute"):
+        AD.form_holdout_configured(
+            dataclasses.replace(
+                lifecycle.config, form_holdout_generated_root=Path("relative"), form_holdout_applications=("a",)
+            )
+        )
+
+
+@pytest.mark.parametrize("stage", ["commit_form", "reveal_form"])
+def test_a_failed_form_holdout_refuses_the_run_instead_of_reporting_pk_alone(form_lifecycle, stage):
+    form_lifecycle.interruptions[stage] = HOLDOUT.HoldoutError("synthetic form-scale refusal")
+    with pytest.raises(HOLDOUT.HoldoutError, match="synthetic form-scale refusal"):
+        form_lifecycle.run()
+    assert not list(form_lifecycle.config.root.glob("experiment_manifest.*.json"))
+    if stage == "commit_form":
+        # Refused before authoring: no agent ran against a half-committed holdout.
+        assert form_lifecycle.stages() == ["predeclared", "holdout_committed"]
+        assert not any(event.startswith("author:") for event in form_lifecycle.events)
+    else:
+        assert form_lifecycle.stages()[-1] == "holdout_revealed"
+        assert "qualify" not in form_lifecycle.events
+        assert not any(event.startswith("measure:") for event in form_lifecycle.events)
+        # A resume after the cause is gone completes BOTH cohorts; nothing PK-only was ever sealed.
+        document = json.loads(form_lifecycle.run().read_bytes())
+        assert form_lifecycle.stages() == _FORM_STAGES
+        assert document["holdout_verdict"] == "complete_pk_and_form_scale"
+
+
+def test_form_holdout_must_match_its_predeclaration(form_lifecycle):
+    form_lifecycle.declaration.pop("form_holdout")
+    with pytest.raises(AD.ExperimentError, match="differs from its predeclaration"):
+        form_lifecycle.run()
+    assert form_lifecycle.events == []
+    assert form_lifecycle.stages() == ["predeclared"]
+
+
+def test_private_form_root_inside_an_agent_reachable_root_commits_nothing(tmp_path, monkeypatch):
+    private = tmp_path / "stages" / "private-form-run"
+    private.mkdir(parents=True)
+    lifecycle = build_lifecycle(tmp_path, monkeypatch, form_holdout=True, form_generated_root=private)
+    with pytest.raises(AD.ExperimentError, match="agent-reachable"):
+        lifecycle.run()
+    assert lifecycle.events == []
+    assert not (lifecycle.config.root / "agent_visible" / "holdout_commitment.json").exists()
+
+
+def test_form_cohort_sharing_a_pk_workload_is_refused_at_reveal(tmp_path, monkeypatch):
+    lifecycle = build_lifecycle(tmp_path, monkeypatch, form_holdout=True, form_shape=(16, 17, 16))
+    with pytest.raises(AD.ExperimentError, match="not disjoint: 0 shared name"):
+        lifecycle.run()
+    assert lifecycle.stages()[-1] == "holdout_revealed"
+    assert "qualify" not in lifecycle.events

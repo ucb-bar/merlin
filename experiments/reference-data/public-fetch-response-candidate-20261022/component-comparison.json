@@ -1,0 +1,2378 @@
+{
+  "schema": "operator.inactive_fetch_response_comparison.v1",
+  "prototype_commit": "af54c90",
+  "prototype_header": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/spike-timing/timing/core/include/merlin_timing/cache_response_timeline.hpp",
+    "sha256": "28f5bfa4c6c8f989e54567c509018f3a70a3eedb7a0a2ea2fc99e016ff1fd551"
+  },
+  "driver": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/.tmp/compare_cache_response.cpp",
+    "sha256": "2ec94bd5760dbbc2f95df7df54cdd7340b1b811328363f48b87c33bfd2e2dbcd"
+  },
+  "input_attribution": {
+    "path": "retained/tasks/el4-joint-integration-20261021/.tmp/frontend-refill-analysis-v1/attribution-stdout-v1.json",
+    "sha256": "5f2039756c9e8efa0ea61379e7d9fa9e561005026465167788cd35545d23620e"
+  },
+  "raw_trace_sha256": "7f478d5917996b46478a4a739a057af00eefa2e6c83f12b0caef47f29e0720e9",
+  "no_new_target_execution": true,
+  "total_requests": 112,
+  "exact_response_matches": 109,
+  "all_mismatches_retained": true,
+  "qualification": false,
+  "independent_validation": false,
+  "reason": "First-response6 and interval1 were selected from this public trace; this is component regression/development evidence, not a heldout result. Unobserved frontend lookup/replay times are not compared to physical labels.",
+  "requests": [
+    {
+      "request_seq": 1,
+      "line_address": 65536,
+      "request_cycle": 104,
+      "observed_beats": [
+        109,
+        111,
+        113,
+        115
+      ],
+      "candidate_beats": [
+        110,
+        111,
+        112,
+        113
+      ],
+      "response_matches": false,
+      "conditional_line_visible": 114,
+      "conditional_lookup_response": 116,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 3627,
+      "line_address": 65600,
+      "request_cycle": 158680,
+      "observed_beats": [
+        158685,
+        158687,
+        158689,
+        158691
+      ],
+      "candidate_beats": [
+        158686,
+        158687,
+        158688,
+        158689
+      ],
+      "response_matches": false,
+      "conditional_line_visible": 158690,
+      "conditional_lookup_response": 158692,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 3632,
+      "line_address": 65664,
+      "request_cycle": 158726,
+      "observed_beats": [
+        158731,
+        158733,
+        158735,
+        158737
+      ],
+      "candidate_beats": [
+        158732,
+        158733,
+        158734,
+        158735
+      ],
+      "response_matches": false,
+      "conditional_line_visible": 158736,
+      "conditional_lookup_response": 158738,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 3639,
+      "line_address": 2147483648,
+      "request_cycle": 158774,
+      "observed_beats": [
+        158780,
+        158781,
+        158782,
+        158783
+      ],
+      "candidate_beats": [
+        158780,
+        158781,
+        158782,
+        158783
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 158784,
+      "conditional_lookup_response": 158786,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 3672,
+      "line_address": 2147483712,
+      "request_cycle": 158838,
+      "observed_beats": [
+        158844,
+        158845,
+        158846,
+        158847
+      ],
+      "candidate_beats": [
+        158844,
+        158845,
+        158846,
+        158847
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 158848,
+      "conditional_lookup_response": 158850,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 3686,
+      "line_address": 2147483776,
+      "request_cycle": 158874,
+      "observed_beats": [
+        158880,
+        158881,
+        158882,
+        158883
+      ],
+      "candidate_beats": [
+        158880,
+        158881,
+        158882,
+        158883
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 158884,
+      "conditional_lookup_response": 158886,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 3985,
+      "line_address": 2147483840,
+      "request_cycle": 168488,
+      "observed_beats": [
+        168494,
+        168495,
+        168496,
+        168497
+      ],
+      "candidate_beats": [
+        168494,
+        168495,
+        168496,
+        168497
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 168498,
+      "conditional_lookup_response": 168500,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 4092,
+      "line_address": 2147483904,
+      "request_cycle": 172283,
+      "observed_beats": [
+        172289,
+        172290,
+        172291,
+        172292
+      ],
+      "candidate_beats": [
+        172289,
+        172290,
+        172291,
+        172292
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 172293,
+      "conditional_lookup_response": 172295,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 5486,
+      "line_address": 2147483968,
+      "request_cycle": 228745,
+      "observed_beats": [
+        228751,
+        228752,
+        228753,
+        228754
+      ],
+      "candidate_beats": [
+        228751,
+        228752,
+        228753,
+        228754
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 228755,
+      "conditional_lookup_response": 228757,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 5575,
+      "line_address": 2147484032,
+      "request_cycle": 228882,
+      "observed_beats": [
+        228888,
+        228889,
+        228890,
+        228891
+      ],
+      "candidate_beats": [
+        228888,
+        228889,
+        228890,
+        228891
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 228892,
+      "conditional_lookup_response": 228894,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 5790,
+      "line_address": 2147484096,
+      "request_cycle": 230286,
+      "observed_beats": [
+        230292,
+        230293,
+        230294,
+        230295
+      ],
+      "candidate_beats": [
+        230292,
+        230293,
+        230294,
+        230295
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 230296,
+      "conditional_lookup_response": 230298,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 5804,
+      "line_address": 2147484096,
+      "request_cycle": 230303,
+      "observed_beats": [
+        230309,
+        230310,
+        230311,
+        230312
+      ],
+      "candidate_beats": [
+        230309,
+        230310,
+        230311,
+        230312
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 230313,
+      "conditional_lookup_response": 230315,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 5821,
+      "line_address": 2147485312,
+      "request_cycle": 230322,
+      "observed_beats": [
+        230328,
+        230329,
+        230330,
+        230331
+      ],
+      "candidate_beats": [
+        230328,
+        230329,
+        230330,
+        230331
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 230332,
+      "conditional_lookup_response": 230334,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 5835,
+      "line_address": 2147485376,
+      "request_cycle": 230341,
+      "observed_beats": [
+        230347,
+        230348,
+        230349,
+        230350
+      ],
+      "candidate_beats": [
+        230347,
+        230348,
+        230349,
+        230350
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 230351,
+      "conditional_lookup_response": 230353,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 5849,
+      "line_address": 2147485440,
+      "request_cycle": 230364,
+      "observed_beats": [
+        230370,
+        230371,
+        230372,
+        230373
+      ],
+      "candidate_beats": [
+        230370,
+        230371,
+        230372,
+        230373
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 230374,
+      "conditional_lookup_response": 230376,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 5863,
+      "line_address": 2147485504,
+      "request_cycle": 230395,
+      "observed_beats": [
+        230401,
+        230402,
+        230403,
+        230404
+      ],
+      "candidate_beats": [
+        230401,
+        230402,
+        230403,
+        230404
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 230405,
+      "conditional_lookup_response": 230407,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 5881,
+      "line_address": 2147485568,
+      "request_cycle": 230504,
+      "observed_beats": [
+        230510,
+        230511,
+        230512,
+        230513
+      ],
+      "candidate_beats": [
+        230510,
+        230511,
+        230512,
+        230513
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 230514,
+      "conditional_lookup_response": 230516,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 5895,
+      "line_address": 2147485632,
+      "request_cycle": 230537,
+      "observed_beats": [
+        230543,
+        230544,
+        230545,
+        230546
+      ],
+      "candidate_beats": [
+        230543,
+        230544,
+        230545,
+        230546
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 230547,
+      "conditional_lookup_response": 230549,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 5909,
+      "line_address": 2147485696,
+      "request_cycle": 230570,
+      "observed_beats": [
+        230576,
+        230577,
+        230578,
+        230579
+      ],
+      "candidate_beats": [
+        230576,
+        230577,
+        230578,
+        230579
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 230580,
+      "conditional_lookup_response": 230582,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 5962,
+      "line_address": 2147485760,
+      "request_cycle": 230796,
+      "observed_beats": [
+        230802,
+        230803,
+        230804,
+        230805
+      ],
+      "candidate_beats": [
+        230802,
+        230803,
+        230804,
+        230805
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 230806,
+      "conditional_lookup_response": 230808,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 6186,
+      "line_address": 2147484160,
+      "request_cycle": 233350,
+      "observed_beats": [
+        233356,
+        233357,
+        233358,
+        233359
+      ],
+      "candidate_beats": [
+        233356,
+        233357,
+        233358,
+        233359
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 233360,
+      "conditional_lookup_response": 233362,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 6233,
+      "line_address": 2147484224,
+      "request_cycle": 234869,
+      "observed_beats": [
+        234875,
+        234876,
+        234877,
+        234878
+      ],
+      "candidate_beats": [
+        234875,
+        234876,
+        234877,
+        234878
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 234879,
+      "conditional_lookup_response": 234881,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 6302,
+      "line_address": 2147484288,
+      "request_cycle": 235372,
+      "observed_beats": [
+        235378,
+        235379,
+        235380,
+        235381
+      ],
+      "candidate_beats": [
+        235378,
+        235379,
+        235380,
+        235381
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 235382,
+      "conditional_lookup_response": 235384,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 6532,
+      "line_address": 2147484352,
+      "request_cycle": 239130,
+      "observed_beats": [
+        239136,
+        239137,
+        239138,
+        239139
+      ],
+      "candidate_beats": [
+        239136,
+        239137,
+        239138,
+        239139
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 239140,
+      "conditional_lookup_response": 239142,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 6601,
+      "line_address": 2147484416,
+      "request_cycle": 239632,
+      "observed_beats": [
+        239638,
+        239639,
+        239640,
+        239641
+      ],
+      "candidate_beats": [
+        239638,
+        239639,
+        239640,
+        239641
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 239642,
+      "conditional_lookup_response": 239644,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 6804,
+      "line_address": 2147484032,
+      "request_cycle": 242098,
+      "observed_beats": [
+        242104,
+        242105,
+        242106,
+        242107
+      ],
+      "candidate_beats": [
+        242104,
+        242105,
+        242106,
+        242107
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 242108,
+      "conditional_lookup_response": 242110,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 6842,
+      "line_address": 2147484096,
+      "request_cycle": 243243,
+      "observed_beats": [
+        243249,
+        243250,
+        243251,
+        243252
+      ],
+      "candidate_beats": [
+        243249,
+        243250,
+        243251,
+        243252
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 243253,
+      "conditional_lookup_response": 243255,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 6859,
+      "line_address": 2147485312,
+      "request_cycle": 243262,
+      "observed_beats": [
+        243268,
+        243269,
+        243270,
+        243271
+      ],
+      "candidate_beats": [
+        243268,
+        243269,
+        243270,
+        243271
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 243272,
+      "conditional_lookup_response": 243274,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 6873,
+      "line_address": 2147485376,
+      "request_cycle": 243283,
+      "observed_beats": [
+        243289,
+        243290,
+        243291,
+        243292
+      ],
+      "candidate_beats": [
+        243289,
+        243290,
+        243291,
+        243292
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 243293,
+      "conditional_lookup_response": 243295,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 6887,
+      "line_address": 2147485440,
+      "request_cycle": 243306,
+      "observed_beats": [
+        243312,
+        243313,
+        243314,
+        243315
+      ],
+      "candidate_beats": [
+        243312,
+        243313,
+        243314,
+        243315
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 243316,
+      "conditional_lookup_response": 243318,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 6901,
+      "line_address": 2147485504,
+      "request_cycle": 243337,
+      "observed_beats": [
+        243343,
+        243344,
+        243345,
+        243346
+      ],
+      "candidate_beats": [
+        243343,
+        243344,
+        243345,
+        243346
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 243347,
+      "conditional_lookup_response": 243349,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 6919,
+      "line_address": 2147485568,
+      "request_cycle": 243446,
+      "observed_beats": [
+        243452,
+        243453,
+        243454,
+        243455
+      ],
+      "candidate_beats": [
+        243452,
+        243453,
+        243454,
+        243455
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 243456,
+      "conditional_lookup_response": 243458,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 6933,
+      "line_address": 2147485632,
+      "request_cycle": 243479,
+      "observed_beats": [
+        243485,
+        243486,
+        243487,
+        243488
+      ],
+      "candidate_beats": [
+        243485,
+        243486,
+        243487,
+        243488
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 243489,
+      "conditional_lookup_response": 243491,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 6947,
+      "line_address": 2147485696,
+      "request_cycle": 243512,
+      "observed_beats": [
+        243518,
+        243519,
+        243520,
+        243521
+      ],
+      "candidate_beats": [
+        243518,
+        243519,
+        243520,
+        243521
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 243522,
+      "conditional_lookup_response": 243524,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7000,
+      "line_address": 2147485760,
+      "request_cycle": 243738,
+      "observed_beats": [
+        243744,
+        243745,
+        243746,
+        243747
+      ],
+      "candidate_beats": [
+        243744,
+        243745,
+        243746,
+        243747
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 243748,
+      "conditional_lookup_response": 243750,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7215,
+      "line_address": 2147484160,
+      "request_cycle": 246270,
+      "observed_beats": [
+        246276,
+        246277,
+        246278,
+        246279
+      ],
+      "candidate_beats": [
+        246276,
+        246277,
+        246278,
+        246279
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 246280,
+      "conditional_lookup_response": 246282,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7262,
+      "line_address": 2147484224,
+      "request_cycle": 247760,
+      "observed_beats": [
+        247766,
+        247767,
+        247768,
+        247769
+      ],
+      "candidate_beats": [
+        247766,
+        247767,
+        247768,
+        247769
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 247770,
+      "conditional_lookup_response": 247772,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7328,
+      "line_address": 2147484288,
+      "request_cycle": 248249,
+      "observed_beats": [
+        248255,
+        248256,
+        248257,
+        248258
+      ],
+      "candidate_beats": [
+        248255,
+        248256,
+        248257,
+        248258
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 248259,
+      "conditional_lookup_response": 248261,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7558,
+      "line_address": 2147484352,
+      "request_cycle": 251970,
+      "observed_beats": [
+        251976,
+        251977,
+        251978,
+        251979
+      ],
+      "candidate_beats": [
+        251976,
+        251977,
+        251978,
+        251979
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 251980,
+      "conditional_lookup_response": 251982,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7636,
+      "line_address": 2147484416,
+      "request_cycle": 252471,
+      "observed_beats": [
+        252477,
+        252478,
+        252479,
+        252480
+      ],
+      "candidate_beats": [
+        252477,
+        252478,
+        252479,
+        252480
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 252481,
+      "conditional_lookup_response": 252483,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7839,
+      "line_address": 2147484032,
+      "request_cycle": 254908,
+      "observed_beats": [
+        254914,
+        254915,
+        254916,
+        254917
+      ],
+      "candidate_beats": [
+        254914,
+        254915,
+        254916,
+        254917
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 254918,
+      "conditional_lookup_response": 254920,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7877,
+      "line_address": 2147484096,
+      "request_cycle": 256045,
+      "observed_beats": [
+        256051,
+        256052,
+        256053,
+        256054
+      ],
+      "candidate_beats": [
+        256051,
+        256052,
+        256053,
+        256054
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 256055,
+      "conditional_lookup_response": 256057,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7891,
+      "line_address": 2147485312,
+      "request_cycle": 256064,
+      "observed_beats": [
+        256070,
+        256071,
+        256072,
+        256073
+      ],
+      "candidate_beats": [
+        256070,
+        256071,
+        256072,
+        256073
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 256074,
+      "conditional_lookup_response": 256076,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7908,
+      "line_address": 2147485376,
+      "request_cycle": 256083,
+      "observed_beats": [
+        256089,
+        256090,
+        256091,
+        256092
+      ],
+      "candidate_beats": [
+        256089,
+        256090,
+        256091,
+        256092
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 256093,
+      "conditional_lookup_response": 256095,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7922,
+      "line_address": 2147485440,
+      "request_cycle": 256106,
+      "observed_beats": [
+        256112,
+        256113,
+        256114,
+        256115
+      ],
+      "candidate_beats": [
+        256112,
+        256113,
+        256114,
+        256115
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 256116,
+      "conditional_lookup_response": 256118,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7936,
+      "line_address": 2147485504,
+      "request_cycle": 256137,
+      "observed_beats": [
+        256143,
+        256144,
+        256145,
+        256146
+      ],
+      "candidate_beats": [
+        256143,
+        256144,
+        256145,
+        256146
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 256147,
+      "conditional_lookup_response": 256149,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7954,
+      "line_address": 2147485568,
+      "request_cycle": 256246,
+      "observed_beats": [
+        256252,
+        256253,
+        256254,
+        256255
+      ],
+      "candidate_beats": [
+        256252,
+        256253,
+        256254,
+        256255
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 256256,
+      "conditional_lookup_response": 256258,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7968,
+      "line_address": 2147485632,
+      "request_cycle": 256279,
+      "observed_beats": [
+        256285,
+        256286,
+        256287,
+        256288
+      ],
+      "candidate_beats": [
+        256285,
+        256286,
+        256287,
+        256288
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 256289,
+      "conditional_lookup_response": 256291,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 7982,
+      "line_address": 2147485696,
+      "request_cycle": 256312,
+      "observed_beats": [
+        256318,
+        256319,
+        256320,
+        256321
+      ],
+      "candidate_beats": [
+        256318,
+        256319,
+        256320,
+        256321
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 256322,
+      "conditional_lookup_response": 256324,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 8035,
+      "line_address": 2147485760,
+      "request_cycle": 256538,
+      "observed_beats": [
+        256544,
+        256545,
+        256546,
+        256547
+      ],
+      "candidate_beats": [
+        256544,
+        256545,
+        256546,
+        256547
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 256548,
+      "conditional_lookup_response": 256550,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 8249,
+      "line_address": 2147484160,
+      "request_cycle": 259070,
+      "observed_beats": [
+        259076,
+        259077,
+        259078,
+        259079
+      ],
+      "candidate_beats": [
+        259076,
+        259077,
+        259078,
+        259079
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 259080,
+      "conditional_lookup_response": 259082,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 8294,
+      "line_address": 2147484224,
+      "request_cycle": 260559,
+      "observed_beats": [
+        260565,
+        260566,
+        260567,
+        260568
+      ],
+      "candidate_beats": [
+        260565,
+        260566,
+        260567,
+        260568
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 260569,
+      "conditional_lookup_response": 260571,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 8363,
+      "line_address": 2147484288,
+      "request_cycle": 261047,
+      "observed_beats": [
+        261053,
+        261054,
+        261055,
+        261056
+      ],
+      "candidate_beats": [
+        261053,
+        261054,
+        261055,
+        261056
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 261057,
+      "conditional_lookup_response": 261059,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 8593,
+      "line_address": 2147484352,
+      "request_cycle": 264764,
+      "observed_beats": [
+        264770,
+        264771,
+        264772,
+        264773
+      ],
+      "candidate_beats": [
+        264770,
+        264771,
+        264772,
+        264773
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 264774,
+      "conditional_lookup_response": 264776,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 8662,
+      "line_address": 2147484416,
+      "request_cycle": 265251,
+      "observed_beats": [
+        265257,
+        265258,
+        265259,
+        265260
+      ],
+      "candidate_beats": [
+        265257,
+        265258,
+        265259,
+        265260
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 265261,
+      "conditional_lookup_response": 265263,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 8865,
+      "line_address": 2147484480,
+      "request_cycle": 267691,
+      "observed_beats": [
+        267697,
+        267698,
+        267699,
+        267700
+      ],
+      "candidate_beats": [
+        267697,
+        267698,
+        267699,
+        267700
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 267701,
+      "conditional_lookup_response": 267703,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 8879,
+      "line_address": 2147484032,
+      "request_cycle": 267713,
+      "observed_beats": [
+        267719,
+        267720,
+        267721,
+        267722
+      ],
+      "candidate_beats": [
+        267719,
+        267720,
+        267721,
+        267722
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 267723,
+      "conditional_lookup_response": 267725,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 8917,
+      "line_address": 2147484096,
+      "request_cycle": 268859,
+      "observed_beats": [
+        268865,
+        268866,
+        268867,
+        268868
+      ],
+      "candidate_beats": [
+        268865,
+        268866,
+        268867,
+        268868
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 268869,
+      "conditional_lookup_response": 268871,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 8934,
+      "line_address": 2147485312,
+      "request_cycle": 268878,
+      "observed_beats": [
+        268884,
+        268885,
+        268886,
+        268887
+      ],
+      "candidate_beats": [
+        268884,
+        268885,
+        268886,
+        268887
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 268888,
+      "conditional_lookup_response": 268890,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 8948,
+      "line_address": 2147485376,
+      "request_cycle": 268903,
+      "observed_beats": [
+        268909,
+        268910,
+        268911,
+        268912
+      ],
+      "candidate_beats": [
+        268909,
+        268910,
+        268911,
+        268912
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 268913,
+      "conditional_lookup_response": 268915,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 8962,
+      "line_address": 2147485824,
+      "request_cycle": 268934,
+      "observed_beats": [
+        268940,
+        268941,
+        268942,
+        268943
+      ],
+      "candidate_beats": [
+        268940,
+        268941,
+        268942,
+        268943
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 268944,
+      "conditional_lookup_response": 268946,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 8980,
+      "line_address": 2147485888,
+      "request_cycle": 269032,
+      "observed_beats": [
+        269038,
+        269039,
+        269040,
+        269041
+      ],
+      "candidate_beats": [
+        269038,
+        269039,
+        269040,
+        269041
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 269042,
+      "conditional_lookup_response": 269044,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 8994,
+      "line_address": 2147485952,
+      "request_cycle": 269065,
+      "observed_beats": [
+        269071,
+        269072,
+        269073,
+        269074
+      ],
+      "candidate_beats": [
+        269071,
+        269072,
+        269073,
+        269074
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 269075,
+      "conditional_lookup_response": 269077,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 9008,
+      "line_address": 2147486016,
+      "request_cycle": 269098,
+      "observed_beats": [
+        269104,
+        269105,
+        269106,
+        269107
+      ],
+      "candidate_beats": [
+        269104,
+        269105,
+        269106,
+        269107
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 269108,
+      "conditional_lookup_response": 269110,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 9023,
+      "line_address": 2147486080,
+      "request_cycle": 269131,
+      "observed_beats": [
+        269137,
+        269138,
+        269139,
+        269140
+      ],
+      "candidate_beats": [
+        269137,
+        269138,
+        269139,
+        269140
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 269141,
+      "conditional_lookup_response": 269143,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 9276,
+      "line_address": 2147484160,
+      "request_cycle": 271873,
+      "observed_beats": [
+        271879,
+        271880,
+        271881,
+        271882
+      ],
+      "candidate_beats": [
+        271879,
+        271880,
+        271881,
+        271882
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 271883,
+      "conditional_lookup_response": 271885,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 9323,
+      "line_address": 2147484224,
+      "request_cycle": 273365,
+      "observed_beats": [
+        273371,
+        273372,
+        273373,
+        273374
+      ],
+      "candidate_beats": [
+        273371,
+        273372,
+        273373,
+        273374
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 273375,
+      "conditional_lookup_response": 273377,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 9389,
+      "line_address": 2147484288,
+      "request_cycle": 273855,
+      "observed_beats": [
+        273861,
+        273862,
+        273863,
+        273864
+      ],
+      "candidate_beats": [
+        273861,
+        273862,
+        273863,
+        273864
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 273865,
+      "conditional_lookup_response": 273867,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 9619,
+      "line_address": 2147484352,
+      "request_cycle": 277575,
+      "observed_beats": [
+        277581,
+        277582,
+        277583,
+        277584
+      ],
+      "candidate_beats": [
+        277581,
+        277582,
+        277583,
+        277584
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 277585,
+      "conditional_lookup_response": 277587,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 9697,
+      "line_address": 2147484416,
+      "request_cycle": 278074,
+      "observed_beats": [
+        278080,
+        278081,
+        278082,
+        278083
+      ],
+      "candidate_beats": [
+        278080,
+        278081,
+        278082,
+        278083
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 278084,
+      "conditional_lookup_response": 278086,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 9900,
+      "line_address": 2147484032,
+      "request_cycle": 280513,
+      "observed_beats": [
+        280519,
+        280520,
+        280521,
+        280522
+      ],
+      "candidate_beats": [
+        280519,
+        280520,
+        280521,
+        280522
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 280523,
+      "conditional_lookup_response": 280525,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 9938,
+      "line_address": 2147484096,
+      "request_cycle": 281649,
+      "observed_beats": [
+        281655,
+        281656,
+        281657,
+        281658
+      ],
+      "candidate_beats": [
+        281655,
+        281656,
+        281657,
+        281658
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 281659,
+      "conditional_lookup_response": 281661,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 9952,
+      "line_address": 2147485312,
+      "request_cycle": 281668,
+      "observed_beats": [
+        281674,
+        281675,
+        281676,
+        281677
+      ],
+      "candidate_beats": [
+        281674,
+        281675,
+        281676,
+        281677
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 281678,
+      "conditional_lookup_response": 281680,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 9969,
+      "line_address": 2147485376,
+      "request_cycle": 281690,
+      "observed_beats": [
+        281696,
+        281697,
+        281698,
+        281699
+      ],
+      "candidate_beats": [
+        281696,
+        281697,
+        281698,
+        281699
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 281700,
+      "conditional_lookup_response": 281702,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 9983,
+      "line_address": 2147485824,
+      "request_cycle": 281721,
+      "observed_beats": [
+        281727,
+        281728,
+        281729,
+        281730
+      ],
+      "candidate_beats": [
+        281727,
+        281728,
+        281729,
+        281730
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 281731,
+      "conditional_lookup_response": 281733,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 10001,
+      "line_address": 2147485888,
+      "request_cycle": 281819,
+      "observed_beats": [
+        281825,
+        281826,
+        281827,
+        281828
+      ],
+      "candidate_beats": [
+        281825,
+        281826,
+        281827,
+        281828
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 281829,
+      "conditional_lookup_response": 281831,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 10015,
+      "line_address": 2147485952,
+      "request_cycle": 281852,
+      "observed_beats": [
+        281858,
+        281859,
+        281860,
+        281861
+      ],
+      "candidate_beats": [
+        281858,
+        281859,
+        281860,
+        281861
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 281862,
+      "conditional_lookup_response": 281864,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 10029,
+      "line_address": 2147486016,
+      "request_cycle": 281885,
+      "observed_beats": [
+        281891,
+        281892,
+        281893,
+        281894
+      ],
+      "candidate_beats": [
+        281891,
+        281892,
+        281893,
+        281894
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 281895,
+      "conditional_lookup_response": 281897,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 10044,
+      "line_address": 2147486080,
+      "request_cycle": 281918,
+      "observed_beats": [
+        281924,
+        281925,
+        281926,
+        281927
+      ],
+      "candidate_beats": [
+        281924,
+        281925,
+        281926,
+        281927
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 281928,
+      "conditional_lookup_response": 281930,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 10294,
+      "line_address": 2147484160,
+      "request_cycle": 284654,
+      "observed_beats": [
+        284660,
+        284661,
+        284662,
+        284663
+      ],
+      "candidate_beats": [
+        284660,
+        284661,
+        284662,
+        284663
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 284664,
+      "conditional_lookup_response": 284666,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 10341,
+      "line_address": 2147484224,
+      "request_cycle": 286143,
+      "observed_beats": [
+        286149,
+        286150,
+        286151,
+        286152
+      ],
+      "candidate_beats": [
+        286149,
+        286150,
+        286151,
+        286152
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 286153,
+      "conditional_lookup_response": 286155,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 10410,
+      "line_address": 2147484288,
+      "request_cycle": 286630,
+      "observed_beats": [
+        286636,
+        286637,
+        286638,
+        286639
+      ],
+      "candidate_beats": [
+        286636,
+        286637,
+        286638,
+        286639
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 286640,
+      "conditional_lookup_response": 286642,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 10640,
+      "line_address": 2147484352,
+      "request_cycle": 290346,
+      "observed_beats": [
+        290352,
+        290353,
+        290354,
+        290355
+      ],
+      "candidate_beats": [
+        290352,
+        290353,
+        290354,
+        290355
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 290356,
+      "conditional_lookup_response": 290358,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 10709,
+      "line_address": 2147484416,
+      "request_cycle": 290832,
+      "observed_beats": [
+        290838,
+        290839,
+        290840,
+        290841
+      ],
+      "candidate_beats": [
+        290838,
+        290839,
+        290840,
+        290841
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 290842,
+      "conditional_lookup_response": 290844,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 10912,
+      "line_address": 2147484032,
+      "request_cycle": 293268,
+      "observed_beats": [
+        293274,
+        293275,
+        293276,
+        293277
+      ],
+      "candidate_beats": [
+        293274,
+        293275,
+        293276,
+        293277
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 293278,
+      "conditional_lookup_response": 293280,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 10950,
+      "line_address": 2147484096,
+      "request_cycle": 294404,
+      "observed_beats": [
+        294410,
+        294411,
+        294412,
+        294413
+      ],
+      "candidate_beats": [
+        294410,
+        294411,
+        294412,
+        294413
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 294414,
+      "conditional_lookup_response": 294416,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 10964,
+      "line_address": 2147485312,
+      "request_cycle": 294423,
+      "observed_beats": [
+        294429,
+        294430,
+        294431,
+        294432
+      ],
+      "candidate_beats": [
+        294429,
+        294430,
+        294431,
+        294432
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 294433,
+      "conditional_lookup_response": 294435,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 10978,
+      "line_address": 2147485376,
+      "request_cycle": 294445,
+      "observed_beats": [
+        294451,
+        294452,
+        294453,
+        294454
+      ],
+      "candidate_beats": [
+        294451,
+        294452,
+        294453,
+        294454
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 294455,
+      "conditional_lookup_response": 294457,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 10992,
+      "line_address": 2147485824,
+      "request_cycle": 294476,
+      "observed_beats": [
+        294482,
+        294483,
+        294484,
+        294485
+      ],
+      "candidate_beats": [
+        294482,
+        294483,
+        294484,
+        294485
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 294486,
+      "conditional_lookup_response": 294488,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 11010,
+      "line_address": 2147485888,
+      "request_cycle": 294574,
+      "observed_beats": [
+        294580,
+        294581,
+        294582,
+        294583
+      ],
+      "candidate_beats": [
+        294580,
+        294581,
+        294582,
+        294583
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 294584,
+      "conditional_lookup_response": 294586,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 11024,
+      "line_address": 2147485952,
+      "request_cycle": 294607,
+      "observed_beats": [
+        294613,
+        294614,
+        294615,
+        294616
+      ],
+      "candidate_beats": [
+        294613,
+        294614,
+        294615,
+        294616
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 294617,
+      "conditional_lookup_response": 294619,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 11041,
+      "line_address": 2147486016,
+      "request_cycle": 294640,
+      "observed_beats": [
+        294646,
+        294647,
+        294648,
+        294649
+      ],
+      "candidate_beats": [
+        294646,
+        294647,
+        294648,
+        294649
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 294650,
+      "conditional_lookup_response": 294652,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 11056,
+      "line_address": 2147486080,
+      "request_cycle": 294673,
+      "observed_beats": [
+        294679,
+        294680,
+        294681,
+        294682
+      ],
+      "candidate_beats": [
+        294679,
+        294680,
+        294681,
+        294682
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 294683,
+      "conditional_lookup_response": 294685,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 11306,
+      "line_address": 2147484160,
+      "request_cycle": 297409,
+      "observed_beats": [
+        297415,
+        297416,
+        297417,
+        297418
+      ],
+      "candidate_beats": [
+        297415,
+        297416,
+        297417,
+        297418
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 297419,
+      "conditional_lookup_response": 297421,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 11353,
+      "line_address": 2147484224,
+      "request_cycle": 298898,
+      "observed_beats": [
+        298904,
+        298905,
+        298906,
+        298907
+      ],
+      "candidate_beats": [
+        298904,
+        298905,
+        298906,
+        298907
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 298908,
+      "conditional_lookup_response": 298910,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 11422,
+      "line_address": 2147484288,
+      "request_cycle": 299385,
+      "observed_beats": [
+        299391,
+        299392,
+        299393,
+        299394
+      ],
+      "candidate_beats": [
+        299391,
+        299392,
+        299393,
+        299394
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 299395,
+      "conditional_lookup_response": 299397,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 11652,
+      "line_address": 2147484352,
+      "request_cycle": 303101,
+      "observed_beats": [
+        303107,
+        303108,
+        303109,
+        303110
+      ],
+      "candidate_beats": [
+        303107,
+        303108,
+        303109,
+        303110
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 303111,
+      "conditional_lookup_response": 303113,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 11718,
+      "line_address": 2147484416,
+      "request_cycle": 303587,
+      "observed_beats": [
+        303593,
+        303594,
+        303595,
+        303596
+      ],
+      "candidate_beats": [
+        303593,
+        303594,
+        303595,
+        303596
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 303597,
+      "conditional_lookup_response": 303599,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 11921,
+      "line_address": 2147484480,
+      "request_cycle": 306026,
+      "observed_beats": [
+        306032,
+        306033,
+        306034,
+        306035
+      ],
+      "candidate_beats": [
+        306032,
+        306033,
+        306034,
+        306035
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 306036,
+      "conditional_lookup_response": 306038,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 11935,
+      "line_address": 2147484544,
+      "request_cycle": 306066,
+      "observed_beats": [
+        306072,
+        306073,
+        306074,
+        306075
+      ],
+      "candidate_beats": [
+        306072,
+        306073,
+        306074,
+        306075
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 306076,
+      "conditional_lookup_response": 306078,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 11952,
+      "line_address": 2147484608,
+      "request_cycle": 306105,
+      "observed_beats": [
+        306111,
+        306112,
+        306113,
+        306114
+      ],
+      "candidate_beats": [
+        306111,
+        306112,
+        306113,
+        306114
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 306115,
+      "conditional_lookup_response": 306117,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 12217,
+      "line_address": 2147484672,
+      "request_cycle": 310779,
+      "observed_beats": [
+        310785,
+        310786,
+        310787,
+        310788
+      ],
+      "candidate_beats": [
+        310785,
+        310786,
+        310787,
+        310788
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 310789,
+      "conditional_lookup_response": 310791,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 12255,
+      "line_address": 2147484736,
+      "request_cycle": 311046,
+      "observed_beats": [
+        311052,
+        311053,
+        311054,
+        311055
+      ],
+      "candidate_beats": [
+        311052,
+        311053,
+        311054,
+        311055
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 311056,
+      "conditional_lookup_response": 311058,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 12389,
+      "line_address": 2147484800,
+      "request_cycle": 313341,
+      "observed_beats": [
+        313347,
+        313348,
+        313349,
+        313350
+      ],
+      "candidate_beats": [
+        313347,
+        313348,
+        313349,
+        313350
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 313351,
+      "conditional_lookup_response": 313353,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 12613,
+      "line_address": 2147484864,
+      "request_cycle": 317369,
+      "observed_beats": [
+        317375,
+        317376,
+        317377,
+        317378
+      ],
+      "candidate_beats": [
+        317375,
+        317376,
+        317377,
+        317378
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 317379,
+      "conditional_lookup_response": 317381,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 12630,
+      "line_address": 2147484928,
+      "request_cycle": 317468,
+      "observed_beats": [
+        317474,
+        317475,
+        317476,
+        317477
+      ],
+      "candidate_beats": [
+        317474,
+        317475,
+        317476,
+        317477
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 317478,
+      "conditional_lookup_response": 317480,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 13154,
+      "line_address": 2147484992,
+      "request_cycle": 326955,
+      "observed_beats": [
+        326961,
+        326962,
+        326963,
+        326964
+      ],
+      "candidate_beats": [
+        326961,
+        326962,
+        326963,
+        326964
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 326965,
+      "conditional_lookup_response": 326967,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 13177,
+      "line_address": 2147485056,
+      "request_cycle": 327020,
+      "observed_beats": [
+        327026,
+        327027,
+        327028,
+        327029
+      ],
+      "candidate_beats": [
+        327026,
+        327027,
+        327028,
+        327029
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 327030,
+      "conditional_lookup_response": 327032,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 26016,
+      "line_address": 2147485120,
+      "request_cycle": 564359,
+      "observed_beats": [
+        564365,
+        564366,
+        564367,
+        564368
+      ],
+      "candidate_beats": [
+        564365,
+        564366,
+        564367,
+        564368
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 564369,
+      "conditional_lookup_response": 564371,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 26362,
+      "line_address": 2147485184,
+      "request_cycle": 570712,
+      "observed_beats": [
+        570718,
+        570719,
+        570720,
+        570721
+      ],
+      "candidate_beats": [
+        570718,
+        570719,
+        570720,
+        570721
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 570722,
+      "conditional_lookup_response": 570724,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 26388,
+      "line_address": 2147485248,
+      "request_cycle": 570786,
+      "observed_beats": [
+        570792,
+        570793,
+        570794,
+        570795
+      ],
+      "candidate_beats": [
+        570792,
+        570793,
+        570794,
+        570795
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 570796,
+      "conditional_lookup_response": 570798,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    },
+    {
+      "request_seq": 26664,
+      "line_address": 2147483648,
+      "request_cycle": 575472,
+      "observed_beats": [
+        575478,
+        575479,
+        575480,
+        575481
+      ],
+      "candidate_beats": [
+        575478,
+        575479,
+        575480,
+        575481
+      ],
+      "response_matches": true,
+      "conditional_line_visible": 575482,
+      "conditional_lookup_response": 575484,
+      "frontend_prediction_status": "conditional_only; replay_ready=0 was assumed, not observed"
+    }
+  ]
+}

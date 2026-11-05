@@ -17,10 +17,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from merlin.compile.analysis.compute_endpoints import endpoints_for
+from merlin.compile.analysis.rocc_commands import funct_table_for
 from merlin.kernels import asm_provenance
 from merlin.kernels.cca import CCA, CommunicationFacet, ComputeFacet, DispatchFacet, MemoryFacet
-from merlin.kernels.decode.rocc import funct_table_for
-from merlin.kernels.endpoints import endpoints_for
 
 _MOVEMENT_ROLES = frozenset(
     {

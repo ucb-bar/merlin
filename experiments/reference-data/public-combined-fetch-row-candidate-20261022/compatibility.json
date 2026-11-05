@@ -1,0 +1,164 @@
+{
+  "schema": "operator.combined_fetch_row_compatibility.v1",
+  "status": "inactive_combined_candidate",
+  "observer_build": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/build.json",
+    "sha256": "92179295aa776238246946ab6e36b2cf7f8ed63e0b5f3d697d6d33f3d4d90989"
+  },
+  "row_runtime": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/scratchpad-request-admission-v2/runtime.json",
+    "sha256": "6a2bca494fb0e52cb3844ad8a10e89bea9d82e47dc88c7ca9f6bee2f95001a2d"
+  },
+  "fetch_model": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+    "sha256": "888abf5c5ad4d46bee90129b05ae47a113ec710db9dd389113caa71fd3a16770"
+  },
+  "model": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/model.json",
+    "sha256": "01971a26e8b367fe22361a294785be31969ec3473735025608d22399b0ac96b6"
+  },
+  "runtime": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/runtime.json",
+    "sha256": "f83f54df6ec6459919b4b718b7b2d11a3a6737d30beb68ca5479e32e29b77bcb"
+  },
+  "source_manifest": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/timing-source-manifest.json",
+    "sha256": "eca3d276d44df8979464b41ec0879c5e9af6620f872b30092531ed9153857476"
+  },
+  "baseline_model": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+    "sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869"
+  },
+  "changes": [
+    {
+      "field": "domain.feature_engine_sha256",
+      "old": "bb07aaf1c2ae46e4810530e610981a936f4bab670882506c5d194b6596fce40b",
+      "new": "79eb1f1b511a1b9f2267532de252965712e65c91e95b91b6df46dab81fdc52b3"
+    },
+    {
+      "field": "libraries",
+      "old": [
+        "2dbd8445376cdda0df63abcf217c7a19f974d34a16ada21b549ed82fffd718eb",
+        "4c4b4f26f5bf543da4bbc5707ed141c2b1fb14eba9320185ae93910e429a2a6b"
+      ],
+      "new": [
+        "2dbd8445376cdda0df63abcf217c7a19f974d34a16ada21b549ed82fffd718eb",
+        "f34cda12a4e8eea631e92df32d7dda35fe5dedecc9a06b7932dc22376f9d78d9"
+      ]
+    },
+    {
+      "field": "memory.fetch_refill_timeline",
+      "old": null,
+      "new": {
+        "schema": "merlin.provisional_fetch_refill.v1",
+        "assumptions": "demand_only_immediate_replay_no_backpressure",
+        "beat_bytes": 16,
+        "first_response_cycles": 6,
+        "beat_interval_cycles": 1,
+        "line_visible_after_last_cycles": 1,
+        "lookup_response_cycles": 2,
+        "request_accept_cycles": 2
+      }
+    },
+    {
+      "field": "target.assumptions.reader_a_ready_with_transaction_credit",
+      "old": null,
+      "new": 1
+    },
+    {
+      "field": "target.assumptions.scratchpad_load_fifo_responses",
+      "old": null,
+      "new": 1
+    },
+    {
+      "field": "target.assumptions.scratchpad_load_translation_hits",
+      "old": null,
+      "new": 1
+    },
+    {
+      "field": "target.hardware.identity_scale_input_stages",
+      "old": null,
+      "new": 1
+    },
+    {
+      "field": "target.hardware.identity_scale_output_stages",
+      "old": null,
+      "new": 1
+    },
+    {
+      "field": "target.hardware.identity_scale_queue_entries",
+      "old": null,
+      "new": 3
+    },
+    {
+      "field": "target.hardware.reader_beat_bytes",
+      "old": null,
+      "new": 16
+    },
+    {
+      "field": "target.hardware.reader_beat_merger_stages",
+      "old": null,
+      "new": 1
+    },
+    {
+      "field": "target.hardware.reader_tlb_queue_entries",
+      "old": null,
+      "new": 1
+    },
+    {
+      "field": "target.hardware.reader_transaction_entries",
+      "old": null,
+      "new": 16
+    },
+    {
+      "field": "target.hardware.reader_translation_queue_entries",
+      "old": null,
+      "new": 1
+    },
+    {
+      "field": "target.hardware.scratchpad_singleported",
+      "old": null,
+      "new": 1
+    },
+    {
+      "field": "target.scheduling.scratchpad_request_admission",
+      "old": null,
+      "new": 1
+    },
+    {
+      "field": "target.scheduling.scratchpad_row_loads",
+      "old": null,
+      "new": 1
+    }
+  ],
+  "abi_headers_match": [
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/spike-timing/timing/core/include/merlin_timing/engine.hpp",
+      "sha256": "a3ad0ac903e091d5e3384534eec8379f24d42b6294adc1c496eea146082b044d"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/spike-timing/timing/core/include/merlin_timing/reservations.hpp",
+      "sha256": "672ed5be138226533b49a8c38c91b2623494b5162286862ed7fcc48f77e37c65"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/spike-timing/timing/provider.hpp",
+      "sha256": "acc2d0a921a651405ffadd2d52ff6c2ab17e47c95c2fb6265cb3f721076b233a"
+    }
+  ],
+  "qualifications_inherited": false,
+  "current_denial_preserved_as_obligation": true,
+  "fit_permitted": false,
+  "selected_live": false,
+  "physical_runs": 0,
+  "mechanisms": [
+    "CPU private-Icache miss + modeled L2 hit replaces scalar cache costs only; keeps cache-slot dependencies",
+    "Device SP row/request path consumes its unchanged shared-cache model and schedules destination writes; requestcredit distinct from response readiness"
+  ],
+  "uncertainties": [
+    "Public6/1refill service not transaction-joined to physical L2hit",
+    "Immediate frontend replay and no receiverbackpressure assumed; no fetchqueue/speculativehistory",
+    "Reader translationhit and Areadywithcredit/FIFOresponse assumptions",
+    "No independent qualification; existing queuefirstuse and pairedthroughput failures remain",
+    "No favorable legacy fallback inside applied paths; unsupported shape or lower-cache state remains explicit legacy scope"
+  ]
+}

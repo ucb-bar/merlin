@@ -145,17 +145,15 @@ def require_pointer_entry(lowered_mlir, *, entry_symbol, pointer_arity):
     """
     from xdsl.dialects import llvm
     from xdsl.dialects.builtin import NoneAttr
-    from xdsl.parser import Parser
     from xdsl.utils.exceptions import ParseError, VerifyException
 
-    from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
+    from merlin.targetgen.oot_starterkit.llvm_context import parse_llvm_module
 
     if not _symbol_name(entry_symbol) or type(pointer_arity) is not int or pointer_arity < 1:
         raise ValueError("emitted entry requires an explicit symbol and positive pointer ABI arity")
     try:
-        module = Parser(make_llvm_context(), lowered_mlir).parse_module()
-        module.verify()
-    except (ParseError, VerifyException) as error:
+        module = parse_llvm_module(lowered_mlir)
+    except (ValueError, ParseError, VerifyException) as error:
         raise ValueError("emitted entry has malformed LLVM pointer ABI IR") from error
     entries = [
         operation

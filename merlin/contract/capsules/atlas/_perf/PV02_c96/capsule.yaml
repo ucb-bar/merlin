@@ -47,7 +47,7 @@ operation:
     layout: nhwc
     epilogue: []
     output_dtype: bf16
-    semantic: conv2d_im2col
+    semantic: conv2d
 numeric_policy:
   compare: tolerance_float
   dtype: bf16

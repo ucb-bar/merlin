@@ -116,6 +116,8 @@ product_roots:
   perf-roofline: perf-studies/roofline
   # One-group programs of both arms timed on the board in one batch with the reference control.
   perf-group-board: perf-studies/group-capsules
+  # One agentic campaign drawn as a single stitched run (merlin.agentreport.campaign); target axis below.
+  campaign-figure: agentic-report/campaign-figures
   # Destinations below that carry a target axis (<concern>/<target>/...); the leaf is not a
   # new_product() version directory, so these are resolved with declared_product_roots(), not
   # new_product().
@@ -136,6 +138,49 @@ retention:
     - pattern: artifacts/targets/*/champions/*
       reason: an exported phase-2 champion is the published compiler and its measured evidence
       doc: targets/<target>/champions/<package_id>/
+
+# What cleanup must never delete because a record that outlives the cleanup cites it
+# (merlin.common.cited_evidence; `merlin-storage cited PATH` asks the same question by hand).
+#
+# Disk cleanups deleted sealed Phase 0 evidence twice (2026-10-17: the captures a derivation
+# cited; 2026-10-24: catalogs inside a reviewed derivation). Each time the record pinning the path
+# and its digest existed and nobody that deleted read it. `records` are the file names read as
+# citing records (fnmatch on the name, or on a trailing path); every absolute path in one, and every
+# digest-paired relative member, is cited. `anchors` protect a whole tree: the release root above a
+# `private/seal.json`, `up` levels above the record. A record may also list paths under `protects`.
+# `skip_dirs` are never walked for records (they hold no records worth the walk); `extra_roots`
+# (relative to merlin/, may glob) and MERLIN_CITED_ROOTS add trees beyond out/ and the scan roots.
+cited_evidence:
+  records:
+    - seal.json
+    - "*-seal.json"
+    - "*receipt*.json"
+    - "*attestation*.json"
+    - run_record.json
+    - resolved-plan.json
+    - orchestration.json
+    - preparation.json
+    - derivation.json
+    - synthesis.yaml
+    - evidence-manifest.json
+    - capture-selection.json
+    - meta.json
+    - manifest.yaml
+    - MANIFEST.yaml
+    - input-protection.json
+  anchors:
+    - {record: private/seal.json, up: 2}
+  skip_dirs:
+    - .git
+    - __pycache__
+    - node_modules
+    - .venv
+    - bundle_inputs
+    - bundle_inputs.pending
+    - _qa_work
+    - .qa_channel
+  max_record_bytes: 16777216
+  extra_roots: []
 
 folds:
   - {from: audits, into: artifacts/audits}

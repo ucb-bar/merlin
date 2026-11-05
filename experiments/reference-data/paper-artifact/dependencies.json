@@ -1,0 +1,60 @@
+{
+  "schema": "merlin.paper_dependency_release.v1",
+  "capture": {
+    "filename": "dependency-capture.json",
+    "sha256": "e91a7716c8800406e0682325f847fdcea1c7549563ddc07bd4784b373aa57bff"
+  },
+  "platform": "Linux x86_64",
+  "dependency_archives": [
+    {
+      "id": "llvm",
+      "archive": "llvm.tar.zst",
+      "sha256": "b125c2c2446e76959240a15221765390338d7ece0f8a026860b3d346b50180f7",
+      "bytes": 1671835906,
+      "inventory": "llvm.inventory.json",
+      "inventory_sha256": "9ee1d92f1a6f63f9017febb2abbbba1894d5ed4372258d02a98f1263102fc48b",
+      "tree_sha256": "2cb2cdbbb5ab8657a7c4d03de614572b48ebb0b222fef4e4c62a64b79c8c98c4"
+    },
+    {
+      "id": "compiler-python",
+      "archive": "compiler-python.tar.zst",
+      "sha256": "1890a809abcc68f094b8fd5ada883b976f22cf7b9618a99a33195a93da39be58",
+      "bytes": 61230649,
+      "inventory": "compiler-python.inventory.json",
+      "inventory_sha256": "eed6b653c1f54e4e6a1f1a263ae6f2d411ce7eb154454134af1f89998077df00",
+      "tree_sha256": "ec6bce8efa88fe7d649442cd607d0b5dac6f81639cc4960134ead5ce56839845"
+    },
+    {
+      "id": "riscv-conda",
+      "archive": "riscv-conda.tar.zst",
+      "sha256": "7a640d63950b57c98b166cc0066b3d8e096e8f714d840dd62b0342e04bdffa3c",
+      "bytes": 2197556619,
+      "inventory": "riscv-conda.inventory.json",
+      "inventory_sha256": "53cedf40960e3cf9d21519b57295af2b29065d81b2c0de97002db2783c3bf7f5",
+      "tree_sha256": "60675a3da366d833bcc060245d253cff83609d2b814529600c7075967c154176"
+    },
+    {
+      "id": "uv-python",
+      "archive": "uv-python.tar.zst",
+      "sha256": "3e5b4a79912d31dbf4ae700d99d3b57b4dab5f818b79400faca9f24b7d0907d7",
+      "bytes": 110825287,
+      "inventory": "uv-python.inventory.json",
+      "inventory_sha256": "7e3de84fd52513ecb227972576966376f2b704645d46bb62345e6fe8f74c5de1",
+      "tree_sha256": "83fe187bab2e714ed905a38805136f248519f84823a69aff2aa695951165559f"
+    },
+    {
+      "id": "runtime-vendor",
+      "archive": "runtime-vendor.tar.zst",
+      "sha256": "18cbef9cd95304fb35a0543a85605f07210b802a1e1ed9f739574352fe9ecd20",
+      "bytes": 84019292,
+      "inventory": "runtime-vendor.inventory.json",
+      "inventory_sha256": "5e93fd78d8f3158d9e03378f51456777a1a5843021ca2420d6c04038b21a805d",
+      "tree_sha256": "eadf87292a02ba616868fc9dc76cf176c9a3f10bd346b6453918612c5578bcdc"
+    }
+  ],
+  "bwrap": {
+    "path": "dependency-metadata/bwrap",
+    "sha256": "a5cfed7c923ba623c937901d4070e67e98ddc0f2765ea657748136cd8b366b25"
+  },
+  "execution_started": false
+}

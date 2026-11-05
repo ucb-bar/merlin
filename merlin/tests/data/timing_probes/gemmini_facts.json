@@ -1,0 +1,493 @@
+{
+ "facts": {
+  "arrays": [
+   {
+    "cols": 16,
+    "name": "mesh",
+    "rows": 16
+   }
+  ],
+  "datapaths": [
+   {
+    "dtype": "i8",
+    "evidence": "scratchpad smem UInt<8>",
+    "name": "input"
+   },
+   {
+    "dtype": "i32",
+    "evidence": "AccumulatorMem SInt<32>",
+    "name": "accumulator"
+   }
+  ],
+  "interfaces": [
+   {
+    "complete_isa": false,
+    "custom_opcode": 123,
+    "funct3": 3,
+    "legal_funct": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17,
+     18,
+     19,
+     20,
+     21,
+     22,
+     23,
+     24,
+     126
+    ],
+    "name": "funct_decode_table",
+    "names": {
+     "0": "CONFIG_CMD",
+     "1": "LOAD2_CMD",
+     "10": "LOOP_WS_CONFIG_ADDRS_AB",
+     "11": "LOOP_WS_CONFIG_ADDRS_DC",
+     "12": "LOOP_WS_CONFIG_STRIDES_AB",
+     "126": "COUNTER_OP",
+     "13": "LOOP_WS_CONFIG_STRIDES_DC",
+     "14": "LOAD3_CMD",
+     "15": "LOOP_CONV_WS",
+     "16": "LOOP_CONV_WS_CONFIG_1",
+     "17": "LOOP_CONV_WS_CONFIG_2",
+     "18": "LOOP_CONV_WS_CONFIG_3",
+     "19": "LOOP_CONV_WS_CONFIG_4",
+     "2": "LOAD_CMD",
+     "20": "LOOP_CONV_WS_CONFIG_5",
+     "21": "LOOP_CONV_WS_CONFIG_6",
+     "22": "CLKGATE_EN",
+     "23": "STORE_SPAD_CMD",
+     "24": "LOOP_WS_CONFIG_SPAD_AB",
+     "3": "STORE_CMD",
+     "4": "COMPUTE_AND_FLIP_CMD",
+     "5": "COMPUTE_AND_STAY_CMD",
+     "6": "PRELOAD_CMD",
+     "7": "FLUSH_CMD",
+     "8": "LOOP_WS",
+     "9": "LOOP_WS_CONFIG_BOUNDS"
+    },
+    "scope": "observed_decode_field",
+    "source_declared_names_provenance": {
+     "kind": "scala_funct_block",
+     "scope": "selected_source_declaration",
+     "source_path": "/work/merlin/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/GemminiISA.scala",
+     "source_sha256": "812cba090cf85b2b66f6e820dbce8e67454376832fdd459af63cc571e788297b",
+     "start_comment": "// funct values",
+     "stop_declaration": "CONFIG_EX"
+    },
+    "width": 7
+   },
+   {
+    "bundles": {
+     "ComputeRs": {
+      "fields": {
+       "local_addr": {
+        "offset": 0,
+        "slot_width": 32,
+        "width": null,
+        "width_param": "local_addr_t.getWidth"
+       },
+       "num_cols": {
+        "offset": 32,
+        "slot_width": 16,
+        "width": null,
+        "width_param": "compute_cols_bits"
+       },
+       "num_rows": {
+        "offset": 48,
+        "slot_width": 16,
+        "width": null,
+        "width_param": "compute_rows_bits"
+       }
+      },
+      "parameters": [
+       "compute_cols_bits",
+       "compute_rows_bits",
+       "local_addr_t"
+      ],
+      "width": 64
+     },
+     "ConfigExRs1": {
+      "fields": {
+       "a_stride": {
+        "offset": 16,
+        "width": 16
+       },
+       "a_transpose": {
+        "offset": 8,
+        "width": 1
+       },
+       "acc_scale": {
+        "offset": 32,
+        "slot_width": 32,
+        "width": null,
+        "width_param": "acc_scale_bits"
+       },
+       "activation": {
+        "offset": 3,
+        "width": 2
+       },
+       "b_transpose": {
+        "offset": 9,
+        "width": 1
+       },
+       "cmd_type": {
+        "offset": 0,
+        "width": 2
+       },
+       "dataflow": {
+        "offset": 2,
+        "width": 1
+       },
+       "set_only_strides": {
+        "offset": 7,
+        "width": 1
+       }
+      },
+      "parameters": [
+       "acc_scale_bits"
+      ],
+      "width": 64
+     },
+     "ConfigExRs2": {
+      "fields": {
+       "c_stride": {
+        "offset": 48,
+        "width": 16
+       },
+       "in_shift": {
+        "offset": 0,
+        "width": 32
+       },
+       "relu6_shift": {
+        "offset": 32,
+        "width": 16
+       }
+      },
+      "width": 64
+     },
+     "ConfigMvinRs1": {
+      "fields": {
+       "pixel_repeats": {
+        "offset": 8,
+        "slot_width": 8,
+        "width": null,
+        "width_param": "pixel_repeat_bits"
+       },
+       "scale": {
+        "offset": 32,
+        "slot_width": 32,
+        "width": null,
+        "width_param": "scale_bits"
+       },
+       "shrink": {
+        "offset": 2,
+        "width": 1
+       },
+       "state_id": {
+        "offset": 3,
+        "width": 2
+       },
+       "stride": {
+        "offset": 16,
+        "slot_width": 16,
+        "width": null,
+        "width_param": "stride_bits"
+       }
+      },
+      "parameters": [
+       "pixel_repeat_bits",
+       "scale_bits",
+       "stride_bits"
+      ],
+      "width": 64
+     },
+     "ConfigMvoutRs1": {
+      "fields": {
+       "activation": {
+        "offset": 2,
+        "width": 2
+       },
+       "cmd_type": {
+        "offset": 0,
+        "width": 2
+       },
+       "lpad": {
+        "offset": 10,
+        "width": 2
+       },
+       "ocols": {
+        "offset": 56,
+        "width": 8
+       },
+       "orows": {
+        "offset": 48,
+        "width": 8
+       },
+       "pocols": {
+        "offset": 40,
+        "width": 8
+       },
+       "pool_out_dim": {
+        "offset": 24,
+        "width": 8
+       },
+       "pool_size": {
+        "offset": 6,
+        "width": 2
+       },
+       "pool_stride": {
+        "offset": 4,
+        "width": 2
+       },
+       "porows": {
+        "offset": 32,
+        "width": 8
+       },
+       "upad": {
+        "offset": 8,
+        "width": 2
+       }
+      },
+      "width": 64
+     },
+     "ConfigMvoutRs2": {
+      "fields": {
+       "acc_scale": {
+        "offset": 32,
+        "slot_width": 32,
+        "width": null,
+        "width_param": "acc_scale_bits"
+       },
+       "stride": {
+        "offset": 0,
+        "slot_width": 32,
+        "width": null,
+        "width_param": "stride_bits"
+       }
+      },
+      "parameters": [
+       "acc_scale_bits",
+       "stride_bits"
+      ],
+      "width": 64
+     },
+     "ConfigNormRs1": {
+      "fields": {
+       "act_msb": {
+        "offset": 16,
+        "width": 1
+       },
+       "cmd_type": {
+        "offset": 0,
+        "width": 2
+       },
+       "norm_stats_id": {
+        "offset": 8,
+        "width": 8
+       },
+       "q_const": {
+        "default_width": 32,
+        "offset": 32,
+        "width": null,
+        "width_param": "acc_t_bits"
+       },
+       "q_const_type": {
+        "offset": 18,
+        "width": 1
+       },
+       "set_stats_id_only": {
+        "offset": 17,
+        "width": 1
+       }
+      },
+      "parameters": [
+       "acc_t_bits"
+      ],
+      "width": null
+     },
+     "ConfigNormRs2": {
+      "fields": {
+       "qb": {
+        "offset": 0,
+        "slot_width": 32,
+        "width": null,
+        "width_param": "acc_t_bits"
+       },
+       "qc": {
+        "offset": 32,
+        "slot_width": 32,
+        "width": null,
+        "width_param": "acc_t_bits"
+       }
+      },
+      "parameters": [
+       "acc_t_bits"
+      ],
+      "width": 64
+     },
+     "MvinRs2": {
+      "fields": {
+       "local_addr": {
+        "offset": 0,
+        "slot_width": 32,
+        "width": null,
+        "width_param": "local_addr_t.getWidth"
+       },
+       "num_cols": {
+        "offset": 32,
+        "slot_width": 16,
+        "width": null,
+        "width_param": "mvin_cols_bits"
+       },
+       "num_rows": {
+        "offset": 48,
+        "slot_width": 16,
+        "width": null,
+        "width_param": "mvin_rows_bits"
+       }
+      },
+      "parameters": [
+       "local_addr_t",
+       "mvin_cols_bits",
+       "mvin_rows_bits"
+      ],
+      "width": 64
+     },
+     "MvoutRs2": {
+      "fields": {
+       "local_addr": {
+        "offset": 0,
+        "slot_width": 32,
+        "width": null,
+        "width_param": "local_addr_t.getWidth"
+       },
+       "num_cols": {
+        "offset": 32,
+        "slot_width": 16,
+        "width": null,
+        "width_param": "mvout_cols_bits"
+       },
+       "num_rows": {
+        "offset": 48,
+        "slot_width": 16,
+        "width": null,
+        "width_param": "mvout_rows_bits"
+       }
+      },
+      "parameters": [
+       "local_addr_t",
+       "mvout_cols_bits",
+       "mvout_rows_bits"
+      ],
+      "width": 64
+     },
+     "MvoutSpadRs1": {
+      "fields": {
+       "local_addr": {
+        "offset": 0,
+        "slot_width": 32,
+        "width": null,
+        "width_param": "local_addr_t.getWidth"
+       },
+       "stride": {
+        "offset": 32,
+        "slot_width": 32,
+        "width": null,
+        "width_param": "stride_bits"
+       }
+      },
+      "parameters": [
+       "local_addr_t",
+       "stride_bits"
+      ],
+      "width": 64
+     },
+     "PreloadRs": {
+      "fields": {
+       "local_addr": {
+        "offset": 0,
+        "slot_width": 32,
+        "width": null,
+        "width_param": "local_addr_t.getWidth"
+       },
+       "num_cols": {
+        "offset": 32,
+        "slot_width": 16,
+        "width": null,
+        "width_param": "preload_cols_bits"
+       },
+       "num_rows": {
+        "offset": 48,
+        "slot_width": 16,
+        "width": null,
+        "width_param": "preload_rows_bits"
+       }
+      },
+      "parameters": [
+       "local_addr_t",
+       "preload_cols_bits",
+       "preload_rows_bits"
+      ],
+      "width": 64
+     }
+    },
+    "method": "chisel_bundle_reverse_declaration_order",
+    "name": "register_bundle_layouts",
+    "unresolved": {}
+   },
+   {
+    "features": {
+     "max_pool": true
+    },
+    "method": "structural FIRRTL pooling_is_enabled boolean build gate",
+    "name": "elaborated_rtl_features",
+    "source_sha256": "6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149",
+    "status": "derived"
+   }
+  ],
+  "memories": [
+   {
+    "banks": 4,
+    "bytes": 262144,
+    "depth": 4096,
+    "elem_bits": 8,
+    "name": "scratchpad"
+   },
+   {
+    "banks": 2,
+    "bytes": 65536,
+    "depth": 512,
+    "elem_bits": 32,
+    "name": "accumulator"
+   }
+  ],
+  "target": "gemmini"
+ },
+ "fixture": {
+  "firrtl_sha256": "6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149",
+  "source_sha256": "ba50873ca690db0a6697461e71a4e974a7a6d246c19b764d7373557ee8428767",
+  "subset_of": "GemminiGsimFireSimAlignedConfig RTL facts (interfaces, geometry, datapaths only)"
+ },
+ "generator": {
+  "method": "mlc RTL discovery (target-agnostic: mesh, datapaths(2 from cell geometry), lane_datapaths(0 named from lane replication), timing(29/109 modules), funct, register_layouts(12), elaborated_features(derived)) + chipyard FIRRTL grep/HW-port fallback",
+  "name": "merlin.targetgen.rtl.circt_introspect",
+  "version": "rtl-introspect-v12-inherent-attribute-graph"
+ },
+ "schema_version": "2.0"
+}

@@ -403,11 +403,11 @@ def resume_note(reason: str) -> str:
 def prepend_resume_note(ws: str | Path, reason: str) -> Path:
     """Prepend the RESUME banner to ``ws/qa/round_brief.md`` (written by ``round_brief.write`` just
     before), so the next fresh session reads it at round start. Best-effort; returns the brief path."""
-    qa = Path(ws) / "qa"
-    qa.mkdir(parents=True, exist_ok=True)
-    brief = qa / "round_brief.md"
-    existing = brief.read_text(encoding="utf-8") if brief.is_file() else ""
-    brief.write_text(resume_note(reason) + existing, encoding="utf-8")
+    from .feedback.brief import locked, replace_text
+
+    with locked(Path(ws)) as brief:  # the background brief refresh must not drop the banner
+        existing = brief.read_text(encoding="utf-8") if brief.is_file() else ""
+        replace_text(brief, resume_note(reason) + existing)
     return brief
 
 

@@ -93,3 +93,34 @@ def requires_recipe_support(target: str):
     """``requires_support`` for the provider ``target``'s recipe draws its software spec from, if any."""
     provider = software_spec_provider(target)
     return requires_support(provider) if provider else pytest.mark.skipif(False, reason="")
+
+
+def selected_is_generic(target: str) -> bool:
+    """Whether ``target``'s selected support is DATA served by a generic core backend (no private code)."""
+    from merlin.targetgen import plugins, target_registry
+
+    if target_registry.explicit_targets().get(target) is None:
+        return False
+    try:
+        backend = plugins.resolve_support(target).plugin().get("backend")
+    except Exception:  # noqa: BLE001 - an unreadable selection is not the generic provider
+        return False
+    return isinstance(backend, str) and plugins.core_module_path(backend) is not None
+
+
+def requires_package_owned_support(target: str):
+    """Skip a test of helpers a support package ships itself.
+
+    Such tests need that package selected explicitly; the generic data provider does not
+    implement them, so selecting it skips (by name) rather than failing on a missing private symbol."""
+    absent = missing_support(target)
+    generic = not absent and selected_is_generic(target)
+    return pytest.mark.skipif(
+        bool(absent) or generic,
+        reason=(
+            f"requires explicit {target} support on MERLIN_TARGET_PATH"
+            if absent
+            else f"tests modules a {target} support package ships itself; the selected generic "
+            "data provider does not implement them"
+        ),
+    )

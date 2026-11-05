@@ -29,9 +29,10 @@ this classification exists to surface, so the suite asserts each one can refuse.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import replace as _replace
-from typing import Any, Callable
+from typing import Any
 
 from merlin.sched.ir import Call, Kernel, Loop, Ptr, Stage
 from merlin.sched.ir.expr import Expr, Scaled, Sum, Var, add, as_expr, evaluate, free_vars, mul, render, select
@@ -237,6 +238,8 @@ def _rewrite_expr(e: Expr, var: str, expr: Expr) -> Expr:
         # expression language cannot write down, so it refuses rather than approximating.
         if isinstance(expr, Const):
             return then if expr.value == e.equals else other
+        if isinstance(expr, Var):
+            return select(expr.name, e.equals, then, other)
         # An affine shift of the variable is an affine shift of the test: peeling the front of a loop
         # renumbers it from zero, so `k0 == 6` on the old numbering is `k0 == 5` on the new one. This is
         # exact, not an approximation, and without it a loop whose body carries a last-tile remainder --
@@ -283,6 +286,43 @@ def _map_calls(body: tuple, fn: Callable[[Call], Call]) -> tuple:
 # -- the primitives ----------------------------------------------------------------------------------
 
 
+def _divide_value(value, var, outer, inner, factor):
+    """Exact quotient/remainder substitution within the new inner domain.
+
+    Unlike general affine substitution, divide_loop establishes
+    0 <= inner < factor. That domain permits an old ``var == c`` predicate
+    to become outer == c//factor AND inner == c%factor without reassociation
+    or extending the expression language.
+    """
+    from merlin.sched.ir.expr import Const, Select
+
+    if isinstance(value, Ptr):
+        return _replace(value, offset=_divide_value(value.offset, var, outer, inner, factor))
+    if isinstance(value, Var):
+        return add(mul(outer, factor), inner) if value.name == var else value
+    if isinstance(value, Sum):
+        return add(*(_divide_value(v, var, outer, inner, factor) for v in value.terms))
+    if isinstance(value, Scaled):
+        return mul(_divide_value(value.expr, var, outer, inner, factor), value.factor)
+    if isinstance(value, Select):
+        yes = _divide_value(value.then, var, outer, inner, factor)
+        no = _divide_value(value.other, var, outer, inner, factor)
+        if value.var != var:
+            return select(value.var, value.equals, yes, no)
+        if value.equals < 0:
+            return no
+        return select(outer, value.equals // factor, select(inner, value.equals % factor, yes, no), no)
+    if isinstance(value, Const):
+        return value
+    return value
+
+
+def _divide_call(call, var, outer, inner, factor):
+    def rewrite(values):
+        return tuple((key, _divide_value(value, var, outer, inner, factor)) for key, value in values)
+    return _replace(call, args=rewrite(call.args), sets=rewrite(call.sets), assumes=rewrite(call.assumes))
+
+
 @_obligation("by_construction")
 def divide_loop(kernel: Kernel, cursor: Cursor, factor: int, *, names: tuple[str, str] | None = None) -> Kernel:
     """Split the loop the cursor names into an outer and an inner loop.
@@ -291,6 +331,8 @@ def divide_loop(kernel: Kernel, cursor: Cursor, factor: int, *, names: tuple[str
     tail, and inventing one silently is how a schedule stops computing what it did. That case REFUSES --
     peel the iteration first, which is its own move.
     """
+    if type(factor) is not int:
+        raise PrimitiveError("loop division requires an integer factor")
     if factor <= 1:
         raise NotApplicable(f"a factor of {factor} splits nothing")
     target = _loop_at(kernel.body, cursor.loops)
@@ -303,13 +345,20 @@ def divide_loop(kernel: Kernel, cursor: Cursor, factor: int, *, names: tuple[str
     for name in (outer_name, inner_name):
         if name in _bound_vars(kernel.body):
             raise PrimitiveError(f"{name!r} is already a loop variable of this kernel")
-    rebuilt = mul(as_expr(Var(outer_name)), factor)
+    from merlin.sched.ir.events import has_carried_events
+
+    if has_carried_events((target,)):
+        from .event_loops import split_event_loop
+
+        return split_event_loop(kernel, cursor.loops, factor, (outer_name, inner_name))
     inner_body = _map_calls(
         target.body,
-        lambda c: _subst_call(c, target.var, add(rebuilt, Var(inner_name))),
+        lambda c: _divide_call(c, target.var, Var(outer_name), Var(inner_name), factor),
     )
     split = Loop(outer_name, target.extent // factor, (Loop(inner_name, factor, inner_body),))
-    return _replace(kernel, body=_replace_loop(kernel.body, cursor.loops, split))
+    actual = _replace(kernel, body=_replace_loop(kernel.body, cursor.loops, split))
+    _require_well_formed(actual, f"dividing {target.var!r}")
+    return actual
 
 
 @_obligation("by_construction")
@@ -327,6 +376,12 @@ def unroll(kernel: Kernel, cursor: Cursor) -> Kernel:
             f"unrolling {target.var!r} would emit {target.extent} copies; a bound this large is a "
             "tiling decision, not an unroll"
         )
+    from merlin.sched.ir.events import has_carried_events
+
+    if has_carried_events(kernel.body):
+        from .event_loops import unroll_event_loop
+
+        return unroll_event_loop(kernel, cursor.loops)
     flat: list[Any] = []
     for i in range(target.extent):
         flat.extend(
@@ -354,6 +409,10 @@ def reorder(kernel: Kernel, cursor: Cursor) -> Kernel:
     ``hazard_resolution`` and why a reordering there is graded on measured occupancy instead.
     """
     outer = _loop_at(kernel.body, cursor.loops)
+    from merlin.sched.ir.events import has_carried_events
+
+    if has_carried_events((outer,)):
+        raise NotApplicable("completion-carrying loop reorder needs a separate dependency transport proof")
     inner = next((s for s in outer.body if isinstance(s, Loop)), None)
     if inner is None:
         raise NotApplicable(f"loop {outer.var!r} contains no loop to swap with")
@@ -384,6 +443,10 @@ def fuse(kernel: Kernel, cursor: Cursor) -> Kernel:
     first, second = body[index], body[index + 1]
     if not isinstance(first, Loop) or not isinstance(second, Loop):
         raise NotApplicable("fuse applies to two adjacent loops")
+    from merlin.sched.ir.events import has_carried_events
+
+    if has_carried_events((first, second)):
+        raise NotApplicable("completion-carrying fusion needs a separate dependency transport proof")
     if first.extent != second.extent:
         raise NotApplicable(f"extents differ: {first.extent} and {second.extent}")
     renamed = _map_calls(second.body, lambda c: _subst_call(c, second.var, Var(first.var)))
@@ -818,6 +881,8 @@ def peel(kernel: Kernel, cursor: Cursor, *, at: str = "front") -> Kernel:
     if at not in ("front", "back"):
         raise PrimitiveError(f"peel at {at!r}: expected 'front' or 'back'")
     target = _loop_at(kernel.body, cursor.loops)
+    if target.iter_args or target.yields or target.results:
+        raise NotApplicable("peeling carried completions requires explicit ordered partition and unroll")
     if target.extent < 2:
         raise NotApplicable(
             f"loop {target.var!r} has extent {target.extent}; peeling it would leave nothing behind. "

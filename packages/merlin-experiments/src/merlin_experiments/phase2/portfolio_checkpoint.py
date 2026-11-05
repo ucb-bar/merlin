@@ -334,6 +334,9 @@ def load_historical_reference(
 def consume_authoring_checkpoint(path: Path, *, context: CheckpointVerificationContext) -> dict[str, Any]:
     """Verify a blocked, exact portfolio checkpoint without granting promotion authority."""
     document = P2_CONTRACTS.mapping_file(path)
+    from .capsule_iteration import verify_checkpoint_scope
+
+    verify_checkpoint_scope(document)
     if (
         document.get("schema") != "global_authoring_checkpoint_v1"
         or document.get("promotion_status") != "blocked_authoring_checkpoint"
@@ -473,6 +476,9 @@ def consume_round_checkpoint(path: Path, *, context: CheckpointVerificationConte
 def consume_global_candidate(path: Path, *, context: CheckpointVerificationContext) -> dict[str, Any]:
     """Verify the distinct macro handoff without turning it into a measured speedup claim."""
     document = P2_CONTRACTS.mapping_file(path)
+    from .capsule_iteration import verify_checkpoint_scope
+
+    verify_checkpoint_scope(document)
     if (
         document.get("schema") != "global_perf_candidate_v1"
         or document.get("full_model_timing_status") != "UNMEASURED"

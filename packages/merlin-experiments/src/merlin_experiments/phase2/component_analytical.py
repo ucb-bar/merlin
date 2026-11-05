@@ -34,6 +34,7 @@ from merlin.perf.phase2_calibration_bundle import prepare_phase2_calibration
 
 from . import corpus as C
 from .component_baseline import verify_baseline_admission
+from .component_compiled_arms import CompiledStaticArmFeatures
 from .component_feature_arms import IndependentArmFeatures
 from .component_runtime import require_independent_runtime
 from .component_workflow import ComponentAnalyticalProvider, _callable_code, _callable_source, _corpus, _pin
@@ -138,6 +139,7 @@ class ComponentAnalyticalBinding:
     baseline_admission: object
     independent_runtime: object
     independent_arms: IndependentArmFeatures | None = None
+    compiled_arms: CompiledStaticArmFeatures | None = None
 
     @property
     def sha256(self):
@@ -162,6 +164,7 @@ class ComponentAnalyticalBinding:
                     if self.independent_arms is not None
                     else {}
                 ),
+                **({"compiled_arms_sha256": self.compiled_arms.verify()} if self.compiled_arms is not None else {}),
             }
         )
 
@@ -181,6 +184,10 @@ class ComponentAnalyticalBinding:
             if type(self.independent_arms) is not IndependentArmFeatures:
                 raise StageGateError("per-arm feature selection requires its fixed input/process/cache owner")
             self.independent_arms.require_feedback_owner(runtime, self.feature_provider)
+        if self.compiled_arms is not None:
+            if self.independent_arms is not None or type(self.compiled_arms) is not CompiledStaticArmFeatures:
+                raise StageGateError("compiled feature selection needs one fixed ordinary arm owner")
+            self.compiled_arms.require_feedback_owner(runtime, self.feature_provider)
         verify_binding = getattr(runtime.qualification, "verify_feedback_binding", None)
         if not callable(verify_binding):
             raise StageGateError("component features lack independent complete scope/held measurement qualification")
@@ -262,7 +269,7 @@ def _available_workers(binding):
     return workers
 
 
-def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
+def _evaluate(binding, adapter, *, candidate, corpus, timeout_s, retained_revision=None, retained_baseline=None):
     started = time.monotonic()
     # Forward the remaining development budget and reject late completion.
     # The thread coordinator cannot preempt a callback that ignores its timeout;
@@ -282,10 +289,17 @@ def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
         raise StageGateError("component analytical compiler arms overlap")
     binding.output.mkdir(parents=True, exist_ok=True)
     call_root = Path(tempfile.mkdtemp(prefix="component_cost_", dir=binding.output))
-    measured = call_root / "candidate"
-    shutil.copytree(candidate, measured, symlinks=True)
+    if retained_revision is None:
+        measured = call_root / "candidate"
+        shutil.copytree(candidate, measured, symlinks=True)
+    else:
+        retained_revision.verify()
+        retained_baseline.verify()
+        if candidate != retained_revision.source or binding.max_workers != 1:
+            raise StageGateError("retained analytical execution requires its fixed outer resource grant")
+        measured = retained_revision.source
     candidate_sha = str(hash_tree(measured)["sha256"])
-    workers = _available_workers(binding)
+    workers = _available_workers(binding) if retained_revision is None else 1
     from .feedback_guardian import has_parent_feedback_lease
 
     delegated_lease = has_parent_feedback_lease(binding.lease_path)
@@ -327,7 +341,7 @@ def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
                         "qualified_domains": list(domains),
                     }
                 pair = binding.feature_provider(
-                    baseline=binding.baseline,
+                    baseline=binding.baseline if retained_baseline is None else retained_baseline.source,
                     candidate=measured,
                     member=member,
                     corpus=corpus,
@@ -400,11 +414,17 @@ def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
                 pair,
             )
 
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            for identity, pair, detail, opportunity, observed in pool.map(one, corpus.capsules):
-                intervals[identity], reports[identity] = pair, detail
-                opportunities.append(opportunity)
-                observations[identity] = observed
+        if retained_revision is None:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                evaluated = list(pool.map(one, corpus.capsules))
+        else:
+            # Keep the issued execution context and resource coordinator in one
+            # worker; the outer pool owns concurrent evaluations.
+            evaluated = map(one, corpus.capsules)
+        for identity, pair, detail, opportunity, observed in evaluated:
+            intervals[identity], reports[identity] = pair, detail
+            opportunities.append(opportunity)
+            observations[identity] = observed
         if time.monotonic() > deadline or str(hash_tree(measured)["sha256"]) != candidate_sha:
             raise StageGateError("component analytical evaluation timed out or changed frozen compiler bytes")
         binding.validate(calibration)
@@ -461,6 +481,7 @@ def build_component_analytical_provider(
     baseline_admission=None,
     independent_runtime=None,
     independent_arms: IndependentArmFeatures | None = None,
+    compiled_arms: CompiledStaticArmFeatures | None = None,
 ) -> ComponentAnalyticalProvider:
     """Bind an exact independent corpus to calibrated, complete, bounded feedback.
 
@@ -520,6 +541,7 @@ def build_component_analytical_provider(
         baseline_admission,
         independent_runtime,
         independent_arms,
+        compiled_arms,
     )
     binding.validate(calibration)
     return ComponentAnalyticalProvider(

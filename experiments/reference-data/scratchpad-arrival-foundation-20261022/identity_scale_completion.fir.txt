@@ -1,0 +1,6 @@
+        node _completed_masks_0_0_T = eq(in.bits.scale.bits, identity.bits) @[generators/gemmini/src/main/scala/gemmini/VectorScalarMultiplier.scala 138:64]
+        node _completed_masks_0_0_T_1 = or(_completed_masks_0_0_T, UInt<1>(0h0)) @[generators/gemmini/src/main/scala/gemmini/VectorScalarMultiplier.scala 138:84]
+        connect completed_masks[0][0], _completed_masks_0_0_T_1 @[generators/gemmini/src/main/scala/gemmini/VectorScalarMultiplier.scala 138:40]
+        node _completed_masks_0_1_T = eq(in.bits.scale.bits, identity.bits) @[generators/gemmini/src/main/scala/gemmini/VectorScalarMultiplier.scala 138:64]
+        node _completed_masks_0_1_T_1 = or(_completed_masks_0_1_T, UInt<1>(0h0)) @[generators/gemmini/src/main/scala/gemmini/VectorScalarMultiplier.scala 138:84]
+        connect completed_masks[0][1], _completed_masks_0_1_T_1 @[generators/gemmini/src/main/scala/gemmini/VectorScalarMultiplier.scala 138:40]

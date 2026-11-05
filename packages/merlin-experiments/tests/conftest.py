@@ -17,6 +17,9 @@ import pytest
 # tests build their own providers and selections, so the session starts with none selected unless the
 # operator chose one (the same rule as merlin/tests/conftest.py).
 os.environ.setdefault("MERLIN_TARGET_PATH", "")
+# A seal asks for chattr +i where the host permits it (merlin.common.immutability). A suite run with
+# that privilege would leave tmp trees nobody can delete, so tests opt in explicitly instead.
+os.environ.setdefault("MERLIN_SEAL_IMMUTABLE", "off")
 
 
 @pytest.fixture(autouse=True)
@@ -53,3 +56,35 @@ def tmp_path(tmp_path):
                 os.chmod(directory, mode | 0o200)
         except OSError:
             pass  # best effort, exactly as pytest's own removal is
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _private_content_store(tmp_path_factory):
+    """Give the whole session a private bundle content store unless one is chosen explicitly.
+
+    The default store is the repository's ``out/artifacts/cache/bundle-inputs-cas``, which a live run
+    launched from this checkout also uses. Store objects are hard-linked into every frozen tree, so a
+    test that tampers with its frozen copy (chmod, then write) rewrites the shared inode: measured,
+    a tamper test truncated a live run's frozen software specification and every later grade failed
+    "original snapshot input content differs from its marker". Tests that need the default location
+    clear the variable themselves.
+    """
+    if "MERLIN_BUNDLE_CAS" in os.environ:
+        yield
+        return
+    os.environ["MERLIN_BUNDLE_CAS"] = str(tmp_path_factory.mktemp("bundle-inputs-cas"))
+    try:
+        yield
+    finally:
+        os.environ.pop("MERLIN_BUNDLE_CAS", None)
+
+
+@pytest.fixture(autouse=True)
+def _undebounced_background_grades(monkeypatch):
+    """Launch a due background grade without waiting for a quiet source, unless a test opts in.
+
+    Scheduling tests here write their submission an instant before grading and change fake source
+    identities between grades on purpose; a 30 s quiet period would only stall them. The debounce
+    itself is covered by tests that set ``MERLIN_GRADE_QUIET_S``.
+    """
+    monkeypatch.setenv("MERLIN_GRADE_QUIET_S", "0")

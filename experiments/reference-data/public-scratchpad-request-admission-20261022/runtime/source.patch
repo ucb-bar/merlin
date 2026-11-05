@@ -1,0 +1,151 @@
+diff --git a/examples/gemmini/timing/README.md b/examples/gemmini/timing/README.md
+index 98427a4..d6865ac 100644
+--- a/examples/gemmini/timing/README.md
++++ b/examples/gemmini/timing/README.md
+@@ -345,3 +345,23 @@ give movement108 (unchanged), matmul851 (previous807), and convolution11061
+ (previous11088). Their physical development labels are143,564,10847 respectively.
+ The matmul regression is retained, not compensated by changing a scalar price.
+ These comparisons neither qualify this candidate nor reopen calibration.
++
++The separate `scratchpad_request_admission=1` selector corrects the first
++trial's conservative request/service conflation. It requires
++`target.assumptions.reader_a_ready_with_transaction_credit=1`. The source
++reserves a transaction before the two translation queues and can capture its
++next row when the previous untranslated request fires. Memory event `issue`
++and `start` are not A-channel acceptance: they include cacheline dependencies.
++The candidate therefore uses a persistent one-request-per-cycle ingress
++frontier and sixteen source credits, while leaving memory service/resource
++reservations and FIFO response readiness unchanged. Allocation cannot recycle
++before the previous incoming beat; destination completion remains separate.
++
++This is explicitly conditional on translation hits and A readiness with source
++credit. It does not prove arbitrary interconnect acceptance or MSHR capacity.
++The three exact public replays give movement108, matmul657, convolution11021,
++with all declared outputs correct and no unresolved timing within the windows.
++No new physical run, scalar fitting, independent qualification or active
++runtime change accompanies this candidate. The failed851-cycle first trial
++remains retained separately. Existing selections without this second flag keep
++the first trial's behavior.
+diff --git a/examples/gemmini/timing/bridge.cpp b/examples/gemmini/timing/bridge.cpp
+index 4b91fb0..6da9761 100644
+--- a/examples/gemmini/timing/bridge.cpp
++++ b/examples/gemmini/timing/bridge.cpp
+@@ -215,6 +215,12 @@ std::optional<G::StagedConfig> staged_config(Services &services) {
+         fact("reader_transaction_entries",16),fact("identity_scale_queue_entries",3),2,
+         3+integer(services,"first_layer_optimizations")};
+   }
++  if(const auto selected=services.number("target.scheduling.scratchpad_request_admission")) {
++    if(*selected!=1 || !result.scratchpad_load_stream ||
++        services.number("target.assumptions.reader_a_ready_with_transaction_credit")!=std::optional<double>{1})
++      throw std::invalid_argument("independent row requests require explicit A-ready credit assumption");
++    result.scratchpad_load_stream->independent_request_admission=true;
++  }
+   if (result.allow_disjoint_scratchpad_banks || result.conservative_local_store_holds)
+     result.scratchpad_bank_rows = count("scratchpad_bank_rows");
+   if (result.conservative_local_store_holds) {
+diff --git a/examples/gemmini/timing/scratchpad_load.hpp b/examples/gemmini/timing/scratchpad_load.hpp
+index 373f74c..146e2ea 100644
+--- a/examples/gemmini/timing/scratchpad_load.hpp
++++ b/examples/gemmini/timing/scratchpad_load.hpp
+@@ -10,10 +10,11 @@ namespace gemmini_annotated_spike {
+ struct ScratchpadLoadConfig {
+   std::size_t transactions=16, scale_entries=3;
+   Cycle translation_stages=2, identity_stages=3;
++  bool independent_request_admission=false;
+ };
+ struct ScratchpadLoadResult {
+   std::optional<Cycle> complete, requests_complete;
+-  std::vector<Cycle> requested, response, written;
++  std::vector<Cycle> requested, service_start, response, written;
+ };
+ class ScratchpadLoadStream {
+ public:
+@@ -29,12 +30,18 @@ public:
+     ScratchpadLoadResult out;
+     if(!rows || rows>16 || !response_frontier_ ||
+         begin>std::numeric_limits<Cycle>::max()-1048576) return out;
+-    Cycle request=begin+c_.translation_stages, complete=begin;
++    Cycle request=begin+(c_.independent_request_admission?0:c_.translation_stages), complete=begin;
++    Cycle last_request=begin;
+     for(std::size_t row=0;row<rows;++row) {
+-      const auto tx=transactions_.allocate(request);
+-      if(!tx)return out;
+-      const auto fetched=memory(row,tx->admitted);
+-      if(!fetched.start || !fetched.ready || *fetched.start<tx->admitted ||
++      const auto tx=transactions_.allocate(c_.independent_request_admission ?
++          std::max(request,request_frontier_) : request);
++      if(!tx || tx->admitted>std::numeric_limits<Cycle>::max()-16)return out;
++      // Selected reader reserves its transaction before the two registered
++      // translation queues. Explicit A-ready/translation-hit assumptions allow
++      // the next request to enter independently of a prior response's RAW wait.
++      const auto accepted=tx->admitted+(c_.independent_request_admission?c_.translation_stages:0);
++      const auto fetched=memory(row,accepted);
++      if(!fetched.start || !fetched.ready || *fetched.start<accepted ||
+           *fetched.ready<*fetched.start || *fetched.ready>std::numeric_limits<Cycle>::max()-16) {
+         response_frontier_.reset();return out;
+       }
+@@ -51,17 +58,21 @@ public:
+           *stored.ready!=*stored.start+1) {response_frontier_.reset();return out;}
+       scale_.release(*slot,*stored.start+1);
+       response_frontier_=slot->admitted+1;
+-      request=*fetched.start+1;
++      request=c_.independent_request_admission ? tx->admitted+1 : *fetched.start+1;
++      if(c_.independent_request_admission)request_frontier_=request;
++      last_request=c_.independent_request_admission ? accepted+1 : request;
+       complete=std::max(complete,*stored.ready);
+-      out.requested.push_back(*fetched.start);out.response.push_back(slot->admitted);
++      out.requested.push_back(c_.independent_request_admission ? accepted : *fetched.start);
++      out.service_start.push_back(*fetched.start);out.response.push_back(slot->admitted);
+       out.written.push_back(*stored.start);
+     }
+-    out.complete=complete;out.requests_complete=request;return out;
++    out.complete=complete;out.requests_complete=last_request;return out;
+   }
+ private:
+   ScratchpadLoadConfig c_;
+   merlin_timing::ReservationWindow transactions_,scale_;
+   std::optional<Cycle> response_frontier_=Cycle{0};
++  Cycle request_frontier_=0;
+ };
+ } // namespace gemmini_annotated_spike
+ #endif
+diff --git a/examples/gemmini/timing/tests/scratchpad_load_test.cpp b/examples/gemmini/timing/tests/scratchpad_load_test.cpp
+index 6db6ebe..dc08381 100644
+--- a/examples/gemmini/timing/tests/scratchpad_load_test.cpp
++++ b/examples/gemmini/timing/tests/scratchpad_load_test.cpp
+@@ -2,6 +2,22 @@
+ #include <cassert>
+ using namespace gemmini_annotated_spike;
+ int main() {
++  // A cacheline RAW service delay is not request admission. Selected source
++  // credits still limit ingress, and FIFO responses retain their dependence.
++  ScratchpadLoadStream admitted({16,3,2,3,true});
++  const auto queued=admitted.schedule(16,0,[](std::size_t row,Cycle at) {
++    const auto service=row==1 ? Cycle{80} : at;
++    return Result{service,service,service+20};
++  },[](std::size_t,Cycle at){return Result{at,at,at+1};});
++  assert(queued.requested[0]==2 && queued.requested[1]==3 && queued.requested[2]==4);
++  assert(queued.service_start[1]==80 && queued.response[2]>=queued.response[1]+1);
++  assert(queued.requests_complete==18);
++  const auto next=admitted.schedule(16,0,[](std::size_t,Cycle at){return Result{at,at,at+20};},
++      [](std::size_t,Cycle at){return Result{at,at,at+1};});
++  // A transaction cannot recycle before its last incoming beat; even when
++  // begin repeats, neither the shared request channel nor credits time-travel.
++  assert(next.requested[0]>=queued.response[0]+3);
++  assert(next.requested[1]>=queued.response[1]+3);
+   // Requests remain independent of destination-bank delay until the bounded
+   // identity queue fills. Never release a transaction at request submission.
+   ScratchpadLoadStream stream({16,3,2,3});
+diff --git a/examples/gemmini/timing/tests/staged_test.cpp b/examples/gemmini/timing/tests/staged_test.cpp
+index 303a7f3..b7dbe3f 100644
+--- a/examples/gemmini/timing/tests/staged_test.cpp
++++ b/examples/gemmini/timing/tests/staged_test.cpp
+@@ -32,7 +32,7 @@ static std::vector<ResourceSpec> epoch_resources() {
+ 
+ int main() {
+   // Row loads reserve SRAM only when data arrives; actual destination and
+-  // resource hazards still hold. An earlier unrelated read can use the gap.
++  // resource hazards still hold; a prior bank reservation delays acceptance.
+   for(const Cycle blocked:{0u,100u}) {
+     auto selected=epoch_config();selected.scratchpad_load_stream=ScratchpadLoadConfig{};
+     auto specs=epoch_resources();specs.push_back({11,1,0});

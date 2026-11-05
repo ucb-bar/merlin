@@ -18,6 +18,8 @@ Two properties are worth pinning down, because both were arrived at by being wro
 
 from __future__ import annotations
 
+import pytest
+
 from merlin.llvmlower import pipeline as P
 
 DEALLOC = "ownership-based-buffer-deallocation"
@@ -52,3 +54,53 @@ def test_dealloc_is_defeatable_for_an_ab(monkeypatch):
     """The A/B escape hatch is the only honest way to defend "numerics unchanged"."""
     monkeypatch.setenv("MERLIN_NO_DEALLOC", "1")
     assert DEALLOC not in _stages(P._upstream_pipeline())
+
+
+def test_allocation_moves_precede_ownership_and_serial_output_forwarding():
+    for pipeline in (P._upstream_pipeline(), P.build_rvv_pipeline("", features=frozenset())):
+        stages = _stages(pipeline)
+        assert max(
+            i for i, s in enumerate(stages) if "buffer-hoisting" in s or "buffer-loop-hoisting" in s
+        ) < stages.index(DEALLOC)
+    stages = _stages(P._upstream_pipeline())
+    bufferized = next(i for i, s in enumerate(stages) if "one-shot-bufferize" in s)
+    forwarded = next(i for i, s in enumerate(stages) if "buffer-results-to-out-params" in s)
+    assert "canonicalize" in stages[bufferized + 1 : forwarded]
+
+
+def test_explicit_hoist_after_ownership_is_rejected():
+    with pytest.raises(ValueError, match="invalidates ownership"):
+        P._splice(["__DEALLOC__", "func.func(buffer-hoisting,buffer-loop-hoisting)"])
+
+
+@pytest.mark.parametrize("hoist_before", [True, False])
+@pytest.mark.parametrize("sliced", [True, False])
+def test_split_runners_preserve_callback_stage_anchors(hoist_before, sliced):
+    calls = []
+    namespace = {
+        "_run_stages": lambda *args: calls.append(args),
+        "_split_fresh_local_deallocs": lambda *args: None,
+        "_slice_unused_elementwise_outputs": lambda *args: None,
+        "_dealloc_placement_violations": lambda *args: ([], 0, 0),
+    }
+    runner = P.SLICED_OUTPUT_RUNNER if sliced else P.SPLIT_FRESH_DEALLOCS_RUNNER
+    marker = (
+        P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER if sliced else "__merlin_split_fresh_deallocs__"
+    )
+    exec(runner, namespace)
+    hoist = "func.func(buffer-hoisting,buffer-loop-hoisting)"
+    passes = ["linalg-generalize-named-ops"]
+    if hoist_before:
+        passes.append(hoist)
+    passes.extend([DEALLOC, "optimize-allocation-liveness", marker])
+    if not hoist_before:
+        passes.append(hoist)
+    passes.append("convert-scf-to-cf")
+    namespace["_run_stages"](None, None, ",".join(passes), 3, ("mid",), ("late",), ("post",), ("pre",))
+    assert len(calls) == 2
+    head, tail = calls
+    assert head[7] == ("pre",) and tail[7] == ()
+    assert head[5:7] == ((), ()) and tail[5:7] == (("late",), ("post",))
+    chosen, other = (head, tail) if hoist_before else (tail, head)
+    assert "buffer-loop-hoisting" in chosen[2]
+    assert chosen[3:5] == (3, ("mid",)) and other[3:5] == (0, ())

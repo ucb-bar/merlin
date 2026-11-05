@@ -73,7 +73,7 @@ def _n_inputs(op) -> int:
 
 
 def _maps(op):
-    from merlin.kernels import shapes as KS
+    from merlin.compile.analysis import contraction_shapes as KS
 
     maps, kinds = KS.indexing_maps(op), KS._iterator_types(op)  # noqa: SLF001
     if not maps or not kinds:

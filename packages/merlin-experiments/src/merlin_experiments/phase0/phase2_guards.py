@@ -14,9 +14,9 @@ from pathlib import Path
 import yaml
 
 from merlin.common.digest import sha256_bytes
-from merlin.targetgen import boundary, conformance
+from merlin.targetgen import conformance
 
-from ..corpus.coverage import _selected_contract
+from ..corpus.coverage import _selected_contract, merlin_supplied_host_axis
 from ..corpus.phase_selection import validate_phase_selections
 from ..phase1.source_inputs import fingerprint
 from .coverage_commitment import INPUT_SCHEMA, _digest, _selected_program
@@ -38,7 +38,7 @@ def _selected_members(corpus: Path, inputs: dict, phase1_report: dict, phase2_re
     category = performance.get("category")
     if not isinstance(category, str):
         raise ValueError("Phase 2 performance category is absent from generated provenance")
-    selected = ((manifest.get("phase_corpora") or {}).get(target))
+    selected = (manifest.get("phase_corpora") or {}).get(target)
     roles = validate_phase_selections(
         selected,
         performance_category=category,
@@ -98,46 +98,36 @@ def build_guard_link(corpus: Path, inputs: dict, phase1_report: dict, phase2_rep
         if descriptor.get("source_role") == "derived_sweep"
         and "on_mesh" in ((descriptor.get("lanes") or {}).get("forbid") or ())
     ]
-    roots = [directory for _, directory, _ in negative_guards]
-    host_lane = (
-        boundary.host_lane_coverage(spec, roots, labels={"public", "dev"}, capability_contract=contract)
-        if (spec.get("host_lane") or {}).get("required") is not None
-        else {"status": "not_measured", "reason": "selected requirement lacks the host-lane axis"}
-    )
-    host_only = (
-        boundary.host_only_coverage(spec, roots, labels={"public", "dev"}, capability_contract=contract)
-        if (spec.get("host_only") or {}).get("families")
-        else (
-            {"status": "not_applicable", "n_required": 0, "n_covered": 0, "uncovered": []}
-            if (spec.get("host_only") or {}).get("families") == []
-            else {"status": "not_measured", "reason": "selected requirement lacks the host-only axis"}
-        )
-    )
+    # Host placement is Merlin-supplied from the frozen Phase 0 placement, so the host axes are no
+    # public-capsule obligation; a retained forbid-the-mesh member is still byte-bound as a guard.
+    host_lane = merlin_supplied_host_axis(spec, "host_lane")
+    host_only = merlin_supplied_host_axis(spec, "host_only")
     functional_axes = {"epilogue": [], "carried_state": []}
     for member, directory, descriptor, row in selected["phase1"]:
         if descriptor.get("source_role") != "derived_sweep":
             continue
-        axis = ((descriptor.get("semantic") or {}).get("generalization_axis"))
+        axis = (descriptor.get("semantic") or {}).get("generalization_axis")
         if axis in functional_axes:
             functional_axes[axis].append((member, directory, row))
     epilogue_required = (spec.get("epilogue") or {}).get("required")
     carried_required = (spec.get("carried_state") or {}).get("required")
     epilogue = (
-        conformance._epilogue_gap(epilogue_required, [directory for _, directory, _ in functional_axes["epilogue"]],
-                                  labels={"public", "dev"})
+        conformance._epilogue_gap(
+            epilogue_required, [directory for _, directory, _ in functional_axes["epilogue"]], labels={"public", "dev"}
+        )
         if epilogue_required is not None
         else {"status": "not_applicable", "n_required": 0, "n_covered": 0, "uncovered": []}
     )
     carried_state = (
         conformance._carried_state_gap(
-            carried_required, [directory for _, directory, _ in functional_axes["carried_state"]],
+            carried_required,
+            [directory for _, directory, _ in functional_axes["carried_state"]],
             labels={"public", "dev"},
         )
         if carried_required is not None
         else {"status": "not_applicable", "n_required": 0, "n_covered": 0, "uncovered": []}
     )
-    coverage = {"host_lane": host_lane, "host_only": host_only,
-                "epilogue": epilogue, "carried_state": carried_state}
+    coverage = {"host_lane": host_lane, "host_only": host_only, "epilogue": epilogue, "carried_state": carried_state}
     complete = all(
         axis.get("status") in {"ok", "not_applicable"}
         and not axis.get("uncovered")
@@ -155,9 +145,12 @@ def build_guard_link(corpus: Path, inputs: dict, phase1_report: dict, phase2_rep
         "guards": [
             {"member": member, "name": row["name"], "sha256": row["sha256"], "program_sha256": row["program_sha256"]}
             for member, _, row in sorted(
-                {member: (member, directory, row) for member, directory, row in (
-                    negative_guards + functional_axes["epilogue"] + functional_axes["carried_state"]
-                )}.values()
+                {
+                    member: (member, directory, row)
+                    for member, directory, row in (
+                        negative_guards + functional_axes["epilogue"] + functional_axes["carried_state"]
+                    )
+                }.values()
             )
         ],
         "coverage": copy.deepcopy(coverage),
@@ -168,9 +161,7 @@ def build_guard_link(corpus: Path, inputs: dict, phase1_report: dict, phase2_rep
     }
 
 
-def verify_guard_link(
-    saved: dict, corpus: Path, inputs: dict, phase1_report: dict, phase2_report: dict
-) -> None:
+def verify_guard_link(saved: dict, corpus: Path, inputs: dict, phase1_report: dict, phase2_report: dict) -> None:
     """Fail closed if either cohort, a guard byte, or selected evidence changes."""
     if saved != build_guard_link(corpus, inputs, phase1_report, phase2_report):
         raise ValueError("Phase 2 functional guard link differs from selected source evidence")

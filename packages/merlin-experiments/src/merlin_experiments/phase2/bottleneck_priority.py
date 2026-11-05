@@ -215,7 +215,8 @@ def build_report(
     if (
         not isinstance(basis, Mapping)
         or basis.get("schema") != "merlin.phase0.performance_basis.v1"
-        or test_justification.get("schema") != "merlin.phase2.test_justification.v1"
+        or test_justification.get("schema")
+        not in {"merlin.phase2.test_justification.v1", "merlin.phase2.test_justification.v2"}
         or basis.get("target") != test_justification.get("target")
         or source.get("performance_basis_sha256") != basis_sha
         or source.get("raw_rtl_facts_sha256") != (basis.get("sources") or {}).get("raw_rtl_facts_sha256")

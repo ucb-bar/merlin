@@ -1,0 +1,13 @@
+{
+  "active_epoch_changes": 0,
+  "calibration_profile": {
+    "path": "workspace/tasks/el4-joint-performance-feedback-20261021/private/automatic-calibration-v1/profile.json",
+    "sha256": "d7e518043a09a8fb37d18d50bab0aa369745b31307743cb8d9fab0fb98832990"
+  },
+  "elapsed_s": 2.7832985760178417,
+  "implementation": "workspace/tasks/el4-joint-integration-20261021/merlin/packages/merlin-experiments/src/merlin_experiments/phase1/joint_runtime_revision.py",
+  "physical_runs": 0,
+  "root_source_head": "3d42e6a37df0952197bd74c069515d7bf95c7dad",
+  "selection_sha256": "dda7138011db0f1e6677a89d59abf1149971c3867e1c1ddfaa7afda0fc1da375",
+  "status": "PASS"
+}

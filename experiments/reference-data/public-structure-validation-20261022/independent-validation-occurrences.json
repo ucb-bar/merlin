@@ -1,0 +1,215 @@
+{
+  "schema": "merlin.public_independent_occurrence_analysis.v1",
+  "status": "analysis_only_no_new_runs_no_parameter_changes",
+  "original_result": "prespecified_conditions_fail",
+  "observations": [
+    {
+      "arm": 0,
+      "name": "single1",
+      "physical_samples": [
+        347,
+        313,
+        310
+      ],
+      "estimated_samples": [
+        323,
+        289,
+        289
+      ],
+      "first_minus_later_mean_physical": 35.5,
+      "first_minus_later_mean_model": 34,
+      "first_use_delta_residual": -1.5,
+      "scope_instruction_counts": [
+        45,
+        45,
+        45
+      ],
+      "maximum_per_occurrence_relative_error": 0.07667731629392971,
+      "predeclared_spread_pass": false
+    },
+    {
+      "arm": 1,
+      "name": "queued3",
+      "physical_samples": [
+        665,
+        668,
+        662
+      ],
+      "estimated_samples": [
+        673,
+        673,
+        673
+      ],
+      "first_minus_later_mean_physical": 0,
+      "first_minus_later_mean_model": 0,
+      "first_use_delta_residual": 0,
+      "scope_instruction_counts": [
+        71,
+        71,
+        71
+      ],
+      "maximum_per_occurrence_relative_error": 0.01661631419939577,
+      "predeclared_spread_pass": true
+    },
+    {
+      "arm": 2,
+      "name": "fenced3",
+      "physical_samples": [
+        820,
+        813,
+        829
+      ],
+      "estimated_samples": [
+        817,
+        817,
+        817
+      ],
+      "first_minus_later_mean_physical": -1,
+      "first_minus_later_mean_model": 0,
+      "first_use_delta_residual": 1,
+      "scope_instruction_counts": [
+        77,
+        77,
+        77
+      ],
+      "maximum_per_occurrence_relative_error": 0.014475271411338963,
+      "predeclared_spread_pass": true
+    },
+    {
+      "arm": 3,
+      "name": "integer_delayed_queued3",
+      "physical_samples": [
+        1111,
+        1052,
+        1051
+      ],
+      "estimated_samples": [
+        1125,
+        1057,
+        1057
+      ],
+      "first_minus_later_mean_physical": 59.5,
+      "first_minus_later_mean_model": 68,
+      "first_use_delta_residual": 8.5,
+      "scope_instruction_counts": [
+        461,
+        461,
+        461
+      ],
+      "maximum_per_occurrence_relative_error": 0.012601260126012601,
+      "predeclared_spread_pass": false
+    },
+    {
+      "arm": 4,
+      "name": "clean_readout3",
+      "physical_samples": [
+        252,
+        250,
+        252
+      ],
+      "estimated_samples": [
+        275,
+        275,
+        275
+      ],
+      "first_minus_later_mean_physical": 1,
+      "first_minus_later_mean_model": 0,
+      "first_use_delta_residual": -1,
+      "scope_instruction_counts": [
+        30,
+        30,
+        30
+      ],
+      "maximum_per_occurrence_relative_error": 0.1,
+      "predeclared_spread_pass": true
+    },
+    {
+      "arm": 5,
+      "name": "dirty_readout3",
+      "physical_samples": [
+        536,
+        533,
+        536
+      ],
+      "estimated_samples": [
+        545,
+        545,
+        545
+      ],
+      "first_minus_later_mean_physical": 1.5,
+      "first_minus_later_mean_model": 0,
+      "first_use_delta_residual": -1.5,
+      "scope_instruction_counts": [
+        30,
+        30,
+        30
+      ],
+      "maximum_per_occurrence_relative_error": 0.0225140712945591,
+      "predeclared_spread_pass": true
+    },
+    {
+      "arm": 6,
+      "name": "integer_only3",
+      "physical_samples": [
+        413,
+        413,
+        413
+      ],
+      "estimated_samples": [
+        414,
+        414,
+        414
+      ],
+      "first_minus_later_mean_physical": 0,
+      "first_minus_later_mean_model": 0,
+      "first_use_delta_residual": 0,
+      "scope_instruction_counts": [
+        403,
+        403,
+        403
+      ],
+      "maximum_per_occurrence_relative_error": 0.002421307506053269,
+      "predeclared_spread_pass": true
+    }
+  ],
+  "supported_conclusion": [
+    "Every individual scope estimate is within10percent of its exact matching physical occurrence; all numerical checks passed.",
+    "single1 first-use premium35.5cycles vs34modeled; delayedqueued3 first-use premium59.5 vs68modeled. The same scope instruction counts recur, so differing instruction counts do not explain these two differences.",
+    "Repeat history matters and the model tracks its direction/magnitude. This does not establish which cache/pipeline component caused it: no independent miss or per-stage physical counters were measured.",
+    "The predeclared5percent spread rule fails single1 and delayedqueued3. Later repeats alone do not retrospectively replace that rule; no qualification or denial change follows.",
+    "Different source/shape/schedule windows are a single shared holdout family. Seven arms do not constitute the four independent source groups required by the existing fitting profile."
+  ],
+  "unknowns_and_next_distinguishing_coverage": [
+    {
+      "priority": 0,
+      "scope": "Current exact public diagnostic",
+      "action": "Review condition-specific first-use versus reused instruction/data history using already retained source and timeline; no repeat of this probe or altered thresholds justified by these labels alone."
+    },
+    {
+      "priority": 1,
+      "scope": "Queue capacity and real schedule alternatives",
+      "action": "This3job test covers bounded lookahead/queueing, not saturation of10executeFIFO/16RS entries or sustained load/execute/store overlap. Select a new independent compiler-emitted witness only when a concrete ranking depends on admission/release pressure."
+    },
+    {
+      "priority": 2,
+      "scope": "Partial tiles and protocol generality",
+      "action": "TailM8N12K16, accumulation, transposition and changing weights are outside the reviewed full-tile pairing subset. Establish supported primitive/unknown behavior before selecting a new source-held test; do not use optional tail as proof of fulltile correction."
+    },
+    {
+      "priority": 3,
+      "scope": "Memory and translation",
+      "action": "Current outputs fit tiny warmed working sets and conditional translation-hit model. Capacity crossing, DMAstrides/line-boundary tails, dirty-eviction pressure and translationmiss/retry remain unqualified; one boundary-changing witness only if tied to an actual compiler decision."
+    },
+    {
+      "priority": 4,
+      "scope": "Host arithmetic and connected execution",
+      "action": "384dependent integer adds validate this limited host submission perturbation. FPquant/dequant, packing loops, divide/norm/softmax and connected host/device seams need separate actualMerlin-produced source/ELF/all-output receipts; existing two-priceWS/PRELOAD panel cannot fit them."
+    },
+    {
+      "priority": 5,
+      "scope": "Physical final validation",
+      "action": "No FireSim/private reference labels used. SmallgSIM observations do not establish large-model/wholeSoC or physical-frequency transfer."
+    }
+  ],
+  "timing_semantics": "Per-occurrence bound windows only; whole-trace busy-unit totals and out-of-window unresolved events are not promoted."
+}

@@ -1,0 +1,1073 @@
+{
+ "core_gsim": {
+  "per_capsule": [
+   {
+    "barrier_cycles": 799,
+    "barrier_tier": "L3",
+    "capsule": "G_matmul_m1k48n64_raw",
+    "numerical_execution_passed": true,
+    "pass": true,
+    "performance": {
+     "complete_event_accounting": true,
+     "estimated_whole_soc_cycles": 708,
+     "scoped_resource_feedback": {
+      "resources": [
+       {
+        "capacity_normalized_activity": 0.5423728813559322,
+        "name": "accelerator.storage.scratchpad.2"
+       },
+       {
+        "capacity_normalized_activity": 0.3121468926553672,
+        "name": "cpu.issue"
+       },
+       {
+        "capacity_normalized_activity": 0.2782485875706215,
+        "name": "accelerator.controller.execute"
+       },
+       {
+        "capacity_normalized_activity": 0.2584745762711864,
+        "name": "accelerator.storage.scratchpad.0"
+       }
+      ]
+     },
+     "status": "PROVISIONAL",
+     "structural_roofline": {
+      "logical_request_ideal_service": {
+       "read": {
+        "client_peak_bytes_per_cycle": 16,
+        "ideal_requested_service_cycles": 195
+       },
+       "write": {
+        "client_peak_bytes_per_cycle": 16,
+        "ideal_requested_service_cycles": 16
+       }
+      },
+      "structural_compute_floor_cycles": 12,
+      "structural_peak_macs_per_cycle": 256,
+      "useful_macs": 3072
+     }
+    }
+   }
+  ],
+  "sim": "gsim"
+ },
+ "scalability": {
+  "cases": [
+   {
+    "capsule": "PD_resnet50_model_m196k1024n256_raw",
+    "performance": {
+     "complete_event_accounting": true,
+     "estimated_whole_soc_cycles": 330748,
+     "scoped_resource_feedback": {
+      "resources": [
+       {
+        "capacity_normalized_activity": 0.7863872192726789,
+        "name": "accelerator.storage.scratchpad.0"
+       },
+       {
+        "capacity_normalized_activity": 0.6935068390436223,
+        "name": "accelerator.storage.scratchpad.1"
+       },
+       {
+        "capacity_normalized_activity": 0.6633721141170922,
+        "name": "accelerator.controller.execute"
+       },
+       {
+        "capacity_normalized_activity": 0.5324023123344661,
+        "name": "cpu.issue"
+       }
+      ]
+     },
+     "status": "PROVISIONAL",
+     "structural_roofline": {
+      "logical_request_ideal_service": {
+       "read": {
+        "client_peak_bytes_per_cycle": 16,
+        "ideal_requested_service_cycles": 28928
+       },
+       "write": {
+        "client_peak_bytes_per_cycle": 16,
+        "ideal_requested_service_cycles": 12544
+       }
+      },
+      "structural_compute_floor_cycles": 200704,
+      "structural_peak_macs_per_cycle": 256,
+      "useful_macs": 51380224
+     }
+    },
+    "status": "pass",
+    "tiers": {
+     "L0": "skipped",
+     "L1": "skipped",
+     "L2": "pass"
+    }
+   },
+   {
+    "capsule": "PD_resnet50_model_m196k2304n256_raw",
+    "performance": {
+     "complete_event_accounting": true,
+     "estimated_whole_soc_cycles": 770852,
+     "scoped_resource_feedback": {
+      "resources": [
+       {
+        "capacity_normalized_activity": 0.7591807506499302,
+        "name": "accelerator.storage.scratchpad.0"
+       },
+       {
+        "capacity_normalized_activity": 0.6695137328566314,
+        "name": "accelerator.storage.scratchpad.1"
+       },
+       {
+        "capacity_normalized_activity": 0.6416393808409396,
+        "name": "accelerator.controller.execute"
+       },
+       {
+        "capacity_normalized_activity": 0.5118881445465537,
+        "name": "cpu.issue"
+       }
+      ]
+     },
+     "status": "PROVISIONAL",
+     "structural_roofline": {
+      "logical_request_ideal_service": {
+       "read": {
+        "client_peak_bytes_per_cycle": 16,
+        "ideal_requested_service_cycles": 65088
+       },
+       "write": {
+        "client_peak_bytes_per_cycle": 16,
+        "ideal_requested_service_cycles": 12544
+       }
+      },
+      "structural_compute_floor_cycles": 451584,
+      "structural_peak_macs_per_cycle": 256,
+      "useful_macs": 115605504
+     }
+    },
+    "status": "pass",
+    "tiers": {
+     "L0": "skipped",
+     "L1": "skipped",
+     "L2": "pass"
+    }
+   },
+   {
+    "capsule": "PD_resnet50_model_m196k256n1024_raw",
+    "performance": {
+     "complete_event_accounting": true,
+     "estimated_whole_soc_cycles": 409664,
+     "scoped_resource_feedback": {
+      "resources": [
+       {
+        "capacity_normalized_activity": 0.6349007967505077,
+        "name": "accelerator.storage.scratchpad.0"
+       },
+       {
+        "capacity_normalized_activity": 0.5599125136697392,
+        "name": "accelerator.storage.scratchpad.1"
+       },
+       {
+        "capacity_normalized_activity": 0.5338252812060615,
+        "name": "accelerator.controller.execute"
+       },
+       {
+        "capacity_normalized_activity": 0.44199636775503826,
+        "name": "cpu.issue"
+       }
+      ]
+     },
+     "status": "PROVISIONAL",
+     "structural_roofline": {
+      "logical_request_ideal_service": {
+       "read": {
+        "client_peak_bytes_per_cycle": 16,
+        "ideal_requested_service_cycles": 19520
+       },
+       "write": {
+        "client_peak_bytes_per_cycle": 16,
+        "ideal_requested_service_cycles": 50176
+       }
+      },
+      "structural_compute_floor_cycles": 200704,
+      "structural_peak_macs_per_cycle": 256,
+      "useful_macs": 51380224
+     }
+    },
+    "status": "pass",
+    "tiers": {
+     "L0": "skipped",
+     "L1": "skipped",
+     "L2": "pass"
+    }
+   },
+   {
+    "capsule": "PD_resnet50_model_m784k128n512_raw",
+    "performance": {
+     "complete_event_accounting": false,
+     "estimated_whole_soc_cycles": null,
+     "scoped_resource_feedback": {
+      "resources": []
+     },
+     "status": "UNKNOWN",
+     "structural_roofline": {
+      "logical_request_ideal_service": {
+       "read": {
+        "client_peak_bytes_per_cycle": 16,
+        "ideal_requested_service_cycles": 10368
+       },
+       "write": {
+        "client_peak_bytes_per_cycle": 16,
+        "ideal_requested_service_cycles": 100352
+       }
+      },
+      "structural_compute_floor_cycles": 200704,
+      "structural_peak_macs_per_cycle": 256,
+      "useful_macs": 51380224
+     }
+    },
+    "status": "pass",
+    "tiers": {
+     "L0": "skipped",
+     "L1": "skipped",
+     "L2": "pass"
+    }
+   },
+   {
+    "capsule": "PD_smolvla_prefix_encode_m113k960n960_raw",
+    "performance": {
+     "complete_event_accounting": true,
+     "estimated_whole_soc_cycles": 689797,
+     "scoped_resource_feedback": {
+      "resources": [
+       {
+        "capacity_normalized_activity": 0.751525448791456,
+        "name": "accelerator.storage.scratchpad.1"
+       },
+       {
+        "capacity_normalized_activity": 0.7383041677479026,
+        "name": "accelerator.storage.scratchpad.0"
+       },
+       {
+        "capacity_normalized_activity": 0.6722919931516084,
+        "name": "accelerator.controller.execute"
+       },
+       {
+        "capacity_normalized_activity": 0.464136550318427,
+        "name": "cpu.issue"
+       }
+      ]
+     },
+     "status": "PROVISIONAL",
+     "structural_roofline": {
+      "logical_request_ideal_service": {
+       "read": {
+        "client_peak_bytes_per_cycle": 16,
+        "ideal_requested_service_cycles": 64380
+       },
+       "write": {
+        "client_peak_bytes_per_cycle": 16,
+        "ideal_requested_service_cycles": 27120
+       }
+      },
+      "structural_compute_floor_cycles": 406800,
+      "structural_peak_macs_per_cycle": 256,
+      "useful_macs": 104140800
+     }
+    },
+    "status": "pass",
+    "tiers": {
+     "L0": "skipped",
+     "L1": "skipped",
+     "L2": "pass"
+    }
+   }
+  ],
+  "schema": "merlin.phase1.public_scalability.v1"
+ },
+ "source": {
+  "core_gsim_response": "resp_9_1793020895602958387_def707ed5434fbb02d689ee86b91389f.json",
+  "run": "gemmini-open-compiler-20261026-fresh4",
+  "scalability_response": "resp_6_1793022891892872020_ceb00db49e7cdbef393f378062318cdb.json",
+  "suggestions": "workspace OPTIMIZATION_SUGGESTIONS.json (all_mechanisms, trimmed fields)"
+ },
+ "suggestions": {
+  "all_mechanisms": [
+   {
+    "api": "merlin.compile.capacity",
+    "evidence": "Chosen tile, capacities, actual allocated bytes and edge work",
+    "family": "storage",
+    "id": "capacity_tiles",
+    "legality": "Declared formats, physical capacities and primitive shape",
+    "mechanism": "Choose tile geometry from operand and accumulator capacities",
+    "requirements": {
+     "compiler.api:merlin.compile.capacity": "supported",
+     "compute.systolic": "supported",
+     "memory.explicit_local_storage": "supported"
+    },
+    "status": "supported",
+    "symbol": "capacity_fit"
+   },
+   {
+    "api": "merlin.compile.scheduling.dense_rhs_residency",
+    "evidence": "Loads eliminated versus decoded emitted loads",
+    "family": "storage",
+    "id": "resident_rhs",
+    "legality": "Disjoint LHS staging and complete RHS capacity",
+    "mechanism": "Retain reusable RHS across output tiles",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.dense_rhs_residency": "supported",
+     "memory.scratchpad": "supported",
+     "workload.immutable_weights": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "plan_dense_rhs_residency"
+   },
+   {
+    "api": "merlin.compile.scheduling.shared_input_schedule",
+    "evidence": "Source identities, load bytes and live ranges",
+    "family": "storage",
+    "id": "sibling_input_reuse",
+    "legality": "Exact SSA identity, independent outputs and zero/accumulation semantics",
+    "mechanism": "Share an input stripe across sibling contractions",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.shared_input_schedule": "supported",
+     "memory.scratchpad": "supported",
+     "workload.graph_fanout": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "schedule_shared_input"
+   },
+   {
+    "api": "merlin.compile.scheduling.temporary_storage",
+    "evidence": "Peak live bytes, placements and emitted object offsets",
+    "family": "storage",
+    "id": "temporary_reuse",
+    "legality": "Decoded effects, byte banks and real completion events",
+    "mechanism": "Reuse disjoint temporary lifetimes",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.temporary_storage": "supported",
+     "memory.explicit_local_storage": "supported"
+    },
+    "status": "supported",
+    "symbol": "allocate_temporary_storage"
+   },
+   {
+    "api": "merlin.compile.scheduling.device_spills",
+    "evidence": "Spill bytes, inserted transfers and preserved numerics",
+    "family": "storage",
+    "id": "device_spills",
+    "legality": "Explicit selected register classes, spill semantics and refreshed liveness",
+    "mechanism": "Insert exact spills and reloads when local capacity is exceeded",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.device_spills": "supported",
+     "memory.finite_register_files": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "allocate_with_spills"
+   },
+   {
+    "api": "merlin.llvmlower.stack_arena",
+    "evidence": "Pre/post LLVM hashes and frame/arena bytes",
+    "family": "host_memory",
+    "id": "host_stack_arena",
+    "legality": "Static allocations and entrypoint stack limit",
+    "mechanism": "Move oversized static stack temporaries to a module arena",
+    "requirements": {
+     "compiler.api:merlin.llvmlower.stack_arena": "supported",
+     "host.scalar": "supported",
+     "workload.static_temporaries": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "bind_stack_arena"
+   },
+   {
+    "api": "merlin.llvmlower.tensor_provenance_cse",
+    "evidence": "Preparation count and byte count before/after",
+    "family": "packing",
+    "id": "preparation_cse",
+    "legality": "Pure immutable source provenance and exact cast law",
+    "mechanism": "Deduplicate equal preparation views and exact casts",
+    "requirements": {
+     "compiler.api:merlin.llvmlower.tensor_provenance_cse": "supported",
+     "workload.immutable_tensor_views": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "deduplicate_tensor_preparation"
+   },
+   {
+    "api": "merlin.llvmlower.weight_prepack_runtime",
+    "evidence": "Preparation lifetime, setup cost and amortization horizon",
+    "family": "packing",
+    "id": "persistent_prepack",
+    "legality": "Original session proves weights do not change",
+    "mechanism": "Prepare fixed weights once across calls",
+    "requirements": {
+     "compiler.api:merlin.llvmlower.weight_prepack_runtime": "supported",
+     "runtime.repeat_invocations": "unknown",
+     "workload.immutable_weights": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "fixed_arguments"
+   },
+   {
+    "api": "merlin.llvmlower.prepared_operand_schedule",
+    "evidence": "Borrow scope, producer identity and overwritten-byte checks",
+    "family": "packing",
+    "id": "borrowed_preparation",
+    "legality": "Physical producer/consumer validation and source plan captured first",
+    "mechanism": "Reuse prepared storage through checked borrow leases",
+    "requirements": {
+     "compiler.api:merlin.llvmlower.prepared_operand_schedule": "supported",
+     "memory.explicit_buffer_ownership": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "install_prepared_borrows"
+   },
+   {
+    "api": "merlin.llvmlower.im2col_padding",
+    "evidence": "Removed intermediate bytes and packing instructions",
+    "family": "packing",
+    "id": "direct_padding_gather",
+    "legality": "Exact static gather and zero-fill semantics",
+    "mechanism": "Pack windows directly from logically padded inputs",
+    "requirements": {
+     "compiler.api:merlin.llvmlower.im2col_padding": "supported",
+     "host.scalar": "supported",
+     "workload.convolution": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "rewrite_padding_gathers"
+   },
+   {
+    "api": "merlin.compile.scheduling.copy_coalescing",
+    "evidence": "Requested versus actual transfer count and bytes",
+    "family": "movement",
+    "id": "dma_coalescing",
+    "legality": "Original merge law, fault behavior and request bounds",
+    "mechanism": "Merge adjacent private copies",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.copy_coalescing": "supported",
+     "memory.explicit_dma": "supported"
+    },
+    "status": "supported",
+    "symbol": "coalesce_private_copies"
+   },
+   {
+    "api": "merlin.compile.scheduling.tile_load_coalescing",
+    "evidence": "Decoded extents, stride and local overlap checks",
+    "family": "movement",
+    "id": "strided_tile_loads",
+    "legality": "Declared local stride and load geometry",
+    "mechanism": "Coalesce contiguous columns into strided local tiles",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.tile_load_coalescing": "supported",
+     "memory.explicit_dma": "supported",
+     "memory.strided_local_rows": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "TileLoadCoalescing"
+   },
+   {
+    "api": "merlin.compile.scheduling.temporary_storage",
+    "evidence": "Issue/completion ordering and time-window evidence",
+    "family": "overlap",
+    "id": "copy_prefetch",
+    "legality": "Completion, alias and movement permissions supplied",
+    "mechanism": "Prefetch private copies before their consuming work",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.temporary_storage": "supported",
+     "memory.explicit_dma": "supported",
+     "workload.independent_buffers": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "prefetch_private_copies"
+   },
+   {
+    "api": "merlin.compile.scheduling.copy_pipeline",
+    "evidence": "Slot ownership, fences, queue occupancy and completed-call timing",
+    "family": "overlap",
+    "id": "copy_pipeline",
+    "legality": "Qualified concurrent-copy admission and dependency tokens",
+    "mechanism": "Overlap transfer stages using existing private buffer slots",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.copy_pipeline": "supported",
+     "memory.explicit_dma": "supported",
+     "scheduling.multiple_outstanding": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "pipeline_private_copies"
+   },
+   {
+    "api": "merlin.compile.scheduling.staged_dense",
+    "evidence": "Planned versus emitted stages, live intervals and dependency waits",
+    "family": "overlap",
+    "id": "double_buffer_ownership",
+    "legality": "Independently decoded effects bind descriptor issue separately from completion",
+    "mechanism": "Express load/descriptor/consume/readout lifetimes explicitly",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.staged_dense": "supported",
+     "memory.scratchpad": "supported",
+     "scheduling.async_issue": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "rewrite_staged_dense"
+   },
+   {
+    "api": "merlin.compile.scheduling.staged_dense",
+    "evidence": "Retained RHS epochs and emitted load counts",
+    "family": "movement",
+    "id": "rhs_load_elimination",
+    "legality": "Resident identity preserved through compute and clobbers",
+    "mechanism": "Eliminate redundant resident RHS reloads",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.staged_dense": "supported",
+     "memory.resident_operands": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "eliminate_redundant_rhs_loads"
+   },
+   {
+    "api": "merlin.compile.scheduling.staged_dense",
+    "evidence": "Per-shape packing, traffic and whole-call cost",
+    "family": "scheduling",
+    "id": "tile_traversal",
+    "legality": "Same exact output semantics with legal storage effects",
+    "mechanism": "Choose output-tile traversal to expose reuse",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.staged_dense": "supported",
+     "compute.systolic": "supported",
+     "workload.tiling": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "order_output_tiles_n_before_m"
+   },
+   {
+    "api": "merlin.compile.scheduling.block_schedule",
+    "evidence": "Schedule IR, physical mapping and decoded sequence",
+    "family": "scheduling",
+    "id": "block_order",
+    "legality": "Declared geometry, capacity and contraction shape",
+    "mechanism": "Schedule tile load/preload/compute/store order",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.block_schedule": "supported",
+     "compute.systolic": "supported",
+     "memory.local_memory": "supported"
+    },
+    "status": "supported",
+    "symbol": "schedule_contraction"
+   },
+   {
+    "api": "merlin.compile.scheduling.block_schedule",
+    "evidence": "Window reuse, buffer sizes and packing cost",
+    "family": "scheduling",
+    "id": "convolution_tiles",
+    "legality": "Exact windows, dilation, padding and primitive geometry",
+    "mechanism": "Tile convolution without a full materialized image matrix",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.block_schedule": "supported",
+     "memory.local_memory": "supported",
+     "workload.convolution": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "schedule_tiled_convolution"
+   },
+   {
+    "api": "merlin.compile.scheduling.configuration",
+    "evidence": "Config counts, state checks and issue cost",
+    "family": "issue",
+    "id": "configuration_cse",
+    "legality": "Independent decoding of persistent state, clobbers and ordering",
+    "mechanism": "Remove redundant setup instructions",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.configuration": "supported",
+     "scheduling.persistent_configuration": "unknown",
+     "submission.cpu_issued": "supported"
+    },
+    "status": "unknown",
+    "symbol": "eliminate_redundant_configuration"
+   },
+   {
+    "api": "merlin.compile.scheduling.dead_writes",
+    "evidence": "Removed writes and original observable outputs",
+    "family": "issue",
+    "id": "dead_private_writes",
+    "legality": "Original delete permission and exact private effects",
+    "mechanism": "Delete unobserved private writes",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.dead_writes": "supported",
+     "memory.explicit_local_storage": "supported"
+    },
+    "status": "supported",
+    "symbol": "eliminate_dead_writes"
+   },
+   {
+    "api": "merlin.compile.scheduling.effect_cleanup",
+    "evidence": "Fence counts and retained dependency paths",
+    "family": "synchronization",
+    "id": "barrier_cleanup",
+    "legality": "Complete target effects and original effect law",
+    "mechanism": "Propose redundant barrier/config cleanup",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.effect_cleanup": "supported",
+     "scheduling.dependency_tokens": "unknown",
+     "scheduling.queues": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "cleanup_indices"
+   },
+   {
+    "api": "merlin.compile.scheduling.command_compaction",
+    "evidence": "IR/text size, loop bounds, emitted command equivalence",
+    "family": "issue",
+    "id": "command_loops",
+    "legality": "Every dynamic call and operand remains equal and ordered",
+    "mechanism": "Compact static command streams into counted host loops",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.command_compaction": "supported",
+     "submission.cpu_issued": "supported",
+     "workload.affine_tile_nests": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "compact_command_stream"
+   },
+   {
+    "api": "merlin.sched.reroll",
+    "evidence": "Static bytes versus actual dynamic instructions",
+    "family": "issue",
+    "id": "encoded_reroll",
+    "legality": "Closed repeated operand progression",
+    "mechanism": "Recover periodic counted command nests",
+    "requirements": {
+     "compiler.api:merlin.sched.reroll": "supported",
+     "submission.cpu_issued": "supported",
+     "workload.repeated_encoded_stream": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "find_nests"
+   },
+   {
+    "api": "merlin.llvmlower.llvm_loop_outline",
+    "evidence": "Compile latency, code size and runtime cost",
+    "family": "host_compute",
+    "id": "scalar_loop_outline",
+    "legality": "LLVM preserves accesses and operation order",
+    "mechanism": "Outline large generated scalar LLVM loops",
+    "requirements": {
+     "compiler.api:merlin.llvmlower.llvm_loop_outline": "supported",
+     "host.scalar": "supported",
+     "workload.large_functions": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "outline_loops"
+   },
+   {
+    "api": "merlin.llvmlower.host_tensor_codegen",
+    "evidence": "Host operation coverage and host/accelerator seam costs",
+    "family": "host_compute",
+    "id": "owned_scalar_host",
+    "legality": "Supported original source operations and selected host profile",
+    "mechanism": "Lower scalar tensor regions using Merlin-owned host code",
+    "requirements": {
+     "compiler.api:merlin.llvmlower.host_tensor_codegen": "supported",
+     "host.scalar": "supported",
+     "workload.mixed_graph": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "HostLinalg"
+   },
+   {
+    "api": "merlin.llvmlower.host_descriptor_call",
+    "evidence": "Descriptor overhead, copies and pointer/lifetime checks",
+    "family": "host_interface",
+    "id": "descriptor_transport",
+    "legality": "Observed descriptor layouts and original buffer ownership",
+    "mechanism": "Construct exact ranked-descriptor ABI transport",
+    "requirements": {
+     "compiler.api:merlin.llvmlower.host_descriptor_call": "supported",
+     "submission.cpu_issued": "supported",
+     "workload.ranked_tensors": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "HostDescriptorTransport"
+   },
+   {
+    "api": "merlin.llvmlower.epilogue_fusion",
+    "evidence": "Intermediate bytes, launches and exact output comparison",
+    "family": "fusion",
+    "id": "epilogue_fusion",
+    "legality": "Exact ordered arithmetic and output mapping",
+    "mechanism": "Fuse per-output epilogue into producing reduction loop",
+    "requirements": {
+     "compiler.api:merlin.llvmlower.epilogue_fusion": "supported",
+     "numeric.int32_accumulation": "supported",
+     "workload.pointwise_epilogue": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "fusion_stage"
+   },
+   {
+    "api": "merlin.compile.scheduling.multioutput_fusion",
+    "evidence": "Source coverage, emitted regions and boundary tensors",
+    "family": "fusion",
+    "id": "connected_multioutput",
+    "legality": "Original-qualified source law and existing instruction allocator",
+    "mechanism": "Compile connected pointwise composition with two live outputs",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.multioutput_fusion": "supported",
+     "workload.graph_fanout": "unknown",
+     "workload.multiple_live_outputs": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "compile_source_multioutput"
+   },
+   {
+    "api": "merlin.compile.scheduling.fusion",
+    "evidence": "Original versus fused arithmetic and decoded instruction image",
+    "family": "fusion",
+    "id": "physical_composition",
+    "legality": "Adjacent synchronous elements with exact arithmetic capability",
+    "mechanism": "Select an independently qualified physical composition",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.fusion": "supported",
+     "workload.adjacent_elementwise": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "plan_fusion"
+   },
+   {
+    "api": "merlin.llvmlower.requantization",
+    "evidence": "Scale proof, overflow bounds and exact boundary values",
+    "family": "numeric_formats",
+    "id": "requant_proof",
+    "legality": "Complete stated accumulator domain and ordered binary32 semantics",
+    "mechanism": "Synthesize/prove exact scale and output saturation",
+    "requirements": {
+     "compiler.api:merlin.llvmlower.requantization": "supported",
+     "numeric.int32_accumulation": "supported",
+     "numeric.int8_storage": "supported"
+    },
+    "status": "supported",
+    "symbol": "synthesize_store_scale"
+   },
+   {
+    "api": "merlin.llvmlower.scalar_ordered_reduction",
+    "evidence": "Reduction order, accumulator width and exceptional behavior",
+    "family": "numeric_formats",
+    "id": "ordered_reductions",
+    "legality": "Closed supported reduction and original operation order",
+    "mechanism": "Preserve seed and floating reduction order",
+    "requirements": {
+     "compiler.api:merlin.llvmlower.scalar_ordered_reduction": "supported",
+     "host.scalar": "supported",
+     "workload.reductions": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "edit_pipeline"
+   },
+   {
+    "api": "merlin.compile.scheduling.row_softmax",
+    "evidence": "Row working set, passes over data and numeric error contract",
+    "family": "numeric_formats",
+    "id": "row_normalization",
+    "legality": "Explicit exp law, accumulation tree, mask and resources",
+    "mechanism": "Schedule chunked complete-domain softmax/normalization",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.row_softmax": "supported",
+     "memory.local_memory": "supported",
+     "workload.row_reductions": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "compile_row_softmax"
+   },
+   {
+    "api": "merlin.sched.check.sync",
+    "evidence": "Happens-before paths, outstanding work and visibility boundary",
+    "family": "legality",
+    "id": "sync_legality",
+    "legality": "Declared machine event and visibility rules",
+    "mechanism": "Check synchronization against machine-specific semantics",
+    "requirements": {
+     "compiler.api:merlin.sched.check.sync": "supported",
+     "scheduling.async_issue": "unknown",
+     "scheduling.queues": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "check_sync"
+   },
+   {
+    "api": "merlin.sched.check.placement",
+    "evidence": "Address ranges, live operands and refused overlaps",
+    "family": "legality",
+    "id": "placement_legality",
+    "legality": "Explicit storage geometry and access effects",
+    "mechanism": "Check live local operands against placement/clobber hazards",
+    "requirements": {
+     "compiler.api:merlin.sched.check.placement": "supported",
+     "memory.accumulator": "supported",
+     "memory.scratchpad": "supported"
+    },
+    "status": "supported",
+    "symbol": "check_placement"
+   },
+   {
+    "api": "merlin.sched.ir.kernel",
+    "evidence": "IR plus selected pass order and actual lowering receipt",
+    "family": "legality",
+    "id": "schedule_tokens",
+    "legality": "Kernel/Call/Loop/Stage typed structure and token ownership",
+    "mechanism": "Represent stages, dependencies and bounded counted loops",
+    "requirements": {
+     "compiler.api:merlin.sched.ir.kernel": "supported",
+     "scheduling.async_issue": "unknown",
+     "workload.buffer_ownership": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "check_structure"
+   },
+   {
+    "api": "merlin.compile.scheduling.schedule_pipeline",
+    "evidence": "Transformed IR consumption and per-pass validation receipts",
+    "family": "compiler_control",
+    "id": "checked_pipeline",
+    "legality": "Qualified encoding/decoding, explicit budgets and transformations",
+    "mechanism": "Choose pass order through final independently decoded bytes",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.schedule_pipeline": "supported",
+     "compiler.editable_compiler": "unknown",
+     "compiler.selected_target_adapter": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "compile_schedule"
+   },
+   {
+    "api": "merlin.sched.cost",
+    "evidence": "Scope/model hashes, uncertainty and non-additive resources",
+    "family": "feedback",
+    "id": "cost_kind",
+    "legality": "Machine service model and complete scope",
+    "mechanism": "Distinguish exact/estimated/lower-bound schedule costs",
+    "requirements": {
+     "compiler.api:merlin.sched.cost": "supported",
+     "compiler.whole_system_objective": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "price"
+   },
+   {
+    "api": "merlin.compile.compiler_observations",
+    "evidence": "Bounded diagnostics with artifact references; UNKNOWN stays UNKNOWN",
+    "family": "feedback",
+    "id": "compiler_observation",
+    "legality": "Pinned source and actual compiler products",
+    "mechanism": "Expose packing/lifetimes/fusion planned-versus-emitted evidence",
+    "requirements": {
+     "compiler.api:merlin.compile.compiler_observations": "supported",
+     "compiler.emitted_artifacts": "unknown",
+     "workload.source_graph": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "write_receipt"
+   },
+   {
+    "api": "merlin.compile.scheduling.staged_dense",
+    "evidence": "Stage count, slot identity, prologue/drain costs and decoded final completion",
+    "family": "overlap",
+    "id": "pipeline_phases",
+    "legality": "Explicit finite stage lifetimes and independent completion events",
+    "mechanism": "Separate prologue, steady state and drain while rotating buffer ownership",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.staged_dense": "supported",
+     "scheduling.async_issue": "unknown",
+     "workload.rotating_buffers": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "StagedDenseProblem"
+   },
+   {
+    "api": "merlin.compile.scheduling.staged_dense",
+    "evidence": "Independent operand and partial-sum live intervals",
+    "family": "storage",
+    "id": "operand_vs_accumulator_lifetimes",
+    "legality": "Decoded operand reads and accumulator updates have distinct completion points",
+    "mechanism": "Keep operand staging lifetime separate from partial-sum lifetime",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.staged_dense": "supported",
+     "memory.accumulator": "supported",
+     "memory.scratchpad": "supported"
+    },
+    "status": "supported",
+    "symbol": "ComputeConsume"
+   },
+   {
+    "api": "merlin.compile.scheduling.staged_dense",
+    "evidence": "Initialization count, accumulation epochs, bias identity and tail checks",
+    "family": "numeric_formats",
+    "id": "partial_sum_initialization",
+    "legality": "Exact original bias/zero seed and update order across reduction tiles",
+    "mechanism": "Initialize partial sums once and preserve accumulate-versus-overwrite semantics",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.staged_dense": "supported",
+     "numeric.int32_accumulation": "supported",
+     "workload.split_reduction": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "AccumulatorZero"
+   },
+   {
+    "api": "merlin.compile.scheduling.shared_input_groups",
+    "evidence": "Per-result epilogue provenance and decoded state before each readout",
+    "family": "fusion",
+    "id": "independent_sibling_epilogues",
+    "legality": "Source preserves each result and its own epilogue semantics",
+    "mechanism": "Retain independent output scale, activation, bias and readout state for each sibling",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.shared_input_groups": "supported",
+     "workload.multiple_live_outputs": "unknown",
+     "workload.shared_input": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "find_shared_input_groups"
+   },
+   {
+    "api": "merlin.sched.ir.expr",
+    "evidence": "Host integer instructions, pointer materialization and command-submission window",
+    "family": "issue",
+    "id": "host_address_arithmetic",
+    "legality": "Closed integer index expressions and valid storage bounds",
+    "mechanism": "Reduce repeated integer address work while preserving exact bounds and pointers",
+    "requirements": {
+     "compiler.api:merlin.sched.ir.expr": "supported",
+     "host.integer_addressing": "unknown",
+     "submission.cpu_issued": "supported"
+    },
+    "status": "unknown",
+    "symbol": "evaluate"
+   },
+   {
+    "api": "merlin.llvmlower.weight_prepack_runtime",
+    "evidence": "Setup cost, first-call cost, repeated-call distribution, persistent bytes and invalidation events",
+    "family": "packing",
+    "id": "cold_warm_state_policy",
+    "legality": "Immutable stored arguments plus explicit persistent state invalidation",
+    "mechanism": "Separate one-time setup, cold invocation and warm steady-state cost",
+    "requirements": {
+     "compiler.api:merlin.llvmlower.weight_prepack_runtime": "supported",
+     "runtime.persistent_state": "unknown",
+     "runtime.repeat_invocations": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "fixed_arguments"
+   },
+   {
+    "api": "merlin.compile.scheduling.dense_ready_readout",
+    "evidence": "Readout issue points relative to final reduction commits, accumulator stall cycles and exact outputs",
+    "family": "overlap",
+    "id": "final_k_accumulator_readout_frontier",
+    "legality": "Overlapping producer retirement and accumulator pending-write read readiness are declared for the selected target",
+    "mechanism": "Read out each accumulator tile at its final-K causal frontier instead of after the whole reduction",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.dense_ready_readout": "supported",
+     "memory.accumulator": "supported",
+     "memory.scratchpad": "supported",
+     "numeric.int32_accumulation": "supported"
+    },
+    "status": "supported",
+    "symbol": "propose_dense_ready_readout"
+   },
+   {
+    "api": "merlin.compile.scheduling.dense_readout_overlap",
+    "evidence": "Accumulator-busy cycles, overlapped readout epochs and exact outputs before and after",
+    "family": "overlap",
+    "id": "accumulator_readout_compute_overlap",
+    "legality": "Separate store snapshot, backpressure and full-drain completion laws with disjoint accumulator regions",
+    "mechanism": "Overlap accumulator readout of finished tiles with compute into disjoint accumulator space",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.dense_readout_overlap": "supported",
+     "memory.accumulator": "supported",
+     "memory.scratchpad": "supported",
+     "scheduling.async_issue": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "propose_dense_readout_overlap"
+   },
+   {
+    "api": "merlin.compile.scheduling.dense_array_retention",
+    "evidence": "Weight preload count, array-load cycles and exact outputs",
+    "family": "storage",
+    "id": "array_weight_retention",
+    "legality": "Pure K,N,M paired run with invariant RHS identity, depth and width and continued scratch residency",
+    "mechanism": "Retain the array-resident weight operand across consecutive output tiles that reuse it",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.dense_array_retention": "supported",
+     "compute.systolic": "supported",
+     "memory.resident_operands": "unknown",
+     "memory.scratchpad": "supported"
+    },
+    "status": "unknown",
+    "symbol": "propose_dense_array_retention"
+   },
+   {
+    "api": "merlin.compile.scheduling.dense_segmented_pipeline",
+    "evidence": "Load/compute overlap, accumulator and scratchpad occupancy and exact outputs",
+    "family": "overlap",
+    "id": "segmented_k_retained_operand_pipeline",
+    "legality": "Ordered reduction commits and disjoint future-load execution laws over the complete original source",
+    "mechanism": "Pipeline segmented-K reductions with a retained operand and future loads overlapped with commits",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.dense_segmented_pipeline": "supported",
+     "memory.accumulator": "supported",
+     "memory.scratchpad": "supported",
+     "workload.split_reduction": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "schedule_dense_segmented_pipeline"
+   },
+   {
+    "api": "merlin.compile.scheduling.loop_schedule",
+    "evidence": "Chosen axis order and unroll factors, command count and cycles per variant",
+    "family": "scheduling",
+    "id": "source_axis_loop_transforms",
+    "legality": "Axes come from projected original operands; every transform is re-verified against source, storage and effects",
+    "mechanism": "Discover loop axes from projected source operands and apply typed split, reorder and unroll transforms",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.loop_schedule": "supported",
+     "compute.systolic": "supported",
+     "workload.tiling": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "propose_loop_transforms"
+   },
+   {
+    "api": "merlin.compile.scheduling.configuration_loop_cleanup",
+    "evidence": "Configuration command count per inner iteration, issue cycles and exact outputs",
+    "family": "issue",
+    "id": "counted_configuration_cleanup",
+    "legality": "Configuration values and their visibility are invariant across the counted loop body",
+    "mechanism": "Eliminate repeated configuration commands inside counted loops when the configuration is invariant",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.configuration_loop_cleanup": "supported",
+     "scheduling.persistent_configuration": "unknown",
+     "submission.cpu_issued": "supported"
+    },
+    "status": "unknown",
+    "symbol": "eliminate_counted_configuration"
+   },
+   {
+    "api": "merlin.compile.scheduling.spatial_readout_cache",
+    "evidence": "Readout rows reloaded versus retained, scratchpad occupancy and exact pooled outputs",
+    "family": "storage",
+    "id": "quantized_spatial_readout_cache",
+    "legality": "Original packed spatial plan with disjoint caller-owned windows and exact reload semantics",
+    "mechanism": "Retain quantized spatial readout rows for window consumers instead of reloading them",
+    "requirements": {
+     "compiler.api:merlin.compile.scheduling.spatial_readout_cache": "supported",
+     "memory.accumulator": "supported",
+     "memory.scratchpad": "supported",
+     "workload.convolution": "unknown"
+    },
+    "status": "unknown",
+    "symbol": "propose_spatial_readout_cache"
+   }
+  ]
+ }
+}

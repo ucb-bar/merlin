@@ -249,3 +249,55 @@ def test_installed_capture_cli_selects_schemas_from_its_worker_package(tmp_path,
     assert selected_arguments[0]["worker"] == package / "targetgen/_m2m_capture_worker.py"
     assert selected_arguments[0]["schemas_root"] == bundled
     assert '"sha256"' in capsys.readouterr().out
+
+
+def test_selected_v2_timeout_is_bound_into_the_selection_and_reaches_issue(tmp_path, monkeypatch):
+    plan, _library, _bwrap, run, destination, arguments = _fixture(tmp_path, monkeypatch)
+    prepared = []
+
+    def prepare(**kwargs):
+        prepared.append(kwargs)
+        timeout = kwargs.get("execution_timeout_seconds")
+        return {**plan, **({"execution_timeout_seconds": timeout} if timeout is not None else {})}
+
+    monkeypatch.setattr(sealed_m2m, "prepare_plan", prepare)
+    default = selected.select(**arguments)
+    default_doc = selected.load(Path(default["path"]), expected_sha256=default["sha256"])
+    assert "execution_timeout_seconds" not in prepared[-1] or prepared[-1]["execution_timeout_seconds"] is None
+    assert "execution_timeout_seconds" not in default_doc["plan"]
+    timed_arguments = {**arguments, "run_dir": tmp_path / "timed-run", "output_dir": tmp_path / "timed-selection"}
+    timed = selected.select(**timed_arguments, execution_timeout_seconds=900)
+    timed_doc = selected.load(Path(timed["path"]), expected_sha256=timed["sha256"])
+    assert timed_doc["schema"] == selected.SCHEMA
+    assert timed_doc["plan"]["execution_timeout_seconds"] == 900
+    assert timed["sha256"] != default["sha256"]
+    # The sandbox policy the selection pins is the 900 s policy, not the historical 120 s one.
+    command = sealed_m2m._command_v2(tmp_path / "timed-run/capture", dtype="fp32", recipe=False, options=None)
+    assert timed_doc["sandbox_policy_sha256"] == sealed_m2m._policy(
+        command, tmp_path / "timed-run/capture", replayable_logs=True, timeout_seconds=900
+    )
+    assert default_doc["sandbox_policy_sha256"] == sealed_m2m._policy(
+        sealed_m2m._command_v2(run / "capture", dtype="fp32", recipe=False, options=None),
+        run / "capture",
+        replayable_logs=True,
+    )
+    # Tampering with the recorded timeout cannot keep the independently supplied identity.
+    path = Path(timed["path"])
+    forged = {**timed_doc, "plan": {**timed_doc["plan"], "execution_timeout_seconds": 14_400}}
+    forged["plan_sha256"] = selected._digest(selected._json(forged["plan"]))
+    path.chmod(0o600)
+    path.write_bytes(selected._json(forged) + b"\n")
+    path.chmod(0o400)
+    with pytest.raises(ValueError, match="pre-execution identity"):
+        selected.load(path, expected_sha256=timed["sha256"])
+    path.chmod(0o600)
+    path.write_bytes(selected._json(timed_doc) + b"\n")
+    path.chmod(0o400)
+    # Issue re-prepares with the selected timeout and passes the bound plan to the issuer.
+    issued = []
+    monkeypatch.setattr(
+        sealed_m2m, "issue", lambda plan_, destination_, **kwargs: issued.append(plan_) or destination_ / "x"
+    )
+    selected.issue(path, expected_sha256=timed["sha256"])
+    assert prepared[-1]["execution_timeout_seconds"] == 900
+    assert issued[0]["execution_timeout_seconds"] == 900

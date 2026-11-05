@@ -81,6 +81,30 @@ class TestReconcileRecoversOnlyUnambiguousNames:
             "a name from outside the authoritative block must be visible as such"
         )
 
+    def test_source_declarations_do_not_expand_observed_decoder_legality(self):
+        header = C.extract_funct_table(_ISA, **_BLOCK)
+        decoded = {
+            "name": "funct_decode_table",
+            "legal_funct": [0, 126],
+            "names": {},
+            "scope": "observed_decode_field",
+            "complete_isa": False,
+            "evidence": "synthetic decoder",
+        }
+        result = C._reconcile_funct(decoded, header)
+        assert result["source_declared_names"] == {"0": "CONFIG_CMD", "10": "LOOP_WS_CONFIG_ADDRS_AB"}
+        assert result["source_declared_names_provenance"] == header["source_declared_names_provenance"]
+        assert result["legal_funct"] == [0, 126]
+        assert result["names"] == {"0": "CONFIG_CMD", "126": "COUNTER_OP"}
+        assert result["scope"] == "observed_decode_field" and result["complete_isa"] is False
+
+
+@pytest.mark.parametrize("binding", ["val ALIAS = 0.U", "val CONFIG_CMD = 19.U"])
+def test_conflicting_bindings_inside_selected_funct_block_refuse(binding):
+    source = _ISA.replace("val CONFIG_EX = 0.U", binding + "\nval CONFIG_EX = 0.U")
+    with pytest.raises(ValueError, match="bindings|different selectors"):
+        C.extract_funct_table(source, **_BLOCK)
+
 
 def test_declared_scala_span_is_target_owned_and_fails_closed(tmp_path, monkeypatch):
     contract = tmp_path / "target_contract.yaml"
@@ -114,6 +138,8 @@ def test_declared_scala_span_is_target_owned_and_fails_closed(tmp_path, monkeypa
     monkeypatch.setattr(C, "_declared_isa_headers", lambda target: [])
     header = C._funct_name_table("another_array", source)
     assert header is not None and header["legal_funct"] == [9]
+    assert header["source_declared_names"] == {"9": "ISSUE"}
+    assert header["source_declared_names_provenance"]["source_path"] == str(source.absolute())
     decoded = {"name": "funct_decode_table", "legal_funct": [9, 77], "names": {}, "evidence": "decoder"}
     reconciled = C._reconcile_funct(decoded, header)
     assert reconciled["names"] == {"9": "ISSUE", "77": "PERF"}

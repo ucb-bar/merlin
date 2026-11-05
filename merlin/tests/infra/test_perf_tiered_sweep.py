@@ -12,7 +12,6 @@ because a winning prefix predicts nothing about a member not yet measured.
 
 from __future__ import annotations
 
-import json
 import sys
 
 from merlin_experiments.phase2 import development_feedback as DF
@@ -134,18 +133,3 @@ def test_the_unmeasured_cell_matches_the_redacted_schema_exactly():
     declared = source[start : source.index("}", start)]
     for key in row:
         assert f'"{key}"' in declared, f"the redacted schema does not admit {key!r}"
-
-
-def test_harvest_reports_no_cost_rather_than_zero_for_an_absent_history(tmp_path):
-    assert FM.harvest_member_cost([tmp_path]) == {}
-    assert FM.harvest_member_cost([]) == {}
-
-
-def test_harvest_takes_the_median_of_repeated_measurements(tmp_path):
-    for i, seconds in enumerate((10.0, 30.0, 20.0)):
-        d = tmp_path / f"r{i}"
-        d.mkdir()
-        (d / "capsule_result.json").write_text(
-            json.dumps({"capsule": "K", "tiers": {"L3": {"timing": {"sim_active_s": seconds}}}}), encoding="utf-8"
-        )
-    assert FM.harvest_member_cost([tmp_path]) == {"K": 20.0}

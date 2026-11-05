@@ -179,7 +179,12 @@ def test_dead_qdq_cone_is_pruned_without_touching_unknown_side_effects():
     return %out : tensor<2x8xf32>
   }
 }""")
-    assert prune_dead_pure_tensor_ops(mod) == 1
+    # The default reader leaves quant_ext unregistered. Its spelling cannot
+    # supply an effect contract to DCE; the existing explicit lowering first
+    # gives this value-only expression typed scalar/tensor semantics.
+    assert prune_dead_pure_tensor_ops(mod) == 0
+    assert lower_quant_ext(mod) == 1
+    assert prune_dead_pure_tensor_ops(mod) == 2
     mod.verify()
     assert "quant_ext." not in str(mod)
     assert "tensor.splat" in str(mod)

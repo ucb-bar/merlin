@@ -14,6 +14,21 @@ from merlin.targetgen.sandbox import preflight as SANDBOX_PREFLIGHT
 from merlin.targetgen.sandbox.answer_surfaces import DroppedDeclaration
 
 
+def test_stage_reaches_preparation_validation_before_work(tmp_path):
+    import inspect
+
+    arguments = {
+        name: None
+        for name, parameter in inspect.signature(AUTHORING.run_stage).parameters.items()
+        if parameter.default is inspect.Parameter.empty
+    }
+    arguments["stage_root"] = tmp_path / "uncreated-stage"
+    arguments["sandbox_inputs"] = AUTHORING.PC.PackageSandboxInputs(None, None, "", ())
+    with pytest.raises(AUTHORING.StageGateError, match="explicit preparation choices"):
+        AUTHORING.run_stage(**arguments, compiler_pass_preparation=object())
+    assert not arguments["stage_root"].exists()
+
+
 def test_authoring_import_requires_no_checkout_or_native_engine(tmp_path):
     program = """
 import importlib.abc, inspect, json, subprocess, sys

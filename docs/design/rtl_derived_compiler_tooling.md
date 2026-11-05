@@ -4,7 +4,7 @@ kind: design
 status: draft
 owner: targetgen
 last_verified: 2026-08-13
-related: [compiler_plane, dialect_test_bar, expert_gap_attribution, capsule_bench]
+related: [compiler_plane, dialect_test_bar, normal_search_feedback, capsule_bench]
 code_refs:
   - src/merlin/targetgen/rtl/facts.py
   - src/merlin/targetgen/rtl/circt_introspect.py

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
 
 import pytest
 from merlin_experiments.phase2 import calibration
@@ -22,56 +21,12 @@ import perf_model as PM  # noqa: E402
 pytestmark = pytest.mark.target("gemmini", "atlas")
 
 
-def test_rank_n_batched_reduction_depth_comes_from_the_trailing_k_axis():
-    cb = {
-        "tensors": {
-            "a": {"shape": [2, 3, 5, 7]},
-            "w": {"shape": [2, 3, 7, 11]},
-            "dst": {"shape": [2, 3, 5, 11]},
-        },
-        "commands": [{"opcode": "BATCHED_MATMUL", "operands": {"a": "a", "w": "w", "dst": "dst"}}],
-    }
-    assert calibration._command_reduction_depths(cb) == (7,)
-
-    cb["tensors"]["w"]["shape"] = [2, 1, 7, 11]
-    assert calibration._command_reduction_depths(cb) == (), "batch broadcasting is not this opcode"
-
-
-def _result(root: Path, name: str, *, cycles, commands=None, buffer: bool = True) -> None:
-    """One capsule run as the functional harness leaves it on disk."""
-    d = root / name
-    (d / "generated").mkdir(parents=True)
-    (d / "capsule_result.json").write_text(
-        json.dumps({"tiers": {"L3": {"cycles": cycles, "status": "pass"}}}), encoding="utf-8"
-    )
-    if buffer:
-        (d / "generated" / "command_buffer.json").write_text(
-            json.dumps(
-                {
-                    "tensors": {"A": {"shape": [16, 16], "dtype": "i8"}, "W": {"shape": [16, 16], "dtype": "i8"}},
-                    "commands": commands
-                    if commands is not None
-                    else [{"opcode": "MATMUL", "operands": {"lhs": "A", "rhs": "W", "dst": "acc"}}],
-                }
-            ),
-            encoding="utf-8",
-        )
-
-
-def test_a_measured_point_needs_both_exact_work_and_a_cycle_verdict(tmp_path):
-    """A rate built on understated work would flatter every candidate that follows."""
-    _result(tmp_path, "priced", cycles=303)
-    _result(tmp_path, "no_cycles", cycles=None)
-    _result(tmp_path, "no_buffer", cycles=500, buffer=False)
-    _result(tmp_path, "no_work", cycles=400, commands=[])
-
-    points, skipped = calibration.harvest_measured_points(tmp_path)
-    assert [p.capsule for p in points] == ["priced"]
-    # A missing cycle verdict is not an anomaly and is not reported; the other two are, with reasons.
-    joined = " ".join(skipped)
-    assert "no_buffer" in joined and "command buffer" in joined
-    assert "no_work" in joined and "lower bound or zero" in joined
-    assert "no_cycles" not in joined
+def test_saved_run_trees_never_supply_qualified_calibration_points(tmp_path):
+    # Even an attractive passing record does not bind public workload, numerical,
+    # candidate, current-execution or engine provenance.
+    (tmp_path / "capsule_result.json").write_text(json.dumps({"status": "pass", "tiers": {"L3": {"cycles": 1}}}))
+    points, refusals = calibration.harvest_measured_points(tmp_path)
+    assert points == [] and "ineligible" in refusals[0]
 
 
 def test_the_structural_ceiling_refuses_rather_than_inventing_one(tmp_path):

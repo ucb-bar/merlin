@@ -1,0 +1,170 @@
+{
+  "status": "numerical_pass",
+  "rows": [
+    {
+      "layout": 0,
+      "state": 0,
+      "rep": 0,
+      "cycles": 177,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 0,
+      "state": 1,
+      "rep": 0,
+      "cycles": 126,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 0,
+      "state": 0,
+      "rep": 1,
+      "cycles": 177,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 0,
+      "state": 1,
+      "rep": 1,
+      "cycles": 126,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 0,
+      "state": 0,
+      "rep": 2,
+      "cycles": 177,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 0,
+      "state": 1,
+      "rep": 2,
+      "cycles": 126,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 44,
+      "state": 0,
+      "rep": 0,
+      "cycles": 177,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 44,
+      "state": 1,
+      "rep": 0,
+      "cycles": 126,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 44,
+      "state": 0,
+      "rep": 1,
+      "cycles": 177,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 44,
+      "state": 1,
+      "rep": 1,
+      "cycles": 126,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 44,
+      "state": 0,
+      "rep": 2,
+      "cycles": 177,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    },
+    {
+      "layout": 44,
+      "state": 1,
+      "rep": 2,
+      "cycles": 126,
+      "checked": 256,
+      "guards": 32,
+      "errors": 0
+    }
+  ],
+  "console": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/physical.stdout",
+    "sha256": "3b16012ebdf9a87f409ca298c1801dbd0324ed09a6ab61d0912aafe0419bb65a"
+  },
+  "checked_matrix_values": 4608,
+  "guard_checks": 576,
+  "unmeasured_warmup_checks": 6,
+  "elapsed_s": 22.830453633039724,
+  "elf": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf",
+    "sha256": "cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e"
+  },
+  "engine": {
+    "engine": "gsim",
+    "binary": {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/emulator",
+      "sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651"
+    },
+    "selection_sha256": "f7ebe657d1acf79e97724e7f7526db68ca43502a060394d123b16677a568349b",
+    "readback_transport": "coherent_dump_v1",
+    "execution_resources": {
+      "max_model_spike_timeout_s": 3600,
+      "max_native_timeout_s": 7200,
+      "selected_engine_timeout_s": 7200
+    },
+    "receipt": {
+      "receipt_path": "retained/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/build_receipt.json",
+      "receipt_sha256": "7df91fd3d7e6b1fa927b264f0b612f898a2056aa5a83a10660f18bc75c84d0d8",
+      "schema_version": "merlin.gsim-model-build.v3",
+      "status": "complete",
+      "binary_sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651",
+      "firrtl_sha256": "6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149",
+      "firrtl_path": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig.fir",
+      "model_manifest_sha256": "9a46fcc032820cd89ca0bf9ae68152ec2aef4e781eb9a4ba88c8ba2d9889f3bb",
+      "inputs_sha256": "b5a4b9d667e77b00a80854a6689e15d0b6e641ac78f6fb7ce482e63eaca180cc",
+      "commands_sha256": "d27332ab4d09a5eddd7bb320dcb7735b827fceabb9c69ed85e6cee6e9649b9c9",
+      "provenance": {
+        "elaboration_performed": false,
+        "firrtl_boundary": "adopted_preexisting",
+        "warning": "FIRRTL was adopted as a pre-existing byte-pinned input; this receipt does not establish the RTL revision or command that originally elaborated it."
+      },
+      "tools": {
+        "cxx_compiler": "db19bad939a900b7635c4b19bc3b5029a888d02551da1f60e87745056a354d10",
+        "cxx_wrapper": "db19bad939a900b7635c4b19bc3b5029a888d02551da1f60e87745056a354d10",
+        "gsim_emitter": "0f9151d180ef1566700e5a335ff0e5cee6fb6485a201f6b945e913bc3080586b"
+      }
+    }
+  },
+  "calibration_eligible": false,
+  "model": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+    "sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869"
+  },
+  "plan": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/plan.json",
+    "sha256": "83560d424ded692f9117eb01d1b7f296e6ac4e6b5c035c0e4319bdc3b61dc046"
+  }
+}

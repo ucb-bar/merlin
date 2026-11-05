@@ -17,6 +17,7 @@ from typing import Any
 from merlin.common import mlir_query as mq
 from merlin.frontends.capture_normalization import CaptureNormalizationError, normalize_capture_mlir
 from merlin.targetgen.application_inventory import verify_capture_receipt
+from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 
 PENDING = "source_literal_i64_arange_pending_build"
 SCOPE = (
@@ -257,7 +258,7 @@ def prove_literal_arange_source(capture: Path, *, index_bits: int) -> dict[str, 
         "source normalization is not bound to raw bytes",
     )
     try:
-        module = mq.parse(normalized)
+        module = preparation.parse(source, normalized, raw=raw)
         module.verify()
     except Exception as exc:
         raise ValueError("literal arange source refusal: normalized module is invalid") from exc
@@ -266,7 +267,7 @@ def prove_literal_arange_source(capture: Path, *, index_bits: int) -> dict[str, 
     mlir, graphs = trace.get("mlir"), trace.get("graphs")
     _need(
         trace.get("schema") == "m2m.frontend_trace.v1"
-        and trace.get("status") == "complete"
+        and trace.get("status") in {"complete", "diagnostic"}
         and isinstance(mlir, dict)
         and mlir.get("sha256") == raw_sha
         and mlir.get("bytes") == len(raw)
@@ -394,6 +395,8 @@ def prove_literal_arange_source(capture: Path, *, index_bits: int) -> dict[str, 
         "raw_source_sha256": raw_sha,
         "normalized_source_sha256": normalized_sha,
         "frontend_trace_sha256": trace_sha,
+        "frontend_trace_status": trace["status"],
+        "source_correspondence_scope": "all captured prepared i64 literal ranges",
         "capture_receipt_sha256": checked["receipt_sha256"],
         "count": len(occurrences),
         "occurrences": occurrences,

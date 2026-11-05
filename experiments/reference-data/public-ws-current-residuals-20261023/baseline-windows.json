@@ -1,0 +1,316 @@
+{
+  "schema": "merlin.public_ws_current_residuals.v1",
+  "runtime": {
+    "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/runtime.json",
+    "sha256": "f04d9d81da5643a65188c9b63a18c2204e30922fa7153f3fe6d566ad33f77131"
+  },
+  "physical_evidence": {
+    "path": "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-pipeline-diagnostics-v1/boundaries-v1.json",
+    "sha256": "954c70689bbbd8b0305fb792579a8eb895d0641eb0c44a4fe001c0d2719e1402"
+  },
+  "exact_elf": {
+    "path": "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/program.elf",
+    "sha256": "c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0"
+  },
+  "engine": {
+    "engine": "gsim",
+    "binary": {
+      "path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/emulator",
+      "sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651"
+    },
+    "selection_sha256": "41585c97224637927ee761ebc0ce6420d0966c0d988332418fc4c1f7d43d77c3",
+    "readback_transport": "coherent_dump_v1",
+    "execution_resources": {
+      "max_model_spike_timeout_s": 3600,
+      "max_native_timeout_s": 7200,
+      "selected_engine_timeout_s": 7200
+    },
+    "receipt": {
+      "receipt_path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/gsim-fire-aligned-provisional-v3/native/build_receipt.json",
+      "receipt_sha256": "7df91fd3d7e6b1fa927b264f0b612f898a2056aa5a83a10660f18bc75c84d0d8",
+      "schema_version": "merlin.gsim-model-build.v3",
+      "status": "complete",
+      "binary_sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651",
+      "firrtl_sha256": "6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149",
+      "firrtl_path": "<WORKSPACE>/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig.fir",
+      "model_manifest_sha256": "9a46fcc032820cd89ca0bf9ae68152ec2aef4e781eb9a4ba88c8ba2d9889f3bb",
+      "inputs_sha256": "b5a4b9d667e77b00a80854a6689e15d0b6e641ac78f6fb7ce482e63eaca180cc",
+      "commands_sha256": "d27332ab4d09a5eddd7bb320dcb7735b827fceabb9c69ed85e6cee6e9649b9c9",
+      "provenance": {
+        "elaboration_performed": false,
+        "firrtl_boundary": "adopted_preexisting",
+        "warning": "FIRRTL was adopted as a pre-existing byte-pinned input; this receipt does not establish the RTL revision or command that originally elaborated it."
+      },
+      "tools": {
+        "cxx_compiler": "db19bad939a900b7635c4b19bc3b5029a888d02551da1f60e87745056a354d10",
+        "cxx_wrapper": "db19bad939a900b7635c4b19bc3b5029a888d02551da1f60e87745056a354d10",
+        "gsim_emitter": "0f9151d180ef1566700e5a335ff0e5cee6fb6485a201f6b945e913bc3080586b"
+      }
+    }
+  },
+  "rows": [
+    {
+      "name": "0-submit",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/0-submit.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/0-submit.scope.json",
+        "--timing-input-sha256=c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/program.elf"
+      ],
+      "scope": {
+        "path": "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/0-submit.scope.json",
+        "sha256": "46070aea06cf0c77789c54126cb11a83cb3809112092e4d300305f7914ad69bb"
+      },
+      "model": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+        "sha256": "8089fb9a2ea325ff2e61508ad9a78a23b92a9620099839cbcba0a221470e7c1c"
+      },
+      "observer": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "sha256": "e4e90609f3a2d907c7244322d7f96c5fd0e0dd74e30137177a97fd750157e87f"
+      },
+      "report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/0-submit.report.json",
+        "sha256": "17da5a50dc9a7d87d65a5df94d0467bf7239cbdbb24393afa9057a2218958519"
+      },
+      "stdout": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/0-submit.stdout",
+        "sha256": "6c52178dd653de4a3c55346f99d08f59bd3955069726a8b64c89457cd55e3916"
+      },
+      "functional_stdout_equal": true,
+      "measured_gsim_cycles": 83,
+      "predicted_cycles": 88,
+      "relative_error": 0.06024096385542177,
+      "wall_seconds": 1.6554880500189029
+    },
+    {
+      "name": "0-drain",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/0-drain.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/0-drain.scope.json",
+        "--timing-input-sha256=c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/program.elf"
+      ],
+      "scope": {
+        "path": "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/0-drain.scope.json",
+        "sha256": "5c11cb7f239d66990a2de99c48bd414161a71d482e8c3d9f5f255460f1bafc09"
+      },
+      "model": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+        "sha256": "8089fb9a2ea325ff2e61508ad9a78a23b92a9620099839cbcba0a221470e7c1c"
+      },
+      "observer": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "sha256": "e4e90609f3a2d907c7244322d7f96c5fd0e0dd74e30137177a97fd750157e87f"
+      },
+      "report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/0-drain.report.json",
+        "sha256": "f6ea8bbbbb1ac7a5cba2e1ab00735cbb7289e65b92e079ce1ca6512f44dc9a71"
+      },
+      "stdout": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/0-drain.stdout",
+        "sha256": "6c52178dd653de4a3c55346f99d08f59bd3955069726a8b64c89457cd55e3916"
+      },
+      "functional_stdout_equal": true,
+      "measured_gsim_cycles": 130,
+      "predicted_cycles": 146,
+      "relative_error": 0.12307692307692308,
+      "wall_seconds": 1.6790216189692728
+    },
+    {
+      "name": "0-readout",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/0-readout.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/0-readout.scope.json",
+        "--timing-input-sha256=c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/program.elf"
+      ],
+      "scope": {
+        "path": "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/0-readout.scope.json",
+        "sha256": "eb1805fe348c4e3e6fa3afe566f2d6983554edf2f98dbd2b23dadaa862cb4a0c"
+      },
+      "model": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+        "sha256": "8089fb9a2ea325ff2e61508ad9a78a23b92a9620099839cbcba0a221470e7c1c"
+      },
+      "observer": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "sha256": "e4e90609f3a2d907c7244322d7f96c5fd0e0dd74e30137177a97fd750157e87f"
+      },
+      "report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/0-readout.report.json",
+        "sha256": "e3ba44f5436b907ffb818b368d52dd9e34bf38d025f3f7c68105e2ed8b2d8b22"
+      },
+      "stdout": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/0-readout.stdout",
+        "sha256": "6c52178dd653de4a3c55346f99d08f59bd3955069726a8b64c89457cd55e3916"
+      },
+      "functional_stdout_equal": true,
+      "measured_gsim_cycles": 1521,
+      "predicted_cycles": 1473,
+      "relative_error": -0.0315581854043393,
+      "wall_seconds": 1.6431286109727807
+    },
+    {
+      "name": "1-submit",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/1-submit.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/1-submit.scope.json",
+        "--timing-input-sha256=c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/program.elf"
+      ],
+      "scope": {
+        "path": "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/1-submit.scope.json",
+        "sha256": "a2278ad585edb651fe725bc5ef432e7366f4faff0490c4b639c1bba254e5bb8e"
+      },
+      "model": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+        "sha256": "8089fb9a2ea325ff2e61508ad9a78a23b92a9620099839cbcba0a221470e7c1c"
+      },
+      "observer": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "sha256": "e4e90609f3a2d907c7244322d7f96c5fd0e0dd74e30137177a97fd750157e87f"
+      },
+      "report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/1-submit.report.json",
+        "sha256": "01eb16868dc9cb43b13d5971a4b4e022e7f79da06ea38c2ed2c98e44c7d8c8f4"
+      },
+      "stdout": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/1-submit.stdout",
+        "sha256": "6c52178dd653de4a3c55346f99d08f59bd3955069726a8b64c89457cd55e3916"
+      },
+      "functional_stdout_equal": true,
+      "measured_gsim_cycles": 683,
+      "predicted_cycles": 663,
+      "relative_error": -0.029282576866764276,
+      "wall_seconds": 1.7035468540270813
+    },
+    {
+      "name": "1-drain",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/1-drain.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/1-drain.scope.json",
+        "--timing-input-sha256=c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/program.elf"
+      ],
+      "scope": {
+        "path": "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/1-drain.scope.json",
+        "sha256": "bc682e84b389444f122de7721980c5c8a75bbbc76ec0eae41aa8419e003a9c4c"
+      },
+      "model": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+        "sha256": "8089fb9a2ea325ff2e61508ad9a78a23b92a9620099839cbcba0a221470e7c1c"
+      },
+      "observer": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "sha256": "e4e90609f3a2d907c7244322d7f96c5fd0e0dd74e30137177a97fd750157e87f"
+      },
+      "report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/1-drain.report.json",
+        "sha256": "a46e5f2b5319c22e78035f3abcbfbcc9f78dd77f70c4802188b722df6269b184"
+      },
+      "stdout": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/1-drain.stdout",
+        "sha256": "6c52178dd653de4a3c55346f99d08f59bd3955069726a8b64c89457cd55e3916"
+      },
+      "functional_stdout_equal": true,
+      "measured_gsim_cycles": 3,
+      "predicted_cycles": 4,
+      "relative_error": 0.33333333333333326,
+      "wall_seconds": 1.7463449910283089
+    },
+    {
+      "name": "1-readout",
+      "argv": [
+        "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "--extlib=<WORKSPACE>/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--extlib=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+        "--timing-model=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+        "--timing-report=<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/1-readout.report.json",
+        "--timing-scope-binding=<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/1-readout.scope.json",
+        "--timing-input-sha256=c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0",
+        "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/program.elf"
+      ],
+      "scope": {
+        "path": "<WORKSPACE>/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/1-readout.scope.json",
+        "sha256": "c358a75c318b6fcca8fd302a85186a35e76565003c0cf107a4193fc325a6436c"
+      },
+      "model": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/ws-scoped-runtime-20261023/model.json",
+        "sha256": "8089fb9a2ea325ff2e61508ad9a78a23b92a9620099839cbcba0a221470e7c1c"
+      },
+      "observer": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/scoped-resources-20261023/spike",
+        "sha256": "e4e90609f3a2d907c7244322d7f96c5fd0e0dd74e30137177a97fd750157e87f"
+      },
+      "report": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/1-readout.report.json",
+        "sha256": "cf9e6da9a147eb5298d9ce8e48f21c267e983571723c123e07fab69d5826f140"
+      },
+      "stdout": {
+        "path": "<WORKSPACE>/tasks/el4-memory-reference-20261023/merlin/out/artifacts/public-ws-current-residuals-20261023/1-readout.stdout",
+        "sha256": "6c52178dd653de4a3c55346f99d08f59bd3955069726a8b64c89457cd55e3916"
+      },
+      "functional_stdout_equal": true,
+      "measured_gsim_cycles": 1603,
+      "predicted_cycles": 1473,
+      "relative_error": -0.08109794135995008,
+      "wall_seconds": 1.6901341680204496
+    }
+  ],
+  "gsim_runs_added": 0,
+  "private_labels_used": false,
+  "fit_authorized": false,
+  "qualification_issued": false,
+  "scope": "Instrumented public development windows only; retained original mm_magic gSIM memory, not deployed FASED equivalence"
+}

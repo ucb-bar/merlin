@@ -41,8 +41,8 @@ def _source(root: Path, revision: str, config_file: str, config: str, submodules
         raise ValueError("elaboration source root must be the Git checkout root")
     if _git(root, "rev-parse", "HEAD") != _revision(revision):
         raise ValueError("elaboration source checkout differs from selected revision")
-    if _git(root, "status", "--porcelain", "--untracked-files=no"):
-        raise ValueError("elaboration source has changed tracked files")
+    if _git(root, "status", "--porcelain", "--untracked-files=normal"):
+        raise ValueError("elaboration source has changed or untracked files")
     if (
         not isinstance(config_file, str)
         or not config_file
@@ -83,7 +83,10 @@ def _source(root: Path, revision: str, config_file: str, config: str, submodules
         if not separator or metadata.split() != ["160000", "commit", expected] or selected_name != relative_name:
             raise ValueError(f"selected submodule Git link differs: {name}")
         child = (root / name).resolve(strict=True)
-        if _git(child, "rev-parse", "HEAD") != expected or _git(child, "status", "--porcelain", "--untracked-files=no"):
+        if (
+            _git(child, "rev-parse", "HEAD") != expected
+            or _git(child, "status", "--porcelain", "--untracked-files=normal")
+        ):
             raise ValueError(f"selected submodule checkout differs: {name}")
         pinned[name] = expected
     return {
@@ -173,7 +176,10 @@ def issue(
         "command_template": command,
         "runs": runs,
         "firrtl_sha256": runs[0]["firrtl_sha256"],
-        "qualification": "two fresh local invocations with pinned tracked source and executable bytes; not a closed build environment or hardware-semantic proof",
+        "qualification": (
+            "two fresh local invocations with pinned clean source and executable bytes; "
+            "not a closed build environment or hardware-semantic proof"
+        ),
     }
     path = output / "elaboration.json"
     path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")

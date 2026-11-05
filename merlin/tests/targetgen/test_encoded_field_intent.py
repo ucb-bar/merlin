@@ -29,9 +29,10 @@ from __future__ import annotations
 import copy
 
 import pytest
+import selected_driver
 from gemmini_rtl_test_support import checks as RC
 
-pytestmark = pytest.mark.target("gemmini")
+pytestmark = [pytest.mark.target("gemmini"), selected_driver.requires_package_owned_support("gemmini")]
 
 _CID = "T0.encoded_field_intent"
 

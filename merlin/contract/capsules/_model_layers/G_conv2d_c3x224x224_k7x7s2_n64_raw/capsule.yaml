@@ -42,7 +42,7 @@ operation:
     layout: nhwc
     epilogue: []
     output_dtype: i32
-    semantic: conv2d_im2col
+    semantic: conv2d
 numeric_policy:
   compare: exact_int
   dtype: i32

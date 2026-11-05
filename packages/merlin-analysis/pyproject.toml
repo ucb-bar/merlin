@@ -7,6 +7,7 @@ name = "merlin-analysis"
 version = "0.1.0"
 description = "Merlin baseline comparisons, measurement studies and reporting"
 requires-python = ">=3.12"
+license = "Apache-2.0"
 dependencies = [
     "merlin[xdsl,targetgen]",
     "aet @ git+https://github.com/ucb-bar/agentic-eval-tool.git@903d4def8995e4697c6f214cc26c60a5a38d0554",
@@ -33,6 +34,7 @@ namespaces = true
 
 [tool.setuptools]
 include-package-data = false
+license-files = ["LICENSE", "NOTICE"]
 
 [tool.setuptools.package-data]
 "merlin.baselines" = [

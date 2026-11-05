@@ -46,12 +46,34 @@ made from shapes alone, which the export's fake tensors carry exactly.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 #: TorchAO's own threshold for a Linear: at or below this many reduction elements it declines to
 #: quantize. Mirrored rather than re-derived, so a Linear and a matmul of the same extent get the
 #: same answer.
 MIN_REDUCTION = 16
+
+
+def activation_reduction_minimum(recipe: Mapping[str, Any]) -> int:
+    """Inclusive recipe minimum; absence preserves the historical profitability screen.
+
+    This changes capture selection only. Software admission and integer producer/quality
+    checks remain independent. The standalone capture interpreter uses this same parser.
+    """
+    if "activation_contraction_policy" not in recipe:
+        return MIN_REDUCTION + 1
+    block = recipe["activation_contraction_policy"]
+    if not isinstance(block, dict) or set(block) != {"schema", "minimum_reduction"}:
+        raise ValueError("activation_contraction_policy requires schema and minimum_reduction only")
+    if block["schema"] != "activation_contraction_admission_v1":
+        raise ValueError("unsupported activation_contraction_policy schema")
+    if "activation_contraction" not in (recipe.get("families") or ()):
+        raise ValueError("activation_contraction_policy requires the activation_contraction family")
+    minimum = block["minimum_reduction"]
+    if type(minimum) is not int or minimum < 1:
+        raise ValueError("minimum_reduction must be a positive integer")
+    return minimum
 
 #: Activation (first-operand) form: TorchAO's ``_int8_symm_per_token_reduced_range_quant``.
 _ACT_QMIN, _ACT_QMAX, _ACT_EPS = -127, 127, 1e-5

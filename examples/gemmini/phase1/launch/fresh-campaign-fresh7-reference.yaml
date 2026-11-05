@@ -1,0 +1,12 @@
+# Explicit reference-guided treatment; ordinary Fresh7 omits this selection.
+extends: fresh-campaign-fresh7.yaml
+id: gemmini-open-compiler-fresh7-reference-guided
+variables:
+  FRESH7_REFERENCE_EXPERIMENTS: ${REPO}/out/artifacts/open-fresh/fresh7/reference-experiments/packet-shards.json
+  FRESH7_REFERENCE_EXPERIMENTS_SHA256: f939d43cce1996439fd99d5e81d64270a70bd7d7fd1656431040524f5b2bc3cd
+run:
+  treatment: merlin_plus_upstream_reference_kernels_and_reference_guidance
+plan:
+  reference_experiments:
+    path: ${FRESH7_REFERENCE_EXPERIMENTS}
+    sha256: ${FRESH7_REFERENCE_EXPERIMENTS_SHA256}

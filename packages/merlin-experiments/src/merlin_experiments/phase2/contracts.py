@@ -66,10 +66,21 @@ def exact_tree_record(root: Path) -> dict[str, Any]:
         if not path.is_file():
             raise StageGateError(f"exact input contains a special file: {path}")
         relative = path.relative_to(root).as_posix().encode("utf-8")
-        payload = path.read_bytes()
-        digest.update(relative + b"\0" + payload + b"\0")
+        before = path.stat()
+        size = 0
+        digest.update(relative + b"\0")
+        with path.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                digest.update(chunk)
+                size += len(chunk)
+        digest.update(b"\0")
+        after = path.stat()
+        if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+            after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns
+        ) or size != before.st_size:
+            raise StageGateError("exact input changed while its bytes were hashed")
         n_files += 1
-        n_bytes += len(payload)
+        n_bytes += size
     if n_files <= 0:
         raise StageGateError(f"exact input contains zero files: {root}")
     return {"sha256": digest.hexdigest(), "n_files": n_files, "n_bytes": n_bytes}

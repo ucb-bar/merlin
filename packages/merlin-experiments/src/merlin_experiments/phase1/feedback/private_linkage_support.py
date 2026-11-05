@@ -1,6 +1,6 @@
 """Private exact-source requirement joined to an independently selected link supplier.
 
-This proves an archive member defined a requested symbol in the completed link.
+This proves an archive member or selected runtime object defined a requested symbol in the completed link.
 It does not prove a source call reaches that symbol or numerical equivalence.
 """
 
@@ -18,12 +18,12 @@ from merlin.llvmlower.compilation_recipe import verify_completed_recipe
 from merlin.llvmlower.link_supplier_trace import trace_symbol_flags
 from merlin.mining.registry import load_rvv_package
 from merlin.runtime.backends import spike, spike_model
-from merlin.targetgen.host_linkage_contract import validate_source_linkage_contract
+from merlin.targetgen.host_linkage_contract import RUNTIME_SUPPLIER, runtime_recipe, validate_source_linkage_contract
 
 FIELD = "host_linkage_support"
 PENDING = "reviewed_source_linkage_requirement_pending_build"
 LINKED = "reviewed_source_linkage_supplier_verified"
-SCOPE = "exact reviewed source ordinals and actual defining archive; source-call and numerical proof excluded"
+SCOPE = "exact reviewed source ordinals and actual defining supplier; source-call and numerical proof excluded"
 _BUILD = {"capture_tree_sha256", "candidate_tree_sha256", "elf_sha256"}
 _OCCURRENCE = {"ordinal", "profile", "capability_spec_sha256", "declaration", "schema", "operation", "contract"}
 _TOP = {
@@ -37,6 +37,7 @@ _TOP = {
     "linked_build",
     "selection",
     "recipe_sha256",
+    "host_math_policy",
 }
 
 
@@ -60,6 +61,7 @@ def begin(raw_sha256: str, normalized_sha256: str, n_operations: int) -> dict[st
         "linked_build": None,
         "selection": None,
         "recipe_sha256": None,
+        "host_math_policy": None,
     }
 
 
@@ -153,6 +155,37 @@ def symbols(source: Mapping[str, Any]) -> list[str] | None:
     return selected or None
 
 
+def build_options(source: dict[str, Any], policy: str) -> dict[str, list[str]]:
+    """Bind original selected policy and split explicit archive/runtime requests."""
+    from merlin.runtime.host_math import host_math_recipe
+
+    symbols(source)  # Validate the complete pending source roster first.
+    witness = source[FIELD]
+    archive, runtime = set(), set()
+    recipe = host_math_recipe(policy)
+    wrapped = {flag.removeprefix("-Wl,--wrap=") for flag in recipe.link_flags if flag.startswith("-Wl,--wrap=")}
+    for item in witness["occurrences"]:
+        contract = validate_source_linkage_contract(item["schema"], item["operation"], item["contract"])
+        if contract["supplier"] == RUNTIME_SUPPLIER:
+            runtime_recipe(contract, policy)
+            runtime.update(contract["symbols"])
+        else:
+            if wrapped.intersection(contract["symbols"]):
+                raise ValueError(
+                    "selected portable wrapper requires a matching portable-provider contract; "
+                    "archive relabeling is forbidden"
+                )
+            archive.update(contract["symbols"])
+    if runtime:
+        if witness["host_math_policy"] not in (None, policy):
+            raise ValueError("runtime supplier policy changed after original source selection")
+        witness["host_math_policy"] = policy
+    return {
+        **({"math_archive_symbols": sorted(archive)} if archive else {}),
+        **({"host_math_symbols": sorted(runtime)} if runtime else {}),
+    }
+
+
 def _selected_archive(
     package: Path,
     expected_tree_sha256: str,
@@ -210,7 +243,11 @@ def _verify_recipe(entry: Mapping[str, Any], selection: Mapping[str, Any], selec
     elf = Path(str(binding.get("elf_path", "")))
     if not recipe.is_absolute() or not elf.is_absolute() or binding.get("elf_sha256") != entry.get("elf_sha256"):
         raise ValueError("linkage proof has no exact linked image")
-    expected = {symbol: Path(selection["archive"]) for symbol in selected_symbols}
+    runtime = selection.get("runtime")
+    portable = runtime["symbols"] if runtime else ()
+    expected = {symbol: Path(selection["archive"]) for symbol in selected_symbols if symbol not in portable}
+    if runtime:
+        expected.update({symbol: Path(runtime["object"]) for symbol in runtime["wrapper_symbols"].values()})
     record = verify_completed_recipe(
         recipe,
         executable=elf,
@@ -232,6 +269,10 @@ def _verify_recipe(entry: Mapping[str, Any], selection: Mapping[str, Any], selec
         or sha256_file(Path(selection["archive"])) != selection["archive_sha256"]
     ):
         raise ValueError("actual link differs from independently selected GCC, ISA flags or archive")
+    if runtime:
+        from .private_runtime_math_supplier import verify_compile
+
+        verify_compile(record, runtime, selection)
     return binding["recipe_sha256"]
 
 
@@ -247,6 +288,7 @@ def link(
     host_isa: str,
     simulator_isa: str,
     linked_build: Mapping[str, str],
+    host_math_policy: str = "native",
 ) -> None:
     witness = source.get(FIELD)
     if not isinstance(witness, dict) or witness.get("status") != PENDING or set(linked_build) != _BUILD:
@@ -262,7 +304,20 @@ def link(
     selected = _selected_archive(host_package, host_package_tree_sha256, vlen, dts, dts_sha256)
     if (selected["host_isa"], selected["simulator_isa"]) != (host_isa, simulator_isa):
         raise ValueError("linkage build differs from independently selected host ISA")
-    if any(contract["archive_sha256"] != selected["archive_sha256"] for contract in contracts):
+    runtime_contracts = [contract for contract in contracts if contract["supplier"] == RUNTIME_SUPPLIER]
+    if runtime_contracts:
+        from .private_runtime_math_supplier import select as select_runtime
+
+        if witness["host_math_policy"] != host_math_policy:
+            raise ValueError("linked runtime policy differs from original selected source/reference policy")
+        selected["runtime"] = select_runtime(
+            host_math_policy, runtime_contracts, selected, Path(entry["compilation_recipe"]["recipe_path"])
+        )
+    if any(
+        contract["archive_sha256"] != selected["archive_sha256"]
+        for contract in contracts
+        if contract["supplier"] != RUNTIME_SUPPLIER
+    ):
         raise ValueError("reviewed linkage archive differs from selected compiler archive")
     recipe_sha = _verify_recipe(entry, selected, selected_symbols)
     witness.update(status=LINKED, linked_build=dict(linked_build), selection=selected, recipe_sha256=recipe_sha)
@@ -306,6 +361,7 @@ def link_compiled(
         host_isa=inputs["host_isa"],
         simulator_isa=inputs["simulator_isa"],
         linked_build=linked_build,
+        host_math_policy=inputs.get("host_math_policy", "native"),
     )
 
 
@@ -386,7 +442,11 @@ def linked_complete(source: Mapping[str, Any], entry: Mapping[str, Any], candida
             seen.add(ordinal)
         selected_symbols = sorted({symbol for item in occurrences for symbol in item["contract"]["symbols"]})
         if not selected_symbols:
-            return witness.get("selection") is None and witness.get("recipe_sha256") is None
+            return (
+                witness.get("selection") is None
+                and witness.get("recipe_sha256") is None
+                and witness.get("host_math_policy") is None
+            )
         selection = witness.get("selection")
         if not isinstance(selection, Mapping) or not is_sha256(witness.get("recipe_sha256")):
             return False
@@ -398,8 +458,21 @@ def linked_complete(source: Mapping[str, Any], entry: Mapping[str, Any], candida
             Path(selection["dts"]),
             selection["dts_sha256"],
         )
+        runtime_contracts = [
+            item["contract"] for item in occurrences if item["contract"]["supplier"] == RUNTIME_SUPPLIER
+        ]
+        if not runtime_contracts and witness["host_math_policy"] is not None:
+            return False
+        if runtime_contracts:
+            from .private_runtime_math_supplier import select as select_runtime
+
+            actual["runtime"] = select_runtime(
+                witness["host_math_policy"], runtime_contracts, actual, Path(entry["compilation_recipe"]["recipe_path"])
+            )
         if actual != selection or any(
-            item["contract"]["archive_sha256"] != actual["archive_sha256"] for item in occurrences
+            item["contract"]["archive_sha256"] != actual["archive_sha256"]
+            for item in occurrences
+            if item["contract"]["supplier"] != RUNTIME_SUPPLIER
         ):
             return False
         return _verify_recipe(entry, actual, selected_symbols) == witness["recipe_sha256"]

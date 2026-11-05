@@ -155,6 +155,10 @@ def validate(manifest: dict[str, Any]) -> dict[str, Any]:
     """Schema-validate the contract and parse its compute_units (raises on any problem)."""
     _schemas.validate_or_raise(manifest, "target_contract")
     _cu.compute_units(manifest)  # validates kinds/dtypes/scaling
+    if "output_epilogue" in manifest:
+        from .rtl import output_epilogue as _oe
+
+        _oe.validate(manifest["output_epilogue"])  # a malformed declaration refuses, never reads as absent
     return manifest
 
 
@@ -437,7 +441,7 @@ def _kind_for_facet(facet: str) -> str | None:
     stationary-weight wavefront from a rank-1 outer-product tile -- both push weights and drain
     accumulators. Synthesizing either would assert a datapath nobody observed, so the honest answer is
     None and the caller declines to synthesize."""
-    from merlin.kernels import engines as _eng
+    from merlin.compile.analysis import engine_facets as _eng
 
     kinds = [k for k, f in _eng.ENGINE_FACET.items() if f == facet]
     return kinds[0] if len(kinds) == 1 else None
@@ -560,6 +564,23 @@ def _unit_dtypes_for_synthesis(manifest: dict) -> tuple[str, ...]:
             if d not in seen:
                 seen.append(d)
     return tuple(seen)
+
+
+def _derived_output_epilogue(name: str, manifest: dict[str, Any], facts: dict[str, Any]) -> dict[str, Any]:
+    """The contract's ``output_epilogue`` record; a failed derivation is an all-UNKNOWN record with why."""
+    from .rtl import output_epilogue as _oe
+
+    semantic = None
+    try:
+        from .rtl import semantic_facts as _sem
+
+        semantic = _sem.derive(name, only=("accumulate_on_load",))
+    except Exception:  # noqa: BLE001 -- no behavioural facts: accumulate stays UNKNOWN with its reason
+        semantic = None
+    try:
+        return _oe.derive(facts, contract=manifest, semantic_facts=semantic)
+    except Exception as exc:  # noqa: BLE001 -- never block contract derivation on this record
+        return _oe.underived(f"{type(exc).__name__}: {exc}")
 
 
 def derive_manifest(
@@ -742,6 +763,13 @@ def derive_manifest(
 
     manifest["operation_capabilities"] = operation_contract_for_target(name, manifest)
 
+    # --- output epilogue: what the contraction unit's output path applies on move-out, DERIVED ---
+    # Scale (and its number format), activation, accumulate and pooling are read from the facts, the
+    # elaborated readout the contract's own probe names and the behavioural accumulate fact; a stage no
+    # rung establishes is UNKNOWN in the record, and grouping treats an absent record as "nothing
+    # derived" rather than as a capability. A derivation failure is recorded, never a blocked contract.
+    manifest["output_epilogue"] = _derived_output_epilogue(name, manifest, facts)
+
     # --- semantic capability: derived from this target's OWN evidence, every run ---
     # The ARR denominator is a claim about hardware, and a claim nothing checks is an assertion. So the
     # facts are produced HERE, while the contract is being derived, and recorded beside the declaration
@@ -770,7 +798,7 @@ def derive_manifest(
         # `unchecked_engine` findings are the load-bearing part. No rung can observe a SIMT engine
         # today, so a SIMT declaration is UNCHECKED rather than unsupported, and the report says which
         # it is. Collapsing those two would action a gap in our instruments as a fact about silicon.
-        from merlin.kernels import engines as _eng
+        from merlin.compile.analysis import engine_facets as _eng
 
         engines = _cd.derive_engines(name, manifest, facts)
         evidence.update(engines.to_dict())

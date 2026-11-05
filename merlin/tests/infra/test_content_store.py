@@ -506,3 +506,32 @@ def test_no_test_in_this_file_writes_to_the_live_store():
         if ("store_root" in body or "default_root" in body) and "LOCATION_ENV" not in body:
             leaking.append(node.name)
     assert leaking == [], f"these resolve the live store without redirecting it: {leaking}"
+
+
+def test_place_tree_skips_what_the_ignore_rule_names(tmp_path):
+    import shutil
+
+    source = tmp_path / "src"
+    (source / "pkg" / "build").mkdir(parents=True)
+    (source / "pkg" / "keep.py").write_text("kept\n")
+    (source / "pkg" / "build" / "out.o").write_bytes(b"object")
+    destination = tmp_path / "dst"
+    CS.place_tree(source, destination, tmp_path / "cas", ignore=shutil.ignore_patterns("build"))
+    assert (destination / "pkg" / "keep.py").read_text() == "kept\n"
+    assert not (destination / "pkg" / "build").exists()
+
+
+def test_a_store_namespace_is_a_separate_sibling_store(tmp_path, monkeypatch):
+    monkeypatch.setenv(CS.LOCATION_ENV, str(tmp_path / "cas"))
+    base, own = CS.store_root(), CS.store_root("compiler-source")
+    assert base == tmp_path / "cas" and own == tmp_path / "cas.compiler-source" and own.is_dir()
+    source = tmp_path / "file"
+    source.write_bytes(b"identical bytes")
+    CS.place_file(source, tmp_path / "frozen-input", base)
+    CS.place_file(source, tmp_path / "capture", own)
+    frozen, capture = (tmp_path / "frozen-input").stat(), (tmp_path / "capture").stat()
+    assert frozen.st_ino != capture.st_ino and frozen.st_nlink == 2  # the capture never touched it
+    with pytest.raises(ValueError):
+        CS.store_root("../escape")
+    monkeypatch.setenv(CS.LOCATION_ENV, "")
+    assert CS.store_root("compiler-source") is None

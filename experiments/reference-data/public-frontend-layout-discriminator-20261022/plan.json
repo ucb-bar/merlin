@@ -1,0 +1,109 @@
+{
+  "schema": "operator.public_frontend_layout_discriminator.v1",
+  "created_at": "2026-10-22T11:54:53.906102+00:00",
+  "status": "prespecified_before_functional_or_physical_execution",
+  "physical_runs_authorized": false,
+  "question": "Does cache-line distance beyond a blocking completion fence change first-use cost relative to identically prewarmed code, despite identical in-window instruction bytes and four-line span?",
+  "superseded_unexecuted_plan": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v1/plan.json",
+    "sha256": "e4d8f53caa4757af32da0b12912b4e01890afc033b0293c32d8bb1186ccfa520"
+  },
+  "sources": [
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/probe.c",
+      "sha256": "43727dc339b3c71c6433f690c20ec6773ba669ac37900166a4ff3dc83dc16d4d"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/layouts.S",
+      "sha256": "be1bfd30b7756792bc06d52e88f0b2c6c27ddf8979a80b64373edaecce58acb9"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/start.S",
+      "sha256": "49a5a04306a2c942447156d02733e5c2a7a4da9323eb67f14534fdc0a2dcfdc8"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/link.ld",
+      "sha256": "e098b845a50cc2f6094db6a2f52df65f47b210b8a8dc89d6f5a7b9470a6553ce"
+    }
+  ],
+  "model": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+    "sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869"
+  },
+  "runtime": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/runtime.json",
+    "sha256": "0684df369407bffad8ee67b1a36d53d7867595a620f105d6c6466c0f26d57801"
+  },
+  "selection": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/selection.json",
+    "sha256": "807f75767198d4f6b4d01fd0badf0f18f81a882878215a5ad39b6af2de31e990"
+  },
+  "continued_denial": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/continued-denial.json",
+    "sha256": "424c7ec4e6cc10572cd71dc6ceb31fa290264349632f3b61cad884c7211a492f"
+  },
+  "design": {
+    "layout_offsets": [
+      0,
+      44
+    ],
+    "cache_line_bytes": 64,
+    "inclusive_csr_span_bytes": 204,
+    "inclusive_instructions": 51,
+    "interior_instructions": 49,
+    "fence_instruction_index": 4,
+    "fence_line_offsets": [
+      16,
+      60
+    ],
+    "bytes_to_next_line": [
+      48,
+      4
+    ],
+    "nops_after_fence": 45,
+    "branch_or_loop_in_window": false,
+    "inputs": "same resident single16x16 i8*i8->raw i32 full tile, no accumulation; six ABI operand registers",
+    "history": "For each layout and repeat: resetoutputs+fence; fence.i; measuredfirst; alloutputcheck; reset+fence; unreportedwarmupcall+alloutputcheck; reset+fence; measuredwarm; alloutputcheck. Repeat3times; layout0before44. Printonlyafterall12measurements.",
+    "warmup_has_counter_window": true,
+    "per_layout_occurrences": {
+      "first": [
+        0,
+        3,
+        6
+      ],
+      "unreported_warmup": [
+        1,
+        4,
+        7
+      ],
+      "warm": [
+        2,
+        5,
+        8
+      ]
+    },
+    "reference": "Independent CPU exact reference computed once before all calls;256outputs+32guards checked each18calls",
+    "outside_window": "inputinitialization/configuration/MVIN, reset, fence.i, callingbranches, elevenNOPs, MVOUT+completion fence, subtraction/return, checks, printing",
+    "postlude_caveat": "Eleven identicalNOPs afterendCSR beforeMVOUT extend bothroutines to264B/fiveIcachelines. Equal linecounts do not establish physicalfetchhistory; exactexecutedprelude/postlude remains explicit.",
+    "routine_bytes": 264,
+    "routine_cache_lines": 5
+  },
+  "criteria": {
+    "mandatory_functional": "All18calls pass256outputs+32guards; plain/annotated fulloutput semantics identical except raw cycles. No missing or reordered occurrence.",
+    "mandatory_layout": "Disassembly proves both51instruction inclusive spans, all4bytes, byteidentical windows, offset0/44, same4line span, exactfenceoffsets and no insidebranches.",
+    "mandatory_model": "All12selected windows timing_complete/no unresolved with unchangedmodel; otherwise reportunsupportedbeforephysicalapproval.",
+    "diagnostic_signal": "Compute layoutD=median(first0)-median(first44), warmD=median(warm0)-median(warm44), differential=layoutD-warmD. Positive differential>max(16cycles,3%meanfirst) supports a layout-sensitive first-use cost; opposite sign refutes this directional hypothesis; withinthreshold is inconclusive. This does not identify speculativefetch as unique physicalcause.",
+    "model_disagreement": "Report each frozen prediction, all occurrence errors, same differential; >max(16cycles,20%absphysicaldifferential) differential residual marks unexplained layout sensitivity. Not a qualification criterion or coefficientfit.",
+    "state_stability": "Report full threeoccurrence ranges and median; if range>max(16cycles,5%median), label that treatmentunstable; no samplediscard or thresholdchange.",
+    "qualification": "Diagnostic only, no timingqualification, no source-heldoutclaim, no coefficientchanges, no correction inferred from labels."
+  },
+  "budget": {
+    "future_physical_jobs_max": 1,
+    "timeout_s_max": 1200,
+    "current_campaign_clock_required": true,
+    "cumulative_diagnostic_ledger": "Preserve original373.764874+598.056103912 accounting, readactualledgerbeforeauthorization; neverreset",
+    "separate_automatic_calibration": true,
+    "cpu": "outside9-28",
+    "authorization": "Root review exact source/layout/functional/observerreceipts beforeany physicalrun"
+  }
+}

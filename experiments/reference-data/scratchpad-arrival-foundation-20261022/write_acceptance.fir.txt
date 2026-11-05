@@ -1,0 +1,8 @@
+    node _io_read_req_ready_T = eq(singleport_busy_with_write, UInt<1>(0h0)) @[generators/gemmini/src/main/scala/gemmini/Scratchpad.scala 176:45]
+    node _io_read_req_ready_T_1 = and(q_will_be_empty, _io_read_req_ready_T) @[generators/gemmini/src/main/scala/gemmini/Scratchpad.scala 176:42]
+    connect io.read.req.ready, _io_read_req_ready_T_1 @[generators/gemmini/src/main/scala/gemmini/Scratchpad.scala 176:23]
+    connect io.write.ready, UInt<1>(0h1) @[generators/gemmini/src/main/scala/gemmini/Scratchpad.scala 178:20]
+    node _T = and(io.write.valid, io.write.ready) @[generators/gemmini/src/main/scala/gemmini/Scratchpad.scala 97:20]
+    when _T : @[generators/gemmini/src/main/scala/gemmini/Scratchpad.scala 179:25]
+      wire _WIRE : UInt<8>[16] @[generators/gemmini/src/main/scala/gemmini/Scratchpad.scala 183:56]
+      wire _WIRE_1 : UInt<128> @[generators/gemmini/src/main/scala/gemmini/Scratchpad.scala 183:56]

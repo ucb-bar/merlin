@@ -23,11 +23,11 @@ reason (:class:`~.compute_groups.NoCapsuleForm`); nothing here knows a target.
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from merlin.common import mlir_query as mq
-from merlin.kernels import shapes as KS
+from merlin.compile.analysis import contraction_shapes as KS
 
 from . import compute_groups as CG
 from . import group_numerics as GN
@@ -36,6 +36,10 @@ SCHEMA = "group_program_v1"
 #: The capture's patch-column order when it gathers ``[channel, tap_h, tap_w]``; the command-buffer
 #: ABI's convolution packs ``[tap_h, tap_w, channel]``. A prepack step permutes the stored tensor.
 CAPTURE_COLUMN_ORDER = ("channel", "tap_h", "tap_w")
+#: The patch-column order of a convolution the capture gathers on the HOST (strided slices of the
+#: NCHW image, transposed to NHWC per tap, concatenated tap by tap): ``[tap_h, tap_w, channel]``,
+#: which is already the command-buffer ABI's packing.
+HOST_GATHER_COLUMN_ORDER = ("tap_h", "tap_w", "channel")
 
 
 @dataclass(frozen=True)
@@ -45,7 +49,7 @@ class GroupProgram:
     entry: dict[str, Any]
     #: Root operand index of the stored tensor; ``None`` for a group that reads no stored tensor.
     stored_operand: int | None
-    #: The capture computes the transpose of the device form (stored tensor on the left).
+    #: The capture computes the transpose of the device form; independent of immutable ownership.
     transposed: bool
     #: Model-argument index of the stored tensor and of the bias, for the prepack.
     stored_arg: int | None = None
@@ -222,8 +226,7 @@ def _activation_contraction(group: CG.Group, base: dict[str, Any]) -> GroupProgr
             raise CG.NoCapsuleForm("a batched matrix command cannot drop a nonzero or unknown accumulator seed")
     if not _is_plain_contraction(group.root, rows, reduced, columns, batch):
         raise CG.NoCapsuleForm(
-            "the contraction's operand orientation or batch coordinates are not "
-            "lhs[..., M, K] @ rhs[..., K, N]"
+            "the contraction's operand orientation or batch coordinates are not lhs[..., M, K] @ rhs[..., K, N]"
         )
     if _window(group, 0, reduced) is not None or _window(group, 1, reduced) is not None:
         raise CG.NoCapsuleForm("a windowed contraction over two activations is not stated")
@@ -238,7 +241,12 @@ def _activation_contraction(group: CG.Group, base: dict[str, Any]) -> GroupProgr
         raise CG.NoCapsuleForm("a pooled contraction of two activations is not stated")
     entry.update({"op": "matmul", "M": rows, "K": reduced, "N": columns, STATIONARY_KEY: STATIONARY_ACTIVATION})
     if "acc_scale" in entry["epilogue"]:
-        numerics = GN.numerics_of(group)
+        try:
+            numerics = GN.numerics_of(group)
+        except GN.GroupNumericsError as error:
+            # Unreadable arithmetic is a group no capsule can state, said with its reason -- never an
+            # exception that takes the whole capture's census down with it.
+            raise CG.NoCapsuleForm(f"the group's numerics cannot be read: {error}") from error
         if numerics.multiplier is None:
             raise CG.NoCapsuleForm("the group's requantization multiplier is not a compile-time number")
         entry["acc_scale"] = float(numerics.multiplier)
@@ -271,6 +279,11 @@ def _bias_side(group: CG.Group) -> tuple[str | None, int | None]:
     if member is None:
         return None, None
     varies = CG.classify(member).varies_over
+    if varies is not None and len(varies) > 1 and member.results:
+        # A unit-extent dim (a batch of one, say) is indexed by the bias without being an axis it
+        # varies along; only the dims with more than one position say where the bias runs.
+        extents, _ = mq.type_shape_dtype(member.results[0].type)
+        varies = tuple(dim for dim in varies if dim < len(extents) and int(extents[dim]) != 1)
     if varies is None or len(varies) != 1:
         raise CG.NoCapsuleForm("the bias does not run along exactly one axis of the result")
     shape, _ = mq.type_shape_dtype(group.root.results[0].type)
@@ -388,7 +401,33 @@ def _window(group: CG.Group, activation_index: int, reduced: int) -> dict[str, A
     }
 
 
-def _pool(group: CG.Group) -> dict[str, Any]:
+def _host_gather_window(group: CG.Group, activation_index: int, positions: int, reduced: int) -> dict[str, Any] | None:
+    """Convolution geometry when the activation is a patch matrix the capture gathered ON THE HOST.
+
+    The same recognition the whole-model route uses (:func:`merlin.llvmlower.group_host_call.
+    host_window_gather`), so the statement and the route name one convolution: the image before the
+    gather and its zero padding, the window and stride. ``None`` for an activation that is no host
+    gather; a gather whose image cannot be read back, or whose taps are not laid out tap by tap in
+    row-major order, is refused by name rather than stated as a contraction over the host's patches."""
+    import numpy as np
+
+    from merlin.llvmlower.group_host_call import host_window_gather
+
+    operand = list(group.root.operands)[activation_index]
+    _adapters, dequantize, _dtype = CG._input_chain(operand)
+    value = dequantize.operands[0] if dequantize is not None else operand
+    try:
+        gather = host_window_gather(value, positions, reduced)
+    except ValueError as why:
+        raise CG.NoCapsuleForm(f"a host gather feeds the contraction and its image cannot be read back: {why}") from why
+    if gather is None:
+        return None
+    if not np.array_equal(gather["rows"], np.arange(gather["rows"].size)):
+        raise CG.NoCapsuleForm("the host gather's taps are not concatenated in row-major window order")
+    return dict(gather["window"])
+
+
+def _pool(group: CG.Group, *, clamp=None) -> dict[str, Any]:
     """The pooling stage's window, as the generator's ``pool_*`` fields. Read, never defaulted."""
     from . import contraction_coverage as CC
 
@@ -435,7 +474,7 @@ def _pool(group: CG.Group) -> dict[str, Any]:
         if fill == 0:
             window["pool_pad_value"] = 0
         elif isinstance(fill, float) and (math.isinf(fill) and fill < 0):
-            window["pool_pad_value"] = int(GN.numerics_of(group).clamp[0])
+            window["pool_pad_value"] = int((clamp if clamp is not None else GN.numerics_of(group).clamp)[0])
         else:
             raise CG.NoCapsuleForm(f"a pooling pad of {fill!r} is neither zero nor the identity of max")
     return window
@@ -450,11 +489,22 @@ def program(
 ) -> GroupProgram:
     """``group`` as a generator entry in device form. Raises ``NoCapsuleForm`` with the reason.
 
-    ``extents`` is the module's contraction-extent table (``model_coverage._contraction_extents``); a
-    caller stating every group of one module passes it, because without it each call walks the whole
-    module again (quadratic in the model: 69% of a 1551-group statement's time)."""
+    ``extents`` is the module's contraction-extent table
+    (:func:`merlin.compile.analysis.contraction_shapes.contraction_extents`); a caller stating every
+    group of one module passes it, because without it each call walks the whole module again
+    (quadratic in the model: 69% of a 1551-group statement's time)."""
     from merlin.runtime.commandbuffer import EPILOGUE_STAGES
 
+    if group.window_pool is not None:
+        entry = {k: v for k, v in group.window_pool.items() if k not in ("proof", "output_shape")}
+        entry.update(name=name or f"group_{group.index}", kind="op", op="maxpool2d",
+                     operand_dtype=group.in_dtype, epilogue=["acc_scale", "maxpool"], output_dtype="i8")
+        return GroupProgram(entry=entry, stored_operand=None, transposed=False,
+                            notes=(group.window_pool["proof"],))
+    if group.fusion and group.fusion.get("cut") != "bare":
+        from .group_output_program import program as output_program
+
+        return output_program(group, weight_args=weight_args, name=name, extents=extents)
     base = CG.capsule_entry(group, name=name, extents=extents)  # the stage names, and the refusals that go with them
     if group.window_mean is not None:
         return GroupProgram(
@@ -496,6 +546,16 @@ def program(
             return _activation_contraction(group, base)
         except CG.NoCapsuleForm as why:
             raise CG.NoCapsuleForm(f"{refusal}; {why}") from why
+    if stored == 0 and "merlin.preserve_contraction_orientation" in group.root.attributes:
+        # A source pass may select an activation-stationary orientation. Check
+        # the same maps, numerical readout and window restrictions as every
+        # runtime-bound contraction, while retaining the real immutable owner
+        # for prepacking and provenance.
+        oriented = _activation_contraction(group, base)
+        return replace(
+            oriented, stored_operand=stored, stored_arg=stored_arg,
+            notes=("the source-selected contraction orientation is preserved; its left operand remains immutable",),
+        )
     side, bias_arg = _bias_side(group)
     # The stored tensor's own output axis: rows when it is the left operand, columns when the right.
     wanted = "row" if stored == 0 else "column"
@@ -514,7 +574,14 @@ def program(
     notes: list[str] = []
     window = _window(group, 1 - stored, reduced)
     column_order = None
-    if window is not None and (window["kh"], window["kw"], window["stride"], window["padding"]) != (
+    gathered = None if window is not None else _host_gather_window(group, 1 - stored, positions, reduced)
+    if gathered is not None:
+        # A CONVOLUTION THE CAPTURE LOWERED ON THE HOST is stated as that convolution, from the image
+        # before the gather: the patch matrix is the host's lowering strategy, not the layer.
+        entry.update({"op": "conv2d", "N": features, **gathered})
+        column_order = HOST_GATHER_COLUMN_ORDER
+        notes.append("the capture gathers the patches on the host; the unit's convolution reads the image")
+    elif window is not None and (window["kh"], window["kw"], window["stride"], window["padding"]) != (
         1,
         1,
         [1, 1],
@@ -537,7 +604,12 @@ def program(
             spatial, _ = mq.type_shape_dtype(member.results[0].type)
             raise CG.NoCapsuleForm(f"a pooled contraction over {list(spatial)} needs its input plane stated")
     if "acc_scale" in entry["epilogue"]:
-        numerics = GN.numerics_of(group)
+        try:
+            numerics = GN.numerics_of(group)
+        except GN.GroupNumericsError as error:
+            # Unreadable arithmetic is a group no capsule can state, said with its reason -- never an
+            # exception that takes the whole capture's census down with it.
+            raise CG.NoCapsuleForm(f"the group's numerics cannot be read: {error}") from error
         if numerics.multiplier is None:
             raise CG.NoCapsuleForm("the group's requantization multiplier is not a compile-time number")
         entry["acc_scale"] = float(numerics.multiplier)
@@ -572,6 +644,11 @@ def device_output_shape(entry: Mapping[str, Any]) -> list[int]:
     """
     op = str(entry.get("op") or "")
     features = entry.get("N")
+    if op == "maxpool2d":
+        from merlin.runtime.tensor import pool_out_dims
+        h, w = entry["pool_in_dims"]
+        ho, wo = pool_out_dims(h, w, entry["pool_size"], entry["pool_stride"], entry["pool_padding"])
+        return [ho * wo, int(features)]
     if op == "conv2d":
         needed = ("Himg", "Wimg", "kh", "kw", "stride")
         if features is None or any(entry.get(key) is None for key in needed):

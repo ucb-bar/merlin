@@ -1,0 +1,568 @@
+{
+  "status": "ordinary_and12_annotated_replays_complete",
+  "elf": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf",
+    "sha256": "cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e"
+  },
+  "candidate_model": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+    "sha256": "888abf5c5ad4d46bee90129b05ae47a113ec710db9dd389113caa71fd3a16770"
+  },
+  "observer": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+    "sha256": "241c8d7343edbcf135e086cba981a56d556ebd085a0643d50ad31c2b7031fd38"
+  },
+  "old_functional": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/functional.json",
+    "sha256": "7238b16dd0aa5063f3ae879a06f21e635e582edf6770d6b3d1424b942f0d1a79"
+  },
+  "ordinary_outputs": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/functional.stdout",
+    "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+  },
+  "records": [
+    {
+      "occurrence": 0,
+      "layout": 0,
+      "state": 0,
+      "rep": 0,
+      "all12_numeric_rows_match": true,
+      "all6_warmups_pass": true,
+      "estimated_cycles": 173,
+      "timing_complete": true,
+      "unresolved": [],
+      "features": {
+        "modeled.fetch_refill.applied": 0,
+        "modeled.fetch_refill.first_response_cycles": 0,
+        "modeled.fetch_refill.immutable": 0,
+        "modeled.fetch_refill.last_response_cycles": 0,
+        "modeled.fetch_refill.legacy_dirty_eviction": 0,
+        "modeled.fetch_refill.legacy_lower_miss": 3,
+        "modeled.fetch_refill.line_visible_cycles": 0,
+        "modeled.fetch_refill.lookup_response_cycles": 0
+      },
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/00.json",
+        "sha256": "a4347269d2c160acff69c32aeef8291860cfb2cc7c04987df447ff076e8854b3"
+      },
+      "scope": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/00.json",
+        "sha256": "de13bdd09b940e14d26f52443730fd5a2c54b818fd05ada4231e58f0bdfbce3c"
+      },
+      "argv": [
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+        "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+        "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/00.json",
+        "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/00.json",
+        "--timing-input-sha256=cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf"
+      ],
+      "wall_s": 4.381666036031675
+    },
+    {
+      "occurrence": 1,
+      "layout": 0,
+      "state": 1,
+      "rep": 0,
+      "all12_numeric_rows_match": true,
+      "all6_warmups_pass": true,
+      "estimated_cycles": 122,
+      "timing_complete": true,
+      "unresolved": [],
+      "features": {
+        "modeled.fetch_refill.applied": 0,
+        "modeled.fetch_refill.first_response_cycles": 0,
+        "modeled.fetch_refill.immutable": 0,
+        "modeled.fetch_refill.last_response_cycles": 0,
+        "modeled.fetch_refill.legacy_dirty_eviction": 0,
+        "modeled.fetch_refill.legacy_lower_miss": 0,
+        "modeled.fetch_refill.line_visible_cycles": 0,
+        "modeled.fetch_refill.lookup_response_cycles": 0
+      },
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/01.json",
+        "sha256": "c112ac0153e45fa0747b366f80a26ab11b1339882768ec672573fa26cc6b7a5c"
+      },
+      "scope": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/01.json",
+        "sha256": "695f322d30e1f546eba222b51676e62f46c557aa93a9590e718b3e198760fc9a"
+      },
+      "argv": [
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+        "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+        "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/01.json",
+        "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/01.json",
+        "--timing-input-sha256=cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf"
+      ],
+      "wall_s": 4.3389005059725605
+    },
+    {
+      "occurrence": 2,
+      "layout": 0,
+      "state": 0,
+      "rep": 1,
+      "all12_numeric_rows_match": true,
+      "all6_warmups_pass": true,
+      "estimated_cycles": 161,
+      "timing_complete": true,
+      "unresolved": [],
+      "features": {
+        "modeled.fetch_refill.applied": 3,
+        "modeled.fetch_refill.first_response_cycles": 24,
+        "modeled.fetch_refill.immutable": 0,
+        "modeled.fetch_refill.last_response_cycles": 33,
+        "modeled.fetch_refill.legacy_dirty_eviction": 0,
+        "modeled.fetch_refill.legacy_lower_miss": 0,
+        "modeled.fetch_refill.line_visible_cycles": 36,
+        "modeled.fetch_refill.lookup_response_cycles": 42
+      },
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/02.json",
+        "sha256": "7248b36f00f81b7253e25eaad7ef25dc4ea8761fde7db0a9a0ee7db28a8fd753"
+      },
+      "scope": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/02.json",
+        "sha256": "09146158f4afb4eee00a982734c07a1b56136c82be500e76181f43833d401d84"
+      },
+      "argv": [
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+        "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+        "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/02.json",
+        "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/02.json",
+        "--timing-input-sha256=cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf"
+      ],
+      "wall_s": 4.3504511779756285
+    },
+    {
+      "occurrence": 3,
+      "layout": 0,
+      "state": 1,
+      "rep": 1,
+      "all12_numeric_rows_match": true,
+      "all6_warmups_pass": true,
+      "estimated_cycles": 122,
+      "timing_complete": true,
+      "unresolved": [],
+      "features": {
+        "modeled.fetch_refill.applied": 0,
+        "modeled.fetch_refill.first_response_cycles": 0,
+        "modeled.fetch_refill.immutable": 0,
+        "modeled.fetch_refill.last_response_cycles": 0,
+        "modeled.fetch_refill.legacy_dirty_eviction": 0,
+        "modeled.fetch_refill.legacy_lower_miss": 0,
+        "modeled.fetch_refill.line_visible_cycles": 0,
+        "modeled.fetch_refill.lookup_response_cycles": 0
+      },
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/03.json",
+        "sha256": "8e78d5f745409ee37ed378419acb9e0e1b9b3aafb69b57ec6abe45345914644f"
+      },
+      "scope": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/03.json",
+        "sha256": "c80926f2febefa078d7fe6481978d20c735230dcbc25427c55764659a5b254f6"
+      },
+      "argv": [
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+        "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+        "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/03.json",
+        "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/03.json",
+        "--timing-input-sha256=cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf"
+      ],
+      "wall_s": 4.386357136012521
+    },
+    {
+      "occurrence": 4,
+      "layout": 0,
+      "state": 0,
+      "rep": 2,
+      "all12_numeric_rows_match": true,
+      "all6_warmups_pass": true,
+      "estimated_cycles": 161,
+      "timing_complete": true,
+      "unresolved": [],
+      "features": {
+        "modeled.fetch_refill.applied": 3,
+        "modeled.fetch_refill.first_response_cycles": 24,
+        "modeled.fetch_refill.immutable": 0,
+        "modeled.fetch_refill.last_response_cycles": 33,
+        "modeled.fetch_refill.legacy_dirty_eviction": 0,
+        "modeled.fetch_refill.legacy_lower_miss": 0,
+        "modeled.fetch_refill.line_visible_cycles": 36,
+        "modeled.fetch_refill.lookup_response_cycles": 42
+      },
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/04.json",
+        "sha256": "25830a78cc242a40af848c065334ee0042c0c1fbcbd0a5af3c2351f4950f1e4d"
+      },
+      "scope": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/04.json",
+        "sha256": "59420d701b97670674cb7fb1a1556656949bc16599c25eb4990bcc3612e0193b"
+      },
+      "argv": [
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+        "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+        "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/04.json",
+        "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/04.json",
+        "--timing-input-sha256=cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf"
+      ],
+      "wall_s": 4.402298476023134
+    },
+    {
+      "occurrence": 5,
+      "layout": 0,
+      "state": 1,
+      "rep": 2,
+      "all12_numeric_rows_match": true,
+      "all6_warmups_pass": true,
+      "estimated_cycles": 122,
+      "timing_complete": true,
+      "unresolved": [],
+      "features": {
+        "modeled.fetch_refill.applied": 0,
+        "modeled.fetch_refill.first_response_cycles": 0,
+        "modeled.fetch_refill.immutable": 0,
+        "modeled.fetch_refill.last_response_cycles": 0,
+        "modeled.fetch_refill.legacy_dirty_eviction": 0,
+        "modeled.fetch_refill.legacy_lower_miss": 0,
+        "modeled.fetch_refill.line_visible_cycles": 0,
+        "modeled.fetch_refill.lookup_response_cycles": 0
+      },
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/05.json",
+        "sha256": "4512cb5395557e00d29c31b166073c6674e6ffcf8dac644d2e978a6b01474ba6"
+      },
+      "scope": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/05.json",
+        "sha256": "f09cfe60a1962ef4b30377df410e3fe6c182c14132117d440e87b09920cf3673"
+      },
+      "argv": [
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+        "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+        "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/05.json",
+        "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/05.json",
+        "--timing-input-sha256=cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf"
+      ],
+      "wall_s": 4.396567885007244
+    },
+    {
+      "occurrence": 6,
+      "layout": 44,
+      "state": 0,
+      "rep": 0,
+      "all12_numeric_rows_match": true,
+      "all6_warmups_pass": true,
+      "estimated_cycles": 173,
+      "timing_complete": true,
+      "unresolved": [],
+      "features": {
+        "modeled.fetch_refill.applied": 0,
+        "modeled.fetch_refill.first_response_cycles": 0,
+        "modeled.fetch_refill.immutable": 0,
+        "modeled.fetch_refill.last_response_cycles": 0,
+        "modeled.fetch_refill.legacy_dirty_eviction": 0,
+        "modeled.fetch_refill.legacy_lower_miss": 3,
+        "modeled.fetch_refill.line_visible_cycles": 0,
+        "modeled.fetch_refill.lookup_response_cycles": 0
+      },
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/06.json",
+        "sha256": "8cb216fab922edef94c6b3a2fb3a7a159e0ce483aa5ddea5379480940c7b6a12"
+      },
+      "scope": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/06.json",
+        "sha256": "4bb78839d379aa5dcb2f850eda21a3ce7c389728e073f4e7603fcb11b17507d0"
+      },
+      "argv": [
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+        "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+        "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/06.json",
+        "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/06.json",
+        "--timing-input-sha256=cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf"
+      ],
+      "wall_s": 4.3808854760136455
+    },
+    {
+      "occurrence": 7,
+      "layout": 44,
+      "state": 1,
+      "rep": 0,
+      "all12_numeric_rows_match": true,
+      "all6_warmups_pass": true,
+      "estimated_cycles": 122,
+      "timing_complete": true,
+      "unresolved": [],
+      "features": {
+        "modeled.fetch_refill.applied": 0,
+        "modeled.fetch_refill.first_response_cycles": 0,
+        "modeled.fetch_refill.immutable": 0,
+        "modeled.fetch_refill.last_response_cycles": 0,
+        "modeled.fetch_refill.legacy_dirty_eviction": 0,
+        "modeled.fetch_refill.legacy_lower_miss": 0,
+        "modeled.fetch_refill.line_visible_cycles": 0,
+        "modeled.fetch_refill.lookup_response_cycles": 0
+      },
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/07.json",
+        "sha256": "d96fb9973aa5ec36d307677ef9e1090ce454e9e32a89094640c3bcb5abad3e0f"
+      },
+      "scope": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/07.json",
+        "sha256": "61f74538e3056541a9f6ae73e9630d7ca723981b00cdca5a0e2c3c4dc29576ce"
+      },
+      "argv": [
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+        "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+        "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/07.json",
+        "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/07.json",
+        "--timing-input-sha256=cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf"
+      ],
+      "wall_s": 4.369944759993814
+    },
+    {
+      "occurrence": 8,
+      "layout": 44,
+      "state": 0,
+      "rep": 1,
+      "all12_numeric_rows_match": true,
+      "all6_warmups_pass": true,
+      "estimated_cycles": 161,
+      "timing_complete": true,
+      "unresolved": [],
+      "features": {
+        "modeled.fetch_refill.applied": 3,
+        "modeled.fetch_refill.first_response_cycles": 24,
+        "modeled.fetch_refill.immutable": 0,
+        "modeled.fetch_refill.last_response_cycles": 33,
+        "modeled.fetch_refill.legacy_dirty_eviction": 0,
+        "modeled.fetch_refill.legacy_lower_miss": 0,
+        "modeled.fetch_refill.line_visible_cycles": 36,
+        "modeled.fetch_refill.lookup_response_cycles": 42
+      },
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/08.json",
+        "sha256": "0fbb074265f801fe160c4db69480c2b9a8d99b8611b2ae5a7194bca5fdb29eb1"
+      },
+      "scope": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/08.json",
+        "sha256": "af9c11a935b17a30230fccd11aea0d2c279a1e2e84113eb8338039a4acee1540"
+      },
+      "argv": [
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+        "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+        "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/08.json",
+        "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/08.json",
+        "--timing-input-sha256=cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf"
+      ],
+      "wall_s": 4.3666817779885605
+    },
+    {
+      "occurrence": 9,
+      "layout": 44,
+      "state": 1,
+      "rep": 1,
+      "all12_numeric_rows_match": true,
+      "all6_warmups_pass": true,
+      "estimated_cycles": 122,
+      "timing_complete": true,
+      "unresolved": [],
+      "features": {
+        "modeled.fetch_refill.applied": 0,
+        "modeled.fetch_refill.first_response_cycles": 0,
+        "modeled.fetch_refill.immutable": 0,
+        "modeled.fetch_refill.last_response_cycles": 0,
+        "modeled.fetch_refill.legacy_dirty_eviction": 0,
+        "modeled.fetch_refill.legacy_lower_miss": 0,
+        "modeled.fetch_refill.line_visible_cycles": 0,
+        "modeled.fetch_refill.lookup_response_cycles": 0
+      },
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/09.json",
+        "sha256": "ae39d3f1fbd236642fb230aa6f3c22c241bf5da0accb18f258fc9f1e87588e3b"
+      },
+      "scope": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/09.json",
+        "sha256": "80d921fb781b27c71d5603f4888710c7ba46025987c423a78e56283eff621a79"
+      },
+      "argv": [
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+        "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+        "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/09.json",
+        "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/09.json",
+        "--timing-input-sha256=cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf"
+      ],
+      "wall_s": 4.369426227000076
+    },
+    {
+      "occurrence": 10,
+      "layout": 44,
+      "state": 0,
+      "rep": 2,
+      "all12_numeric_rows_match": true,
+      "all6_warmups_pass": true,
+      "estimated_cycles": 161,
+      "timing_complete": true,
+      "unresolved": [],
+      "features": {
+        "modeled.fetch_refill.applied": 3,
+        "modeled.fetch_refill.first_response_cycles": 24,
+        "modeled.fetch_refill.immutable": 0,
+        "modeled.fetch_refill.last_response_cycles": 33,
+        "modeled.fetch_refill.legacy_dirty_eviction": 0,
+        "modeled.fetch_refill.legacy_lower_miss": 0,
+        "modeled.fetch_refill.line_visible_cycles": 36,
+        "modeled.fetch_refill.lookup_response_cycles": 42
+      },
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/10.json",
+        "sha256": "b608f5472a047ea796689d3fb9afa63e6d20834c2c248f1881f6a6837e7a3312"
+      },
+      "scope": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/10.json",
+        "sha256": "93ade267ee8c2c1343c96540155884eb8951e5e7f02cd1c3521c82d2d7f55e49"
+      },
+      "argv": [
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+        "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+        "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/10.json",
+        "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/10.json",
+        "--timing-input-sha256=cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf"
+      ],
+      "wall_s": 4.354360822995659
+    },
+    {
+      "occurrence": 11,
+      "layout": 44,
+      "state": 1,
+      "rep": 2,
+      "all12_numeric_rows_match": true,
+      "all6_warmups_pass": true,
+      "estimated_cycles": 122,
+      "timing_complete": true,
+      "unresolved": [],
+      "features": {
+        "modeled.fetch_refill.applied": 0,
+        "modeled.fetch_refill.first_response_cycles": 0,
+        "modeled.fetch_refill.immutable": 0,
+        "modeled.fetch_refill.last_response_cycles": 0,
+        "modeled.fetch_refill.legacy_dirty_eviction": 0,
+        "modeled.fetch_refill.legacy_lower_miss": 0,
+        "modeled.fetch_refill.line_visible_cycles": 0,
+        "modeled.fetch_refill.lookup_response_cycles": 0
+      },
+      "report": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/11.json",
+        "sha256": "8e08159a5424ce94a316a4a2f1aeb3ff63e41ab40b5c0222594f0aff0f861234"
+      },
+      "scope": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/11.json",
+        "sha256": "1dd8b0f72d2d4db4dcfaecc745bfe7c25042aa627d667b00fe6fe9d3cb15f0ea"
+      },
+      "argv": [
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+        "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/modeled-event-observer-v1/libtiming_provider.so",
+        "--extension=gemmini",
+        "-p1",
+        "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+        "-m0x80000000:0x400000000",
+        "--instructions=1000000000",
+        "--timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/model-source-bound-v2.json",
+        "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/frontend-replay-v1/11.json",
+        "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/scopes/11.json",
+        "--timing-input-sha256=cbb7cb1e1810180f1af592ed851a8fbb7a73aae8441e3d9ccfab2f886d9ba86e",
+        "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/program.elf"
+      ],
+      "wall_s": 4.446484179992694
+    }
+  ],
+  "physical_runs": 0,
+  "qualification": false,
+  "selected_live": false
+}

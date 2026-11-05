@@ -24,6 +24,7 @@ from .original_call_sources import required_source_cohorts
 from .rtl_intake import _outside
 
 SCHEMA = "merlin.original_source_semantic_review.v1"
+POINTWISE_SCHEMA = "merlin.original_source_semantic_review.v2"
 PREDICATES = frozenset(
     {
         "signed_inputs",
@@ -49,6 +50,14 @@ class OriginalSemanticReviewBudget:
     def verify(self):
         if any(type(value) is not int or value < 1 for value in vars(self).values()):
             raise ValueError("original semantic review budgets need explicit positive integer limits")
+
+
+@dataclass(frozen=True)
+class OriginalPointwiseReviewBudget(OriginalSemanticReviewBudget):
+    max_probes: int
+    max_total_probe_source_bytes: int
+    max_probe_observation_bytes: int
+    probe_timeout_s: int
 
 
 def selector(form, defaults):
@@ -83,10 +92,12 @@ def validate(document):
     if (
         not isinstance(document, dict)
         or set(document) != {"schema", "canonical_source", "cohorts", "owners", "budget", "execution_budget"}
-        or document["schema"] != SCHEMA
+        or document["schema"] not in {SCHEMA, POINTWISE_SCHEMA}
     ):
         raise ValueError("original source semantic review needs its closed explicit version")
-    OriginalSemanticReviewBudget(**document["budget"]).verify()
+    pointwise = document["schema"] == POINTWISE_SCHEMA
+    budget_type = OriginalPointwiseReviewBudget if pointwise else OriginalSemanticReviewBudget
+    budget_type(**document["budget"]).verify()
     E.validate(document["execution_budget"])
     expected_cohorts = {}
     for cohort, extent in required_source_cohorts():
@@ -105,7 +116,9 @@ def validate(document):
     for row in owners:
         if (
             not isinstance(row, dict)
-            or set(row) != {"id", "selector", "numerical_policy", "input_palettes", "implementation_context", "stress"}
+            or set(row)
+            != {"id", "selector", "numerical_policy", "input_palettes", "implementation_context", "stress"}
+            | ({"stress_probes"} if pointwise else set())
             or not isinstance(row["id"], str)
             or not row["id"].isidentifier()
             or row["id"] in seen
@@ -125,7 +138,7 @@ def validate(document):
             "logical_alias_constraints",
         }:
             raise ValueError("original semantic owner lacks its exact complete public argument/default/form contract")
-        policy = P.policy(row["numerical_policy"])
+        policy = P.policy(row["numerical_policy"], pointwise=pointwise)
         if (
             policy.operation != selected["operation"]
             or list(policy.operand_dtypes) != selected["ordered_operand_dtypes"]
@@ -137,12 +150,48 @@ def validate(document):
         if encoded in selectors:
             raise ValueError("original source semantic selector is duplicated or ambiguous")
         context = row["implementation_context"]
-        if not isinstance(context, dict) or set(context) != {"path", "sha256"}:
+        contexts = context if pointwise else [context]
+        if (
+            not isinstance(contexts, list)
+            or not contexts
+            or any(not isinstance(item, dict) or set(item) != {"path", "sha256"} for item in contexts)
+            or any(
+                type(item["path"]) is not str
+                or not item["path"]
+                or type(item["sha256"]) is not str
+                or len(item["sha256"]) != 64
+                or any(character not in "0123456789abcdef" for character in item["sha256"])
+                for item in contexts
+            )
+            or len({item["path"] for item in contexts}) != len(contexts)
+        ):
             raise ValueError("original semantic implementation context needs exact public source bytes")
         stress = row["stress"]
         if not isinstance(stress, dict) or set(stress) != {"per_member", "across_complete_cohorts"}:
             raise ValueError("original semantic stress needs complete explicit finite obligations")
-        for names in stress.values():
+        from merlin.targetgen.original_pointwise_reference import OriginalPointwiseReferencePolicy
+
+        original_pointwise = type(policy) is OriginalPointwiseReferencePolicy
+        if original_pointwise:
+            from merlin.targetgen import original_pointwise_stress as PS
+
+            wanted = {
+                "per_member": ["pointwise_values"],
+                "across_complete_cohorts": PS.required(policy, selected["parameters"]),
+            }
+            if canonical_json(stress) != canonical_json(wanted):
+                raise ValueError("pointwise review must retain every feasible original typed stress partition")
+            probe = row["stress_probes"]
+            if (
+                not isinstance(probe, dict)
+                or set(probe) != {"profile", "extent", "max_cases"}
+                or probe["profile"] != PS.PROFILE
+                or any(type(probe[key]) is not int or probe[key] < 1 for key in ("extent", "max_cases"))
+            ):
+                raise ValueError("pointwise review needs explicit bounded original finite stress probes")
+        elif pointwise and row["stress_probes"] is not None:
+            raise ValueError("pointwise probes cannot reinterpret an original reduction owner")
+        for names in () if original_pointwise else stress.values():
             if (
                 not isinstance(names, list)
                 or not names
@@ -165,21 +214,34 @@ def contexts(document, *, references, forbidden):
     if canonical_json(canonical) != canonical_json(document["canonical_source"]):
         raise ValueError("original semantic contexts differ from independently observed public declaration sources")
     result, total = [], 0
+    tracked_sources = {}
     for owner in document["owners"]:
         selected = owner["implementation_context"]
-        path = Path(selected["path"]).absolute()
-        _outside(path, forbidden)
-        path = R._plain(path)
-        total += path.stat().st_size
-        if (
-            path.stat().st_size > document["budget"]["max_context_source_bytes"]
-            or total > document["budget"]["max_total_context_source_bytes"]
-        ):
-            raise ValueError("complete original implementation context exceeds selected source budgets")
-        tracked = _tracked_source(Path(canonical["checkout"]), path, canonical["commit"])
-        if R._pin(path)["sha256"] != selected["sha256"]:
-            raise ValueError("original reviewed implementation context changed")
-        result.append({"owner": owner["id"], "source": R._pin(path), "tracked_context": tracked})
+        selections = selected if document["schema"] == POINTWISE_SCHEMA else [selected]
+        for selected in selections:
+            path = Path(selected["path"]).absolute()
+            _outside(path, forbidden)
+            path = R._plain(path)
+            total += path.stat().st_size
+            if (
+                path.stat().st_size > document["budget"]["max_context_source_bytes"]
+                or total > document["budget"]["max_total_context_source_bytes"]
+            ):
+                raise ValueError("complete original implementation context exceeds selected source budgets")
+            # A v2 owner can select the same public implementation file as other
+            # owners. This call observes that tracked file once; every original
+            # row still rechecks containment, plain-file status, bytes and cost.
+            # No tracked observation survives this contexts call or applies to v1.
+            key = path, canonical["commit"]
+            if document["schema"] == POINTWISE_SCHEMA and key in tracked_sources:
+                tracked = tracked_sources[key]
+            else:
+                tracked = _tracked_source(Path(canonical["checkout"]), path, canonical["commit"])
+                if document["schema"] == POINTWISE_SCHEMA:
+                    tracked_sources[key] = tracked
+            if R._pin(path)["sha256"] != selected["sha256"]:
+                raise ValueError("original reviewed implementation context changed")
+            result.append({"owner": owner["id"], "source": R._pin(path), "tracked_context": copy.deepcopy(tracked)})
     return result
 
 
@@ -224,4 +286,19 @@ def measure_stress(contract, selection):
         "reference_work": cost["reference_work"] + 4 * extra,
         "materialized_elements": cost["materialized_elements"] + extra,
         "tensor_payload_bytes": cost["tensor_payload_bytes"] + extra * ((bits + 7) // 8),
+    }
+
+
+def measure_pointwise_stress(contract, selection):
+    """Charge every original comparison/conversion and observed partition."""
+    from merlin.targetgen.original_pointwise_reference import reference_steps
+
+    cost = measure_stress(contract, selection)
+    count = reference_steps(contract.verify())
+    extra = 64 * count  # all scalar predicates, conversions and logical temporaries
+    return {
+        **cost,
+        "reference_work": cost["reference_work"] + 4 * extra,
+        "materialized_elements": cost["materialized_elements"] + extra,
+        "tensor_payload_bytes": cost["tensor_payload_bytes"] + extra * ((cost["scalar_bits"] + 7) // 8),
     }

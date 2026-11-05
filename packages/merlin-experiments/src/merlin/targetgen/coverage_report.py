@@ -188,6 +188,8 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
     map (target declares no ``semantic_capabilities`` yet) yields an honest all-ineligible, recall=None
     result rather than a fake 1.0."""
     from . import eligibility as _el
+    from .expected_refusal import validated_result
+    from .owned_host_leaf_execution import selected_host_leaf
 
     tier_sim, _, policy_error = _selected_tiers(target)
     policy_known = policy_error is None
@@ -225,9 +227,19 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
     declined_offload: list[dict] = []
     # G0-G5 breakdown: recall per generalization axis (the axis each capsule PROBES)
     by_axis: dict[str, dict[str, int]] = {}
+    validated_refusals: list[str] = []
     for r in results:
         cap = cap_by_name.get(r["capsule"])
         if not cap:
+            continue
+        if validated_result(cap, r):
+            validated_refusals.append(r["capsule"])
+            per_capsule.append({
+                "capsule": r["capsule"], "qualification": "expected_refusal",
+                "eligible": None, "accelerated": None, "must_accelerate": False,
+                "must_accelerate_violated": False, "reason": "original-bound validated refusal",
+                "undetermined": False,
+            })
             continue
         desc = _capsule_region(cap)
         sem = cap.get("semantic") or {}
@@ -240,6 +252,8 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
             eligible, family, reason = v.eligible, v.family, v.reason
             is_undetermined = v.undetermined
         accelerated = any(_tier_status((r.get("tiers") or {}).get(t)) == "pass" for t in sim_tiers)
+        if selected_host_leaf(cap) or (r.get("failure") or {}).get("category") == "host_compute_in_accelerator_group":
+            accelerated = False
         must = bool(sem.get("must_accelerate"))
         axis = sem.get("generalization_axis", "unspecified")
         if eligible:
@@ -344,6 +358,7 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
     return {
         "acceleration_policy": {"status": "selected" if policy_known else "unknown", "reason": policy_error},
         "denominator_source": "semantic_capabilities (independent eligibility oracle)",
+        "validated_expected_refusals": validated_refusals,
         "n_eligible": n_eligible,
         # Regions whose family no evidence source could decide. In NEITHER the numerator nor the
         # denominator: scoring them either way would move ARR for a reason that is about our evidence,
@@ -470,7 +485,7 @@ def _derived_isa_classes(target: str) -> list[str]:
         tax = isa_taxonomy.taxonomy_for_target(target)
     except Exception:  # noqa: BLE001 — no derivable ISA definition -> stay silent, fail closed
         return []
-    return [c for c in dict.fromkeys((tax.get("by_class") or {})) if c]
+    return [c for c in dict.fromkeys(tax.get("by_class") or {}) if c]
 
 
 def _axes(baseline: list[str], observed) -> list[str]:

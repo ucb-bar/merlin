@@ -1,0 +1,60 @@
+{
+  "calibration_profile": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/private/automatic-calibration-v1/profile.json",
+    "sha256": "d7e518043a09a8fb37d18d50bab0aa369745b31307743cb8d9fab0fb98832990"
+  },
+  "continued_denial": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/protocols/gemmini/combined-arrival-revision-v1/continued-denial.json",
+    "sha256": "abaf37d9314c6ba78e3f6e23c000548841ff928186cfef4d8b86179e96c67123"
+  },
+  "model": {
+    "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/model.json",
+    "sha256": "01971a26e8b367fe22361a294785be31969ec3473735025608d22399b0ac96b6"
+  },
+  "observer": {
+    "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+    "sha256": "241c8d7343edbcf135e086cba981a56d556ebd085a0643d50ad31c2b7031fd38"
+  },
+  "previous_model": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+    "sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869"
+  },
+  "previous_runtime": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/runtime.json",
+    "sha256": "0684df369407bffad8ee67b1a36d53d7867595a620f105d6c6466c0f26d57801"
+  },
+  "provider_build": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/scratchpad-request-admission-v2/provider-build.json",
+    "sha256": "22b8ccbfdb1cfe4571b3666e874608ddc9ac095e6746ec9a9a1fc1f4dd1f426c"
+  },
+  "replay_evidence": {
+    "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/protocols/gemmini/combined-arrival-revision-v1/replays.json",
+    "sha256": "2fb3436a8aec5bd4a390c6ac07e3c1ad0d61a338ead569e426e0d8b9b8b5c410"
+  },
+  "runtime": {
+    "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/runtime-selection-v2.json",
+    "sha256": "318f9a631735b6e31481de4d406a32d3af3df6a667af6a658479a4a49560ddb9"
+  },
+  "schema": "merlin.arrival_pipeline_review.v1",
+  "source_audits": {
+    "fetch_refill": {
+      "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/protocols/gemmini/combined-arrival-revision-v1/fetch-facts.json",
+      "sha256": "d1b99a976fcd81c33529a5d051268b39fae613e214509976a8252ee3170b5fab"
+    },
+    "row_requests": {
+      "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/protocols/gemmini/combined-arrival-revision-v1/row-facts.json",
+      "sha256": "bcc713ff7c37bd651ed2c4435ebfc7d6026445f524b0e04e0b0d657d8e67b514"
+    }
+  },
+  "source_manifests": {
+    "current": {
+      "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/timing-source-manifest.json",
+      "sha256": "eca3d276d44df8979464b41ec0879c5e9af6620f872b30092531ed9153857476"
+    },
+    "previous": {
+      "path": "/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/private-probe-observer-v2/timing-source-manifest.json",
+      "sha256": "d439f3e510ff4fe4be363add25a98919e91b257c40da318ecdb94c17db15918f"
+    }
+  },
+  "status": "conditional_provisional_untuned"
+}

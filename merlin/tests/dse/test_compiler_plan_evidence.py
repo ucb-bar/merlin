@@ -92,6 +92,29 @@ def test_invalid_or_incomplete_plan_is_refused(mutation):
     assert _verify(buffer)["status"] == "refused"
 
 
+def _annotated_store(metadata="#llvm.tbaa_tag<offset = 0>", owned=True):
+    ownership = "{merlin.global_task = 0 : i64}" if owned else ""
+    return LOWERED.replace("    llvm.return", f'''    %v = llvm.mlir.constant(7 : i32) : i32
+    "llvm.store"(%v, %2) <{{tbaa = [{metadata}]}}> {ownership} : (i32, !llvm.ptr) -> ()
+    llvm.return''')
+
+
+def test_original_llvm_metadata_context_keeps_complete_source_cfg_join():
+    lowered = _annotated_store()
+    result = _verify(lowered=lowered)
+    assert result["status"] == "verified", result
+    assert result["host_activity"]["artifact_sha256"] == hashlib.sha256(lowered.encode()).hexdigest()
+    assert result["timing"] == "UNKNOWN"
+    # Valid optimizer annotations cannot hide a missing original task owner.
+    assert _verify(lowered=_annotated_store(owned=False))["status"] == "refused"
+
+
+@pytest.mark.parametrize("metadata", ['"not a tag"', "#other.tag<offset = 0>"])
+def test_llvm_metadata_join_keeps_original_typed_verification(metadata):
+    with pytest.raises(Exception, match="metadata|llvm.tbaa_tag"):
+        _verify(lowered=_annotated_store(metadata))
+
+
 def test_unowned_nonconstant_cannot_hide_in_shared_constant_exception():
     assert _verify(lowered=LOWERED.replace("{merlin.global_task = 0 : i64}", ""))["status"] == "refused"
 

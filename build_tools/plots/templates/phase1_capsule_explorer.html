@@ -1,0 +1,20 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Capsule explorer</title>
+    <style>body{font:15px system-ui;background:#FDF7EF;color:#2E2D2C;margin:25px}input,select{font:inherit;padding:5px}svg{min-width:1200px;width:100%;height:auto}#plot{overflow:auto}label{margin-right:20px}a{color:#0F3759}</style>
+    <h1>Capsule timeline explorer</h1><p>Filter public capsules; hover attempts for measured times. Fixed rows connect repeated work to evidence states.</p>
+    <label>Name <input id="filter" placeholder="e.g. conv2d, residual, model"></label>
+    <label>Stage <select id="stage"><option>All</option><option>L2 Spike</option><option>L3 gSIM</option></select></label>
+    <label>Final evidence <select id="status"><option>All</option><option>Execution + trace</option><option>Numeric only</option><option>Refusal met</option><option>Failed / incomplete</option></select></label>
+    <p id="counts"></p><div id="plot"></div><p>Recorded process wall intervals, not per-core residency. No interval is fabricated for cache-carried verdicts. <a href="index.html">Back to figures</a></p>
+    <script>const D=@@PAYLOAD@@;
+    const esc=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
+    function state(c){if(c.status==='pass'&&c.numeric_status==='pass'&&c.tiers.L3==='pass')return c.trace_requirement_status==='pass'?'Execution + trace':'Numeric only';return c.status==='pass'?'Refusal met':'Failed / incomplete'}
+    function draw(){const f=document.querySelector('#filter').value.toLowerCase(),st=document.querySelector('#stage').value,ss=document.querySelector('#status').value;
+    const names=D.grades.at(-1).capsules.filter(c=>c.capsule.toLowerCase().includes(f)&&(ss==='All'||state(c)===ss)).map(c=>c.capsule).sort();
+    const idx=new Map(names.map((n,i)=>[n,i]));const es=D.invocations.filter(e=>idx.has(e.capsule)&&(st==='All'||e.category===st));
+    document.querySelector('#counts').textContent=names.length+' capsules · '+es.length+' recorded simulation attempts';
+    const x=t=>445+t/D.duration*900,y=i=>60+i*23;let s=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1490 ${names.length*23+100}">`;
+    for(let t=0;t<=D.duration;t+=30){s+=`<line x1="${x(t)}" x2="${x(t)}" y1="35" y2="${names.length*23+65}" stroke="#AB9A89" opacity=".3"/><text x="${x(t)}" y="23" text-anchor="middle" font-size="12">${t}m</text>`}
+    names.forEach((n,i)=>{s+=`<text x="435" y="${y(i)+4}" text-anchor="end" font-size="10">${esc(n)}</text>`;D.grades.forEach((g,j)=>{const c=g.capsules.find(c=>c.capsule===n);s+=`<rect x="${1380+j*30}" y="${y(i)-6}" width="13" height="13" fill="${D.stateColors[state(c)]}"><title>${g.minute.toFixed(1)} min: ${esc(state(c))}</title></rect>`})});
+    es.forEach(e=>{let yy=y(idx.get(e.capsule))+(e.category==='L2 Spike'?-3:3);s+=`<rect x="${x(e.a)}" y="${yy-2}" width="${Math.max(2,x(e.b)-x(e.a))}" height="4" fill="${D.colors[e.category]}"><title>${esc(e.capsule)} · ${e.category} · ${e.a.toFixed(3)}–${e.b.toFixed(3)} min · ${((e.b-e.a)*60).toFixed(3)} s${e.failed?' · failed':''}</title></rect>`});
+    s+='</svg>';document.querySelector('#plot').innerHTML=s}
+    document.querySelectorAll('input,select').forEach(e=>e.addEventListener('input',draw));draw();</script></html>

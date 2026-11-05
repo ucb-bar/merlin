@@ -1,0 +1,28 @@
+{
+  "status": "functional_and_all21_annotated_windows_complete",
+  "physical_runs": 0,
+  "elf": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/program.elf",
+    "sha256": "3cf3f5607790e126a5b921de0ca54e4e8c160ee96e42f55cd8f6503956edd1b7"
+  },
+  "functional": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/functional.json",
+    "sha256": "2d750865f38dc7936b5846ba2597919b5d62de7f2f009c70ab8b783df05381ae"
+  },
+  "runtime": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/runtime.json",
+    "sha256": "0684df369407bffad8ee67b1a36d53d7867595a620f105d6c6466c0f26d57801"
+  },
+  "model": {
+    "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+    "sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869"
+  },
+  "plan": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/independent-structure-validation-v1/plan.json",
+    "sha256": "49e4da97daaabdcad168e25fc96c42af1dd7e2e5934e3d928bc439052f7247d3"
+  },
+  "symbols": {
+    "independent_end": 2147485228,
+    "independent_begin": 2147485062
+  }
+}

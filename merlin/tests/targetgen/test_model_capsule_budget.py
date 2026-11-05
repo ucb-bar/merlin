@@ -239,7 +239,7 @@ def test_model_suite_cleanup_preserves_shared_store_permissions(tmp_path, monkey
     source.chmod(0o555)
     store = tmp_path / "store"
     store.mkdir()
-    monkeypatch.setattr(content_store, "store_root", lambda: store)
+    monkeypatch.setattr(content_store, "store_root", lambda namespace=None: store)
     monkeypatch.setattr(CR, "_run_suite", lambda *_args, **_kwargs: [])
 
     CR.run_suite([{"name": "M", "kind": "model", "__dir__": str(source)}])

@@ -91,6 +91,9 @@ def test_actual_native_basis_and_fresh_decode_invocation(sources, tmp_path):
     assert actual_call["stage"] == "native_accessor_decode"
     assert actual_call["argv"] == [str(authority.executable)]
     assert actual_call["inputs"][0]["path"] == str(tmp_path / "actual-calls" / "input.txt")
+    stdout = Path(actual_call["stdout"]["path"])
+    assert stdout.read_bytes().startswith(b"META ")
+    assert list((tmp_path / "actual-calls").rglob("stdout*")) == [stdout]
     facts["fields"]["first"]["offset"] = 63
     assert authority.public_facts()["fields"]["first"]["offset"] == 0
     authority.verify_public_facts(sources["output_root"] / "facts.json")

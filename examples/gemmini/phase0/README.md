@@ -5,13 +5,45 @@ Phase 0 has no agent: selected input bytes and pinned tools determine extraction
 requirements and candidate capsules. Unknown semantics remain explicit blockers.
 Phase 1 develops the functional compiler; Phase 2 uses a separate performance cohort.
 
+## Why a coverage change belongs to a particular phase
+
+A functional pass establishes numerical behavior, not a good schedule. Phase 1
+records cycles diagnostically; it can legitimately accept an unnecessarily
+serialized implementation. A declared performance workload also establishes no
+coverage until its actual members are materialized, measured and checked in the
+joint shape/resource regime. Keep these distinctions in the coverage review:
+
+| Mechanism | Existing evidence and gap | Consumer and action |
+| --- | --- | --- |
+| Grouped-scale 1x1 convolution | Functional bottlenecks and column-readout cases already exercise the semantics. A correct gather implementation can still miss matrix lowering. | **Phase 2:** add `residual_bottleneck_scale` to the independent performance roster, using the existing larger CNN dimensions with bottlenecks and batch normalization. Check the realized quantized forms/readout; the loader alone does not guarantee a particular scale pattern. |
+| Operand reuse and reduction-step synchronization | Small functional matmuls do not establish reuse or overlap. | **Phase 2:** materialize and measure the existing `decoder_scale` members; compare all M/K/N extents jointly and audit storage pressure. Do not add a duplicate functional case solely to impose a cycle target. |
+| Rectangular convolution input transfers | Padding, stride and dilation were functionally covered, but a legal per-pixel gather could pass every output check. | **Phase 2:** measure the existing spatial CNN sources and check realized DMA command counts, interior rectangles and gather fallbacks. This adds no operation form, numerical policy or Phase 0 capability. |
+| One-row weight streaming | Prefill geometry does not witness decode's transfer/issue regime. | **Phase 2:** use the existing `decoder_step_scale` source and its explicit cache inputs. Preserve separate prefill/decode observations. |
+| Connected attention, layouts and fan-out | Individual operation correctness does not establish connected scheduling costs. | **Phase 2:** use existing connected decoder and vision performance sources; retain source/layout/numerical checks and report missing measured coverage. |
+| Host copies, allocations and runtime bookkeeping | Full-chain totals can conceal host cost, especially when group traces are not exported or overflow across steps. | **Merlin development:** ordinary host regression tests plus per-invocation group/gap profiling. This is not a reason to expand Phase 1's accelerator corpus. |
+
+The new bottleneck profile belongs only to `performance_applications`; Phase 1's
+`applications` roster is unchanged. Fresh captures and derivation produce a new
+Phase 2 corpus identity. No historical release is rewritten, and no measured
+coverage or headline-model extrapolation follows from adding this declaration.
+
+For a fresh AWS experiment, use the [neutral worker preparation guide](../../../docs/guides/phase0_phase1_setup.md)
+and its operator-only deployment and verified-definition templates. This retained
+diagnostic example does not supply a reviewed execution contract or native launch
+evidence. The shared neutral tooling needs explicit contract/facts data and no
+handwritten support package.
+
 ## 1. Select the inputs
+
+The accelerator user supplies the [software spec](../target/README.md).
+Platform integrators select the [hardware and host environment](../platform/README.md).
+The remaining corpus products are generated; no authored capsule roster is needed.
 
 | Input | Responsibility |
 | --- | --- |
 | [Software spec](../target/software-spec.yaml) | Operation signatures, numerical semantics, placement/transfers and quantization eligibility |
-| [Hardware selection](../target/hardware.yaml) | Source-production requirements and direct RTL audit questions |
-| [Host capabilities](../target/host-capabilities.yaml) | Separately pinned scalar Rocket host package and per-operation semantic declarations; the approved typed dequantization rule does not qualify Rocket execution |
+| [Hardware selection](../platform/hardware.yaml) | Source-production requirements and direct RTL audit questions |
+| [Host capabilities](../platform/host-capabilities.yaml) | Separately pinned scalar Rocket host package and per-operation semantic declarations; the approved typed dequantization rule does not qualify Rocket execution |
 | [Recipe](recipe.yaml) | Derived-only policy, comparison tolerances and oracle tiers; no authored capsule list |
 | [Descriptor](../target/descriptor.yaml) | Independent iteration roster, held-out validation roster and experiment resources |
 | [Selected capability contract](../target/contracts/target_contract.yaml) | Prototype command order and runner intent, explicitly frozen by the experiment; not an OOT support certificate |
@@ -44,7 +76,7 @@ for what belongs in a SW spec versus extracted evidence.
 ## 2. Produce and audit one coherent RTL source selection
 
 Follow the exact source production and audit commands in
-[the target input guide](../target/README.md). The source bundle binds selected
+[the verification walkthrough](../verification/README.md). The source bundle binds selected
 FIRRTL, prepared generation inputs, the selected `firtool`, generated HW-MLIR and
 module hierarchy. Extraction consumes that bundle explicitly; it must not silently
 combine unrelated cached elaborations. Save `source-selection.json`, `facts.json`
@@ -54,12 +86,31 @@ Source consistency proves provenance, not operation legality or numerical agreem
 Manual RTL audit improves the deterministic extractor; it is not an agentic runtime
 step in Phase 0. Keep raw facts separate from the effective consumer views.
 
+For retained facts, select the copy beside its matching `validation.json`: the
+audit binds both the raw facts and selected hardware-spec bytes. If a recorded
+producer file moved or its checkout changed, the ordinary experiment runner accepts
+`--phase0-rtl-source-relocations FILE`. This explicit JSON maps original absolute
+paths to `{path, sha256}` records containing the exact originally recorded bytes.
+The runner freezes the mapping and replacement source bytes and rechecks them on
+resume. Relocation grants no new extraction, audit or hardware qualification.
+
 ## 3. Capture the independent iteration workloads
 
 Use [the four shared loaders](../../workloads/README.md): `coverage_mlp`,
 `residual_cnn`, `causal_decoder` and `multimodal_policy`. The worker seeds Python,
 NumPy and Torch before loading the model and requires deterministic algorithms.
 Use the same explicitly selected model2MLIR interpreter/build for all four.
+Select the sandbox executable explicitly on the ordinary generation command:
+`--phase0-bwrap "$PHASE0_BWRAP"`. Its path and bytes are frozen with the run.
+The runner probes the selected binary with the actual capture isolation flags
+before preparing the runtime or starting captures; an older system binary must
+not silently replace the selected one. A failed global sandbox prerequisite
+requires correcting the tool selection before another capture attempt.
+Generation-time captures may select an existing verified read-only runtime with
+`--phase0-capture-runtime-reuse FILE` on the ordinary experiment command. The file
+contains the existing runtime selector's result; the runner checks it against the
+selected interpreter, base Python and system libraries before freezing. This
+avoids repeated runtime copies while preserving fresh issue and replay checks.
 The integerized CNN MLIR can erase the im2col window, so convolution geometry is
 read from the original PyTorch graph in that capture's receipt-bound frontend
 trace. No second workload or held-out model is used to derive this obligation;
@@ -115,7 +166,7 @@ to the capsule-local sidecar; do not edit the captured MLIR by hand.
 FP32 captures inventory frontend demand; they do not imply FP32 device support.
 For an int8 capture, the reviewed rank-3/4 dequantization signature is only a
 semantic screen. Mint the selected scalar package from
-[its recipe](../target/scalar-host-recipe.yaml) before deriving; the old RVV
+[its recipe](../platform/scalar-host-recipe.yaml) before deriving; the old RVV
 package requires a V extension absent from Rocket. The scalar package's ISA
 fits the selected DTS, and one saved rank-4 capture passed Spike, but this does
 not qualify Rocket RTL/FireSim execution or every declared host operation.
@@ -154,17 +205,17 @@ captures and layer frequencies do not select or tune the derivation corpus.
 
 With installed `merlin-experiments`, explicit captures and fresh facts:
 
-Select the *same* out-of-tree support package and capability contract for
-derivation and the subsequent Phase 0 run. For example, leave
-`MERLIN_TARGET_PATH` explicitly set to independently derived external support, selecting the same
-support directory for both, and set
-`MERLIN_TARGET_CONTRACT` to
-`examples/gemmini/target/contracts/target_contract.yaml` before both commands.
-The support package's raw contract alone omits the example's corpus command
-issue order and cannot materialize this corpus. The generated requirement binds
-raw facts, the contract, effective readout facets and support-source bytes;
-changing a provider requires a fresh
-derivation, not a resumed corpus run. The selected Gemmini readout supports
+Select the *same* reviewed execution contract and original RTL facts for
+derivation and the subsequent Phase 0 run. Set `MERLIN_TARGET_CONTRACT` and
+`MERLIN_RTL_FACTS` to those exact inputs. A contract declaring
+`runner.backend: chipyard_rocc`, logical harness ABI v2, operand roles and pinned
+toolchain/engines uses Merlin's shared neutral tooling without executable
+support. The checked-in prototype contract is reference metadata and does not
+already provide this deployment selection. See the
+[worker setup](../../../docs/guides/gsim_worker_setup.md).
+The generated requirement binds raw facts, the contract, effective readout
+facets and selected tooling source bytes. Changing those inputs requires fresh
+derivation rather than a resumed corpus run. The selected Gemmini readout supports
 `acc_scale` but not the distinct integer-shift `requant` epilogue, so the latter
 must remain an explicit rejected/host obligation rather than a fabricated
 accelerator capability.
@@ -305,6 +356,21 @@ from an older provider cannot be reused just because their MLIR parses.
 
 ## 5. Generate a fresh corpus and keep cohorts distinct
 
+The explicit [functional connected recipe](recipe-public-functional.yaml)
+selects `public_joint_boundaries` v3. It derives bounded connected probes from
+the declared independent public source graphs and selected hardware/software
+contracts. Pass the complete declared `performance_applications` capture roster
+with its sealed preselection receipts as `--performance-capture` and
+`--performance-capture-selection`. The recipe's policy determines the purpose
+of those sources; v3 includes functional probes in Phase 1.
+
+Private validation graphs, model shapes, expected arrays, compiler results and
+timings do not choose these probes. V3 refuses `--heldout-layer-shapes`; the
+older policies retain their original exclusion contracts. Input reference arrays
+still serve the independent correctness check after source selection. Generated,
+evaluated, admitted and accelerator-executed counts are recorded separately.
+Unimplemented numerical/state/effect contracts remain explicit obligations.
+
 Select the realized requirement/profile together for inspect, preflight and run:
 the selected materialized bundles already bind their Model2MLIR capture outputs.
 The frozen runner does not recapture from an ambient sibling checkout or
@@ -391,6 +457,18 @@ Preparation reports unmatched public models and a missing or withheld hidden
 cohort; it does not choose exclusions for the operator. Acknowledging a seal
 does not repair incomplete coverage or missing execution receipts.
 
+The fire-aligned EL4 release is prepared from one checked-in file,
+[`release/fire-aligned-v10.yaml`](release/fire-aligned-v10.yaml): the source run,
+`generated_only`, the EL4/`public_v0` selection, the kernel-timing contract,
+Lean toolchain and Phase 1 policy descriptor (each with its SHA256), the host
+index width and the seal statement. The
+[Phase 1 launch config](../phase1/launch/el4-fire-aligned.yaml) names it;
+`python -m merlin_experiments.phase1.launch_config render` writes its exact
+`release.prepare(...)` arguments to `release-prepare.json`, and `verify` compares
+an existing release's `private/preparation.json` and seal against it. A new release
+always takes a new version (`--var RELEASE_VERSION=N`); sealed releases are never
+edited.
+
 Review coverage, placement and independent numerical checks before preparing
 [the reviewed Phase 0 handoff](../../../experiments/README.md#reviewed-phase-0-handoff).
 Changing a status field cannot qualify old artifacts. New inputs require newly
@@ -401,14 +479,14 @@ tensors and intermediate lowering snapshots.
 ### Check a generated kernel on the oracle ladder
 
 With `merlin-experiments` and its AET dependency installed, select the same
-support provider, example contract and exact facts used by derivation. The
+reviewed neutral contract and exact facts used by derivation. The
 compiler interpreter and LLVM tools are independent of the PyTorch capture
 interpreter. An installed Merlin checkout does not imply they are installed or
 selected; check `python -c 'import aet'` and resolve these paths before grading.
 
 ```sh
-MERLIN_TARGET_PATH="$PWD/examples/gemmini/support" \
-MERLIN_TARGET_CONTRACT="$PWD/examples/gemmini/target/contracts/target_contract.yaml" \
+MERLIN_TARGET_PATH= \
+MERLIN_TARGET_CONTRACT="${PREPARED_CONTRACT:?reviewed neutral execution contract required}" \
 MERLIN_RTL_FACTS="$RTL_ROOT/facts.json" \
 MERLIN_EXT_CHIPYARD="$SIMULATOR_CHIPYARD_ROOT" \
 MERLIN_COMPILER_PYTHON="$COMPILER_PYTHON" \

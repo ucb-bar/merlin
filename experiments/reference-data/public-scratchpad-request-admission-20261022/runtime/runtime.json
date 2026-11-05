@@ -1,0 +1,91 @@
+{
+  "original_sha256": "6a2bca494fb0e52cb3844ad8a10e89bea9d82e47dc88c7ca9f6bee2f95001a2d",
+  "projection": "historical path roles only",
+  "record": {
+    "additional_fact_alignments": [
+      {
+        "path": "${TASK}/merlin/out/artifacts/protocols/gemmini/joint-performance-runtime-v3/soc-alignment.json",
+        "sha256": "fb9ff10f13c8513178a95fe4835edec1db9a8bc718e085db0a07293407e03bcc"
+      },
+      {
+        "path": "${TASK}/merlin/out/artifacts/protocols/gemmini/joint-performance-runtime-v5/fpu-alignment.json",
+        "sha256": "1f3fc46e5df890f6f481bb49df688c3d483e7d006ebf0208d0f676d5059f6ce3"
+      }
+    ],
+    "completion_symbol": "kernel_complete",
+    "dependencies": [
+      "${HOST_LIB}/ld-linux-x86-64.so.2",
+      "${HOST_LIB}/libc.so.6",
+      "${HOST_LIB}/libcrypto.so.3",
+      "${HOST_LIB}/libdl.so.2",
+      "${HOST_LIB}/libgcc_s.so.1",
+      "${HOST_LIB}/libicudata.so.70.1",
+      "${HOST_LIB}/libicui18n.so.70.1",
+      "${HOST_LIB}/libicuuc.so.70.1",
+      "${HOST_LIB}/libm.so.6",
+      "${HOST_LIB}/libpthread.so.0",
+      "${HOST_LIB}/libstdc++.so.6.0.35",
+      "${RETAINED_RUNTIME}/.tmp/boost-deps${HOST_LIB}/libboost_regex.so.1.74.0",
+      "${RETAINED_RUNTIME}/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+      "${RETAINED_RUNTIME}/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0"
+    ],
+    "disassembler": "${RETAINED_RUNTIME}/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump",
+    "entry_symbol": "kernel_entry",
+    "event_trace_review": {
+      "path": "${TASK}/merlin/out/build/modeled-event-observer-v1/build.json",
+      "sha256": "c72257a0f0cc1af7ccc02a2cbfee1582a37a30d73e8b7dfe187e7dd86154cd05"
+    },
+    "facts_alignment": {
+      "path": "${TASK}/merlin/out/artifacts/protocols/gemmini/joint-performance-runtime-v2/facts-alignment.json",
+      "sha256": "8a751bc083ab1a40307d054adb9245909617294ade778225a603ff9338146e86"
+    },
+    "functional_argv": [
+      "${RETAINED_RUNTIME}/out/fire-aligned-spike-30mhz/runtime/bin/spike",
+      "--extlib=${RETAINED_RUNTIME}/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+      "--extension=gemmini",
+      "-p1",
+      "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+      "-m0x80000000:0x400000000",
+      "--instructions=1000000000"
+    ],
+    "host_argument_binding_review": {
+      "path": "${TASK}/merlin/out/build/htif-target-observer-v1/build.json",
+      "sha256": "c92f448f15d1d955ed615832dfb53851b2f616ac649263fc3cb69b1661957f42"
+    },
+    "libraries": [
+      "${RETAINED_RUNTIME}/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+      "${TASK}/merlin/out/build/scratchpad-request-admission-v2/libtiming_provider.so"
+    ],
+    "model": "${TASK}/merlin/out/build/scratchpad-request-admission-v2/model.json",
+    "model_sha256": "e4796a4bb3d984e0981e84cb28d4cdd3322ebe46d32f6cb9ed3bda8717cb6d8a",
+    "observer": "${TASK}/merlin/out/build/modeled-event-observer-v1/spike",
+    "review_id": "INACTIVE PROVISIONAL aligned identity SP row arrivals + independent request admission; unchanged memory/CPU/device prices; explicit translation-hit and FIFO-response assumptions; no qualification",
+    "source_manifest": "${TASK}/merlin/out/build/private-probe-observer-v2/timing-source-manifest.json",
+    "timing_selection": {
+      "boundary": "immediately before kernel entry through explicitly selected completion",
+      "cold_warm": "UNKNOWN",
+      "counter_asm": "csrr %0, mcycle",
+      "counter_semantics": {
+        "clock": "Rocket core cycle CSR on one guest hart in GemminiGsimFireSimAlignedConfig; no wall-clock or FPGA-frequency conversion",
+        "source_pins": [
+          {
+            "path": "${RETAINED_RUNTIME}/.tmp/chipyard-fire-aligned/generators/rocket-chip/src/main/scala/rocket/CSR.scala",
+            "sha256": "10fbf32035cf5eece8c802f16b189afbec824287cddc8b8f1218c1d8209ed61f"
+          }
+        ],
+        "unit": "cycles",
+        "width_bits": 64,
+        "wrap": "modulo"
+      },
+      "excluded": [
+        "input staging",
+        "output publication",
+        "metric formatting",
+        "parent readback"
+      ],
+      "max_delta_cycles": 1000000000000,
+      "schema": "merlin.kernel_call_timing.v1",
+      "selection_sha256": "bd1919e1156df33271f6579921273d51fc655dc0f59a135b5327237fdc3d1180"
+    }
+  }
+}

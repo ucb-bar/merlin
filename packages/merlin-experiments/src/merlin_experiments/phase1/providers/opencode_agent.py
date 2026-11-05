@@ -35,6 +35,7 @@ from pathlib import Path
 
 from merlin.common import arrival_stamp as _AS  # the one arrival-time convention
 from merlin_experiments.phase1.providers import model_tiers as _MT
+from merlin_experiments.phase1.providers.authoring_prompt import authoring_prompt
 
 # opencode's provider id for Amazon Bedrock (the @ai-sdk/amazon-bedrock provider). Overridable via env for a
 # differently-registered provider. A model value that already carries a provider ("prov/model") is respected.
@@ -75,7 +76,9 @@ def _system_prompt(te) -> str:
     reads."""
     return (
         "You are an autonomous compiler engineer working in this workspace.\n"
-        "TASK.md is your specification and is authoritative: read it first and follow it. If a prior "
+        "Before changing submission/ or delegating compiler edits, read current qa/round_brief.md (if present), "
+        "including operator errata, then TASK.md, your authoritative specification. Complete the instructions' "
+        "mandatory pre-edit discovery before authoring. If a prior "
         "round left `qa/verdict.json`, read that too -- it is the official grader verdict for your last "
         "submission.\n"
         "Tool mapping for this environment: use your edit/write tools to create and change files, and "
@@ -676,6 +679,7 @@ def run_round(
     effort: str = "",
     prompt: str | None = None,
     sandbox_command: Callable[..., str] | None = None,
+    conformance_context: dict | None = None,
     **_ignored,
 ) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via the opencode CLI. Returns (rc, transcript_path) — the same contract
@@ -730,6 +734,10 @@ def run_round(
             .get("output"),
             "compaction": _window_config(mid)[1],
             "task_tool_offered": bool(sub),
+            "conformance_context": conformance_context if conformance_context is not None else {
+                "schema": "merlin.phase1.conformance_execution.v1", "workspace": str(ws.absolute()),
+                "target": getattr(te, "target", None), "selected_facts": None,
+            },
             "workspace_instruction_files": {
                 n: (ws / n).stat().st_size
                 for n in ("TASK.md", "AGENTS.md", "CLAUDE.md", "AGENT.md")
@@ -790,28 +798,7 @@ def run_round(
     env["OPENCODE_CONFIG"] = cfgf.name
     env["OPENCODE_DISABLE_PROJECT_CONFIG"] = "1"  # a stray opencode.json in cwd must not shadow our config
 
-    msg = (
-        prompt
-        if prompt is not None
-        else (
-            "Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
-            "backend under submission/ per those instructions. During iteration, check the smallest affected capsule "
-            "or coherent comma-separated capsule cluster with `python3 agent_selfcheck.py --submission submission "
-            "--sim spike --capsules <names>`; do not repeatedly grade the whole corpus. Run `--capsules all` only "
-            "after the focused checks improve and the candidate is ready for a regression sweep. Do not edit "
-            "submission/ while a self-check is running, because that makes its result stale. Goldens are withheld; "
-            "iterate until the complete corpus passes. THE FIRST GRADE NEEDS YOUR SUBMISSION FIRST: the harness "
-            "grades submission/, so while submission/manifest.yaml does not exist there is NOTHING to grade and no "
-            "verdict can ever arrive -- an absent qa/verdict.json is not a queue you wait in, it means you have not "
-            "submitted yet. MEASURED: two runs each burned their whole first round blocked on await_verdict.py "
-            "reporting 'the waiter is healthy but has received nothing' while the harness logged 'no "
-            "submission/manifest.yaml to grade yet' every 30s -- a mutual wait that consumes the round timeout. "
-            "Build something minimal and write submission/manifest.yaml FIRST; only once a verdict exists does "
-            "waiting for the next one make sense (then use await_verdict.py rather than a poll loop, and do not "
-            "launch `--capsules all` merely to refresh it). Use exact capsule directory names for focused checks. "
-            "Begin now."
-        )
-    )
+    msg = prompt if prompt is not None else authoring_prompt()
     run_cmd = [opencode_bin, "run", "--format", "json", "--agent", agent_name, "-m", mid, "--dir", str(ws)]
     # opencode spells reasoning effort `--variant` (provider-specific: high / max / minimal). Passing it is
     # what makes an opencode arm comparable to the codex and claude arms of the same campaign.

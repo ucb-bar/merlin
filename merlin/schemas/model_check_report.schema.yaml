@@ -1,0 +1,79 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; merlin.model_check.report checks the top-level fields).
+title: Full-Model Check Report
+purpose: >-
+  One judgement of a device submission on complete quantized models: build and link status, the
+  fixed-denominator offload census, per-kernel exactness on frozen boundary inputs, full-chain runs per
+  input, and model-level metrics against an FP and an INT8 reference under the ratio rule.
+  Full mode explicitly selects host-twin (default) or direct quantized-reference integration;
+  the latter records fixed floating tolerances and sealed reference/configuration identities,
+  compares every declared judged output, and does not claim CPU host-twin evidence. Produced by
+  merlin.model_check; consumed by the Phase 1 harness (in-run gate, official grade). Contract:
+  docs/reference/model_check.md.
+
+required_top_level_fields:
+  - schema
+  - command
+  - status
+  - tool
+  - gates
+  - programs
+  - failures
+
+example: |
+  schema: merlin.model_check.report.v1
+  command: check
+  status: fail                       # pass | fail | error
+  exit_code: 1
+  tool: {name: merlin.model_check, contract: "1.0", commit: <sha>}
+  submission: {path: <dir>, tree_sha256: <sha256>}
+  model: tiny_llama
+  split: visible                     # visible | sealed | all
+  agent_view: true
+  bundle: {version: v1, manifest_sha256: <sha256>}
+  binding: {receipt_sha256: <sha256>, status: pass}
+  gates:
+    build: {status: pass}
+    kernel_exact: {status: pass, detail: "155/155 groups bit-exact on 8 inputs"}
+    model_numerics: {status: fail, partial: false, detail: "kl 0.31 > max(1.1*0.12, 1e-6)"}
+  programs:
+    - program: prefill
+      build: {status: linked, elf_sha256: <sha256>, elf_bytes: 1400000000, seconds: 812.4}
+      census:
+        denominator: 199
+        device: 155
+        host: {not_quantized_by_recipe: 44}
+        device_mac_fraction: 0.97
+      kernels:
+        - {source_region_id: matmul_0, group: 10, symbol: <symbol>, approximation: null,
+           inputs_checked: 8, status: pass}
+      runs:
+        - {input: v03, split: visible, status: completed, engine: spike,
+           cycles_functional: 21500000000, seconds: 858.0}
+  model_metrics:
+    per_input:
+      - {input: v03, kl_worst: 0.31, kl_ref_worst: 0.12, top1_agree: 0.88, top1_agree_ref: 0.91}
+    worst: {kl: 0.31, kl_ref: 0.12, threshold: 0.132}
+  failures:
+    - {gate: model_numerics, input: v03, program: decode, step: 17, first_bad_group: null}
+  timing: {total_seconds: 5400.0}
+
+optional_full_comparison_fields:
+  comparison:
+    selected: host-twin | quantized-reference
+    float_policy: {atol: 2e-6, rtol: 1e-5, equal_nan: false, finite_required: true}
+    host_twin: {selected: false, status: not_run}
+  gates.quantized_reference:
+    status: pass | fail
+    partial: false
+    inputs_completed: 1
+    inputs_expected: 1
+    steps_completed: 33
+    steps_expected: 33
+    steps_declared: 33
+    outputs_compared: 33
+    outputs_expected: 33
+  model_metrics.per_input:
+    reference_consistent: null  # direct mode: NumPy chain not recomputed
+    reference_validation: {source: sealed_int8, sha256: <sha>, strict_arity: true, unchanged: true}
+    fp_quality: {report_only: true}

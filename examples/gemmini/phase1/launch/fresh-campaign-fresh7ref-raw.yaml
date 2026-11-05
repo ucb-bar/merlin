@@ -1,0 +1,9 @@
+# Arm A: the user-selected references, with derived reference tools and guidance off.
+extends: fresh-campaign-fresh7ref-paired.yaml
+id: gemmini-open-compiler-fresh7ref-raw-reference-control
+run:
+  run_id: gemmini-open-compiler-20261027-fresh7ref
+  unit: merlinphase1fresh7ref20261027
+  cpus: 8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27
+plan:
+  reference_guidance: "off"
