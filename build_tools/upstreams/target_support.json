@@ -167,16 +167,16 @@
     {
       "target": "kodiak",
       "url": "https://github.com/ucb-bar/kodiak-mlir.git",
-      "companion_commit": "2d51d40c823b061e959ba1422818c31ed94ba48b",
+      "companion_commit": "fa37a1b3341b1b65e27d3557f5dab14ba51c0083",
       "companion_commit_relation": "same_commit",
       "provider_root": ".",
       "provider_role": "support",
       "vendored": {
         "path": "examples/kodiak/support",
         "source_record": "examples/kodiak/SOURCE.yaml",
-        "commit": "2d51d40c823b061e959ba1422818c31ed94ba48b",
-        "tree": "251510a17639f4e0053b16a9d9409dfc27e5cae3",
-        "vendored_tree": "251510a17639f4e0053b16a9d9409dfc27e5cae3",
+        "commit": "fa37a1b3341b1b65e27d3557f5dab14ba51c0083",
+        "tree": "2171d41dd13d55273b55c6c58a913fe3b1a63a93",
+        "vendored_tree": "2171d41dd13d55273b55c6c58a913fe3b1a63a93",
         "file_count": 26
       },
       "file_provenance": "provenance.json",

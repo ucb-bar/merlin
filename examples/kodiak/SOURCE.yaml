@@ -12,17 +12,17 @@ vendored: '2026-11-04'
 source:
   repository: https://github.com/ucb-bar/kodiak-mlir.git
   published: false
-  commit: 2d51d40c823b061e959ba1422818c31ed94ba48b
-  commit_date: '2026-11-04T18:24:08-08:00'
+  commit: fa37a1b3341b1b65e27d3557f5dab14ba51c0083
+  commit_date: '2026-11-04T18:27:30-08:00'
   provider_root: .
-  tree: 251510a17639f4e0053b16a9d9409dfc27e5cae3
-vendored_tree: 251510a17639f4e0053b16a9d9409dfc27e5cae3
+  tree: 2171d41dd13d55273b55c6c58a913fe3b1a63a93
+vendored_tree: 2171d41dd13d55273b55c6c58a913fe3b1a63a93
 normalized: []
 pinned:
   manifest: build_tools/upstreams/target_support.json
-  companion_commit: 2d51d40c823b061e959ba1422818c31ed94ba48b
+  companion_commit: fa37a1b3341b1b65e27d3557f5dab14ba51c0083
   relation: same_commit
-  provider_tree: 251510a17639f4e0053b16a9d9409dfc27e5cae3
+  provider_tree: 2171d41dd13d55273b55c6c58a913fe3b1a63a93
   identical_to_source: true
 records:
   file_provenance: support/provenance.json

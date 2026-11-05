@@ -86,8 +86,15 @@ python spike/build.py --out <merlin>/out/build/spike-ext/kodiak    # or: example
 ```
 
 Merlin loads it only as `contracts/overlay.yaml` declares it (`runner.spike_extension`: name,
-`extlib_env: MERLIN_KODIAK_OPU_SPIKE_EXTLIB`, sha256). A rebuild that produces other bytes must be
-re-declared there and the contract recomposed (`merlin-target-compose .`).
+`extlib_env: MERLIN_KODIAK_OPU_SPIKE_EXTLIB`, `built_from`). The declaration pins the model's INPUTS --
+the source, the RTL-derived encodings header and `model.yaml` -- so a build with your own compiler and
+spike is accepted when its `manifest.json` describes that .so, those inputs and a passing self-test.
+Changing the model or the RTL it reads changes those digests: re-declare them and recompose
+(`merlin-target-compose .`).
+
+Model results (2026-11-04): Merlin's OPU certification corpus 52/52 on spike with the model; the shipped
+images of `op gemm 64 64 64`, `op gemm 96 80 200` and `op conv2d 16 64 16 3` match their stand-in twins
+bit for bit.
 
 What the model covers:
 

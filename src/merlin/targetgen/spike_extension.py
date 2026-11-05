@@ -39,6 +39,7 @@ relocate identical bytes, never authorize different model bytes.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -178,6 +179,47 @@ def _digest_verified(target: str, so: Path, declared_sha: str) -> str:
     return got
 
 
+def _built_from_verified(target: str, so: Path, built_from: Any) -> str:
+    """Accept a locally built model whose build manifest proves it came from the declared inputs.
+
+    ``built_from`` pins the model's INPUTS (e.g. ``source_sha256``, ``header_sha256``) rather than one
+    binary: the same source compiled by another toolchain is a different file, and a target whose users
+    build their own model cannot pin every machine's bytes. What is still refused: a manifest that is
+    missing or does not describe the file on disk, any declared input that differs, and a build whose
+    recorded self-test did not pass. Returns the verified sha256 of the file.
+    """
+    if not isinstance(built_from, dict) or not built_from:
+        raise SpikeExtensionError(f"{target}: runner.spike_extension.built_from must map input names to digests")
+    manifest_name = str(built_from.get("manifest") or "manifest.json")
+    manifest_path = so.parent / manifest_name
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SpikeExtensionError(f"{target}: no readable build manifest beside {so} ({manifest_path}): {exc}") from exc
+    h = hashlib.sha256()
+    with so.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    actual = h.hexdigest()
+    if manifest.get("sha256") != actual:
+        raise SpikeExtensionError(
+            f"{target}: {manifest_path} describes a different file (sha256 {manifest.get('sha256')}) than {so} "
+            f"({actual}); rebuild the model so its manifest and binary agree"
+        )
+    for key, want in built_from.items():
+        if key == "manifest":
+            continue
+        if manifest.get(key) != want:
+            raise SpikeExtensionError(
+                f"{target}: the model at {so} was built from {key}={manifest.get(key)}, but the contract declares "
+                f"{want}; rebuild it from the selected package"
+            )
+    selftest = manifest.get("selftest")
+    if isinstance(selftest, dict) and not selftest.get("ok"):
+        raise SpikeExtensionError(f"{target}: the model at {so} failed its own self-test when it was built")
+    return actual
+
+
 def resolve(target: str, *, default_library_dir: str | Path, default_extension_name: str) -> SpikeExtension:
     """The verified L2 extension identity for ``target``.
 
@@ -202,9 +244,12 @@ def resolve(target: str, *, default_library_dir: str | Path, default_extension_n
     extlib = block.get("extlib")
     extlib_env = block.get("extlib_env")
     sha = block.get("sha256")
+    built_from = block.get("built_from")
+    if built_from is not None and sha:
+        raise SpikeExtensionError(f"{target}: runner.spike_extension declares both sha256 and built_from; pick one")
     missing = [
         field
-        for field, value in (("extension_name", name), ("sha256", sha))
+        for field, value in (("extension_name", name), ("sha256", sha if built_from is None else "built_from"))
         if not isinstance(value, str) or not value.strip()
     ]
     if not extlib and not extlib_env:
@@ -233,9 +278,10 @@ def resolve(target: str, *, default_library_dir: str | Path, default_extension_n
             f"{target}: runner.spike_extension.extlib must be an absolute path, got {extlib!r} — a "
             f"relative one resolves against whatever directory the grade happens to run from"
         )
-    declared_sha = str(sha).strip().lower()
-    if len(declared_sha) != 64 or any(c not in "0123456789abcdef" for c in declared_sha):
-        raise SpikeExtensionError(f"{target}: runner.spike_extension.sha256 must be 64 hex characters, got {sha!r}")
+    if built_from is None:
+        declared_sha = str(sha).strip().lower()
+        if len(declared_sha) != 64 or any(c not in "0123456789abcdef" for c in declared_sha):
+            raise SpikeExtensionError(f"{target}: runner.spike_extension.sha256 must be 64 hex characters, got {sha!r}")
     if not so.is_file():
         raise SpikeExtensionError(
             f"{target}: declared spike extension {so} is not a file. This target's L2 oracle is its own "
@@ -243,7 +289,10 @@ def resolve(target: str, *, default_library_dir: str | Path, default_extension_n
             f"a DIFFERENT elaboration's extension and would put another device's verdict on this "
             f"target's submission"
         )
-    _digest_verified(target, so, declared_sha)
+    if built_from is not None:
+        declared_sha = _built_from_verified(target, so, built_from)
+    else:
+        _digest_verified(target, so, declared_sha)
     return SpikeExtension(
         target=target,
         extension_name=str(name).strip(),

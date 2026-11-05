@@ -46,17 +46,21 @@ compute_units:
 matrix_contract: contracts/matrix_units.yaml
 
 # The OPU's functional model for spike (spike/: source + build.py, which generates the instruction words
-# and geometry from the RTL). Merlin loads it ONLY as declared here: `merlin.targetgen.spike_extension`
-# reads the .so from $MERLIN_KODIAK_OPU_SPIKE_EXTLIB, hashes it, and refuses anything whose sha256 is not
-# this one -- a rebuild with different bytes (another compiler, another RTL revision, another spike) has
-# to be re-declared here. The base's runner (K1 capsule suite) is removed above; this is Kodiak's own.
-# The digest is of a build against the spike in $MERLIN_CHIPYARD/.conda-env/riscv-tools (its symbols are
-# resolved from that binary at load time); spike/build.py's manifest.json records which one.
+# and geometry from the RTL). Merlin loads it ONLY as declared here, through
+# `merlin.targetgen.spike_extension`: the .so comes from $MERLIN_KODIAK_OPU_SPIKE_EXTLIB, and it is
+# accepted only if the manifest.json build.py writes beside it describes that exact file, records these
+# exact inputs (the model source, the RTL-derived encodings header, the model description) and a passing
+# self-test. Pinning the INPUTS rather than one binary lets every user build the model with their own
+# compiler and spike (`examples/kodiak/run.sh spike-model`) without re-declaring it here.
 runner:
   spike_extension:
     extension_name: saturn_opu
     extlib_env: MERLIN_KODIAK_OPU_SPIKE_EXTLIB
-    sha256: fe9d77b85a0a9d9be6a391e9d154226208a75f115ac569505f980960204f8338
+    built_from:
+      manifest: manifest.json
+      source_sha256: c7427ced1205fd09dbc52e4cd94bb6d619d78fce109fba812c8cbfd9fff98e60
+      header_sha256: e7dc60cd676090c32aab7e38b2297e45d9e0398746660f244c26fe6ca1fe2075
+      model_sha256: 181971da18d39f366d13b655a145d43f8899aa2262e652d0fa07b11f5b3ce71b
     built_by: spike/build.py
     models: KodiakOPUConfig (rtl_source.config) at pin saturn_opu_int8
 

@@ -165,7 +165,11 @@ runner:
   spike_extension:
     extension_name: saturn_opu
     extlib_env: MERLIN_KODIAK_OPU_SPIKE_EXTLIB
-    sha256: fe9d77b85a0a9d9be6a391e9d154226208a75f115ac569505f980960204f8338
+    built_from:
+      manifest: manifest.json
+      source_sha256: c7427ced1205fd09dbc52e4cd94bb6d619d78fce109fba812c8cbfd9fff98e60
+      header_sha256: e7dc60cd676090c32aab7e38b2297e45d9e0398746660f244c26fe6ca1fe2075
+      model_sha256: 181971da18d39f366d13b655a145d43f8899aa2262e652d0fa07b11f5b3ce71b
     built_by: spike/build.py
     models: KodiakOPUConfig (rtl_source.config) at pin saturn_opu_int8
 plugin:

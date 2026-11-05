@@ -16,8 +16,10 @@ as ``saturn_opu_int8``. It writes, under ``--out``:
 * ``manifest.json`` -- what was read (pin verification, source digests), what was built (sha256 of the
   .so, compiler, spike binary digest), and the encodings and geometry compiled in.
 
-The sha256 it prints is what ``contracts/overlay.yaml`` declares under ``runner.spike_extension``; a
-rebuild that changes the bytes must be re-declared (and re-reviewed) there before Merlin will load it.
+``contracts/overlay.yaml`` declares the model by its INPUTS (``runner.spike_extension.built_from``: the
+source, encodings-header and model digests this manifest records), so a build on any machine is accepted
+as long as its manifest describes the .so and those inputs and the self-test passed. Changing the model
+source or the RTL it derives from changes those digests, which must then be re-declared and re-reviewed.
 """
 
 from __future__ import annotations
