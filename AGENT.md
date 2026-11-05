@@ -36,6 +36,12 @@ numeric or performance policies remain explicit, with their original correctness
 Do not add a shared implementation in OOT or a target-specific branch in core. When promoting
 an OOT prototype, move its generic part to Merlin and delegate from the provider.
 
+**Verification ownership rule:** prove Merlin-owned shared transformations. Upstream
+MLIR/LLVM passes remain trusted toolchain components; do not add gates or proof
+workstreams for them. Shared operation semantics and lemmas needed by Merlin
+checks remain in scope. Follow `docs/design/verification_scope.md` when auditing
+dependencies or retiring proof modules.
+
 **Generalization rule:** the OOT dialect is a compiler backend, not a workload-specific
 kernel generator. Production optimization and lowering must derive applicability from
 operation semantics, shapes, layouts, numeric contracts and declared hardware capabilities.

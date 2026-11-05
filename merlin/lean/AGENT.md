@@ -2,8 +2,11 @@
 
 ## Purpose
 
-`MerlinVerify`: Lean 4 checkers, with machine-checked soundness theorems, for every Merlin-owned
-compilation boundary outside the OOT target compiler. The design is
+`MerlinVerify`: Lean 4 checkers, with machine-checked soundness theorems, for supported
+Merlin-owned compilation boundaries outside the OOT target compiler. Upstream MLIR/LLVM
+passes are trusted; do not add verification for their implementations. Shared MLIR operation
+semantics and lemmas used by Merlin checks remain in scope. See
+[`verification_scope.md`](../../docs/design/verification_scope.md). The broader design is
 [`docs/design/merlin_lean_verification.md`](../../docs/design/merlin_lean_verification.md). Read it
 before changing anything here.
 

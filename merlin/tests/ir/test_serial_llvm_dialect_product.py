@@ -50,23 +50,6 @@ SCALAR = """module {
 """
 
 
-@pytest.mark.parametrize("other_mode", ["retention", "scalar_callback"])
-def test_native_proof_transport_never_silently_yields_to_another_mode(tmp_path, monkeypatch, other_mode):
-    from types import SimpleNamespace
-
-    def forbidden(*args, **kwargs):
-        raise AssertionError("conflicting transports must refuse before executing a command")
-
-    monkeypatch.setattr(P.subprocess, "run", forbidden)
-    verifier = SimpleNamespace(run_command=forbidden)
-    with pytest.raises(ValueError, match="cannot combine"):
-        P.run_translation(
-            ["not-executed"], timeout=5, audit=None,
-            retention=object() if other_mode == "retention" else None,
-            source=tmp_path, runner=tmp_path, dependencies=(),
-            scalar_stage=tmp_path if other_mode == "scalar_callback" else None,
-            scalar_carrier=None, native_verification=verifier,
-        )
 
 
 def _copy(shape):

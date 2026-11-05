@@ -180,21 +180,15 @@ input/output byte identity and capture completeness are all required. A failed c
 `VerificationError` before downstream lowering starts. Reports are retained beside the handoff
 under `lean-shared-passes/<attempt>/`.
 
-This option wraps `lower_model`'s shared preprocessing. Add `verify_native_prefix=True` to hold
-the actual ordinary native MLIR module before bufferization and require one strict chain through
-the four authored tensor phases: canonicalization, CSE, guarded elementwise fusion and named-op
-generalization. The consumer resumes on the same Module and Context after acknowledgment;
-the proof response cannot replace its IR. The optional `shared_pass_preparation` prefix described
-below extends that chain to its original captured source. Model capture, the OOT implementation,
-bufferization, LLVM and runtime remain outside these proofs.
-
-The native gate initially admits ordinary serial lowering without effective optional features,
-custom pipelines or provider callbacks. Its 32-bit domain refuses index-typed SSA and function
-ABIs because of retained discrepancy S6; 64-bit index uses still need strict semantic replay.
-Reports state the typed, initialized-input domain, exact boundaries and ledger assumptions.
-Other drivers must explicitly call the gate at their own tensor handoff; ordinary ungated
-compilation remains available. Missing tools, unsupported rewrites and undefined source results
-stop a gated build. The Python orchestration and process supervision remain trusted components.
+This option checks Merlin's shared preprocessing. The optional
+`shared_pass_preparation` prefix described below extends the chain to its
+original captured source. Upstream MLIR passes, including canonicalization,
+CSE, elementwise fusion and named-op generalization, remain trusted toolchain
+components. The former `verify_native_prefix` option and its held-module proof
+transport were removed; they are outside the shared-pass verification scope.
+Model capture, OOT implementation, bufferization, LLVM and runtime are separate
+boundaries. Native differential execution below checks the fidelity of semantics
+used by Merlin proofs; it does not prove upstream passes.
 
 ## What is exercised
 
@@ -618,15 +612,6 @@ identities remain outside this family. Motion across region-bearing operations a
 reordering inside generic bodies retain explicit conservative abstentions. Empirical native
 agreement does not upgrade these gaps to proved rewrites.
 
-`test_lean_native_gate_differential.py` checks the actual held ordinary prefix at both widths,
-preparation composition, emitted LLVM-byte parity, independent native references and refusal of
-a valid wrong boundary before acknowledgment. `test_lean_native_binding_api.py` separately probes
-the installed binding's type/attribute API. Process controls cover atomic bounded worker results,
-partial messages and bounded cancellation, including an unreapable-child model; pending kernel
-cleanup is retained explicitly. Ordinary filesystem/process-creation calls still depend on the host.
-Whole-model builders and OOT consumers are not automatically gated. Full shared-pass coverage
-still needs the selected model/build denominator and evidence from each actual consumer route.
-
 The differential adapter permits arbitrary positive-width internal integer bitvectors while
 keeping its observable input/output ABI at 1–64 bits. Integer-to-float host conversion separately
 checks the actual scalar or tensor element width, including region captures, and refuses widths
@@ -651,12 +636,6 @@ all-region traversal with integer commutation after every alias stage. The trave
 actual headers, captures and block arguments, including malformed and failing region outcomes.
 `test_lean_region_exact.py` exercises the named matmul parse boundary and valid operand mutants.
 
-`test_lean_native_gate_structured_differential.py` requires actual changing matmul and transpose
-generalization, original and held native references, and ordinary LLVM-byte parity. Its separate
-repeated-input two-generic-to-one integer fusion case requires a verified chain before acknowledgment
-and native suffix execution. A separate actual captured-scalar fusion case remains refused before
-acknowledgment; matching sampled outputs do not supply its missing proof.
-
 `test_lean_scalar_constant_hoist.py` checks movement of one leading, successfully decoded closed
 scalar constant out of a generic body. The proof preserves captures, zero-iteration behavior and
 complete outcomes; it excludes index/tensor constants and adds no floating-point arithmetic law.
@@ -667,13 +646,6 @@ before final operand ordering, resolving the observed hoist/SSA numbering intera
 roundtrips, including escaping intermediates, poison and raw NaN payloads. Float-to-float support
 gaps remain refused. `test_lean_tensor_empty_dead.py` checks deletion only for statically decoded,
 total empty producers whose results are absent from the complete continuation and nested captures.
-
-`test_lean_parallel_fusion.py` checks adjacent identity-map, all-parallel loops over equal static
-integer tensor shapes, each with one input and one unflagged add/multiply/bitwise primitive reading
-that input twice. The proof evaluates both actual source bodies and the fused body with its fresh
-empty destination; it preserves poison and excludes producer escapes, captures and reductions.
-Its native companion covers zero extents, rank zero, modular wrap and an observable wrong target.
-These families prove accepted boundaries relative to the locked semantics, not complete pass coverage.
 
 `test_lean_identity_return.py` checks whole-function identity-loop elimination after exact
 normalization. The comparator accepts only a single identity generic followed immediately by

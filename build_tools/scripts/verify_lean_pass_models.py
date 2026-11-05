@@ -42,7 +42,7 @@ def main() -> int:
         source = capture if capture.is_file() else capture / "model.mlir"
         if not source.is_file():
             parser.error(f"capture is neither an MLIR file nor a directory with model.mlir: {capture}")
-    product = new_product("verification", version=1, notes="DCE and CSE compiler gate model exports")
+    product = new_product("verification", version=2, notes="Bounded Merlin shared-pass model exports")
     output = product.path.resolve()
     rows = []
     for index, capture in enumerate(captures):
@@ -78,10 +78,10 @@ def main() -> int:
                     comparison_sha256=sha256(before.ll_path),
                     llvm_identical=checked.ll_path.read_bytes() == before.ll_path.read_bytes(),
                 )
-                row["cse_checked"] = any(v["label"] == "cse" for v in gate.verdicts)
+                row["coverage"] = json.loads((gate.directory / "coverage.json").read_text())
                 row["ok"] = (
                     row["llvm_identical"]
-                    and row["cse_checked"]
+                    and row["coverage"]["compiler_completed"]
                     and all(v["verdict"] == "accepted" for v in gate.verdicts)
                 )
             except Exception as error:
@@ -91,9 +91,12 @@ def main() -> int:
             (output / "models.json").write_text(
                 json.dumps(
                     {
-                        "schema": "merlin.lean_pass_models.v1",
+                        "schema": "merlin.lean_pass_models.v2",
                         "rows": rows,
-                        "scope": "recorded tensor pass boundaries; downstream LLVM lowering remains trusted",
+                        "scope": (
+                            "ok records compilation/parity and submitted-check acceptance, not complete proof coverage; "
+                            "source exclusions remain unverified; upstream MLIR/LLVM remain trusted"
+                        ),
                     },
                     indent=2,
                 )

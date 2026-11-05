@@ -1,4 +1,10 @@
-# Current compiler verification checkpoint — 2026-10-29
+# Submission compiler verification checkpoint — 2026-10-29
+
+> Historical source-cut evidence. As of 2026-11-04, upstream MLIR CSE and the
+> native-prefix verifier are removed; `all` selects nine Merlin-owned gates.
+> Use [the current stack guide](docs/guides/lean_compiler_stack.md) and
+> [verification scope](docs/design/verification_scope.md) for current behavior.
+> Counts and CSE observations below describe the original submission checkout.
 
 An independent [frozen-gate audit handoff](out/artifacts/audits/frozen-followup-20261029/HANDOFF.md)
 records 207 distinct passing existing tests and a successful full Lean guard at

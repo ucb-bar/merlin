@@ -13,7 +13,7 @@ code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, src/
 For the current `feat/pass-verif-integration` checkpoint, start with the
 [compiler stack and interfaces](lean_compiler_stack.md) and
 [integration handoff](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md).
-The opt-in `all` selector covers all ten registered compiler checks;
+The opt-in `all` selector covers all nine registered compiler checks;
 configuration elision/hoisting retain their original ISA/effect APIs. The
 [quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md)
 records inherited Q/DQ proofs and outstanding numerical review. W8A8 and

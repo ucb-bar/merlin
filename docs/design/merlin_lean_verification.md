@@ -45,7 +45,15 @@ code_refs:
 
 # Lean verification of the Merlin compilation path outside the OOT
 
-All ten compiler gates are implemented and enabled by `--validate-passes all`.
+**Scope update:** this original design contains historical work-package estimates.
+The current implementation verifies Merlin-owned shared passes only. Upstream
+MLIR/LLVM passes are trusted; the C11 native-prefix/CSE workstream has been
+removed. [Verification scope](verification_scope.md) defines this boundary and
+[the stack guide](../guides/lean_compiler_stack.md) describes the nine current gates.
+Statements below about a complete chain are design goals, not a claim that every
+compilation boundary is currently proved.
+
+All nine Merlin-owned compiler gates are implemented and enabled by `--validate-passes all`.
 This includes Q/DQ lowering on both compiler routes and the bf16/f16 MACC
 f32-accumulation gate. Supported changing boundaries require accepted checks
 before products return. The Q/DQ source-model and MACC numerical-policy review
@@ -70,7 +78,7 @@ for exact evidence. This additive proof changes no frozen interface or approval.
 
 The current implementation checkpoint is on `feat/pass-verif-integration`;
 see [status and next-owner tasks](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md)
-and [the compiler stack](../guides/lean_compiler_stack.md). All ten scoped
+and [the compiler stack](../guides/lean_compiler_stack.md). All nine scoped
 compiler checks are selected by `--validate-passes all`. Configuration elision now has an additional
 explicit compiler selector for original instruction-IR and straight-line Kernel
 consumers, while counted hoisting retains its separate instruction/effect API.
@@ -123,7 +131,7 @@ passes themselves ([arXiv 2605.08927](https://arxiv.org/abs/2605.08927),
 [arXiv 2605.01660](https://arxiv.org/abs/2605.01660)). It fits Merlin because the passes are Python
 and change often, while the checkers and their theorems are small and stable.
 
-**What this design does not do** is prove LLVM, upstream MLIR bufferization, the C toolchain,
+**What this design does not do** is prove upstream MLIR passes, LLVM, the C toolchain,
 hardware, or floating-point *accuracy*. Those are listed in a trusted-computing-base ledger (§10).
 The paper states them as assumptions; no checker reports them as verified.
 
@@ -218,8 +226,8 @@ when the selected package or route enables them.
 | U14 | post-offload/prepared transforms *(feature)*: requant fuse, insert-slice destination reuse, im2col view/pack, per-op blocks, entry-weight projection | `llvmlower/*` | equivalence or ABI-changing equivalence | C1 (+ §4.6) |
 | U15 | xDSL preprocessing: dead pure-op pruning, `quant_ext` lowering, C interface | `passes_xdsl._PREPROCESS` | equivalence / annotation | C1, C3 |
 | U16 | textual printer-quirk normalization *(textual route only)* | `passes_xdsl.preprocess_text_textual` | serialization | C3 with dual export (D9) |
-| D1 | upstream tensor passes: `canonicalize`, `cse`, `linalg-fuse-elementwise-ops`, `linalg-generalize-named-ops` | `pipeline._UPSTREAM_PASSES` | equivalence | C11 (Tier B), else trusted |
-| D2 | bufferization → loops → LLVM dialect → LLVM IR | upstream MLIR | — | trusted (§10); Tier C checker |
+| D1 | upstream tensor passes: `canonicalize`, `cse`, `linalg-fuse-elementwise-ops`, `linalg-generalize-named-ops` | `pipeline._UPSTREAM_PASSES` | — | trusted toolchain; outside Merlin proof scope |
+| D2 | bufferization → loops → LLVM dialect → LLVM IR | upstream MLIR | — | trusted (§10); outside Merlin proof scope |
 | D3 | Merlin LLVM-IR transforms *(feature)*: host transform chain, static arena bind | `spike_model._transform_host_ir`, `arena_bind.py` | equivalence / allocation safety | Alive2 or C9b, else assumed |
 | D4 | device ABI bridge: shim + stored-tensor prepack | `device_shim.py`, prepack | layout bijection | C7c |
 | D5 | runtime artifacts: argument table, `weights.bin`, IO/state maps | `c_runtime.generate` | ABI binding | C8 |
@@ -330,8 +338,8 @@ redesign.
   imports `LeanMLIR.Framework.Basic` and supplies a wrapping-integer dialect for
   the shared scalar checker. This is a distinct selected toolchain from
   `merlin/lean/MerlinVerify`; neither its import nor its generic lemmas certify
-  the tensor DCE/CSE boundary.
-- **Future reuse:** retain the current DCE/CSE approach. Before implementing a new
+  Merlin's tensor boundaries.
+- **Future reuse:** retain the shared-pass checker approach. Before implementing a new
   proof mechanism, inspect Lean-MLIR for an existing suitable component. Prefer
   reuse when its semantic premises and toolchain fit; establish a semantics-
   preserving bridge before applying its theorems to actual Merlin IR. Its
@@ -740,8 +748,10 @@ contraction generalization, and unflagged integer operand commutation are proved
 Generalization checks matmul/batch-matmul indexing maps and iterator order and preserves the original region body,
 including signed/unsigned casts and floating operation order. Integer commutation covers add,
 multiply, AND, OR, and XOR, with scalar and tensor semantics; floats and overflow flags are refused.
-Qualification runs actual MLIR generalization/canonicalization/CSE, verifies defined chains on the
-supported integer fragment, and rejects altered maps, body operations, casts, constants, and flags.
+Semantic-fidelity tests use MLIR generalization/canonicalization/CSE to generate comparison
+cases on the supported integer fragment and reject altered maps, body operations, casts,
+constants and flags. These tests exercise the common checker; they do not install compiler
+gates for upstream passes or make upstream verification a Merlin workstream.
 Operand-dependent/non-adjacent CSE and other numerical or shape rewrites remain unsupported.
 Map-to-generic certification now has a separate typed route. `TypedRewrite` proves normalization
 using runtime facts derived from checked source execution, including intermediate SSA values.
@@ -1181,22 +1191,14 @@ Typed boundaries use `check_typed_stage(..., index_bits=...)`, with the independ
 argument types, including tensor shapes, across every link and requires typed index widths to
 match the source receipts. The original chain theorems and legacy receipt behavior are unchanged.
 
-### 5.11 C11 — upstream tensor passes (Tier B) and bufferization (Tier C)
+### 5.11 Upstream toolchain boundary (retired C11)
 
-**C11 (Tier B).** Upstream `canonicalize`/`cse`/`linalg-fuse-elementwise-ops`/
-`linalg-generalize-named-ops` emit no certificates. C11 validates them by **normal-form comparison**:
-
-- Each output is denoted symbolically as an element expression over *symbolic output indices*:
-  quasi-affine index terms, folds for reductions, and piecewise guards for slices, pads and concats.
-- The expressions are hash-consed and normalized: affine and `floordiv`/`mod`-by-constant
-  normalization, alpha-renaming of bound reduction variables, and structural equality, because floats
-  are parametric.
-- Its theorem is that normalization preserves denotation. Incompleteness yields `abstracted`, never a
-  false accept.
-- Enumerating concrete output indices is *not* used: a TinyLlama projection would be ~10⁹ terms.
-
-**Tier C.** Bufferization needs a memref semantics with aliasing. It is planned as a symbolic-store
-checker over static layouts and is out of scope before submission.
+Upstream canonicalization, CSE, elementwise fusion, named-op generalization,
+bufferization and LLVM lowering remain trusted. The former C11 normal-form
+pass-validation workstream and held-native-prefix transport were removed.
+Shared semantic lemmas needed by Merlin's own transformations remain; their
+presence does not create a claim about an upstream pass. Extending Merlin's
+shared loop/storage proofs does not require proving upstream bufferization.
 
 ## 6. The frontend boundary (PyTorch → linalg)
 
@@ -1224,7 +1226,7 @@ PyTorch vs MLIR execution on the recorded inputs. The paper says exactly that.
 
 What remains after `Sn`:
 
-- **Bufferization, MLIR → LLVM, clang, ld:** trusted, with Tier C as the path to shrink it. Upstream
+- **Bufferization, MLIR → LLVM, clang, ld:** trusted toolchain components outside this proof scope. Upstream
   vectorization schedules may reassociate float reductions; that is part of the trusted lowering's
   numerical behavior. Integer contractions are unaffected (D6).
 - **Merlin LLVM-IR transforms (D3), if on the paper path:**
@@ -1413,7 +1415,7 @@ Generated into the paper appendix from `merlin/lean/LEDGER.md`:
 - **Op semantics.** Fidelity of the MerlinSem op semantics to MLIR, tested in §9.4.
 - **Float laws and IEEE instance.** Named `FloatLaws` uses, each with an IEEE justification; the
   executable IEEE instance where C6 is used.
-- **Lowering toolchain.** Upstream MLIR passes from D1 (unless C11 is completed), bufferization and the
+- **Lowering toolchain.** Upstream MLIR passes from D1, bufferization and the
   LLVM-dialect lowering, LLVM codegen, clang, the linker and libm.
 - **C code.** The C runtime (`merlin_model.c`, harness, `crt.S`), the shim template, and the C-level
   runtime allocator.
@@ -1480,9 +1482,7 @@ Effort is in agent-days. "Accept" lists what must hold before the package merges
 | **WP-10 seam** | C4 partition, C2 outline (generalizing `outline_ir.py`), C7a routing, `Spec/Entry.lean` (barrier), C7b entry fidelity, C7c layout lemma, prepack and shim conformance | WP-6, WP-4 | 12–16 | All device groups of all programs verified or explicitly assumed |
 | **WP-11 runtime + memory** | C8 argument table, weights, argument-map composition, state carry; C9a layout; C9b if on path; stack bound (Tier B) | WP-7, WP-1 | 6–9 | All programs' builds verified; mutation matrix |
 | **WP-12 composition** | `Claims/Compose.lean`, C10 chain checker, claim rendering, ledger generation | WP-6, the claim types | 5–7 | Per-program theorem instantiated from real receipts |
-| **WP-13 C11** (Tier B) | Normal-form TV for upstream tensor passes | WP-4 | 12–18 | Accepts real D1 boundaries; mutation matrix |
 | **WP-14 frontend** (Tier B) | ATen spec from `_refs` (barrier), model2MLIR trace argument completeness, FX→MLIR checker | WP-4; model2MLIR change | 15–20 | Covered nodes verified; others reported |
-| **WP-15 bufferization** (Tier C) | memref semantics and symbolic-store checker | WP-4 | 20+ | Post-submission |
 | **WP-RT red team** | Owns §9 and the failure-mode table. Writes mutation operators, replays historical bugs, tries to get wrong programs accepted, reviews test diffs for weakening, runs the clean-machine replay. | from G1 | continuous | Signs off G3/G4; may veto any merge |
 
 ### 11.4 How the agents work in parallel
@@ -1498,7 +1498,7 @@ Effort is in agent-days. "Accept" lists what must hold before the package merges
     adds.
 - **Concurrency by phase.** Phase 0 runs four agents (WP-0…3). Phase 1 runs four (WP-4 B1/B2, WP-5,
   WP-6, WP-7). Phase 2 runs eight to ten (WP-8 families in parallel, WP-9 spec + checker, WP-10 split
-  into C2/C4 and C7, WP-11, WP-12, WP-RT, optionally WP-13).
+  into C2/C4 and C7, WP-11, WP-12, WP-RT).
 - **Reviewers.** The architect role (Jeremy, optionally a dedicated reviewer agent) approves interface
   change requests and `SPEC_LOCK` updates. Jeremy and Agustin review every `Spec/` and `Claims/`
   statement. Those files are the entire human-reading burden, and they are kept small on purpose.
@@ -1523,9 +1523,9 @@ Effort is in agent-days. "Accept" lists what must hold before the package merges
 | G3 | **Tier A** for every validation program: every boundary the measured inventory puts on the paper path (per §2.1 currently U2–U5, U9, the added preparation rows, U12 and its declaration patch, U15 and the `ciface_inline` LLVM transform), plus C7b–c, C8, C9a and C10; qualification complete | end of week 5–6 |
 | G4 | Evidence frozen: coverage matrix, ledger, replay on a clean machine | G3 + ~1 week |
 
-- **Tier B** (C11 upstream tensor passes, frontend ATen specs, stack bound) runs in parallel from G1
+- **Tier B** (frontend ATen specs, stack bound) runs in parallel from G1
   and lands if ready by G4.
-- **Tier C** (bufferization, Alive2 integration, float error bounds, session semantics) is
+- **Tier C** (float error bounds and session semantics) is
   post-submission.
 
 These estimates assume eight to ten concurrent agents and a working model2MLIR environment by day 3.

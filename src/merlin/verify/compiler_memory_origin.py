@@ -1,14 +1,13 @@
 """Original live ownership for the explicitly selected scalar memory pipeline.
 
 Records identify an observation; they cannot recreate this process/thread scope
-or authorize a skipped check. Unchanged CSE submits no job and earns no proof
-credit. Actual proof/model/LLVM/native authority belongs to its separate owner.
+or authorize a skipped Merlin DCE check. Source and runner custody do not
+verify upstream MLIR or LLVM passes.
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import secrets
 import threading
@@ -33,7 +32,6 @@ _MODULES = (
     "merlin.verify.pass_validation",
     "merlin.llvmlower.lower",
     "merlin.llvmlower.pipeline",
-    "merlin.llvmlower.leading_cse",
     "merlin.llvmlower.toolchain",
     "merlin.common.owned_process",
     "merlin.common.owned_children",
@@ -54,7 +52,6 @@ _MODULES = (
     "xdsl.dialects.memref",
     "xdsl.dialects.scf",
 )
-_SCHEMA = "merlin.original-memory-cse.v2"
 
 
 def _sha(value):
@@ -71,10 +68,9 @@ def _sources():
 
 
 def _functions(*, canonical=False):
-    import ast
     import types
 
-    from merlin.llvmlower import leading_cse, pipeline
+    from merlin.llvmlower import pipeline
     from merlin.transforms.certificates import parse_ir
     from merlin.xdsl_dialects._common import text
 
@@ -104,9 +100,6 @@ def _functions(*, canonical=False):
         (pass_validation.selected, "merlin.verify.pass_validation"),
         (pass_validation.observe, "merlin.verify.pass_validation"),
         (pass_validation.submit, "merlin.verify.pass_validation"),
-        (leading_cse.bind_runner, "merlin.llvmlower.leading_cse"),
-        (leading_cse.submit, "merlin.llvmlower.leading_cse"),
-        (leading_cse._unsupported, "merlin.llvmlower.leading_cse"),
     )
     if not canonical:
         return tuple((function, function.__code__) for function, _ in functions)
@@ -120,15 +113,6 @@ def _functions(*, canonical=False):
         ]
         if sum(function.__code__ == code for code in codes) != 1:
             raise ValueError("original memory compiler function differs from its canonical source")
-    path = module_source_path("merlin.llvmlower.leading_cse")
-    values = [
-        node.value
-        for node in ast.parse(path.read_text()).body
-        if isinstance(node, ast.Assign)
-        and any(isinstance(target, ast.Name) and target.id == "_PRELUDE" for target in node.targets)
-    ]
-    if type(leading_cse._PRELUDE) is not str or len(values) != 1 or ast.literal_eval(values[0]) != leading_cse._PRELUDE:
-        raise ValueError("memory CSE prelude differs from its canonical source")
     return tuple((function, function.__code__) for function, _ in functions)
 
 
@@ -177,12 +161,9 @@ class _Issued:
     derived64: str
     sources: tuple
     functions: tuple
-    prelude: str
-    cse_finished: bool = False
     runner: str | None = None
     effective: str | None = None
     upstream: str | None = None
-    upstream_canonical: str | None = None
     input_path: Path | None = None
 
 
@@ -223,13 +204,7 @@ class MemoryScope:
             or self.source_sha256 != _sha(original.source)
         ):
             raise ValueError("original memory owner/validation/thread/work/source changed")
-        from merlin.llvmlower import leading_cse
-
-        if (
-            type(leading_cse._PRELUDE) is not str
-            or leading_cse._PRELUDE != original.prelude
-            or _sources() != original.sources
-        ) or any(
+        if _sources() != original.sources or any(
             current_function is not selected_function or current_code is not selected_code
             for (current_function, current_code), (selected_function, selected_code) in zip(
                 _functions(), original.functions, strict=True
@@ -269,7 +244,8 @@ class MemoryScope:
             raise ValueError("original memory upstream input was already frozen")
         if type(raw) is not str or not raw:
             raise ValueError("actual post-preprocessing upstream memory input required")
-        _LIVE[self] = replace(original, upstream=raw, upstream_canonical=_canonical_source(raw))
+        _canonical_source(raw)  # Preserve admitted source attributes before native lowering.
+        _LIVE[self] = replace(original, upstream=raw)
         return self
 
     def bind_input(self, upstream, work):
@@ -298,29 +274,13 @@ class MemoryScope:
             raise ValueError("actual original memory input file changed after freezing")
         return original.upstream
 
-    def cse_record_token(self, *, pipeline):
-        self.validate()
-        original = _LIVE[self]
-        if type(pipeline) is not str or pipeline not in (original.pipeline, original.derived64):
-            raise ValueError("original memory CSE needs its exact selected canonical pipeline")
-        self.upstream_text(self.work)
-        return {
-            "schema": _SCHEMA,
-            "nonce": self.nonce,
-            "work": str(self.work),
-            "source_sha256": self.source_sha256,
-            "original_pipeline": self.pipeline,
-            "effective_pipeline": pipeline,
-            "upstream_sha256": _sha(original.upstream),
-            "input_path": str(original.input_path),
-            "runner_path": str(self.work / "run_lowering.py"),
-        }
-
     def bind_runner(self, source, work, *, pipeline):
         original = self._work(work)
         if original.runner is not None:
             raise ValueError("original memory scope already issued its runner")
-        self.cse_record_token(pipeline=pipeline)
+        if type(pipeline) is not str or pipeline not in (original.pipeline, original.derived64):
+            raise ValueError("original memory runner needs its exact selected canonical pipeline")
+        self.upstream_text(work)
         if type(source) is not str or not source:
             raise ValueError("actual original runner text required")
         _LIVE[self] = replace(original, runner=source, effective=pipeline)
@@ -333,50 +293,6 @@ class MemoryScope:
         if original.runner is None or runner.is_symlink() or runner.read_bytes() != original.runner.encode("utf-8"):
             raise ValueError("actual runner differs from the original frozen memory runner")
         return _sha(original.runner)
-
-    def finish_cse(self, work):
-        # Reopen every record here too: this method is not an allow-skip token.
-        original = self._work(work)
-        self.validate_runner(work)
-        directory = self.work / "leading-cse"
-        index = directory / "index.json"
-        if directory.is_symlink() or index.is_symlink():
-            raise ValueError("original CSE capture may not use symlinks")
-        entries = json.loads(index.read_text(encoding="utf-8"))
-        if type(entries) is not list or not entries:
-            raise ValueError("original memory CSE has no consumed observation")
-        for number, entry in enumerate(entries, 1):
-            paths = [
-                directory / f"{number:04d}.{side}.mlir" for side in ("before", "after", "precanonical", "upstream")
-            ]
-            if any(path.is_symlink() for path in paths):
-                raise ValueError("actual CSE buffers may not be symlinks")
-            before, after, precanonical, expected_upstream = [path.read_text(encoding="utf-8") for path in paths]
-            self.validate_cse_record(
-                entry, work, before=before, after=after, precanonical=precanonical, expected_upstream=expected_upstream
-            )
-        _LIVE[self] = replace(original, cse_finished=True)
-
-    def validate_cse_record(self, entry, work, *, before, after, precanonical, expected_upstream):
-        runner_sha256 = self.validate_runner(work)
-        original = _LIVE[self]
-        expected = self.cse_record_token(pipeline=original.effective)
-        expected.update(
-            pipeline="builtin.module(" + original.effective + ")",
-            runner_sha256=runner_sha256,
-            before_sha256=_sha(before),
-            after_sha256=_sha(after),
-            precanonical_sha256=_sha(precanonical),
-            upstream_generic_sha256=_sha(expected_upstream),
-        )
-        if type(entry) is not dict or entry != expected:
-            raise ValueError("CSE capture differs from its original memory scope/runner/pipeline/buffers")
-        # This authenticates the observation, not CSE semantics. Changed CSE
-        # is explicitly unverified; even identity receives zero proof credit.
-        if precanonical != expected_upstream or _canonical_source(precanonical) != original.upstream_canonical:
-            raise ValueError("actual pre-canonicalize whole module differs from original frozen upstream input")
-        self.upstream_text(work)
-        return self
 
 
 def current():
@@ -405,7 +321,6 @@ def compiler_scope(work, *, original_source, memory_pipeline, validation):
         raise ValueError("original compiler work directory required")
     nonce = secrets.token_hex(32)
     sources, functions = _sources(), _functions(canonical=True)
-    from merlin.llvmlower import leading_cse
 
     derived64 = _bind_index_width(memory_pipeline, 64)
     owner = MemoryScope(directory, validation, _sha(original_source), memory_pipeline, nonce)
@@ -425,15 +340,12 @@ def compiler_scope(work, *, original_source, memory_pipeline, validation):
         derived64,
         sources,
         functions,
-        leading_cse._PRELUDE,
     )
     token = _ACTIVE.set(owner)
     try:
         owner.validate()
         yield owner
         owner.validate()
-        if "cse" in validation.passes and not _LIVE[owner].cse_finished:
-            raise ValueError("original memory compile did not consume its authentic CSE capture")
         # A successful consumption is not a lease to mutate its compiler input
         # or runner before products leave the original live scope.
         if _LIVE[owner].runner is not None:

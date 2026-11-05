@@ -8,12 +8,13 @@ dead values) and checks two properties:
   does not, the real output is identical to this file's independent rendering of the expected
   output and that is refused too: a checker gap (recorded and reported) rather than a pass bug. Any
   other refusal is a failure;
-* soundness -- at each checked boundary (production DCE/CSE and standalone numerical cases) a
+* soundness -- at each checked boundary (Merlin DCE and standalone numerical cases) a
   mutated pass output that the oracle can tell apart from the program on random inputs is never
   accepted. A mutation the oracle cannot tell apart is counted, not asserted.
 
-Only DCE and CSE are registered compiler gates. Numerical cases below call the
-mathematical checker directly for handoff coverage; they do not gate compilation.
+This suite exercises Merlin DCE and standalone numerical checker cases. The
+numerical calls here do not qualify the separate compiler Q/DQ gate. Upstream
+CSE is outside Merlin's verification scope.
 
 The oracle evaluates the generator's own program representation in numpy; it shares no code with
 the passes or the checker. ``MERLIN_FUZZ_SEED`` and ``MERLIN_FUZZ_CASES`` scale the run; a failure
@@ -32,7 +33,6 @@ import numpy as np
 import pytest
 from test_lean_pass_gate import job
 
-from merlin.llvmlower import leading_cse
 from merlin.llvmlower.passes_xdsl import (
     lower_quant_ext,
     parse_mlir_text,
@@ -278,22 +278,6 @@ def lowered(program: Program) -> Program:
     return result
 
 
-def deduplicated(program: Program) -> Program:
-    """Every node that repeats an earlier one (same kind and arguments) replaced by the earlier one."""
-    alias: dict[str, str] = {}
-    seen: dict[tuple, str] = {}
-    nodes, order = {}, []
-    for name in program.order:
-        node = copy.deepcopy(program.nodes[name])
-        node.args = [alias.get(a, a) for a in node.args]
-        key = (node.kind, node.op, tuple(node.args), node.value, node.lowered, node.low)
-        if key in seen:
-            alias[name] = seen[key]
-            continue
-        seen[key] = name
-        nodes[name] = node
-        order.append(name)
-    return Program(program.inputs, nodes, order, [alias.get(o, o) for o in program.outputs])
 
 
 def mutate(rnd: random.Random, program: Program) -> tuple[str, Program] | None:
@@ -396,12 +380,6 @@ def test_fuzzed_programs(tmp_path, pass_gate_tools, case):
         )
     textual_after, _ = preprocess_text_textual(source)
     complete("preprocess_text_textual", source, textual_after, render(lowered(program)), "textual")
-    # The pipeline's leading cse, by MLIR itself, on the whole-model route's preprocessed form.
-    cse_source = render(lowered(program))
-    (tmp_path / "cse-apply").mkdir()
-    cse_after = leading_cse.apply(cse_source, "cse", tmp_path / "cse-apply", "cse")
-    if cse_after != cse_source:
-        complete("cse", cse_source, cse_after, render(deduplicated(lowered(program))), "cse")
     if gaps:
         (tmp_path / "checker-gaps.txt").write_text("\n".join(gaps))
 
@@ -411,7 +389,6 @@ def test_fuzzed_programs(tmp_path, pass_gate_tools, case):
         ("prune", source, pruned(program), False),
         ("quant", quant_source, lowered(pruned(program)), False),
         ("textual", source, lowered(program), True),
-        ("cse", cse_source, deduplicated(lowered(program)), True),
     ):
         for attempt in range(2):
             mutated = mutate(rnd, expected)

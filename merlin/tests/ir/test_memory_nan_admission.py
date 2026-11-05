@@ -10,11 +10,10 @@ from pathlib import Path
 
 import pytest
 from buffer_rank_one_inputs import chain
-from test_compiler_memory_origin import active, fake_native_capture, scope
+from test_compiler_memory_origin import active
 from xdsl.dialects import builtin
 
 from merlin.common.paths import module_source_path
-from merlin.llvmlower import leading_cse
 from merlin.transforms.certificates import ir_text, parse_ir
 from merlin.verify import buffer_reuse_intake as buffer_gate
 from merlin.verify import compiler_memory_dce as memory_dce
@@ -196,21 +195,9 @@ def test_every_memory_source_roster_binds_helper_and_reused_attribute_walker():
     assert {"parse_memory_module", "_parse_bounded"} <= names
 
 
-@pytest.mark.parametrize("where", ["source", "upstream", "CSE-before-and-after"])
+@pytest.mark.parametrize("where", ["source", "upstream"])
 def test_original_memory_scope_cannot_lend_nan_metadata_custody(tmp_path, monkeypatch, where):
     poisoned = pair("0x7F800001 : f32")[0]
-    if where == "CSE-before-and-after":
-        # The ordinary CSE observation follows unverified canonicalization.
-        # Raw identity grants no mathematical/model projection credit.
-        with scope(tmp_path, passes=frozenset({"cse"})) as (owner, validation):
-            fake_native_capture(tmp_path, owner, monkeypatch, canonicalized=poisoned)
-            assert leading_cse.submit(tmp_path) == 0
-        report = json.loads((validation.gate.directory / "coverage.json").read_text())
-        assert report["verified_boundaries"] == 0
-        assert report["unchanged_boundaries"] == 1
-        assert report["boundaries"][0]["proof_credit"] is False
-        assert not validation.gate.verdicts
-        return
     with pytest.raises((InputAdmissionError, GateFailure), match="scalar-nan"):
         with active(tmp_path) as validation:
             with origin.compiler_scope(

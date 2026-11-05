@@ -27,7 +27,7 @@ code_refs:
 
 This tutorial runs the integrated compiler gates, checks their results and
 summarizes supported patterns. The [overview and status](lean_compiler_stack.md)
-lists all ten implemented gates and their checked relations.
+lists all nine implemented gates and their checked relations.
 
 ## Configure the tools
 
@@ -94,7 +94,7 @@ from merlin.verify.speculative_gate import SpeculativeGate
 
 tools = CheckerTools(Path("/path/to/lean-4.35.0/bin"), Path("/path/to/compiler-venv/bin/python"))
 gate = SpeculativeGate(Path("out/build/example-gate"), job_timeout=900)
-validation = PassValidation(gate, tools)  # all ten checks
+validation = PassValidation(gate, tools)  # all nine checks
 ```
 
 Pass `validation` to `lower_model(..., pass_validation=validation)` or to the
@@ -284,13 +284,13 @@ or earned proof credit.
 
 ## Supported profiles
 
-All ten gates are enabled in `all`. The following domains describe their
+All nine gates are enabled in `all`. The following domains describe their
 current proof coverage.
 
 | Family | Supported patterns | Bounds and separate obligations |
 | --- | --- | --- |
-| Tensor DCE/CSE | Declared index64 signatures and the Lean typed source-support rulebook, at complete actual module boundaries | Native primitive fidelity remains a model assumption; later canonicalization/LLVM CSE have their own scope |
-| Ordinary memory DCE/CSE | Dead index constants in a source-owned memory epoch; authentic unchanged leading CSE | Constants and materialized dimensions must fit signed index64. Changed memory CSE has explicit unverified coverage |
+| Tensor DCE | Declared index64 signatures and the Lean typed source-support rulebook, at complete actual module boundaries | Native primitive fidelity remains a model assumption; upstream canonicalization and CSE remain trusted |
+| Ordinary memory DCE | Dead index constants in a source-owned memory epoch | Constants and materialized dimensions must fit signed index64. Native input/runner custody is checked separately; upstream CSE receives no Merlin proof claim |
 | Word/index loops | Qualified inline/bulk/tail unrolling, carries, multiple changed definitions and selected nested depths; ordered tiling and supported unroll→tile composition | Literal nonnegative lower bounds, static fitting selected controls, positive strides, 2,048 weighted syntax records and a source-derived expansion budget |
 | Generic-value loops | Exactly one top-level module `scf.for`, no carries, three immediate literal controls, one opaque body event, immediate captured return | UNROLL factor two with odd trip count at least three. TILE requires nonempty trips, positive stride and size 2–65,536. Generic unroll→tile composition and extra loops/events are outside this profile |
 | Private buffers | Positive static rank-one/rank-two i8/i16/i32/i64 buffers, captured uniform initialization, nonescaping sequential lifetimes; untiled or tiled initializer chain | 256 KiB source, 5,000 operations, tile 2–65,536. Computed initializers, rank three, dynamic/floating storage, external declarations and callers reaching the changed kernel need further profiles. Successful unobservable allocator is an explicit premise |

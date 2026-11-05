@@ -16,17 +16,22 @@ code_refs:
   - src/merlin/verify/compiler_configuration_hoist.py
   - src/merlin/llvmlower/lower.py
   - src/merlin/llvmlower/passes_xdsl.py
-  - src/merlin/llvmlower/leading_cse.py
   - src/merlin/compile/command.py
 ---
 
 # Compiler gate overview and status
 
-Merlin has **ten integrated compiler gates**. `--validate-passes all` enables
+Merlin has **nine integrated compiler gates**. `--validate-passes all` enables
 every one, including Q/DQ and bf16/f16 MACC. Each supported changing boundary
 must pass its actual input/output check before compiler products return.
 Incorrect supported rewrites, unavailable checks and broken source/tool bindings
 block delivery.
+
+Upstream MLIR canonicalization, CSE, elementwise fusion and named-op
+generalization are trusted toolchain passes. They run normally and are outside
+`--validate-passes`; the former `cse` selector and `verify_native_prefix` API
+have been removed. Reusable operation semantics and normalization lemmas needed
+by Merlin pass checks remain. See [verification scope](../design/verification_scope.md).
 
 Use the [tutorial and supported profiles](lean_bounded_pass_profiles.md) for
 setup, runnable examples, transformation options, coverage and replay. This page
@@ -40,7 +45,6 @@ in `all`, and connected to its actual compiler producer or consumer.
 | Check | Actual compiler boundary | Supported use |
 | --- | --- | --- |
 | `prune_dead_pure_tensor_ops` | xDSL preprocessing | Typed tensor DCE; separate ordinary-memory dead index-constant route |
-| `cse` | The build runner's leading native tensor CSE | Typed tensor common-subexpression elimination |
 | `ordered_loop_unrolling` | Source SCF transformation at compiler entry | Word/index loops, supported nesting/depths, and a separate generic-value singleton profile |
 | `ordered_loop_segmentation` | Source SCF tiling and optional private-buffer initializer tiling | Ordered groups, tails, supported word-loop composition and generic singleton tiling |
 | `buffer_reuse` | Actual normalization → reuse chain, optionally followed by initializer tiling | Initialized, nonescaping rank-one/rank-two integer private buffers |
@@ -70,7 +74,7 @@ flowchart TD
   B --> E
   E --> Q[Q/DQ expansion]
   A --> X[Complete textual preprocessing with Q/DQ]
-  Q --> C[Native leading CSE]
+  Q --> C[Trusted upstream MLIR passes]
   X --> C
   C --> D[Bufferization or direct memory lowering]
   D --> V[LLVM dialect and LLVM IR]
@@ -81,7 +85,6 @@ flowchart TD
   E -. DCE boundary .-> P
   Q -. actual before/after .-> P
   X -. actual before/after .-> P
-  C -. actual before/after .-> P
   O --> J[Join required checks]
   P --> J
   J --> R[Return compiler products]
@@ -121,7 +124,7 @@ conformance to that contract.
 
 | Family | Checked relation and explicit model |
 | --- | --- |
-| Tensor DCE/CSE and Q/DQ | Strict refinement on declared input types, with source support; optional definedness is reported separately |
+| Tensor DCE and Q/DQ | Strict refinement on declared input types, with source support; optional definedness is reported separately |
 | Word and generic-value loops | Complete modeled returned values, errors and terminal worlds under the corresponding typed/control/action interpretation |
 | Private buffers | Equal possible successful public observations under total private unobservable logical allocation |
 | MACC | Output/reference equality and site qualification under the f32-accumulation contract |

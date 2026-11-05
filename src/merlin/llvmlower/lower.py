@@ -142,7 +142,6 @@ def lower_model(
     source_scalar_carrier=None,
     shared_pass_verification: SharedPassVerification | None = None,
     shared_pass_preparation: CapturedPreparation | None = None,
-    verify_native_prefix: bool = False,
     pass_validation: PassValidation | None = None,
     retain_llvm_dialect: bool = False,
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
@@ -227,9 +226,7 @@ def lower_model(
     the recorded tensor handoff under its stated assumptions. Unsupported or unavailable checks
     stop compilation. The semantic index width must match the explicit lowering width.
 
-    ``verify_native_prefix`` additionally holds the ordinary serial native module before
-    bufferization until the complete tensor prefix is replayed. It requires shared-pass
-    verification; bufferization and the native suffix remain trusted lowering.
+    Upstream MLIR and LLVM passes remain trusted toolchain components.
 
     ``vectorize=True`` bakes native RVV (fixed-width vector ops) into the IR instead of
     relying on clang auto-vectorization — for the rv64gcv vector-tile target.
@@ -658,9 +655,6 @@ def lower_model(
             observed = audit.directory is not None or compile_trace.active() is not None
             return preprocess_text(source, audit=audit) if observed else preprocess_text(source)
 
-        if verify_native_prefix and shared_pass_verification is None:
-            raise ValueError("native tensor-prefix verification requires shared-pass verification")
-        native_session = None
         if shared_pass_preparation is not None and shared_pass_verification is None:
             raise ValueError("captured preparation requires explicit shared-pass verification")
         handoff = work / "model.upstream.mlir"
@@ -684,12 +678,6 @@ def lower_model(
             )
             upstream_text, stats = verified.text, verified.stats
             stats["shared_pass_verification"] = str(verified.report)
-            if verify_native_prefix:
-                from merlin.verify.lean.native_gate import Session
-
-                native_session = Session(
-                    shared_pass_verification, mlir_text, verified, expected_plan, shared_pass_preparation
-                )
         else:
             upstream_text, stats = preprocess(mlir_text)
             handoff.write_text(upstream_text, encoding="utf-8")
@@ -776,7 +764,6 @@ def lower_model(
                 masked_contraction_effects=masked_contraction_effects,
                 source_observation_effects=source_observation_effects,
                 source_scalar_carrier=source_scalar_carrier,
-                **({"shared_pass_native": native_session} if native_session is not None else {}),
                 retain_llvm_dialect=retain_llvm_dialect,
                 borrowed_buffer_calls=(
                     borrowed_buffer_calls.after_preprocessing(borrowed_source, upstream_text)
@@ -801,9 +788,6 @@ def lower_model(
             except Exception:  # noqa: BLE001 -- an exotic constructor: keep the original
                 raise exc
             raise enriched from exc
-        from . import leading_cse
-
-        leading_cse.submit(work)
         if "source_observation" in lowering_selection:
             stats["source_observation"] = lowering_selection["source_observation"]
         if "automatic_host_optimizations" in lowering_selection:
@@ -925,7 +909,6 @@ def lower_model_file(
     source_scalar_carrier=None,
     shared_pass_verification: SharedPassVerification | None = None,
     shared_pass_preparation: CapturedPreparation | None = None,
-    verify_native_prefix: bool = False,
     pass_validation: PassValidation | None = None,
     retain_llvm_dialect: bool = False,
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
@@ -969,7 +952,6 @@ def lower_model_file(
         source_scalar_carrier=source_scalar_carrier,
         shared_pass_verification=shared_pass_verification,
         shared_pass_preparation=shared_pass_preparation,
-        verify_native_prefix=verify_native_prefix,
         pass_validation=pass_validation,
         formal_transforms=formal_transforms,
         retain_llvm_dialect=retain_llvm_dialect,

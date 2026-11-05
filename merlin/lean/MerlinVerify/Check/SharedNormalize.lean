@@ -18,7 +18,6 @@ import MerlinVerify.Check.AlphaNormalize
 import MerlinVerify.Check.ScalarConstantHoist
 import MerlinVerify.Check.BitcastCancel
 import MerlinVerify.Check.TensorEmptyDead
-import MerlinVerify.Check.ParallelFusion
 import MerlinVerify.Check.IdentityReturnComparison
 import MerlinVerify.Check.ExactCse
 import MerlinVerify.Check.QuantizeCollapse
@@ -68,14 +67,12 @@ theorem scalarOrdering_exact : RegionExact.Exact scalarOrdering :=
     (fun ctx call env ops => Rules.IntegerOrder.operations_equal ctx call ops env)
     (fun ctx call env ops => Rules.IntegerCompareOrder.operations_equal ctx call ops env)
 
-/-- Fusion runs before scalar identities can erase its matched primitive. Local families then
-preserve escaping bindings and delete only total dead producers. Checked lexical names make the
-final numeric-ID ordering stable after aliases and scope motion. -/
+/-- Local families preserve escaping bindings and delete only total dead producers. Checked
+lexical names make the final numeric-ID ordering stable after aliases and scope motion. -/
 def normalizer : TypedNormalizer :=
-  ParallelFusion.normalizer.sequential
-    (bodies.sequential (ReshapeNested.normalizer.sequential
-      (AlphaNormalize.normalizer.sequential
-        (RegionExact.normalizer scalarOrdering scalarOrdering_exact))))
+  bodies.sequential (ReshapeNested.normalizer.sequential
+    (AlphaNormalize.normalizer.sequential
+      (RegionExact.normalizer scalarOrdering scalarOrdering_exact)))
 
 def check (ib : Nat) (src tgt : Module) (fn : String) (argTys resTys : List VTy) : Bool :=
   TypedNormalizeC1.checkWith normalizer

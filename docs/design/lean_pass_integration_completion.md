@@ -35,7 +35,7 @@ code_refs:
 
 ## Implemented compiler gates
 
-All ten compiler gates are integrated and enabled by `--validate-passes all`,
+All nine Merlin-owned compiler gates are integrated and enabled by `--validate-passes all`,
 including MACC and Q/DQ. Supported changing boundaries require accepted actual
 input/output checks before compiler products return. Target, proof, tool,
 resource and custody failures block delivery. The
@@ -44,7 +44,7 @@ patterns, assumptions and coverage statuses; broader ranks, computed initializer
 prefixes and general loop bodies are profile extensions, not missing compiler
 gate integrations.
 
-All ten selectors now have integrated source admission, actual-boundary workers
+All nine selectors now have integrated source admission, actual-boundary workers
 and end coverage within the declared models. The generic UNROLL/TILE and
 configuration refreshes have retained fresh proofs/replay with independent
 review. At the earlier five-check cut, default-all memory qualification passed
@@ -63,15 +63,15 @@ SSA, map, native-reference and independent numerical-review acceptance criteria.
 These component proofs do not complete the broader compiler profiles.
 
 The agreed endpoint covers Merlin pass proofs and their compiler integration
-through output IR. Its original nine interfaces are tensor DCE, CSE,
+through output IR. Its current nine interfaces are tensor DCE,
 ordered unrolling, ordered tiling, private buffer reuse, Q/DQ lowering, MACC
 policy lowering, redundant configuration-write elimination and scoped
-configuration hoisting. Downstream MLIR/LLVM, linking, executable behavior and
+configuration hoisting and host graph fusion. Downstream MLIR/LLVM, linking, executable behavior and
 hardware correspondence remain outside this endpoint.
 
-The additional `host_graph_fusion` interface strengthens the existing logical
-graph proof through actual emitted helpers and every public result. It is an
-additional selector included in `all`, covering one region of static pure integer
+The `host_graph_fusion` interface strengthens the existing logical
+graph proof through actual emitted helpers and every public result. It is a
+selector included in `all`, covering one region of static pure integer
 pointwise stages on both compiler routes. Fresh source-bound proof, replay,
 canonical worker enforcement and failed-product quarantine are implemented.
 The next graph extensions are multiple fused regions with exact adjacent joins,
@@ -116,14 +116,10 @@ same-mode DCE theorem relates complete successful returned-value/world outcomes
 after actual dead index-constant deletions. The canonical worker independently
 decodes both endpoints and checks their exact frame and SSA joins. Original
 live memory ownership binds this stage to its compiler source, and binds the
-later native CSE capture to the actual upstream input, pipeline and runner.
-Authentic unchanged CSE follows the zero-job, zero-credit identity contract.
-Missing/skip-only captures and caller allow-skip flags still refuse. Changed
-memory CSE now runs with explicit unverified coverage under the latest bounded
-policy. The original evidence closes the observed default-all delivery gap for the admitted
-memory profiles; it adds no categorized-error, allocator, canonicalization or
-downstream native-fidelity proof. Evidence is retained under
-`out/build/default-all-memory-20261029/installed-qualification-v3/`.
+actual upstream input, pipeline and runner. Upstream CSE is trusted and no
+longer captured or checked. The historical memory qualification applies to its
+recorded source cut; it supplies no canonicalization or downstream native-fidelity
+proof. Current scope is defined in [verification scope](verification_scope.md).
 Private-buffer tile sizes now have a finite 65,536 resource ceiling, separate
 from the existing signed-index64 safety obligations.
 The scalar loop projection remains restricted to its word/index source model.
@@ -163,7 +159,7 @@ unverified coverage; standalone proof APIs continue to refuse those inputs.
 Timeout, missing tools and resource exhaustion remain unavailable outcomes;
 accepting arbitrarily large IR within a fixed budget is not a proof requirement.
 
-The relation must also match the pass. DCE/CSE and Q/DQ use typed refinement;
+The relation must also match the pass. DCE and Q/DQ use typed refinement;
 the scalar loop route preserves returned values, modeled errors and terminal
 world; storage currently preserves possible successful public observations;
 MACC conforms to a proposed numerical policy. A refinement theorem need not
@@ -202,7 +198,7 @@ Lean/Merlin familiarity. The broader target covers legal changing cases of the
 selected current producers under the compiler's index64 contract and the agreed
 IR language. Additional dialect semantics, a revised frozen semantic interface,
 new allocator policies and index32 support need separate estimates after an
-inventory. In particular, the DCE/CSE closure estimates assume the existing
+inventory. In particular, the DCE closure estimates assume the existing
 modeled tensor language; they do not budget every possible MLIR operation.
 
 Ranges include implementation, useful mutation controls, exact delivery and
@@ -215,7 +211,6 @@ qualification below.
 | Pass | Historical compiler baseline | Original next delivery estimate | Broader coverage estimate | Main uncertainty |
 | --- | --- | --- | --- | --- |
 | Tensor DCE | Integrated in `all` | Existing route; 1–3 days for domain/source-support closure | 1–3 days within the current modeled domain | Additional operation families found by the inventory |
-| Leading tensor CSE | Integrated in `all` | Existing route; 1–3 days for coverage and endpoint audit | 1–3 days within the current modeled domain | Complete context and source-support coverage |
 | Ordered unrolling | Integrated for no-tail bulk loops | 5–8 days: activate empty/inline/tail cases through a real audited worker | 10–18 days | Typed cloning/renaming, tail joins, nested and unchanged context |
 | Ordered tiling | Integrated for one-dimensional scalar loops and the memory chain | 3–5 days: multiple/unchanged-loop context on the scalar route | 7–12 days | Nested/depth-selected bodies and composition with unrolling |
 | Private buffer reuse | Integrated through normalization→reuse→tiling | 5–8 days: independently selected untiled reuse for the current rank-two/i32 fragment | 15–25 days | General heap/epoch framing, current producer ranks/word widths and surrounding code |
@@ -248,11 +243,9 @@ human-review-only milestone.
 
 ### Concrete integration work per family
 
-**DCE/CSE:** keep the existing `pass_validation.observe` and leading-CSE route.
-Compare actual producer eligibility with the typed rulebook and source-support
-checker, inventory retained baseline refusals, and check complete module/context
-binding. Resolve genuine missing rules in the promised language. No additional
-selector or duplicate CSE implementation is needed.
+**DCE:** keep `pass_validation.observe` on Merlin's actual pruning producer.
+Compare producer eligibility with the typed rulebook and source-support checker,
+and retain complete module/context binding. Upstream CSE is outside this work.
 
 **Unrolling:** the inline and tail source preparations already exist in
 `lean_graph_pipeline_inline.py` and `lean_graph_pipeline_tail.py`. They explicitly
@@ -379,7 +372,7 @@ source accumulation. Keep additive bridges outside frozen semantic files.
 If the frozen AST/evaluator needs extension, prepare a versioned interface/spec
 change for review with migration and conservation lemmas.
 
-For DCE/CSE, retain the current kernel-checked tensor route and complete-module
+For DCE, retain the current kernel-checked tensor route and complete-module
 binding. Inventory operations that the actual producers can remove or merge
 against the typed rulebook and source-support checker. Prove missing rules and
 context closure for the promised language; do not infer purity from dialect

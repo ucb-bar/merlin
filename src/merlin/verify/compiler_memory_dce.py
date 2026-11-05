@@ -104,7 +104,6 @@ def _host_sources():
         "merlin.verify.lean_graph_loops_unroll",
         "merlin.verify.lean_graph_loops_shape_epoch_model",
         "merlin.llvmlower.lower",
-        "merlin.llvmlower.leading_cse",
         "merlin.llvmlower.pipeline",
         "merlin.llvmlower.passes_xdsl",
         "merlin.common.owned_process",

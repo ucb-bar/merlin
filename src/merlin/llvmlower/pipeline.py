@@ -766,9 +766,11 @@ _CONTIGUOUS_COPY_MID_SRC = _CONTIGUOUS_COPY_MID_SRC.replace(
     'if len(sys.argv) > 18 and sys.argv[18] == "1":',
     'if len(sys.argv) > 19 and sys.argv[19] == "1":',
 )
+from .adjacent_exp import RUNNER_PRELUDE as _ADJACENT_EXP_PRELUDE
 from .automatic_host_features import RUNNER_PRELUDE as _AUTOMATIC_HOST_FEATURES_PRELUDE
 from .broadcast_math_hoist import RUNNER_PRELUDE as _BROADCAST_MATH_HOIST_PRELUDE
 from .fma_intrinsic import RUNNER_PRELUDE as _FMA_INTRINSIC_PRELUDE
+from .guarded_zero_contraction import RUNNER_PRELUDE as _GUARDED_ZERO_CONTRACTION_PRELUDE
 from .masked_contraction import RUNNER_PRELUDE as _MASKED_CONTRACTION_PRELUDE
 from .masked_contraction import STAGE_RUNNER as _MASKED_CONTRACTION_STAGE_RUNNER
 from .named_broadcast_fold import RUNNER_PRELUDE as _NAMED_BROADCAST_FOLD_PRELUDE
@@ -780,15 +782,13 @@ from .parallel_grain import LATE_STAGE_SRC as _PARALLEL_GRAIN_LATE_SRC
 from .parallel_grain import RUNNER_PRELUDE as _PARALLEL_GRAIN_PRELUDE
 from .parallel_team import RUNNER_PRELUDE as _PARALLEL_TEAM_PRELUDE
 from .parallel_team import STAGE_SRC as _PARALLEL_TEAM_STAGE_SRC
+from .rhs_column_reuse import RUNNER_PRELUDE as _RHS_COLUMN_REUSE_PRELUDE
 from .roundeven_intrinsic import RUNNER_PRELUDE as _ROUND_INTRINSIC_PRELUDE
 from .scalar_contraction import RUNNER_PRELUDE as _SCALAR_CONTRACTION_PRELUDE
-from .guarded_zero_contraction import RUNNER_PRELUDE as _GUARDED_ZERO_CONTRACTION_PRELUDE
-from .adjacent_exp import RUNNER_PRELUDE as _ADJACENT_EXP_PRELUDE
+from .scalar_ordered_reduction import RUNNER_PRELUDE as _SCALAR_ORDERED_REDUCTION_PRELUDE
 from .scalar_pointwise_packet import RUNNER_PRELUDE as _SCALAR_POINTWISE_PACKET_PRELUDE
 from .scalar_pointwise_unroll import RUNNER_PRELUDE as _SCALAR_POINTWISE_UNROLL_PRELUDE
 from .scalar_squared_sum import RUNNER_PRELUDE as _SCALAR_SQUARED_SUM_PRELUDE
-from .scalar_ordered_reduction import RUNNER_PRELUDE as _SCALAR_ORDERED_REDUCTION_PRELUDE
-from .rhs_column_reuse import RUNNER_PRELUDE as _RHS_COLUMN_REUSE_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
@@ -1391,7 +1391,6 @@ def lower_to_llvm_ir(
     masked_contraction_effects=None,
     source_observation_effects=None,
     source_scalar_carrier=None,
-    shared_pass_native=None,
     retain_llvm_dialect: bool = False,
     borrowed_buffer_calls=None,
     borrowed_arena_lifetimes=None,
@@ -1502,24 +1501,6 @@ def lower_to_llvm_ir(
     from .optional_passes import selected_features
 
     feats = normalize(selected_features(features))
-    if shared_pass_native is not None:
-        shared_pass_native.prepare(
-            work,
-            mlir_text,
-            timeout=timeout,
-            features=feats,
-            index_bits=index_bits,
-            data_layout=data_layout,
-            custom_pipeline=pipeline,
-            vectorize=vectorize,
-            parallel=parallel,
-            parallel_harts=parallel_harts,
-            parallel_chunks=parallel_chunks,
-            transform_schedule=transform_schedule,
-            source_scalar_carrier=source_scalar_carrier,
-            source_observation_effects=source_observation_effects,
-            masked_contraction_effects=masked_contraction_effects,
-        )
     from .masked_contraction import FEATURE as _MASKED_FEATURE
     from .masked_contraction import MaskEffectContract
 
@@ -1709,11 +1690,6 @@ def lower_to_llvm_ir(
             max_response_bytes=source_scalar_carrier.max_response_bytes,
             timeout=timeout,
         )
-    if shared_pass_native is not None:
-        runner_src = shared_pass_native.bind_runner(runner_src, timeout=timeout)
-    from .leading_cse import bind_runner as _record_leading_cse
-
-    runner_src = _record_leading_cse(runner_src, work, pipeline=pipeline, upstream=(src, mlir_text))
     if borrowed_buffer_calls is not None:
         from .borrowed_buffer_calls import prepare_native
 
@@ -1723,6 +1699,12 @@ def lower_to_llvm_ir(
         recipe_sources.update(
             borrowed_buffer_calls=roster, borrowed_call_contracts=Path(__file__).with_name("borrowed_buffer_calls.py")
         )
+    from merlin.verify.compiler_memory_origin import current as memory_origin
+
+    memory_owner = memory_origin()
+    if memory_owner is not None:
+        memory_owner.bind_input((src, mlir_text), work)
+        runner_src = memory_owner.bind_runner(runner_src, work, pipeline=pipeline)
     runner.write_text(runner_src, encoding="utf-8")
     # argv[4] gates the self-copy erase, so the frozen hand_v0 control keeps its byte-identical
     # lowering unless the feature is explicitly enabled.
@@ -1844,8 +1826,6 @@ def lower_to_llvm_ir(
     # mlir-translate produces the .ll out-of-process (the in-process torch-mlir bridge
     # segfaults on omp IR). Otherwise the runner writes the .ll directly.
     stage_out = retention.translation if retention is not None else ((work / "model.llvmdialect.mlir") if omp else out)
-    if shared_pass_native is not None:
-        stage_out.unlink(missing_ok=True)
     command = [
         str(m2m_python()),
         str(runner),
@@ -1884,8 +1864,6 @@ def lower_to_llvm_ir(
     recipe_sources.update(prepared_mlir=src, runner=runner)
     recipe = LoweringRecipe(work, features=feats, sources=recipe_sources)
     recipe.command(command)
-    if shared_pass_native is not None:
-        shared_pass_native.freeze_command(command)
     if audit is not None and audit.directory is not None:
         from ..targetgen.provenance import toolchain_provenance
 
@@ -1900,12 +1878,10 @@ def lower_to_llvm_ir(
         dependencies=recipe_sources.values(),
         scalar_stage=scalar_stage,
         scalar_carrier=source_scalar_carrier,
-        native_verification=shared_pass_native,
     )
     if (
         proc.returncode != 0
         or not stage_out.is_file()
-        or (shared_pass_native is not None and not stage_out.stat().st_size)
     ):
         error = PipelineError(
             f"upstream lowering failed (returncode={proc.returncode}, "
@@ -1918,18 +1894,6 @@ def lower_to_llvm_ir(
                 error.add_note(f"IR inspection prefix could not be recorded: {type(audit_error).__name__}")
         _harvest_native(traced, stage_out, failure=error)
         raise error
-    if shared_pass_native is not None:
-        for name in (
-            "verification.json",
-            "chain.json",
-            "status.json",
-            "expected-native-plan.json",
-            "sources.json",
-            "command.json",
-        ):
-            recipe.bind_source("lean_native_" + name.replace(".", "_"), shared_pass_native.root / name)
-        if lowering_selection is not None:
-            lowering_selection["shared_pass_native_verification"] = str(shared_pass_native.root / "verification.json")
     from .automatic_host_features import FEATURE as automatic_host_feature
 
     if automatic_host_feature in feats:

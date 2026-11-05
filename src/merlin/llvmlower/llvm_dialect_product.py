@@ -36,13 +36,9 @@ def _input(pin):
     return {key: pin[key] for key in ("path", "sha256")}
 
 
-def run_translation(command, *, timeout, audit, retention, source, runner, dependencies, scalar_stage, scalar_carrier, native_verification=None):
+def run_translation(command, *, timeout, audit, retention, source, runner, dependencies, scalar_stage, scalar_carrier):
     """Run the native translator on one shared CPU; retain selected products."""
     try:
-        if native_verification is not None:
-            if retention is not None or scalar_stage is not None:
-                raise ValueError("native tensor-prefix validation cannot combine with LLVM retention or scalar callbacks")
-            return native_verification.run_command(command, timeout=timeout)
         if retention is not None:
             with shared_compute_pool(timeout_s=timeout):
                 return retention.run(command, source=source, runner=runner, dependencies=dependencies, timeout=timeout)

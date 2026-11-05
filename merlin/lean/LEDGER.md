@@ -8,6 +8,12 @@ source cuts and do not establish freshness after an edit to this file. Historica
 counterexamples and corrections live in [findings.md](findings.md); a repaired
 compiler bug and an unproved semantic extension are separate statuses.
 
+The 2026-11-04 scope cleanup retires upstream MLIR pass gates. Current selection
+contains nine Merlin-owned gates, all included in `all`; see
+[verification scope](../../docs/design/verification_scope.md). This changes no
+remaining semantic definition, theorem statement or numerical approval. Dated
+qualification counts below retain their original source cuts.
+
 Lean source paths below are relative to the repository root. The tensor/numerical
 tree is `merlin/lean/MerlinVerify/`; the separate graph/loop/state library is
 `src/merlin/verify/lean/Merlin/`. A theorem namespace is not a filesystem path.
@@ -32,7 +38,7 @@ hashes; source freshness requires a new check.
 
 ## Actual logical host dispatch fusion
 
-The explicit `host_graph_fusion` compiler check is outside `all`.
+The `host_graph_fusion` compiler check is included in `all`.
 `Merlin.HostGraphFusion.check_sound` connects the actual projected target call
 body to the existing `GraphRegions` observer-preservation theorem. It proves
 equality of the complete ordered public results, including producer fanout and
@@ -61,19 +67,20 @@ external/effectful calls, uninitialized reads and broader fusion patterns refuse
 Fresh canonical proof objects, audited roots, source/ledger/tool bytes and live
 process ownership are required for delivery. Serialized reports grant no authority.
 
-## Integration status — 2026-10-29
+## Integration status and retained qualification evidence
 
-The current collaboration branch is `feat/pass-verif-integration`. Its five
-default compiler checks concern tensor DCE/CSE, ordered unrolling/segmentation
-and scoped private-buffer reuse. An additional explicitly selected
-`bf16_f32acc_draft_contract` gate checks candidate numerical-reference
-conformance and remains outside `all`. The user has retained draft status until
-independent review. Configuration-write elision now also has an explicit
+The collaboration branch is `feat/pass-verif-integration`. Its nine default
+compiler checks cover tensor/ordinary-memory DCE, ordered unrolling/segmentation,
+scoped private-buffer reuse, Q/DQ, MACC, configuration elision/hoisting and host
+graph fusion. `bf16_f32acc_draft_contract` checks candidate numerical-reference
+conformance and is included in `all`; inclusion does not approve the numerical
+specification. The user has retained draft status until independent review.
+Configuration-write elision has an explicit
 `configuration_write_elision` compiler selector and original-owner hooks for
 instruction IR and straight-line Kernel scheduling. Installed consumer/worker
 qualification includes actual bare instruction and ordinary schedule/native
 paths. `configuration_loop_hoisting` also guards the public producer before its
-ordinary Kernel consumer. Both remain outside `all` and require original selected
+ordinary Kernel consumer. Both are included in `all` and require original selected
 ISA/effect inputs (A10), with Python/xDSL correspondence under T7. Hoisting retains its all-index `Models` premise and scoped
 positive-loop profile; finite host bounds/native examples do not discharge it.
 The additive V3 prefix checker derives sequential last-write-wins assignments
@@ -185,9 +192,10 @@ introduced. Its relation equates successful complete return/world outcomes,
 without categorized-error or divergence equivalence. The actual compiler
 worker audits eight roots and 1,137 STD3 declarations. Installed default-all
 untiled and tiled-tail cases pass with exact BUFFER→DCE joins. Original live
-memory ownership binds native CSE input, pipeline, runner and whole-module
-capture; only raw unchanged CSE has zero jobs and zero proof credit. Changed
-memory CSE refuses. This supplies no canonicalization or LLVM/native proof.
+memory ownership binds the original source, selected pipeline, actual native
+input and runner through delivery. Upstream CSE capture and comparison are
+retired; no upstream operation receives a Merlin coverage entry or proof credit.
+This supplies no canonicalization, CSE or LLVM/native proof.
 The private-buffer tile-size resource ceiling is now 65,536; actual signed
 index64 obligations and initializer/allocator domains are unchanged.
 
@@ -258,7 +266,7 @@ source/format campaigns remain separate from these completed tests.
 | T1 | Lean kernel; Lean compiler and runtime for the compiled checker (including the compiler-generated `_unsafe_rec` twins of recursive definitions); `Lean.Json`. |
 | T2 | The pipeline’s `torch_mlir` parser/printer and Python bridge: export/round trip, receipt byte binding/replay, authored roster selection and gate orchestration. These glue components are regression tested, not formally proved. Within one gate job, a process-local receipt session may reuse actual successful checks instead of executing them twice. The host records the exact result bytes when a live check completes; caller-supplied hashes and saved receipts grant no reuse authority. Schema, provenance, axiom, export and byte bindings are still checked. Edited receipts, other jobs and external composition always replay. |
 | T3 | Fidelity of the MerlinSem op semantics to MLIR and the captured source producer. Not proved. In addition to hand-built `#guard` cases, `merlin/tests/ir/test_lean_differential.py` compares the actual Lean denotation with native upstream MLIR on a deterministic integer/tensor/f32/f64 corpus and checks named-op generalization. The map signature mismatch is corrected and its corpus must pass. Probes bind the installed contract to compiler fingerprints; package versions do not establish LLVM revisions. Coverage limits and required-tool instructions are in `docs/guides/lean_differential_tests.md`; untested forms and targets remain trusted. New bounded integer-folder/named-op and dequantization tests use hash-pinned MLIR. A separate hash-pinned PyTorch 2.10.0+cpu oracle checks both dequantization source operations against NumPy and selected actual MLIR-folded compiler bodies. NaN payloads, complete IEEE-instance qualification, human specification review, and general capture-producer fidelity remain outstanding. The pinned Q/DQ SourceCapture route has exact producer/version binding and finite qualification; that evidence does not establish universal framework correspondence. |
-| T4 | Upstream MLIR lowering below the verified tensor stage, LLVM, the linker, the C runtime. The qualified scalar/parallel defaults and native oracle generalize maps before bufferization. A regression checks the required initializer copy survives; [LLVM issue 213241](https://github.com/llvm/llvm-project/issues/213241) documents the separate direct-map bufferization bug. This is not a proof of downstream lowering. |
+| T4 | All upstream MLIR passes, LLVM, the linker and the C runtime. Native canonicalization, CSE, fusion and named-op generalization are outside Merlin's proof scope. The qualified scalar/parallel defaults and native oracle generalize maps before bufferization. A regression checks the required initializer copy survives; [LLVM issue 213241](https://github.com/llvm/llvm-project/issues/213241) documents the separate direct-map bufferization bug. This is not a proof of downstream lowering. |
 | T5 | Accelerator kernels meeting their stated contracts (the OOT hole, design D8). |
 | T6 | Floating-point accuracy (measured, never proved; floats are parametric in every theorem). |
 | T7 | Trusted Python/xDSL parsing and projection from actual input/output IR to the graph, loop, storage and configuration models. This includes complete operation/attribute/region traversal, typed SSA and alias/initializer bindings, helper-call expansion, shape/index extraction, emitted query construction and source/evidence custody. Lean checks the resulting propositions, not the correctness or completeness of these Python translations. Original ISA/effect resolution is also trusted as a translation; truth of the selected semantic premises is A10. Regression tests, mutation refusals, hashes and replay give evidence of correspondence, not a formal proof of the parser or projector. This is separate from T2's torch_mlir exporter. |
@@ -359,12 +367,10 @@ outside its local theorem. Legal float-to-float bitcasts are another conservativ
 gap: the current float-result branch accepts integer bits only. Native support-gap observations
 are kept separate from matching raw-bit integer/float reinterpretation evidence.
 
-The opt-in runtime handoff gate encloses preprocessing. An explicit preparation capture can
-extend the chain to its original source, and `verify_native_prefix=True` additionally holds the
-actual ordinary native Module/Context through D1 until strict replay accepts. Bufferization and
-the remaining native suffix stay in T4. The initial route excludes optional features, custom
-pipelines and callbacks, and refuses index-typed 32-bit programs because of S6. Whole-model and
-OOT consumers require their own integration. These bounded routes do not establish complete
+The opt-in runtime handoff gate encloses shared preprocessing. An explicit preparation capture
+can extend the chain to its original source. The former `verify_native_prefix` option and its
+held upstream Module/Context protocol are retired; all native MLIR lowering stays in T4.
+Whole-model and OOT consumers require their own integration. These bounded routes do not establish complete
 production-path coverage or a full-compiler correctness claim. Python roster selection, source
 binding and finite process supervision remain in T2; OS filesystem/process-creation behavior and
 pending kernel cleanup are host assumptions.
@@ -415,7 +421,7 @@ The preprocessing gate resolves an immutable authored boundary roster before exe
 checks its ordered occurrences, pass identities and unchanged boundaries before and after strict
 semantic replay. Independent roster replay takes the caller's expected plan; recorded metadata
 cannot define its own coverage denominator. Generic captures without an expected plan explicitly
-claim recorded-boundary coverage only. Explicit preparation/native composition is a separate
+claim recorded-boundary coverage only. Explicit preparation composition is a separate
 selection; an OOT consumer is not covered by this host gate.
 
 An explicit `preparation.capture` prefix can now extend the chain to the original source for
@@ -424,8 +430,8 @@ provider callbacks. Capture alone is unverified. Consumption independently recon
 authored preparation roster, validates the retained prefix and exact actual preprocessing input,
 then checks original-source support/definedness and one concatenated strict chain. Mandatory
 frontend-intent and numerical repairs must actually prove or fail; capture does not grant them a
-new specification. Existing whole-model builders remain ungated by default; D1 requires the
-additional explicit native-prefix option, and OOT integration remains separate.
+new specification. Shared preparation-chain checking remains an explicit selection;
+native MLIR lowering is trusted and OOT integration remains separate.
 
 Exact scalar constant aliases compare decoded runtime values, including raw floating bits,
 at the claimed index width; full-continuation renaming preserves captures and shadowing. This
@@ -449,11 +455,11 @@ Integer comparison ordering covers all ten predicates with exact outcome equalit
 property/attribute precedence. Its internal canonical headers and integer commutation share one
 final traversal through all original regions, preserving captures and raw failure outcomes.
 This closes the named matmul parse operand-order gap without changing emitted MLIR snapshots.
-Actual changing matmul/transpose generalization has held-gate/native qualification; changing
-a bounded adjacent identity-map integer fusion family now proves actual changing two-loop-to-one
-boundaries, including its fresh empty destination. Captured-scalar fusion and general layouts remain
-explicit proof gaps and stop before acknowledgment. Successful sampled executions do not turn a
-refused boundary into a verified compilation.
+Named-op generalization remains a semantic comparison used by the shared checker and its
+fidelity tests. The bounded upstream two-loop-to-one fusion matcher and held native gate
+were removed with the upstream verification workstream. Shared host-graph/W8A8 fusion lemmas
+remain because Merlin's own checks use them. Successful sampled executions do not turn a
+refused Merlin boundary into a verified compilation.
 
 One leading closed scalar constant can be hoisted from a generic body with an exact typed proof;
 index/tensor producers and general region motion remain outside this family. An alpha-validated

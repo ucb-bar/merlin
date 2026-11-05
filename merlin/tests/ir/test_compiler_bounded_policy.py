@@ -66,7 +66,7 @@ def test_admitted_source_with_unavailable_real_worker_stops_compilation(tmp_path
     assert coverage["verified_boundaries"] == 0
 
 
-@pytest.mark.parametrize("pass_name", ["cse", "prune_dead_pure_tensor_ops", "lower_quant_ext"])
+@pytest.mark.parametrize("pass_name", ["prune_dead_pure_tensor_ops", "lower_quant_ext"])
 def test_source_rulebook_admission_uses_only_original_source(tmp_path, pass_gate_tools, pass_name):
     from types import SimpleNamespace
 

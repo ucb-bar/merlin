@@ -30,7 +30,7 @@ class Returned(ctypes.Structure):
 
 @pytest.mark.timeout(2400)
 @pytest.mark.parametrize("tile_size,extent", [(None, 3), (32, 257)], ids=["untiled3", "tiled32-tail257"])
-def test_actual_default_all_memory_gate_keeps_DCE_proof_and_observed_CSE_identity(
+def test_actual_default_all_memory_gate_keeps_DCE_proof(
     tmp_path,
     pass_gate_tools,
     tile_size,
@@ -38,6 +38,9 @@ def test_actual_default_all_memory_gate_keeps_DCE_proof_and_observed_CSE_identit
 ):
     from merlin.verify import compiler_memory_dce, compiler_memory_origin
 
+    # pytest may delete successful cases and reuse their temporary directory.
+    # dlopen retains loaded libraries by path, so each shape needs a distinct path.
+    tmp_path = tmp_path / f"extent-{extent}-tile-{tile_size}"
     raw = source(extent)
     options = transforms.Options(buffer_allocator=transforms.ALLOCATOR, tile_size=tile_size)
     original = lower.lower_model(
@@ -58,13 +61,12 @@ def test_actual_default_all_memory_gate_keeps_DCE_proof_and_observed_CSE_identit
     excluded = [row for row in coverage["boundaries"] if row["status"] == "unverified"]
     assert len(excluded) == 1 and excluded[0]["pass"] == "lower_quant_ext"
     assert excluded[0]["source_sha256"] == excluded[0]["final_sha256"] and excluded[0]["proof_credit"] is False
-    observed_cse = [row for row in coverage["boundaries"] if row["pass"] == "cse"]
-    assert observed_cse and all(row["status"] == "unchanged" and row["proof_credit"] is False for row in observed_cse)
+    assert not any(row["pass"] == "cse" for row in coverage["boundaries"])
     verified = [row for row in coverage["boundaries"] if row["proof_credit"]]
     assert {row["check"] for row in verified} == {"compiler_buffer_refinement", compiler_memory_dce.CHECK}
     labels = {row["label"] for row in worker.verdicts}
     assert "prune_dead_pure_tensor_ops" in labels
-    assert not any(row["label"] == "cse" for row in worker.verdicts)  # No proof/optimization credit for identity.
+    assert not any(row["label"] == "cse" for row in worker.verdicts)
     dce = next(row["detail"] for row in worker.verdicts if row["label"] == "prune_dead_pure_tensor_ops")
     assert dce["schema"] == "merlin.compiler-memory-dce.gate.v1"
     assert dce["domain"] == compiler_memory_dce.DOMAIN
@@ -74,13 +76,7 @@ def test_actual_default_all_memory_gate_keeps_DCE_proof_and_observed_CSE_identit
     report = json.loads(Path(dce["receipt"]).read_text())
     assert report["audit"]["violations"] == []
     assert set(report["audit"]["axioms_used"]) <= {"propext", "Quot.sound", "Classical.choice"}
-    captures = json.loads((tmp_path / "checked/leading-cse/index.json").read_text())
-    assert captures and all(row["schema"] == "merlin.original-memory-cse.v2" for row in captures)
-    for number, capture in enumerate(captures, 1):
-        before = (tmp_path / "checked/leading-cse" / f"{number:04d}.before.mlir").read_bytes()
-        after = (tmp_path / "checked/leading-cse" / f"{number:04d}.after.mlir").read_bytes()
-        assert before == after and capture["before_sha256"] == capture["after_sha256"]
-        assert "checked" not in capture
+    assert not (tmp_path / "checked/leading-cse").exists()
     assert compiler_memory_origin.current() is None
     observations = []
     for arm, result in (("original", original), ("baseline", baseline), ("checked", checked)):

@@ -59,7 +59,7 @@ remaining models and pass groups.
 Inside Merlin's own compile, `merlin-compile --validate-passes` (or
 `MERLIN_VALIDATE_PASSES`) checks selected pass boundaries with Lean beside the
 compile and stops it when a check does not accept; a source outside a gate's
-admitted profile is recorded as an exclusion instead. Ten gates are registered in
+admitted profile is recorded as an exclusion instead. Nine gates are registered in
 `merlin.verify.pass_validation.CHECKS`; their scope and limits are in the
 [compiler gate overview](../guides/lean_compiler_stack.md).
 

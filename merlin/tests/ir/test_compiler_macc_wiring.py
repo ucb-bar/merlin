@@ -140,7 +140,7 @@ def test_all_includes_draft_and_individual_selection_is_preserved(tmp_path, pass
     monkeypatch.setenv(pass_validation.ENV_PASSES, "all")
     default = pass_validation.from_environment(tmp_path / "default")
     assert default.passes == frozenset(pass_validation.CHECKS)
-    assert {"cse", "ordered_loop_unrolling", "ordered_loop_segmentation", "buffer_reuse"} <= default.passes
+    assert {"prune_dead_pure_tensor_ops", "ordered_loop_unrolling", "ordered_loop_segmentation", "buffer_reuse"} <= default.passes
     monkeypatch.setenv(pass_validation.ENV_PASSES, transforms.MACC)
     explicit = pass_validation.from_environment(tmp_path / "explicit")
     assert explicit.passes == frozenset({transforms.MACC})

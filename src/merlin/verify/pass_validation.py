@@ -32,8 +32,6 @@ from .compiler_profile import SourceOutsideProfile
 #: Validated pass -> the gate check that proves its before/after pair.
 CHECKS = {
     "prune_dead_pure_tensor_ops": "tensor_refinement",
-    # The pipeline's leading tensor-level cse, run by merlin.llvmlower.leading_cse.
-    "cse": "tensor_refinement",
     "ordered_loop_unrolling": "compiler_loop_refinement",
     "ordered_loop_segmentation": "compiler_loop_refinement",
     "buffer_reuse": "compiler_buffer_refinement",
