@@ -1007,23 +1007,14 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
     indexing maps + iterator types (so the RVV schedule can tile/vectorize it), and the i32
     accumulator is requantized by ``acc * s_a * s_w[out_channel]``. Returns count.
 
-    **THIS PASS IS UNREACHABLE ON EVERY CONVOLUTIONAL MODEL IN THIS FLEET, AND SAYS SO.** Its
-    predicate wants a 2-input ``linalg.generic`` whose indexing maps carry a compound affine term.
-    model2MLIR never produces one: it rewrites every conv into ``im2col gather + linalg.matmul``
-    ahead of merlin (``prov.conv_path = "im2col_matmul"``; measured 190 such ops in deepjscc int8,
-    175 in lstmnetvit int8, and ZERO ops tagged ``prov.op = "conv2d"`` in either). The compound term
-    that this pass keys on lives in the GATHER, which has one input and an empty body, so nothing
-    matches and the pass has never fired on any conv here. ``contraction_view``'s comment that convs
-    "are handled by lower_conv_int8" describes an intent, not a fact.
-
-    It is kept rather than deleted because its ARITHMETIC is the correct scheme and is the thing
-    ``quantize_before_gather`` reuses (a per-tensor activation scale computed before the expansion);
-    a frontend that hands us a fused conv would put it straight back in reach. But a pass that cannot
-    fire must not be indistinguishable from one that had nothing to do, so it now COUNTS what it
-    scanned into ``report_out`` (``generics_scanned``, ``compound_map_generics``, ``conv_prov_ops``,
-    ``lowered``) and prints one ``INERT`` line when a module full of convolution provenance yields
-    zero candidates. ``merlin/tests/ir/test_quantize_before_gather.py`` asserts that on a real bundle,
-    so the deadness is a gated fact instead of a comment."""
+    **model2MLIR never reaches this pass.** It expands every conv into ``im2col gather +
+    linalg.matmul`` (``prov.conv_path = "im2col_matmul"``); the window lives in the one-input gather,
+    and the conv's arithmetic reaches ``lower_contraction_int8`` as a plain matmul -- which a matrix
+    route takes as a GEMM. This pass is for a frontend's DIRECT (windowed) conv; its output is
+    routed through ``contraction_normal_form``'s im2col gather. A pass that cannot fire must not look
+    like one with nothing to do, so it COUNTS what it scanned into ``report_out`` (also the im2col
+    contractions already quantized) and prints one ``INERT`` line when a module full of convolution
+    provenance yields zero candidates; ``merlin/tests/ir/test_quantize_before_gather.py`` gates it."""
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd
     from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, FloatAttr, TensorType, f32, i8, i32
@@ -1079,8 +1070,14 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
         return inserted.results[0], scale, [zero, base, inserted]
 
     targets = []
-    n_generics = n_compound = n_windowed = n_conv_prov = 0
+    n_generics = n_compound = n_windowed = n_conv_prov = n_conv_gemm = 0
     for op in module.walk():
+        # The convolutions the frontend ALREADY expanded: their im2col matmul is a contraction the
+        # contraction pass (which runs first) quantized, i.e. a GEMM any matrix route takes as one.
+        if getattr(op.attributes.get("prov.role"), "data", "") == "contraction" and (
+            "prov.conv_path" in op.attributes or getattr(op.attributes.get("prov.op"), "data", "").startswith("conv")
+        ):
+            n_conv_gemm += 1
         # Counted only on ops the FRONTEND tagged. `prov.role` is added exclusively by this file's
         # own rewrites, so excluding it keeps the diagnostic reporting the module as captured rather
         # than inflating with the ops an earlier quant pass just minted (measured: 190 -> 228 on
@@ -1340,6 +1337,7 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
                 "compound_map_generics": n_compound,
                 "windowed_map_generics": n_windowed,
                 "conv_prov_ops": n_conv_prov,
+                "conv_im2col_contractions": n_conv_gemm,
                 "lowered": n,
                 "static_activation_reused": n_static_activation,
                 "dynamic_activation_quantized": n - n_static_activation,
@@ -1353,8 +1351,9 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
             f"[quant] conv_int8 INERT: {n_conv_prov} ops carry convolution provenance but 0 "
             f"linalg.generic of {n_generics} carries a WINDOWED (stride/dilation) indexing map "
             f"({n_compound} carry a constant-index one, which is a broadcast, not a conv) -- the "
-            f"frontend already expanded every conv into im2col + matmul, so this pass cannot "
-            f"reach one"
+            f"frontend already expanded every conv into im2col + matmul, and contraction_int8 "
+            f"quantized {n_conv_gemm} of those matmuls (a matrix route takes them as GEMMs); this "
+            f"pass lowers a frontend's DIRECT (windowed) conv"
         )
     return n
 
