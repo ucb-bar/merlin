@@ -29,9 +29,9 @@ def _selected_shim():
     from merlin.targetgen.plugins import load_declared
     from merlin.targetgen.target_registry import explicit_targets
 
-    if "saturn" not in explicit_targets():
-        pytest.skip("requires Saturn support explicitly selected with MERLIN_TARGET_PATH")
-    return load_declared("saturn", "matrix_lowering").shim
+    if "kodiak" not in explicit_targets():
+        pytest.skip("requires the Kodiak support (which owns the OPU) selected with MERLIN_TARGET_PATH")
+    return load_declared("kodiak", "matrix_lowering").shim
 
 
 def emit_translation_unit(*args, **kwargs):

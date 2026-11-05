@@ -98,9 +98,17 @@ def main(argv: list[str] | None = None) -> int:
             "provider_tree": tree,
             "identical_to_source": True,
         },
-        "records": {"file_provenance": "support/provenance.json", "migrations": []},
+        "records": {
+            "file_provenance": "support/provenance.json",
+            # Transition records the provider carries (a support package's later moves, each with digests).
+            "migrations": sorted(f"support/{p.name}" for p in dest.glob("*_migration.json")),
+        },
     }
     source_record = REPO / "examples" / args.example / "SOURCE.yaml"
+    if source_record.is_file():
+        previous = yaml.safe_load(source_record.read_text(encoding="utf-8")) or {}
+        if previous.get("tests"):
+            record["tests"] = previous["tests"]  # reviewed test deselections are a property of the vendoring
     source_record.write_text(HEADER + yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
 
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))

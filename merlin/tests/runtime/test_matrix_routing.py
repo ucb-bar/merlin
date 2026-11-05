@@ -310,7 +310,7 @@ class TestTheGeometryHasOneSource:
 
         if not _env("MERLIN_CHIPYARD"):
             pytest.skip("needs the hardware checkout ($MERLIN_CHIPYARD)")
-        return MatrixRouting(support_target="saturn", unit="saturn_opu", config="OPUV256D128ShuttleConfig")
+        return MatrixRouting(support_target="kodiak", unit="saturn_opu", config="OPUV256D128ShuttleConfig")
 
     def test_the_edge_comes_from_the_named_configuration(self, routing):
         assert routing.tile_edge() == 32
@@ -345,7 +345,7 @@ class TestTheRewriteAndTheSidecarAgree:
 
         if not _env("MERLIN_CHIPYARD"):
             pytest.skip("needs the hardware checkout ($MERLIN_CHIPYARD)")
-        matrix = MatrixRouting(support_target="saturn", unit="saturn_opu", config="OPUV256D128ShuttleConfig")
+        matrix = MatrixRouting(support_target="kodiak", unit="saturn_opu", config="OPUV256D128ShuttleConfig")
         prepared, _feats = prepare_for_lowering(
             _model(tmp_path),
             tmp_path,

@@ -2,38 +2,39 @@
 # listed under `normalized`. The vendored directory's git tree id is vendored_tree; putting each
 # normalized file's companion_blob back reproduces source.tree. merlin/tests/infra/test_example_support.py
 # recomputes both, and the file count, from the committed bytes. Do not edit support/ in place: a change
-# is a new vendoring with its own source commit, recorded here.
+# is a new vendoring with its own source commit, recorded here (build_tools/scripts/vendor_support.py).
 schema: merlin.vendored_support.v1
 target: saturn
 provider_id: saturn-support
 path: support
-file_count: 19
-vendored: 2026-10-07
+file_count: 16
+vendored: '2026-11-04'
 source:
-  repository: "https://github.com/ucb-bar/rvv-mlir.git"
-  published: false  # the commit is on no remote branch; this copy is its only tracked home
-  commit: d6863380d43f61dcc22ebe498c0f6b9341018e29
-  commit_date: "2026-09-21T21:19:57-07:00"
-  provider_root: "saturn-support"
-  tree: 8febeda8958c9edcae820d5b50c3247dec31c4b4
-vendored_tree: 8febeda8958c9edcae820d5b50c3247dec31c4b4
+  repository: https://github.com/ucb-bar/rvv-mlir.git
+  published: false
+  commit: 1138b13c0f204fba7bb241911355a87d7c5390f9
+  commit_date: '2026-11-04T16:59:49-08:00'
+  provider_root: saturn-support
+  tree: 9f0cc83006cfd0706536a4034caf8d292a6bc4bb
+vendored_tree: 9f0cc83006cfd0706536a4034caf8d292a6bc4bb
 normalized: []
 pinned:
   manifest: build_tools/upstreams/target_support.json
-  companion_commit: d6863380d43f61dcc22ebe498c0f6b9341018e29
+  companion_commit: 1138b13c0f204fba7bb241911355a87d7c5390f9
   relation: same_commit
-  provider_tree: 8febeda8958c9edcae820d5b50c3247dec31c4b4
+  provider_tree: 9f0cc83006cfd0706536a4034caf8d292a6bc4bb
   identical_to_source: true
 records:
   file_provenance: support/provenance.json
   migrations:
-    - support/matrix_adapter_migration.json
-    - support/opu_shim_migration.json
+  - support/matrix_adapter_migration.json
+  - support/opu_extraction_migration.json
+  - support/opu_shim_migration.json
 tests:
   deselect:
-    - test: tests/test_migration.py::test_provider_identity_remains_distinct_from_rvv
-      reason: >-
-        Asserts the companion repository's layout, in which the rvv provider sits beside this one as
-        a sibling directory named merlin-support. Vendored, that provider is examples/rvv/support; the
-        same identity fact (two providers, two declared targets) is held by
-        merlin/tests/infra/test_example_support.py over every SOURCE.yaml.
+  - test: tests/test_migration.py::test_provider_identity_remains_distinct_from_rvv
+    reason: Asserts the companion repository's layout, in which the rvv provider sits
+      beside this one as a sibling directory named merlin-support. Vendored, that
+      provider is examples/rvv/support; the same identity fact (two providers, two
+      declared targets) is held by merlin/tests/infra/test_example_support.py over
+      every SOURCE.yaml.

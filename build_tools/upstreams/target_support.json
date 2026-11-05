@@ -64,20 +64,20 @@
       "base_commit": "3e48d41813ae17f6e6112ba63c741e923b0e496d",
       "catalog_commit": "a568f412625539cfdb29484869093721b027be5c",
       "root_role": "host_schedule",
-      "companion_commit": "d6863380d43f61dcc22ebe498c0f6b9341018e29",
+      "companion_commit": "1138b13c0f204fba7bb241911355a87d7c5390f9",
       "companion_commit_relation": "same_commit",
       "provider_root": "saturn-support",
       "provider_role": "support",
       "vendored": {
         "path": "examples/saturn/support",
         "source_record": "examples/saturn/SOURCE.yaml",
-        "commit": "d6863380d43f61dcc22ebe498c0f6b9341018e29",
-        "tree": "8febeda8958c9edcae820d5b50c3247dec31c4b4",
-        "vendored_tree": "8febeda8958c9edcae820d5b50c3247dec31c4b4",
-        "file_count": 19
+        "commit": "1138b13c0f204fba7bb241911355a87d7c5390f9",
+        "tree": "9f0cc83006cfd0706536a4034caf8d292a6bc4bb",
+        "vendored_tree": "9f0cc83006cfd0706536a4034caf8d292a6bc4bb",
+        "file_count": 16
       },
       "copied_files": 7,
-      "file_provenance": "saturn-support/provenance.json",
+      "file_provenance": "provenance.json",
       "contract_sha256": "a123384e2132b3491b9d2747194a3efae27344077506060a5e45fc60f3c3b76a",
       "opu_shim_provenance": "saturn-support/opu_shim_migration.json",
       "matrix_adapter_provenance": "saturn-support/matrix_adapter_migration.json",
@@ -86,14 +86,15 @@
         "merlin/targets/saturn/backend",
         "merlin/targets/saturn/dialect"
       ],
-      "qualification_scope": "Exact seven-file source commitments, explicit Saturn provider and backend discovery, generic emitter identity reuse, pure xDSL dialect construction/lowering. No native execution.",
+      "qualification_scope": "Saturn vector backend and dialect only. The OPU shim, unit declarations and matrix_lowering adapter moved to the kodiak support package (opu_extraction_migration.json records the removal with digests). No native execution.",
       "blockers": [
         "Separate Saturn support identity; sibling merlin-support describes RVV and is not an alias. Neither is the Saturn OPU experiment identity.",
         "Contract and dialect plan are preserved reference inputs, not newly extracted or qualified RTL facts. Schema qualification was not performed for this move.",
-        "Shared Spike harness/toolchain dependencies remain in Merlin. Broader OPU implementations and reference metadata still require migration.",
         "No native compiler, simulator, hardware or candidate certification. Existing RVV publication certification does not extend to this support package.",
-        "Companion branch is local and unpushed; frozen historical inputs remain unchanged."
-      ]
+        "Companion branch is local and unpushed; frozen historical inputs remain unchanged.",
+        "Companion commit is on the local support/saturn branch of rvv-mlir and is unpushed."
+      ],
+      "opu_extraction_provenance": "saturn-support/opu_extraction_migration.json"
     },
     {
       "target": "rvv",

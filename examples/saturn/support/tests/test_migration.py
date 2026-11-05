@@ -24,6 +24,7 @@ def test_recorded_source_members_match_exact_bytes():
         ("matrix_adapter_migration.json", {"contracts/target_contract.yaml"}, {"matrix_lowering.py"}),
         ("opu_shim_migration.json", {"matrix_lowering.py", "contracts/target_contract.yaml"},
          {"opu_shim.py", "contracts/matrix_units.yaml"}),
+        ("opu_extraction_migration.json", {"contracts/target_contract.yaml"}, set()),
     ):
         transition = json.loads((ROOT / filename).read_text())
         assert transition["schema"] == "merlin.support_transformation.v1"
@@ -37,6 +38,9 @@ def test_recorded_source_members_match_exact_bytes():
         for entry in transition["added"]:
             assert entry["path"] not in expected
             expected[entry["path"]] = entry["sha256"]
+        for entry in transition.get("removed", ()):
+            if entry["path"] in expected:  # tests are outside the recorded set
+                assert expected.pop(entry["path"]) == entry["sha256"]
     actual = {
         path.relative_to(ROOT).as_posix()
         for directory in ("backend", "dialect", "contracts")

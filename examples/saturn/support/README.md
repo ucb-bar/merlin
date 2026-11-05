@@ -27,12 +27,15 @@ The existing RVV publication's certificate does not cover this new support.
 Keep this directory host-private during compiler evaluation. Exported candidate
 compiler payloads must not include support implementations or oracle answers.
 
-`plugin.matrix_lowering` requires explicit Saturn support selection. The OPU shim
-and matrix-unit declarations now live in this provider; shared int8 contraction
-rewriting remains in Merlin. Core `opu_kernel`, `opu_cert`, and `opu_isa`
-dependencies still await extraction. Unit and hardware configuration remain explicit.
-This interface adds no compiler, simulator, hardware or source-closure qualification.
+History: the OPU shim, matrix-unit declarations and `plugin.matrix_lowering` adapter
+were first moved into this provider from Merlin, then out of it to the Kodiak package
+(see below); shared int8 contraction rewriting remains in Merlin.
 `matrix_adapter_migration.json` records the contract transformation and new adapter;
 the original seven-file provenance remains unchanged.
 `opu_shim_migration.json` records the subsequent physical shim/declaration move
 and adapter/contract transformations, without rewriting that historical record.
+
+`opu_extraction_migration.json` records the last step: the OPU, its shim, its unit
+declarations and the `matrix_lowering` adapter moved to the Kodiak support package
+(`ucb-bar/kodiak-mlir`, a layer on the rvv base), the chip that carries the unit.
+This provider now describes the Saturn vector unit only.

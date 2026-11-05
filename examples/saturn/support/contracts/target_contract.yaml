@@ -27,11 +27,12 @@ rtl_source:
 # dialect/ dir. target_lowering._ensure_dialects_discovered loads a reference target's plugin.dialect
 # (the reference package root is injected as the path), so importing it self-registers saturn's
 # TargetSpec + op->opcode map — the core lowering no longer hardcodes a saturn dialect spec.
+# The outer-product matrix unit (OPU) and its whole-model matrix_lowering plugin moved to the Kodiak
+# support package (ucb-bar/kodiak-mlir), the chip that carries it. This contract describes the Saturn
+# vector unit only.
 plugin:
-  matrix_lowering: matrix_lowering.py
   backend: backend
   dialect: dialect
-matrix_contract: contracts/matrix_units.yaml
 features: [rvv, scalable_vl, multicore, resident_packed_tensor, accumulator_commit, command_buffer, metrics]
 ops: [pack, matmul, commit, release]
 types: [packed_tensor, accumulator]
@@ -59,9 +60,9 @@ vector:
 # target have" -- the eligibility oracle, the engine audit, and the kind-routed fact extractor all read
 # this field, and an absent one reads as "no compute hardware" rather than "declared elsewhere".
 #
-# Neither unit below is a new claim. The lane engine is this contract's own `vector:` block restated in
-# the shared vocabulary (rv64gcv_zfh_zvfh, e8m1 loads widened into e32m4 accumulators); the array is the
-# one merlin/contract/matrix_units.yaml already declares, with the same pin.
+# The unit below is not a new claim: it is this contract's own `vector:` block restated in the shared
+# vocabulary (rv64gcv_zfh_zvfh, e8m1 loads widened into e32m4 accumulators). The OPU array lives in the
+# Kodiak support package.
 compute_units:
   - name: rvv_lanes
     kind: vector
@@ -79,29 +80,6 @@ compute_units:
       - {family: elementwise_map, dtypes: [int8, fp16, fp32]}
       - {family: reduction, dtypes: [int8, fp16, fp32]}
       - {family: movement, dtypes: [int8, fp16, fp32]}
-  # The outer-product matrix extension. `spatial` and not `systolic`: it reduces via rank-1
-  # outer-product accumulate into a tile of accumulator cells, not a stationary-weight wavefront --
-  # the distinction compute_units.KINDS draws, and the reason the two carry separate fact families.
-  #
-  # REVISION-CONTINGENT: present only in configs carrying the OPU, which is why it is pinned. A saturn
-  # checkout without it fails `check_provenance --verify-pins` on saturn_opu_int8 rather than silently
-  # crediting the target with an array it does not have.
-  - name: opu
-    kind: spatial
-    dtypes: [int8]
-    ops: [matmul]
-    scaling: none
-    requant: {ref: none}
-    exposure: command_buffer          # driven by a command buffer, NOT by RoCC
-    accumulate:
-      - {in: int8, weight: int8, acc: i32}
-    semantic_capabilities:
-      - {family: contraction, dtypes: [int8]}
-    notes: >-
-      Declared by merlin/contract/matrix_units.yaml (unit saturn_opu, pin saturn_opu_int8): four
-      instructions in reserved even funct6 slots of the vector opcode, an int8 datapath accumulating in
-      int32, and a tile whose edge is the vector unit's VLMAX at e8/m1. Tile geometry is deliberately
-      not restated here -- it is an RTL-derived fact.
 measurement:
   cycles_from: spike
   wall_from: k1
@@ -109,9 +87,6 @@ measurement:
   wall_tier: silicon
   speed_of_light: rvv_lane_peak
   citable_tier: rtl
-  notes:
-    - "The OPU half is command-buffer driven and revision-contingent, so a cycle count that includes it
-       is only citable on a checkout whose saturn_opu_int8 pin verifies."
 memory_model:
   resident: true
   accumulators: true      # vector register accumulators (e32m4 tiles)

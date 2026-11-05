@@ -1,0 +1,34 @@
+{
+  "schema": "merlin.support_transformation.v1",
+  "scope": "OPU extraction: the outer-product unit, its shim, its unit declarations and the whole-model matrix_lowering adapter move to the Kodiak support package, which extends the rvv base. Saturn support keeps the vector backend and dialect. No native qualification.",
+  "modified": [
+    {
+      "path": "contracts/target_contract.yaml",
+      "source_sha256": "a123384e2132b3491b9d2747194a3efae27344077506060a5e45fc60f3c3b76a",
+      "sha256": "e48576b179b426f08d09e270e88b8805a18b363069528bde13f0906cbf50916f"
+    }
+  ],
+  "added": [],
+  "removed": [
+    {
+      "path": "matrix_lowering.py",
+      "sha256": "c37cdf7b88aa9706bcac2b048a3934d5a3d09a9bfe8eb8c91a39c5c943281f47",
+      "moved_to": "https://github.com/ucb-bar/kodiak-mlir.git (target kodiak)"
+    },
+    {
+      "path": "opu_shim.py",
+      "sha256": "bd34b52a64f1cb82c8253b6735e8709a9cd745c8f2131e257502a2f34d866d7b",
+      "moved_to": "https://github.com/ucb-bar/kodiak-mlir.git (target kodiak)"
+    },
+    {
+      "path": "contracts/matrix_units.yaml",
+      "sha256": "937c8d481da1dc8060e6d5d6a877184c781e9985a4d2bdfc45aa94f9a565949b",
+      "moved_to": "https://github.com/ucb-bar/kodiak-mlir.git (target kodiak)"
+    },
+    {
+      "path": "tests/test_matrix_lowering.py",
+      "sha256": "0859ef19143a19afcd89ac20a310d2dd548a152c405dfeb21db704d31abb95c7",
+      "moved_to": "https://github.com/ucb-bar/kodiak-mlir.git (target kodiak)"
+    }
+  ]
+}
