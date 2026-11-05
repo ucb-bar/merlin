@@ -41,10 +41,14 @@ The stages:
 ./run.sh build [--opu] [--models <model>]   # add --full for the shipped matrix (hours)
 ./run.sh package [--opu] [--models <model>]
 ./run.sh grade <console.txt> [model]
+./run.sh op gemm --board firesim_kodiak_opu [--submit]     # one operator on FireSim (§6)
+./run.sh firesim [--models <model>] [--submit]             # a whole model on FireSim (§6)
+./run.sh firesim-collect <job-dir> [--job device=N --job control=N]
 ```
 
 Running on the chip itself (a shared rig: check it is idle first) is in
-[`support/RUNNING.md`](support/RUNNING.md).
+[`support/RUNNING.md`](support/RUNNING.md). Running on FireSim, for the OPU's real datapath and cycles,
+is [§6](#6-run-on-firesim--the-opus-real-datapath-and-cycles).
 
 ## 1. `probe` — ask the chip what it is, before uploading megabytes
 
@@ -164,3 +168,142 @@ which is why the package now contains a **2-hart scalar** image. Running `deepjs
 answers it in one log: if it passes and `h3_scalar` fails, the third core is the problem; if both fail,
 the scalar route is. Use deepjscc specifically — it is 5.5 G cycles where the scalar spectformer and
 whisper images are 42–104 G.
+
+## 6. Run on FireSim — the OPU's real datapath and cycles
+
+Spike cannot execute the OPU, so every `--opu` image above is gated through its stand-in twin. FireSim
+runs the RTL itself on an FPGA: the shipped image, the real unit, real cycles. This is how the
+single-core Kodiak OPU numbers were measured (SpectFormer int8, see the end of this section).
+
+### The hardware
+
+| | |
+|---|---|
+| board | `firesim_kodiak_opu` ([`support/boards.yaml`](support/boards.yaml)) |
+| design | **one** Shuttle core carrying Kodiak's Saturn vector unit with the OPU: VLEN 512 / DLEN 256 (a 64-lane int8 tile), 16 GiB of FireSim DRAM, HTIF console |
+| FireSim config | `FireSimKodiakOPU1CoreConfig`, U250, 15 MHz |
+| hwdb key | `alveo_u250_firesim_kodiak_opu_1core` — the board's `bitstream:` field, so the tooling never guesses it |
+| pin | `firesim_kodiak_opu_1core` in [`merlin/contract/hardware_pins.yaml`](../../merlin/contract/hardware_pins.yaml): the sha256 of `firesim.tar.gz`, the RTL it was elaborated from, and why |
+
+**One core, not Kodiak's two.** The two-core configuration does not route on a U250. The vector unit,
+OPU, caches and bus widths are Kodiak's, so OPU datapath numbers and whole-model grades are statements
+about Kodiak's vector unit; nothing about core count or multicore scaling is. Say "single-core Kodiak"
+when you cite a number from it.
+
+**Building the bitstream on your own U250.** It is elaborated from saturn `ea373800`
+(`miles-rusch-berkeley/saturn-vectors`, branch `opu-int8`, which contains `OuterProductUnit.scala`)
+plus the Kodiak OPU configs (`WithKodiakBase(1)` with `WithShuttleVectorUnit(512, 256, opuParams)`) and
+the firechip `FireSimKodiakOPU1CoreConfig` target. Two things matter more than they look:
+
+- the clock-gate model must be [`merlin/contract/rtl/eicg_passthrough.v`](../../merlin/contract/rtl/eicg_passthrough.v)
+  (selected through `ClockGateModelFile`). With rocket-chip's stock `EICG_wrapper` the gated OPU array
+  gets a second global clock net and hold never closes, at any frequency;
+- the configs are additions not yet upstream, so ask the Kodiak package maintainers for the two patches
+  rather than re-deriving them.
+
+Register the result in `config_hwdb.yaml` under the **same key** (`alveo_u250_firesim_kodiak_opu_1core`):
+the board names that key and every job passes it as `--hw-config`. If your tar's sha256 is not the
+pinned one, `firesim-collect` still grades the run but reports the bitstream as UNPINNED; cite it as your
+own build.
+
+### Settings
+
+Set these in the repository's `.env` (or the environment). None of them has a default that points at a
+particular machine.
+
+| Setting | What it is | Needed for |
+|---|---|---|
+| `MERLIN_CHIPYARD` | the chipyard whose `sims/firesim` deploys the bitstream (and whose `generators/saturn` the OPU encodings are derived from) | everything |
+| `MERLIN_EXT_FIRESIM_QUEUE` | a shared `firesim-queue`'s state directory (`jobs/<id>/` lives there) | `--submit` |
+| `MERLIN_FIRESIM_QUEUE_CLIENT` | the raw queue client, if not `$MERLIN_EXT_FIRESIM_QUEUE/bin/firesim-queue` | optional |
+| `MERLIN_FIRESIM_WORKLOAD` | the FireSim workload the ELF boots under (default `merlin-zephyr`) | optional |
+| `MERLIN_FIRESIM_CLIENT_DROP_ENV` | e.g. `HOME,USER,LOGNAME` when the queue daemon runs as another account | optional |
+
+The workload is a three-line JSON that each job directory carries
+(`firesim/workload/<workload>.json`). If your FireSim does not have it yet, the printed plan says the
+one `cp` that installs it.
+
+### One operator
+
+```bash
+./run.sh op gemm 64 64 64 --board firesim_kodiak_opu            # build + spike-gate + print the jobs
+./run.sh op gemm 64 64 64 --board firesim_kodiak_opu --submit   # ...and run them on the FPGA
+```
+
+This is the quick-start `op` stage built for the FireSim board: the OPU image and its plain-RVV control, both
+gated on spike first (an image that fails its gate is never planned). The images and the plan go to
+`out/artifacts/probes/firesim_kodiak_opu/op_gemm_64x64x64_h1/` (`matrix.elf` is the DEVICE leg,
+`rvv.elf` the CONTROL leg, `firesim_job.json` the plan). Without `--submit` nothing touches the FPGA:
+the exact queue commands are printed, one per leg, each naming the bitstream with `--hw-config`.
+`./run.sh firesim <that directory> --submit` submits a printed plan later.
+
+A 64x64x64 GEMM is a few hundred thousand cycles: the run is dominated by FPGA programming and Zephyr
+boot, a few minutes per leg.
+
+### A whole model
+
+```bash
+./run.sh capture spectformer                      # once: the bundle and its W8A8 golden
+./run.sh build --opu --models spectformer         # spike-gate the OPU image through its twin
+./run.sh firesim --models spectformer             # build + audit the FireSim legs, print the jobs
+./run.sh firesim --models spectformer --submit --timeout 3600
+```
+
+`firesim` builds two images with [`build_tools/scripts/zephyr_firesim_leg.py`](../../build_tools/scripts/zephyr_firesim_leg.py):
+the DEVICE leg (int8 contractions routed to the OPU) and its CONTROL twin (the same lowering, nothing
+routed). Both are debug builds, so a hung run prints an `ALIVE` heartbeat rather than nothing. Each is
+disassembled and refused if the device leg carries none of the OPU's instructions or the control leg
+carries any, so neither can measure the wrong thing under the right name. They land in
+`out/artifacts/probes/firesim_kodiak_opu/<model>_firesim_h1/`. Budget the timeout from the model's
+cycles: at 15 MHz, seconds ≈ cycles / 1.5e7, plus a few minutes per job for FPGA programming.
+
+### Without the shared queue
+
+With `MERLIN_EXT_FIRESIM_QUEUE` unset the plan prints the equivalent manual steps for a FireSim you run
+yourself: install the workload JSON, set `default_hw_config: alveo_u250_firesim_kodiak_opu_1core` and
+`workload_name: <workload>.json` in `config_runtime.yaml`, copy each leg's ELF to
+`deploy/workloads/<workload>/<bootbinary>`, then `firesim kill; firesim infrasetup && firesim runworkload;
+firesim kill` once per leg. Always run the full four steps, even when the bitstream has not changed: a
+skipped `kill`/`infrasetup` leaves a stale simulator attached to the XDMA device.
+
+### Grading a run
+
+```bash
+./run.sh firesim-collect <job-dir>                                # after --submit (job ids are recorded)
+./run.sh firesim-collect <job-dir> --job device=812 --job control=813
+./run.sh firesim-collect <job-dir> --uartlog device=<results-workload/...-q812/<workload>0/uartlog> \
+                                   --uartlog control=<...>
+```
+
+For each leg it checks, and reports every check it could not make as a problem rather than a pass:
+
+- the bitstream that ran: FireSim's own `HW_CFG_SUMMARY` beside the uartlog must name the board's hwdb
+  key. A shared FireSim's default design is global state; a job that omitted `--hw-config` has run on
+  someone else's bitstream here, with plausible output;
+- the image: the console's `METRIC build_hash` must be the planned image's, and the ELF must not have
+  been rebuilt since it was planned;
+- the answer: the `OUT` line against the bundle's `golden_w8a8.npy` (Merlin's host W8A8 datapath; the
+  device should reproduce it, `w8a8` tier: cos > 0.999, rel < 1e-2) and the whole-tensor `HASH`;
+- the cycles: `METRIC cycles` (the compute region), FireSim's wall clock and effective frequency, and
+  the device leg's speedup over the control leg.
+
+It writes `firesim/results.json` in the job directory and a measurement under
+`out/artifacts/measurements/firesim_alveo_u250_firesim_kodiak_opu_1core/<model>/`, whose provenance
+names the pinned bitstream artifact it matched (by the tar FireSim reports, compared by sha256).
+
+### The reference result
+
+SpectFormer int8 (57 contractions routed to the OPU), measured 2026-08-18 on this bitstream:
+
+| leg | cycles | vs W8A8 golden |
+|---|---:|---|
+| device (OPU) | 3,359,893,080 | cos 1.0, max_rel 0.0 |
+| control (RVV only) | 5,322,407,483 | cos 1.0, max_rel 0.0 |
+
+**1.584x** for the OPU leg, 99.6% of the 1.59x Amdahl bound its MAC share allows. Re-grading those two
+uartlogs with `firesim-collect` reproduces both cycle counts and matches the bitstream to its pin. Two
+caveats travel with the number: those runs did not go through the queue (its daemon was not
+dispatching at the time) and were booted by hand, one leg at a time, on an FPGA checked idle first; and
+the configs were uncommitted upstream, so the hardware is "saturn `ea373800` plus the Kodiak OPU config
+additions". The flow above is that procedure with the queue put back in: same legs, same audit, same
+bitstream, named on every job.

@@ -3,9 +3,9 @@ title: FireSim — whole-model cycle truth on the FPGA
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-09-29
+last_verified: 2026-11-04
 related: [zephyr, tinyllama_int8_rvv_zephyr, getting_started, reproducibility, reproducing_whole_model_on_rtl, whole_model_on_accelerator]
-code_refs: [src/merlin/runtime/backends/zephyr_model.py, src/merlin/runtime/backends/firesim_runner.py, src/merlin/perf/firesim_receipt.py, src/merlin/perf/firesim_checkpoint.py, build_tools/chipyard/setup_multicore_saturn.py, build_tools/chipyard/MerlinSaturnConfigs.scala, build_tools/scripts/firesim_sweep.py, build_tools/scripts/fsq.py, build_tools/firesim/README.md, build_tools/firesim/preflight.py, examples/firesim_modelblaster/README.md]
+code_refs: [src/merlin/runtime/backends/zephyr_model.py, src/merlin/runtime/backends/firesim_runner.py, src/merlin/perf/firesim_receipt.py, src/merlin/perf/firesim_checkpoint.py, build_tools/chipyard/setup_multicore_saturn.py, build_tools/chipyard/MerlinSaturnConfigs.scala, build_tools/scripts/firesim_sweep.py, build_tools/scripts/fsq.py, build_tools/firesim/README.md, build_tools/firesim/preflight.py, examples/firesim_modelblaster/README.md, build_tools/scripts/zephyr_firesim_leg.py, examples/lib/firesim_flow.py]
 ---
 
 # FireSim — whole-model cycle truth on the FPGA
@@ -58,6 +58,7 @@ they do not revalidate the historical hardware measurements below.
 | Gemmini / capsule-bench L5 FireSim **oracle** | still **not wired** — a run is manual (submit an ELF, read `OUT`/`METRIC` from the uartlog). `heavy_oracles.firesim_adapter` builds the ELF and then reports `OracleUnavailable` rather than fabricate a result |
 | **Radiance** on FireSim | **impossible today** — no radiance/vortex/muon bitstream exists in `config_hwdb.yaml`. Radiance's ladder is `{L2: cyclotron, L3: verilator}`; FireSim is not on it |
 | Multi-GB (>2 GB) images booting and loading on the FPGA | links, but **HW-unconfirmed** |
+| A **matrix unit** on FireSim, device leg vs control leg (single-core Kodiak OPU, `alveo_u250_firesim_kodiak_opu_1core`) | **verified** 2026-08-18 — SpectFormer int8, OPU leg 3,359,893,080 cycles vs RVV-only 5,322,407,483 (**1.584×**), both bit-exact against the W8A8 golden. Booted by hand outside the queue; the [Kodiak example](../../examples/kodiak/README.md#6-run-on-firesim--the-opus-real-datapath-and-cycles) is the same procedure through the queue |
 
 ## Prerequisites
 
@@ -444,6 +445,28 @@ here. Two things follow, and they are the whole diagnostic value of the file:
   means host-side stalls, not a slow target.
 
 `preflight.py` prints the slope of the most recent run for you.
+
+## A matrix unit on FireSim: device and control legs
+
+Spike cannot execute a matrix unit, so a routed image is gated on spike only through its stand-in
+twin. FireSim is where the unit's datapath and cycles are measured, and the measurement is a PAIR:
+
+- the **device** leg, with contractions routed to the unit, and its **control** twin, the same
+  lowering with nothing routed. `build_tools/scripts/zephyr_firesim_leg.py` builds either and audits
+  the ELF against the unit's own encodings: a device leg carrying none of the unit's instructions, or a
+  control leg carrying any, is refused. It writes `leg.json` (ELF, build hash, instruction counts).
+- one `runworkload-full` job per leg, each naming its bitstream with `--hw-config` (and the one-entry
+  hwdb file under `deploy/built-hwdb-entries/` when the host has it). Such a job needs no FireSim
+  runner: the Zephyr image ends the simulation itself.
+- grading from the run's own evidence: FireSim's `HW_CFG_SUMMARY` beside the uartlog must name the
+  board's bitstream, the console's `METRIC build_hash` must be the planned image's, and `OUT`/`HASH`
+  are graded against the bundle's W8A8 golden.
+
+`examples/lib/firesim_flow.py` does all three for any board whose catalog entry names a `bitstream`
+(`legs`, `submit`, `collect`), and prints the queue commands rather than submitting unless asked. The
+[Kodiak example](../../examples/kodiak/README.md#6-run-on-firesim--the-opus-real-datapath-and-cycles)
+drives it for the single-core Kodiak OPU bitstream, for one operator or a whole model, and documents
+the bitstream an external FireSim needs.
 
 ## Link-time artifacts
 
