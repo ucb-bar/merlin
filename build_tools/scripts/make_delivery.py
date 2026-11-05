@@ -1437,7 +1437,7 @@ def main(argv=None) -> int:
             try:
                 done[item] = fut.result()
             except Exception as exc:  # noqa: BLE001
-                msg = f"{item[0]} h{item[2]} {item[3]}: {type(exc).__name__}: {str(exc).splitlines()[0][:200]}"
+                msg = f"{item[0]} h{item[2]} {item[3]}: {type(exc).__name__}: {str(exc).splitlines()[0][:500]}"
                 problems.append(msg)
                 # Say it NOW: a failure held until the final summary reads as an image still building,
                 # and the rest of the set can take tens of minutes.
@@ -1738,10 +1738,19 @@ def main(argv=None) -> int:
     except Exception as exc:  # noqa: BLE001
         problems.append(f"vlen_probe: {type(exc).__name__}: {str(exc).splitlines()[0][:200]}")
 
+    if not binaries:
+        # Nothing built, so there is no package to describe: say why each image failed and stop, rather
+        # than rendering a README over an empty image list (which raised an IndexError and buried the
+        # reasons above it).
+        print("[make_delivery] no image was built, so no package was written:", file=sys.stderr)
+        for p in problems:
+            print(f"  - {p}", file=sys.stderr)
+        return 1
     (dest / "elf_audit.json").write_text(json.dumps(audits, indent=2) + "\n")
     (dest / "grade.py").write_text(GRADE_PY)
     (dest / "grade.py").chmod(0o755)
-    problems += _derived_problems(binaries)
+    status = model_status(bundles)
+    problems += _derived_problems(binaries, status)
     manifest = {
         "board": {
             "name": brd.name,
@@ -1758,6 +1767,9 @@ def main(argv=None) -> int:
         # binaries have and have not run on. Free text because that is what it is; recorded here and
         # rendered in the README so it cannot be a thing we only said in an email.
         "notes": list(a.note),
+        # What each model is, for the README: Merlin's own words for the models it ships, else the text the
+        # model's owner wrote beside its bundle (STATUS_FILE).
+        "status": status,
         "vector_probe": probe_report,
         "firesim_evidence": firesim_evidence or None,
         "merlin_commit": _git_sha(),
@@ -1820,17 +1832,38 @@ def _strip_marker(problem: str) -> str:
     return problem
 
 
-def _derived_problems(binaries: list[dict]) -> list[str]:
-    """Problem lines that are a pure function of the finished binaries."""
+#: The file beside a bundle whose text is that model's status in a package's README, for a model Merlin
+#: does not describe itself (a model a user brought). Free text: what the model is, how it was captured
+#: (input size, random or real inputs, a truncated window), and what to expect of it.
+STATUS_FILE = "delivery_status.md"
+
+
+def model_status(bundles: dict[str, Path]) -> dict[str, str]:
+    """``{model: status text}`` for the models being packaged: :data:`STATUS`, else the bundle's
+    :data:`STATUS_FILE`. A model with neither is left out, and :func:`_derived_problems` says so."""
+    out: dict[str, str] = {}
+    for model, bundle in bundles.items():
+        text = STATUS.get(model)
+        if text is None and (Path(bundle) / STATUS_FILE).is_file():
+            text = (Path(bundle) / STATUS_FILE).read_text(encoding="utf-8").strip() or None
+        if text:
+            out[model] = text
+    return out
+
+
+def _derived_problems(binaries: list[dict], status: dict[str, str] | None = None) -> list[str]:
+    """Problem lines that are a pure function of the finished binaries (and the status texts found)."""
     out = [p for p in (_ungated_problem(binaries),) if p]
-    # A shipped model with no STATUS entry renders as "no status recorded" in the README -- which is
+    # A shipped model with no status renders as "no status recorded" in the README -- which is
     # how `whisper_tiny_375pos` went out carrying nothing at all, when its reduced audio window is
     # precisely the thing a reader has to be told. Silence about a model is a packaging defect.
-    unstated = sorted({b["model"] for b in binaries} - set(STATUS))
+    unstated = sorted({b["model"] for b in binaries} - set(STATUS if status is None else status))
     if unstated:
         out.append(
             f"{NO_STATUS_PREFIX} no status text for {', '.join(unstated)} — the README will "
-            f"say 'no status recorded' for {'them' if len(unstated) > 1 else 'it'}"
+            f"say 'no status recorded' for {'them' if len(unstated) > 1 else 'it'}. Write what the model "
+            f"is and how it was captured to {STATUS_FILE} in its bundle directory "
+            f"(recaptures/<model>_int8_full/) and package again"
         )
     return out
 
@@ -1913,7 +1946,7 @@ def refresh_package(dest: Path, twin: Path | None = None) -> int:
         vlen=man["board"]["vlen"],
     )
     man["problems"] = [p for p in man.get("problems", []) if not p.startswith(DERIVED_PREFIXES)]
-    man["problems"] += _derived_problems(man["binaries"])
+    man["problems"] += _derived_problems(man["binaries"], {**STATUS, **(man.get("status") or {})})
     # Both are pure functions of the descriptor, so a package built before the packager recorded them
     # can state them without rebuilding a byte. `silicon` is NOT filled here: it needs a returned probe
     # log, and inventing an absent measurement is the one thing this field exists to prevent.
@@ -2520,7 +2553,8 @@ built for it will not run on one without it.
         for b in manifest["binaries"]
     )
     statuses = "\n".join(
-        f"- **{m}** — {STATUS.get(m, 'no status recorded')}" for m in sorted({b["model"] for b in manifest["binaries"]})
+        f"- **{m}** — {(manifest.get('status') or {}).get(m) or STATUS.get(m, 'no status recorded')}"
+        for m in sorted({b["model"] for b in manifest["binaries"]})
     )
     vlen = brd.vlen or 128
     paired = sorted(

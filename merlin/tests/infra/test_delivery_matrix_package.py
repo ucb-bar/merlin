@@ -403,3 +403,19 @@ def test_firesim_evidence_names_the_board_it_ran_on_or_refuses(tmp_path):
     measured = next(n for n, b in boards.BOARDS.items() if b.bitstream)
     brd, why = md._firesim_evidence_board(measured, tmp_path)
     assert why is None and brd is boards.BOARDS[measured]
+
+
+# --------------------------------------------------------------------------- a model Merlin does not describe
+def test_a_brought_models_status_comes_from_its_bundle(tmp_path):
+    """The packager's STATUS table names the models Merlin ships. A user's model is described by its owner,
+    beside its bundle; before, every new model failed `build` with a NO STATUS problem nobody could clear."""
+    md = _load_packager()
+    (tmp_path / "mine").mkdir()
+    (tmp_path / "mine" / md.STATUS_FILE).write_text("ResNet-50 at 112x112, random inputs.\n")
+    status = md.model_status({"mine": tmp_path / "mine", "other": tmp_path / "missing"})
+    assert status == {"mine": "ResNet-50 at 112x112, random inputs."}
+    bins = [_matrix_binary(model="mine", gate_ok=True), _matrix_binary(model="other", gate_ok=True)]
+    (problem,) = [p for p in md._derived_problems(bins, status) if p.startswith(md.NO_STATUS_PREFIX)]
+    assert "other" in problem and "mine" not in problem and md.STATUS_FILE in problem
+    brd, man = _manifest([_matrix_binary(model="mine")], status=status)
+    assert "**mine** — ResNet-50 at 112x112, random inputs." in md._readme(brd, man)
