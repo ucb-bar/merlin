@@ -32,7 +32,7 @@ _SHARED_BLOCKS = [
     "merlin.source_op_index",
     "merlin.targetgen.oot_starterkit.plan inventory",
     "mixed_program_plan.schema.json",
-    "Host address calculations, loop control and dispatch are allowed",
+    "Addressing and command orchestration remain subject to the host-compute budget",
     "Hoisted constants alone do not establish task work",
     "cross-task reverse CFG edges",
 ]

@@ -28,6 +28,39 @@ Prepare and review a fresh corpus release through the
 before verified execution. Preparation copies these inputs into the release and
 removes the live source pointers. New bundles grant the declared task directory;
 old bundles or frozen runs are not rewritten to adopt this layout.
+The general [compiler author checklist](task/AGENT.md) is part of those task
+inputs. Both the generated task and the short full-model task direct the author
+to it; it does not depend on operator errata, a seed compiler, or a previous
+round brief. The round brief remains mutable feedback; task inputs stay frozen.
+
+Changing this checklist requires **a fresh Phase 0 release prepare and review/seal**
+from the completed producer, followed by a new unseeded Phase 1 run. It does not
+require deriving new corpus members solely for these prose changes. In the
+preparation record, `scaffolding.task.sha256` binds the copied task tree; fresh
+`payload/experiment/input_bundles/*/STARTER_PROMPT.md` files contain the generated
+task wording. Those changes affect `payload_sha256`, hence the preparation
+identity's `preparation_sha256` and the seal's `review_digest` / `identity`.
+Regenerate bundles in the new release: existing starter prompts are written only
+when absent. Never patch a prepared payload or refresh sealed task text on resume.
+
+At Phase 1 preparation, the changed task tree and public backend-contract bytes
+also change `bundle_input_snapshot.content_sha256` (and its `manifest_sha256`).
+The served/archived `TASK.md` file hashes and `treatment_snapshot.content_sha256`
+change. `implementation_sources.inputs` records new hashes for
+`phase1:startup:task_prompt`, `phase1:source:task_staging.py` and
+`phase1:source:feedback/selfcheck_results.py`; any newly frozen source snapshot
+containing these owners must bind the new bytes. An existing run cannot adopt
+them by resume. The shared backend-contract edit clarifies prose under ABI `0.1`;
+it changes frozen input bytes, not the schema version or grading policy.
+
+The corpus member bytes, producer `source_plan_sha256` / `source_output_sha256`,
+`generation_lineage_sha256`, selected software-spec and RTL-facts hashes,
+resolved ISA identity, and runtime/toolchain/numerics pins are unchanged by this
+edit. New release locations may also change descriptor and bundle-manifest path
+bindings; record their actual newly prepared hashes. Select a new release version
+and obtain its review/seal before confirmation; do not rewrite launch pins or
+historical receipts to reuse an old seal.
+
 Phase 1 startup rechecks the sealed `phase0_readiness` against the frozen corpus;
 the distinct `whole_workload_phase1` verdict remains incomplete until a compiler
 produces and executes the required typed routes. A diagnostic capture replay is

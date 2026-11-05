@@ -436,6 +436,10 @@ per-kernel model gSIM replay is not requested.
 `qa/verdict.json` reports your
 visible-input results. Sealed-input results appear only in the official grade.
 
+Read the frozen `task/AGENT.md` before implementing the compiler. Its general author checklist
+covers device-work accounting, host budgets, frontend IR forms and the final self-check,
+with each item tied to the selected specification or published check.
+
 The frozen `task/PHASE2_TARGET.md` describes the planned FireSim deployment
 target and its relationship to this release's selected RTL facts. Read the
 selected facts and contract for the exact Phase 1 compilation target; retain

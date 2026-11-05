@@ -365,12 +365,16 @@ def _offload_census(
         "`unit` or `device`; any other lane name is read as the host. "
         "`routed_macs` is the work that reached the "
         "accelerator; watch it across rounds -- a pass count can rise while it falls. "
-        "`host_compute` audits the HOST code of each program: issuing commands and computing "
-        "addresses is command-scale work and is fine; a host loop that loads, computes and stores "
+        "`host_compute` audits the HOST code of each program: keep command issue and addressing "
+        "at command scale. Address math is charged unless independently proved excluded; inspect "
+        "raw and excluded counts. Default budgets per output element are 1.0 total arithmetic "
+        "operations, 0.25 float/conversion operations, and 0.5 scalar payload bytes per output byte. "
+        "A host loop that loads, computes and stores "
         "every element of a program that claims to run on the unit is "
         "`host_compute_in_accelerator_group`, named with its dominant block. Such a program passes "
         "numerics and the trace check and spends its time on the host. If the unit cannot apply a "
-        "stage, place that stage on the host and SAY so; that is reported, not penalised."
+        "stage, place that stage on the host and SAY so; it is reported as declared host work. "
+        "Required accelerator coverage remains mandatory."
     )
     txt = json.dumps(report, indent=2)
     print(txt)

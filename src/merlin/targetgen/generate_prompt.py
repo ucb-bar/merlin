@@ -720,8 +720,10 @@ Renumbering tags is not a proof.
 Use `merlin.source_op_index` and the source's `prov.region_id` on device-work commands;
 several operations may share a region ID. Fused commands require independently checked
 transformation evidence, not one opcode relabelled as many source operations.
-Accelerator-associated host control, addressing, descriptors, marshalling and synchronization are
-allowed. Scalar assistance and epilogues require the selected contract and independently checked
+Addressing and command orchestration remain subject to the host-compute budget. Host control,
+descriptors, marshalling and synchronization are permitted roles, not free arithmetic or scalar
+payload traffic. Inspect raw and independently excluded address/control counts in the audit.
+Scalar assistance and epilogues require the selected contract and independently checked
 source transformation to support them; host arithmetic cannot substitute for required accelerator
 work. Pure host model layers belong to Merlin's provided host compiler. Explicit host islands must
 not absorb independently accelerator-eligible source work. Missing attribution cannot pass the veto.
@@ -746,6 +748,11 @@ rounds — follow and refine PLAN.md. Keep each item to a line or two:
 - **Addressing + termination**: where operand addresses come from and how the program signals completion.
 - **Verification loop**: the cheapest self-check per change, escalating to the full set only to converge.
 It is your design contract with yourself — short and honest; update it only when your strategy changes.
+
+## Author guidance
+If the granted task directory contains `task/AGENT.md`, read its author guidance before
+implementing the compiler. It ties device-work accounting, host budgets, frontend IR forms
+and the final self-check to the selected specification and published checks.
 
 ## Durable run memory
 The certified schedule keeps one continuing session, but the process can still resume after a timeout,
