@@ -173,6 +173,20 @@ def matrix_on_spike(name: str, args, matrix: dict) -> dict:
     ship, twin = matrix.get("binary"), matrix.get("twin_binary")
     if not ship or not twin or not m.get("ship_ram_bytes"):
         return {"status": "skipped", "reason": "no shipped matrix image to run"}
+    sim = m.get("shipped_on_simulator") or {}
+    if sim.get("via") == "spike_extension":
+        # merlin-compile already ran the shipped image on the declared model and compared it with the twin
+        # (merlin.compile.matrix_leg); report that run rather than simulating both images again.
+        return {
+            "binary": sim.get("elf") or ship,
+            "extension": sim.get("extension"),
+            "spike_cycles": sim.get("spike_cycles"),
+            "verify": sim.get("verify") or {},
+            "bit_exact_vs_twin": sim.get("bit_exact_vs_twin"),
+            "twin_compare": sim.get("twin_compare"),
+            "status": sim.get("status"),
+            **({"error": sim["reason"]} if sim.get("reason") else {}),
+        }
     try:
         if SE.declared_extension(target) is None:
             return {
@@ -265,7 +279,7 @@ def op(args) -> int:
         if ext:
             print(f"  the shipped ELF also ran on spike with the unit's functional model {ext['name']!r}")
             print(f"  ({ext['extlib']}, sha256 {ext['sha256'][:16]}...): its numbers, not its cycles.")
-        if sim.get("status") not in (None, "not_declared"):
+        if sim.get("status") not in (None, "not_declared") and sim.get("via") != "spike_extension":
             ver = sim.get("verify") or {}
             print(
                 f"  shipped ELF on a simulator that implements the unit: {sim.get('status')}"

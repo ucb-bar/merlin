@@ -59,3 +59,70 @@ def test_a_declared_simulator_runs_the_shipped_elf_with_the_units_isa(tmp_path, 
     assert seen["elf"] == tmp_path / "ship.elf" and str(seen["spike"]) == "/sim" and seen["harts"] == 2
     assert seen["isa"] == zm.spike_isa(256) + "_zx1_zx2"
     assert got["status"] == "run_mismatch" and got["spike_cycles"] == 7
+
+
+# ------------------------------------------------------------------ declared as a spike extension (Kodiak)
+
+
+def _extension(tmp_path):
+    from merlin.targetgen import spike_extension as SE
+
+    return SE.SpikeExtension(target="t", extension_name="unit_model", extlib=tmp_path / "libm.so",
+                             library_dir=tmp_path, sha256="0" * 64, declared=True)  # fmt: skip
+
+
+def _declare_extension(monkeypatch, ext):
+    from merlin.targetgen import spike_extension as SE
+
+    monkeypatch.setattr(SE, "declared_extension", lambda target: {"extension_name": ext.extension_name})
+    monkeypatch.setattr(SE, "resolve", lambda target, **kw: ext)
+
+
+def test_a_declared_spike_model_runs_the_shipped_elf_and_must_match_the_twin(tmp_path, monkeypatch):
+    """A whole-model build used to run the shipped image only in `op`; the leg is the target's declaration,
+    wherever the image is built."""
+    import numpy as np
+
+    ext = _extension(tmp_path)
+    _declare_extension(monkeypatch, ext)
+    seen = {}
+
+    def run(elf, **kw):
+        seen.update(kw, elf=elf)
+        return {"output": np.arange(4.0), "prefix": np.arange(4.0), "metrics": {"cycles": 9}, "out_hash": {"v": 1}}
+
+    monkeypatch.setattr(zm, "run_on_spike", run)
+    monkeypatch.setattr(zm, "_gate", lambda out, refs: {"ok": True, "w8a8_cos": 1.0})
+    twin = {"prefix": np.arange(4.0), "out_hash": {"v": 1}}
+    got = matrix_leg._run_shipped_on_device_simulator(_pair(tmp_path), _routing(SimpleNamespace()), _BRD, cpus=2,
+                                                       timeout=1, refs={"r": 1}, twin=twin)  # fmt: skip
+    assert seen["elf"] == tmp_path / "ship.elf" and seen["extension"] is ext and seen["harts"] == 2
+    assert got["status"] == "verified" and got["via"] == "spike_extension" and got["bit_exact_vs_twin"]
+
+    twin = {"prefix": np.arange(4.0) + 1, "out_hash": {"v": 2}}  # a datapath that computes something else
+    got = matrix_leg._run_shipped_on_device_simulator(_pair(tmp_path), _routing(SimpleNamespace()), _BRD, cpus=2,
+                                                       timeout=1, refs={"r": 1}, twin=twin)  # fmt: skip
+    assert got["status"] == "run_mismatch" and got["bit_exact_vs_twin"] is False
+    assert got["status"] in matrix_leg.SHIPPED_FAILURES
+
+
+def test_a_declared_spike_model_that_cannot_be_loaded_is_not_run_and_never_replaced(tmp_path, monkeypatch):
+    from merlin.targetgen import spike_extension as SE
+
+    def refuse(target, **kw):
+        raise SE.SpikeExtensionError("digest mismatch")
+
+    monkeypatch.setattr(SE, "declared_extension", lambda target: {"extension_name": "m"})
+    monkeypatch.setattr(SE, "resolve", refuse)
+    monkeypatch.setattr(zm, "run_on_spike", lambda *a, **k: pytest.fail("ran on an unverified model"))
+    got = matrix_leg._run_shipped_on_device_simulator(_pair(tmp_path), _routing(SimpleNamespace()), _BRD, cpus=1,
+                                                       timeout=1, refs=None)  # fmt: skip
+    assert got == {"status": "not_run", "reason": "digest mismatch"}
+
+
+def test_a_shipped_image_that_prints_no_output_fails(tmp_path, monkeypatch):
+    _declare_extension(monkeypatch, _extension(tmp_path))
+    monkeypatch.setattr(zm, "run_on_spike", lambda *a, **k: {"prefix": None, "console": "FAIL fatal mcause=2"})
+    got = matrix_leg._run_shipped_on_device_simulator(_pair(tmp_path), _routing(SimpleNamespace()), _BRD, cpus=1,
+                                                       timeout=1, refs=None)  # fmt: skip
+    assert got["status"] == "run_failed" and "mcause=2" in got["reason"]

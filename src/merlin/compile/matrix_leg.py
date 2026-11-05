@@ -2,8 +2,9 @@
 
 Builds the shipped matrix image and its stand-in twin through
 :func:`merlin.runtime.backends.matrix_image.build_matrix_pair`, gates the twin on spike, and -- when the support
-provider declares a simulator that implements its unit -- also runs the shipped image. Split out of
-:mod:`merlin.compile_cli`, which re-exports these names.
+target declares a simulator that implements its unit -- also runs the shipped image. Split out of
+:mod:`merlin.compile_cli`, which re-exports these names. ``build_tools/scripts/make_delivery.py`` runs the same
+shipped-image leg, so a whole-model delivery is gated exactly like one ``merlin-compile`` image.
 """
 
 from __future__ import annotations
@@ -102,11 +103,13 @@ def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, 
     # A trap in the shipped image does not end the simulation (the RTOS's fatal handler spins), so the leg
     # is bounded by the twin's own run: same lowering, same work, a scalar body that is never faster.
     shipped_timeout = int(min(timeout, max(_SHIPPED_TIMEOUT_FLOOR_S, _SHIPPED_TIMEOUT_FACTOR * twin_wall)))
-    shipped = _run_shipped_on_device_simulator(pair, routing, brd, cpus=cpus, timeout=shipped_timeout, refs=refs)
+    shipped = _run_shipped_on_device_simulator(
+        pair, routing, brd, cpus=cpus, timeout=shipped_timeout, refs=refs, twin=res
+    )
     out["matrix"]["shipped_on_simulator"] = shipped
-    if shipped.get("status") == "run_mismatch" and out["status"] == "verified":
+    if shipped.get("status") in SHIPPED_FAILURES and out["status"] == "verified":
         # The twin agreeing while the unit's own datapath disagrees is exactly what this leg exists for.
-        out["status"] = "run_mismatch"
+        out["status"] = shipped["status"]
     return out
 
 
@@ -115,22 +118,30 @@ _SHIPPED_TIMEOUT_FACTOR = 10
 _SHIPPED_TIMEOUT_FLOOR_S = 300
 
 
-def _run_shipped_on_device_simulator(pair, routing, brd, *, cpus: int, timeout: int, refs) -> dict:
-    """Run the SHIPPED image on a functional simulator that implements the unit, when its provider declares one.
+#: Shipped-image outcomes that fail the image's gate: it ran on a model of the unit and computed something
+#: else, or never produced its output. ``not_declared``/``not_run`` are reported and do not fail it.
+SHIPPED_FAILURES = ("run_mismatch", "run_failed")
 
-    The provider says, through an optional ``device_simulator(unit=, config=)`` on its matrix_lowering
-    plugin, which simulator binary implements the unit and which ISA extensions name it. Absent a
-    declaration the leg is ``not_declared``; declared but not present it is ``not_run`` with the reason --
-    never a fallback to a simulator without the unit, which would trap or, worse, decode the words as
-    something else.
+
+def _run_shipped_on_device_simulator(pair, routing, brd, *, cpus: int, timeout: int, refs, twin=None) -> dict:
+    """Run the SHIPPED image on a functional simulator that implements the unit, when its target declares one.
+
+    A target declares it in one of two ways. Its matrix_lowering plugin's optional
+    ``device_simulator(unit=, config=)`` names a simulator binary and the ISA extensions that name the unit
+    (Iris: riscv-isa-sim with Zvt). Or its contract's ``runner.spike_extension`` names a spike ``--extlib``
+    model of the unit, verified by :mod:`merlin.targetgen.spike_extension` (Kodiak's OPU). Absent both, the
+    leg is ``not_declared``; declared but unusable it is ``not_run`` with the reason -- never a fallback to a
+    simulator without the unit, which would trap or, worse, decode the words as something else.
+
+    ``twin`` is the stand-in twin's spike result. With it, the shipped image must also match the twin bit for
+    bit: they are one lowering with two tile bodies, so any difference is the unit's datapath (or its model).
     """
     from merlin.runtime.backends import zephyr_model as zm
 
     provider = routing.provider()
     declare = getattr(provider, "device_simulator", None)
     if not callable(declare):
-        why = f"{routing.support_target} declares no simulator for {routing.unit}"
-        return {"status": "not_declared", "reason": why}
+        return _run_shipped_on_spike_extension(pair, routing, brd, cpus=cpus, timeout=timeout, refs=refs, twin=twin)
     try:
         sim = dict(declare(unit=routing.unit, config=routing.config) or {})
     except Exception as exc:  # noqa: BLE001 -- the leg reports why it did not run
@@ -172,3 +183,78 @@ def _run_shipped_on_device_simulator(pair, routing, brd, *, cpus: int, timeout: 
 
 def _sim_meta(sim: dict) -> dict:
     return {k: sim[k] for k in ("binary", "binary_sha256", "provenance") if k in sim}
+
+
+def _run_shipped_on_spike_extension(pair, routing, brd, *, cpus: int, timeout: int, refs, twin) -> dict:
+    """The shipped image on spike with the unit's own functional model, as the target's contract declares it
+    (``runner.spike_extension``: extension name, the variable naming the ``.so``, its digest or build inputs).
+
+    The model is resolved by :func:`merlin.targetgen.spike_extension.resolve`, which returns the declared
+    bytes or raises; a raise is ``not_run`` with its reason. The model computes what the unit computes and
+    says nothing about its timing, so the cycles recorded are spike's, not the unit's.
+    """
+    import numpy as np
+
+    from merlin.runtime.backends import spike as spike_backend
+    from merlin.runtime.backends import zephyr_model as zm
+    from merlin.targetgen import spike_extension as SE
+
+    target = routing.support_target
+    try:
+        if SE.declared_extension(target) is None:
+            return {
+                "status": "not_declared",
+                "reason": f"{target} declares no simulator for {routing.unit} "
+                "(no device_simulator in its plugin, no runner.spike_extension in its contract)",
+            }
+        # Declared: the defaults are never used; resolve() returns the declared bytes or raises.
+        ext = SE.resolve(target, default_library_dir=spike_backend.spike_path().parent, default_extension_name="")
+    except SE.SpikeExtensionError as exc:
+        return {"status": "not_run", "reason": str(exc)}
+    meta = {
+        "via": "spike_extension",
+        "extension": {"name": ext.extension_name, "extlib": str(ext.extlib), "sha256": ext.sha256},
+        "elf": str(pair.ship["elf"]),
+    }
+    try:
+        res = zm.run_on_spike(
+            pair.ship["elf"],
+            dram_base=brd.dram_base,
+            harts=cpus,
+            mem_bytes=pair.ship["ram_bytes"],
+            timeout=timeout,
+            vlen=brd.vlen,
+            extension=ext,
+        )
+    except Exception as exc:  # noqa: BLE001 -- a trap prints no DONE; a hang hits the bound
+        return {
+            **meta,
+            "status": "run_failed",
+            "reason": f"{type(exc).__name__}: {str(exc)[:1500]}",
+            "timeout_s": timeout,
+        }
+    got: dict = {**meta, "status": "ran", "spike_cycles": res.get("metrics", {}).get("cycles")}
+    output = res.get("output") if res.get("output") is not None else res.get("prefix")
+    if output is None or not len(output):
+        return {**got, "status": "run_failed", "reason": (res.get("console") or "")[-1500:]}
+    ok = True
+    if refs:
+        g = zm._gate(output, refs)
+        got["verify"] = {"gate_ok": bool(g.get("ok")), "of": "shipped image on the unit's spike model", **g}
+        ok = bool(g.get("ok"))
+    if twin is not None:
+        # Same lowering, two tile bodies: on a correct unit the outputs agree to the bit, on the dumped
+        # prefix and on the whole-tensor hash.
+        a, b = res.get("prefix"), twin.get("prefix")
+        same_prefix = a is not None and b is not None and len(a) == len(b) and bool(np.array_equal(a, b))
+        hashes = (res.get("out_hash"), twin.get("out_hash"))
+        same_hash = None if None in hashes else hashes[0] == hashes[1]
+        got["bit_exact_vs_twin"] = same_prefix and same_hash is not False
+        got["twin_compare"] = {
+            "prefix_equal": same_prefix,
+            "out_hash_equal": same_hash,
+            "elements": 0 if a is None else len(a),
+        }
+        ok = ok and got["bit_exact_vs_twin"]
+    got["status"] = "verified" if ok else "run_mismatch"
+    return got

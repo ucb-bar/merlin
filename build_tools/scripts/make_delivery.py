@@ -960,12 +960,21 @@ def build_matrix(
     ship_lowering = pair.lowering_digest
     counts, dbg_counts = pair.unit_instruction_counts, pair.debug_instruction_counts
 
+    shipped = None
     if simulate:
         res = zm.run_on_spike(
             twin["elf"], dram_base=brd.dram_base, harts=cpus,
             mem_bytes=twin["ram_bytes"], timeout=timeout, vlen=vlen,
         )
         res.update(zm._gate(res["prefix"], refs))
+        # The SHIPPED image too, when the support target declares a simulator that implements its unit (a
+        # spike model of it, or a simulator of its own): graded like the twin and required to match it bit
+        # for bit. The same leg merlin-compile runs, so a delivery is gated like one compiled image.
+        from merlin.compile.matrix_leg import SHIPPED_FAILURES, _run_shipped_on_device_simulator
+
+        shipped = _run_shipped_on_device_simulator(pair, routing, brd, cpus=cpus, timeout=timeout, refs=refs, twin=res)
+        if shipped.get("status") in SHIPPED_FAILURES:
+            res["ok"] = False  # the twin's tier stays as graded; the reason is in matrix.shipped_on_simulator
     else:
         # --no-spike: the twin is still BUILT and both images still audited (the digest match and the
         # instruction-count checks above are what make the pair meaningful), but the functional grade is
@@ -1005,6 +1014,8 @@ def build_matrix(
         # twin is built and audited but never graded, and text claiming it "grades bit-exact" would be a
         # verdict nobody produced.
         "twin_simulated": bool(simulate),
+        # The shipped image on a simulator that implements the unit, or why it did not run there.
+        **({"shipped_on_simulator": shipped} if shipped is not None else {}),
         # The diagnostic build's own counts, beside the shipped image's. Equal is the expected answer and
         # the two are separate binaries, so stating one and implying the other is exactly the gap this
         # closes.
