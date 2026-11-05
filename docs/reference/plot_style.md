@@ -11,9 +11,9 @@ code_refs: [packages/merlin-analysis/src/merlin/plotting]
 # Merlin plotting style — the house style for every figure in this repo
 
 **All plots in this repository should follow this style.** It is implemented once, in
-[`scripts/merlin_plotstyle.py`](../scripts/merlin_plotstyle.py) — import it, don't re-derive it.
+[`merlin.plotting.merlin_plotstyle`](../../packages/merlin-analysis/src/merlin/plotting/merlin_plotstyle.py) — import it, don't re-derive it.
 The reference implementation that exercises every rule is
-[`scripts/plot_presentation.py`](../scripts/plot_presentation.py) (rendered into
+[`build_tools/plots/plot_presentation.py`](../../build_tools/plots/plot_presentation.py) (rendered into
 `out/artifacts/presentation/`); look there for worked examples of grouped bars, stacked bars, annotated
 line plots, flow-chart/tree diagrams, and info-cards.
 
@@ -24,7 +24,7 @@ line plots, flow-chart/tree diagrams, and info-cards.
 ```python
 import matplotlib
 matplotlib.use("Agg")
-from merlin_plotstyle import *      # palette, SERIES, helpers
+from merlin.plotting.merlin_plotstyle import *      # palette, SERIES, helpers
 use_merlin_style()                  # register fonts + apply rcParams (warm cream canvas, ash ink)
 
 fig, ax = plt.subplots(figsize=(8, 5))
@@ -36,9 +36,9 @@ suptitle(fig, "My figure")
 fig.savefig("…/myfig.png", bbox_inches="tight", dpi=170, facecolor=BG)
 ```
 
-`scripts/` is on the path for repo scripts, so `from merlin_plotstyle import *` just works. New
-plotting code goes in `scripts/` (or imports the module by path) — never copy the palette/rcParams
-into a new file.
+Install the optional `packages/merlin-analysis` distribution to import the style.
+Reusable plotting code belongs in its `merlin.plotting` package; repository figure
+runners belong in `build_tools/plots/`. Keep the palette and rcParams in the shared module.
 
 ---
 
@@ -64,7 +64,9 @@ same thing is the same colour in every figure.
 - **Titles / suptitles**: `DM Serif Display` (via `title()` / `suptitle()`).
 - **Everything else** (axis labels, ticks, annotations, legends): `Inter`.
 
-Both are bundled/installed; `use_merlin_style()` registers them. If you add a glyph that DM Serif
+Install these fonts on the plotting host. `use_merlin_style()` searches Inter under
+`/usr/share/fonts/opentype/inter/` and DM Serif Display under
+`~/.local/share/fonts/`; the package does not bundle them. If you add a glyph that DM Serif
 Display lacks (e.g. `→`, `↑`), put it in an Inter `ax.text`, not in a serif title.
 
 ---
@@ -121,6 +123,6 @@ Display lacks (e.g. `→`, `↑`), put it in an Inter `ax.text`, not in a serif 
 
 The older paper figures live in `scripts/plot_paper_style.py` and `scripts/plot_rvv_comparisons.py`
 with an inline (pre-house-style) palette. When you next touch one, port it: replace its local
-palette/rcParams with `from merlin_plotstyle import *; use_merlin_style()`, swap `ax.bar/barh` for
+palette/rcParams with `from merlin.plotting.merlin_plotstyle import *; use_merlin_style()`, swap `ax.bar/barh` for
 `vbars/hbars`, drop baked-in caption paragraphs, and remove decorative hatches. The presentation
 figures in `out/artifacts/presentation/` are the visual target.

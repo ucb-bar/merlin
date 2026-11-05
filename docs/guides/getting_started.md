@@ -44,7 +44,7 @@ uv pip install -e '.[dev,xdsl,targetgen]'
 .venv/bin/python -m merlin.cli --help
 ```
 
-Install the optional distributions needed by your workflow, or all four for development:
+Install the optional research distributions needed by your workflow:
 
 ```bash
 uv pip install -e packages/merlin-experiments -e packages/merlin-dse -e packages/merlin-mining -e packages/merlin-analysis
@@ -52,6 +52,10 @@ uv pip install -e packages/merlin-experiments -e packages/merlin-dse -e packages
 .venv/bin/python build_tools/scripts/check_structure.py
 .venv/bin/python -m pytest merlin/tests packages/merlin-experiments/tests packages/merlin-dse/tests packages/merlin-mining/tests
 ```
+
+The separate `packages/merlin-timing` distribution provides portable timing models
+and qualification tools; install it for those workflows. It uses the
+`merlin_timing` namespace and has no compiler runtime dependency.
 
 The experiment package installs its pinned AET dependency; no implicit sibling checkout is
 required. Use `.venv/bin/python` directly or `uv run --no-sync` after these explicit installs:
@@ -69,14 +73,18 @@ installs them all):
 
 | extra | pulls in | needed for |
 |---|---|---|
-| `dev` | pytest, pytest-timeout, pyyaml, pydantic, rich | the test suite (always) |
+| `dev` | pytest/xdist/timeout, pyyaml, pydantic, rich, build, setuptools, ruff | development and test tooling |
 | `xdsl` | xdsl≥0.68 | the xDSL prototyping plane / dialect descent |
+| `verify` | xdsl, z3-solver, jsonschema | shared-pass verification; Lean is installed separately |
 | `targetgen` | jsonschema | targetgen contract validation (fail-closed schema checks) |
+| `semantic-search` | xdsl, jsonschema, z3-solver | semantic instruction selection and storage placement |
 | `board` | *(no PyPI deps)* | documented install target for the board/sim/RTL flows — the actual tools are external (§5) |
 | `kernels-ast` | tree-sitter, tree-sitter-c | AST structural kernel mining |
 | `kernels-exo` | exo-lang | Exo compile-to-C ingest in kernel mining |
 | `kernels-parquet` | pyarrow | columnar kernel-feature table |
 | `kernels-plots` | matplotlib | kernel-mining / DSE evaluation plots |
+| `telemetry` | revision-pinned AET | accounting and run storage |
+| `triton` | pinned Triton wheel | read-only TTIR frontend; no GPU required |
 
 ## 2. The `.env` file — how external tools are found
 
@@ -152,9 +160,15 @@ Everything here is **out of band** (not a PyPI dep, not vendored). Set the match
 [`ucb-bar/model2MLIR`](https://github.com/ucb-bar/model2MLIR) and run
 `build_tools/scripts/setup_model2mlir.sh` (creates m2m's own torch + torch-mlir venv and a dedicated
 capture venv). Point `MERLIN_M2M_DIR` at the checkout; the lowering path runs inside
-`MERLIN_M2M_VENV` (defaults to `$MERLIN_M2M_DIR/.venv`). See [model2MLIR frontend](model2mlir.md).
-Quantization happens **in m2m, not Merlin** — int8 (W8A8) is the only measured-working format; fp8 /
-int4 are a documented plan.
+the separately selected compiler interpreter: `MERLIN_COMPILER_PYTHON`, then
+`MERLIN_COMPILER_VENV/bin/python`, with `MERLIN_M2M_VENV` as the legacy fallback
+(default `$MERLIN_M2M_DIR/.venv`). Capture and compiler environments may differ.
+See [model2MLIR frontend](model2mlir.md) and the
+[Lean tool setup](lean_bounded_pass_profiles.md#configure-the-tools).
+Merlin also implements shared quantization preparation and Q/DQ lowering;
+quantization is not exclusively a frontend operation. Numerical policy,
+supported source profiles and target execution qualification are separate;
+see the [bounded profiles](lean_bounded_pass_profiles.md).
 
 **mlc — the model-ladder compiler (RTL frontend for targetgen).** The CIRCT+xDSL frontend Merlin
 reuses to derive ISA/geometry/capacity facts from accelerator RTL (`targetgen.rtl.mlc_bridge`). Point

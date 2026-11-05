@@ -119,7 +119,7 @@ large SmolVLA stages report incomplete quantized-to-prepared correspondence;
 `prefix_encode` additionally has prepared nodes `n552`–`n557` without final
 lowering correspondence. The host manifest that check used (`74a614e8…`) was
 `unreviewed`, so it left all host admissions unknown. The current
-[`host-capabilities.yaml`](../target/host-capabilities.yaml) is `reviewed` at the
+[`host-capabilities.yaml`](../platform/host-capabilities.yaml) is `reviewed` at the
 document level and pins the minted scalar package (`89e00e39…`). Of its 63
 operation declarations, 18 carry reviewed numerical contracts and 45 remain
 `unreviewed`. Host admission is therefore decided per operation. A route whose

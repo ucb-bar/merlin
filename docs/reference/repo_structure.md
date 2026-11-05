@@ -32,6 +32,7 @@ packages/
   merlin-dse/         design-space exploration, design pressure and guidance
   merlin-mining/      mining/search campaigns and tuning studies
   merlin-analysis/    baselines, comparisons, reports and visualization
+  merlin-timing/      portable timing models/tools (separate merlin_timing namespace)
 experiments/
   catalog.yaml       experiment discovery: merlin experiment list
   definitions/       versioned phase definitions and explicitly non-runnable templates
@@ -56,6 +57,7 @@ merlin/
   benchmarks/  shared workload descriptions
   experiments/ retained native phase engines and experiment resources (not the catalog)
   tests/       integration/conformance/golden/data
+  lean/        tensor semantics and shared-pass Lean checker project
 ```
 
 ## Find the owner before changing code
