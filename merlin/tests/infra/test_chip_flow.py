@@ -124,10 +124,12 @@ def test_the_shipped_image_leg_merlin_compile_already_ran_is_reported_not_rerun(
     result["matrix"]["shipped_on_simulator"] = {
         "via": "spike_extension", "status": "verified", "elf": str(tmp_path / "ship.elf"), "spike_cycles": 5,
         "extension": {"name": "m", "extlib": "/m.so", "sha256": "0" * 64}, "bit_exact_vs_twin": True,
-        "verify": {"gate_ok": True, "w8a8_cos": 1.0},
+        "verify": {"gate_ok": True, "w8a8_cos": 1.0}, "output_identity": {"out_hash": {"value": 9}},
     }  # fmt: skip
     got = flow.matrix_on_spike("op_x", _args(), result)
     assert got["status"] == "verified" and got["bit_exact_vs_twin"] and got["extension"]["name"] == "m"
+    # The model matrix compares harts by this identity; dropping it reads as "an image printed no digest".
+    assert got["output_identity"] == {"out_hash": {"value": 9}}
 
 
 def test_the_twin_is_not_simulated_again_when_its_answer_was_recorded(tmp_path, monkeypatch):

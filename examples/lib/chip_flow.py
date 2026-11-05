@@ -254,6 +254,7 @@ def matrix_on_spike(name: str, args, matrix: dict) -> dict:
             "verify": sim.get("verify") or {},
             "bit_exact_vs_twin": sim.get("bit_exact_vs_twin"),
             "twin_compare": sim.get("twin_compare"),
+            "output_identity": sim.get("output_identity"),
             "status": sim.get("status"),
             **({"error": sim["reason"]} if sim.get("reason") else {}),
         }

@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from merlin.compile import matrix_leg
+from merlin.runtime.backends import output_identity
 from merlin.runtime.backends import zephyr_model as zm
 
 
@@ -98,6 +99,7 @@ def test_a_declared_spike_model_runs_the_shipped_elf_and_must_match_the_twin(tmp
                                                        timeout=1, refs={"r": 1}, twin=twin)  # fmt: skip
     assert seen["elf"] == tmp_path / "ship.elf" and seen["extension"] is ext and seen["harts"] == 2
     assert got["status"] == "verified" and got["via"] == "spike_extension" and got["bit_exact_vs_twin"]
+    assert got["output_identity"] == output_identity.output_identity({"prefix": np.arange(4.0), "out_hash": {"v": 1}})
 
     twin = {"prefix": np.arange(4.0) + 1, "out_hash": {"v": 2}}  # a datapath that computes something else
     got = matrix_leg._run_shipped_on_device_simulator(_pair(tmp_path), _routing(SimpleNamespace()), _BRD, cpus=2,

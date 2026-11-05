@@ -256,7 +256,10 @@ def _run_shipped_on_spike_extension(pair, routing, brd, *, cpus: int, timeout: i
             "reason": f"{type(exc).__name__}: {str(exc)[:1500]}",
             "timeout_s": timeout,
         }
+    from merlin.runtime.backends import output_identity
+
     got: dict = {**meta, "status": "ran", "spike_cycles": res.get("metrics", {}).get("cycles")}
+    got["output_identity"] = output_identity.output_identity(res)
     output = res.get("output") if res.get("output") is not None else res.get("prefix")
     if output is None or not len(output):
         return {**got, "status": "run_failed", "reason": (res.get("console") or "")[-1500:]}
