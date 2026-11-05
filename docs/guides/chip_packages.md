@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-11-05
 related: [target_resolution, adding_a_target, zephyr, model2mlir]
-code_refs: [examples/lib/chip_setup.py, examples/lib/preflight.py, src/merlin/common/pin_drift.py, src/merlin/targetgen/unit_pins.py, src/merlin/targetgen/support_pins.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, build_tools/upstreams/target_support.json, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, src/merlin/targetgen/rtl/matrix_isa.py, src/merlin/kernels/matrix_shim.py, src/merlin/compile_cli.py, src/merlin/compile/matrix_leg.py, src/merlin/targetgen/spike_extension.py, build_tools/scripts/vendor_support.py, src/merlin/kernels/matrix_kernels.py, src/merlin/kernels/matrix_kernel_test.py]
+code_refs: [examples/lib/chip_setup.py, examples/lib/preflight.py, src/merlin/common/pin_drift.py, src/merlin/targetgen/unit_pins.py, src/merlin/targetgen/support_pins.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, build_tools/upstreams/target_support.json, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, src/merlin/targetgen/rtl/matrix_isa.py, src/merlin/kernels/matrix_shim.py, src/merlin/compile_cli.py, src/merlin/compile/matrix_leg.py, src/merlin/targetgen/spike_extension.py, build_tools/scripts/vendor_support.py, src/merlin/kernels/matrix_kernels.py, src/merlin/kernels/matrix_kernel_test.py, src/merlin/llvmlower/contraction_normal_form.py, src/merlin/llvmlower/matrix_route_cost.py]
 ---
 
 # Chip packages layered on a base target
@@ -225,11 +225,26 @@ build with `--matrix-unit/--matrix-config/--matrix-support-target`, on both `mer
 * the shipped image, whose selected int8 contractions call the unit's kernel;
 * a stand-in twin, with the same lowering (checked by digest) and a scalar tile body, which is what a
   functional simulator runs and grades;
-* `routing_report.json`, listing what was routed, what was not and why (dtype, a transposed operand,
-  an accumulator that is not zero, smaller than one tile), and the share of contraction MACs on the unit.
+* `routing_report.json`, listing what was routed, what was not and why (dtype, an accumulator that is
+  not zero, not a GEMM, the cost model's verdict), the share of contraction MACs on the unit, the same
+  split per model site (`macs_by_site`: conv / attention / linear, from provenance), the policy and
+  geometry the decision was made with, and every sub-tile or re-laid-out route with its decision
+  (`priced_sub_tile_routes`, e.g. "padded N 49->64, est. util 77%, est. 5.7x vs vector").
 
-Only contractions whose operands are exactly A(M,K)·B(K,N) are routed. A transposed operand stays on
-the vector unit and is reported.
+**Any layout routes.** `llvmlower.contraction_normal_form` reads a contraction's indexing maps as a GEMM
+(each dim is batch, m, n or k by which operands index it) and rewrites it into the kernel's one layout
+with explicit transposes, collapses and, for a windowed (direct convolution) input, an im2col gather, so
+a transposed operand, several batch dims (multi-head attention), an NCHW 1x1 conv or a strided/dilated
+conv all reach the same kernel ABI. A form that is not a GEMM is refused with its reason; the depthwise
+form (an operand with no free dim) is refused by name.
+
+**Which contractions move** is decided by `llvmlower.matrix_route_cost` from the provider's `geometry`
+(tile edge and datapath width): estimated cycles on the unit (outer-product steps, readout, the K-major
+pack, the partial-tile pad, any layout transforms, priced per element) against the vector unit's peak,
+for both operand orientations (`C = A.B` or `C^T = B^T.A^T`). The historical rule -- canonical layout
+only, `min(M, N) >= tile edge` through the provider's own `selector` -- stays selectable:
+`MatrixRouting(policy="tile_filling")` or `MERLIN_MATRIX_ROUTE_POLICY=tile_filling`. Routing never
+changes numerics: the routed and the vector path compute the same i8 x i8 -> i32 sums from the same IR.
 
 ### What Merlin gives a matrix unit, and what the package brings
 

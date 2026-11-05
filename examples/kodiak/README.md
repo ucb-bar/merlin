@@ -30,7 +30,9 @@ git clone https://github.com/ucb-bar/merlin.git && cd merlin/examples/kodiak
 ./run.sh preflight                # every stage should say [ok ]
 ./run.sh op gemm                  # one 64x64x64 GEMM: RVV vs RVV+OPU, gated on spike (~1 min)
 ./run.sh op gemm 96 80 200        # M N K: partial tiles, odd K
-./run.sh op conv2d 16 64 16 3     # CIN COUT HW K (im2col + matmul)
+./run.sh op conv2d 16 64 16 3     # CIN COUT HW K (im2col + matmul); CONV_STRIDE=2 for 7x7 output pixels
+./run.sh op attention 48 128 4    # SEQ D HEADS: multi-head Q.K^T and P.V (activation x activation)
+./run.sh op gemm_nt 64 96 80      # M N K: A.B^T of two activations (a transposed operand)
 ./run.sh op my_op/loader.py       # your own one-operator model (see examples/workloads/gemm/loader.py)
 ```
 
@@ -101,7 +103,7 @@ The stages:
 ./run.sh setup [--llvm P] [--chipyard D] [--zephyr-sw D] [--zephyr-sdk D] [--m2m D] [--no-fetch]
 ./run.sh preflight
 ./run.sh probe
-./run.sh op <gemm|conv2d|encoder_block|loader.py> [dims] [--harts 2]
+./run.sh op <gemm|gemm_nt|conv2d|attention|encoder_block|loader.py> [dims] [--harts 2]
 ./run.sh capture <model>          # any model model2MLIR can capture, + its W8A8 golden
 ./run.sh build [--opu] [--models <model>]   # add --full for the shipped matrix (hours)
 ./run.sh package [--opu] [--models <model>]
@@ -179,8 +181,12 @@ Every OPU build writes a routing report: `routing_report.json` next to the image
 
 * `routed_contractions` and `opu_mac_share`: how much of the model the OPU sees. This bounds the
   speedup, and it is the first thing to read for a new model.
-* `not_routed_by_reason`: why the rest did not go. Usually "smaller than one tile", sometimes a
-  transposed weight (those are refused, never routed with the wrong layout).
+* `not_routed_by_reason`: why the rest did not go -- usually the cost model's verdict that the vector
+  unit is cheaper for that shape ("cost model: ..."), with its estimate in `not_routed[].decision`.
+* `macs_by_site` and `priced_sub_tile_routes`: where the MACs sit (conv / attention / linear) and every
+  route that pads a partial tile, swaps the operands' roles or re-lays-out an operand, with the
+  estimate that justified it. `MERLIN_MATRIX_ROUTE_POLICY=tile_filling` restores the old rule (both
+  extents at least one tile, canonical layout only).
 
 `MERLIN_CHIPYARD` must point at a chipyard whose `generators/saturn` carries the OPU: the encodings
 and the tile geometry are derived from it.
@@ -242,10 +248,10 @@ runs into, in the order you will meet it:
   `nn.Linear` only: a CNN's convolution weights stay f32 in the bundle. Merlin's W8A8 build still
   quantizes those convolutions (`conv_int8`) and routes them to the OPU, but the image carries their
   weights as f32: ResNet-50's weights blob is 96 MB, about 4x its int8 size.
-* **Not everything routes.** A contraction routes only when M and N both reach a tile (64). For a
-  convolution one of them is the output pixel count, so the deep layers of a small input (7x7 = 49
-  pixels) stay on RVV; `not_routed_by_reason` in the routing report counts them ("smaller than one tile
-  (64)") and `not_routed[]` names each one.
+* **What routes is priced.** A contraction routes when the OPU's estimate, derived from its tile edge
+  and datapath width, beats the vector unit's, so the deep layers of a small input (7x7 = 49 output
+  pixels, padded to a 64-wide tile) route too; `priced_sub_tile_routes` in the routing report lists each
+  with its padding and estimated utilisation, and `not_routed[]` names anything left on RVV and why.
 * **Say what the model is.** A package's README describes every model in it. For one Merlin does not
   know, write a paragraph (what it is, how it was captured, what to expect of it) to
   `delivery_status.md` in its bundle directory, or `build`/`package` ends with a `NO STATUS` problem
