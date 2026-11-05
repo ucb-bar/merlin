@@ -3,10 +3,11 @@ title: Optional lowering passes — list, select, copy
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-08
+last_verified: 2026-11-05
 related: [model_lowering, whole_model_on_accelerator, extending_the_stack]
 code_refs: [src/merlin/llvmlower/optional_passes.py,
             src/merlin/llvmlower/int_softmax_table.py,
+            src/merlin/llvmlower/portable_math.py,
             src/merlin/llvmlower/normalization_reassociation.py,
             src/merlin/llvmlower/passes_xdsl.py,
             src/merlin/compile/command.py,
@@ -55,10 +56,24 @@ Each entry names the switch that already existed, and selecting it flips that sw
 * a **lowering feature** (`merlin.llvmlower.impr_features`), added to or removed from the feature set
   `lower_to_llvm_ir` builds;
 * a **`MERLIN_*` variable** (`MERLIN_FUSION_GUARD`, `MERLIN_SINK_DEALLOCS`, `MERLIN_STATIC_ARENA`,
-  `MERLIN_LAYER_NORM_CHUNKED_SUMS`). An
+  `MERLIN_LAYER_NORM_CHUNKED_SUMS`, `MERLIN_PORTABLE_TRANSCENDENTALS`). An
   explicit selection wins over the variable, which still works on its own for A/B builds;
 * a pass of the **integer datapath** (`merlin.llvmlower.quant_passes`), added to or removed from the
   set `apply_quant` runs.
+
+## portable-transcendentals
+
+On by default. The lowered model's `erff`/`expf`/`tanhf`/`logf` calls go to Merlin's own
+functions (`merlin_erff` and the rest, in `merlin/runtime/abi/portable_math.h`). These are linked
+with the MLIR runtime into the host build that writes a golden and into every device image, so
+the two evaluate the same function bit for bit. The functions are correctly rounded (logf on all
+but five inputs).
+
+`--no-pass portable-transcendentals` restores each target's C library. In that mode a host golden
+and a RISC-V image can disagree in the last ulp, and requantization can turn that ulp into a
+per-element gate failure. Each build records the policy in `stats["transcendental_math"]` and
+each W8A8 golden in its provenance. `merlin-compile` warns when the two disagree. Design,
+accuracy and evidence: [the design note](../design/portable_transcendentals.md).
 
 ## int-softmax-table
 
