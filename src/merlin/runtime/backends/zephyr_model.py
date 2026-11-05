@@ -304,163 +304,9 @@ def perop_mr_cap() -> int:
 
 _PEROP_KC = 16
 
-_WEIGHTS_ALIGN_BYTES = 4096  # Zephyr memory-region alignment, not a board address
-
-
-@dataclass(frozen=True)
-class _MemoryPlan:
-    external: bool
-    ram_region_bytes: int
-    spike_span_bytes: int
-    weights_base: int | None = None
-    weights_region_bytes: int = 0
-
-
-def _memory_plan(brd: Any, weights_bytes: int, linked_region: int, override: int | None = None) -> _MemoryPlan:
-    """Choose an in-DRAM layout from the selected board's memory facts only: a missing external-weights layout is
-    refused, never guessed. The spike span covers the whole ELF; a region over the DRAM is refused with sizes."""
-    default = brd.zephyr_default_ram_bytes
-    limit = brd.zephyr_link_limit_bytes
-    if default is None or limit is None:
-        raise ZephyrModelError(f"{brd.name}: Zephyr memory facts are missing from the selected board")
-    if linked_region < 0 or weights_bytes < 0:
-        raise ZephyrModelError(f"{brd.name}: negative model memory requirement")
-    if brd.dram_base > 0xFFFFFFFF or default > 0xFFFFFFFF:
-        raise ZephyrModelError(f"{brd.name}: Zephyr RAM overlay requires one-cell DRAM address and size")
-    if override is not None:
-        if override < default or override < weights_bytes or override > limit or override > brd.dram_bytes:
-            raise ZephyrModelError(f"{brd.name}: RAM override cannot hold weights or exceeds board limits")
-        return _MemoryPlan(False, override, override)
-    if linked_region < default:
-        raise ZephyrModelError(f"{brd.name}: computed region is smaller than the port's default RAM region")
-    if linked_region <= limit:
-        if linked_region > brd.dram_bytes or linked_region > 0xFFFFFFFF:
-            need, w, has = linked_region >> 20, weights_bytes >> 20, brd.dram_bytes >> 20
-            raise ZephyrModelError(f"{brd.name}: linked region exceeds physical DRAM: the image needs {need} MiB ({w} "
-                                   f"MiB of weights, the rest code and arena), the board has {has} MiB")  # fmt: skip
-        return _MemoryPlan(False, linked_region, linked_region)
-    low = brd.zephyr_external_ram_bytes
-    tail = brd.zephyr_external_tail_reserve_bytes
-    if low is None or tail is None:
-        raise ZephyrModelError(
-            f"{brd.name}: linked region exceeds the port's limit and the board declares no external-weights layout"
-        )
-    if low <= 0 or low > limit or low > 0xFFFFFFFF or tail < 0 or low + tail >= brd.dram_bytes:
-        raise ZephyrModelError(f"{brd.name}: invalid external-weights layout")
-    base = brd.dram_base + low
-    aligned = (weights_bytes + _WEIGHTS_ALIGN_BYTES - 1) & ~(_WEIGHTS_ALIGN_BYTES - 1)
-    if base % _WEIGHTS_ALIGN_BYTES or aligned + low + tail > brd.dram_bytes:
-        raise ZephyrModelError(f"{brd.name}: aligned weights blob does not fit the declared DRAM layout")
-    return _MemoryPlan(True, low, low + aligned, base, aligned)
-
-
-def _require_external_arena(brd: Any, ram_region_bytes: int, segments: list[Any], demand: int) -> None:
-    """Refuse an external image whose *linked* low-memory footprint crowds its arena."""
-    low_end = brd.dram_base + ram_region_bytes
-    low_segments = [sg for sg in segments if sg.vaddr < low_end]
-    if any(sg.vaddr < brd.dram_base or sg.end > low_end for sg in low_segments):
-        raise ZephyrModelError(f"{brd.name}: linked ELF crosses the declared low RAM region")
-    available = ram_region_bytes - sum(sg.memsz for sg in low_segments)
-    if available < demand:
-        raise ZephyrModelError(
-            f"{brd.name}: external-weights ELF leaves {available} bytes "
-            f"of low RAM for {demand} bytes of activation demand; declare a larger "
-            "external RAM region in the target-owned catalog"
-        )
-
-
-#: What one heap allocation looks like in the emitted LLVM IR. The lowered model reaches the C library
-#: through this symbol, so a call to it is an allocation the arena has to hold.
-_ALLOC_SYMBOL = "@malloc("
-
-
-def allocation_bytes(ll_path: str | Path) -> tuple[int, int]:
-    """``(total_constant_bytes, dynamic_calls)`` requested by the lowered model's allocations.
-
-    WHY THE SUM AND NOT THE PEAK. :func:`mlir_query.activation_peak_bytes` reports LIVE bytes and says
-    itself that it is a lower bound. Whether the live figure is the one that has to fit depends on the
-    allocator underneath, and one of ours does not reclaim at all (the bare-metal arena's ``free`` is a
-    no-op), so there the arena must hold every byte ever requested. Sizing to the sum is the bound that
-    holds under both, and it is derived from the IR that will actually run rather than assumed.
-
-    Parsed STRUCTURALLY -- ``partition`` on the call, then on the argument's type -- not by pattern. The
-    IR spells the same call several ways (``call``, ``tail call``, with and without ``noalias``, with a
-    trailing attribute group), and a pattern narrow enough to be readable silently misses one spelling,
-    which here would under-report the requirement and produce an image that dies in its tail.
-
-    ``dynamic_calls`` counts allocations whose size is a value rather than a literal. They are REPORTED,
-    never assumed to be zero: their bytes are genuinely unknown at build time, and a caller that needs a
-    guarantee has to know the answer is incomplete.
-    """
-    total = dynamic = 0
-    for line in Path(ll_path).read_text(errors="replace").splitlines():
-        _, sym, rest = line.partition(_ALLOC_SYMBOL)
-        if not sym:
-            continue
-        args, close, _ = rest.partition(")")
-        if not close:
-            continue
-        # `i64 1024`, and also `i64 noundef 1024` -- the parameter attributes clang inserts sit BETWEEN
-        # the type and the value, so the size is the last token, not the second one. Reading the second
-        # token classified an attributed call as dynamic, which under-reports the requirement.
-        tokens = args.split()
-        if len(tokens) < 2 or not tokens[0].startswith("i") or not tokens[-1].isdigit():
-            dynamic += 1
-            continue
-        total += int(tokens[-1])
-    return total, dynamic
-
-
-def _ram_for_weights(
-    weights_bytes: int,
-    activation_bytes: int | None = None,
-    allocation_bytes_total: int | None = None,
-    *,
-    default_ram_bytes: int,
-) -> int:
-    """RAM-region size to hold the weights blob (linked into .data) plus an activation
-    arena (the leftover, claimed by ARENA_SIZE=-1). Headroom scales with the model
-    (30% of weights + 128 MB) rather than a fat fixed floor, so small models stay at the
-    256 MB default — important on FireSim, where the whole-model image only boots reliably
-    at the stock `ram0` size and an over-large region wedges the boot (no uartlog). Models
-    that genuinely need more grow the region; rounded up to 16 MB.
-
-    TWO ESTIMATES OF THE SAME QUANTITY, and the measured one wins.
-
-    ``activation_bytes`` (from :func:`mlir_query.activation_peak_bytes`) is LIVE bytes inferred from the
-    MLIR. It exists because a flat 128 MB of headroom does not always cover a model's working set:
-    whisper_tiny's encoder attention peaks at 210 MB live where the weights-scaled formula left it a
-    163 MB arena, i.e. a provisioning failure on a board with enough physical DRAM.
-
-    ``allocation_bytes_total`` (from :func:`allocation_bytes`) is what the EMITTED IR actually asks the
-    heap for, summed. It is the better number wherever it exists, in both directions:
-
-    * It is an UPPER bound on live bytes -- every live byte was allocated -- so it cannot under-provision
-      the way a liveness estimate can when bufferization inserts copies the estimate never saw.
-    * It prices only what comes out of the arena. The MLIR estimate prices tensors that never become heap
-      allocations at all, and it can therefore be enormously PESSIMISTIC: measured on a 12-layer Gemma
-      section, the estimate said 2827 MB while the emitted IR's allocations total 1533 MB -- an estimate
-      larger than the sum of every allocation the program makes, which is impossible for real arena
-      demand. Sizing from it asked for a 4416 MB region on a 4096 MB design and refused to build a model
-      that fits in 3136 MB.
-
-    So when the measured total is available it REPLACES the estimate rather than joining it in the max.
-    That is deliberately not monotone with the older formula: a model whose estimate was pessimistic gets
-    a smaller region, which is the whole point. The 128 MB slack stays on top of whichever number is used,
-    because neither covers allocator fragmentation and because an allocation whose size is computed rather
-    than literal is not in the measured total (:func:`allocation_bytes` reports how many).
-
-    A shortfall is not silent, which is what makes this safe to tighten: the image links a malloc guard
-    that prints ``FAIL alloc bytes=<n> op=<id>`` and terminates in the protocol, so a returned log names
-    the allocation that did not fit."""
-    headroom = (weights_bytes * 3) // 10 + 128 * 1024 * 1024
-    demand = int(allocation_bytes_total or 0) or int(activation_bytes or 0)
-    if demand:
-        headroom = max(headroom, demand + 128 * 1024 * 1024)
-    total = weights_bytes + headroom
-    align = 16 * 1024 * 1024
-    total = ((total + align - 1) // align) * align
-    return max(default_ram_bytes, total)
+# The image's memory: what it needs, the layout on the board, and the refusal when it does not fit.
+from . import zephyr_memory as _zmem  # noqa: E402
+from .zephyr_memory import _memory_plan, _MemoryPlan, _require_external_arena, allocation_bytes  # noqa: E402,F401
 
 
 def _prepare_model_mlir(
@@ -2389,7 +2235,7 @@ def build_app(
     # CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=-1, i.e. "all leftover RAM", because a fixed
     # array overflows R_RISCV_PCREL_HI20 once it exceeds the model-link window. The
     # parameter is kept so existing callers (zephyr_matrix.py passes 192) still work; the
-    # arena is sized by `_ram_for_weights` instead. Do not add code that reads it.
+    # region is sized by `zephyr_memory` instead. Do not add code that reads it.
     inputs_npz: str | Path | None = None,
     ram_bytes_override: int | None = None,
     int8_compute: bool = False,
@@ -2562,28 +2408,33 @@ def build_app(
         # loop level instead (`parallel=True` -> convert-linalg-to-parallel-loops + convert-scf-to-
         # openmp), which is the same pipeline the K1 big models use. Both emit `__kmpc_*` satisfied by
         # the Zephyr OpenMP shim, so the worker side is identical.
-        res = lower_model_file(
-            prepared,
-            work / "lower",
-            targets=(),
-            textual=True,
-            vectorize=(backend == "rvv"),
-            transform_schedule=rvv_schedule,
-            features=features,
-            parallel=(backend != "rvv" and n_harts > 1),
-            parallel_harts=(n_harts if n_harts > 1 and backend == "rvv" else None),
-            # The block-preserving split `prepare_for_lowering` above derived and
-            # tagged this IR with; None for a package with no per-op block table,
-            # which keeps the legacy class-wide split.
-            parallel_chunks=parallel_arms(work),
-            masked_contraction_effects=masked_contraction_effects,
-            source_observation_effects=source_observation_effects,
-            source_scalar_carrier=source_scalar_carrier,
-        )
-    # What this lowering will ask the heap for, read off the IR that is about to be compiled. Measured
-    # here rather than estimated later: the file exists for exactly this build, and the number decides the
-    # region size below.
+        # The ACTIVATION MEMORY PLAN rides on the same lowering (`zephyr_memory.planned_lowering`):
+        # each buffer freed after its last use, then all of them seated in one static arena sized to
+        # the peak of what is live, not the sum. Both passes are exact and on unless deselected.
+        with _zmem.planned_lowering() as memory_policy:
+            res = lower_model_file(
+                prepared,
+                work / "lower",
+                targets=(),
+                textual=True,
+                vectorize=(backend == "rvv"),
+                transform_schedule=rvv_schedule,
+                features=features,
+                parallel=(backend != "rvv" and n_harts > 1),
+                parallel_harts=(n_harts if n_harts > 1 and backend == "rvv" else None),
+                # The block-preserving split `prepare_for_lowering` above derived and
+                # tagged this IR with; None for a package with no per-op block table,
+                # which keeps the legacy class-wide split.
+                parallel_chunks=parallel_arms(work),
+                masked_contraction_effects=masked_contraction_effects,
+                source_observation_effects=source_observation_effects,
+                source_scalar_carrier=source_scalar_carrier,
+                static_arena=memory_policy != "heap",
+            )
+    # What this lowering still asks the heap for once the arena is planned, read off the IR that is about
+    # to be compiled: with the arena it decides the region size below.
     alloc_total, alloc_dynamic = allocation_bytes(res.ll_path)
+    heap = _zmem.heap_residue(Path(res.ll_path).read_text(), harts=n_harts)
 
     # BACKEND-level feature flags, applied to the MODEL OBJECT ONLY (never to the C glue below):
     # some codegen decisions are not expressible in the IR -- the width of the vector register group
@@ -2635,19 +2486,31 @@ def build_app(
     # reaches op 0 in 8 minutes. Comparing the computed region is strictly safer than comparing the
     # blob: it can only move builds from linked to external, and external is the mode that works at
     # every size tested (1034 MiB and 2485 MiB regions both execute).
-    from ...common.ir_lock import IR_LOCK
-    from ...common.mlir_query import activation_peak_bytes
-
-    peak = None  # measured only on the path that sizes the region from it
+    #
+    # THE REGION is sized from what this build measured (`zephyr_memory`): the weights, the planned arena,
+    # the heap residue and the allocator's derived margin, plus the code, which only the link can
+    # measure -- so the first link is at an estimate that counts the model object, and `link_to_fit`
+    # corrects it to the linked image. A floor that already exceeds the DRAM is refused here, by term.
+    budget = _zmem.MemoryBudget(
+        board=brd.name,
+        dram_bytes=brd.dram_bytes,
+        policy=memory_policy,
+        weights_bytes=weights_size,
+        arena=dict(res.stats.get("static_arena") or {}),
+        heap=heap,
+        allocator=_zmem.allocator_facts(_zephyr_base()),
+        link_limit_bytes=brd.zephyr_link_limit_bytes,
+    )
     linked_region = None
     if ram_bytes_override is None:
-        # Same lock rationale as the sizing parse below: three concurrent build_app calls produced a
-        # bogus ParseError on valid IR, which read as a broken build rather than a race.
-        with IR_LOCK:
-            peak = int(activation_peak_bytes(model_dir / "model.mlir") or 0) or None
-        linked_region = _ram_for_weights(
-            weights_size, peak, alloc_total, default_ram_bytes=brd.zephyr_default_ram_bytes
-        )
+        floor = weights_size + budget.arena_bytes
+        if budget.need_bytes(floor) > brd.dram_bytes:
+            budget.image_bytes = floor
+            raise ZephyrModelError(budget.refusal(image_at_least=True))
+        estimate = budget.need_bytes(floor + (work / "model.o").stat().st_size)
+        linked_region = _zmem.region_for(budget, estimate, brd.zephyr_default_ram_bytes)
+        if brd.dram_bytes <= brd.zephyr_link_limit_bytes:
+            linked_region = min(linked_region, max(brd.dram_bytes, brd.zephyr_default_ram_bytes))
     layout = _memory_plan(brd, weights_size, linked_region or 0, ram_bytes_override)
     external = layout.external
     weights_base = layout.weights_base
@@ -2899,31 +2762,30 @@ def build_app(
             raise ZephyrModelError(f"build produced no elf at {elf}")
         return bh
 
-    build_hash = _emit_and_build()
-    demand = alloc_total + 128 * 1024 * 1024
+    if external or ram_bytes_override is not None:
+        build_hash = _emit_and_build()
+        budget.region_bytes = ram_region_bytes
+        budget.image_bytes = _zmem.image_span(elf, brd.dram_base, ram_region_bytes)
     if external:
         from ..elf_audit import read_elf as _read_elf
 
-        low_demand = (alloc_total or peak or 0) + 128 * 1024 * 1024
-        _require_external_arena(brd, ram_region_bytes, _read_elf(elf)[1], low_demand)
-    if not external and alloc_total:
-        from ..elf_audit import read_elf as _read_elf
+        _require_external_arena(brd, ram_region_bytes, _read_elf(elf)[1], budget.need_bytes(0))
+    elif ram_bytes_override is None:
 
-        image = sum(sg.memsz for sg in _read_elf(elf)[1])
-        if ram_bytes - image < demand:
-            align = 16 * 1024 * 1024
-            grown = ((image + demand + align - 1) // align) * align
-            print(
-                f"[zephyr_model] region {ram_bytes / 2**20:.0f} MB leaves "
-                f"{(ram_bytes - image) / 2**20:.0f} MB of arena for a model that asks for "
-                f"{alloc_total / 2**20:.0f} MB; the linked image measures {image / 2**20:.0f} MB. "
-                f"Relinking for {grown / 2**20:.0f} MB.",
-                flush=True,
-            )
-            ram_bytes = grown
-            ram_region_bytes = grown
-            overlay = _overlay_for(ram_bytes)
-            build_hash = _emit_and_build()
+        def _link(size: int) -> str:
+            nonlocal overlay
+            overlay = _overlay_for(size)
+            return _emit_and_build()
+
+        ram_bytes, build_hash = _zmem.link_to_fit(
+            budget,
+            ram_bytes,
+            _link,
+            lambda: _zmem.image_span(elf, brd.dram_base, budget.capacity_bytes),
+            default_ram_bytes=brd.zephyr_default_ram_bytes,
+        )
+        ram_region_bytes = ram_bytes
+    print(f"[zephyr_model] memory: {_zmem.summary_line(budget.to_dict())}", flush=True)
     out = {
         "elf": elf,
         "app_dir": app,
@@ -2946,11 +2808,13 @@ def build_app(
         out["matrix_build"] = matrix_build.to_dict()
         out["matrix_routing"] = matrix.identity()
     # The memory arithmetic, so a caller can verify the region it got rather than trusting the formula
-    # that produced it. `allocation_bytes_total` is the requirement under an allocator that never
-    # reclaims; `allocation_dynamic_calls` says how much of the answer is unknown at build time.
+    # that produced it: every term of `memory` (zephyr_memory.MemoryBudget). `allocation_bytes_total` is
+    # what still goes through malloc; `allocation_dynamic_calls` says how much of it is unknown at build
+    # time; `activation_peak_bytes` is the most the planned buffers hold at once.
+    out["memory"] = budget.to_dict()
     out["allocation_bytes_total"] = alloc_total
     out["allocation_dynamic_calls"] = alloc_dynamic
-    out["activation_peak_bytes"] = peak
+    out["activation_peak_bytes"] = budget.peak_live_bytes or None
     # The per-op table has to travel WITH the image. A debug run emits a thousand `PROF <id> ...` lines
     # and an `ALIVE ... op=<id>` naming where it stopped, and every one of those ids is meaningless
     # without the mapping from id to op name, family and shape. Shipping the trace without the table is

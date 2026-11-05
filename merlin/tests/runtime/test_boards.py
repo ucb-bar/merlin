@@ -530,18 +530,18 @@ def test_the_hart_count_reaches_the_split_and_not_the_block():
 
 
 def test_every_in_process_mlir_parse_in_build_app_is_serialized():
-    """xDSL's parser is not thread-safe, and build_app parses TWICE: once to lower, and once to size
-    RAM from the activation peak. The second one is easy to miss because it looks like arithmetic
-    rather than codegen -- but it produced the same bogus ParseError under three concurrent builds."""
+    """xDSL's parser is not thread-safe. build_app used to parse TWICE: once to lower, and once to size
+    RAM from an MLIR activation-peak estimate -- easy to miss because it looked like arithmetic rather
+    than codegen, and it produced the same bogus ParseError under three concurrent builds. The region is
+    now sized from the emitted LLVM IR and the linked ELF (zephyr_memory), so the one MLIR parse left is
+    the lowering, and it holds the lock."""
     import inspect
 
     from merlin.runtime.backends import zephyr_model as zm
 
     src = inspect.getsource(zm.build_app)
-    assert src.count("with IR_LOCK") >= 2, "both parses must hold the lock"
-    # The RAM-sizing parse specifically.
-    head, _, tail = src.partition("activation_peak_bytes(model_dir")
-    assert "with IR_LOCK" in head.rsplit("\n\n", 1)[-1] or "with IR_LOCK:\n                peak" in src
+    assert src.count("with IR_LOCK") >= 1, "the lowering's parse must hold the lock"
+    assert "activation_peak_bytes(" not in src, "a second MLIR parse is back; hold IR_LOCK around it"
 
 
 def test_mlir_parsing_is_serialized_at_the_only_place_a_parser_is_built():
