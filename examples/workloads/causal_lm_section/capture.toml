@@ -1,0 +1,3 @@
+# What loader.py imports beyond model2MLIR's own stack. `chip_flow.py capture --loader` installs a missing
+# entry into the capture venv (and refuses one that would replace an installed version).
+deps = ["transformers"]

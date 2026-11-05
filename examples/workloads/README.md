@@ -18,6 +18,12 @@ The GEMM and conv2d loaders are the quickest way to exercise one matrix-unit ker
 (tile-filling, partial tiles, odd K); `examples/kodiak/run.sh op gemm M N K` captures, builds and gates
 one in a single command.
 
+The [causal-LM section](causal_lm_section/loader.py) loader is not an iteration model: it cuts a
+pretrained Hugging Face causal LM (`CAUSAL_LM_MODEL`, from the local cache) to its first
+`CAUSAL_LM_LAYERS` decoder layers, keeping the real weights and every shape, for a board whose DRAM
+cannot hold the whole model. It does not establish the layers it cut, the embedding lookup
+(`CAUSAL_LM_ENTRY=embeds`), KV-cache decoding or real-corpus quality.
+
 These models are independently authored patterns, **not extracted validation
 subgraphs** and not architectural or numerical equivalents of the headline models.
 Their smaller shapes are deliberate. Inspect exact frontend and MLIR signatures,

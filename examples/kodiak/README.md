@@ -221,6 +221,19 @@ runs into, in the order you will meet it:
   `delivery_status.md` in its bundle directory, or `build`/`package` ends with a `NO STATUS` problem
   and exits non-zero.
 
+A loader directory may carry a `capture.toml` with `deps = [...]`, like model2MLIR's roster: `capture`
+installs a missing one into the capture venv and refuses one that would replace an installed version.
+**A model too big for the board's 512 MB** is captured as a section with the generic
+[`causal_lm_section`](../workloads/causal_lm_section/loader.py) loader: the first N decoder layers of a
+cached Hugging Face causal LM, real weights, entering at the embedded hidden state so the fp32 embedding
+table stays out of the image. The token count is the M of every projection, so it decides what the OPU
+sees: below one tile (64 here) nothing is routed and the OPU leg reports that instead of an image.
+
+```bash
+HF_HUB_OFFLINE=1 CAUSAL_LM_MODEL=TinyLlama/TinyLlama-1.1B-Chat-v1.0 CAUSAL_LM_LAYERS=2 CAUSAL_LM_ENTRY=embeds \
+  M2M_SEQ=64 ./run.sh capture tinyllama_l2_s64 --loader ../workloads/causal_lm_section/loader.py
+```
+
 ## 3. What simulation cannot tell you
 
 This is the honest boundary, and it is worth stating precisely because it has cost two delivery rounds.
