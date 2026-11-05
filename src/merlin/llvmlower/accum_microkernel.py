@@ -404,7 +404,13 @@ def run_source(*, tag_bmm_tails: bool = False) -> str:
     """The lowering-runner body for this feature: split the pipeline at SCALARIZE_MARKER, run stage 1
     (forms the resident accumulator + lowers the contraction to vector.fma with f32 A-extracts), run
     the A-scalarization rewrite, then run stage 2 (bufferize -> LLVM). Mirrors the act_poly runner
-    splice; executes in the m2m venv."""
+    splice; executes in the m2m venv.
+
+    The dealloc-placement check wraps ``_run_stages`` LAST, so stage 2 -- where bufferization and the
+    deallocation passes run -- goes through it: sinking a free on this runner is verified exactly as on
+    the plain one, instead of being refused for want of the check."""
+    from .pipeline import DEALLOC_CHECK_PRELUDE, DEALLOC_CHECK_RUNNER
+
     return (
         "import sys\n"
         "from torch_mlir import ir\n"
@@ -432,6 +438,8 @@ def run_source(*, tag_bmm_tails: bool = False) -> str:
         + _INT_SOFTMAX_TABLE_PRELUDE
         + _SCALAR_CONTRACTION_PRELUDE
         + _SCALAR_POINTWISE_UNROLL_PRELUDE
+        + DEALLOC_CHECK_PRELUDE
+        + DEALLOC_CHECK_RUNNER
         + f"\nMARKER = {SCALARIZE_MARKER!r}\n"
         "src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]\n"
         "passes = pipeline.split(',')\n"
