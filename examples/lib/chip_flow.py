@@ -253,10 +253,19 @@ def op(args) -> int:
         print(f"  stand-in twin (scalar tile body):          {results['matrix'].get('twin_binary')}")
         print(f"  routing report: {m.get('routing_report')}")
         ext = (results.get("matrix_on_spike") or {}).get("extension")
+        sim = m.get("shipped_on_simulator") or {}
         if ext:
             print(f"  the shipped ELF also ran on spike with the unit's functional model {ext['name']!r}")
             print(f"  ({ext['extlib']}, sha256 {ext['sha256'][:16]}...): its numbers, not its cycles.")
-        else:
+        if sim.get("status") not in (None, "not_declared"):
+            ver = sim.get("verify") or {}
+            print(
+                f"  shipped ELF on a simulator that implements the unit: {sim.get('status')}"
+                f"  w8a8_cos={ver.get('w8a8_cos', 'n/a')}  isa={sim.get('isa', 'n/a')}"
+            )
+            if sim.get("reason"):
+                print(f"         {sim['reason']}")
+        if not ext and sim.get("status") in (None, "not_declared"):
             print("  spike has no model of the unit here, so only the twin ran: it checks routing, pack, ABI")
             print("  and epilogue. Build and declare the unit's spike model (the chip example's README), or run")
             print("  the shipped ELF on the chip or FireSim for the unit's datapath and cycles.")

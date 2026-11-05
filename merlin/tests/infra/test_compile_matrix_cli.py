@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from merlin import compile_cli
+from merlin.compile import matrix_leg
 from merlin.runtime.backends import matrix_image
 from merlin.runtime.backends import zephyr_model as zm
 
@@ -53,6 +54,7 @@ def test_the_twin_is_what_runs_and_both_binaries_are_reported(tmp_path, monkeypa
 
     monkeypatch.setattr(matrix_image, "build_matrix_pair", fake_pair)
     monkeypatch.setattr(zm, "run_on_spike", fake_spike)
+    monkeypatch.setattr(matrix_leg, "_run_shipped_on_device_simulator", lambda *a, **k: {"status": "not_declared"})
     monkeypatch.setattr(zm, "image_cpus", lambda brd, harts: harts)
     monkeypatch.setattr(zm, "_gate", lambda got, refs: {"ok": True, "fp32_cos": 1.0})
     monkeypatch.setattr(
@@ -61,8 +63,18 @@ def test_the_twin_is_what_runs_and_both_binaries_are_reported(tmp_path, monkeypa
     )
     pkg = SimpleNamespace(schedule_text="schedule", cflags=["-march=rv64gcv"])
     out = compile_cli._compile_matrix(
-        {}, Path("bundle"), tmp_path, pkg, ["perop"], {"fp32": np.ones(4)},
-        board="chip_board", harts=2, iters=1, warmup=0, timeout=60, matrix=("unit_a", "ConfigA", "chip_a"),
+        {},
+        Path("bundle"),
+        tmp_path,
+        pkg,
+        ["perop"],
+        {"fp32": np.ones(4)},
+        board="chip_board",
+        harts=2,
+        iters=1,
+        warmup=0,
+        timeout=60,
+        matrix=("unit_a", "ConfigA", "chip_a"),
     )
     assert seen["spike"][0] == tmp_path / "twin.elf"  # the stand-in runs, never the shipped image
     assert seen["pair"]["routing"].identity() == {"support_target": "chip_a", "unit": "unit_a", "config": "ConfigA"}
@@ -78,9 +90,14 @@ def test_a_multi_hart_block_that_does_not_lower_is_re_derived_once(tmp_path, mon
     actually rejects it (`vector.mask`), and only for a multi-hart image."""
     calls = []
     pair = matrix_image.MatrixPair(
-        ship={"elf": tmp_path / "s.elf"}, twin={"elf": tmp_path / "t.elf", "ram_bytes": 1}, debug=None,
-        lowering_digest="d", unit_instruction_counts={"ACC": 1}, debug_instruction_counts={},
-        report={}, ship_dir=tmp_path,
+        ship={"elf": tmp_path / "s.elf"},
+        twin={"elf": tmp_path / "t.elf", "ram_bytes": 1},
+        debug=None,
+        lowering_digest="d",
+        unit_instruction_counts={"ACC": 1},
+        debug_instruction_counts={},
+        report={},
+        ship_dir=tmp_path,
     )
 
     def fake_pair(bundle, work, **kw):
@@ -91,11 +108,24 @@ def test_a_multi_hart_block_that_does_not_lower_is_re_derived_once(tmp_path, mon
 
     monkeypatch.setattr(matrix_image, "build_matrix_pair", fake_pair)
     monkeypatch.setattr(compile_cli, "_workload_features", lambda *a, **k: ["narrow"])
+    monkeypatch.setattr(matrix_leg, "_run_shipped_on_device_simulator", lambda *a, **k: {"status": "not_declared"})
     monkeypatch.setattr(zm, "run_on_spike", lambda elf, **kw: {"prefix": np.ones(1), "metrics": {}})
     monkeypatch.setattr(zm, "image_cpus", lambda brd, harts: harts)
     monkeypatch.setattr("merlin.runtime.boards.board", lambda n: SimpleNamespace(vlen=512, dram_base=0))
     pkg = SimpleNamespace(schedule_text="s", cflags=[])
-    out = compile_cli._compile_matrix({}, Path("b"), tmp_path, pkg, ["wide"], {}, board="b", harts=2,
-                                      iters=1, warmup=0, timeout=1, matrix=("u", "c", "t"))
+    out = compile_cli._compile_matrix(
+        {},
+        Path("b"),
+        tmp_path,
+        pkg,
+        ["wide"],
+        {},
+        board="b",
+        harts=2,
+        iters=1,
+        warmup=0,
+        timeout=1,
+        matrix=("u", "c", "t"),
+    )
     assert len(calls) == 2 and "narrow" in calls[1] and "wide" not in calls[1]
     assert out["harts_split_block_retry"] == {"tried": ["wide"], "used": ["narrow"]}

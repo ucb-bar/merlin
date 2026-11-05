@@ -2992,13 +2992,13 @@ def run_on_spike(
     vlen: int | None = None,
     timeout: int = 3600,
     extension: Any = None,
+    spike: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Run the Zephyr ELF on spike ``-pN``; parse the OUT/ARGMAX/METRIC/DONE markers. ``dram_base``/``mem_bytes``
-    describe the board's mapped DRAM; ``vlen`` pins the vector length (:func:`spike_isa`); ``extension`` is a
-    resolved ``spike_extension.SpikeExtension`` (a target's declared, digest-verified model) or None."""
+    """Run on spike ``-pN``, parse OUT/ARGMAX/METRIC/DONE; ``extension``/``spike``: a declared model or binary."""
     flags, env = flags_and_env(extension)
     isa = spike_isa(vlen, isa) if vlen is not None else isa
-    cmd = [_spike.spike_path(), f"--isa={isa}", f"-p{harts}", f"-m{hex(dram_base)}:{hex(mem_bytes)}", *flags, str(elf)]
+    exe = spike or _spike.spike_path()
+    cmd = [exe, f"--isa={isa}", f"-p{harts}", f"-m{hex(dram_base)}:{hex(mem_bytes)}", *flags, str(elf)]
     proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, timeout=timeout, env=env)
     return _parse_console(proc.stdout + proc.stderr, proc.returncode)
 
