@@ -10,6 +10,13 @@ loading a headline checkpoint. The capture worker seeds model construction.
 | [Causal decoder](causal_decoder/loader.py) | Embedding, RMSNorm, causal multi-head attention, gated MLP, logits | TinyLlama weights, rotary embeddings, KV-cache decoding or session coverage |
 | [Multimodal policy](multimodal_policy/loader.py) | Vision patches, text/state inputs, concatenation, normalization, cross-attention, action output | SmolVLA architecture, checkpoint, denoising trajectory or policy accuracy |
 | [Mixed MLP](coverage_mlp/loader.py) | Linear, activation and normalization seams | Any headline model or target support |
+| [GEMM](gemm/loader.py) | One `linalg.matmul`, shape from `GEMM_M/N/K` | Anything beyond that one contraction |
+| [Conv2d](conv2d/loader.py) | One convolution (im2col + matmul), shape from `CONV_*` | Depthwise/strided convolutions, fused epilogues |
+| [Encoder block](encoder_block/loader.py) | Two pre-norm transformer encoder layers, 64 tokens x 128 | Any pretrained encoder, longer sequences, KV caching |
+
+The GEMM and conv2d loaders are the quickest way to exercise one matrix-unit kernel at chosen shapes
+(tile-filling, partial tiles, odd K); `examples/kodiak/run.sh op gemm M N K` captures, builds and gates
+one in a single command.
 
 These models are independently authored patterns, **not extracted validation
 subgraphs** and not architectural or numerical equivalents of the headline models.

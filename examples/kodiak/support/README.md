@@ -23,25 +23,31 @@ rvv-mlir   (RVV contract, schedules)
 `merlin-target-compose --check .`, so a change to the base shows up as a stale contract here and is
 never inherited silently.
 
-## Compile a model for Kodiak
+## Compile for Kodiak
 
-You need a Merlin checkout (which vendors this package at `examples/kodiak/support` and selects it by
-default), the LLVM/MLIR 23 toolchain (`clang-23`, `mlir-translate`), a chipyard checkout whose
-`generators/saturn` carries the OPU (pin `saturn_opu_int8` in Merlin's `merlin/contract/hardware_pins.yaml`),
-and the Zephyr `dev` workspace of zephyr-chipyard-sw. Merlin's `examples/kodiak/README.md` walks through
-each step. In short:
+Use a Merlin checkout (it vendors this package at `examples/kodiak/support` and selects it by default):
 
 ```sh
-cd merlin
-export MERLIN_BOARD_CATALOG=examples/kodiak/support        # this repo's boards.yaml
-export MERLIN_CHIPYARD=/path/to/chipyard                   # generators/saturn @ the OPU pin
+git clone https://github.com/ucb-bar/merlin.git && cd merlin/examples/kodiak
+./run.sh setup        # Merlin venv + model capture env + .env; prints the commands for anything missing
+                      # (LLVM/MLIR 23, chipyard with the OPU, Zephyr workspace + SDK)
+```
 
-# any model model2MLIR can capture (W8A8 golden written alongside)
-examples/kodiak/run.sh capture <model>
+**Test one operator** -- the quickest loop for an OPU kernel:
 
-# RVV and RVV+OPU images, 1 and 2 harts, each gated on spike against the golden
-examples/kodiak/run.sh build --opu --models <model>
-examples/kodiak/run.sh package --opu --models <model>
+```sh
+./run.sh op gemm                  # 64x64x64: RVV vs RVV+OPU, both gated on spike
+./run.sh op gemm 96 80 200        # M N K (partial tiles, odd K)
+./run.sh op conv2d 16 64 16 3     # CIN COUT HW K
+./run.sh op path/to/loader.py     # your own one-op model
+```
+
+**A whole model** -- anything model2MLIR can capture:
+
+```sh
+./run.sh capture my_model --loader path/to/my_model/loader.py   # get_model_and_inputs()
+./run.sh build --opu --models my_model                          # RVV and RVV+OPU, 1 and 2 harts
+./run.sh package --opu --models my_model                        # zip for the chip (see RUNNING.md)
 ```
 
 One model at one hart count, without packaging:
@@ -82,6 +88,8 @@ The newer VME/Xsfmm encodings (saturn-vectors `vme` branch) belong to Iris, in `
 * OPU, h1 on the chip (2026-08-19): spectformer int8 bit-exact, 1.055× whole-model over RVV on the rig
   (OPU region 1.71×); FireSim 1-core 1.58×. Partial-N tiles need padding (on by default).
 * OPU, h2: built; no chip result yet.
+* Merlin flow (2026-11-04, spike stand-in twin, W8A8 golden): single GEMMs (64^3, 96x80x200, 64x200x72,
+  128x128x64 at 2 harts), a conv2d and a 2-layer encoder all route to the OPU and pass.
 
 ## Checks
 

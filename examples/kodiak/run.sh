@@ -5,10 +5,14 @@
 # Stages are ordered by what they cost and what they need. Run `preflight` first; it says which of them
 # this machine can do. See README.md for the provenance of every input.
 #
+#   ./run.sh setup [--llvm P] [--chipyard D] [--zephyr-sw D] [--zephyr-sdk D] [--m2m D]
+#                                 one-step machine setup: model capture env + .env; prints what is left
 #   ./run.sh preflight            what this machine can run, and what would fix the rest
 #   ./run.sh probe                build vlen_probe.elf and self-check it on spike        (no board)
 #   ./run.sh capture <model> [--loader loader.py]
 #                                 capture any model to an int8 bundle + its W8A8 golden   (no board)
+#   ./run.sh op gemm [M N K]      ONE operator (gemm|conv2d|encoder_block|loader.py), RVV vs RVV+OPU,
+#                                 both gated on spike, with the routing report             (no board)
 #   ./run.sh build                build + gate ONE small model at 1 and 2 harts          (no board)
 #   ./run.sh package              assemble a full delivery package + zip                 (no board)
 #   ./run.sh grade <console.txt> [model]  score a console log a board owner sent back
@@ -36,12 +40,13 @@ OUT="$REPO_ROOT/out/artifacts/delivery/example-kodiak"
 
 ex_parse_flags "$@"
 set -- ${EX_ARGS[@]+"${EX_ARGS[@]}"}
-OPU=0; MODELS_OVERRIDE=""; LOADER=""; REST=()
+OPU=0; MODELS_OVERRIDE=""; LOADER=""; HARTS_OPT=""; REST=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --opu)     OPU=1 ;;
     --models)  MODELS_OVERRIDE="$2"; shift ;;
     --loader)  LOADER="$2"; shift ;;
+    --harts)   HARTS_OPT="$2"; shift ;;
     *)         REST+=("$1") ;;
   esac
   shift
@@ -52,6 +57,17 @@ STAGE="${1:-preflight}"
 cd "$REPO_ROOT"
 
 case "$STAGE" in
+setup)
+  # Merlin's own venv first (everything else runs in it), then the capture environment and .env.
+  if [ ! -x "$REPO_ROOT/.venv/bin/python" ]; then
+    ex_run uv sync --extra dev --extra xdsl --extra targetgen
+    PY="$REPO_ROOT/.venv/bin/python"
+  fi
+  shift
+  ex_run "$PY" "$EX_LIB_DIR/chip_setup.py" "$@" || true
+  ex_preflight "$BOARD"
+  ;;
+
 preflight)
   ex_preflight "$BOARD"
   ;;
@@ -70,30 +86,24 @@ probe)
 capture)
   # Any model model2MLIR can trace. With --loader, a loader.py that defines get_model_and_inputs()
   # (see docs/guides/model2mlir.md); without it, a model in model2MLIR's own workloads/ roster.
-  # Capture is weight-only int8; Merlin then computes W8A8 (activations quantized too), so the
-  # reference a W8A8 image is graded against is written next to the bundle by make_w8a8_golden.py.
+  # Writes recaptures/<model>_int8_full and the W8A8 golden the images are graded against.
   MODEL="${2:-}"
   if [ -z "$MODEL" ]; then echo "usage: $0 capture <model> [--loader loader.py]" >&2; exit 2; fi
-  # `make_delivery --models <name>` reads recaptures/<name>_int8_full, so that is where it goes.
-  BUNDLE="$("$PY" -c "from merlin.common.artifacts import recaptures_dir; print(recaptures_dir())")/${MODEL}_int8_full"
-  ex_say "capture $MODEL (int8) into $BUNDLE"
-  # model2MLIR's checkout, as Merlin resolves it (process env, then .env).
-  M2M_DIR="$("$PY" -c "from merlin.common.paths import env; print(env('MERLIN_M2M_DIR') or '')")"
-  if [ -z "$M2M_DIR" ]; then echo "set MERLIN_M2M_DIR to a model2MLIR checkout" >&2; exit 2; fi
-  if [ -n "$LOADER" ]; then
-    M2M_PY="$("$PY" -c "from merlin.common.paths import env; print(env('MERLIN_M2M_PYTHON') or '')")"
-    if [ -z "$M2M_PY" ]; then echo "set MERLIN_M2M_PYTHON (the model2MLIR venv's python)" >&2; exit 2; fi
-    ex_run "$M2M_PY" src/merlin/targetgen/_m2m_capture_worker.py --m2m-dir "$M2M_DIR" \
-        --loader "$LOADER" --dtype int8 --seed 0 --materialize-bundle --out "$BUNDLE"
-  else
-    # A model in model2MLIR's workloads/ roster, captured in that model's own venv (capture.toml).
-    M2M_PY="$("$PY" -c "from pathlib import Path; from merlin.compile.bundles import _capture_python; print(_capture_python(Path('$M2M_DIR'), '$MODEL'))")"
-    ex_run "$M2M_PY" "$M2M_DIR/workloads/capture_consistent.py" "$MODEL" int8 "$BUNDLE"
-  fi
-  ex_say "write the W8A8 reference the images are graded against"
-  ex_run "$PY" build_tools/scripts/make_w8a8_golden.py "$BUNDLE"
-  ex_note "that reference is Merlin's own int8 datapath on the host (it checks the DEVICE reproduces the"
-  ex_note "host). For an independent arithmetic check: build_tools/scripts/make_w8a8_independent_golden.py"
+  ex_say "capture $MODEL (int8) and write its W8A8 reference"
+  ex_run "$PY" "$EX_LIB_DIR/chip_flow.py" capture "$MODEL" ${LOADER:+--loader "$LOADER"}
+  ex_note "the W8A8 reference is Merlin's own int8 datapath on the host (it checks the DEVICE reproduces"
+  ex_note "the host). Independent arithmetic check: build_tools/scripts/make_w8a8_independent_golden.py"
+  ;;
+
+op)
+  # One operator, end to end, to exercise the OPU kernel: capture (once per shape), build as RVV and as
+  # RVV+OPU, gate both on spike, print a summary. `op gemm 96 80 200` = M N K; `op conv2d 16 64 16 3` =
+  # CIN COUT HW K; or `op path/to/loader.py` for your own one-op model.
+  shift
+  if [ $# -lt 1 ]; then echo "usage: $0 op <gemm|conv2d|encoder_block|loader.py> [dims...] [--harts N]" >&2; exit 2; fi
+  ex_say "single-operator test on $BOARD: RVV vs RVV+OPU"
+  ex_run "$PY" "$EX_LIB_DIR/chip_flow.py" op "$@" --board "$BOARD" --harts "${HARTS_OPT:-1}" \
+      --matrix-unit "$MATRIX_UNIT" --matrix-config "$MATRIX_CONFIG" --matrix-support-target "$MATRIX_SUPPORT"
   ;;
 
 build|package)
@@ -148,7 +158,7 @@ grade)
   ;;
 
 *)
-  sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac

@@ -12,9 +12,31 @@ boards (`chipyard_kodiak`, `kodiak_opu_2core`, `firesim_kodiak_opu`) are data in
 [`support/boards.yaml`](support/boards.yaml); the field meanings are on `Board` in
 `src/merlin/runtime/boards.py`.
 
+## Quick start on a new machine
+
 ```bash
+git clone https://github.com/ucb-bar/merlin.git && cd merlin/examples/kodiak
+./run.sh setup                    # Merlin venv + the model capture environment + .env;
+                                  # prints the exact commands for anything still missing
+./run.sh setup --llvm <llvm23> --chipyard <chipyard> --zephyr-sw <ws> --zephyr-sdk <sdk>
+./run.sh op gemm                  # one 64x64x64 GEMM: RVV vs RVV+OPU, both gated on spike (~1 min)
+./run.sh op gemm 96 80 200        # M N K: partial tiles, odd K
+./run.sh op conv2d 16 64 16 3     # CIN COUT HW K (im2col + matmul)
+./run.sh op my_op/loader.py       # your own one-operator model (see examples/workloads/gemm/loader.py)
+```
+
+`op` prints the status of both images, how much of the work went to the OPU, why anything did not, and
+where the ELFs are (`out/artifacts/probes/chipyard_kodiak/<op>/`: `matrix.elf` for the chip,
+`matrix_twin.elf` is what spike ran, `rvv.elf` is the baseline). It is the fastest loop for working on the
+OPU kernel itself: edit the kernel, rerun `op`.
+
+The stages:
+
+```bash
+./run.sh setup                    # see above
 ./run.sh preflight
 ./run.sh probe
+./run.sh op <gemm|conv2d|encoder_block|loader.py> [dims] [--harts 2]
 ./run.sh capture <model>          # any model model2MLIR can capture, + its W8A8 golden
 ./run.sh build [--opu] [--models <model>]   # add --full for the shipped matrix (hours)
 ./run.sh package [--opu] [--models <model>]
