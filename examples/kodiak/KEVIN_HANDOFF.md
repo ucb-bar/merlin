@@ -105,6 +105,8 @@ those need a separate VME-enabled Kodiak RTL configuration and bitstream. On the
 VME configuration, three direct SerialTL RTL cases (K33, biased edge, batch-3) now pass pinned
 Spike with exact digests and zero output/guard errors; evidence and limits are in Iris commit
 `e13f7cc` on `handwritten-implementation`. The larger 44-case RTL gate is still unverified.
+The [Kodiak Zvt/VME configuration plan](ZVT_VME_PLAN.md) lists the exact pins and gates needed
+before a Kodiak board may advertise Zvt support.
 The current OPU FireSim
 bitstream is usable for the BME flow above. Its archived artifact identity was checked during the
 hardware jobs, while reproducing that archive from a clean source tree remains unverified because
