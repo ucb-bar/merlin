@@ -576,6 +576,25 @@ def _validate_source_plan(manifest: dict[str, Any]) -> None:
         or _capture_sha256(bundle) != source["capture_sha256"]
     ):
         raise SystemExit("source capture, golden, or framework result changed since the FireSim plan")
+    cache = _compile_result(framework.read_text()).get("host_cache") or {}
+    if not isinstance(cache, dict):
+        raise SystemExit("source host-cache receipt changed since the FireSim plan")
+    identity = cache.get("identity")
+    loaded = cache.get("loaded")
+    if (
+        cache.get("schema") != "merlin.host_cache.v1"
+        or cache.get("mode") != "cache_only"
+        or cache.get("verified_after_execution") is not True
+        or cache.get("miss_count") != 0
+        or not isinstance(source.get("host_cache_identity_sha256"), str)
+        or type(source.get("host_cache_loaded_unique")) is not int
+        or source["host_cache_loaded_unique"] <= 0
+        or not isinstance(identity, dict)
+        or identity.get("sha256") != source.get("host_cache_identity_sha256")
+        or not isinstance(loaded, list)
+        or len(loaded) != source.get("host_cache_loaded_unique")
+    ):
+        raise SystemExit("source host-cache receipt changed since the FireSim plan")
 
 
 def grade_leg(
@@ -858,6 +877,90 @@ def summary(result: dict[str, Any]) -> str:
 # --------------------------------------------------------------------------------------------- legs
 
 
+def _current_host_cache_identity() -> dict[str, Any]:
+    from merlin.runtime.host_cache_identity import host_cache_identity
+
+    return host_cache_identity()
+
+
+def _source_host_cache_receipt(gate: dict[str, Any]) -> dict[str, Any]:
+    """Check the strict host result against current compiler inputs and its built objects."""
+    import re
+
+    cache = gate.get("host_cache")
+    if not isinstance(cache, dict):
+        raise SystemExit("source FireSim legs require a strict host-cache construction receipt")
+    identity = cache.get("identity")
+    loaded = cache.get("loaded")
+    if (
+        cache.get("schema") != "merlin.host_cache.v1"
+        or cache.get("mode") != "cache_only"
+        or cache.get("verified_after_execution") is not True
+        or type(cache.get("miss_count")) is not int
+        or cache["miss_count"] != 0
+        or not isinstance(identity, dict)
+        or not isinstance(identity.get("sha256"), str)
+        or not re.fullmatch(r"[0-9a-f]{64}", identity["sha256"])
+        or not isinstance(loaded, list)
+        or not loaded
+        or not isinstance(cache.get("cache_dir"), str)
+    ):
+        raise SystemExit("source FireSim host-cache receipt is incomplete or not strict")
+    try:
+        current = _current_host_cache_identity()
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise SystemExit(f"source FireSim cannot attest current host compiler inputs: {exc}") from exc
+    if identity != current:
+        raise SystemExit("source FireSim host-cache compiler identity differs from current source and tools")
+    root = Path(cache["cache_dir"])
+    if root.is_symlink() or not root.is_dir():
+        raise SystemExit("source FireSim host-cache directory is missing or linked")
+    keys: set[str] = set()
+    for entry in loaded:
+        if not isinstance(entry, dict) or not isinstance(entry.get("key"), str):
+            raise SystemExit("source FireSim host-cache object entry is malformed")
+        key = entry["key"]
+        if not re.fullmatch(r"[0-9a-f]{16}", key) or key in keys:
+            raise SystemExit("source FireSim host-cache object key is invalid or repeated")
+        keys.add(key)
+        obj = root / f"{key}.so"
+        manifest_path = root / f"{key}.manifest.json"
+        if obj.is_symlink() or manifest_path.is_symlink() or not obj.is_file() or not manifest_path.is_file():
+            raise SystemExit("source FireSim host-cache object or construction manifest is missing or linked")
+        try:
+            manifest = json.loads(manifest_path.read_text())
+            object_sha = _sha256(obj)
+            object_bytes = obj.stat().st_size
+            manifest_sha = _sha256(manifest_path)
+            object_path = str(obj.resolve(strict=True))
+            receipt_path = str(manifest_path.resolve(strict=True))
+        except (OSError, ValueError, TypeError) as exc:
+            raise SystemExit("source FireSim host-cache object or construction manifest is unreadable") from exc
+        if not isinstance(manifest, dict) or (
+            entry.get("path") != object_path
+            or entry.get("sha256") != object_sha
+            or entry.get("bytes") != object_bytes
+            or entry.get("manifest_path") != receipt_path
+            or entry.get("manifest_sha256") != manifest_sha
+            or entry.get("manifest") != manifest
+            or manifest.get("schema") != "merlin.host_cache_object.v1"
+            or manifest.get("key") != key
+            or manifest.get("compiler_identity_sha256") != identity["sha256"]
+            or manifest.get("object_sha256") != object_sha
+            or manifest.get("object_bytes") != object_bytes
+            or not isinstance(manifest.get("kernel_text_sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", manifest["kernel_text_sha256"])
+            or not isinstance(manifest.get("lowering_recipe_sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", manifest["lowering_recipe_sha256"])
+            or not isinstance(manifest.get("lowering_commands"), list)
+            or not manifest["lowering_commands"]
+            or manifest.get("builder") != "merlin.llvmlower.kernel_backend.compile_host"
+            or not isinstance(manifest.get("native_codegen"), str)
+        ):
+            raise SystemExit("source FireSim host-cache object construction receipt failed integrity checks")
+    return cache
+
+
 def _source_gate(args, bundle: Path, brd) -> dict[str, Any] | None:
     """Bind a source W8A8 FireSim pair to a checked framework result and pinned OPU board."""
     dtype = getattr(args, "dtype", "int8")
@@ -914,6 +1017,7 @@ def _source_gate(args, bundle: Path, brd) -> dict[str, Any] | None:
     # This verifier proves materialized bytes, not independent source closure.
     if receipt.get("status") != "verified_materialized" or receipt != source["capture_receipt"]:
         raise SystemExit("capture receipt changed or is unverified since the framework gate")
+    host_cache = _source_host_cache_receipt(gate)
     import numpy as np
 
     reference_elems = int(np.load(bundle / "golden.npy", mmap_mode="r").size)
@@ -940,6 +1044,8 @@ def _source_gate(args, bundle: Path, brd) -> dict[str, Any] | None:
         "framework_gate_ok": verified,
         "reference_elems": reference_elems,
         "source_quantization": source,
+        "host_cache_identity_sha256": host_cache["identity"]["sha256"],
+        "host_cache_loaded_unique": len(host_cache["loaded"]),
         "diagnostic_only": diagnostic,
         "diagnostic_reasons": ["framework_fidelity_failed_or_incomplete"] if diagnostic else [],
     }

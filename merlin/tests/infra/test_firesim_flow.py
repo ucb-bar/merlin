@@ -52,6 +52,49 @@ def _bundle(tmp_path: Path) -> tuple[Path, np.ndarray]:
     return bundle, w8
 
 
+def _strict_host_cache(flow, tmp_path: Path, monkeypatch) -> dict:
+    cache_dir = tmp_path / "host-cache"
+    cache_dir.mkdir()
+    key = "a" * 16
+    obj = cache_dir / f"{key}.so"
+    obj.write_bytes(b"compiled host kernel")
+    identity = {"sha256": "b" * 64, "inputs": {"schema": "synthetic-host-inputs"}}
+    monkeypatch.setattr(flow, "_current_host_cache_identity", lambda: identity)
+    manifest = {
+        "schema": "merlin.host_cache_object.v1",
+        "key": key,
+        "kernel_text_sha256": "c" * 64,
+        "compiler_identity_sha256": identity["sha256"],
+        "object_sha256": flow._sha256(obj),
+        "object_bytes": obj.stat().st_size,
+        "lowering_recipe_sha256": "d" * 64,
+        "lowering_commands": [{"argv": ["test-lowerer"]}],
+        "builder": "merlin.llvmlower.kernel_backend.compile_host",
+        "native_codegen": "test native build",
+    }
+    manifest_path = cache_dir / f"{key}.manifest.json"
+    manifest_path.write_text(json.dumps(manifest))
+    return {
+        "schema": "merlin.host_cache.v1",
+        "mode": "cache_only",
+        "cache_dir": str(cache_dir),
+        "identity": identity,
+        "loaded": [
+            {
+                "key": key,
+                "path": str(obj),
+                "sha256": flow._sha256(obj),
+                "bytes": obj.stat().st_size,
+                "manifest_path": str(manifest_path),
+                "manifest_sha256": flow._sha256(manifest_path),
+                "manifest": manifest,
+            }
+        ],
+        "miss_count": 0,
+        "verified_after_execution": True,
+    }
+
+
 def _uart(values: np.ndarray, *, cycles: int, build_hash: str, done: bool = True) -> str:
     from merlin.runtime.backends.zephyr_model import out_hash_fnv1a32
 
@@ -206,6 +249,74 @@ def test_whole_model_legs_require_w8a8_reference_before_compile(flow, tmp_path, 
 
 
 @pytest.mark.parametrize(
+    "alteration", ["none", "missing", "read_write", "unverified", "object", "manifest", "identity"]
+)
+def test_source_host_cache_receipt_is_required_even_for_diagnostic_plans(flow, tmp_path, monkeypatch, alteration):
+    from merlin.targetgen import application_inventory
+
+    bundle = tmp_path / "source"
+    bundle.mkdir()
+    (bundle / "model.mlir").write_text("module {}")
+    np.save(bundle / "golden.npy", np.zeros(2, np.float32))
+    receipt = {"status": "verified_materialized"}
+    monkeypatch.setattr(application_inventory, "verify_capture_receipt", lambda _path: receipt)
+    cache = _strict_host_cache(flow, tmp_path, monkeypatch)
+    framework = {
+        "run": "host",
+        "dtype": "int8_w8a8",
+        "bundle": str(bundle),
+        "status": "verified",
+        "verify": {"tier_ok": "w8a8", "comparison_complete": True, "n_compared": 2, "n_reference": 2},
+        "reference": {"kind": "torchao_w8a8_framework", "sha256": flow._sha256(bundle / "golden.npy")},
+        "source_quantization": {
+            "source_scheme": "int8_dyn_act_int8_weight",
+            "source_mlir_sha256": flow._sha256(bundle / "model.mlir"),
+            "reference_kind": "torchao_w8a8_framework",
+            "integer_matmuls": 1,
+            "capture_receipt": receipt,
+        },
+        "host_cache": cache,
+    }
+    if alteration == "missing":
+        framework.pop("host_cache")
+    elif alteration == "read_write":
+        cache["mode"] = "read_write"
+    elif alteration == "unverified":
+        cache["verified_after_execution"] = False
+    elif alteration == "object":
+        (tmp_path / "host-cache" / ("a" * 16 + ".so")).write_bytes(b"tampered object")
+    elif alteration == "manifest":
+        (tmp_path / "host-cache" / ("a" * 16 + ".manifest.json")).write_text("{}")
+    elif alteration == "identity":
+        monkeypatch.setattr(flow, "_current_host_cache_identity", lambda: {"sha256": "f" * 64})
+    framework_path = tmp_path / "framework.json"
+    framework_path.write_text(json.dumps(framework))
+    args = SimpleNamespace(
+        dtype="int8_w8a8",
+        capture_bundle=bundle,
+        gate="twin",
+        harts=1,
+        matrix_support_target="kodiak",
+        matrix_unit="saturn_opu",
+        matrix_config="KodiakOPUConfig",
+        framework_result=framework_path,
+        allow_framework_mismatch=True,
+    )
+    board = SimpleNamespace(name="firesim_kodiak_opu", bitstream="alveo_u250_firesim_kodiak_opu_1core")
+    if alteration != "none":
+        with pytest.raises(SystemExit, match="host-cache"):
+            flow._source_gate(args, bundle, board)
+        return
+    source = flow._source_gate(args, bundle, board)
+    assert source["host_cache_identity_sha256"] == "b" * 64
+    assert source["host_cache_loaded_unique"] == 1
+    flow._validate_source_plan({"source": source, "bundle": str(bundle)})
+    source["host_cache_identity_sha256"] = "e" * 64
+    with pytest.raises(SystemExit, match="host-cache receipt changed"):
+        flow._validate_source_plan({"source": source, "bundle": str(bundle)})
+
+
+@pytest.mark.parametrize(
     ("framework_ok", "tier_mismatch", "spike_complete", "host_partial"),
     [
         (True, False, True, False),
@@ -247,6 +358,7 @@ def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(
             "integer_matmuls": 41,
             "capture_receipt": {"status": "verified_materialized"},
         },
+        "host_cache": _strict_host_cache(flow, tmp_path, monkeypatch),
     }
     framework_path = tmp_path / "framework.json"
     framework_path.write_text("host build progress\n" + json.dumps(framework, indent=2))
@@ -328,6 +440,8 @@ def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(
     manifest = flow.load(job)
     assert manifest["bundle"] == str(bundle)
     assert manifest["source"]["reference"]["file"] == "golden.npy"
+    assert manifest["source"]["host_cache_identity_sha256"] == "b" * 64
+    assert manifest["source"]["host_cache_loaded_unique"] == 1
     assert manifest["source"]["framework_gate_ok"] is framework_ok
     assert manifest["source"]["target_output_complete"] == (spike_complete if framework_ok else None)
     assert Path(manifest["source"]["framework_result"]) == job / "framework_result.json"
@@ -776,7 +890,8 @@ def test_source_partial_output_keeps_hardware_identity_diagnostic(flow, tmp_path
     for leg in flow.LEGS:
         manifest["legs"][leg]["spike_output_identity"] = identity
     framework = tmp_path / "framework.json"
-    framework.write_text("{}")
+    cache = _strict_host_cache(flow, tmp_path, monkeypatch)
+    framework.write_text(json.dumps({"host_cache": cache}))
     manifest["source"] = {
         "dtype": "int8_w8a8",
         "framework_gate_ok": False,
@@ -785,6 +900,8 @@ def test_source_partial_output_keeps_hardware_identity_diagnostic(flow, tmp_path
         "capture_sha256": flow._capture_sha256(bundle),
         "framework_result": str(framework),
         "framework_result_sha256": flow._sha256(framework),
+        "host_cache_identity_sha256": cache["identity"]["sha256"],
+        "host_cache_loaded_unique": 1,
         "target_output_complete": None,
         "diagnostic_reasons": ["framework_fidelity_failed_or_incomplete"],
         "diagnostic_only": True,
