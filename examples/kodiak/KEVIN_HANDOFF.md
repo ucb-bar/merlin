@@ -56,8 +56,13 @@ target cycles with the same full 2,048,000-value hash as the verified baseline. 
 control completed as job 3867 in 13,689,726,593 target cycles. Both images matched their
 exact Spike full hashes and prefixes, and the pair graded VERIFIED: **12.4227× OPU speedup**.
 The device performs 9,865,003,008 valid routed MACs, or **0.874215% of the 1,024-MAC/cycle
-theoretical peak across the inference**; the earlier OPU image measured 0.0626384%. The s128
-aligned-prepack OPU and RVV images have both passed exact Spike gates, including the baseline's
+theoretical peak across the inference**; the earlier OPU image measured 0.0626384%.
+
+The current-head fill-elided s64 pair also graded VERIFIED: device job 3874 took 1,064,676,843
+cycles, RVV control job 3877 took 13,689,726,593, and both full hashes/prefixes matched Spike.
+This is **12.8581× speedup** and **0.904856% whole-inference effective peak** for the same
+9,865,003,008 valid routed MACs. The array-active fraction is not measurable on this bitstream.
+The s128 aligned-prepack OPU and RVV images have both passed exact Spike gates, including the baseline's
 full 4,096,000-value hash. Its FireSim device job 3871 completed with that full hash in
 2,438,693,540 target cycles; the matched RVV control job 3875 is queued. The device performed
 19,797,114,880 valid routed MACs, or 0.792765% whole-inference effective peak; its paired

@@ -56,6 +56,18 @@ matched their exact Spike full hashes and prefixes and graded VERIFIED, yielding
 control-over-device speedup. The collector persisted the numerator, denominator, peak and
 explicitly unmeasured array occupancy in the pair's `firesim/utilization.json`.
 
+The current generated OPU kernel elides a fresh zero fill only when its direct call overwrites
+every output. On the same aligned-prepack s64 model and pinned one-core bitstream, the
+fill-elided device job 3874 completed in **1,064,676,843 target cycles**; its matched RVV
+control job 3877 took 13,689,726,593. Both full 2,048,000-value hashes and prefixes match
+their exact Spike images, and the pair graded VERIFIED at **12.8581×** control/device speedup.
+The unchanged 9,865,003,008 valid routed MACs give
+`9,865,003,008 / (1,064,676,843 × 1,024) = 0.00904856`, or **0.904856% whole-inference
+effective peak**. This is 3.3863% fewer device
+cycles than the prepack image before fill elision; physical array occupancy remains unmeasured.
+The bitstream artifact SHA matched the pinned U250 image. Source-revision citation remains
+limited by the local Saturn checkout's declared pin drift, as recorded in `firesim/results.json`.
+
 A separate sparse profiled image of that exact prepack lowering passed Spike with the same
 full-output hash, prefix, prepared MLIR and routing sidecar. Its 19 selected OPU rows account
 for 26,595,355 of 598,466,269 Spike target cycles (4.4439% of the inference). Valid routed
@@ -177,6 +189,7 @@ Evidence in this task checkout:
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/results.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/utilization.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793948837985216810/firesim/utilization.json`
+- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793959330494516874/firesim/utilization.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/routing/opu_signatures.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793936116770167230/firesim/results.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793936116770167230/firesim/utilization.json`
