@@ -616,7 +616,8 @@ def rtl(args) -> int:
             console, rc = proc.stdout + proc.stderr, proc.returncode
         except subprocess.TimeoutExpired as exc:
             out = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-            console, rc = out + f"\n[timeout after {args.timeout}s]\n", None
+            err = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+            console, rc = out + err + f"\n[timeout after {args.timeout}s]\n", None
         return console, rc, time.monotonic() - started
 
     # Each image is its own simulator process (single-digit kHz each), so they run side by side.
