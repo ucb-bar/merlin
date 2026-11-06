@@ -51,8 +51,10 @@ decoded Kodiak bitstream.
 
 A managed Kodiak VME task now has the tested Chipyard `b4542fac`, Saturn VME `536774bd`,
 and Rocket matrix-decoder `fc745a8` sources. Distinct one-core SoC and FireSim configuration
-changes are isolated in that task and pass JDK 17 source compile and target FIRRTL elaboration
-after a separate Rocket CSR guard fix. Exact Zvt ELF/Spike, Kodiak VME direct RTL, and a new
+changes are isolated in that task and pass source compile and target FIRRTL elaboration
+after a separate Rocket CSR guard fix. The SBT logs report Java `20.0.2-internal` and Espresso
+for those passing runs; toolchain pinning is still being checked. Exact Zvt ELF/Spike now passes
+for a fresh VLEN512 biased K-tail image, while Kodiak VME direct RTL and a new
 VME bitstream are still pending; the current OPU bitstream remains BME only. The separate
 exact-pin OPU counter task has passed Firechip compile, target FIRRTL elaboration, Golden Gate,
 and Verilator metasim build using Espresso. A bracketed counter run, synthesis, and a
