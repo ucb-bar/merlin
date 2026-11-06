@@ -121,3 +121,10 @@ finds the first same-input spectral difference in the forward width DFT on
 both trained and holdout images. Complex multiplication is bitwise exact on
 the same FFT input; inverse FFT has a separate small difference. No
 whole-model parity fix follows from those small stage differences yet.
+The [activation-code probe](../../experiments/reference-data/spectformer_torchao_activation_code_probe_2026-11-06.md)
+then checks the exact TorchAO quantizer at block-0 fc1. On identical norm2
+inputs, Merlin and TorchAO agree bitwise on reciprocal scale, signed i8 bytes,
+i32 matrix output, and f32 fc1 output for trained and holdout images. Earlier
+float drift flips only 12 and 16 codes at the `-127.5` rounding boundary,
+amplifying into the observed fc1 error. The quantizer and matrix arithmetic
+need no source-changing correction on this evidence.
