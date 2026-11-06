@@ -1,0 +1,47 @@
+{
+  "schema": "merlin.kodiak.prepack-package-evidence.v1",
+  "package": "rvv/kodiak_prepack_w8a8_v1",
+  "trial_knobs_sha256": "f56ea84c623b180e0a4db7cfe56329fdfee3f7ef59f375ece5a5efe5ea62910d",
+  "trial_schedule_sha256": "928064a1264cf3dd4e70c1f6d162f989c3cc67160c36e2c19a94e731c10867b4",
+  "source_merlin_commit": "edea6e57c2a2a15e0d407391b9175c3970c002aa",
+  "source_results_sha256": "eac67fd88ed18c923cc4f7c748f74d9c652668041d7042c310346344087718b1",
+  "source_utilization_sha256": "dacfd5b4c8ea6662946f051dbfcd88d47ab304fcd0a689b4196405f343e26fb4",
+  "board": "firesim_kodiak_opu",
+  "harts": 1,
+  "bitstream": "alveo_u250_firesim_kodiak_opu_1core",
+  "bitstream_artifact_sha256": "f671be16ae5850c2765d897593010f4144654fe49bed0d5fe0d3ebdbd49d9462",
+  "bitstream_artifact_matched": true,
+  "saturn_source_pin_verified": false,
+  "model": "tinyllama_l2_s64",
+  "output_identity": {
+    "algo": "fnv1a32",
+    "elements": 2048000,
+    "hash": 2628075425,
+    "prefix_sha256": "2f7e1f7f9b4aed8f876b3aba5b18fbbc4e97138b66bfb1d4fcb93adf63e41bcf",
+    "prefix_elements": 4096
+  },
+  "device": {
+    "job": 3866,
+    "build_hash": "2babc96c8c0d1b0c",
+    "elf_sha256": "96407121f1b1d70be113bee510e2cb81ef24f9edd819440190aa608574a82922",
+    "compute_cycles": 1101993218,
+    "exact_spike_and_firesim_output": true
+  },
+  "control": {
+    "job": 3867,
+    "build_hash": "29027a4db3bb172c",
+    "elf_sha256": "244ff918bf5024b857807074e5b75ce8326b4b04e914bd256cd4f29b3e217e9f",
+    "compute_cycles": 13689726593,
+    "exact_spike_and_firesim_output": true
+  },
+  "graded_pair_verified": true,
+  "control_over_device_speedup": 12.422695865447695,
+  "routed_contractions": 19,
+  "valid_routed_macs": 9865003008,
+  "static_tile_fill": 1.0,
+  "whole_inference_effective_peak_fraction": 0.008742151805148405,
+  "physical_array_occupancy": null,
+  "k1_certification": null,
+  "physical_kodiak_certification": null,
+  "scope_note": "The graded pair used this package's knobs and schedule before fresh-fill elision. The archived bitstream digest matched; the live Saturn source revision did not satisfy its declared pin. Rebuilds and new source heads require their own exact image gates."
+}

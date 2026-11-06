@@ -49,6 +49,10 @@
 #        --matrix-kernel K  with `op`/`build`/`package`/`matrix`/`firesim`, every routed contraction calls
 #                        OPU kernel K: a name in kernels/kernels.yaml or path/to/kernel.c[:function]
 #                        (default: $MERLIN_MATRIX_KERNEL, else the package's default kernel)
+#        --rvv-package P  with `build`/`package`/`firesim`, select an RVV schedule package, e.g.
+#                        rvv/kodiak_prepack_w8a8_v1 (default: the K1-certified wholemodel package)
+#        --no-spike-backends matrix  with `build`/`package`, build and audit matrix images without
+#                        running the slow scalar twin; the delivery marks those images UNGATED
 set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/common.sh"
 # The OPU route's executable support and the unit facts it derives from. The unit and config are named
@@ -65,16 +69,18 @@ OUT="$REPO_ROOT/out/artifacts/delivery/example-kodiak"
 # the U250). The board descriptor names its bitstream; nothing here does.
 FIRESIM_BOARD=firesim_kodiak_opu
 # The RVV package FireSim legs are lowered with: the one make_delivery.py packages with by default.
-RVV_PACKAGE=rvv/impr_tuned_wholemodel_vf_int8
+RVV_PACKAGE="${MERLIN_RVV_PACKAGE:-rvv/impr_tuned_wholemodel_vf_int8}"
 
 ex_parse_flags "$@"
 set -- ${EX_ARGS[@]+"${EX_ARGS[@]}"}
-OPU=0; MODELS_OVERRIDE=""; LOADER=""; HARTS_OPT=""; BOARD_OPT=""; SUBMIT=(); REST=()
+OPU=0; MODELS_OVERRIDE=""; LOADER=""; HARTS_OPT=""; BOARD_OPT=""; NO_SPIKE_BACKENDS=""; SUBMIT=(); REST=()
 MATRIX_KERNEL="${MERLIN_MATRIX_KERNEL:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --opu)     OPU=1 ;;
     --matrix-kernel) MATRIX_KERNEL="$2"; shift ;;
+    --rvv-package) RVV_PACKAGE="$2"; shift ;;
+    --no-spike-backends) NO_SPIKE_BACKENDS="$2"; shift ;;
     --board)   BOARD_OPT="$2"; shift ;;
     --submit)  SUBMIT=(--submit) ;;
     --models)  MODELS_OVERRIDE="$2"; shift ;;
@@ -91,6 +97,11 @@ KERNEL_ARGS=()
 if [ -n "$MATRIX_KERNEL" ]; then KERNEL_ARGS=(--matrix-kernel "$(ex_kernel_spec "$MATRIX_KERNEL")"); fi
 
 cd "$REPO_ROOT"
+RVV_PACKAGE_PATH="$RVV_PACKAGE"
+case "$RVV_PACKAGE" in
+  /*) ;;
+  *) RVV_PACKAGE_PATH="$REPO_ROOT/out/artifacts/targets/$RVV_PACKAGE" ;;
+esac
 # Kodiak's support package (and its boards) is kodiak-mlir at the commit Merlin pins, fetched by setup.
 case "$STAGE" in setup|help|-h|--help) ;; *) ex_select_support "$MATRIX_SUPPORT" ;; esac
 
@@ -234,6 +245,7 @@ build|package)
     ex_note "cheap subset: deepjscc at 1 and 2 harts. Add --full for the shipped matrix."
   fi
   if [ -n "$MODELS_OVERRIDE" ]; then MODELS="$MODELS_OVERRIDE"; fi
+  if [ -n "$HARTS_OPT" ]; then HARTS="$HARTS_OPT"; fi
   MATRIX_ARGS=()
   if [ "$OPU" = "1" ]; then
     MATRIX_ARGS=(--matrix-harts "$HARTS" --matrix-unit "$MATRIX_UNIT" --matrix-config "$MATRIX_CONFIG"
@@ -249,7 +261,9 @@ build|package)
   ex_say "build for $BOARD, gate every image on spike, audit the ELFs, write $OUT"
   ex_run "$PY" build_tools/scripts/make_delivery.py \
       --board "$BOARD" --models "$MODELS" --harts "$HARTS" \
-      ${SCALAR:+--scalar-harts "$SCALAR"} ${MATRIX_ARGS[@]+"${MATRIX_ARGS[@]}"} --debug --out "$OUT"
+      ${SCALAR:+--scalar-harts "$SCALAR"} ${MATRIX_ARGS[@]+"${MATRIX_ARGS[@]}"} \
+      ${NO_SPIKE_BACKENDS:+--no-spike-backends "$NO_SPIKE_BACKENDS"} \
+      --rvv-package "$RVV_PACKAGE_PATH" --debug --out "$OUT"
   ex_note "every binary ships twice: the plain one for a number, and a _debug twin that emits STAGE"
   ex_note "lines, an ALIVE heartbeat naming the op it is inside, and one FAIL line carrying the hash"
   ;;

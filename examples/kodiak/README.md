@@ -120,6 +120,22 @@ The stages:
 ./run.sh firesim-collect <job-dir> [--job device=N --job control=N]
 ```
 
+`build`, `package`, and `firesim` accept `--rvv-package <package>`. The default is the older
+K1-certified `rvv/impr_tuned_wholemodel_vf_int8`. For the aligned-weight Kodiak prepack schedule,
+select `rvv/kodiak_prepack_w8a8_v1` explicitly. That package has exact Spike and one-core FireSim
+evidence for the two-layer TinyLlama 64-token section, recorded in its manifest; it has no K1 or
+physical Kodiak certification. For example:
+
+```bash
+./run.sh firesim --models tinyllama_l2_s64 --rvv-package rvv/kodiak_prepack_w8a8_v1
+./run.sh package --opu --models tinyllama_l2_s64:/path/to/section-bundle --harts 1 \
+  --rvv-package rvv/kodiak_prepack_w8a8_v1 --no-spike-backends matrix
+```
+
+The last command gates the RVV image on Spike and builds/audits the OPU image. The delivery marks
+the OPU image **UNGATED** because its scalar stand-in can take hours. Run the exact OPU image on a
+compatible simulator or chip before claiming that particular ELF passed numerically.
+
 Running on the chip itself (a shared rig: check it is idle first) is in the package's `RUNNING.md`
 (`<kodiak-mlir>/RUNNING.md`). Running on FireSim, for the OPU's real datapath and cycles,
 is [§6](#6-run-on-firesim--the-opus-real-datapath-and-cycles).

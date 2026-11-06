@@ -177,6 +177,12 @@ selfcheck_out/
 !/out/artifacts/targets/rvv/hand_v0/**
 !/out/artifacts/targets/rvv/hand_v0_int8/**
 !/out/artifacts/targets/rvv/impr_tuned_*/**
+# Curated Kodiak handoff recipe and its portable FireSim evidence; keep generated builds ignored.
+!/out/artifacts/targets/rvv/kodiak_prepack_w8a8_v1/manifest.yaml
+!/out/artifacts/targets/rvv/kodiak_prepack_w8a8_v1/knobs.yaml
+!/out/artifacts/targets/rvv/kodiak_prepack_w8a8_v1/schedule.mlir
+!/out/artifacts/targets/rvv/kodiak_prepack_w8a8_v1/firesim_evidence.json
+!/out/artifacts/targets/rvv/kodiak_prepack_w8a8_v1/README.md
 # A target descriptor's FROZEN host lane must be readable from the sandbox workspace, which is built
 # from tracked content -- an untracked package resolves to nothing there and the run dies in setup
 # before the agent starts. Track exactly the files the descriptor pins in `requires_paths` (the
