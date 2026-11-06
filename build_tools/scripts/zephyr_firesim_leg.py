@@ -8,11 +8,15 @@ later purged, so the cited number cannot be reproduced. Its successor then lived
 ``zeph_leg.py`` under ``$TMPDIR`` and was the ONLY driver for building these legs. Twice
 now the script behind a cited number has been a temp file. Committing it is the fix.
 
-WHY ZEPHYR RATHER THAN BARE METAL, measured rather than preferred: it already carries the ALIVE
-heartbeat (``zephyr_model`` DEBUG_HEARTBEAT_S) so a hung run is distinguishable from a slow one, it has
-a debug twin, it reaches the second vector hart through the OpenMP shim (1.765x on TinyLlama), and it is
+WHY ZEPHYR RATHER THAN BARE METAL, measured rather than preferred: it carries STAGE progress,
+reaches the second vector hart through the OpenMP shim (1.765x on TinyLlama), and is
 the runtime both the TinyLlama reference and the hardware rig use -- so a bare-metal-vs-Zephyr
 comparison across two models was never valid in the first place.
+
+Build the acceptance image without structural profiling. The former unconditional debug/profile build
+turned all 1,000 spectformer outputs into NaNs on both FireSim and Spike; its plain-RVV control did
+the same. It also spent minutes printing PROF lines after compute. The profiler is a separate
+diagnostic experiment, never part of the image submitted for a correctness or speedup result.
 
 TARGET-AGNOSTIC. The matrix unit and its configuration are REQUIRED ARGUMENTS, not literals: the
 original script hardcoded one unit name and one config, which is exactly the overfit this repo's
@@ -95,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     from merlin.mining.registry import load_rvv_package
     from merlin.runtime.backends import zephyr_model as zm
     from merlin.runtime.backends.firesim_runner import select_runner
+    from merlin.runtime.boards import board as selected_board
     from merlin.targetgen.plugins import load_declared
 
     provider = load_declared(a.matrix_support_target, "matrix_lowering")
@@ -136,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         board=a.board,
         backend="rvv",
         rvv_hart=0,
-        cpus=max(2, a.harts),
+        cpus=zm.image_cpus(selected_board(a.board), a.harts),
         n_harts=a.harts,
         int8_compute=True,
         features=frozenset(feats),
@@ -145,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
         vlen=a.vlen,
         inputs_npz=bundle / "inputs.npz",
-        debug=True,
+        debug=False,
         completion_metric_prefix=getattr(selected_runner, "completion_metric_prefix", None),
         **kw,
     )
