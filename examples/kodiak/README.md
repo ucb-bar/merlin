@@ -271,7 +271,8 @@ runs into, in the order you will meet it:
   code, region. ResNet-50 at 224x224 needs 146 MiB (its buffers sum to 375 MiB; the arena is 41 MiB),
   where sizing to the sum asked for 624 MiB. A TinyLlama section (`examples/workloads/causal_lm_section`)
   of 2 layers at 128 tokens fits a 256 MiB region on RVV. Its h1 OPU image relinks for a 448 MiB
-  region; its Spike gate is still running. Eight layers at 128 tokens, or 2 layers at 512 tokens,
+  region; the exact OPU and RVV Spike images and a matched one-core FireSim pair have passed
+  numerical gates ([measured scope](KEVIN_HANDOFF.md)). Eight layers at 128 tokens, or 2 layers at 512 tokens,
   fill the board. The whole model does not fit: its weights alone are about 1.2 GiB. A model
   that does not fit is refused naming every term. `--no-pass static-arena --no-pass sink-deallocs`
   restores the old heap-only layout. The OPU image does not get the plan's reuse yet (see
