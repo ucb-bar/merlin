@@ -636,8 +636,20 @@ def collect(
             **graded,
         }
     result = _result(manifest, legs)
-    (job_dir / "firesim" / "results.json").parent.mkdir(parents=True, exist_ok=True)
-    (job_dir / "firesim" / "results.json").write_text(json.dumps(result, indent=2, default=str) + "\n")
+    result_path = job_dir / "firesim" / "results.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    result_path.write_text(json.dumps(result, indent=2, default=str) + "\n")
+    if result["all_verified"] and manifest["hw_config"] == "alveo_u250_firesim_kodiak_opu_1core":
+        # Calculate from the saved, fully graded pair and SHA-checked routing sidecar. Keep the
+        # capacity and occupancy semantics in one place: opu_utilization.py owns both.
+        cmd = [PY, str(Path(__file__).with_name("opu_utilization.py")), str(job_dir)]
+        measured = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
+        if measured.returncode:
+            raise RuntimeError(f"OPU utilization calculation failed: {measured.stderr[-1000:]}")
+        utilization = json.loads(measured.stdout)
+        (job_dir / "firesim" / "utilization.json").write_text(json.dumps(utilization, indent=2) + "\n")
+        result["utilization"] = utilization
+        result_path.write_text(json.dumps(result, indent=2, default=str) + "\n")
     if measurement and any(leg.get("cycles") for leg in legs.values()):
         result["measurement"] = str(_write_measurement(manifest, result))
     return result
@@ -699,6 +711,14 @@ def summary(result: dict[str, Any]) -> str:
             lines.append(f"           problem: {problem}")
     if result.get("speedup_control_over_device"):
         lines.append(f"  device speedup over control: {result['speedup_control_over_device']:.3f}x")
+    if utilization := result.get("utilization"):
+        lines.append(
+            "  OPU utilization: "
+            f"routed MAC share={utilization['routed_mac_share']:.1%} "
+            f"static tile fill={utilization['static_tile_fill']:.1%} "
+            f"whole-inference effective peak={utilization['whole_inference_effective_peak_fraction']:.4%} "
+            "array-active occupancy=unmeasured"
+        )
     art = result["provenance"].get("bitstream_artifact", {})
     lines.append(
         f"  bitstream artifact: {art.get('name', '?')} ok={art.get('ok')}"
