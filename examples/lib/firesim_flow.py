@@ -640,15 +640,21 @@ def collect(
     result_path.parent.mkdir(parents=True, exist_ok=True)
     result_path.write_text(json.dumps(result, indent=2, default=str) + "\n")
     if result["all_verified"] and manifest["hw_config"] == "alveo_u250_firesim_kodiak_opu_1core":
-        # Calculate from the saved, fully graded pair and SHA-checked routing sidecar. Keep the
-        # capacity and occupancy semantics in one place: opu_utilization.py owns both.
-        cmd = [PY, str(Path(__file__).with_name("opu_utilization.py")), str(job_dir)]
-        measured = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
-        if measured.returncode:
-            raise RuntimeError(f"OPU utilization calculation failed: {measured.stderr[-1000:]}")
-        utilization = json.loads(measured.stdout)
-        (job_dir / "firesim" / "utilization.json").write_text(json.dumps(utilization, indent=2) + "\n")
-        result["utilization"] = utilization
+        sidecars = manifest["legs"].get("device", {}).get("routing_sidecars") or {}
+        if "opu_signatures.json" not in sidecars:
+            # Older single-operator plans lack the immutable routing numerator. Preserve their
+            # valid correctness grade and state why no utilization can be calculated.
+            result["utilization_unavailable"] = "the plan has no SHA-checked OPU signatures sidecar"
+        else:
+            # Calculate from the saved, fully graded pair and SHA-checked routing sidecar. Keep the
+            # capacity and occupancy semantics in one place: opu_utilization.py owns both.
+            cmd = [PY, str(Path(__file__).with_name("opu_utilization.py")), str(job_dir)]
+            measured = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
+            if measured.returncode:
+                raise RuntimeError(f"OPU utilization calculation failed: {measured.stderr[-1000:]}")
+            utilization = json.loads(measured.stdout)
+            (job_dir / "firesim" / "utilization.json").write_text(json.dumps(utilization, indent=2) + "\n")
+            result["utilization"] = utilization
         result_path.write_text(json.dumps(result, indent=2, default=str) + "\n")
     if measurement and any(leg.get("cycles") for leg in legs.values()):
         result["measurement"] = str(_write_measurement(manifest, result))
@@ -719,6 +725,8 @@ def summary(result: dict[str, Any]) -> str:
             f"whole-inference effective peak={utilization['whole_inference_effective_peak_fraction']:.4%} "
             "array-active occupancy=unmeasured"
         )
+    elif reason := result.get("utilization_unavailable"):
+        lines.append(f"  OPU utilization: unavailable ({reason})")
     art = result["provenance"].get("bitstream_artifact", {})
     lines.append(
         f"  bitstream artifact: {art.get('name', '?')} ok={art.get('ok')}"
