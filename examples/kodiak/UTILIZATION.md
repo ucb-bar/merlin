@@ -36,6 +36,15 @@ prefix. Its 19,797,114,880 valid routed MACs give **1.18350 valid MAC per target
 `19,797,114,880 / (16,727,634,195 × 1,024) = 0.00115576`, or **0.115576%** of whole-inference
 peak. The 100% static tile fill does **not** imply 100% active-cycle occupancy.
 
+The aligned-prepack 128-token pair was independently graded on the same pinned one-core
+bitstream: OPU job 3871 took 2,438,693,540 target compute cycles and its RVV control job
+3875 took 27,742,439,123, giving **11.37594×** control/device speedup. Both full hashes and
+prefixes matched their exact Spike images, and the hardware W8A8 prefix gate passed. Its
+19,797,114,880 valid routed MACs across 19 contractions fill all static tiles and give
+`19,797,114,880 / (2,438,693,540 × 1,024) = 0.0079276546`, or **0.792765% of
+whole-inference effective peak** (8.11792 valid MAC per target cycle). The immutable pair's
+`firesim/utilization.json` records array occupancy as unmeasured.
+
 Static routing also cannot prove that the runtime shim used the OPU. At return from
 `merlin_run_multi`, a Spike debugger read the exact shipped s64 ELF's OPU shim counters:
 **143 calls, 0 scalar fallbacks**. The same check on the corrected prepacked s64 ELF found

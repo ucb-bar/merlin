@@ -62,11 +62,14 @@ The current-head fill-elided s64 pair also graded VERIFIED: device job 3874 took
 cycles, RVV control job 3877 took 13,689,726,593, and both full hashes/prefixes matched Spike.
 This is **12.8581× speedup** and **0.904856% whole-inference effective peak** for the same
 9,865,003,008 valid routed MACs. The array-active fraction is not measurable on this bitstream.
-The s128 aligned-prepack OPU and RVV images have both passed exact Spike gates, including the baseline's
-full 4,096,000-value hash. Its FireSim device job 3871 completed with that full hash in
-2,438,693,540 target cycles; the matched RVV control job 3875 is queued. The device performed
-19,797,114,880 valid routed MACs, or 0.792765% whole-inference effective peak; its paired
-speedup remains pending.
+The s128 aligned-prepack OPU/RVV pair also graded VERIFIED on the pinned one-core bitstream:
+device job 3871 took 2,438,693,540 target cycles, matched control job 3875 took
+27,742,439,123, and both full 4,096,000-value hashes and prefixes matched their exact Spike
+images. The hardware W8A8 gate passed on the 4,096-value prefixes. The **11.37594×** paired
+speedup accompanies 19,797,114,880 valid routed MACs, 100% static tile fill, and **0.792765%
+whole-inference effective peak** for the OPU image. Physical array occupancy remains unmeasured.
+The SHA-bound receipt is
+`out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793954503610973263/firesim/pair_receipt.json`.
 
 To use the measured aligned-prepack schedule, pass
 `--rvv-package rvv/kodiak_prepack_w8a8_v1` to `./run.sh firesim`, `build`, or `package`. The
@@ -147,8 +150,8 @@ does not model OPU timing, so its 10.6057% call-window rate is not a hardware la
 A separate draft Chipyard counter patch is
 available as [PR 2395](https://github.com/ucb-bar/chipyard/pull/2395), but no instrumented
 bitstream or counter measurement exists yet. A managed exact-pin counter source now passes
-Firechip compile and target FIRRTL elaboration with JDK 17 and Espresso; Golden Gate/metasim
-and synthesis remain pending.
+Firechip compile, target FIRRTL elaboration, Golden Gate, and a Verilator metasim build with
+JDK 17 and Espresso. A bracketed GEMM counter run and U250 synthesis remain pending.
 
 The aligned-prepack TinyLlama s64 image also has an exact Spike-gated sparse profile: 19 OPU
 call rows, 26,595,355 call cycles, and **36.2236% effective peak during those calls on Spike**.
