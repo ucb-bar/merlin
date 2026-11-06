@@ -118,6 +118,14 @@ def _compile_matrix(
             },
         }
     )
+    if matrix_gate == "build":
+        out["matrix"].update(
+            twin_executed=False,
+            shipped_on_simulator={"status": "not_run", "reason": "compile-only matrix gate"},
+            gated_via="build and instruction audit only; numerical gates pending",
+        )
+        out["verification_scope"] = "none; twin and shipped images were not executed"
+        return out
     import time
 
     if matrix_gate == "shipped":

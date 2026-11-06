@@ -102,10 +102,10 @@ def parser(
     ap.add_argument("--matrix-config", help="the elaborated hardware configuration the unit's geometry is read from")
     ap.add_argument(
         "--matrix-gate",
-        choices=("twin", "shipped"),
+        choices=("twin", "shipped", "build"),
         default="twin",
-        help="spike matrix verification: run the same-lowering scalar twin (default), or gate the shipped "
-        "image on its declared unit simulator; the latter also needs an independent control for bit identity",
+        help="matrix image gate: run the same-lowering scalar twin (default), gate the shipped "
+        "image on its declared unit simulator, or build and audit both images without simulation",
     )
     ap.add_argument(
         "--matrix-support-target",
@@ -232,7 +232,7 @@ def validate(ap: argparse.ArgumentParser, a: argparse.Namespace) -> None:
             "--matrix-support-target too"
         )
     elif a.matrix_gate != "twin":
-        ap.error("--matrix-gate shipped requires --matrix-unit/--matrix-config/--matrix-support-target")
+        ap.error("--matrix-gate shipped|build requires --matrix-unit/--matrix-config/--matrix-support-target")
     if a.model_preflight and (a.target == "rvv" or not a.capture_bundle or not a.deployment_dtype):
         ap.error("--model-preflight requires an OOT --target, --capture-bundle, and --deployment-dtype")
     if not (a.model_preflight or a.model_build) and not a.workload:

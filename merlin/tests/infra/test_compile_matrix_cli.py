@@ -150,6 +150,38 @@ def test_a_multi_hart_block_that_does_not_lower_is_re_derived_once(tmp_path, mon
     assert out["harts_split_block_retry"] == {"tried": ["wide"], "used": ["narrow"]}
 
 
+def test_build_gate_audits_matrix_images_without_running_either_simulator(tmp_path, monkeypatch):
+    pair = matrix_image.MatrixPair(
+        ship={"elf": tmp_path / "ship.elf"},
+        twin={"elf": tmp_path / "twin.elf"},
+        debug=None,
+        lowering_digest="same-source-lowering",
+        unit_instruction_counts={"ACC": 7},
+        debug_instruction_counts={},
+        report={"routed_contractions": 1},
+        ship_dir=tmp_path,
+    )
+    monkeypatch.setattr(matrix_image, "build_matrix_pair", lambda *a, **k: pair)
+    monkeypatch.setattr(zm, "run_on_spike", lambda *a, **k: pytest.fail("compile-only gate ran Spike"))
+    monkeypatch.setattr(
+        matrix_leg,
+        "_run_shipped_on_device_simulator",
+        lambda *a, **k: pytest.fail("compile-only gate ran unit simulator"),
+    )
+    monkeypatch.setattr(zm, "image_cpus", lambda brd, harts: harts)
+    monkeypatch.setattr("merlin.runtime.boards.board", lambda n: SimpleNamespace(vlen=512, dram_base=0))
+    result = compile_cli._compile_matrix(
+        {}, Path("bundle"), tmp_path, SimpleNamespace(schedule_text="", cflags=[]), [], {}, board="b", harts=1,
+        iters=1, warmup=0, timeout=1, matrix=("u", "c", "t"), matrix_gate="build", int8_compute=False,
+    )  # fmt: skip
+    assert result["status"] == "compiled"
+    assert result["binary"] == str(pair.ship["elf"])
+    assert result["twin_binary"] == str(pair.twin["elf"])
+    assert result["matrix"]["twin_executed"] is False
+    assert result["matrix"]["unit_instruction_counts"] == {"ACC": 7}
+    assert result["verification_scope"].startswith("none;")
+
+
 _NOTHING = {
     "routed_contractions": 0,
     "not_routed_contractions": 3,
