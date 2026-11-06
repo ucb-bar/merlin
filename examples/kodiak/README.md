@@ -467,6 +467,12 @@ and the limits of the current hardware counters.
 
 ### The reference result
 
+The current `merlin-compile` spectformer pair ran through the shared queue on 2026-11-05. Device job
+3858: **3,531,733,777** target compute cycles; plain-RVV control job 3859: **6,120,729,118** cycles,
+for **1.733×** speedup. Both jobs passed the W8A8 gate and matched their exact Spike-gated output
+hashes and prefixes; `firesim/results.json` records the bitstream, image hashes, and full verdict.
+These jobs used the uninstrumented images built through the flow above.
+
 SpectFormer int8 (57 contractions routed to the OPU), measured 2026-08-18 on this bitstream:
 
 | leg | cycles | vs W8A8 golden |

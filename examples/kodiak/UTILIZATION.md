@@ -25,6 +25,9 @@ per inference, excluding FireSim host time; it includes model work, packing, set
 operations. `1,840,054,272 / (3,531,733,777 × 1,024) = 0.000508795`, or **0.0508795%**. The
 64³ GEMM device job 3854 completed 262,144 valid MACs in 792,242 target cycles, or **0.0323134%**
 of peak across its full compute region; its tile fill is 100%.
+The matched plain-RVV control, job 3859, completed in 6,120,729,118 target cycles on the same
+bitstream. Both legs passed W8A8 and matched their own Spike output identities, giving an OPU
+speedup of `6,120,729,118 / 3,531,733,777 = 1.7331×`.
 
 These percentages are **end-to-end effective throughput**, not the MAC array's active-cycle
 utilization. The current bitstream has no software-visible counter for active cycles or valid lanes.
