@@ -22,15 +22,12 @@ The shim (``runtime/c/merlin_op_prof.c``) records ``rdtime`` at each mark and cr
 elapsed ticks to the PREVIOUS mark's id. So one call per op, not two, and
 ``ticks[i]`` is the cost of top-level op ``i``.
 
-Why one marker per top-level op is safe here. The default K1 RVV pipeline
-(:func:`merlin.llvmlower.pipeline.build_rvv_pipeline`) does **not** run
-``linalg-fuse-elementwise-ops`` (it is env-gated behind ``MERLIN_FUSE_POST``), so
-interleaving side-effecting calls cannot inhibit a fusion that would otherwise have
-happened. The marks therefore cost a call + ``rdtime`` + two stores each, and change no
-codegen decision for the ops themselves. This is an assumption about the pipeline, not a
-proof — which is why the driver (``build_tools/scripts/k1_op_profile.py``) always measures
-the instrumented wall against the un-instrumented wall and refuses to report a breakdown
-whose total wall moved by more than the board noise floor.
+Marker calls can change optimization, bufferization, and output semantics. In a controlled
+spectformer Zephyr pair, identical prepared IR and lowering features produced the correct
+whole-output hash without structural markers and all NaNs with them; the image with debug hooks
+but no structural markers was correct. A profile is therefore diagnostic only until its output
+identity has been checked against an uninstrumented image. The K1 driver also compares elapsed
+time against an uninstrumented run, but a wall-time check alone cannot establish correctness.
 
 KNOWN ATTRIBUTION LIMITS (stated, not hidden).
   * ``buffer-hoisting``/``buffer-loop-hoisting`` move ``memref.alloc``s toward the function
@@ -316,7 +313,7 @@ def instrument_file(path: Path, work: Path, *, structural: bool = False) -> tupl
 
 def instrument(
     mlir_text: str,
-    functions: "Sequence[str]" = ("forward",),
+    functions: Sequence[str] = ("forward",),
     *,
     structural: bool = False,
 ) -> tuple[str, list[dict]]:
