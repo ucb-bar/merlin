@@ -191,6 +191,9 @@ complete output buffer from the exact Spike ELF, check its HASH against the
 planned image, and run the W8A8 gate with `min_coverage=1` against this
 capture's **TorchAO** golden. The current source images have no such evidence;
 the bridge does not infer it from a whole-output hash alone.
+The [source full-output certificate](SOURCE_FULL_OUTPUT_CERTIFICATE.md) defines
+the per-leg image, debugger, buffer, reference, and same-run console evidence
+needed before this route can certify TinyLlama.
 
 The source capture uses signed i8 operands, i32 accumulation, and source-owned
 scales/dequantization. OPU and compact VME select different kernels and

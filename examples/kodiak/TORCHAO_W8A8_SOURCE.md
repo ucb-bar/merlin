@@ -111,3 +111,8 @@ the complete-output gate.
 The [CPU convolution backend probe](../../experiments/reference-data/spectformer_torchao_mkldnn_sensitivity_2026-11-06.md)
 shows that Torch's fused MKLDNN bias is a major source of that first drift;
 disabling MKLDNN still does not clear the whole-model gate on either input.
+The [repeated float-operation probe](../../experiments/reference-data/spectformer_torchao_repeated_float_ops_2026-11-06.md)
+reproduces the holdout host output without compilation and isolates small
+spectral-filter, norm2, and GELU differences on identical inputs. TorchAO fc1
+matches bitwise on the same host norm2 tensor; shifted norm2 inputs produce
+larger fc1 differences on both images.
