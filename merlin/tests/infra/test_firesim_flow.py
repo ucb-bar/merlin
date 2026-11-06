@@ -205,9 +205,18 @@ def test_whole_model_legs_require_w8a8_reference_before_compile(flow, tmp_path, 
         flow.build_legs(args)
 
 
-@pytest.mark.parametrize(("framework_ok", "tier_mismatch"), [(True, False), (False, False), (False, True)])
+@pytest.mark.parametrize(
+    ("framework_ok", "tier_mismatch", "spike_complete", "host_partial"),
+    [
+        (True, False, True, False),
+        (True, False, False, False),
+        (False, False, False, False),
+        (False, True, False, False),
+        (False, False, False, True),
+    ],
+)
 def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(
-    flow, tmp_path, monkeypatch, framework_ok, tier_mismatch
+    flow, tmp_path, monkeypatch, framework_ok, tier_mismatch, spike_complete, host_partial
 ):
     from merlin.targetgen import application_inventory
 
@@ -215,7 +224,7 @@ def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(
     bundle = tmp_path / "spectformer_torchao_w8a8"
     bundle.mkdir()
     (bundle / "model.mlir").write_text("module {}")
-    np.save(bundle / "golden.npy", np.zeros(1, dtype=np.float32))
+    np.save(bundle / "golden.npy", np.zeros(2, dtype=np.float32))
     monkeypatch.setattr(
         application_inventory, "verify_capture_receipt", lambda path: {"status": "verified_materialized"}
     )
@@ -223,8 +232,13 @@ def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(
         "run": "host",
         "dtype": "int8_w8a8",
         "bundle": str(bundle),
-        "status": "verified" if framework_ok or tier_mismatch else "run_mismatch",
-        "verify": {"tier_ok": "w8a8" if framework_ok else None},
+        "status": "verified" if framework_ok or tier_mismatch or host_partial else "run_mismatch",
+        "verify": {
+            "tier_ok": "w8a8" if framework_ok or host_partial else None,
+            "comparison_complete": not host_partial,
+            "n_compared": 1 if host_partial else 2,
+            "n_reference": 2,
+        },
         "reference": {"kind": "torchao_w8a8_framework", "sha256": flow._sha256(bundle / "golden.npy")},
         "source_quantization": {
             "source_scheme": "int8_dyn_act_int8_weight",
@@ -263,7 +277,11 @@ def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(
     routing = tmp_path / "routing_report.json"
     routing.write_text("{}")
     (tmp_path / "opu_signatures.json").write_text("[]")
-    identity = {"out_hash": {"algo": "fnv1a32", "elems": 1, "value": 1}, "prefix_sha256": "x"}
+    identity = {
+        "out_hash": {"algo": "fnv1a32", "elems": 2, "value": 1},
+        "prefix_sha256": "x",
+        "prefix_elems": 2 if spike_complete else 1,
+    }
 
     def compile_image(cmd, **kwargs):
         assert cmd[cmd.index("--capture-bundle") + 1] == str(bundle)
@@ -274,7 +292,14 @@ def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(
             "status": "verified" if framework_ok else "ran",
             "binary": str(binaries[leg]),
             "build_hash": leg,
-            "verify": {"tier_ok": "w8a8"} if framework_ok else {},
+            "verify": {
+                "tier_ok": "w8a8",
+                "comparison_complete": spike_complete,
+                "n_compared": 2 if spike_complete else 1,
+                "n_reference": 2,
+            }
+            if framework_ok
+            else {},
             "output_identity": identity,
         }
         if leg == "device":
@@ -283,7 +308,14 @@ def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(
                 "routing_report": str(routing),
                 "shipped_on_simulator": {
                     "status": "verified",
-                    "verify": {"tier_ok": "w8a8"} if framework_ok else {},
+                    "verify": {
+                        "tier_ok": "w8a8",
+                        "comparison_complete": spike_complete,
+                        "n_compared": 2 if spike_complete else 1,
+                        "n_reference": 2,
+                    }
+                    if framework_ok
+                    else {},
                     "bit_exact_vs_twin": True,
                     "output_identity": identity,
                 },
@@ -297,12 +329,13 @@ def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(
     assert manifest["bundle"] == str(bundle)
     assert manifest["source"]["reference"]["file"] == "golden.npy"
     assert manifest["source"]["framework_gate_ok"] is framework_ok
+    assert manifest["source"]["target_output_complete"] == (spike_complete if framework_ok else None)
     assert Path(manifest["source"]["framework_result"]) == job / "framework_result.json"
     assert (job / "framework_result.json").read_bytes() == framework_path.read_bytes()
-    assert manifest["diagnostic_only"] == (not framework_ok)
+    assert manifest["diagnostic_only"] == (not framework_ok or not spike_complete)
     assert manifest["legs"]["device"]["spike_output_identity"] == identity
     assert manifest["legs"]["control"]["spike_output_identity"] == identity
-    if not framework_ok:
+    if manifest["diagnostic_only"]:
         with pytest.raises(SystemExit, match="requires explicit --submit-diagnostic"):
             flow.submit(job)
         with pytest.raises(SystemExit, match="cannot submit"):
@@ -328,7 +361,7 @@ def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(
         )
         result = flow.collect(job, uartlogs={leg: uart for leg in flow.LEGS}, measurement=False)
         assert result["target_pair_spike_identity"] is True
-        assert result["framework_fidelity"] == "failed"
+        assert result["framework_fidelity"] == ("passed" if framework_ok else "failed")
         assert result["acceptance"] is False
         assert result["all_verified"] is False
 
@@ -682,6 +715,91 @@ def test_collect_requires_the_full_spike_output_even_when_the_printed_prefix_pas
     assert result["device"]["grade"]["tier_ok"] == "w8a8"
     assert result["device"]["out_hash_matches_spike"] is False
     assert any("whole-output HASH differs" in p for p in result["device"]["problems"])
+
+
+def test_source_grade_refuses_a_partial_torchao_prefix_despite_a_whole_spike_hash(flow):
+    from merlin.runtime.backends import output_identity
+    from merlin.runtime.backends import zephyr_model as zm
+
+    golden = np.linspace(-2.0, 3.0, 24, dtype=np.float32)
+    prefix = golden[:4]
+    uart = _uart(prefix, cycles=10, build_hash="source")
+    prefix_hash = zm.out_hash_fnv1a32(prefix)
+    whole_hash = zm.out_hash_fnv1a32(golden)
+    uart = uart.replace(f"HASH fnv1a32 {prefix.size} {prefix_hash}", f"HASH fnv1a32 {golden.size} {whole_hash}")
+    parsed = zm._parse_console(uart, 0)
+    row = {"build_hash": "source", "spike_output_identity": output_identity.output_identity(parsed)}
+    hw = {"RuntimeHWConfig": HW}
+    legacy = flow.grade_leg(uart, row=row, refs={"w8a8": golden}, hw_config=HW, hw_summary=hw)
+    assert legacy["grade"]["tier_ok"] == "w8a8"
+    source = flow.grade_leg(uart, row=row, refs={"w8a8": golden}, hw_config=HW, hw_summary=hw, require_full_output=True)
+    assert source["out_hash_matches_spike"] is True
+    assert source["prefix_matches_spike"] is True
+    assert source["source_output_complete"] is False
+    assert source["status"] == "graded_with_problems"
+    assert any("complete TorchAO output" in p for p in source["problems"])
+    assert not flow._complete_source_output(
+        {"comparison_complete": True, "n_compared": golden.size, "n_reference": golden.size},
+        row["spike_output_identity"],
+        golden.size,
+    )
+
+    full_uart = _uart(golden, cycles=10, build_hash="source")
+    full_identity = output_identity.output_identity(zm._parse_console(full_uart, 0))
+    full = flow.grade_leg(
+        full_uart,
+        row={"build_hash": "source", "spike_output_identity": full_identity},
+        refs={"w8a8": golden},
+        hw_config=HW,
+        hw_summary=hw,
+        require_full_output=True,
+    )
+    assert full["source_output_complete"] is True
+    assert full["status"] == "verified"
+
+
+def test_source_partial_output_keeps_hardware_identity_diagnostic(flow, tmp_path, monkeypatch):
+    from merlin.runtime.backends import output_identity
+    from merlin.runtime.backends import zephyr_model as zm
+
+    bundle, _ = _bundle(tmp_path)
+    golden = np.load(bundle / "golden.npy")
+    prefix = golden[:4]
+    uart = _uart(prefix, cycles=10, build_hash="aaaa")
+    uart = uart.replace(
+        f"HASH fnv1a32 {prefix.size} {zm.out_hash_fnv1a32(prefix)}",
+        f"HASH fnv1a32 {golden.size} {zm.out_hash_fnv1a32(golden)}",
+    )
+    identity = output_identity.output_identity(zm._parse_console(uart, 0))
+    job = _plan(flow, tmp_path, bundle)
+    manifest = flow.load(job)
+    for leg in flow.LEGS:
+        manifest["legs"][leg]["spike_output_identity"] = identity
+    framework = tmp_path / "framework.json"
+    framework.write_text("{}")
+    manifest["source"] = {
+        "dtype": "int8_w8a8",
+        "framework_gate_ok": False,
+        "reference": {"sha256": flow._sha256(bundle / "golden.npy")},
+        "reference_elems": int(golden.size),
+        "capture_sha256": flow._capture_sha256(bundle),
+        "framework_result": str(framework),
+        "framework_result_sha256": flow._sha256(framework),
+        "target_output_complete": None,
+        "diagnostic_reasons": ["framework_fidelity_failed_or_incomplete"],
+        "diagnostic_only": True,
+    }
+    manifest["diagnostic_only"] = True
+    flow._save(job, manifest)
+    monkeypatch.setattr(flow, "_bitstream_artifact", lambda uri: {"matched": True, "ok": True})
+    dev = _results_dir(tmp_path, "d", uart)
+    ctl = _results_dir(tmp_path, "c", uart.replace("METRIC build_hash aaaa", "METRIC build_hash bbbb"))
+    result = flow.collect(job, uartlogs={"device": dev / "uartlog", "control": ctl / "uartlog"}, measurement=False)
+    assert result["target_pair_hardware_verified"] is True
+    assert result["target_pair_spike_identity"] is True
+    assert result["device"]["source_output_complete"] is False
+    assert result["acceptance"] is False
+    assert result["all_verified"] is False
 
 
 def test_a_run_on_another_bitstream_or_of_another_image_is_not_verified(flow, tmp_path):

@@ -320,7 +320,8 @@ def describe(job_dir: Path, manifest: dict[str, Any], host: dict[str, Any], **kw
         lines.append(f"  {leg:8} {row['elf']}  build_hash={row.get('build_hash') or '?'}")
     lines.append("")
     if manifest.get("diagnostic_only"):
-        lines.append("  DIAGNOSTIC ONLY: TorchAO framework parity failed; acceptance is disabled.")
+        reasons = ", ".join((manifest.get("source") or {}).get("diagnostic_reasons") or ["source gate incomplete"])
+        lines.append(f"  DIAGNOSTIC ONLY: {reasons}; acceptance is disabled.")
         lines.append(f"  Explicit hardware probe: {SELF} submit {job_dir} --submit-diagnostic")
         return "\n".join(lines)
     if host["chipyard"] is None:
@@ -550,6 +551,18 @@ def _plan_references(manifest: dict[str, Any]) -> dict:
     return _references(bundle)
 
 
+def _complete_source_output(grade: dict, identity: dict, reference_elems: int) -> bool:
+    """A prefix score cannot certify the unprinted tail of a TorchAO model output."""
+    whole_hash = identity.get("out_hash") or {}
+    return (
+        grade.get("comparison_complete") is True
+        and grade.get("n_compared") == reference_elems
+        and grade.get("n_reference") == reference_elems
+        and identity.get("prefix_elems") == reference_elems
+        and whole_hash.get("elems") == reference_elems
+    )
+
+
 def _validate_source_plan(manifest: dict[str, Any]) -> None:
     source = manifest.get("source")
     if source is None:
@@ -572,6 +585,7 @@ def grade_leg(
     refs: dict,
     hw_config: str,
     hw_summary: dict[str, str],
+    require_full_output: bool = False,
 ) -> dict[str, Any]:
     """One leg's verdict. Every check that could not be made is a named problem, never a pass."""
     from merlin.runtime.backends import output_identity
@@ -602,6 +616,7 @@ def grade_leg(
         out["problems"].append(f"console build_hash {observed_hash!r} is not this leg's image ({expected!r})")
     if "w8a8" not in refs:
         out["problems"].append("no golden_w8a8.npy beside the bundle: the W8A8 grade cannot be made")
+    gate = None
     if refs:
         gate = zm._gate(res["prefix"], refs)
         out["grade"] = {
@@ -613,6 +628,17 @@ def grade_leg(
         if not gate.get("ok") or gate.get("tier_ok") != "w8a8":
             out["problems"].append(f"output fails the gate (tier_ok={gate.get('tier_ok')})")
     digest = res.get("out_hash")
+    if require_full_output:
+        reference_elems = int(refs["w8a8"].size) if "w8a8" in refs else 0
+        observed_identity = output_identity.output_identity(res)
+        complete = bool(reference_elems and gate and _complete_source_output(gate, observed_identity, reference_elems))
+        out["source_output_complete"] = complete
+        if not complete:
+            compared = gate.get("n_compared") if gate else 0
+            out["problems"].append(
+                f"output fails the gate (complete TorchAO output missing: compared {compared}/{reference_elems}, "
+                f"HASH elems={(digest or {}).get('elems')})"
+            )
     expected_identity = row.get("spike_output_identity")
     if expected_identity is not None:
         expected_hash = expected_identity.get("out_hash")
@@ -673,7 +699,12 @@ def collect(
             continue
         uart = uart_path.read_text(errors="replace")
         graded = grade_leg(
-            uart, row=row, refs=refs, hw_config=manifest["hw_config"], hw_summary=read_hw_summary(results_dir)
+            uart,
+            row=row,
+            refs=refs,
+            hw_config=manifest["hw_config"],
+            hw_summary=read_hw_summary(results_dir),
+            require_full_output=bool(manifest.get("source")),
         )
         # The ELF must still be the one that was planned: a rebuild in place since then would make the
         # recorded hash describe bytes that never ran.
@@ -691,6 +722,8 @@ def collect(
     result = _result(manifest, legs)
     if source := manifest.get("source"):
         result["framework_fidelity"] = "passed" if source["framework_gate_ok"] is True else "failed"
+        result["target_output_complete_on_spike"] = source.get("target_output_complete")
+        result["diagnostic_reasons"] = source.get("diagnostic_reasons", [])
         result["target_pair_spike_identity"] = len(legs) == len(manifest["legs"]) and all(
             leg.get("out_hash_matches_spike") and leg.get("prefix_matches_spike") for leg in legs.values()
         )
@@ -711,6 +744,7 @@ def collect(
         result["acceptance"] = (
             result["all_verified"]
             and result["framework_fidelity"] == "passed"
+            and not manifest.get("diagnostic_only")
             and artifact.get("matched") is True
             and artifact.get("ok") is True
         )
@@ -880,7 +914,17 @@ def _source_gate(args, bundle: Path, brd) -> dict[str, Any] | None:
     # This verifier proves materialized bytes, not independent source closure.
     if receipt.get("status") != "verified_materialized" or receipt != source["capture_receipt"]:
         raise SystemExit("capture receipt changed or is unverified since the framework gate")
-    verified = gate.get("status") == "verified" and gate.get("verify", {}).get("tier_ok") == "w8a8"
+    import numpy as np
+
+    reference_elems = int(np.load(bundle / "golden.npy", mmap_mode="r").size)
+    host_grade = gate.get("verify") or {}
+    verified = (
+        gate.get("status") == "verified"
+        and host_grade.get("tier_ok") == "w8a8"
+        and host_grade.get("comparison_complete") is True
+        and host_grade.get("n_compared") == reference_elems
+        and host_grade.get("n_reference") == reference_elems
+    )
     diagnostic = not verified
     if diagnostic and not getattr(args, "allow_framework_mismatch", False):
         raise SystemExit(
@@ -894,8 +938,10 @@ def _source_gate(args, bundle: Path, brd) -> dict[str, Any] | None:
         "framework_result_sha256": _sha256(Path(gate_path)),
         "framework_status": gate.get("status"),
         "framework_gate_ok": verified,
+        "reference_elems": reference_elems,
         "source_quantization": source,
         "diagnostic_only": diagnostic,
+        "diagnostic_reasons": ["framework_fidelity_failed_or_incomplete"] if diagnostic else [],
     }
 
 
@@ -914,6 +960,7 @@ def build_legs(args) -> Path:
     if dtype == "int8" and not (bundle / "golden_w8a8.npy").is_file():
         raise SystemExit(f"{bundle}: FireSim requires the model's W8A8 reference before building")
     source = _source_gate(args, bundle, brd)
+    source_reference_elems = source["reference_elems"] if source else None
     capture_path = bundle.resolve()
     capture_sha256 = _capture_sha256(capture_path)
     model = bundle.name if source else args.bundle.removesuffix("_int8_full")
@@ -938,6 +985,7 @@ def build_legs(args) -> Path:
     if not package.is_absolute():
         package = REPO / "out" / "artifacts" / "targets" / package
     legs = {}
+    target_output_complete = True
     gate = getattr(args, "gate", "twin")
     if gate not in ("twin", "independent-rvv"):
         raise SystemExit(f"unknown FireSim gate: {gate}")
@@ -1018,6 +1066,17 @@ def build_legs(args) -> Path:
         identity = shipped.get("output_identity") if leg == "device" else result.get("output_identity")
         if not identity or not identity.get("out_hash") or not identity.get("prefix_sha256"):
             raise SystemExit(f"{leg} leg: spike gate has no complete output identity")
+        if source and not diagnostic:
+            grade = (shipped.get("verify") if leg == "device" else result.get("verify")) or {}
+            if not _complete_source_output(grade, identity, source_reference_elems):
+                target_output_complete = False
+                print(
+                    f"[firesim] {leg}: incomplete TorchAO output grade "
+                    f"({grade.get('n_compared')}/{source_reference_elems}, "
+                    f"prefix={identity.get('prefix_elems')}, HASH elems={identity['out_hash'].get('elems')}); "
+                    "this pair is diagnostic only",
+                    flush=True,
+                )
         built_elf = Path(result["binary"])
         elf = out / "zephyr.elf"
         shutil.copy2(built_elf, elf)
@@ -1074,6 +1133,11 @@ def build_legs(args) -> Path:
             raise SystemExit(f"device/control exact-board Spike outputs do not match bit for bit: {same}")
         legs["device"]["spike_gate"]["independent_rvv_bit_exact"] = True
         (job_dir / "device" / "leg.json").write_text(json.dumps(legs["device"], indent=2) + "\n")
+    if source:
+        source["target_output_complete"] = target_output_complete if source["framework_gate_ok"] else None
+        if not target_output_complete:
+            source["diagnostic_only"] = True
+            source["diagnostic_reasons"].append("target_output_incomplete")
     plan(
         job_dir,
         board=brd.name,

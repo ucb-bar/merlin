@@ -178,6 +178,20 @@ check out, it still reports the routed MAC work, static tile fill, and
 whole-inference effective peak as **diagnostic** utilization; array-active
 occupancy remains unmeasured without hardware counters.
 
+Source acceptance also needs a complete target-output comparison with the
+independent TorchAO golden. Existing older TinyLlama s64/s128 images print
+only 4,096 of their 2–4 million values. The exact source s8 golden has
+256,000 logits; its image has not run yet. A good prefix score and matching
+device/control HASHes prove target identity, not numerical fidelity over
+unprinted logits. The bridge therefore marks a prefix-only pair
+`target_output_incomplete` and requires explicit diagnostic submission even
+if the host framework gate passes. The older image's
+[complete-output extraction](UTILIZATION.md) shows a path forward: extract the
+complete output buffer from the exact Spike ELF, check its HASH against the
+planned image, and run the W8A8 gate with `min_coverage=1` against this
+capture's **TorchAO** golden. The current source images have no such evidence;
+the bridge does not infer it from a whole-output hash alone.
+
 The source capture uses signed i8 operands, i32 accumulation, and source-owned
 scales/dequantization. OPU and compact VME select different kernels and
 encodings from those same typed integer contractions. Do not re-quantize the
