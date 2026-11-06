@@ -246,6 +246,22 @@ def test_geometry_comes_from_the_vector_unit_that_enables_the_matrix_unit():
     assert none == {} and why
 
 
+def test_geometry_accepts_qualified_params_object_but_not_unknown_member():
+    qualified = CONFIG.replace("VP.unitParams", "saturn.common.VP.unitParams")
+    got, notes = M.matrix_unit_params(
+        qualified, "TwoUnitsConfig", mixin_text=MIXINS, params_text=PARAMS, params_object="VP", enable_flag="useUnit"
+    )
+    assert got == {"vLen": 256, "dLen": 128}
+    assert any("WithBVectorUnit" in note and "false" in note for note in notes)
+
+    unknown = qualified.replace("VP.unitParams", "VP.notDeclared")
+    got, notes = M.matrix_unit_params(
+        unknown, "TwoUnitsConfig", mixin_text=MIXINS, params_text=PARAMS, params_object="VP", enable_flag="useUnit"
+    )
+    assert got == {}
+    assert any("could not resolve useUnit" in note for note in notes)
+
+
 def test_seq_and_match_tables():
     assert M.seq_int_tuples(PARAMS, "unitTypes") == [(8, 4), (32, 1)]
     assert M.match_case_table(CORE, "CoreConfig", "kmax") == {(8, 4): 4, (32, 1): 1}

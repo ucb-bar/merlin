@@ -1012,8 +1012,12 @@ def matrix_unit_params(
                 position += 1
         enabled = None
         for token in bound.values():
-            if token.startswith(f"{params_object}."):
-                enabled = _params_flag(params_text, params_object, token[len(params_object) + 1 :], enable_flag)
+            parts = token.split(".")
+            # A host SoC may use a fully qualified Scala reference such as
+            # saturn.common.VectorParams.opuMxParams. The object and member
+            # are still resolved against the pinned params source above.
+            if len(parts) >= 2 and parts[-2] == params_object and all(part.isidentifier() for part in parts):
+                enabled = _params_flag(params_text, params_object, parts[-1], enable_flag)
         if enabled is None:
             notes.append(f"{simple}: could not resolve {enable_flag} from its params")
             continue
