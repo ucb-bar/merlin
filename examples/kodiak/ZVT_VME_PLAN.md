@@ -61,7 +61,7 @@ and Espresso; the fresh published-source validation below passed with JDK 17 and
 Exact Zvt ELF/Spike now passes
 for a fresh VLEN512 biased K-tail image. The current OPU bitstream remains BME only. That exact
 35 × 63 × 33 biased K-tail ELF has since passed direct Kodiak VME Verilator/SerialTL with
-the same pinned Spike digest, zero output/guard errors, and `KT DONE`; the larger RTL suite
+the same pinned Spike digest, zero output and guard errors, and `KT DONE`; the larger RTL suite
 and a VME bitstream remain pending. The separate exact-pin OPU counter task has passed Firechip
 compile, target FIRRTL elaboration, Golden Gate, and Verilator metasim build using Espresso.
 A bracketed counter run, synthesis, and a counter-equipped bitstream remain pending. Keep the
@@ -78,9 +78,9 @@ The Chipyard branch head adds only a host TraceRV `libdwarf` API fix over that s
 Golden Gate generated SystemVerilog with the same hash before and after the host fix, and the
 Verilator metasim binary built. The exact fresh Zvt ELF then passed bounded FireSim metasim:
 the biased 35 × 63 × 33 case had the pinned Spike/direct RTL digest `0x15d98143c9a17f64`,
-zero output/guard errors, `KT DONE`, and exit zero. Its kernel interval was 2,761 target cycles;
-the full simulator ran 1,840,130 target cycles. The SHA-bound receipt is
-`/scratch/agustin/chipyard/tasks/kodiak-vme-portability-2/.tmp/vme_k33_metasim/receipt.json`.
+zero output and guard errors, `KT DONE`, and exit zero. Its kernel interval was 2,761 target cycles;
+the full simulator ran 1,840,130 target cycles. The SHA-bound receipt is in Chipyard managed task
+`kodiak-vme-portability-2/.tmp/vme_k33_metasim/receipt.json`.
 This does not establish FPGA bitstream timing or physical Kodiak ASIC support.
 The metasim receipt is pinned to Chipyard `5311b459`; the newer published branch head adds
 only `patches/kodiak-vme/apply-firesim-worktree-build.sh` and its SHA-verified build patch for

@@ -10,18 +10,23 @@ package branch heads may contain newer documentation than the image-building pin
 git clone --branch feat/OPU-VME https://github.com/ucb-bar/merlin.git
 cd merlin/examples/kodiak
 ./run.sh setup --llvm <llvm23-install> --chipyard <chipyard> --zephyr-sdk <zephyr-sdk-0.17.0>
-./run.sh preflight
+./run.sh preflight --require package
 ./run.sh op gemm 64 64 64
 ./run.sh kernel-test opu_tile_loop --quick
 ```
 
-`setup` prints any missing dependency or pin drift. `preflight` must pass before using the output
+`setup` prints any missing dependency or pin drift. The required `package` preflight exits
+nonzero if its build prerequisites are missing; it must pass before using the output
 as a hardware image. `op gemm` compares RVV, a scalar matrix twin, and the shipped OPU image on
 its pinned Spike extension. To test a custom C kernel, register it under the Kodiak package's
 `kernels/` and pass `--matrix-kernel <name>`; the kernel ABI and test flow are in that package's
 README.
 
-`./run.sh firesim --models spectformer --gate independent-rvv` builds both one-core images, audits
+On a fresh checkout, the model capture is absent. Transfer the exact capture bundle from this
+shared host, or provide the SpectFormer source and trained checkpoint before running
+`./run.sh capture spectformer`; the loader otherwise falls back to random weights. The capture
+used for the measurements loaded the trained checkpoint with zero missing or unexpected keys.
+`./run.sh firesim --models spectformer --gate independent-rvv` then builds both one-core images, audits
 OPU instructions, checks the exact images on Spike, and prints an immutable FireSim plan. Add
 `--submit` to place the pair in the shared FPGA queue. The control leg is plain RVV on the **same
 OPU bitstream**. `./run.sh firesim-collect <plan-dir> --job device=N --job control=M` grades the
@@ -29,6 +34,23 @@ returned full-output hashes, W8A8 numerical gate, bitstream identity, and target
 For a verified whole-model OPU pair with an exact routing sidecar, it saves
 `firesim/utilization.json` with routed MAC share, static tile fill, whole-inference effective
 peak, and an explicit unmeasured array occupancy field.
+
+The exact capture archives are local delivery artifacts on this shared host, under
+`out/artifacts/delivery/` in this Merlin task. Copy each archive to Kevin's machine and check
+its SHA-256 before extracting it into `out/artifacts/recaptures/` from the Merlin root:
+
+| Capture archive | SHA-256 | Extracted directory |
+| --- | --- | --- |
+| `kodiak-spectformer-capture-v1.tar.gz` | `6f59f24bec263a5d0f8f9772005d02a57bf132c794b4771a232d88e00955f166` | `spectformer_int8_full/` |
+| `kodiak-tinyllama-l2-s64-capture-v1.tar.gz` | `883ecfaa9295b54a3485e5f507471475f607aa355773927cef076c6f35a891c9` | `tinyllama_l2_s64_int8_full.portable/` |
+| `kodiak-tinyllama-l2-s128-capture-v1.tar.gz` | `c3688a964a2eb2bdde3bcb6e71b057055a889221aab8189def28fb203bcc618c` | `tinyllama_l2_s128_int8_full.portable/` |
+
+For Spectformer, run `mkdir -p out/artifacts/recaptures` then
+`tar -xzf <copied-spectformer-archive> -C out/artifacts/recaptures`. For TinyLlama, extract
+the chosen archive the same way and rename its `.portable` directory to the model name without
+that suffix. The archives are ignored local files, not Git downloads. A fresh-host check
+verified the Spectformer capture files and reached compilation, but that host lacked the
+Zephyr/Spike toolchain, so full lowering from a transferred capture remains unverified.
 On the current shared host, the installed workload is `merlin-kodiak` and the queue client needs
 the working-directory launchers. Before `--submit`, set:
 
@@ -91,8 +113,14 @@ On this shared host, the rebuilt Spectformer h1/h2 chipyard delivery is staged a
 `3c0871423e0d38c9466dbfded01932f0d569c95a2222c178d915fabdfe5b04a2`). The zip
 passed archive integrity and contains eight ELFs, its manifest, audits, and grading script.
 Its four plain images passed W8A8 gates and h2 matches h1. It is an ignored local artifact,
-not a Git-tracked download or a physical-chip execution receipt; the exact prepack FireSim
-pair is queued separately.
+not a Git-tracked download or a physical-chip execution receipt. Kevin can copy that zip from
+this shared host or regenerate it after transferring the capture using the tracked prepack
+package. The exact prepack FireSim device/control jobs 3886/3888 subsequently graded VERIFIED:
+**2,733,902,458** versus **5,840,140,166** target compute cycles, **2.13619×** paired speedup,
+and identical full 1,000-value hashes to their exact Spike images. Its 90 routed contractions
+account for 1,853,155,328 valid MACs, 73.8223% static tile fill, and **0.0661956% whole-inference
+effective peak** on the OPU image. Array occupancy remains unmeasured. The SHA-bound pair receipt
+is `out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793965368611649945/firesim/pair_receipt.json`.
 
 A current-routing unprofiled Spectformer OPU comparator completed as FireSim job 3870 in
 **3,038,273,721 target compute cycles** with the same full output hash as its exact Spike image.
@@ -120,21 +148,21 @@ has no array-active counter.
 The Kodiak OPU target uses legacy BME instructions. It cannot execute Iris's Zvt/VME encodings;
 those need a separate VME-enabled Kodiak RTL configuration and bitstream. On the separate Iris
 VME configuration, three direct SerialTL RTL cases (K33, biased edge, batch-3) now pass pinned
-Spike with exact digests and zero output/guard errors; evidence and limits are in Iris commit
+Spike with exact digests and zero output and guard errors; evidence and limits are in Iris commit
 `e13f7cc` on `handwritten-implementation`. The larger 44-case RTL gate is still unverified.
 The [Kodiak Zvt/VME configuration plan](ZVT_VME_PLAN.md) lists the exact pins and gates needed
 before a Kodiak board may advertise Zvt support. A distinct managed Kodiak VME one-core
 configuration now passes FIRRTL elaboration, and a fresh VLEN512 biased K-tail ELF passes
 the pinned Zvt Spike. The exact ELF also passed direct Kodiak VME Verilator/SerialTL: the
-35 × 63 × 33 biased case produced the same digest `0x15d98143c9a17f64`, zero output/guard
-errors, and `KT DONE`. The local SHA-bound receipt is
-`/scratch/agustin/chipyard/tasks/kodiak-zvt-vme-firechip/.tmp/kodiak_vme_k33_bias_elf/rtl_receipt.json`.
+35 × 63 × 33 biased case produced the same digest `0x15d98143c9a17f64`, zero output and guard
+errors, and `KT DONE`. The local SHA-bound receipt is in Chipyard managed task
+`kodiak-zvt-vme-firechip/.tmp/kodiak_vme_k33_bias_elf/rtl_receipt.json`.
 A VME FireSim bitstream and broader Kodiak RTL suite remain pending; these results do not
 change the physical OPU ASIC.
 The same exact ELF also passed bounded FireSim metasim on the generated VME RTL: zero
-output/guard errors, digest `0x15d98143c9a17f64`, `KT DONE`, and exit zero. Its kernel interval
-was 2,761 target cycles in this simulator. The SHA-bound receipt is
-`/scratch/agustin/chipyard/tasks/kodiak-vme-portability-2/.tmp/vme_k33_metasim/receipt.json`.
+output and guard errors, digest `0x15d98143c9a17f64`, `KT DONE`, and exit zero. Its kernel interval
+was 2,761 target cycles in this simulator. The SHA-bound receipt is in Chipyard managed task
+`kodiak-vme-portability-2/.tmp/vme_k33_metasim/receipt.json`.
 The reproducible source is on the [Chipyard fork branch](https://github.com/copparihollmann/chipyard/tree/feat/kodiak-zvt-vme)
 at `0d911e2d` and [Saturn branch](https://github.com/miles-rusch-berkeley/saturn-vectors/tree/feat/kodiak-zvt-vme)
 at `4359c36`. Chipyard pins a public Rocket base and carries
@@ -149,11 +177,14 @@ These are source and simulator gates, not a VME FPGA image.
 The current OPU FireSim bitstream is usable for the BME flow above. Its archived artifact identity
 was checked during the hardware jobs. Reproducing that archive from a clean source tree remains
 unverified because the live Chipyard/Saturn checkout has pin drift. Physical Kodiak rig access
-and scheduling are separate from FireSim; follow the Kodiak package's `RUNNING.md` and
-coordinate with the rig owner before any chip load or reset.
+and scheduling are separate from FireSim. For physical operations, follow the newer
+[Kodiak RUNNING.md at `392ba40`](https://github.com/ucb-bar/kodiak-mlir/blob/392ba40/RUNNING.md),
+which corrects the historical health check and wrapper behavior. Merlin setup pins that same
+package commit. Coordinate with the rig owner before any chip load or reset.
 
-As of 2026-11-06, `ssh -o BatchMode=yes kodiak-rig hostname` returns `bwrckodiak` without a
-laptop relay. In an owner-confirmed exclusive window, a SHA-verified JTAG program restored FPGA
+On this garden host as of 2026-11-06, `ssh -o BatchMode=yes kodiak-rig hostname` returns
+`bwrckodiak` without a laptop relay. Kevin needs owner-provided access on any other host.
+In an owner-confirmed exclusive window, a SHA-verified JTAG program restored FPGA
 Ethernet and UDP ping. The OPU-direct benchmark at the historically passing path then failed at
 the chip's `0x1000` BootAddrReg readback under the historical uncredited `--no-reset` loader path.
 An additional bounded retry requested chip 0 after FPGA ping and received a UDP response, but
@@ -187,7 +218,8 @@ JDK 17 and Espresso. Its bracketed 64³ GEMM metasim run also passed: full expec
 `DONE`, exit zero, 791,141 target compute cycles, active-row delta 2,048, gate-low delta zero,
 and flat samples before and after the burst. This gives **0.0323583% whole-compute row issue
 duty** and **100% useful issued-slot efficiency** for that one fully filled GEMM. The SHA-bound
-receipt is `/scratch/agustin/chipyard/tasks/opu-counter-goldengate-pin/.tmp/metasim_matrix_hashonly/utilization_receipt.json`.
+receipt is in Chipyard managed task
+`opu-counter-goldengate-pin/.tmp/metasim_matrix_hashonly/utilization_receipt.json`.
 U250 synthesis and actual model/FPGA counter measurements remain pending.
 
 The aligned-prepack TinyLlama s64 image also has an exact Spike-gated sparse profile: 19 OPU

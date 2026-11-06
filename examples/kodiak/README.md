@@ -303,6 +303,12 @@ HF_HUB_OFFLINE=1 CAUSAL_LM_MODEL=TinyLlama/TinyLlama-1.1B-Chat-v1.0 CAUSAL_LM_LA
   M2M_SEQ=64 ./run.sh capture tinyllama_l2_s64 --loader ../workloads/causal_lm_section/loader.py
 ```
 
+This offline command requires the TinyLlama checkpoint in the local Hugging Face cache first.
+The measured s64/s128 captures are ignored local artifacts, not part of a fresh Git checkout;
+transfer their exact capture bundles from the shared host to reproduce the published hashes.
+A new checkpoint download or recapture has a new capture identity and must pass the full Spike
+and hardware gates before its numbers are compared with the results here.
+
 ## 2d. `matrix` — a regression matrix over whole models
 
 ```bash
@@ -364,7 +370,8 @@ whisper images are 42–104 G.
 
 ## 6. Run on FireSim — the OPU's real datapath and cycles
 
-Spike cannot execute the OPU, so every `--opu` image above is gated through its stand-in twin. FireSim
+Stock Spike cannot execute the OPU; the pinned `saturn_opu` Spike extension used above can run
+the shipped OPU image, while its stand-in twin provides an independent numerical gate. FireSim
 runs the RTL itself on an FPGA: the shipped image, the real unit, real cycles. This is how the
 single-core Kodiak OPU numbers were measured (SpectFormer int8, see the end of this section).
 
@@ -442,6 +449,11 @@ boot, a few minutes per leg.
 ./run.sh firesim --models spectformer             # build + spike-gate the exact FireSim ELFs, print the jobs
 ./run.sh firesim --models spectformer --submit --timeout 7200
 ```
+
+The SpectFormer capture requires its upstream source tree (`SPECTFORMER_DIR`) and trained
+checkpoint (`SPECTFORMER_CKPT`). Without the checkpoint, its loader prints `RANDOM INIT` and
+changes the model being measured. On a fresh checkout, transfer the exact capture bundle or
+supply both dependencies before the `capture` command, then verify the resulting capture digest.
 
 `firesim` builds both images through `merlin-compile`: the DEVICE leg routes int8 contractions to the
 OPU; the CONTROL leg uses plain RVV. Both exact ELFs pass the W8A8 spike gate before submission, and

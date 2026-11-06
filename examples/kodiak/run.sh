@@ -114,7 +114,8 @@ setup)
   ;;
 
 preflight)
-  ex_preflight "$BOARD"
+  if [ "$#" -gt 0 ]; then shift; fi
+  ex_preflight "$BOARD" "$@"
   ;;
 
 probe)
