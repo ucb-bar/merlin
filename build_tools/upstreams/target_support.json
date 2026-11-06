@@ -83,8 +83,8 @@
         "target": "iris",
         "repo": "https://github.com/ucb-bar/iris-mlir.git",
         "branch": "handwritten-implementation",
-        "commit": "8447703ae5805271911e8ef232d8fd1aa7b6947d",
-        "tree": "48e9f0deef16c905a83e79a1f6ae2ff46d033a37",
+        "commit": "3000e9806fec784ab0b9fa519de3e4a4fdfbc248",
+        "tree": "8483e644a9939a79a92525f48b16829474fe687f",
         "extends": "rvv",
         "example": "examples/iris",
         "core_references": [
