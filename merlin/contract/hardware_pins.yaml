@@ -226,6 +226,77 @@ pins:
     used_by:
       - iris-mlir:contracts/matrix_units.yaml (unit saturn_vme, `core`)
 
+  chipyard_kodiak_vme:
+    description: >-
+      Compact one-core Kodiak VME/Zvt FireSim source configuration. This pin
+      identifies elaboration inputs, not a routed bitstream or physical chip.
+      TargetConfigs.scala declares KodiakVMECompact1CoreConfig and its FireSim
+      wrapper; the compiler derives vector geometry from the inner config.
+    repo_canonical: https://github.com/ucb-bar/chipyard.git
+    repo_observed: https://github.com/copparihollmann/chipyard.git
+    commit: "0c0fcd39b4a14d7828064595477b24cba248a772"
+    targets: [kodiak]
+    branch: null
+    root_env: MERLIN_CHIPYARD
+    path: .
+    content_check: true
+    requires_paths:
+      - generators/firechip/chip/src/main/scala/TargetConfigs.scala
+    covers: [saturn_vme_kodiak, rocket_chip_kodiak_vme]
+    used_by:
+      - kodiak-mlir compact VME board route and matrix contract host configuration
+    notes: >-
+      This commit records generators/saturn at 4359c36 and generators/rocket-chip
+      at fc745a8. Both are separately checked below; no bitstream hash is known.
+
+  saturn_vme_kodiak:
+    description: >-
+      Saturn VME decoder, integer matrix kernel reference, and compact
+      VLEN=512/DLEN=128 vector configuration used by Kodiak VME. It descends
+      from the Iris VME revision but is bound to the Kodiak Chipyard gitlink.
+    repo_canonical: https://github.com/ucb-bar/saturn-vectors.git
+    repo_observed: https://github.com/miles-rusch-berkeley/saturn-vectors.git
+    commit: "4359c36b710bb230335fc2866a28bd3f1911ed6e"
+    targets: [kodiak]
+    branch: null
+    repo_observed_note: >-
+      The source submodule's origin is the Miles Rusch Berkeley fork, where
+      commit 4359c36 is published; the canonical ucb-bar remote is recorded
+      above for identity but is not the observed source of these bytes.
+    root_env: MERLIN_CHIPYARD
+    path: generators/saturn
+    nested_in: chipyard_kodiak_vme
+    nested_path: generators/saturn
+    requires_paths:
+      - benchmarks/common/vme.h
+      - benchmarks/common/vme_gemm.h
+      - src/main/scala/common/Consts.scala
+      - src/main/scala/insns/Instructions.scala
+      - src/main/scala/common/Parameters.scala
+      - src/main/scala/shuttle/Configs.scala
+      - src/main/scala/rocket/Configs.scala
+      - chipyard/KodiakVMEConfigs.scala
+    used_by:
+      - kodiak-mlir compact VME matrix contract and Zvt kernel derivation
+
+  rocket_chip_kodiak_vme:
+    description: >-
+      Rocket matrix configuration instruction decoder and K-step table used
+      by the compact Kodiak VME kernel. This exact revision is the Chipyard
+      gitlink, independent of any separate rocket-chip task checkout.
+    repo_canonical: https://github.com/chipsalliance/rocket-chip.git
+    commit: "fc745a8c377fdbf1d278eea81da9ac47b4b5fbc0"
+    targets: [kodiak]
+    branch: null
+    root_env: MERLIN_CHIPYARD
+    path: generators/rocket-chip
+    nested_in: chipyard_kodiak_vme
+    nested_path: generators/rocket-chip
+    requires_paths:
+      - src/main/scala/rocket/Matrix.scala
+    used_by:
+      - kodiak-mlir compact VME matrix contract core configuration
+
   spike_zvt:
     description: >-
       The riscv-isa-sim revision whose Zvt support (commit 72958551 "Add Zvt support" and its follow-ups)
@@ -235,7 +306,7 @@ pins:
       riscv-opcodes table (riscv/encoding.h). Stock chipyard spike does not carry Zvt.
     repo_canonical: https://github.com/riscv-software-src/riscv-isa-sim.git
     commit: "f90d5af53f50b0feec7a7cbcb4411e1e0410c465"
-    targets: [iris]
+    targets: [iris, kodiak]
     branch: master
     root_env: MERLIN_SPIKE_ZVT_SRC
     path: .
