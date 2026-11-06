@@ -33,9 +33,21 @@ class CheckpointIdentityTest(unittest.TestCase):
             (self.checkpoint / name).write_bytes(content)
             self.pins[name] = hashlib.sha256(content).hexdigest()
 
-    def test_unreviewed_metadata_fails_closed(self):
-        with self.assertRaisesRegex(RuntimeError, "independently trusted.*missing"):
+    def test_weights_mismatch_fails_closed(self):
+        with self.assertRaisesRegex(RuntimeError, "model.safetensors"):
             identity.authenticate(self.checkpoint)
+
+    def test_unreviewed_metadata_is_observed_without_disabling_execution(self):
+        with patch.dict(identity.TRUSTED_SHA256,
+                        {"model.safetensors": self.pins["model.safetensors"]}, clear=True):
+            result = identity.authenticate(self.checkpoint)
+        self.assertFalse(result["checkpoint_authenticated"])
+        self.assertIsNone(result["files"]["config.json"]["authentication_source"])
+
+    def test_required_weights_trust_anchor_cannot_be_removed(self):
+        with patch.dict(identity.TRUSTED_SHA256, {}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "Required authenticated weights"):
+                identity.authenticate(self.checkpoint)
 
     def test_observations_do_not_claim_authenticated_revision(self):
         with patch.dict(identity.TRUSTED_SHA256,
@@ -52,8 +64,13 @@ class CheckpointIdentityTest(unittest.TestCase):
             "checkpoint_authenticated": True, "revision": identity.REVISION,
             "files": self.pins,
         }))
-        with self.assertRaisesRegex(RuntimeError, "not trust anchors"):
+        with self.assertRaisesRegex(RuntimeError, "model.safetensors"):
             identity.authenticate(self.checkpoint)
+        with patch.dict(identity.TRUSTED_SHA256,
+                        {"model.safetensors": self.pins["model.safetensors"]}, clear=True):
+            result = identity.authenticate(self.checkpoint)
+        self.assertFalse(result["checkpoint_authenticated"])
+        self.assertFalse(result["files"]["tokenizer.json"]["authenticated"])
 
     def test_complete_independent_test_pins_accept_fixture(self):
         with patch.dict(identity.TRUSTED_SHA256, self.pins, clear=True):
@@ -78,7 +95,7 @@ class CheckpointIdentityTest(unittest.TestCase):
         with patch.dict(sys.modules, torch=torch, transformers=transformers):
             loader = load("qwen_pretrained_test_loader", "loader.py")
             with patch.dict("os.environ", QWEN_CHECKPOINT=str(self.checkpoint)):
-                with self.assertRaisesRegex(RuntimeError, "pins are missing"):
+                with self.assertRaisesRegex(RuntimeError, "model.safetensors"):
                     loader.get_model_and_inputs()
         model.from_pretrained.assert_not_called()
         tokenizer.from_pretrained.assert_not_called()
@@ -102,29 +119,75 @@ class CheckpointIdentityTest(unittest.TestCase):
         with patch.object(driver, "bootstrap_compiler") as bootstrap, \
              patch.object(driver, "run") as execute, \
              patch.object(sys, "argv", ["run.py", "--checkpoint", str(self.checkpoint)]):
-            with self.assertRaisesRegex(RuntimeError, "pins are missing"):
+            with self.assertRaisesRegex(RuntimeError, "model.safetensors"):
                 driver.main()
         bootstrap.assert_not_called()
         execute.assert_not_called()
 
     def test_inventory_authenticates_instead_of_trusting_observations(self):
         inventory = load("qwen_test_inventory", "inventory.py")
-        with self.assertRaisesRegex(RuntimeError, "pins are missing"):
+        with self.assertRaisesRegex(RuntimeError, "model.safetensors"):
             inventory.annotate(self.checkpoint / "missing-library", self.checkpoint / "missing-export",
                                self.checkpoint, 32, 2)
 
-    def test_downloader_records_observations_then_refuses_verification(self):
+    def test_commit_pinned_download_authenticates_metadata_only_at_download(self):
         downloader = load("qwen_test_downloader", "download_checkpoint.py")
-        hub = types.SimpleNamespace(snapshot_download=Mock())
+        hub = types.SimpleNamespace(snapshot_download=Mock(), hf_hub_download=Mock())
         with patch.dict(sys.modules, huggingface_hub=hub), \
              patch.dict(identity.TRUSTED_SHA256,
                         {"model.safetensors": self.pins["model.safetensors"]}, clear=True), \
              patch.object(sys, "argv", ["download_checkpoint.py", "--out", str(self.checkpoint)]):
-            with self.assertRaisesRegex(RuntimeError, "pins are missing"):
-                downloader.main()
-        observed = json.loads((self.checkpoint / "checkpoint-identity.json").read_text())
+            downloader.main()
+            downloaded = json.loads((self.checkpoint / "checkpoint-identity.json").read_text())
+            # The saved download receipt is not trusted by subsequent local admission.
+            observed = identity.authenticate(self.checkpoint)
+        hub.snapshot_download.assert_called_once_with(
+            identity.MODEL_ID, revision=identity.REVISION, local_dir=self.checkpoint,
+            allow_patterns=list(identity.FILES), max_workers=3,
+        )
+        self.assertEqual(hub.hf_hub_download.call_count, 4)
+        for name in identity.FILES:
+            if name != "model.safetensors":
+                hub.hf_hub_download.assert_any_call(
+                    identity.MODEL_ID, filename=name, revision=identity.REVISION,
+                    local_dir=self.checkpoint, force_download=True, local_files_only=False,
+                )
+        self.assertTrue(downloaded["checkpoint_authenticated"])
+        self.assertEqual(downloaded["downloaded_revision"], identity.REVISION)
+        for name in identity.FILES:
+            self.assertEqual(downloaded["files"][name]["sha256"], self.pins[name])
+        self.assertEqual(downloaded["files"]["tokenizer.json"]["authentication_source"],
+                         f"huggingface:{identity.MODEL_ID}@{identity.REVISION}")
         self.assertFalse(observed["checkpoint_authenticated"])
+        self.assertNotIn("downloaded_revision", observed)
         self.assertNotIn("revision", observed)
+
+    def test_other_download_revision_cannot_authenticate_metadata(self):
+        with self.assertRaisesRegex(ValueError, "full pinned"):
+            identity.identify(self.checkpoint, downloaded_revision="main")
+
+    def test_failed_download_cannot_write_authenticated_receipt(self):
+        downloader = load("qwen_failed_downloader", "download_checkpoint.py")
+        # A snapshot-level offline fallback can return a cached local directory.
+        # Metadata must still be fetched online before it can be authenticated.
+        hub = types.SimpleNamespace(snapshot_download=Mock(return_value=self.checkpoint),
+                                    hf_hub_download=Mock(side_effect=OSError("offline")))
+        (self.checkpoint / "checkpoint-identity.json").write_text('{"stale": true}')
+        with patch.dict(sys.modules, huggingface_hub=hub), \
+             patch.object(sys, "argv", ["download_checkpoint.py", "--out", str(self.checkpoint)]):
+            with self.assertRaisesRegex(OSError, "offline"):
+                downloader.main()
+        self.assertFalse((self.checkpoint / "checkpoint-identity.json").exists())
+
+    def test_driver_admits_valid_weights_before_compiler_bootstrap(self):
+        driver = load("qwen_admitted_test_driver", "run.py")
+        with patch.dict(identity.TRUSTED_SHA256,
+                        {"model.safetensors": self.pins["model.safetensors"]}, clear=True), \
+             patch.object(driver, "bootstrap_compiler", side_effect=RuntimeError("admitted to compiler")) as bootstrap, \
+             patch.object(sys, "argv", ["run.py", "--checkpoint", str(self.checkpoint), "--plan-only"]):
+            with self.assertRaisesRegex(RuntimeError, "admitted to compiler"):
+                driver.main()
+        bootstrap.assert_called_once()
 
 
 if __name__ == "__main__":

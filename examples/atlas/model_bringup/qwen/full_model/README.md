@@ -2,13 +2,15 @@
 
 This follows the kernel-library coverage workflow: export a real model session, map its operations to candidate kernel families, run every distinct launch at its model-derived shape, and report unsupported work. It is separate from the older hand-written 32×32 microbenchmarks in the parent directory.
 
-## Authentication limitation
+## Checkpoint authentication
 
-Pretrained execution is currently disabled. The repository has an independently pinned weights SHA-256, but no independently trusted pins for `config.json`, `generation_config.json`, `tokenizer.json`, or `tokenizer_config.json`. The downloader writes observed hashes under `requested_model` and `requested_revision`; those fields describe the request, and do not authenticate the local snapshot. A local `checkpoint-identity.json` is never a trust anchor. Setup rejects the checkpoint after recording observations, and the pretrained driver, loader, and inventory reject it before model/config/tokenizer loading. Restoring this path requires reviewing and adding all missing hashes to `checkpoint_identity.py`; generating hashes from the same local directory cannot establish trust.
+The driver, loader, and inventory require the independently pinned SHA-256 of `model.safetensors` before use. A mismatch rejects execution. The downloader requests the full Hugging Face revision commit `ad9f0ae0864d7fbcd1cd905e3c6c5b069cc8b562`, which authenticates the downloaded `config.json`, `generation_config.json`, `tokenizer.json`, and `tokenizer_config.json`; the downloader forces fresh online reads of those four metadata files before `checkpoint-identity.json` records their SHA-256 hashes and authentication source. A cached or offline snapshot fallback cannot confer that status. Authentication is scoped to the five listed files, and does not cover extra files in a supplied directory.
 
-The separate `launch_bench.py` random-weight fixture remains supported without a checkpoint. It constructs its architecture explicitly, and does not claim pretrained weights, tokenizer identity, or a pinned Hugging Face snapshot. Historical real-checkpoint results below are prior evidence, not a claim that the current pretrained path can execute with the incomplete trust manifest.
+On later local reads, metadata hashes are observed, not authenticated: there are no independent metadata digests in the source, and a mutable local download receipt is never a trust anchor. `requested_model` and `requested_revision` describe the intended download, not the identity of arbitrary local metadata. Local receipts mark each file's `authenticated` status, and retain `checkpoint_authenticated: false` when metadata is only observed. This does not block pretrained execution with valid authenticated weights. Any additional independently trusted hashes in `checkpoint_identity.py` are also enforced. No receipt claims that observed metadata is pinned. The inventory and `run.json` carry this distinction explicitly.
 
-## Run (pending independent metadata pins)
+The separate `launch_bench.py` random-weight fixture remains supported without a checkpoint. It constructs its architecture explicitly, and does not claim pretrained weights, tokenizer identity, or a pinned Hugging Face snapshot. Historical real-checkpoint results below remain prior evidence.
+
+## Run
 
 Use a compiler wheel or `--atlas-mlir-root` / `ATLAS_MLIR_ROOT` / a sibling compiler checkout, plus built `atlas-opt` and `atlas-emit` selected by `--atlas-bin` or `ATLAS_OOT_BIN_DIR`. The optional setup action also needs `uv` and Git:
 
@@ -17,14 +19,14 @@ python3 examples/atlas/model_bringup/qwen/full_model/run.py --setup
 python3 examples/atlas/model_bringup/qwen/full_model/run.py
 ```
 
-Setup prepares isolated CPU capture/model environments, checks out pinned kernel and simulator sources, downloads the pretrained checkpoint (about 3.6 GB), and checks the complete weights SHA-256, records observed file hashes, and fails closed while metadata pins are missing. The default session is a 32-token prefill plus two greedy decode steps through all 28 layers. The checkpoint's BF16 parameters are promoted exactly to FP32 for the reference computation; attention uses the eager implementation from Transformers 4.44.0.
+Setup prepares isolated CPU capture/model environments, checks out pinned kernel and simulator sources, downloads the pretrained checkpoint (about 3.6 GB) at the full revision commit, checks the complete weights SHA-256, and records downloaded file hashes with their authentication sources. The default session is a 32-token prefill plus two greedy decode steps through all 28 layers. The checkpoint's BF16 parameters are promoted exactly to FP32 for the reference computation; attention uses the eager implementation from Transformers 4.44.0.
 
 The second command requires a fresh `out/qwen-full-model`; use `-o DIR` for a new run. Defaults, including 128-column output panels, are explicit in `mapping.yaml`. Every panel keeps the full source reduction width. `--plan-only` skips execution and real-value capture. `--skip-real-capture` runs the inventory/bench alone. Existing environments/checkouts can be selected with `--capture-python`, `--model-python`, `--library-root`, `--model-root`, and `--checkpoint`. `ATLAS_KERNELS_ROOT` and `NPU_MODEL_ROOT` are source-root alternatives. Supplied local source roots need not match historical pins; `run.json` records their observed revisions, historical pins, and tool hashes. The default worker count is 1; explicit counts from 1 through 8 are accepted.
 
 ## What is checked
 
-1. `loader.py` authenticates every consumed checkpoint file before loading, and
-   currently refuses execution because metadata pins are missing. There is no random
+1. `loader.py` authenticates the weights before loading, and observes local
+   config/tokenizer hashes under the policy above. There is no random
    initialization fallback. No model computation is replaced by authored kernels.
 2. The kernel library's `coverage/export_ops.py` exports the session. `inventory.py`
    labels prefill/decode and checks complete projection counts: 197 for prefill
@@ -72,7 +74,7 @@ This establishes real-model coverage and validated graph extraction. The project
 
 The imported reports describe the historical kernel pin above. The current library supports D128 attention and width-1536 RMSNorm with explicit epsilon. The mapping requests Qwen epsilon `1.0e-6` and retains causal masking and export-derived GQA dimensions. New numerical qualification is reported separately from the historical evidence.
 
-`capture_boundaries.py --skip-linalg` retains graph extraction and exact eager-versus-export checks when torch-mlir is unavailable. `--loader PATH` selects a local module exporting `get_model_and_inputs`; the default remains the pinned pretrained loader without a random-initialization fallback. Capture reports mark skipped Linalg diagnostics explicitly.
+`capture_boundaries.py --skip-linalg` retains graph extraction and exact eager-versus-export checks when torch-mlir is unavailable. `--loader PATH` selects a local module exporting `get_model_and_inputs`; the default remains the weights-authenticated pretrained loader without a random-initialization fallback. Capture reports mark skipped Linalg diagnostics explicitly.
 
 ## Opt-in projection epilogues
 

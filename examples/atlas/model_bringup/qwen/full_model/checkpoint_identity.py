@@ -1,8 +1,8 @@
 """Checkpoint observations and independent trust policy, without model imports.
 
-Only the weights digest has a reviewed reference. Observed local JSON hashes
-cannot authenticate a snapshot. Pretrained execution fails closed until all
-consumed files have independently reviewed digests in TRUSTED_SHA256.
+The weights have an independent reference digest. A successful Hugging Face
+download at the full revision commit also authenticates the downloaded metadata.
+Later local reads observe metadata bytes without trusting a local receipt.
 """
 
 import hashlib
@@ -22,8 +22,15 @@ TRUSTED_SHA256 = {
 }
 
 
-def identify(checkpoint):
-    """Observe local bytes; never infer snapshot identity from local metadata."""
+def identify(checkpoint, *, downloaded_revision=None):
+    """Check trusted hashes and observe the five requested checkpoint files.
+
+    Only the downloader may supply downloaded_revision, immediately after a
+    successful forced online metadata downloads at REVISION. A directory name or a local JSON
+    manifest cannot establish that provenance for subsequent local reads.
+    """
+    if downloaded_revision is not None and downloaded_revision != REVISION:
+        raise ValueError("Download must use the full pinned Hugging Face revision")
     records = {}
     for name in FILES:
         path = Path(checkpoint) / name
@@ -35,20 +42,26 @@ def identify(checkpoint):
         trusted = TRUSTED_SHA256.get(name)
         if trusted is not None and observed != trusted:
             raise RuntimeError(f"Checkpoint file differs from trusted digest: {name}")
+        source = ("independent_sha256" if trusted is not None else
+                  f"huggingface:{MODEL_ID}@{REVISION}" if downloaded_revision else None)
         records[name] = dict(sha256=observed, bytes=path.stat().st_size,
-                             authenticated=trusted is not None)
-    return dict(requested_model=MODEL_ID, requested_revision=REVISION,
-                checkpoint_authenticated=all(row["authenticated"] for row in records.values()),
-                files=records)
+                             authenticated=source is not None,
+                             authentication_source=source)
+    result = dict(requested_model=MODEL_ID, requested_revision=REVISION,
+                  authentication_scope="listed_files_only",
+                  checkpoint_authenticated=all(row["authenticated"] for row in records.values()),
+                  files=records)
+    if downloaded_revision is not None:
+        result["downloaded_revision"] = downloaded_revision
+    return result
 
 
-def authenticate(checkpoint):
-    """Reject incomplete trust before model/config/tokenizer deserialization."""
-    missing = [name for name in FILES if name not in TRUSTED_SHA256]
-    if missing:
-        raise RuntimeError(
-            "Pretrained Qwen execution is disabled: independently trusted SHA-256 "
-            "pins are missing for " + ", ".join(missing)
-            + ". Observed hashes and checkpoint-identity.json are not trust anchors."
-        )
-    return identify(checkpoint)
+def authenticate(checkpoint, *, downloaded_revision=None):
+    """Require authentic weights; metadata without a trust anchor stays observed.
+
+    Additional independently trusted hashes, when supplied by this source, are
+    enforced too. Never promote checkpoint-identity.json to a trust anchor.
+    """
+    if "model.safetensors" not in TRUSTED_SHA256:
+        raise RuntimeError("Required authenticated weights digest is missing")
+    return identify(checkpoint, downloaded_revision=downloaded_revision)

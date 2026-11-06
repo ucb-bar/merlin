@@ -1,6 +1,6 @@
 """Real pretrained Qwen session for the model-export inventory workflow.
 
-Set QWEN_CHECKPOINT to the pinned local snapshot. No model is reconstructed from
+Set QWEN_CHECKPOINT to a local checkpoint with authenticated weights. No model is reconstructed from
 hand-written kernel definitions, and checkpoint loading never falls back to
 random initialization. The default scope is 32-token prefill plus two decodes.
 """

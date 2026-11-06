@@ -146,7 +146,7 @@ def main():
     if args.setup:
         setup(args)
         return
-    authenticate(args.checkpoint)
+    checkpoint_identity = authenticate(args.checkpoint)
     compiler_root = bootstrap_compiler(args.atlas_mlir_root)
     from atlas_mlir.toolchain import bin_dir
     args.atlas_bin = (args.atlas_bin or bin_dir()).resolve()
@@ -291,6 +291,7 @@ def main():
             env=env,
         )
     record = dict(
+        checkpoint=checkpoint_identity,
         kernels_revision=observed_revision(library),
         kernels_root=str(library),
         historical_kernels_revision=HISTORICAL_KERNELS,

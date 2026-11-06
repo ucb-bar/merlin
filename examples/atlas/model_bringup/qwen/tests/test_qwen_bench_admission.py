@@ -106,7 +106,7 @@ class BenchAdmissionTest(unittest.TestCase):
             toolchain = types.SimpleNamespace(bin_dir=lambda: atlas_bin)
             with patch.dict(sys.modules, {"atlas_mlir.toolchain": toolchain}), \
                  patch.object(driver, "bootstrap_compiler", return_value=self.root), \
-                 patch.object(driver, "authenticate"), patch.object(driver, "observed_revision", return_value="local"), \
+                 patch.object(driver, "authenticate", return_value={"checkpoint_authenticated": False}), patch.object(driver, "observed_revision", return_value="local"), \
                  patch.object(driver, "run", side_effect=execute), patch.object(sys, "argv", argv):
                 driver.main()
         else:
