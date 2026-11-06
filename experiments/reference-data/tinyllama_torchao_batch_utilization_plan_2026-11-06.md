@@ -78,7 +78,8 @@ so batching does not make it a physical-chip workload.
 
 ## Required experiment
 
-1. Extend the pinned Model2MLIR TinyLlama capture entry to accept a
+1. Set `M2M_BATCH=8 M2M_SEQ=8` on
+   `examples/workloads/causal_lm_section/loader.py` to capture a
    deterministic `(8,8)` token-ID input with eight independent sequences.
    Keep the same checkpoint and TorchAO W8A8 configuration. Before capture,
    compare the complete eager batched logits with eight separate eager calls;

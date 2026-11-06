@@ -15,6 +15,7 @@ contraction the whole model contains, at the same shape and with the same pretra
                                    arithmetic), and the example input is the REAL embedding rows of the
                                    drawn token ids, so the section sees the tensor the whole model would.
     CAUSAL_LM_ATTENTION=eager      the attention implementation (eager keeps the score matmuls visible)
+    M2M_BATCH=N                    independent sequences in the example input (default 1)
     M2M_SEQ=N                      sequence length of the example input (default 8)
 
 Works for any ``AutoModelForCausalLM`` whose decoder keeps its layers in a ``layers`` ModuleList (Llama,
@@ -70,7 +71,10 @@ def get_model_and_inputs():
     entry = os.environ.get("CAUSAL_LM_ENTRY", "ids")
     if entry not in ("ids", "embeds"):
         raise RuntimeError(f"CAUSAL_LM_ENTRY must be ids or embeds, not {entry!r}")
+    batch = int(os.environ.get("M2M_BATCH", "1"))
     seq = int(os.environ.get("M2M_SEQ", "8"))
+    if batch < 1:
+        raise RuntimeError(f"M2M_BATCH must be positive, not {batch}")
     lm = AutoModelForCausalLM.from_pretrained(
         model_id,
         dtype=torch.float32,
@@ -87,7 +91,7 @@ def get_model_and_inputs():
     total = _keep_first_layers(lm, int(layers)) if layers else len(lm.get_decoder().layers)
     kept = int(layers) if layers else total
 
-    ids = torch.randint(0, lm.config.vocab_size, (1, seq), dtype=torch.long)
+    ids = torch.randint(0, lm.config.vocab_size, (batch, seq), dtype=torch.long)
     if entry == "embeds":
         embed = lm.get_input_embeddings()
         with torch.no_grad():
@@ -108,4 +112,6 @@ def get_model_and_inputs():
         "synthetic_inputs": True,
         "paper_ready": False,
     }
+    if batch != 1:
+        model.session_provenance["batch_size"] = batch
     return model, (x,)
