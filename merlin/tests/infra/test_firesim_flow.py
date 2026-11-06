@@ -205,8 +205,10 @@ def test_whole_model_legs_require_w8a8_reference_before_compile(flow, tmp_path, 
         flow.build_legs(args)
 
 
-@pytest.mark.parametrize("framework_ok", [True, False])
-def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(flow, tmp_path, monkeypatch, framework_ok):
+@pytest.mark.parametrize(("framework_ok", "tier_mismatch"), [(True, False), (False, False), (False, True)])
+def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(
+    flow, tmp_path, monkeypatch, framework_ok, tier_mismatch
+):
     from merlin.targetgen import application_inventory
 
     flow._board = lambda name: SimpleNamespace(name=name, bitstream="alveo_u250_firesim_kodiak_opu_1core", vlen=512)
@@ -219,7 +221,7 @@ def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(flow, t
         "run": "host",
         "dtype": "int8_w8a8",
         "bundle": str(bundle),
-        "status": "verified" if framework_ok else "run_mismatch",
+        "status": "verified" if framework_ok or tier_mismatch else "run_mismatch",
         "verify": {"tier_ok": "w8a8" if framework_ok else None},
         "reference": {"kind": "torchao_w8a8_framework", "sha256": flow._sha256(bundle / "golden.npy")},
         "source_quantization": {
