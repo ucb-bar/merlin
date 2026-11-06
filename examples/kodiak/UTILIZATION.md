@@ -47,6 +47,19 @@ The accepted Spectformer h1 OPU ELF likewise recorded **105 calls, 0 scalar fall
 same point. `dynamic_opu_counters/receipt.json` records each exact ELF's SHA-256 and the debugger
 log's SHA-256, so these counts cannot be transferred silently to a different build.
 
+The corrected profiled Spectformer image was built after the newer routing policy: it routes
+90 call sites and 1,853,155,328 valid MACs, versus 57 sites and 1,840,054,272 MACs in the older
+accepted unprofiled image. Its Spike profile therefore cannot explain the older FireSim job's
+timing. A current unprofiled comparator built with the same settings has a byte-identical
+`opu_signatures.json` and pre-instrumentation MLIR, and its exact Spike output hash and prefix
+match the profiled image. It takes 1,608,481,484 Spike cycles versus 1,611,163,448 profiled
+cycles, an observed 0.167% difference on Spike. The comparator's
+`spectformer_current_unprofiled_h1/comparison_receipt.json` records both exact ELF digests.
+Hardware profiling and a same-routing FireSim timing comparison are pending. In the profiled
+Spike image alone, 5,172 per-op rows cover 99.66% of compute cycles; OPU call intervals account
+for 17,063,688 cycles (1.06% of the profiled total) and `linalg.generic` for 66.76% of
+attributed cycles. These are simulator diagnostics, not hardware occupancy.
+
 For correctness, the exact shipped OPU Spike ELFs were stopped after computing their whole-output
 hashes and their complete output buffers were extracted before the UART prefix dump. Each extracted
 FNV hash matched its FireSim plan (and s64 job 3860), then Merlin's W8A8 gate was run with
@@ -74,6 +87,14 @@ Actual array occupancy needs an RTL counter or trace measuring busy cycles and u
 opcode counts in an ELF cannot supply it. A timed kernel window would narrow the denominator but
 would still include loads, packing, and stalls. FireSim's ~15 MHz simulation rate measures host
 emulation speed and does not enter any utilization formula.
+
+For a new instrumented bitstream, count OPU active row cycles as the ROI-gated sum of
+`PopCount(io.op.macc)` and count ROI core cycles over the same software markers. This OPU has
+eight rows of 128 int8 MAC cells. Then issued MAC slots are `128 × active row cycles`, array
+issue duty is `active row cycles / (8 × ROI core cycles)`, and useful slot efficiency is the
+exact valid MAC count divided by issued slots. Verify counter annotations and a known GEMM in
+metasim before a separate U250 bitstream build; the currently pinned bitstream has no such
+counter and cannot yield these values retroactively.
 
 The spectformer image passed its W8A8 numerical gate; its complete output hash matched the exact
 Spike-gated image. Its hash does not bit-match the older W8A8 golden, whose libm policy differs.
