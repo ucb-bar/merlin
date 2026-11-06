@@ -1430,6 +1430,7 @@ def _debug_harness(debug: bool, dram_base: int, region_bytes: int, n_harts: int)
 /* ---- debug instrumentation (MERLIN_DEBUG) ------------------------------------------ */
 #define MERLIN_REGION_BASE  {hex(dram_base)}ULL
 #define MERLIN_REGION_END   {hex(end)}ULL
+extern char _end[];  /* Zephyr linker's end of the loaded image, including weights and BSS. */
 
 /* Published by the op profiler when it is linked in; a weak definition keeps this compiling when it
  * is not, in which case the heartbeat still reports elapsed time and just has no op to name. */
@@ -1455,14 +1456,29 @@ static void merlin_stage(const char *name)
  * through a volatile pointer so the compiler cannot fold it away. */
 static void merlin_probe_memory(void)
 {{
-  const unsigned long long span = MERLIN_REGION_END - MERLIN_REGION_BASE;
-  /* Skip the first slice: that is where this very code and its data live. */
+  /* A large embedded weight blob may occupy most of the declared DRAM region. Fixed quarter
+   * points can overwrite those weights before inference and silently change the answer. Only
+   * probe free memory beyond the linked image. This runs before the model allocates its arena. */
+  const uintptr_t image_end = (uintptr_t)_end;
+  const uintptr_t region_end = (uintptr_t)MERLIN_REGION_END;
+  if (image_end < MERLIN_REGION_BASE || image_end >= region_end || region_end - image_end <= 4096) {{
+    printk("MEM probe skipped image_end=%llx region_end=%llx\\n",
+           (unsigned long long)image_end, (unsigned long long)region_end);
+    return;
+  }}
+  const uintptr_t probe_base = (image_end + 4095U) & ~(uintptr_t)4095U;
+  if (probe_base >= region_end - 4096U) {{
+    printk("MEM probe skipped image_end=%llx region_end=%llx\\n",
+           (unsigned long long)image_end, (unsigned long long)region_end);
+    return;
+  }}
+  const uintptr_t span = region_end - probe_base;
   for (int i = 1; i <= 4; i++) {{
-    unsigned long long off = (span / 4ULL) * (unsigned long long)i;
+    uintptr_t off = (span / 4U) * (uintptr_t)i;
     if (off >= span) {{
-      off = span - 4096ULL;
+      off = span - 4096U;
     }}
-    volatile uint64_t *p = (volatile uint64_t *)(uintptr_t)(MERLIN_REGION_BASE + off);
+    volatile uint64_t *p = (volatile uint64_t *)((probe_base + off) & ~(uintptr_t)7U);
     uint64_t want = 0xA5A5A5A500000000ULL | (uint64_t)i;
     uint64_t got;
     *p = want;
