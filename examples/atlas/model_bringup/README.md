@@ -22,8 +22,13 @@ export RESULTS_ROOT=/absolute/path/out/model-bringup-results
 export MODEL_OUTPUT_ROOT=/absolute/path/out/model-bringup-outputs
 mkdir -p "$MODEL_OUTPUT_ROOT"
 export ATLAS_MLIR_BIN="$ATLAS_ROOT/build/bin"
+# Supply the authenticated fixtures in the inventory below before strict qualification.
+export SMOL_ATTENTION_ADMISSION_ROOT=/absolute/path/to/portable-attention-admission
+export SMOL_PHASE_BUNDLE=/absolute/path/to/complete-smol-phase-bundle
+export SMOL_RAW_BASELINE_REPO=/absolute/path/to/compiler-history-with-unfused-blob
+export TINY_CODEC_MODEL_ROOT=/absolute/path/to/npu-model-at-9e6313
 make view MODE=relocated PYTHON="$PYTHON" ATLAS_ROOT="$ATLAS_ROOT" MERLIN_ROOT="$MERLIN_ROOT" KERNELS_ROOT="$KERNELS_ROOT" VIEW="$VIEW"
-make check MODE=relocated PYTHON="$PYTHON" ATLAS_ROOT="$ATLAS_ROOT" MERLIN_ROOT="$MERLIN_ROOT" KERNELS_ROOT="$KERNELS_ROOT" MODEL_ROOT="$MODEL_ROOT" VIEW="$VIEW" RESULTS_ROOT="$RESULTS_ROOT"
+make check TINY_CODEC_MODEL_ROOT="$TINY_CODEC_MODEL_ROOT" MODE=relocated PYTHON="$PYTHON" ATLAS_ROOT="$ATLAS_ROOT" MERLIN_ROOT="$MERLIN_ROOT" KERNELS_ROOT="$KERNELS_ROOT" MODEL_ROOT="$MODEL_ROOT" VIEW="$VIEW" RESULTS_ROOT="$RESULTS_ROOT"
 ```
 
 `check` runs the complete model suite and the required source joins separately, retains both receipts even on failure, and fails on skipped required checks. Before running it, supply the authenticated `SMOL_REPLAY`, `SMOL_KERNEL_ASSETS`, and `TINY_FULL_CAPTURE` inputs described in [required source joins](test/FAITHFULNESS.md). Those three variables do not replace the separate fixture inputs required by individual test modules.
@@ -49,6 +54,25 @@ The following module retains unavailable sandbox coverage and remains registered
 | Module | Coverage status and exact pre-existing reason |
 | --- | --- |
 | `test_host_iss_gdb_buffered` | PENDING: sandbox socket operation denied; the module timed out, and its seven discovered cases have no completed per-case receipts. |
+
+### Strict suite fixture inventory
+
+The fixture variables below are separate inputs, not outputs of `make view`. Use physical paths without symlink components, retain the producer receipts and all transitive payloads, and authenticate against their recorded identities before use. The tree has no durable acquisition location for these archives; obtain the exact retained producer closure from its custodian or leave the dependent qualification PENDING. Missing inputs are not permission to change `RequiredResult` or accept skips.
+
+| Input | Schema, identity, and consumer |
+| --- | --- |
+| `SMOL_ATTENTION_ADMISSION_ROOT` | Portable `atlas.smol_attention_admission_archive.v1` directory with `catalogue.json`, `admission.json`, `historical-runner.py`, and every catalogue member. `tools/smol_capture/fast_attention.py:load_admission` verifies helper/runner/review/primitive hashes, original47 RTL binding, 25 retained full-arena cases across 17 kinds, and current execution/recipe ASTs. Required for the 13 `FastAttentionAdmissionTest` cases; this is retained development-only admission, not new original-model execution. |
+| `SMOL_PHASE_BUNDLE` | Complete baseline build directory containing `host/smol-full-contract.json` and `host/host.elf`, from the same full Smol phase build and its retained build/source/hash receipts. `test_smol_full_phases` loads the actual ELF and validates profile geometry, live symbols, and omission controls. Preserve the contract's reference payload closure and builder receipt; the ELF test itself is a structural check, not independent authentication or device execution. |
+| `SMOL_RAW_BASELINE` or `SMOL_RAW_BASELINE_REPO` | Explicit historical unfused `smol_policy_raw.c` file, or a Git provider containing blob `6b464bc7780bff612570efd7f26e6c9cdbf31e6d`. Both providers must yield SHA-256 `15ca4cca1b05c681a439d1134f91817af8221ab56ec072d5d8950ebf333d612e` before macro-disabled object comparison. The file takes precedence if both are set. No history is inferred from the execution view. |
+| `SMOL_REPLAY`, `SMOL_KERNEL_ASSETS` | Full-policy `PASS_ATLAS_ARITHMETIC_FULL_POLICY_REPLAY` receipt and matching `atlas.full_kernel_assets.v1` manifest, including their source-bound 1,421 calls and 2,715 projection panels. Needed by raw-runtime, full-plan, and required source-join checks; see [required source joins](test/FAITHFULNESS.md). |
+| `SMOL_BLOCK_BUNDLE` | Admitted `atlas.block_bundle.v1` selected-layer bundle with original contract, ELF, payload closure, and hash-bound overlay. Prepare it from the authenticated historical archive using the recipe below. `SMOL_BLOCK_ARCHIVE` and `SMOL_BLOCK_TRUST` additionally enable the optional relocated-root adapter regression. |
+| `TINY_ATTENTION_CAPTURE`, `TINY_ATTENTION_RELOCATE` | Original eight-launch synthetic diagnostic receipt and optional recorded-prefix-to-physical-root relocation. All 42 committed file pins remain binding, including 35 payloads and six archived source files; see the recipe below. |
+| `TINY_FULL_CAPTURE`, `TINY_FULL_CODEC` | Original 465-call capture receipt with its complete panel/KV/logit metadata and the archived codec matching the capture's source SHA. The actual `parameters/000-B.bin` weight is required for codec coverage; see `fixture-pins.json` and the recipe below. |
+| `MODEL_ROOT`, `TINY_CODEC_MODEL_ROOT` | Clean model checkouts at `47b8599` for ordinary modules and `9e6313bddecb8ba936206eb347f5cd4e5335282c` for `test_tiny_full_export`, respectively. `make test` passes the second root through `--codec-model-root` and selects it only for that module. No single checkout satisfies both pins. |
+| `SMOL_MERLIN`, `SMOL_RUNTIME`, `MERLIN_ROOT`, `TINY_MODEL_ROOT`, `ATLAS_EXECUTION_MODEL_ROOT`, `ATLAS_NPU_MODEL_ROOT` | Derived by `run_tests.py` from the requested canonical Merlin, verified view, and selected per-module model root. Do not substitute another checkout. `TINY_MERLIN_COMPARISONS` independently selects actual comparisons C sources for Tiny host-model checks; when unset, that test uses its in-tree host stubs. |
+| `ATLAS_MLIR_BIN`, `RISCV_CC`, `TMPDIR` | Built compiler tools, RV64 compiler (or discoverable `riscv64-unknown-elf-gcc`), and writable external temporary directory. Host-C checks also need `/usr/bin/gcc`; the socket regression needs local socket permission. NumPy and PyYAML are required in `PYTHON`. These are tool prerequisites, not fixture authenticity evidence. |
+
+The minimal ordinary-CI registration follows `merlin/tests/infra/test_radiance_kernel_library_example.py`: fixture-free source-view and strict-runner controls live in `merlin/tests/infra`, already included by `pyproject.toml` and the blocking `pr-fast` bucket. The separate manual [Atlas qualification workflow](../../../.github/workflows/atlas-model-bringup.yml) requires a runner labelled `atlas-model-bringup` with the documented `ATLAS_*` repository variables and authenticated inputs provisioned out of band. It runs the complete strict suite and source joins, retains receipts even on failure, and requires a fresh external view/results location per dispatch. That workflow is a proposed CI change; its hosted execution remains PENDING until provisioned and dispatched. Its existence does not establish passing fixture-dependent coverage.
 
 ### Recovered fixture inputs
 

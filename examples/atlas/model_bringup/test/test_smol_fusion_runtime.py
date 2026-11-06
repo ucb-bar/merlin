@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from types import SimpleNamespace
 import numpy as np
 
@@ -19,13 +20,20 @@ from test_smol_policy_raw import Panel, Call, Context, Buffer
 
 # runtime/smol_policy_raw.c before the fusion runtime, addressed by content so it survives history rewrites.
 UNFUSED_RAW_BLOB = '6b464bc7780bff612570efd7f26e6c9cdbf31e6d'
+UNFUSED_RAW_SHA256 = '15ca4cca1b05c681a439d1134f91817af8221ab56ec072d5d8950ebf333d612e'
 
 
 def unfused_raw_source():
     if os.environ.get('SMOL_RAW_BASELINE'):
-        return safe(os.environ['SMOL_RAW_BASELINE']).read_bytes()
-    result = subprocess.run(['git', '-C', str(ROOT), 'cat-file', 'blob', UNFUSED_RAW_BLOB], capture_output=True)
-    return result.stdout if result.returncode == 0 else None
+        raw = safe(os.environ['SMOL_RAW_BASELINE']).read_bytes()
+    elif os.environ.get('SMOL_RAW_BASELINE_REPO'):
+        provider = safe(os.environ['SMOL_RAW_BASELINE_REPO'])
+        raw = subprocess.check_output(['git', '-C', str(provider), 'cat-file', 'blob', UNFUSED_RAW_BLOB])
+    else:
+        return None
+    if hashlib.sha256(raw).hexdigest() != UNFUSED_RAW_SHA256:
+        raise ValueError('historical unfused raw source hash differs')
+    return raw
 
 
 class FusionPanel(ct.Structure):
@@ -435,9 +443,21 @@ class FusionRuntimeTest(unittest.TestCase):
                 if kind=='failed':f.context.failed=1
                 self.assertLess(self.query(f,**changes),0)
 
+    def test_changed_raw_baseline_refused(self):
+        changed = self.work / 'changed-baseline.c'
+        changed.write_bytes(b'changed')
+        with mock.patch.dict(os.environ, {'SMOL_RAW_BASELINE': str(changed)}):
+            with self.assertRaisesRegex(ValueError, 'source hash differs'):
+                unfused_raw_source()
+
+    def test_no_implicit_history_provider(self):
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(subprocess, 'check_output') as read:
+            self.assertIsNone(unfused_raw_source())
+            read.assert_not_called()
+
     def test_macro_disabled_object_identity(self):
         raw=unfused_raw_source()
-        if raw is None:self.skipTest('set SMOL_RAW_BASELINE or run in a git checkout that contains blob '+UNFUSED_RAW_BLOB)
+        if raw is None:self.skipTest('set SMOL_RAW_BASELINE or SMOL_RAW_BASELINE_REPO containing blob '+UNFUSED_RAW_BLOB)
         baseline=self.work / 'unfused/smol_policy_raw.c'
         baseline.parent.mkdir(exist_ok=True)
         baseline.write_bytes(raw)
