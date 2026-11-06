@@ -82,12 +82,13 @@ batching behavior for that input. It does not prove the exported MLIR retains
 M=64, the compiled OPU/VME routes it, or any hardware rate.
 The probe used Model2MLIR commit `90d767a22a2cce1989e4c1bc60704b32612f61f2`
 and Merlin's `M2M_BATCH` loader at blob `d97399e1bf7c67c036c2dcdb1ce136963db18de6`.
-From a managed Merlin worktree with an editable Model2MLIR sibling, rerun it
-with:
+From a managed Merlin worktree with a Model2MLIR sibling at the pinned
+commit, set `M2M_PYTHON` to a Python environment containing the Torch,
+TorchAO, and Transformers versions above, then rerun it with:
 
 ```sh
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
-  PYTHONPATH=../model2mlir ../model2mlir/.venv/bin/python \
+  PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=../model2mlir "$M2M_PYTHON" \
   experiments/reference-data/tinyllama_torchao_batch_eager_probe.py
 ```
 
