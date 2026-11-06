@@ -30,6 +30,23 @@ their exact Spike-gated full hashes and prefixes; the graded OPU speedup is
 `27,955,258,588 / 15,380,012,801 = 1.8176×`. The 128-token FireSim pair is still running. The
 100% static tile fill does **not** imply 100% active-cycle occupancy.
 
+Static routing also cannot prove that the runtime shim used the OPU. At return from
+`merlin_run_multi`, a Spike debugger read the exact shipped s64 ELF's OPU shim counters:
+**143 calls, 0 scalar fallbacks**. The same check on the corrected prepacked s64 ELF found
+143 calls and 0 fallbacks. The routed sidecars' `Σb` is 143 for both s64 images and 105 for
+Spectformer, matching the dynamic call counts; there is no missing batch multiplier in the
+valid-MAC sums. These counters establish the executed software path for those exact
+images on Spike; they are not FPGA busy-cycle counters. The first prepack trial had an
+unaligned embedded weight base and took the shim's scalar fallback even though its ELF still
+contained OPU instructions. Merlin `6a6d81d46` aligns that blob in the Zephyr link. The corrected
+prepack image matches the complete output hash and prefix digest and measures 598,027,952
+Spike compute cycles versus 1,496,997,872 for the baseline. This is **functional-simulator
+timing**; its FireSim timing is pending.
+
+The accepted Spectformer h1 OPU ELF likewise recorded **105 calls, 0 scalar fallbacks** at the
+same point. `dynamic_opu_counters/receipt.json` records each exact ELF's SHA-256 and the debugger
+log's SHA-256, so these counts cannot be transferred silently to a different build.
+
 For correctness, the exact shipped OPU Spike ELFs were stopped after computing their whole-output
 hashes and their complete output buffers were extracted before the UART prefix dump. Each extracted
 FNV hash matched its FireSim plan (and s64 job 3860), then Merlin's W8A8 gate was run with
@@ -42,8 +59,9 @@ execution agreement; it is not an independent proof of the quantization algorith
 
 FireSim job 3858, the Spike-gated spectformer image with build hash `41758fde53331576`, completed
 in 3,531,733,777 `METRIC cycles`. That metric is the target `mcycle` delta around the compute region
-per inference, excluding FireSim host time; it includes model work, packing, setup, stalls, and other
-operations. `1,840,054,272 / (3,531,733,777 × 1,024) = 0.000508795`, or **0.0508795%**. The
+per inference, excluding FireSim host time; it includes model work, packing, per-inference
+preparation, stalls, and other operations. `1,840,054,272 / (3,531,733,777 × 1,024) = 0.000508795`,
+or **0.0508795%**. The
 64³ GEMM device job 3854 completed 262,144 valid MACs in 792,242 target cycles, or **0.0323134%**
 of peak across its full compute region; its tile fill is 100%.
 The matched plain-RVV control, job 3859, completed in 6,120,729,118 target cycles on the same
@@ -71,6 +89,7 @@ Evidence in this task checkout:
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/results.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/routing/opu_signatures.json`
 - `out/artifacts/measurements/firesim_alveo_u250_firesim_kodiak_opu_1core/op_gemm_64x64x64/`
+- `out/artifacts/probes/firesim_kodiak_opu/dynamic_opu_counters/` (exact-ELF Spike debugger reads)
 
 For a graded immutable FireSim pair, `python examples/lib/opu_utilization.py <run_dir>` recomputes
 the counts and ratios from the exact image's SHA-checked routing sidecar and the two hardware
