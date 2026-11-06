@@ -51,23 +51,30 @@ must preserve the remaining float contractions for framework parity.
 ## Utilization accounting
 
 For each emitted matrix call, count valid MACs as `batch * M * N * K`. Count issued
-matrix slots from the *actual emitted* tile and K-tail instruction trace; matrix
-occupancy is valid MACs divided by those slots. A route decision alone is not an
+matrix slots from the *actual emitted* tile and K-tail instruction trace; **issued-slot
+efficiency** is valid MACs divided by those slots. A route decision alone is not an
 execution measurement. Record the actual routed valid MACs from the routing sidecar,
 the dynamic call/fallback counts from the shim, and hardware matrix-active cycles or
-instruction counters where available. Time utilization additionally needs the unit's
-physical MAC cells and measured active cycles; OPU DLEN256 has 1,024 cells and compact
-VME DLEN128 has 256 cells per substep. Do not substitute end-to-end speedup for either
-occupancy or time utilization.
+instruction counters where available. Physical array duty needs enabled-cell-cycle
+counters: `enabled_cell_cycles / (physical_cells * matrix_active_cycles)` within active
+matrix intervals, and `enabled_cell_cycles / (physical_cells * inference_cycles)` for
+the complete inference. OPU DLEN256 has 1,024 cells and compact VME DLEN128 has 256
+cells per substep. When those counters are absent, report array duty as unmeasured.
+Valid-MAC whole-inference effective peak is a separate rate:
+`valid_routed_MACs / (physical_cells * inference_cycles)`. Do not substitute
+end-to-end speedup for any of these quantities.
 
 As a **projection only**, the current geometry cost model selects all 41 integer
 roots for OPU VLEN512/DLEN256: 1,644,423,168 valid MACs and 2,164,260,864 padded
-logical tile slots, or 75.9808% tile occupancy. For compact VME VLEN512/DLEN128 it
+logical tile slots, or 75.9808% projected tile fill. For compact VME VLEN512/DLEN128 it
 selects 40 roots, declining only the 1×1000×256 head: 1,644,167,168 valid MACs and
 2,147,483,648 padded slots, or 76.5625%. Every SpectFormer integer root has K
-divisible by 64, so this workload does not test K-tail handling. The separate VME
-K33 test covers a tail with small operand amplitudes; signed endpoints `-128` and
-`127` still require a dedicated functional test before a bit-exact torchAO claim.
+divisible by 64, so this workload does not test K-tail handling. A separate VME
+128×128×33 biased case with four full logical tiles and signed `-128`/`127` endpoints
+passed pinned Zvt Spike; direct compact RTL is pending. A new OPU 64×64×33 endpoint
+case passed the package's 42-shape quick kernel sweep on a local Spike extension, but
+that extension's manifest records source pin drift. Neither microkernel result is a
+whole-model torchAO verdict.
 
 The acceptance sequence is framework golden → unchanged-source Merlin host output
 → matrix twin on Spike → shipped image on the declared OPU simulator → FireSim on the
@@ -83,6 +90,7 @@ Against the independent torchAO framework golden it has cosine `0.99997751`,
 relative L2 error `0.00718247`, maximum absolute error `0.08121049`, and the same
 argmax (`885`). The strict W8A8 gate **fails**: maximum-normalized error `0.0167634`
 exceeds `0.01`, and significant-element relative error `0.663304` exceeds `0.05`.
-Comparison covers the full 1,000-element output. No OPU, VME, or FireSim result from
-this capture is accepted until the earliest source-to-host divergence is identified
-and fixed.
+Comparison covers the full 1,000-element output. This remains a **failed framework
+fidelity gate**. A separately labelled target-arithmetic diagnostic may compare a
+source-preserving OPU image and scalar twin on exact Spike/FireSim; such a result
+cannot be called torchAO framework parity while this gate fails.
