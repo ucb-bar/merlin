@@ -53,18 +53,22 @@ decoded Kodiak bitstream.
    image, decoder, bitstream, output, and target-cycle receipts. Measure valid MAC throughput;
    physical row duty additionally requires the counter patch and an instrumented bitstream.
 
-A managed Kodiak VME task now has the tested Chipyard `b4542fac`, Saturn VME `536774bd`,
-and Rocket matrix-decoder `fc745a8` sources. Distinct one-core SoC and FireSim configuration
-changes are isolated in that task and pass source compile and target FIRRTL elaboration
-after a separate Rocket CSR guard fix. The first passing SBT logs report Java `20.0.2-internal`
-and Espresso; the fresh published-source validation below passed with JDK 17 and Espresso.
-Exact Zvt ELF/Spike now passes
-for a fresh VLEN512 biased K-tail image. The current OPU bitstream remains BME only. That exact
+The initial elaboration checkpoint used Chipyard `b4542fac`, Saturn VME `536774bd`,
+and Rocket matrix-decoder `fc745a8`. For reproduction, use the published Chipyard
+`0d911e2d` and Saturn `4359c36` pins below. Distinct one-core SoC and FireSim
+configurations passed source compile and target FIRRTL elaboration after a separate Rocket
+CSR guard fix. The first passing SBT logs report Java `20.0.2-internal` and Espresso;
+fresh published-source validation passed with JDK 17 and Espresso. The fresh VLEN512 biased
+K-tail Zvt ELF passed pinned Spike. The current OPU bitstream remains BME only. That exact
 35 × 63 × 33 biased K-tail ELF has since passed direct Kodiak VME Verilator/SerialTL with
 the same pinned Spike digest, zero output and guard errors, and `KT DONE`; the larger RTL suite
 and a VME bitstream remain pending. The separate exact-pin OPU counter task has passed Firechip
 compile, target FIRRTL elaboration, Golden Gate, and Verilator metasim build using Espresso.
-A bracketed counter run, synthesis, and a counter-equipped bitstream remain pending. Keep the
+The exact-pin 64³ OPU counter metasim run passed its bracketed active-row and gate-low checks:
+2,048 active-row events at 128 MAC slots each account for all 262,144 valid MACs, with zero
+gate-low events. The SHA-bound receipt is in the managed Chipyard task
+`opu-counter-goldengate-pin/.tmp/metasim_matrix_hashonly/utilization_receipt.json`.
+Counter U250 synthesis and a counter-equipped bitstream remain pending. Keep the
 configurations and receipts separate.
 
 The tested VME source is published on Chipyard fork branch `feat/kodiak-zvt-vme` at
