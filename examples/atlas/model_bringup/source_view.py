@@ -65,6 +65,14 @@ def git(root, *args):
     return subprocess.check_output(['git', '-C', str(root), *args], text=True).strip()
 
 
+def pinned_library_digest(root, revision, name):
+    """Authenticate only the admitted file against the pinned Git blob."""
+    name = relative(name).as_posix()
+    blob = subprocess.check_output(['git', '-C', str(root), 'cat-file', 'blob',
+                                    revision + ':' + name])
+    return hashlib.sha256(blob).hexdigest()
+
+
 def load_map(path=MAP):
     data = json.loads(checked_name(path).read_text())
     if data['schema_version'] != 2 or set(data['sources']) != {'merlin', 'atlas-mlir', 'atlas-kernels'}:
@@ -146,6 +154,9 @@ def build_view(atlas, merlin, kernels, view, mode='relocated', source_map=MAP):
             owner, name = 'atlas-mlir', entry['relative_path']
         source = source_file(roots[owner], name)
         actual = digest(source)
+        if owner == 'atlas-kernels' and actual != pinned_library_digest(
+                roots[owner], manifest['library_revision'], name):
+            raise ValueError('library source differs from admitted pin: ' + name)
         entries.append(dict(relative_path=entry['relative_path'], source_path=str(source),
                             owner=owner, sha256=actual))
     view.mkdir(parents=True)
@@ -184,6 +195,10 @@ def verify_view(view, atlas, merlin, kernels, mode='relocated'):
     if digest(Path(receipt['map_path'])) != receipt['map_sha256']:
         raise ValueError('source map changed')
     manifest = load_map(receipt['map_path'])
+    if receipt['library_revision'] != manifest['library_revision']:
+        raise ValueError('inventory library revision differs from admitted pin')
+    if git(Path(receipt['roots']['atlas-kernels']), 'rev-parse', 'HEAD') != manifest['library_revision']:
+        raise ValueError('library revision differs from admitted pin')
     expected = {e['relative_path']: e for e in manifest['entries']}
     entries = receipt['entries']
     if inventory_digest(entries) != receipt['inventory_sha256']:
@@ -198,6 +213,9 @@ def verify_view(view, atlas, merlin, kernels, mode='relocated'):
         source = source_file(Path(receipt['roots'][owner]), name)
         if owner != entry['owner'] or str(source) != entry['source_path']:
             raise ValueError('inventory canonical owner differs')
+        if owner == 'atlas-kernels' and entry['sha256'] != pinned_library_digest(
+                Path(receipt['roots'][owner]), manifest['library_revision'], name):
+            raise ValueError('library source differs from admitted pin: ' + name)
         if digest(source) != entry['sha256']:
             raise ValueError('canonical source digest changed: ' + str(source))
         if digest(source_file(view, entry['relative_path'])) != entry['sha256']:
