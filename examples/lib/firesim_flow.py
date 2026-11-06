@@ -4,8 +4,8 @@
     firesim_flow.py legs <bundle> --board B --package P --matrix-unit U --matrix-config C
                     --matrix-support-target T [--harts N] [--timeout S] [--submit]
         Build the DEVICE leg (contractions routed to the matrix unit) and its CONTROL twin (identical
-        lowering, nothing routed) with build_tools/scripts/zephyr_firesim_leg.py -- which audits both --
-        then plan, and with --submit run, one FireSim job per leg.
+        lowering, nothing routed) through merlin-compile. Both exact images are gated on spike before
+        they are copied to a queue-readable artifact directory and planned for FireSim.
 
     firesim_flow.py submit <job-dir> [--submit] [--timeout S] [--priority N]
         Print the queue submission for every leg of <job-dir>/firesim_job.json. With --submit, run the
@@ -38,6 +38,7 @@ import hashlib
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -45,7 +46,6 @@ from typing import Any
 
 REPO = Path(__file__).resolve().parents[2]
 PY = sys.executable
-LEG_SCRIPT = REPO / "build_tools" / "scripts" / "zephyr_firesim_leg.py"
 #: How this script is named in the commands it prints: runnable from the repository root.
 SELF = "examples/lib/firesim_flow.py"
 
@@ -336,6 +336,10 @@ def submit(job_dir: Path, *, priority: int = 5, project: str = "merlin-examples"
 
     job_dir = Path(job_dir).resolve()
     manifest = load(job_dir)
+    for leg, row in manifest["legs"].items():
+        elf = Path(row["elf"])
+        if not elf.is_file() or _sha256(elf) != row.get("elf_sha256"):
+            raise SystemExit(f"{leg} leg: planned ELF is missing or changed; rebuild and gate it before submission")
     host = host_config()
     missing = [k for k in ("chipyard", "queue_root", "client") if host[k] is None]
     if missing:
@@ -668,7 +672,7 @@ def summary(result: dict[str, Any]) -> str:
 
 
 def build_legs(args) -> Path:
-    """Build and audit the device and control legs of a whole model; plan their FireSim jobs."""
+    """Spike-gate exact merlin-compile images, then plan their FireSim jobs."""
     from merlin.common.artifacts import recaptures_dir
     from merlin.common.paths import artifacts_dir
 
@@ -676,24 +680,92 @@ def build_legs(args) -> Path:
     bundle = recaptures_dir() / args.bundle
     if not (bundle / "model.mlir").is_file():
         raise SystemExit(f"{bundle} is not a capture bundle; capture it first (run.sh capture <model>)")
-    # `_firesim_h<N>`, not `op`'s `_h<N>`: the same bundle can have both, and they are different images
-    # (these are debug builds with the heartbeat, lowered with the named RVV package).
     model = args.bundle.removesuffix("_int8_full")
     job_dir = artifacts_dir() / "probes" / brd.name / f"{model}_firesim_h{args.harts}"
+    package = Path(args.package)
+    if not package.is_absolute():
+        package = REPO / "out" / "artifacts" / "targets" / package
     legs = {}
     for leg in LEGS:
         out = job_dir / leg
+        out.mkdir(parents=True, exist_ok=True)
         cmd = [
-            PY, LEG_SCRIPT, args.bundle, leg, out,
-            "--board", brd.name, "--package", args.package, "--harts", str(args.harts), "--vlen", str(brd.vlen),
-            "--unit", args.matrix_unit, "--config", args.matrix_config,
-            "--matrix-support-target", args.matrix_support_target,
-            *(["--matrix-kernel", args.matrix_kernel] if getattr(args, "matrix_kernel", None) else []),
-        ]  # fmt: skip
-        print("$ " + " ".join(str(c) for c in cmd), flush=True)
-        if subprocess.run([str(c) for c in cmd], cwd=REPO).returncode != 0:
-            raise SystemExit(f"{leg} leg failed to build or failed its audit; see above")
-        legs[leg] = json.loads((out / "leg.json").read_text())
+            PY,
+            "-m",
+            "merlin.compile_cli",
+            "--workload",
+            model,
+            "--dtype",
+            "int8",
+            "--target",
+            "rvv",
+            "--board",
+            brd.name,
+            "--package",
+            str(package),
+            "--harts",
+            str(args.harts),
+            "--run",
+            "spike",
+            "--verify",
+            "--json",
+            "--no-capture",
+            "--timeout",
+            str(args.spike_timeout),
+        ]
+        if leg == "device":
+            cmd += [
+                "--matrix-unit",
+                args.matrix_unit,
+                "--matrix-config",
+                args.matrix_config,
+                "--matrix-support-target",
+                args.matrix_support_target,
+            ]
+            if args.matrix_kernel:
+                cmd += ["--matrix-kernel", args.matrix_kernel]
+        print("$ " + shlex.join(str(c) for c in cmd), flush=True)
+        proc = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
+        marker = "\n{\n"
+        try:
+            result = json.loads(proc.stdout[proc.stdout.rindex(marker) + 1 :])
+        except ValueError as exc:
+            raise SystemExit(
+                f"{leg} leg: merlin-compile returned no result (exit {proc.returncode}): "
+                f"{(proc.stderr or proc.stdout)[-1500:]}"
+            ) from exc
+        matrix = result.get("matrix") or {}
+        shipped = matrix.get("shipped_on_simulator") or {}
+        if proc.returncode or result.get("status") != "verified" or result.get("verify", {}).get("gate_ok") is not True:
+            raise SystemExit(f"{leg} leg failed its spike W8A8 gate: {result.get('status')}; {proc.stderr[-1000:]}")
+        if leg == "device" and not (
+            shipped.get("status") == "verified"
+            and shipped.get("bit_exact_vs_twin") is True
+            and shipped.get("verify", {}).get("gate_ok") is True
+            and matrix.get("unit_instruction_counts")
+        ):
+            raise SystemExit("device leg: shipped OPU image did not pass its spike model and bit-exact twin gate")
+        source = Path(result["binary"])
+        elf = out / "zephyr.elf"
+        shutil.copy2(source, elf)
+        if _sha256(source) != _sha256(elf):
+            raise SystemExit(f"{leg} leg: staged ELF differs from the spike-gated image")
+        row = {
+            "leg": leg,
+            "elf": str(elf),
+            "build_hash": result["build_hash"],
+            "board": brd.name,
+            "harts": args.harts,
+            "vlen": brd.vlen,
+            "unit_instruction_counts": matrix.get("unit_instruction_counts", {}),
+            "spike_gate": {
+                "status": result["status"],
+                "verify": result["verify"],
+                "shipped_on_simulator": shipped if leg == "device" else None,
+            },
+        }
+        (out / "leg.json").write_text(json.dumps(row, indent=2) + "\n")
+        legs[leg] = row
     plan(job_dir, board=brd.name, name=model, bundle=bundle, legs=legs, harts=args.harts, timeout_s=args.timeout)
     return job_dir
 
@@ -741,6 +813,7 @@ def main(argv: list[str] | None = None) -> int:
     lg.add_argument("--matrix-config", required=True)
     lg.add_argument("--matrix-support-target", required=True)
     lg.add_argument("--matrix-kernel", help="the device leg's matrix kernel (registered name or C file)")
+    lg.add_argument("--spike-timeout", type=int, default=14400, help="spike gate limit per image, seconds")
     _queue_flags(lg)
     sb = sub.add_parser("submit", help="print (or with --submit, run) the queue jobs of a job directory")
     sb.add_argument("job_dir", type=Path)

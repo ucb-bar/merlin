@@ -162,8 +162,8 @@ kernel-test)
 
 firesim)
   # Whole models on FireSim, the way the single-core Kodiak OPU numbers were measured: a DEVICE image
-  # (int8 contractions routed to the OPU) and its CONTROL twin (identical lowering, nothing routed),
-  # each audited for the unit's instructions, then one queue job per leg. The FPGA is shared, so the
+  # (int8 contractions routed to the OPU) and its plain-RVV CONTROL image, each gated on spike before
+  # planning one queue job per leg. The FPGA is shared, so the
   # jobs are only PRINTED unless --submit is given. `firesim <job-dir>` prints (or submits) the jobs of
   # an existing directory, e.g. one `op --board firesim_kodiak_opu` wrote.
   shift
@@ -186,8 +186,8 @@ firesim)
         --matrix-config "$MATRIX_CONFIG" --matrix-support-target "$MATRIX_SUPPORT" \
         ${KERNEL_ARGS[@]+"${KERNEL_ARGS[@]}"} "$@" ${SUBMIT[@]+"${SUBMIT[@]}"}
   done
-  ex_note "the legs are not spike-gated here (spike cannot execute the OPU). Gate the model first with"
-  ex_note "./run.sh build --opu --models <model>, which runs each OPU image's stand-in twin on spike."
+  ex_note "both exact FireSim ELFs passed on spike before this plan: the OPU image used its package's"
+  ex_note "functional spike model and matched the scalar twin bit for bit."
   ;;
 
 firesim-collect)

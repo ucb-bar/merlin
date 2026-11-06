@@ -92,6 +92,71 @@ def _plan(flow, tmp_path: Path, bundle: Path) -> Path:
     return job
 
 
+@pytest.mark.parametrize("bit_exact", [True, False])
+def test_whole_model_legs_stage_only_exact_spike_gated_images(flow, tmp_path, monkeypatch, bit_exact):
+    from merlin.common import artifacts
+
+    model = "test_model"
+    bundle = tmp_path / f"{model}_int8_full"
+    bundle.mkdir()
+    (bundle / "model.mlir").write_text("module {}")
+    monkeypatch.setattr(artifacts, "recaptures_dir", lambda: tmp_path)
+    binaries = {}
+    for leg in flow.LEGS:
+        binaries[leg] = tmp_path / f"source-{leg}.elf"
+        binaries[leg].write_bytes(leg.encode())
+
+    def compile_image(cmd, **kwargs):
+        assert cmd[cmd.index("--package") + 1] == str(flow.REPO / "out/artifacts/targets/rvv/test")
+        leg = "device" if "--matrix-unit" in cmd else "control"
+        matrix = (
+            {
+                "unit_instruction_counts": {"OPMACC": 1},
+                "shipped_on_simulator": {
+                    "status": "verified",
+                    "bit_exact_vs_twin": bit_exact,
+                    "verify": {"gate_ok": True},
+                },
+            }
+            if leg == "device"
+            else None
+        )
+        result = {
+            "status": "verified",
+            "binary": str(binaries[leg]),
+            "build_hash": leg,
+            "verify": {"gate_ok": True},
+            "matrix": matrix,
+        }
+        return SimpleNamespace(returncode=0, stdout="build log\n" + json.dumps(result, indent=2), stderr="")
+
+    monkeypatch.setattr(flow.subprocess, "run", compile_image)
+    args = SimpleNamespace(
+        bundle=f"{model}_int8_full",
+        board="fs",
+        package="rvv/test",
+        harts=1,
+        matrix_unit="opu",
+        matrix_config="cfg",
+        matrix_support_target="kodiak",
+        matrix_kernel=None,
+        spike_timeout=40,
+        timeout=7200,
+    )
+    if not bit_exact:
+        with pytest.raises(SystemExit, match="bit-exact twin gate"):
+            flow.build_legs(args)
+        assert not (tmp_path / "out" / "artifacts" / "probes" / "fs" / f"{model}_firesim_h1" / flow.MANIFEST).exists()
+        return
+    job = flow.build_legs(args)
+    manifest = flow.load(job)
+    assert manifest["timeout_s"] == 7200
+    for leg in flow.LEGS:
+        staged = Path(manifest["legs"][leg]["elf"])
+        assert staged.read_bytes() == binaries[leg].read_bytes()
+        assert manifest["legs"][leg]["spike_gate"]["verify"]["gate_ok"] is True
+
+
 # ------------------------------------------------------------------------------------------- parsing
 
 
@@ -197,6 +262,14 @@ def test_submit_refuses_without_a_configured_queue(flow, tmp_path):
     bundle, _ = _bundle(tmp_path)
     job = _plan(flow, tmp_path, bundle)
     with pytest.raises(SystemExit, match="not configured"):
+        flow.submit(job)
+
+
+def test_submit_refuses_a_changed_spike_gated_elf_before_contacting_queue(flow, tmp_path):
+    bundle, _ = _bundle(tmp_path)
+    job = _plan(flow, tmp_path, bundle)
+    Path(flow.load(job)["legs"]["device"]["elf"]).write_bytes(b"changed")
+    with pytest.raises(SystemExit, match="planned ELF is missing or changed"):
         flow.submit(job)
 
 

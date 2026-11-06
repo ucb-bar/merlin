@@ -415,15 +415,14 @@ boot, a few minutes per leg.
 ```bash
 ./run.sh capture spectformer                      # once: the bundle and its W8A8 golden
 ./run.sh build --opu --models spectformer         # spike-gate the OPU image through its twin
-./run.sh firesim --models spectformer             # build + audit the FireSim legs, print the jobs
-./run.sh firesim --models spectformer --submit --timeout 3600
+./run.sh firesim --models spectformer             # build + spike-gate the exact FireSim ELFs, print the jobs
+./run.sh firesim --models spectformer --submit --timeout 7200
 ```
 
-`firesim` builds two images with [`build_tools/scripts/zephyr_firesim_leg.py`](../../build_tools/scripts/zephyr_firesim_leg.py):
-the DEVICE leg (int8 contractions routed to the OPU) and its CONTROL twin (the same lowering, nothing
-routed). Both are debug builds, so a hung run prints an `ALIVE` heartbeat rather than nothing. Each is
-disassembled and refused if the device leg carries none of the OPU's instructions or the control leg
-carries any, so neither can measure the wrong thing under the right name. They land in
+`firesim` builds both images through `merlin-compile`: the DEVICE leg routes int8 contractions to the
+OPU; the CONTROL leg uses plain RVV. Both exact ELFs pass the W8A8 spike gate before submission, and
+the shipped DEVICE ELF also runs on the package's OPU spike model and must match its scalar twin bit for
+bit. This avoids structural profiling changing the program under test. The images land in
 `out/artifacts/probes/firesim_kodiak_opu/<model>_firesim_h1/`. Budget the timeout from the model's
 cycles: at 15 MHz, seconds ≈ cycles / 1.5e7, plus a few minutes per job for FPGA programming.
 
