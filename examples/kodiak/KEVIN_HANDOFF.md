@@ -48,9 +48,12 @@ its SHA-256 before extracting it into `out/artifacts/recaptures/` from the Merli
 For Spectformer, run `mkdir -p out/artifacts/recaptures` then
 `tar -xzf <copied-spectformer-archive> -C out/artifacts/recaptures`. For TinyLlama, extract
 the chosen archive the same way and rename its `.portable` directory to the model name without
-that suffix. The archives are ignored local files, not Git downloads. A fresh-host check
-verified the Spectformer capture files and reached compilation, but that host lacked the
-Zephyr/Spike toolchain, so full lowering from a transferred capture remains unverified.
+that suffix. Both TinyLlama archives were extracted and passed the materialized capture receipt
+check after that rename. The relocated Spectformer and s64 TinyLlama captures also passed the
+prepack weight rewrite, with the generated bundles pointing at their own weight files. These
+receipts do not prove source closure. The archives are ignored local files, not Git downloads.
+A fresh-host check verified the Spectformer capture files and reached compilation, but that host
+lacked the Zephyr/Spike toolchain, so full lowering from a transferred capture remains unverified.
 On the current shared host, the installed workload is `merlin-kodiak` and the queue client needs
 the working-directory launchers. Before `--submit`, set:
 
