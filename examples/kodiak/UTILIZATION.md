@@ -83,16 +83,24 @@ hash in **3,038,273,721 target compute cycles**. Its SHA-bound receipt reports 1
 valid routed MACs (99.6546% of contraction MACs), 73.8223% static tile fill, and **0.0595642%
 whole-inference effective peak** (0.609937 valid MAC per target cycle). This is a 13.9722%
 cycle reduction relative to the older accepted OPU Spectformer image, which used a different
-routing policy. Array occupancy remains unmeasured. Hardware call-window profiling is pending.
-The first full-profile
-FireSim job 3865 printed the expected full output hash but was canceled after 176 of 5,172 profile
+routing policy. Array occupancy remains unmeasured.
+The first full-profile FireSim job 3865 printed the expected full output hash but was canceled after 176 of 5,172 profile
 rows: at that UART rate it could not reach `DONE` before its 7,200-second limit. No hardware
 call-window utilization is inferred from that partial dump. A new image prints only the 90 OPU
 rows while retaining the full `prof_total_ticks`; its exact Spike gate passed with the same full
 output hash and the same 17,063,688 OPU call cycles. The image's generated selector is included in
 its build hash, and the report checks its selected-row count against the SHA-pinned profile table
-and routing sidecar. Its FireSim run is pending. In the profiled
-Spike image alone, 5,172 per-op rows cover 99.66% of compute cycles; OPU call intervals account
+and routing sidecar. The sparse FireSim image completed as job 3872 with all 90 selected rows,
+the expected full output hash, and `DONE`. Its SHA-bound hardware report gives **76,045,023 OPU
+call-window cycles** out of 3,068,253,185 target compute cycles (2.47845% of inference time).
+Those calls execute 1,853,155,328 valid MACs, or **2.37980% effective peak within the hardware
+call windows**. The profiled image's whole-inference effective peak is 0.0589822%; the exact
+same-routing unprofiled image took 29,979,464 fewer cycles, a 0.98673% instrumentation
+overhead. Hardware call windows were 4.46× the Spike call-window cycles; this difference is
+under investigation. These windows include packing, transfers, stalls, and kernel work, and do
+not measure physical array occupancy.
+
+In the profiled Spike image alone, 5,172 per-op rows cover 99.66% of compute cycles; OPU call intervals account
 for 17,063,688 cycles (1.06% of the profiled total) and `linalg.generic` for 66.76% of
 attributed cycles. These are simulator diagnostics, not hardware occupancy.
 `python examples/lib/opu_profile_utilization.py
@@ -176,6 +184,7 @@ Evidence in this task checkout:
 - `out/artifacts/probes/firesim_kodiak_opu/dynamic_opu_counters/` (exact-ELF Spike debugger reads)
 - `out/artifacts/probes/firesim_kodiak_opu/spectformer_profiled_opu_sparse_h1/spike_gate.json`
 - `out/artifacts/probes/firesim_kodiak_opu/spectformer_current_unprofiled_h1/firesim/comparator_utilization_addendum.json`
+- `out/artifacts/probes/firesim_kodiak_opu/spectformer_profiled_opu_sparse_h1/hardware_profile_utilization.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_prepack_profiled_opu_safe_h1/spike_profile_utilization.json`
 
 For a graded immutable FireSim pair, `python examples/lib/opu_utilization.py <run_dir>` recomputes

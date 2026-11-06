@@ -93,9 +93,11 @@ known positive control passes.
 A sparse Spectformer OPU profile image passed its exact Spike gate with all 90 routed calls,
 matching full output hash, and **10.6057% effective peak during OPU call windows on Spike**.
 Its first FireSim submission 3868 failed before boot due to a queue SSH environment error;
-the same exact image is resubmitted as job 3872 with the working queue wrapper. This call-window
-rate includes packing
-and stalls; it is not physical MAC array occupancy. A separate draft Chipyard counter patch is
+the same exact image completed as job 3872 with all 90 selected profile rows, full output hash,
+and `DONE`. On FireSim the OPU call windows took **76,045,023 target cycles**, giving **2.37980%
+effective peak within calls** and 0.0589822% across this profiled inference. The exact
+same-routing unprofiled FireSim image is 0.98673% faster. Call windows include packing and
+stalls; they do not measure physical MAC array occupancy. A separate draft Chipyard counter patch is
 available as [PR 2395](https://github.com/ucb-bar/chipyard/pull/2395), but no instrumented
 bitstream or counter measurement exists yet.
 
