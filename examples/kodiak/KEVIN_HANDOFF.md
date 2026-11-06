@@ -100,6 +100,9 @@ As of 2026-11-06, `ssh -o BatchMode=yes kodiak-rig hostname` returns `bwrckodiak
 laptop relay. In an owner-confirmed exclusive window, a SHA-verified JTAG program restored FPGA
 Ethernet and UDP ping. The exact OPU-direct benchmark that passed in August then failed at the
 chip's `0x1000` BootAddrReg readback under the historical uncredited `--no-reset` loader path.
+An additional bounded retry explicitly selected chip 0 after FPGA ping; selection ACKed, but
+the same historical ELF still read `None` at `0x1000` before execution. Its SHA-bound receipt is
+`out/artifacts/probes/chipyard_kodiak/physical_probe_20261106/select_chip_diagnostic_20261106/receipt.json`.
 No Merlin image was loaded; existing tmux sessions were preserved. The hash-verified comparison
 is in `out/artifacts/probes/chipyard_kodiak/physical_probe_20261106/receipt_addendum.json`.
 Chip power/reset/clock/wiring and the Vivado version difference still need investigation before
