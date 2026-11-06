@@ -104,9 +104,16 @@ and array occupancy remains unmeasured. Compared with the prepack pair on the sa
 routing, and bitstream, OPU cycles fell 5.6915%. Compiler source revisions differ, so this
 observed package comparison does not isolate a single knob. The SHA-bound tracked receipt is
 `out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/spectformer_hardware_evidence.json`.
-The s128 pair 3891/3892 is still awaiting final grading. The older
-s64 hardware result is bound to the same knob/schedule bytes but a different package manifest;
-the rebuilt s64 images have not run on FireSim. Array occupancy is still unmeasured.
+The rebuilt s128 pair 3891/3892 also graded VERIFIED: **2,252,651,428** OPU versus
+**27,453,912,924** RVV target compute cycles, or **12.1874×** speedup. Both full
+4,096,000-value hardware hashes match the exact Spike images; direct hardware W8A8 comparison
+covers the 4,096-value UART prefix. The separately gated exact OPU Spike image passed all
+4,096,000 W8A8 logits and 128 argmaxes. Its 19,797,114,880 valid routed MACs, divided by
+1,024 MACs per cycle and the OPU target compute cycles, give **0.858238% whole-inference
+effective peak**. Static tile fill is 100%; array occupancy remains unmeasured. The
+[SHA-bound evidence](../../out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/tinyllama_l2_s128_hardware_evidence.json)
+records both legs and the comparison scope. The older s64 hardware result is bound to the same
+knob/schedule bytes but a different package manifest; the rebuilt s64 pair is running.
 The s128 aligned-prepack OPU/RVV pair also graded VERIFIED on the pinned one-core bitstream:
 device job 3871 took 2,438,693,540 target cycles, matched control job 3875 took
 27,742,439,123, and both full 4,096,000-value hashes and prefixes matched their exact Spike

@@ -86,8 +86,23 @@ valid routed MACs give `9,865,003,008 / (1,022,361,106 × 1,024) = 0.00942308`, 
 fewer OPU target cycles than the verified fill-only device; its matched control improved 0.3144%,
 so the paired speedup grew 3.8116%. Array occupancy remains unmeasured. A versioned opt-in
 package now carries the same knob and schedule bytes; its rebuilt images have separate identities
-and exact Spike gates, while their new FireSim results are pending. The trial's SHA-bound comparison
+and exact Spike gates. The rebuilt Spectformer and s128 pairs passed FireSim; the s64 pair is
+running. The trial's SHA-bound comparison
 is in Merlin managed task `quantize-fusion-trial/.tmp/quant_fill_hardware_comparison.json`.
+
+The rebuilt quant-package s128 image completed on the pinned one-core FireSim bitstream as
+device job 3891 in **2,252,651,428 target compute cycles**. Its matched plain-RVV control,
+job 3892, took **27,453,912,924 cycles**, yielding **12.1874×** speedup. Both full
+4,096,000-value output hashes and the 4,096-value hardware UART prefixes matched their exact
+Spike images; direct hardware W8A8 comparisons cover those prefixes. The exact OPU Spike image
+separately passed full W8A8 and all 128 argmax checks. All 19 contractions route to OPU with
+19,797,114,880 valid MACs and 100% static tile fill. Thus whole-inference effective peak is
+`19,797,114,880 / (2,252,651,428 × 1,024) = 0.008582384`, or **0.858238%**
+(8.78836 valid MAC per target cycle). The bitstream has no measured array occupancy counter.
+The [SHA-bound receipt](../../out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/tinyllama_l2_s128_hardware_evidence.json)
+records the exact plans, captures, bitstream and numerical coverage. Relative to the older
+s128 pair 3871/3875, device cycles fell 7.6288%; the schedules and source revisions differ,
+so this comparison does not isolate quant fusion.
 
 A separate sparse profiled image of that exact prepack lowering passed Spike with the same
 full-output hash, prefix, prepared MLIR and routing sidecar. Its 19 selected OPU rows account
