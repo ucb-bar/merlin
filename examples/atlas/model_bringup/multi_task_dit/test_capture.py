@@ -115,3 +115,45 @@ def test_inference_runs_every_step_and_slices_explicit_noise(monkeypatch):
                        (loader.OBS_LANGUAGE_TOKENS, tokens),
                        (loader.OBS_LANGUAGE_ATTENTION_MASK, mask)):
         assert batches[0][key] is value
+
+
+def test_static_scheduler_lookup_matches_unmodified_ddim(monkeypatch):
+    """Changing scalar lookup addressing must preserve diffusion numerics."""
+    monkeypatch.setenv("MTDIT_TORCHVISION_SCHEMA_COMPAT", "1")
+    from diffusers import DDIMScheduler
+    loader = load_local("loader")
+
+    class Policy(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.config = SimpleNamespace(n_obs_steps=2, n_action_steps=3)
+            self.objective = SimpleNamespace(
+                noise_scheduler=DDIMScheduler(num_train_timesteps=100, prediction_type="epsilon"),
+                num_inference_steps=10,
+            )
+            self.observation_encoder = SimpleNamespace(encode=lambda batch: batch[loader.OBS_STATE])
+
+        def noise_predictor(self, sample, timesteps, *, conditioning_vec):
+            return sample.sin() * 0.1 + conditioning_vec[:, :1, :1] * 0.01
+
+    policy = Policy()
+    original = loader.Inference(policy)
+    frozen = loader.Inference(policy, static_scheduler=True)
+    generator = torch.Generator().manual_seed(319)
+    noise = torch.randn(2, 8, 4, generator=generator)
+    state = torch.randn(2, 2, 4, generator=generator)
+    inputs = (torch.zeros(2, 2, 1, 3, 2, 2), state,
+              torch.zeros(2, 3, dtype=torch.long), torch.ones(2, 3, dtype=torch.long), noise)
+    torch.testing.assert_close(frozen(*inputs), original(*inputs), atol=0, rtol=0)
+    assert isinstance(policy.objective.noise_scheduler.alphas_cumprod, torch.Tensor)
+
+
+def test_unresolved_census_counts_mangled_symbols():
+    source = '''builtin.module {
+      func.func private @aten_select_int(tensor<100xf32>) -> tensor<f32>
+      func.func @forward(%table: tensor<100xf32>) -> tensor<f32> {
+        %value = func.call @aten_select_int(%table) : (tensor<100xf32>) -> tensor<f32>
+        func.return %value : tensor<f32>
+      }
+    }'''
+    assert load_local("capture").unresolved_calls(source) == {"aten_select_int": 1}

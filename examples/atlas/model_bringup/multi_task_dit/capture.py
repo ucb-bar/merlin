@@ -1,8 +1,8 @@
-"""Float Model2MLIR/torch-mlir capture, retaining unelided resource payloads.
+"""Float capture through the Merlin worker, with exact export replay checks.
 
-Random DiT and text-projection weights, pretrained CLIP, no accuracy claim.
-The Merlin worker currently selects fx_importer. This companion uses the same
-public Model2MLIR API with its torch_mlir backend, without changing model math.
+Random policies and strictly loaded local checkpoints use the same worker path.
+The explicit torch_mlir companion backend is retained for independent diagnosis.
+Synthetic observations do not establish policy accuracy.
 """
 from __future__ import annotations
 
@@ -27,7 +27,39 @@ def revision(path):
     return subprocess.check_output(['git', '-C', str(path), 'rev-parse', 'HEAD'], text=True).strip()
 
 
-def main():
+def artifact_files(directory):
+    """Yield generated regular files without following symlinks."""
+    for path in sorted(directory.iterdir()):
+        if any(token in path.name.lower() for token in ("hammer", "vlsi")):
+            continue
+        if path.is_symlink():
+            continue
+        if path.is_file():
+            yield path
+
+
+def unresolved_calls(mlir_text):
+    """Count parsed calls to bodyless declarations, including mangled names."""
+    from xdsl.context import Context
+    from xdsl.dialects.builtin import Builtin
+    from xdsl.dialects.func import Func, FuncOp, CallOp
+    from xdsl.parser import Parser
+    context = Context(allow_unregistered=True)
+    context.load_dialect(Builtin)
+    context.load_dialect(Func)
+    module = Parser(context, mlir_text).parse_module()
+    declarations = {op.sym_name.data for op in module.walk()
+                    if isinstance(op, FuncOp) and not op.body.blocks}
+    calls = {}
+    for op in module.walk():
+        if isinstance(op, CallOp):
+            name = op.callee.root_reference.data
+            if name in declarations:
+                calls[name] = calls.get(name, 0) + 1
+    return calls
+
+
+def torch_mlir_main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--m2m-dir', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
@@ -175,10 +207,147 @@ def main():
         raise
     finally:
         receipt['artifacts'] = {p.name: {'bytes': p.stat().st_size, 'sha256': digest(p)}
-                                for p in sorted(out.iterdir()) if p.is_file() and p != receipt_path}
+                                for p in artifact_files(out) if p != receipt_path}
         record()
     print(json.dumps({k: receipt[k] for k in ['status', 'export_check', 'path_taken']}, indent=2), flush=True)
 
 
+
+def main():
+    """Capture through Merlin's worker; companion backend remains explicit."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--backend', choices=['merlin', 'torch_mlir'], default='merlin')
+    known, remaining = parser.parse_known_args()
+    if known.backend == 'torch_mlir':
+        sys.argv = [sys.argv[0], *remaining]
+        return torch_mlir_main()
+    parser = argparse.ArgumentParser(description='Exact export and Merlin worker float capture')
+    parser.add_argument('--m2m-dir', type=Path, required=True)
+    parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--checkpoint', type=Path)
+    parser.add_argument('--threads', type=int, default=4)
+    parser.add_argument('--region', choices=['full'], default='full')
+    args = parser.parse_args(remaining)
+    if not 1 <= args.threads <= 8:
+        parser.error('--threads must be between 1 and 8')
+    if args.checkpoint:
+        os.environ['MTDIT_CHECKPOINT'] = str(args.checkpoint.resolve())
+    out = args.out.resolve()
+    out.mkdir(parents=True, exist_ok=False)
+    sys.path.insert(0, str(args.m2m_dir.resolve()))
+    merlin_root = Path(__file__).resolve().parents[4]
+    sys.path.insert(0, str(merlin_root / 'src'))
+    import importlib.util
+    import numpy as np
+    import torch
+    modules_before_loader = set(sys.modules)
+    import loader
+    from merlin.targetgen import _m2m_capture_worker as worker
+    torch.set_num_threads(args.threads)
+    torch.set_num_interop_threads(1)
+    torch.use_deterministic_algorithms(True)
+    random.seed(0)
+    np.random.seed(0)
+    torch.manual_seed(0)
+    receipt = {
+        'schema': 'merlin.multi_task_dit.worker_capture.v1', 'status': 'started',
+        'command': [sys.executable, *sys.argv], 'm2m_revision': revision(args.m2m_dir),
+        'merlin_revision': revision(merlin_root),
+        'versions': {n: importlib.metadata.version(n) for n in
+                     ['torch', 'torch-mlir', 'xdsl', 'lerobot', 'transformers', 'diffusers']},
+        'threads': args.threads, 'quantization': 'none', 'host_numerical_execution': 'PENDING',
+        'sources': {n: digest(Path(__file__).with_name(n)) for n in ['loader.py', 'capture.py']},
+    }
+    source_dir = out / 'sources'
+    source_dir.mkdir()
+    for name in ['loader.py', 'capture.py']:
+        (source_dir / name).write_bytes(Path(__file__).with_name(name).read_bytes())
+    def record():
+        (out / 'receipt.json').write_text(json.dumps(receipt, indent=2, default=str) + '\n')
+    record()
+    try:
+        print('construct', flush=True)
+        model, inputs = loader.get_model_and_inputs()
+        receipt['scope'] = loader.describe(model, inputs)
+        receipt['runtime_versions'] = {n: importlib.metadata.version(n) for n in ['numpy', 'packaging', 'typing-extensions', 'pyyaml', 'immutabledict', 'ordered-set']}
+        record()
+        with torch.no_grad():
+            print('eager', flush=True)
+            eager = model(*inputs)
+            if isinstance(model, loader.Inference):
+                scheduler = model.scheduler
+                model.scheduler = model.policy.objective.noise_scheduler
+                original = model(*inputs)
+                model.scheduler = scheduler
+                receipt['original_scheduler_check'] = {
+                    'equal': bool(torch.equal(eager, original)),
+                    'max_abs': float((eager - original).abs().max())}
+                if not receipt['original_scheduler_check']['equal']:
+                    raise AssertionError('static addressing differs from original scheduler')
+            if isinstance(model, loader.CheckpointInference):
+                original = model.reference_forward(*inputs)
+                receipt['original_objective_check'] = {
+                    'equal': bool(torch.equal(eager, original)),
+                    'max_abs': float((eager - original).abs().max())}
+                if not receipt['original_objective_check']['equal']:
+                    raise AssertionError('static Euler grid differs from original objective')
+            np.save(out / 'eager.npy', eager.cpu().numpy())
+            np.savez(out / 'inputs.npz', **{str(i): x.cpu().numpy() for i, x in enumerate(inputs)})
+            print('torch.export', flush=True)
+            exported = torch.export.export(model, tuple(inputs), strict=False)
+            replay = exported.module()(*inputs)
+            receipt['export_check'] = {'equal': bool(torch.equal(eager, replay)),
+                'max_abs': float((eager - replay).abs().max()), 'finite': bool(torch.isfinite(eager).all()),
+                'output_shape': list(eager.shape),
+                'aten_calls': sum(n.op == 'call_function' for n in exported.graph.nodes)}
+            torch.export.save(exported, out / 'exported.pt2')
+            (out / 'exported-graph.txt').write_text(str(exported.graph))
+            record()
+            if not receipt['export_check']['equal'] or not receipt['export_check']['finite']:
+                raise AssertionError('export replay differs from eager or eager contains nonfinite values')
+            def completed(payload):
+                result = payload['conversion_result']
+                prepared = result.exported_program
+                if prepared is None:
+                    raise AssertionError('worker did not retain its prepared export')
+                if prepared is not None:
+                    observed = prepared.module()(*inputs)
+                    receipt['prepared_export_check'] = {'equal': bool(torch.equal(eager, observed)),
+                        'max_abs': float((eager - observed).abs().max())}
+                    if not receipt['prepared_export_check']['equal']:
+                        raise AssertionError('worker prepared export differs from eager')
+                receipt['worker_path'] = result.path_taken
+                receipt['worker_meta'] = payload['metadata']
+                record()
+            print('Merlin worker fx_importer', flush=True)
+            code = worker.main(['--loader', str(Path(loader.__file__).resolve()), '--dtype', 'fp32',
+                '--out', str(out / 'worker'), '--m2m-dir', str(args.m2m_dir.resolve()),
+                '--materialize-bundle'], prepared_program={'module': model, 'inputs': tuple(inputs),
+                    'loader': loader, 'dependencies': worker._loader_dependency_sources(
+                        modules_before_loader, Path(loader.__file__)),
+                    'provenance': receipt['scope'], 'session': None},
+                completed=completed)
+            receipt['worker_exit_code'] = code
+            bundle_meta = out / 'worker' / 'bundle_meta.json'
+            # The bundle's parsed census is authoritative; worker text census
+            # alone misses generic-form func.call operations on this M2M pin.
+            calls = unresolved_calls((out / 'worker' / 'model.mlir').read_text())
+            receipt['parsed_unresolved_calls'] = calls
+            receipt['status'] = 'PASS' if code == 0 and not calls and receipt['worker_meta']['opaque'] == 0 else 'DIAGNOSTIC'
+            if calls:
+                receipt['reason'] = 'unresolved frontend calls remain in parsed bundle'
+    except Exception as exc:
+        receipt['status'] = 'FAILED'
+        receipt['error'] = f'{type(exc).__name__}: {exc}'
+        record()
+        raise
+    finally:
+        receipt['artifacts'] = {p.name: {'bytes': p.stat().st_size, 'sha256': digest(p)}
+            for p in artifact_files(out) if p.name != 'receipt.json'}
+        record()
+    print(json.dumps({k: receipt.get(k) for k in ['status', 'export_check', 'parsed_unresolved_calls']}, indent=2), flush=True)
+    return 0 if receipt['status'] == 'PASS' else 3
+
+
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())
