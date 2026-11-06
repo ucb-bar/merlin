@@ -13,7 +13,21 @@ from pathlib import Path
 
 
 def _compile_matrix(
-    out: dict, bundle, work, pkg, feats, refs, *, board, harts, iters, warmup, timeout, matrix, matrix_gate="twin"
+    out: dict,
+    bundle,
+    work,
+    pkg,
+    feats,
+    refs,
+    *,
+    board,
+    harts,
+    iters,
+    warmup,
+    timeout,
+    matrix,
+    matrix_gate="twin",
+    int8_compute=True,
 ) -> dict:
     """The matrix-unit leg of ``compile_rvv``: shipped image + stand-in twin, the twin gated on spike."""
     from merlin.kernels import matrix_kernels
@@ -44,6 +58,7 @@ def _compile_matrix(
             vlen=brd.vlen,
             iters=iters,
             warmup=warmup,
+            int8_compute=int8_compute,
         )
 
     try:

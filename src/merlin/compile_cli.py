@@ -22,6 +22,7 @@ correctness gates before any success is reported. This CLI only ORCHESTRATES the
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import tempfile
@@ -97,7 +98,7 @@ from .compile.route_before_build import plan_before_build
 
 # Workloads that ship as model2MLIR capture bundles (RVV whole-model path). Not exhaustive — any
 # workloads/<name> with a loader can be captured; this is the "known-good" convenience set for --list.
-_RVV_DTYPES = ("fp32", "int8", "fp16", "fp8")
+_RVV_DTYPES = ("fp32", "int8", "int8_w8a8", "fp16", "fp8")
 #: Where ``--run`` can put a compiled result.
 _RUNS = ("none", "host", "k1", "spike", "zephyr", "verilator", "gsim")
 
@@ -377,9 +378,18 @@ def compile_rvv(
         multi_program = session_contract_version == 2
     if not (bundle / "model.mlir").is_file() and not multi_program:
         raise FileNotFoundError(f"explicit capture bundle has neither model.mlir nor a version-2 session: {bundle}")
+    source_w8a8 = dtype == "int8_w8a8"
+    source_quantization = None
+    if source_w8a8:
+        from .compile.source_quantization import inspect_source_w8a8
+
+        source_quantization = inspect_source_w8a8(bundle)
     _trace.artifact("capture", [bundle / "model.mlir"], pipeline="frontend")
     pkg_dir = package or default_package(dtype, bundle=bundle)
     pkg = load_rvv_package(pkg_dir)
+    if source_w8a8 and not pkg.is_int8:
+        raise ValueError("source int8_w8a8 requires an int8_w8a8 host package")
+    compute_int8 = bool(pkg.is_int8 and not source_w8a8)
     package_backend = getattr(pkg, "backend", "rvv")
     work = Path(tempfile.mkdtemp(prefix=f"merlin_compile_{workload}_{dtype}_"))
     out: dict = {
@@ -399,19 +409,29 @@ def compile_rvv(
         # indistinguishable afterwards from one built against the pinned lane.
         "host_lane": host_lane_identity(pkg_dir),
     }
+    if source_quantization is not None:
+        out["source_quantization"] = source_quantization
     from .runtime.dispatch_runtime import mesh_datapath
 
     refs: dict = {}
     if verify and not multi_program:
-        refs["fp32"] = np.load(bundle / "golden.npy")
+        if source_w8a8:
+            refs["w8a8"] = np.load(bundle / "golden.npy")
+            out["reference"] = {
+                "kind": "torchao_w8a8_framework",
+                "file": "golden.npy",
+                "sha256": hashlib.sha256((bundle / "golden.npy").read_bytes()).hexdigest(),
+            }
+        else:
+            refs["fp32"] = np.load(bundle / "golden.npy")
         w8 = bundle / "golden_w8a8.npy"
         # WHO quantizes the activations decides which golden is the right yardstick, and it is not
         # always the scalar package. Routing the contractions to a mesh whose operands are 8-bit
         # quantizes them there instead, so a run with an f32 scalar package (an fp8 capture's IR is
         # f32 end to end) still computes W8A8 arithmetic. Gating this on pkg.is_int8 alone left every
         # fp8 mesh run graded against a weight-only f32 reference its datapath could never reproduce.
-        _act_quant = bool(pkg.is_int8)
-        if not _act_quant and kernel_backend == "mesh" and mesh_target:
+        _act_quant = bool(pkg.is_int8 and not source_w8a8)
+        if not source_w8a8 and not _act_quant and kernel_backend == "mesh" and mesh_target:
             try:
                 _op_dt = mesh_datapath(mesh_target, numeric_policy=numeric_policy).operand_dtype
                 from .common import quant_formats as _qf
@@ -454,7 +474,7 @@ def compile_rvv(
         res = run_model(
             bundle,
             work,
-            int8_compute=pkg.is_int8,
+            int8_compute=compute_int8,
             kernel_backend=kernel_backend,
             mesh_target=mesh_target,
             mesh_package=mesh_package,
@@ -608,6 +628,7 @@ def compile_rvv(
                 timeout=timeout,
                 matrix=matrix,
                 matrix_gate=matrix_gate,
+                int8_compute=compute_int8,
             )
 
         def _build(fs):
@@ -617,7 +638,7 @@ def compile_rvv(
                 board=board,
                 backend=package_backend,
                 rvv_hart=0,
-                int8_compute=pkg.is_int8,
+                int8_compute=compute_int8,
                 rvv_schedule=pkg.schedule_text if package_backend == "rvv" else None,
                 cflags_override=pkg.cflags + [flag for flag in zm._CFLAGS_COMMON if flag not in pkg.cflags],
                 features=frozenset(fs) or None,
@@ -738,7 +759,12 @@ def compile_rvv(
         # reported success -- a compile-only multicore A/B silently compared two identical
         # single-core images. Same expression as the `--run k1` call below, so the two agree.
         binary = k1.build_k1_binary(
-            bundle, work, pkg, inputs_npz=bundle / "inputs.npz", parallel_harts=(harts if harts > 1 else None)
+            bundle,
+            work,
+            pkg,
+            inputs_npz=bundle / "inputs.npz",
+            parallel_harts=(harts if harts > 1 else None),
+            **({"int8_compute": False} if source_w8a8 else {}),
         )
         out["binary"] = str(binary)
         out["parallel_harts"] = harts if harts > 1 else None
@@ -764,6 +790,7 @@ def compile_rvv(
             parallel_harts=(harts if harts > 1 else None),
             fallback_policy=fallback_policy,
             require_csr_vlen=(fallback_policy == "forbid"),
+            **({"int8_compute": False} if source_w8a8 else {}),
         )
         out["binary"] = res.get("local_binary")
         out["status"] = "ran"
@@ -968,6 +995,9 @@ def compile_model(
     # offload census -- is computed here so `device=` below carries a real decision into the
     # lowering. This block used to sit AFTER the two `compile_rvv` calls, which is why the whole
     # offload path was unreachable from a compile no matter how the placement came out.
+    # The capture token is a source quantization recipe. The router's datapath
+    # name is the signed storage format on the matrix operands, not that recipe.
+    route_datapath = routing_dtype or ("int8" if dtype == "int8_w8a8" else dtype)
     _pre: dict = {}
     if target and linalg_mlir:
         try:
@@ -982,7 +1012,7 @@ def compile_model(
                 # contractions to a mesh that supports every one of them. Threading the exact name
                 # is also the SAFE fix: an "fp8" -> "fp8_e4m3" alias would route e5m2 data onto an
                 # e4m3 unit, which is why the registry omits that alias.
-                datapath=routing_dtype or dtype,
+                datapath=route_datapath,
                 device_package=mesh_package,
                 model=workload,
                 capture=(Path(capture_bundle) / "model.mlir") if capture_bundle else None,
@@ -1102,7 +1132,7 @@ def compile_model(
                 # matching the route and the emitted groups. A requested int8
                 # datapath alone cannot certify conversion of an fp32 contraction.
                 out["placement_census"] = _census.census_of_module(
-                    _mq.parse(linalg_mlir), target, datapath=routing_dtype or dtype
+                    _mq.parse(linalg_mlir), target, datapath=route_datapath
                 )
             except Exception as e:  # noqa: BLE001 -- the census reports on a compile, it never fails one
                 out["placement_census"] = {"error": f"{type(e).__name__}: {e}"}
@@ -1378,6 +1408,7 @@ def _workflow(a, run: str) -> dict:
                 (a.matrix_unit, a.matrix_config, a.matrix_support_target, a.matrix_kernel) if a.matrix_unit else None
             ),
             matrix_gate=a.matrix_gate,
+            capture_bundle=a.capture_bundle,
         )
     else:
         return compile_oot(

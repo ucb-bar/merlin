@@ -84,6 +84,25 @@ def test_the_twin_is_what_runs_and_both_binaries_are_reported(tmp_path, monkeypa
     assert out["matrix"]["opu_mac_share"] == 0.75
     assert out["matrix"]["routing_report"] == str(ship_dir / matrix_image.ROUTING_REPORT)
 
+    # A torchAO integer source already owns its quantization. The matrix pair must
+    # receive the preserve-source choice instead of re-quantizing float attention.
+    compile_cli._compile_matrix(
+        {},
+        Path("bundle"),
+        tmp_path,
+        pkg,
+        ["perop"],
+        {"w8a8": np.ones(4)},
+        board="chip_board",
+        harts=2,
+        iters=1,
+        warmup=0,
+        timeout=60,
+        matrix=("unit_a", "ConfigA", "chip_a"),
+        int8_compute=False,
+    )
+    assert seen["pair"]["int8_compute"] is False
+
 
 def test_a_multi_hart_block_that_does_not_lower_is_re_derived_once(tmp_path, monkeypatch):
     """As on the RVV route: the register block is narrowed to the per-hart tile only when the build

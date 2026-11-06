@@ -29,7 +29,13 @@ from .bundles import ir_scalar_dtype
 #: matrix unit -- but that is a different lane from the one this map configures. Mapping it to a
 #: strategy string no package can legally declare produced "no package declares dtype_strategy='fp8'",
 #: which reads as a missing artifact and sent readers off to mint a package that cannot exist.
-_DTYPE_STRATEGY = {"int8": "int8_w8a8", "fp32": "fp32", "fp16": "fp16_f32acc", "bf16": "bf16_f32acc"}
+_DTYPE_STRATEGY = {
+    "int8": "int8_w8a8",
+    "int8_w8a8": "int8_w8a8",
+    "fp32": "fp32",
+    "fp16": "fp16_f32acc",
+    "bf16": "bf16_f32acc",
+}
 
 
 def _isa_parts(value: str) -> tuple[str, set[str]]:
@@ -168,7 +174,7 @@ def host_lane_pin_name(strategy: str) -> str:
     return f"rvv_host_lane_{strategy}"
 
 
-def host_lane_identity(package_dir: "str | Path") -> dict:
+def host_lane_identity(package_dir: str | Path) -> dict:
     """``{package, package_sha256, n_files, dtype_strategy, pinned_as}`` for a host-lane package.
 
     Recorded on EVERY compile, under the same key and subkeys the grading path writes, so a graded run
@@ -254,7 +260,7 @@ def _verified_against_the_pinned_lane(package_dir: str, strategy: str) -> str:
     return package_dir
 
 
-def default_package(dtype: str, *, bundle: "Path | None" = None) -> str:
+def default_package(dtype: str, *, bundle: Path | None = None) -> str:
     """The package `merlin-compile` uses when `--package` is not given.
 
     Resolves the CERTIFIED CHAMPION for this datatype via ``targetgen.publish.select_champion``
@@ -306,7 +312,7 @@ def default_package(dtype: str, *, bundle: "Path | None" = None) -> str:
         # only, so any other dtype has no same-datatype control to fall back to — and handing
         # back an fp32 schedule there would build a silently wrong datapath (see _DTYPE_STRATEGY).
         # Fail with the fix instead: mint and certify a package for this strategy.
-        fallback = {"int8": "hand_v0_int8", "fp32": "hand_v0"}.get(dtype)
+        fallback = {"int8": "hand_v0_int8", "int8_w8a8": "hand_v0_int8", "fp32": "hand_v0"}.get(dtype)
         if fallback is None:
             raise SystemExit(
                 f"[merlin-compile] no package declares dtype_strategy={strategy!r} (for --dtype "

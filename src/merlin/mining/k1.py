@@ -973,6 +973,7 @@ def build_k1_binary(
     ours_mr: int = 4,
     ours_pack_b: bool = False,
     honor_pkg_cflags: bool = False,
+    int8_compute: bool | None = None,
 ) -> Path:
     """Cross-compile a K1 Linux RVV binary from the workload + RVV package.
 
@@ -1089,7 +1090,7 @@ def build_k1_binary(
     prepared, feats = zm.prepare_for_lowering(
         model_dir / "model.mlir",
         work,
-        int8_compute=pkg.is_int8,
+        int8_compute=pkg.is_int8 if int8_compute is None else int8_compute,
         features=feats_in,
         harts=(int(parallel_harts) if parallel_harts else 1),
         vlen=VLEN,
@@ -2280,6 +2281,7 @@ def run_on_k1(
     max_session_steps: int | None = None,
     ours_mr: int = 4,
     ours_pack_b: bool = False,
+    int8_compute: bool | None = None,
 ) -> dict[str, Any]:
     """Cross-compile the workload for K1, deploy over scp, run, and parse OUT/METRIC/DONE.
 
@@ -2372,6 +2374,7 @@ def run_on_k1(
                 max_session_steps=max_session_steps,
                 ours_mr=ours_mr,
                 ours_pack_b=ours_pack_b,
+                int8_compute=int8_compute,
             )
         with board_lock():
             result = _deploy_run(mode, tag, bwork, binary)

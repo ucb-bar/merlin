@@ -128,7 +128,9 @@ def parser(
         help="read-only OOT model analysis: compare declared routes with groups in a captured program",
     )
     ap.add_argument("--model-build", action="store_true", help="build one saved capture as a bare-metal ELF")
-    ap.add_argument("--capture-bundle", help="explicit saved capture for --model-preflight or --model-build")
+    ap.add_argument(
+        "--capture-bundle", help="explicit saved capture for RVV compilation, --model-preflight or --model-build"
+    )
     ap.add_argument("--board-catalog", type=Path, help="explicit board catalog for --model-build")
     ap.add_argument("--host-dts", type=Path, help="byte-pinned elaborated host DTS for --model-build")
     ap.add_argument("--output", type=Path, help="fresh generated output directory for --model-build")
@@ -194,8 +196,8 @@ def validate(ap: argparse.ArgumentParser, a: argparse.Namespace) -> None:
         ap.error("--corpus-descriptor applies only to OOT capsule compilation")
     if a.board is not None and a.target != "rvv" and not a.model_build:
         ap.error("--board applies only to RVV spike/Zephyr/Verilator execution")
-    if a.capture_bundle is not None and not (a.model_preflight or a.model_build):
-        ap.error("--capture-bundle requires --model-preflight or --model-build")
+    if a.capture_bundle is not None and a.target != "rvv" and not (a.model_preflight or a.model_build):
+        ap.error("--capture-bundle requires --target rvv, --model-preflight or --model-build")
     build_only_inputs = (a.board_catalog, a.host_dts, a.output, a.arena_mb, a.reference_file, a.rtl_facts)
     if any(value is not None for value in build_only_inputs) and not a.model_build:
         ap.error("bare-metal build inputs require --model-build")
@@ -220,8 +222,8 @@ def validate(ap: argparse.ArgumentParser, a: argparse.Namespace) -> None:
     if any(matrix):
         if not all(matrix):
             ap.error("--matrix-unit, --matrix-config and --matrix-support-target are given together")
-        if a.target != "rvv" or a.dtype != "int8":
-            ap.error("matrix routing applies to --target rvv --dtype int8")
+        if a.target != "rvv" or a.dtype not in ("int8", "int8_w8a8"):
+            ap.error("matrix routing applies to --target rvv --dtype int8|int8_w8a8")
         if a.run not in ("spike", "zephyr") or a.board is None:
             ap.error("matrix routing builds a Zephyr image and gates its twin: use --run spike|zephyr --board")
     elif a.matrix_kernel:

@@ -165,6 +165,7 @@ def build_matrix_pair(
     debug: bool = False,
     iters: int = 1,
     warmup: int = 0,
+    int8_compute: bool = True,
 ) -> MatrixPair:
     """Build the shipped image, its stand-in twin and (optionally) the diagnostic build, and check them.
 
@@ -198,7 +199,7 @@ def build_matrix_pair(
             backend="rvv",
             rvv_hart=0,
             cpus=cpus,
-            int8_compute=True,
+            int8_compute=int8_compute,
             features=features,
             n_harts=harts,
             sdk_dir=sdk_dir,
