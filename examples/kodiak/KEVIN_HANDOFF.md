@@ -146,7 +146,9 @@ stalls; they do not measure physical MAC array occupancy. Kodiak's functional Sp
 does not model OPU timing, so its 10.6057% call-window rate is not a hardware latency forecast.
 A separate draft Chipyard counter patch is
 available as [PR 2395](https://github.com/ucb-bar/chipyard/pull/2395), but no instrumented
-bitstream or counter measurement exists yet.
+bitstream or counter measurement exists yet. A managed exact-pin counter source now passes
+Firechip compile and target FIRRTL elaboration with JDK 17 and Espresso; Golden Gate/metasim
+and synthesis remain pending.
 
 The aligned-prepack TinyLlama s64 image also has an exact Spike-gated sparse profile: 19 OPU
 call rows, 26,595,355 call cycles, and **36.2236% effective peak during those calls on Spike**.

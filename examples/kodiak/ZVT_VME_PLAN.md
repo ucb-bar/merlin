@@ -49,8 +49,10 @@ decoded Kodiak bitstream.
    image, decoder, bitstream, output, and target-cycle receipts. Measure valid MAC throughput;
    physical row duty additionally requires the counter patch and an instrumented bitstream.
 
-The managed Chipyard counter task currently lacks initialized Saturn/FireSim submodules.
-A separate managed exact-pin task has Chipyard `6a9b4cd`, FireSim `b084672`, and Rocket
-`885dd596`, but its Saturn gitlink is `2dae15d`; the needed OPU/VME pins are not available
-through that task's current managed nested-repository interface. Provision the VME pins in
-a compliant managed workspace before editing RTL or claiming this gate complete.
+A managed Kodiak VME task now has the tested Chipyard `b4542fac`, Saturn VME `536774bd`,
+and Rocket matrix-decoder `fc745a8` sources. Distinct one-core SoC and FireSim configuration
+changes are isolated in that task; they have not passed elaboration or image gates and are
+not part of the current OPU bitstream. The separate exact-pin OPU counter task has passed
+JDK 17 Firechip compile and target FIRRTL elaboration using Espresso, but Golden Gate,
+metasim, synthesis, and a counter-equipped bitstream remain pending. Keep these configurations
+and their receipts separate.
