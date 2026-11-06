@@ -76,11 +76,11 @@ these source-exported programs remain pending.
 ### TorchAO quantization contract for OPU and VME
 
 The source-authoritative path is torchAO `int8_w8a8`: dynamic signed-int8 activation
-quantization, signed-int8 trained weights, and explicit `_int_mm` contractions with int32
-accumulation. Preserve the captured scale, zero-point, rounding, clamp, and dequantization
-arithmetic around each contraction. Do not apply Merlin's earlier W8A8 rewrite to this
-already-quantized graph. The `int8` storage-format label alone does not certify the
-source quantization recipe; the capture scheme and framework golden must travel with the
+quantization, signed-int8 weights derived from the trained checkpoint, and explicit `_int_mm`
+contractions with int32 accumulation. Preserve the captured scale, zero-point, rounding,
+clamp, and dequantization arithmetic around each contraction. Do not apply Merlin's earlier
+W8A8 rewrite to this already-quantized graph. The `int8` storage-format label alone does not
+certify the source quantization recipe; the capture scheme and framework golden must travel with the
 image. OPU BME and future VME Zvt use different instruction encodings, but both consume
 the same integer contraction and must produce the same int32 result before source
 dequantization. The current matrix shim passes no integer bias, so any float bias and
@@ -95,9 +95,16 @@ scalar path under the current cost model. Its projected fill is **1,644,167,168 
 physical MAC-cell occupancy. Spectformer's integer K dimensions are multiples of 64,
 so a separate K33 case must cover the Zvt tail. A signed `-128`/`127` endpoint case is
 also required before declaring source quantization compatible with VME RTL. Strict
-equality to the independent torchAO framework golden remains the compiler gate; the
-existing Merlin-host discrepancy is under investigation and these projections are not
-model correctness claims.
+numerical agreement with the independent torchAO framework golden remains the compiler gate;
+the existing Merlin-host discrepancy is under investigation and these projections are not
+model correctness claims. The true-source Spectformer host run produced finite 1,000-value
+output with the correct argmax, but failed its framework gate (relative L2 `0.00718247`,
+cosine `0.99997751`). In a bounded pretrained TinyLlama true-source run, the first three
+quantized q/k/v contractions had byte-identical signed operands and int32 accumulators to
+independent eager torchAO. The first mismatch was one activation byte at the first attention
+`o_proj` (torchAO `-128`, Merlin `-127`), at a negative `-127.5` rounding tie. Its prequant
+float and scale are being checked to locate the cause; neither model is source-parity
+certified yet.
 
 A fresh-host check verified the Spectformer capture files and reached compilation, but that host
 lacked the Zephyr/Spike toolchain, so full lowering from a transferred capture remains unverified.
