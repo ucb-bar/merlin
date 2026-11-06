@@ -28,6 +28,16 @@ peak** (0.641417 valid MAC per target cycle). The paired RVV control and the 128
 pair are still running; no speedup or 128-token hardware throughput is established yet. The
 100% static tile fill does **not** imply 100% active-cycle occupancy.
 
+For correctness, the exact shipped OPU Spike ELFs were stopped after computing their whole-output
+hashes and their complete output buffers were extracted before the UART prefix dump. Each extracted
+FNV hash matched its FireSim plan (and s64 job 3860), then Merlin's W8A8 gate was run with
+`min_coverage=1` against the complete host reference. Both sections passed: s64 compared 2,048,000
+values with maximum absolute error `1.43051e-6`, maximum significant-element relative error
+`2.69542e-7`, and all 64 token argmaxes equal; s128 compared 4,096,000 values with the same
+maximum absolute error, maximum significant-element relative error `2.80821e-7`, and all 128
+argmaxes equal. The host W8A8 reference uses Merlin's own quantized math, so this checks device
+execution agreement; it is not an independent proof of the quantization algorithm.
+
 FireSim job 3858, the Spike-gated spectformer image with build hash `41758fde53331576`, completed
 in 3,531,733,777 `METRIC cycles`. That metric is the target `mcycle` delta around the compute region
 per inference, excluding FireSim host time; it includes model work, packing, setup, stalls, and other
