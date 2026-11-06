@@ -237,6 +237,14 @@ and `host_cache.verified_after_execution=true` before this source can advance to
 The cache receipt binds each loaded binary to its build manifest, including the kernel text,
 compiler inputs and binary hash. This records a reproducible local build and byte-bound execution;
 it is not an independent attestation of who produced those files.
+Population seals each completed kernel immediately, including kernels completed
+by process-pool workers. After an interrupted build, preserve valid `.so` and
+`.manifest.json` pairs: the next population can reuse them under the same
+compiler identity. An `.so` without a manifest is refused as an integrity
+error. Confirm the compiler has stopped, then move only such unreceipted
+objects to a task-local quarantine before retrying; do not invent a receipt
+for an object whose compile completion was not observed. A present but invalid
+manifest needs a separate investigation before any reuse.
 
 The trained SpectFormer TorchAO capture inspected on 2026-11-06 has a byte-verified materialized
 receipt (`bd554a8c…`), source MLIR SHA256 `9ae3f772…`, and framework `golden.npy` SHA256

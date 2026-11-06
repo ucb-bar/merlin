@@ -958,18 +958,21 @@ def execute(
             raise HostCacheMiss(missing, cache_dir=cache_dir, identity=_host_identity)
 
         jobs = [
-            (ktext, str(workdir / sym.replace("$", "_")), str(cache_dir / f"{digest}.so"))
+            (
+                digest,
+                ktext,
+                sym,
+                (ktext, str(workdir / sym.replace("$", "_")), str(cache_dir / f"{digest}.so")),
+            )
             for digest, (ktext, sym) in todo.items()
         ]
         workers = int(_os.environ.get("MERLIN_COMPILE_WORKERS", "0")) or max(1, (_os.cpu_count() or 4))
         workers = min(len(jobs), workers)
-        if workers <= 1:
-            for j in jobs:
-                _compile_kernel_so(j)
-        else:
-            with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as ex:
-                list(ex.map(_compile_kernel_so, jobs))
-        for digest, (ktext, sym) in todo.items():
+
+        def seal(digest: str, ktext: str, sym: str) -> None:
+            # A completed object is reusable even if a later compile fails or a
+            # resource guard stops this batch. An object without this receipt is
+            # deliberately refused on the next run until explicitly quarantined.
             write_manifest(
                 cache_dir / f"{digest}.so",
                 key=digest,
@@ -977,6 +980,28 @@ def execute(
                 identity=_host_identity,
                 workdir=workdir / sym.replace("$", "_"),
             )
+
+        if workers <= 1:
+            for digest, ktext, sym, job in jobs:
+                _compile_kernel_so(job)
+                seal(digest, ktext, sym)
+        else:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as ex:
+                pending = {ex.submit(_compile_kernel_so, job): (digest, ktext, sym) for digest, ktext, sym, job in jobs}
+                first_error = None
+                for future in concurrent.futures.as_completed(pending):
+                    try:
+                        future.result()
+                    except Exception as exc:  # noqa: BLE001 -- preserve the first worker failure
+                        if first_error is None:
+                            first_error = exc
+                            for other in pending:
+                                if other is not future:
+                                    other.cancel()
+                    else:
+                        seal(*pending[future])
+                if first_error is not None:
+                    raise first_error
 
     precompile_parallel()
 

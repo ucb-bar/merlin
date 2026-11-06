@@ -207,3 +207,102 @@ def test_read_write_population_creates_manifest_then_strict_replay(tmp_path, mon
     assert len(compiled) == 1
     assert replay["host_cache"]["verified_after_execution"] is True
     assert replay["host_cache"]["loaded"] == first["host_cache"]["loaded"]
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+def test_interrupted_population_receipts_completed_objects_and_refuses_partial(tmp_path, monkeypatch, workers):
+    import concurrent.futures
+
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.llvmlower.abi import HostModel
+    from merlin.runtime import dispatch_runtime
+    from merlin.runtime.host_cache_manifest import manifest_path
+    from merlin.xdsl_dialects.lowering.outline import OutlineResult
+
+    module = parse_mlir_text("""builtin.module {
+      func.func @forward(%x: tensor<1xf32>) -> tensor<1xf32> {
+        %a = func.call @forward$kernel_0(%x) : (tensor<1xf32>) -> tensor<1xf32>
+        %b = func.call @forward$kernel_1(%a) : (tensor<1xf32>) -> tensor<1xf32>
+        func.return %b : tensor<1xf32>
+      }
+      func.func private @forward$kernel_0(%x: tensor<1xf32>) -> tensor<1xf32> {
+        func.return %x : tensor<1xf32>
+      }
+      func.func private @forward$kernel_1(%x: tensor<1xf32>) -> tensor<1xf32> {
+        %unused = arith.constant 1.0 : f32
+        func.return %x : tensor<1xf32>
+      }
+    }""")
+    outlined = OutlineResult(module, [])
+    identity, *_ = _synthetic_identity(tmp_path / "identity", monkeypatch)
+    monkeypatch.setattr("merlin.runtime.host_cache_identity.host_cache_identity", identity)
+    monkeypatch.setenv("MERLIN_COMPILE_WORKERS", str(workers))
+    cache = tmp_path / "cache"
+    compiled = []
+    fail_second = True
+
+    def fake_compile(args):
+        _, workdir, so = args
+        work = Path(workdir)
+        work.mkdir(parents=True)
+        Path(so).write_bytes(f"object {work.name}".encode())
+        compiled.append(so)
+        if fail_second and "kernel_1" in work.name:
+            raise RuntimeError("injected mid-batch failure")
+        (work / "lowering_recipe.json").write_text(
+            json.dumps({"schema": "merlin.lowering_recipe.v1", "status": "returned", "commands": [{"argv": ["stub"]}]})
+        )
+
+    class LocalPool:
+        """Exercise the process-pool completion path without spawning a compiler."""
+
+        def __init__(self, *, max_workers):
+            assert max_workers == 2
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def submit(self, fn, arg):
+            future = concurrent.futures.Future()
+            try:
+                future.set_result(fn(arg))
+            except Exception as exc:  # noqa: BLE001 -- inject a completed worker failure
+                future.set_exception(exc)
+            return future
+
+    monkeypatch.setattr(dispatch_runtime, "_compile_kernel_so", fake_compile)
+    if workers == 2:
+        monkeypatch.setattr(concurrent.futures, "ProcessPoolExecutor", LocalPool)
+
+    with pytest.raises(RuntimeError, match="injected mid-batch failure"):
+        dispatch_runtime.execute(outlined, [np.ones(1, np.float32)], tmp_path / "work", cache_dir=cache)
+    assert len(compiled) == 2
+    objects = sorted(cache.glob("*.so"))
+    complete = [obj for obj in objects if manifest_path(obj).is_file()]
+    incomplete = [obj for obj in objects if not manifest_path(obj).is_file()]
+    assert len(complete) == len(incomplete) == 1
+    with pytest.raises(dispatch_runtime.HostCacheIntegrityError, match="host cache integrity refusal"):
+        dispatch_runtime.execute(outlined, [np.ones(1, np.float32)], tmp_path / "retry", cache_dir=cache)
+    assert len(compiled) == 2
+
+    quarantine = tmp_path / "quarantine"
+    quarantine.mkdir()
+    incomplete[0].replace(quarantine / incomplete[0].name)
+    fail_second = False
+
+    class StubHostModel:
+        scalar_result_dtype = None
+
+        def __call__(self, _args):
+            return None
+
+    monkeypatch.setattr(HostModel, "load", lambda *_a, **_k: StubHostModel())
+    counters = {}
+    dispatch_runtime.execute(outlined, [np.ones(1, np.float32)], tmp_path / "retry", cache_dir=cache, counters=counters)
+    assert len(compiled) == 3  # the first completed object was reused
+    assert len(counters["host_cache"]["loaded"]) == 2
+    assert counters["host_cache"]["verified_after_execution"] is True
+    assert (quarantine / incomplete[0].name).is_file()
