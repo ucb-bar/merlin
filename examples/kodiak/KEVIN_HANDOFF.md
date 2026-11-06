@@ -76,6 +76,13 @@ current-head Spectformer h1/h2 delivery has eight images: all four plain images 
 gates, and all debug twins passed ELF audits, with 90 OPU routes. The two-layer TinyLlama
 chipyard delivery labels its unrun OPU ELFs `UNGATED`. Neither package
 claims physical Kodiak execution or K1 certification for the new schedule.
+On this shared host, the rebuilt Spectformer h1/h2 chipyard delivery is staged at
+`out/artifacts/delivery/kodiak-spectformer-prepack-v1-final.zip` (SHA-256
+`3c0871423e0d38c9466dbfded01932f0d569c95a2222c178d915fabdfe5b04a2`). The zip
+passed archive integrity and contains eight ELFs, its manifest, audits, and grading script.
+Its four plain images passed W8A8 gates and h2 matches h1. It is an ignored local artifact,
+not a Git-tracked download or a physical-chip execution receipt; the exact prepack FireSim
+pair is queued separately.
 
 A current-routing unprofiled Spectformer OPU comparator completed as FireSim job 3870 in
 **3,038,273,721 target compute cycles** with the same full output hash as its exact Spike image.
