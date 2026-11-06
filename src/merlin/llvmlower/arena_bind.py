@@ -936,8 +936,7 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL, entry: str = "forwar
                 conflicts[b.name].add(a.name)
 
     sizes = {a.name: _align_up(a.size) for a in allocs}
-    order = sorted(((a.name, sizes[a.name]) for a in allocs), key=lambda kv: (-kv[1], kv[0]))
-    offsets, arena_bytes = pack_disjoint(order, conflicts)
+    offsets, arena_bytes = _best_packing(allocs, sizes, conflicts)
 
     # ---- the property the pass exists for, re-checked on the placement it is about to emit ----
     _assert_no_conflicting_overlap(offsets, sizes, conflicts)
@@ -974,6 +973,36 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL, entry: str = "forwar
         refused_bytes=sum(size for name, (_line, size) in mallocs.items() if name not in bound_names),
     )
     return "\n".join(out), report
+
+
+def _best_packing(
+    allocs: list[_Alloc], sizes: dict[str, int], conflicts: dict[str, set[str]]
+) -> tuple[dict[str, int], int]:
+    """First-fit placement under several orders; the smallest arena wins.
+
+    No single greedy order is best for every program, and the difference is the board's margin: on a
+    2-layer TinyLlama section at 512 tokens, largest-first left the arena 11.5 MiB over its peak, the
+    image 2.2 MiB over Kodiak's DRAM. Every order is placed by the same `pack_disjoint` against the same
+    conflict relation, so each is as sound as the other; only the size differs. Ties keep the
+    largest-first order the binder always used, so a program that gains nothing is placed as before.
+    Program position (the text line of the malloc and of its free) serves only as an ORDER key here --
+    it says nothing about liveness, which the conflict relation alone decides.
+    """
+    span = {a.name: max(1, a.free_line - a.malloc_line) for a in allocs}
+    keys = (
+        lambda a: (-sizes[a.name], a.name),  # largest first
+        lambda a: (a.malloc_line, a.name),  # in allocation order
+        lambda a: (-span[a.name], -sizes[a.name], a.name),  # longest-lived first
+        lambda a: (-sizes[a.name] * span[a.name], a.name),  # largest size x lifetime first
+    )
+    best: tuple[dict[str, int], int] | None = None
+    for key in keys:
+        order = [(a.name, sizes[a.name]) for a in sorted(allocs, key=key)]
+        placed = pack_disjoint(order, conflicts)
+        if best is None or placed[1] < best[1]:
+            best = placed
+    assert best is not None
+    return best
 
 
 def _assert_no_conflicting_overlap(

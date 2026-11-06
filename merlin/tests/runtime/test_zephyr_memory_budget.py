@@ -66,6 +66,39 @@ def test_buffers_freed_at_last_use_pack_to_the_peak_not_the_sum():
     assert offsets["%a"] == offsets["%c"] and offsets["%b"] != offsets["%a"]
 
 
+#: Four buffers whose largest-first placement wastes a slot: b2 and b3 overlap, b3 and b1, b1 and b0.
+#: The peak is b1 + b0 = 256 bytes; placing the 128-byte buffers first strands b3 above them (320).
+STAGGERED = f"""declare ptr @malloc(i64)
+
+declare void @free(ptr)
+
+define void @forward(ptr %out) {{
+{_alloc("b2", 128)}
+{_alloc("b3", 64)}
+{_free("b2")}
+{_alloc("b1", 128)}
+{_free("b3")}
+{_alloc("b0", 128)}
+{_free("b0")}
+{_free("b1")}
+  ret void
+}}
+"""
+
+
+def test_the_packing_tries_more_than_one_order_and_keeps_the_smallest():
+    """No greedy order is best for every program; on a 512-token TinyLlama section largest-first left
+    the arena 11.5 MiB over its peak and the image 2.2 MiB over the board. Here largest-first needs 320
+    bytes and allocation order reaches the 256-byte peak."""
+    from merlin.xdsl_dialects.lowering.arena_plan import pack_disjoint
+
+    out, rep = ab.bind_arena(STAGGERED)
+    assert rep.peak_live_bytes == 256 and rep.arena_bytes == 256, rep.to_dict()
+    conflicts = {"%b2": {"%b3"}, "%b3": {"%b2", "%b1"}, "%b1": {"%b3", "%b0"}, "%b0": {"%b1"}}
+    largest_first = [("%b0", 128), ("%b1", 128), ("%b2", 128), ("%b3", 64)]
+    assert pack_disjoint(largest_first, conflicts)[1] == 320
+
+
 def test_the_same_buffers_freed_at_the_end_pack_to_their_sum():
     """Unsunk, every free sits at the end of the function and every buffer is live for the whole call:
     the plan is then exactly as large as the sum, which is why the frees have to move first."""
