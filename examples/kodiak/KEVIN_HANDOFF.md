@@ -201,6 +201,11 @@ RTL. A second SHA-checked script in that patch directory applies the validated F
 worktree build fix at the pinned Iris FireSim base. The metasim receipt remains bound to
 Chipyard source commit `5311b459`; the newer branch commit adds only build packaging.
 These are source and simulator gates, not a VME FPGA image.
+The first VLEN512/DLEN256 VME U250 build passed synthesis and `opt_design` but failed placement
+DRC `UTLZ-1`: 2,208,803 slice LUTs were required and 1,728,000 are available. The build ended
+rc 1 without a bitstream; the bounded log and rc are in Chipyard managed task
+`kodiak-vme-portability-2/.tmp/`. A separate VLEN512/DLEN128 compact VME candidate is undergoing
+exact-pin source and RTL checks before any U250 claim.
 The current OPU FireSim bitstream is usable for the BME flow above. Its archived artifact identity
 was checked during the hardware jobs. Reproducing that archive from a clean source tree remains
 unverified because the live Chipyard/Saturn checkout has pin drift. Physical Kodiak rig access

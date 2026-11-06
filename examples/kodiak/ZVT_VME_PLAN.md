@@ -89,3 +89,11 @@ This does not establish FPGA bitstream timing or physical Kodiak ASIC support.
 The metasim receipt is pinned to Chipyard `5311b459`; the newer published branch head adds
 only `patches/kodiak-vme/apply-firesim-worktree-build.sh` and its SHA-verified build patch for
 the Iris FireSim base `e1bdea8`. Hardware gitlinks and generated RTL are unchanged.
+
+The original VLEN512/DLEN256 `FireSimKodiakVME1CoreConfig` U250 build passed synthesis and
+`opt_design`, then failed the placement DRC `UTLZ-1`: it requires 2,208,803 slice LUTs against
+1,728,000 available, an excess of 480,803. The bounded build ended with rc 1 and produced no
+bitstream. Its log and rc are in managed Chipyard task `kodiak-vme-portability-2/.tmp/` as
+`vme-u250-synthesis.log` and `vme-u250-synthesis.rc`. Do not submit its Zvt ELF to the existing
+BME OPU bitstream. A distinct VLEN512/DLEN128 compact VME configuration is undergoing exact-pin
+source, RTL, and area gates; it is not a proven U250 image yet.
