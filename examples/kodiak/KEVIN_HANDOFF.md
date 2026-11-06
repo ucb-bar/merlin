@@ -47,7 +47,19 @@ exact Spike full hashes and prefixes, and the pair graded VERIFIED: **12.4227× 
 The device performs 9,865,003,008 valid routed MACs, or **0.874215% of the 1,024-MAC/cycle
 theoretical peak across the inference**; the earlier OPU image measured 0.0626384%. The s128
 aligned-prepack OPU and RVV images have both passed exact Spike gates, including the baseline's
-full 4,096,000-value hash; their FireSim device is queued as job 3871.
+full 4,096,000-value hash. Its FireSim device job 3871 completed with that full hash in
+2,438,693,540 target cycles; the matched RVV control job 3875 is queued. The device performed
+19,797,114,880 valid routed MACs, or 0.792765% whole-inference effective peak; its paired
+speedup remains pending.
+
+To use the measured aligned-prepack schedule, pass
+`--rvv-package rvv/kodiak_prepack_w8a8_v1` to `./run.sh firesim`, `build`, or `package`. The
+[versioned package](../../out/artifacts/targets/rvv/kodiak_prepack_w8a8_v1/README.md) records
+the exact s64 FireSim pair and preserves the older K1-certified schedule as the default. The
+current-head Spectformer h1/h2 delivery has eight images: all four plain images passed W8A8
+gates, and all debug twins passed ELF audits, with 90 OPU routes. The two-layer TinyLlama
+chipyard delivery labels its unrun OPU ELFs `UNGATED`. Neither package
+claims physical Kodiak execution or K1 certification for the new schedule.
 
 A current-routing unprofiled Spectformer OPU comparator completed as FireSim job 3870 in
 **3,038,273,721 target compute cycles** with the same full output hash as its exact Spike image.
