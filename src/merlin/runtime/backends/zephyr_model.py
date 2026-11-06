@@ -2460,19 +2460,14 @@ def build_app(
 
     # 3. weights.bin -> binary blob object; archive it with model.o.
     _run([ld, "-r", "-b", "binary", "-o", work / "weights_blob.o", "weights.bin"], cwd=cgen)
-    # GNU ld gives a binary input section byte alignment. A prepacked matrix weight is read
-    # directly from this blob by the OPU shim, which requires a 32-byte aligned B pointer;
-    # otherwise it silently takes its scalar GEMM fallback. All generated weight offsets are
-    # aligned, so align the blob's input section before the final Zephyr link places it.
+    # GNU ld byte-aligns binary sections; the OPU shim requires a 32-byte B pointer.
+    # Weight offsets are aligned, so align the blob section before final linking.
     _run([objcopy, "--set-section-alignment", ".data=32", work / "weights_blob.o"])
     weights_size = (cgen / "weights.bin").stat().st_size
 
-    # Build identity, part one: the lowered model object plus the weights blob -- what computes the
-    # answer. The app configuration is folded in further down, once it exists, because the compute is
-    # only half of what makes two images behave differently. Hashing the model alone was a real defect:
-    # the Kodiak vector-state fix changed the Kconfig and the DT overlay and nothing else, so the fixed
-    # and the hanging image reported the SAME build_hash, and the one thing the protocol exists to
-    # answer -- "which binary produced this log?" -- could not be answered.
+    # Hash model and weights now, then fold in app configuration below. Model-only
+    # hashes masked the Kodiak vector-state fix, which changed Kconfig/DT but not model.o.
+    # Include both so the reported build_hash identifies the actual image.
     import hashlib as _hashlib
 
     _h = _hashlib.sha256()
