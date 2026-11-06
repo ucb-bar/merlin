@@ -1,0 +1,5 @@
+%Warning: System has stack size 8192 kb which may be too small; suggest 'ulimit -c 15363' or larger
+[UART] UART0 is here (stdin/stdout).
+[10000001000] %Fatal: TestDriver.v:147: Assertion failed in TOP.TestDriver
+%Error: /scratch/loren/s4rehearsal/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TestDriver.v:147: Verilog $stop
+Aborting...

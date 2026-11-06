@@ -1,0 +1,652 @@
+{
+  "capsule": "SY_conv_operand_capacity_boundary",
+  "kind": "layer",
+  "label": "public",
+  "status": "fail",
+  "contract_version": "0.1",
+  "tiers": {
+    "L0": {
+      "status": "pass",
+      "mandatory": true,
+      "not_run_is_not_pass": true,
+      "reason": null,
+      "cycles": null,
+      "derived_from_rtl": false,
+      "cycle_accurate": false,
+      "evidence": "numeric_report.yaml",
+      "timing": null,
+      "submission": {
+        "package": "/scratch/loren/eval/results/fullgrade-int1-p2-20261106T082604Z/candidate",
+        "run_id": "SY_conv_operand_capacity_boundary",
+        "arm": null,
+        "round": null,
+        "stated": [
+          "run_id"
+        ]
+      },
+      "measured_now": true
+    },
+    "L1": {
+      "status": "pass",
+      "mandatory": true,
+      "not_run_is_not_pass": true,
+      "reason": null,
+      "cycles": null,
+      "derived_from_rtl": false,
+      "cycle_accurate": false,
+      "evidence": null,
+      "timing": null,
+      "submission": {
+        "package": "/scratch/loren/eval/results/fullgrade-int1-p2-20261106T082604Z/candidate",
+        "run_id": "SY_conv_operand_capacity_boundary",
+        "arm": null,
+        "round": null,
+        "stated": [
+          "run_id"
+        ]
+      },
+      "measured_now": true
+    },
+    "L2": {
+      "status": "pass",
+      "mandatory": true,
+      "not_run_is_not_pass": true,
+      "reason": null,
+      "cycles": null,
+      "derived_from_rtl": false,
+      "cycle_accurate": false,
+      "evidence": "functional_console.log",
+      "timing": {
+        "build_s": 32.28,
+        "sim_active_s": 3.382,
+        "oracle_wait_s": 1.636,
+        "adapter_wall_s": 37.298
+      },
+      "fidelity": "functional_model",
+      "concurrency": {
+        "workers": 2,
+        "nproc": 48,
+        "load_avg": 36.03,
+        "serial": false,
+        "sampled": "at the adapter's return, so the load average covers the measurement itself"
+      },
+      "submission": {
+        "package": "/scratch/loren/eval/results/fullgrade-int1-p2-20261106T082604Z/candidate",
+        "run_id": "SY_conv_operand_capacity_boundary",
+        "arm": null,
+        "round": null,
+        "stated": [
+          "run_id"
+        ]
+      },
+      "toolchain": "/scratch/loren/eval/results/fullgrade-int1-p2-20261106T082604Z/candidate",
+      "engine": "spike",
+      "sim_provenance": {
+        "engine": "spike",
+        "binary": "/scratch/loren/core-aten-snap/phase1-prep/toolchain/.conda-env/riscv-tools/bin/spike",
+        "sha256": "53f31d929e879fb32209833bfb83f77b0657f3a81d11fa4dc5e6b46ec0102cfb",
+        "resolution": "selected prebuilt execution inputs are byte-bound; runtime and timing unqualified"
+      },
+      "console_log": "functional_console.log",
+      "console_bytes": 240382,
+      "measured_now": true
+    },
+    "L3": {
+      "status": "fail",
+      "mandatory": true,
+      "not_run_is_not_pass": true,
+      "reason": "elaborated_rtl crash: Command '['/scratch/loren/megaphase-core-aten/seal4/contract/rtl-build/bin/simulator-chipyard.harness-GemminiRocketConfig', '+permissive', '+dramsim', '+dramsim_ini_dir=/scratch/loren/megaphase-core-a [\u2026] nv_operand_capacity_boundary/generated/package_kernel.elf']' returned non-zero exit status 255.",
+      "cycles": null,
+      "derived_from_rtl": true,
+      "cycle_accurate": false,
+      "evidence": null,
+      "timing": {
+        "build_s": null,
+        "sim_active_s": null,
+        "oracle_wait_s": null,
+        "adapter_wall_s": 2159.325,
+        "partial": true,
+        "unavailable_reason": "adapter raised before returning the phase timing split"
+      },
+      "concurrency": {
+        "workers": 2,
+        "nproc": 48,
+        "load_avg": 46.07,
+        "serial": false,
+        "sampled": "at the adapter's return, so the load average covers the measurement itself"
+      },
+      "submission": {
+        "package": "/scratch/loren/eval/results/fullgrade-int1-p2-20261106T082604Z/candidate",
+        "run_id": "SY_conv_operand_capacity_boundary",
+        "arm": null,
+        "round": null,
+        "stated": [
+          "run_id"
+        ]
+      },
+      "measured_now": true
+    }
+  },
+  "trace_check": {
+    "status": "pass",
+    "violations": [],
+    "trace_requirement_status": "pass",
+    "unavailable_requirements": []
+  },
+  "numeric": {
+    "status": "pass",
+    "policy": "exact_int",
+    "max_abs_diff": 0,
+    "max_rel_error": 0.0,
+    "mismatch_count": 0,
+    "first_mismatch": null,
+    "per_output": {
+      "Y0": {
+        "status": "pass",
+        "mismatch_count": 0,
+        "max_abs_error": 0,
+        "max_rel_error": 0.0,
+        "n_elements": 87616,
+        "saturated": false
+      }
+    },
+    "missing_outputs": []
+  },
+  "failure": {
+    "plane": "elaborated_rtl",
+    "category": "tool_crash",
+    "detail": "elaborated_rtl invocation failed: Command '['/scratch/loren/megaphase-core-aten/seal4/contract/rtl-build/bin/simulator-chipyard.harness-GemminiRocketConfig', '+permissive', '+dramsim', '+dramsim_ini_dir=/scratch/loren/megaphase-core-aten/reseal/contract/tools/dramsim2_ini', '+max-cycles=10000000', ' [\u2026] e/runs/gemmini-capsule-bench/SY_conv_operand_capacity_boundary/generated/package_kernel.elf']' returned non-zero exit status 255."
+  },
+  "toolchain_shas": {
+    "merlin": "e70dea82e407015dfff5f3c218c24d605c511ee1",
+    "gemmini_rtl": "8c3f9923a44a2fe2c7930587be297d6d4f8c09ca",
+    "gemmini_phase1_verilator": "UNKNOWN",
+    "gemmini_phase1_rtl": "8c3f9923a44a2fe2c7930587be297d6d4f8c09ca",
+    "gemmini_phase1_isa_headers": "7c540b3adf1b86ad93d07f893abe3a73489b568e",
+    "gemmini_isa_headers": "7c540b3adf1b86ad93d07f893abe3a73489b568e",
+    "gemmini_rocket_chipyard": "UNKNOWN",
+    "gemmini_rocket_rtl": "UNKNOWN",
+    "libgemmini_rne": "UNKNOWN",
+    "gemmini_f2_chipyard": "UNKNOWN",
+    "gemmini_f2_rtl": "UNKNOWN",
+    "firesim_f2_gemmini": "UNKNOWN"
+  },
+  "tier_reuse": {
+    "executed": [
+      "L0",
+      "L1",
+      "L2",
+      "L3"
+    ],
+    "carried": [],
+    "note": "carried tiers were not executed in this run; their verdict was earned earlier by the same executable on the same instrument (merlin.targetgen.tier_cache)"
+  },
+  "epilogue_applicability": {
+    "schema": "merlin_epilogue_applicability_v1",
+    "status": "not_applicable",
+    "detail": "the program declares no epilogue stage, so none can be discarded",
+    "refusing": false,
+    "readouts_declared": [
+      "i32",
+      "i8"
+    ],
+    "n_discarded": 0,
+    "stages": []
+  },
+  "compiler_source": {
+    "schema": "merlin.capsule_compiler_source.v1",
+    "status": "stable",
+    "package": "/scratch/loren/eval/results/fullgrade-int1-p2-20261106T082604Z/candidate",
+    "candidate_sha256": "ecd6f9886babf360d32f61d9f776a1e14b4cf800290cd39427f343d37219cfa3",
+    "snapshot": "compiler-source/ecd6f9886babf360d32f61d9f776a1e14b4cf800290cd39427f343d37219cfa3",
+    "artifacts": {
+      "package_kernel.elf": "723dcdbef89eed6c4049503753e2ffb0462194f7dacef05e47d2f037a0003f92",
+      "harness.c": "391e03e38e20dec90adbd1daa55766d39515002b7a4c059973e949cd66437ddf",
+      "input.interface.mlir": "4223e895ee06bcab56976a69221f1095e1c051e99ea9a08b66ab689aa78d45c4",
+      "command_buffer.json": "e597a0a7fdce6c99c97df5224e2a76d3e1e42fa187b07c8c45753c0684484b83"
+    },
+    "executed_programs": [
+      {
+        "build_identity_sha256": "f3fa3f6118059602a47232a7dc5319147ee8208b209b2c83748adf5d136245e7",
+        "compiler_artifacts": {
+          "authority": "original completed-call artifacts only; numerical/certification gates remain separate",
+          "execution_identity": null,
+          "members": {
+            "build": {
+              "bytes": 81553,
+              "path": "executed/spike/723dcdbef89eed6c4049503753e2ffb0462194f7dacef05e47d2f037a0003f92/readback-build.json",
+              "sha256": "9a8eadad4e656a1a14e3902141a4ddad748360b60a5a704aea390d7cd48bd3b0"
+            },
+            "command_buffer": {
+              "bytes": 377812,
+              "path": "executed/spike/723dcdbef89eed6c4049503753e2ffb0462194f7dacef05e47d2f037a0003f92/command_buffer.json",
+              "sha256": "2295a7c034a714212a15cdbbf90327419715d3928df190a37e42d04b27cd3548"
+            },
+            "console": {
+              "bytes": 240382,
+              "path": "executed/spike/723dcdbef89eed6c4049503753e2ffb0462194f7dacef05e47d2f037a0003f92/console.bin",
+              "sha256": "38ce91df66a60feff315c7405c9d8a5c837cf73fef306c4bb381685fa256175b"
+            },
+            "invocation": {
+              "bytes": 2690,
+              "path": "executed/spike/723dcdbef89eed6c4049503753e2ffb0462194f7dacef05e47d2f037a0003f92/execution-invocation.json",
+              "sha256": "bd4f15350c3481d89ab56290b281b7172b77c4603eb7f75af66621bb52c391c4"
+            },
+            "kernel_object": {
+              "bytes": 2376,
+              "path": "executed/spike/723dcdbef89eed6c4049503753e2ffb0462194f7dacef05e47d2f037a0003f92/kernel.o",
+              "sha256": "967ac62f0db07fa0d411e98a376905547d550b8b6fe6eed6e1924216068d4049"
+            },
+            "lowered_mlir": {
+              "bytes": 92767,
+              "path": "executed/spike/723dcdbef89eed6c4049503753e2ffb0462194f7dacef05e47d2f037a0003f92/lowered.llvm.mlir",
+              "sha256": "70eceac32048f69625d5c6ad3dab713faa6db659a99706c57b639c4ac4e17814"
+            }
+          },
+          "operator_cost": {
+            "stage": "verification_artifact_retention",
+            "target_execution_cycles": null,
+            "wall_seconds": 0.13974668306764215
+          },
+          "oracle": {
+            "derived_from_rtl": false,
+            "engine": "spike",
+            "fidelity": "functional_model",
+            "kind": "functional",
+            "provenance": {
+              "binary": "/scratch/loren/core-aten-snap/phase1-prep/toolchain/.conda-env/riscv-tools/bin/spike",
+              "engine": "spike",
+              "resolution": "selected prebuilt execution inputs are byte-bound; runtime and timing unqualified",
+              "sha256": "53f31d929e879fb32209833bfb83f77b0657f3a81d11fa4dc5e6b46ec0102cfb"
+            },
+            "scope": "selected process and complete console only; hardware, timing and runtime qualification unestablished"
+          },
+          "original_execution_invocation": {
+            "path": "/scratch/loren/eval/results/fullgrade-int1-p2-20261106T082604Z/results/runs-core/runs/gemmini-capsule-bench/SY_conv_operand_capacity_boundary/generated/invocations/c43df4115e2f48febda06b55d76fc136/invocation.json",
+            "sha256": "bd4f15350c3481d89ab56290b281b7172b77c4603eb7f75af66621bb52c391c4"
+          },
+          "status": "retained"
+        },
+        "elf": {
+          "bytes": 34016,
+          "path": "executed/spike/723dcdbef89eed6c4049503753e2ffb0462194f7dacef05e47d2f037a0003f92/package_kernel.elf",
+          "sha256": "723dcdbef89eed6c4049503753e2ffb0462194f7dacef05e47d2f037a0003f92"
+        },
+        "engine": "spike",
+        "engine_sha256": "53f31d929e879fb32209833bfb83f77b0657f3a81d11fa4dc5e6b46ec0102cfb",
+        "harness": {
+          "bytes": 115042,
+          "path": "executed/spike/723dcdbef89eed6c4049503753e2ffb0462194f7dacef05e47d2f037a0003f92/harness.c",
+          "sha256": "391e03e38e20dec90adbd1daa55766d39515002b7a4c059973e949cd66437ddf"
+        },
+        "kernel_object": {
+          "name": "kernel.o",
+          "sha256": "967ac62f0db07fa0d411e98a376905547d550b8b6fe6eed6e1924216068d4049"
+        },
+        "observed_ns": 1793954392817394079,
+        "readback_policy": {
+          "schema": "merlin_readback_policy_v1",
+          "transport": "out_b64_v1"
+        },
+        "schema": "merlin.executed_program.v2",
+        "status": "retained"
+      }
+    ]
+  },
+  "work_volume": {
+    "basis": "compiler_command_buffer",
+    "unit": "macs",
+    "known_macs": 3154176,
+    "exact_macs": 3154176,
+    "is_lower_bound": false,
+    "artifact_sha256": "058d83f1a2fc739d98b72f8d77c87899b618b847c5dbe4d7508cb3dcb0e0482d",
+    "refusals": [],
+    "commands": [
+      {
+        "index": 1,
+        "opcode": "CONV2D",
+        "macs": 3154176,
+        "provenance": "command_buffer.commands[1](CONV2D)",
+        "refusal": null
+      }
+    ]
+  },
+  "command_buffer_artifact": {
+    "command_buffer": {
+      "abi_version": "0.1",
+      "commands": [
+        {
+          "attributes": {
+            "layout": "packed_conv_rhs"
+          },
+          "opcode": "RES_PACK",
+          "operands": {
+            "dst": "W_res",
+            "src": "W"
+          }
+        },
+        {
+          "attributes": {
+            "dilation": [
+              1,
+              1
+            ],
+            "epilogue": [],
+            "kernel": [
+              3,
+              3,
+              4,
+              16
+            ],
+            "layout": "nhwc",
+            "output_dtype": "i32",
+            "padding": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "stride": [
+              1,
+              1
+            ]
+          },
+          "opcode": "CONV2D",
+          "operands": {
+            "dst": "Y0",
+            "ifm": "IFM",
+            "weight": "W_res"
+          }
+        },
+        {
+          "attributes": {},
+          "opcode": "EVICT",
+          "operands": {
+            "handle": "W_res"
+          }
+        }
+      ],
+      "outputs": [
+        "Y0"
+      ],
+      "params": {
+        "command_sources": [
+          {
+            "command_index": 0,
+            "source_op_index": 2
+          },
+          {
+            "command_index": 1,
+            "source_op_index": 3
+          },
+          {
+            "command_index": 2,
+            "source_op_index": 4
+          }
+        ],
+        "lane_placement": [
+          {
+            "lane": "device",
+            "region": "program"
+          }
+        ],
+        "stimulus_range": [
+          -4,
+          3
+        ]
+      },
+      "target": "gemmini",
+      "tensors": {
+        "IFM": {
+          "dtype": "i8",
+          "role": "input",
+          "shape": [
+            1,
+            74,
+            74,
+            4
+          ]
+        },
+        "W": {
+          "dtype": "i8",
+          "role": "weight",
+          "shape": [
+            36,
+            16
+          ]
+        },
+        "Y0": {
+          "dtype": "i32",
+          "role": "output",
+          "shape": [
+            5476,
+            16
+          ]
+        }
+      }
+    },
+    "artifact_sha256": "058d83f1a2fc739d98b72f8d77c87899b618b847c5dbe4d7508cb3dcb0e0482d",
+    "compiler_provenance": "submission command-buffer contract entrypoint"
+  },
+  "movement_volume": {
+    "basis": "compiler_command_buffer",
+    "unit": "bytes",
+    "known_bytes_in": 576,
+    "known_bytes_out": 0,
+    "known_bytes": 576,
+    "exact_bytes": 576,
+    "is_lower_bound": false,
+    "artifact_sha256": "058d83f1a2fc739d98b72f8d77c87899b618b847c5dbe4d7508cb3dcb0e0482d",
+    "refusals": [],
+    "counts": "declared_by_command_buffer",
+    "resident_operand_charged": "once_at_pack",
+    "cannot_detect": "a lowering that re-loads a resident operand; compare mvin count against RES_PACK count in the decoded instruction stream",
+    "commands": [
+      {
+        "index": 0,
+        "opcode": "RES_PACK",
+        "bytes_in": 576,
+        "bytes_out": 0,
+        "provenance": "command_buffer.commands[0](RES_PACK)",
+        "refusal": null
+      },
+      {
+        "index": 1,
+        "opcode": "CONV2D",
+        "bytes_in": 0,
+        "bytes_out": 0,
+        "provenance": "command_buffer.commands[1](CONV2D)",
+        "refusal": null
+      },
+      {
+        "index": 2,
+        "opcode": "EVICT",
+        "bytes_in": 0,
+        "bytes_out": 0,
+        "provenance": "command_buffer.commands[2](EVICT)",
+        "refusal": null
+      }
+    ],
+    "compiler_provenance": "submission command-buffer contract entrypoint"
+  },
+  "isa_prohibition": {
+    "schema": "merlin_isa_prohibition_v1",
+    "scope": "whole_elf",
+    "roles": [
+      "loop_descriptor"
+    ],
+    "status": "measured",
+    "clean": true,
+    "summary": {},
+    "scans": [
+      {
+        "schema": "merlin_isa_prohibition_v1",
+        "roles": [
+          "loop_descriptor"
+        ],
+        "elf": "/scratch/loren/eval/results/fullgrade-int1-p2-20261106T082604Z/results/runs-core/runs/gemmini-capsule-bench/SY_conv_operand_capacity_boundary/generated/crt.o",
+        "status": "measured",
+        "clean": true,
+        "prohibited": {
+          "8": "LOOP_WS",
+          "9": "LOOP_WS_CONFIG_BOUNDS",
+          "10": "LOOP_WS_CONFIG_ADDRS_AB",
+          "11": "LOOP_WS_CONFIG_ADDRS_DC",
+          "12": "LOOP_WS_CONFIG_STRIDES_AB",
+          "13": "LOOP_WS_CONFIG_STRIDES_DC",
+          "15": "LOOP_CONV_WS",
+          "16": "LOOP_CONV_WS_CONFIG_1",
+          "17": "LOOP_CONV_WS_CONFIG_2",
+          "18": "LOOP_CONV_WS_CONFIG_3",
+          "19": "LOOP_CONV_WS_CONFIG_4",
+          "20": "LOOP_CONV_WS_CONFIG_5",
+          "21": "LOOP_CONV_WS_CONFIG_6",
+          "24": "LOOP_WS_CONFIG_SPAD_AB",
+          "25": "LOOP_WS_CONFIG_SPAD_C"
+        },
+        "summary": {},
+        "hits": []
+      },
+      {
+        "schema": "merlin_isa_prohibition_v1",
+        "roles": [
+          "loop_descriptor"
+        ],
+        "elf": "/scratch/loren/eval/results/fullgrade-int1-p2-20261106T082604Z/results/runs-core/runs/gemmini-capsule-bench/SY_conv_operand_capacity_boundary/generated/harness.o",
+        "status": "measured",
+        "clean": true,
+        "prohibited": {
+          "8": "LOOP_WS",
+          "9": "LOOP_WS_CONFIG_BOUNDS",
+          "10": "LOOP_WS_CONFIG_ADDRS_AB",
+          "11": "LOOP_WS_CONFIG_ADDRS_DC",
+          "12": "LOOP_WS_CONFIG_STRIDES_AB",
+          "13": "LOOP_WS_CONFIG_STRIDES_DC",
+          "15": "LOOP_CONV_WS",
+          "16": "LOOP_CONV_WS_CONFIG_1",
+          "17": "LOOP_CONV_WS_CONFIG_2",
+          "18": "LOOP_CONV_WS_CONFIG_3",
+          "19": "LOOP_CONV_WS_CONFIG_4",
+          "20": "LOOP_CONV_WS_CONFIG_5",
+          "21": "LOOP_CONV_WS_CONFIG_6",
+          "24": "LOOP_WS_CONFIG_SPAD_AB",
+          "25": "LOOP_WS_CONFIG_SPAD_C"
+        },
+        "summary": {},
+        "hits": []
+      },
+      {
+        "schema": "merlin_isa_prohibition_v1",
+        "roles": [
+          "loop_descriptor"
+        ],
+        "elf": "/scratch/loren/eval/results/fullgrade-int1-p2-20261106T082604Z/results/runs-core/runs/gemmini-capsule-bench/SY_conv_operand_capacity_boundary/generated/htif.o",
+        "status": "measured",
+        "clean": true,
+        "prohibited": {
+          "8": "LOOP_WS",
+          "9": "LOOP_WS_CONFIG_BOUNDS",
+          "10": "LOOP_WS_CONFIG_ADDRS_AB",
+          "11": "LOOP_WS_CONFIG_ADDRS_DC",
+          "12": "LOOP_WS_CONFIG_STRIDES_AB",
+          "13": "LOOP_WS_CONFIG_STRIDES_DC",
+          "15": "LOOP_CONV_WS",
+          "16": "LOOP_CONV_WS_CONFIG_1",
+          "17": "LOOP_CONV_WS_CONFIG_2",
+          "18": "LOOP_CONV_WS_CONFIG_3",
+          "19": "LOOP_CONV_WS_CONFIG_4",
+          "20": "LOOP_CONV_WS_CONFIG_5",
+          "21": "LOOP_CONV_WS_CONFIG_6",
+          "24": "LOOP_WS_CONFIG_SPAD_AB",
+          "25": "LOOP_WS_CONFIG_SPAD_C"
+        },
+        "summary": {},
+        "hits": []
+      },
+      {
+        "schema": "merlin_isa_prohibition_v1",
+        "roles": [
+          "loop_descriptor"
+        ],
+        "elf": "/scratch/loren/eval/results/fullgrade-int1-p2-20261106T082604Z/results/runs-core/runs/gemmini-capsule-bench/SY_conv_operand_capacity_boundary/generated/kernel.o",
+        "status": "measured",
+        "clean": true,
+        "prohibited": {
+          "8": "LOOP_WS",
+          "9": "LOOP_WS_CONFIG_BOUNDS",
+          "10": "LOOP_WS_CONFIG_ADDRS_AB",
+          "11": "LOOP_WS_CONFIG_ADDRS_DC",
+          "12": "LOOP_WS_CONFIG_STRIDES_AB",
+          "13": "LOOP_WS_CONFIG_STRIDES_DC",
+          "15": "LOOP_CONV_WS",
+          "16": "LOOP_CONV_WS_CONFIG_1",
+          "17": "LOOP_CONV_WS_CONFIG_2",
+          "18": "LOOP_CONV_WS_CONFIG_3",
+          "19": "LOOP_CONV_WS_CONFIG_4",
+          "20": "LOOP_CONV_WS_CONFIG_5",
+          "21": "LOOP_CONV_WS_CONFIG_6",
+          "24": "LOOP_WS_CONFIG_SPAD_AB",
+          "25": "LOOP_WS_CONFIG_SPAD_C"
+        },
+        "summary": {},
+        "hits": []
+      },
+      {
+        "schema": "merlin_isa_prohibition_v1",
+        "roles": [
+          "loop_descriptor"
+        ],
+        "elf": "/scratch/loren/eval/results/fullgrade-int1-p2-20261106T082604Z/results/runs-core/runs/gemmini-capsule-bench/SY_conv_operand_capacity_boundary/generated/libc_min.o",
+        "status": "measured",
+        "clean": true,
+        "prohibited": {
+          "8": "LOOP_WS",
+          "9": "LOOP_WS_CONFIG_BOUNDS",
+          "10": "LOOP_WS_CONFIG_ADDRS_AB",
+          "11": "LOOP_WS_CONFIG_ADDRS_DC",
+          "12": "LOOP_WS_CONFIG_STRIDES_AB",
+          "13": "LOOP_WS_CONFIG_STRIDES_DC",
+          "15": "LOOP_CONV_WS",
+          "16": "LOOP_CONV_WS_CONFIG_1",
+          "17": "LOOP_CONV_WS_CONFIG_2",
+          "18": "LOOP_CONV_WS_CONFIG_3",
+          "19": "LOOP_CONV_WS_CONFIG_4",
+          "20": "LOOP_CONV_WS_CONFIG_5",
+          "21": "LOOP_CONV_WS_CONFIG_6",
+          "24": "LOOP_WS_CONFIG_SPAD_AB",
+          "25": "LOOP_WS_CONFIG_SPAD_C"
+        },
+        "summary": {},
+        "hits": []
+      },
+      {
+        "schema": "merlin_isa_prohibition_v1",
+        "roles": [
+          "loop_descriptor"
+        ],
+        "elf": "/scratch/loren/eval/results/fullgrade-int1-p2-20261106T082604Z/results/runs-core/runs/gemmini-capsule-bench/SY_conv_operand_capacity_boundary/generated/package_kernel.elf",
+        "status": "measured",
+        "clean": true,
+        "prohibited": {
+          "8": "LOOP_WS",
+          "9": "LOOP_WS_CONFIG_BOUNDS",
+          "10": "LOOP_WS_CONFIG_ADDRS_AB",
+          "11": "LOOP_WS_CONFIG_ADDRS_DC",
+          "12": "LOOP_WS_CONFIG_STRIDES_AB",
+          "13": "LOOP_WS_CONFIG_STRIDES_DC",
+          "15": "LOOP_CONV_WS",
+          "16": "LOOP_CONV_WS_CONFIG_1",
+          "17": "LOOP_CONV_WS_CONFIG_2",
+          "18": "LOOP_CONV_WS_CONFIG_3",
+          "19": "LOOP_CONV_WS_CONFIG_4",
+          "20": "LOOP_CONV_WS_CONFIG_5",
+          "21": "LOOP_CONV_WS_CONFIG_6",
+          "24": "LOOP_WS_CONFIG_SPAD_AB",
+          "25": "LOOP_WS_CONFIG_SPAD_C"
+        },
+        "summary": {},
+        "hits": []
+      }
+    ]
+  }
+}

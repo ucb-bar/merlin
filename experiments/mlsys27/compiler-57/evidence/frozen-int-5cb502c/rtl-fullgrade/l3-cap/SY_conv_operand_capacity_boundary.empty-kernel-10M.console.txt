@@ -1,0 +1,11 @@
+%Warning: System has stack size 8192 kb which may be too small; suggest 'ulimit -c 15363' or larger
+[UART] UART0 is here (stdin/stdout).
+== Loading device model file '/scratch/loren/megaphase-core-aten/reseal/contract/tools/dramsim2_ini/DDR3_micron_64M_8B_x4_sg15.ini' == 
+== Loading system model file '/scratch/loren/megaphase-core-aten/reseal/contract/tools/dramsim2_ini/system.ini' == 
+===== MemorySystem 0 =====
+CH. 0 TOTAL_STORAGE : 4096MB | 1 Ranks | 16 Devices per rank
+DRAMSim2 Clock Frequency =666666666Hz, CPU Clock Frequency=500000000Hz
+*** FAILED ***                       (timeout) after             10000001 simulation cycles
+[10000001000] %Fatal: TestDriver.v:147: Assertion failed in TOP.TestDriver
+%Error: /scratch/loren/s4rehearsal/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TestDriver.v:147: Verilog $stop
+Aborting...

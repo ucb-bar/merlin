@@ -1,0 +1,2 @@
+VERDICT: NOT PROVEN: device 57/57 proven (weak lowering 57, full definition 57, corpus-clean 57); host 0/136 proven; corpus scope: full. failing device ops: 0; failing host ops: 136
+regrade: core 320/321; scalability 111/111  | 193: device weak 57/57 full 57/57 proven 57/57; host 0/136

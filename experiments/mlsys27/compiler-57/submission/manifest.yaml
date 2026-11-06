@@ -1,6 +1,6 @@
 artifact_type: mlir_oot_target_backend
 target: gemmini
-package_id: agent_gemmini
+package_id: agent_gemmini_xdsl
 language: python
 authoring:
   mode: agent_generated_from_rtl_facts
@@ -19,5 +19,3 @@ commands:
     argv: [python3, '{tool}', --convert-iface-to-gemmini, --emit-target-artifact, '{input_mlir}']
   emit_analysis_bundle:
     argv: [python3, '{tool}', --convert-iface-to-gemmini, '--emit-command-buffer={output_json}', --emit-target-artifact, '{input_mlir}']
-numerics:
-  approximations: []

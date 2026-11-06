@@ -1,0 +1,16 @@
+5cb502c Loren Hung <lorenhung@berkeley.edu> Merge branch 'fix/cmov' into int
+08220da Loren Hung <lorenhung@berkeley.edu> Merge branch 'fix/cred' into int
+1aafd76 Loren Hung <lorenhung@berkeley.edu> Merge branch 'fix/cref' into int
+100685e Loren Hung <lorenhung@berkeley.edu> Match RTL zero-load accounting when emitting constant float bytes
+8b613bf Loren Hung <lorenhung@berkeley.edu> Keep plain storage copies outside the integer arithmetic route
+8b7df4e Loren Hung <lorenhung@berkeley.edu> Tighten native scalar admission with storage-bit and finite-value proofs
+6633c25 Loren Hung <lorenhung@berkeley.edu> Fuse affine integer convolution taps and bound host command addressing
+ea36513 Loren Hung <lorenhung@berkeley.edu> Recognize affine tensor movement and inserted-axis broadcasts without Block owner crashes
+0513908 Loren Hung <lorenhung@berkeley.edu> Initialize arithmetic helper zeros through the device zero-load source
+2759b92 Loren Hung <lorenhung@berkeley.edu> Retain negative zero through composed native promoted arithmetic
+300792a Loren Hung <lorenhung@berkeley.edu> Lower typed wrapping integer reductions and byte-component contractions on Gemmini
+ac73935 Loren Hung <lorenhung@berkeley.edu> Preserve native f32 arithmetic promoted from integer storage on device
+b0307a5 Loren Hung <lorenhung@berkeley.edu> Lower typed wrapping integer affine maps and rectification on device
+7da9903 Loren Hung <lorenhung@berkeley.edu> Recognize affine tensor movement and inserted-axis broadcasts without Block owner crashes
+cc35803 Loren Hung <lorenhung@berkeley.edu> Lower unary floating islands with exact quantized device arithmetic
+fd4594d Loren Hung <lorenhung@berkeley.edu> Check source contraction bounds before readout fusion
