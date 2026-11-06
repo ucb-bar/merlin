@@ -10,8 +10,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import torch
-from torch import nn
+try:
+    import torch
+    from torch import nn
+except ModuleNotFoundError as exc:
+    if exc.name != "torch":
+        raise
+    raise unittest.SkipTest("causal-LM loader needs optional Torch") from exc
 
 _LOADER_PATH = Path(__file__).resolve().parents[2] / "examples/workloads/causal_lm_section/loader.py"
 _SPEC = importlib.util.spec_from_file_location("causal_lm_section_test_loader", _LOADER_PATH)
