@@ -76,6 +76,14 @@ and board options.
 | TinyLlama two-layer, 64 tokens | 15,380,012,801 cycles | 27,955,258,588 cycles | Full 2,048,000-value hash/prefix match Spike; 4,096-prefix hardware W8A8 pass |
 | TinyLlama two-layer, 128 tokens | 16,727,634,195 cycles | 41,920,445,165 cycles | Both full 4,096,000-value hashes/prefixes match Spike; 4,096-prefix hardware W8A8 pass |
 
+The earlier all-NaN Spectformer FireSim job 3856 used a structurally profiled legacy image.
+Its exact OPU ELF **and** RVV control ELF both reproduced the same all-NaN hash on Spike;
+same-source unprofiled builds were finite. Structural profiling reprinted an f32 `-inf` dense
+literal as a finite decimal, changing model semantics. Merlin commit `98f47a3a3` preserves its
+raw bits, and the default FireSim flow builds unprofiled images and Spike-gates each exact ELF.
+The verified Spectformer pairs above have finite outputs. The old NaN is therefore an image
+generation defect, not evidence of an OPU arithmetic failure on the pinned FireSim image.
+
 An aligned-weight prepack s64 OPU image completed as FireSim job 3866 in **1,101,993,218**
 target cycles with the same full 2,048,000-value hash as the verified baseline. Its matched RVV
 control completed as job 3867 in 13,689,726,593 target cycles. Both images matched their
