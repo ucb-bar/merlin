@@ -193,6 +193,11 @@ overhead. The Kodiak Spike extension explicitly does not model OPU timing or sta
 not a hardware latency prediction. The FireSim call windows include packing, transfers, stalls,
 and kernel work, and do not measure physical array occupancy.
 
+The call-window collector requires exactly one dynamic hit for each routed
+site in its one-inference image. A repeated site would otherwise make its
+static routing MAC sum undercount dynamic work; the collector now rejects that
+case until per-hit MAC accounting is implemented.
+
 These same-image call windows also bound the benefit of optimizing only the OPU call path.
 Even if every recorded OPU call took zero cycles and all other work stayed fixed, the profiled
 TinyLlama s64 image could improve by at most `1 / (1 - 0.097638404247) = 1.10820×`, and the

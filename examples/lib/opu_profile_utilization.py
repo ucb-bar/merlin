@@ -126,6 +126,14 @@ def measure(profile_dir: Path, console_path: Path, *, hw_summary: Path | None = 
     expected_ids = set(call_ids) if dump_mode == "opu" else set(range(len(table)))
     if set(rows) != expected_ids or any(hits == 0 for _, hits in rows.values()):
         raise ValueError("console lacks the exact positive-hit rows selected by the profiled image")
+    # The routing sidecar records one shape per call site, and the numerator
+    # below counts that shape once. A loop can execute the same site more than
+    # once in one inference; treating its positive hit count as one would
+    # understate work and give a false call-window rate. Do not publish such a
+    # rate until this collector accounts for dynamic work per hit.
+    repeated_calls = {op_id: rows[op_id][1] for op_id in call_ids if rows[op_id][1] != 1}
+    if repeated_calls:
+        raise ValueError(f"routed OPU call sites must execute once per inference: {repeated_calls}")
     emitted = result["metrics"].get("prof_dump_selected")
     if (dump_mode == "opu" and emitted != len(call_ids)) or (emitted is not None and emitted != len(rows)):
         raise ValueError("reported profile selector count differs from the emitted rows")
