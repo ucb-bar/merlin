@@ -77,13 +77,32 @@ def run_simulator(simulator, elf, out, *, dramsim_ini=None, max_cycles=200000000
               "max_cycles": max_cycles, "wall_limit_seconds": wall_seconds,
               "timed_out": False, "returncode": 127, "simulator_reaped": False}
     process = None
-    previous_term = signal.signal(signal.SIGTERM, terminated)
+    spawning = True
+    deferred_signal = None
+
+    def interrupted(signum, frame):
+        nonlocal deferred_signal
+        # Popen can have started the child before returning its handle. Raising
+        # here would lose that handle and leave finally unable to reap it.
+        if spawning:
+            deferred_signal = signum
+        elif signum == signal.SIGINT:
+            raise KeyboardInterrupt
+        else:
+            terminated(signum, frame)
+
+    previous_term = signal.getsignal(signal.SIGTERM)
     previous_int = signal.getsignal(signal.SIGINT)
     try:
+        signal.signal(signal.SIGTERM, interrupted)
+        signal.signal(signal.SIGINT, interrupted)
         with (out / "sim.log").open("w") as log:
             try:
                 process = subprocess.Popen(command, cwd=out, env=child_env, stdin=subprocess.DEVNULL,
                                            stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                spawning = False
+                if deferred_signal is not None:
+                    interrupted(deferred_signal, None)
                 status["returncode"] = process.wait(timeout=wall_seconds)
             except subprocess.TimeoutExpired:
                 status.update(timed_out=True, returncode=124)

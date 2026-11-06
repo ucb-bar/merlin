@@ -277,6 +277,50 @@ class SimulatorRunnerTest(TemporaryTree):
         self.assertEqual(signal.getsignal(signal.SIGTERM), previous_term)
         self.assertEqual(json.loads((self.root / "wait-error/run.json").read_text()), result)
 
+    def test_signal_during_spawn_registers_and_reaps_real_child(self):
+        # Hold a real Popen result inside the constructor wrapper. The signal
+        # arrives after the child starts but before run_simulator owns its handle.
+        popen = subprocess.Popen
+        for signum, code in ((signal.SIGTERM, 143), (signal.SIGINT, 130)):
+            with self.subTest(signal=signum):
+                ready = self.root / ("ready-" + str(signum))
+                self.simulator.write_text(
+                    "#!" + sys.executable + "\n"
+                    "import pathlib,time\n"
+                    "pathlib.Path(" + repr(str(ready)) + ").write_text('ready')\n"
+                    "time.sleep(120)\n")
+                children = []
+                previous = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
+
+                def spawn_then_signal(*args, **kwargs):
+                    child = popen(*args, **kwargs)
+                    children.append(child)
+                    deadline = time.monotonic() + 10
+                    while not ready.exists() and child.poll() is None and time.monotonic() < deadline:
+                        time.sleep(0.02)
+                    self.assertTrue(ready.exists(), "fake simulator did not start")
+                    os.kill(os.getpid(), signum)
+                    return child
+
+                out = self.root / ("startup-signal-" + str(signum))
+                try:
+                    with mock.patch.object(run_sim.subprocess, "Popen", side_effect=spawn_then_signal):
+                        result = run_sim.run_simulator(self.simulator, self.elf, out, wall_seconds=120)
+                    self.assertEqual(result["returncode"], code)
+                    self.assertTrue(result["simulator_reaped"])
+                    self.assertIsNotNone(children[0].returncode)
+                    with self.assertRaises(ChildProcessError):
+                        os.waitpid(children[0].pid, os.WNOHANG)
+                    self.assertEqual(json.loads((out / "run.json").read_text()), result)
+                    self.assertEqual((out / "exit-status.txt").read_text(), str(code) + "\n")
+                    for sig, handler in previous.items():
+                        self.assertEqual(signal.getsignal(sig), handler)
+                finally:
+                    for child in children:
+                        if child.poll() is None:
+                            os.killpg(child.pid, signal.SIGKILL)
+                        child.wait()
+
     def test_reserved_plusargs_rejected_before_launch(self):
         with mock.patch.object(run_sim.subprocess, "Popen") as popen:
             for arg in ("+loadmem=other", "+max-cycles=0", "+permissive", "+dramsim_ini_dir=other", "--bad"):
