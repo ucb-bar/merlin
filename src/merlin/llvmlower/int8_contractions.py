@@ -33,6 +33,7 @@ from merlin.kernels.shapes import zero_initialised as zero_initialised
 __all__ = [
     "ContractionRewrite",
     "NotRouted",
+    "OverwriteOutputSelector",
     "Routed",
     "load_sidecar",
     "rewrite_contractions",
@@ -44,6 +45,55 @@ __all__ = [
 
 #: Signed-int8 inputs with int32 accumulation; this is an ABI, not a hardware fact.
 INT8_DTYPES: tuple[str, str, str] = ("i8", "i8", "i32")
+
+
+class OverwriteOutputSelector:
+    """Carry a caller-proved overwrite guarantee through a provider's selector API.
+
+    Selection and its cost model are delegated unchanged. Only a caller that has
+    checked its selected kernel writes every output element may use this wrapper.
+    """
+
+    overwrites_output = True
+
+    def __init__(self, select: Callable[[Any], bool]) -> None:
+        self._select = select
+
+    def __call__(self, shape: Any) -> bool:
+        return bool(self._select(shape))
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._select, name)
+
+
+def _elidable_output_fill(op: Any):
+    """The fresh zero destination this contraction alone reads, or ``None``.
+
+    The routed kernel already requires a zero accumulator. Replacing its filled
+    destination is legal only when no other operation observes that fill and the
+    underlying empty tensor has no other user that bufferization might alias.
+    """
+    from xdsl.dialects.linalg.ops import FillOp
+    from xdsl.dialects.tensor import EmptyOp
+
+    if len(op.operands) != 3 or not zero_initialised(op):
+        return None
+    fill = op.operands[2].owner
+    if not isinstance(fill, FillOp) or fill.parent is not op.parent:
+        return None
+    fill_uses = tuple(fill.results[0].uses)
+    if len(fill_uses) != 1 or fill_uses[0].operation is not op or fill_uses[0].index != 2:
+        return None
+    empty = fill.outputs[0]
+    if not isinstance(empty.owner, EmptyOp):
+        return None
+    empty_uses = tuple(empty.uses)
+    if len(empty_uses) != 1 or empty_uses[0].operation is not fill:
+        return None
+    if empty.type != fill.results[0].type:
+        return None
+    return fill, empty
+
 
 #: Named contraction classes and their parallel ranks. A batch is not a tile axis.
 ROUTABLE_OPS: dict[str, int] = {"linalg.matmul": 2, "linalg.batch_matmul": 3}
@@ -471,12 +521,20 @@ def rewrite_contractions(
             # Not in the kernel's layout: transposes / collapses / an im2col gather around the call.
             cnf.emit(e.nf, orientation, lambda a, b, c, t, _s=sym: func.CallOp(_s, [a, b, c], [t]))
         else:
-            call = func.CallOp(sym, list(op.operands), [op.results[0].type])
+            args = list(op.operands)
+            elided = _elidable_output_fill(op) if getattr(select, "overwrites_output", False) else None
+            if elided is not None:
+                args[2] = elided[1]
+            call = func.CallOp(sym, args, [op.results[0].type])
             op.results[0].replace_all_uses_with(call.results[0])
             parent = op.parent
             parent.insert_op_before(call, op)
             op.detach()
             op.erase()
+            if elided is not None:
+                fill = elided[0]
+                fill.detach()
+                fill.erase()
 
         routed.append(
             Routed(

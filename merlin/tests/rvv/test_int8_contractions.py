@@ -117,6 +117,47 @@ class TestItIsInertWithoutADecision:
         assert len(PO.routable_contractions(mod)) == before == 1
 
 
+class TestGeneratedOverwriteOutput:
+    def test_fresh_sole_use_zero_fill_is_removed_only_with_overwrite_guarantee(self):
+        default = _module(_INT8_MM)
+        PO.rewrite_contractions(default, symbol_prefix=SYMBOL_PREFIX, select=_ALL)
+        assert "linalg.fill" in str(default)
+
+        mod = _module(_INT8_MM)
+        got = PO.rewrite_contractions(mod, symbol_prefix=SYMBOL_PREFIX, select=PO.OverwriteOutputSelector(_ALL))
+        text = str(mod)
+        assert got.count == 1 and got.routed[0].steps == ()
+        assert "linalg.fill" not in text
+        assert "func.call @" + SYMBOL_PREFIX + "_0(%a, %b, %e)" in text
+
+    def test_layout_steps_keep_the_original_fill(self):
+        mod = _module(_INT8_MM_BT)
+        got = PO.rewrite_contractions(mod, symbol_prefix=SYMBOL_PREFIX, select=PO.OverwriteOutputSelector(_ALL))
+        assert got.count == 1 and got.routed[0].steps == ("transpose_b",)
+        assert "linalg.fill" in str(mod)
+
+    def test_shared_fill_is_not_elided(self):
+        source = """
+builtin.module {
+  func.func @forward(%a: tensor<2x2xi8>, %b: tensor<2x2xi8>) -> tensor<2x2xi32> {
+    %e = tensor.empty() : tensor<2x2xi32>
+    %z = arith.constant 0 : i32
+    %f = linalg.fill ins(%z : i32) outs(%e : tensor<2x2xi32>) -> tensor<2x2xi32>
+    %x = linalg.matmul ins(%a, %b : tensor<2x2xi8>, tensor<2x2xi8>)
+                       outs(%f : tensor<2x2xi32>) -> tensor<2x2xi32>
+    %y = linalg.matmul ins(%a, %b : tensor<2x2xi8>, tensor<2x2xi8>)
+                       outs(%f : tensor<2x2xi32>) -> tensor<2x2xi32>
+    func.return %y : tensor<2x2xi32>
+  }
+}
+"""
+        mod = _module(source)
+        got = PO.rewrite_contractions(mod, symbol_prefix=SYMBOL_PREFIX, select=PO.OverwriteOutputSelector(_ALL))
+        assert got.count == 2
+        assert str(mod).count("linalg.fill") == 1
+        assert str(mod).count("func.call @" + SYMBOL_PREFIX) == 2
+
+
 #: The same contraction with B stored TRANSPOSED (N, K) and N == K, so the extents alone look exactly like
 #: the canonical form: legal linalg, and a silently wrong answer if handed to an (M,K)x(K,N) callee.
 _INT8_MM_BT = (

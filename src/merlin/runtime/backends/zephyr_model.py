@@ -941,9 +941,19 @@ def prepare_for_lowering(
                 "unit and configuration to route to are unknown; pass "
                 "MatrixRouting(support_target=..., unit=..., config=...)"
             )
-        routed = matrix.provider().rewrite_prepared_file(
-            prepared, work, select=matrix.selector(), tile_edge=matrix.tile_edge()
-        )
+        selector = matrix.selector()
+        from ...kernels.matrix_kernels import for_routing
+
+        chosen_kernel = for_routing(matrix)
+        if (
+            chosen_kernel.generated
+            and matrix.support_target == "kodiak"  # target-ok: generated Kodiak OPU overwrites every output
+            and matrix.unit == "saturn_opu"  # target-ok: no additive destination semantics in this kernel
+        ):
+            from ...llvmlower.int8_contractions import OverwriteOutputSelector
+
+            selector = OverwriteOutputSelector(selector)
+        routed = matrix.provider().rewrite_prepared_file(prepared, work, select=selector, tile_edge=matrix.tile_edge())
         (work / MATRIX_ROUTING_RECORD).write_text(
             json.dumps(
                 {
