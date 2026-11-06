@@ -63,30 +63,6 @@ class SwiGLUResidual(nn.Module):
         return x + self.down(F.silu(self.gate(h)) * self.up(h))
 
 
-class RotaryEmbedding(nn.Module):
-    def forward(self, q, k, cos, sin):
-        def rotate(x):
-            half = x.shape[-1] // 2
-            return torch.cat((-x[..., half:], x[..., :half]), dim=-1)
-
-        return q * cos + rotate(q) * sin, k * cos + rotate(k) * sin
-
-
-class GroupedQueryAttention(nn.Module):
-    """Inputs [batch, head, token, channel]; caller supplies the causal/cache mask."""
-
-    def __init__(self, config=CONFIG):
-        super().__init__()
-        self.groups = config.query_heads // config.kv_heads
-        self.scale = config.head_dim**-0.5
-
-    def forward(self, q, k, v, mask):
-        k = k.repeat_interleave(self.groups, dim=1)
-        v = v.repeat_interleave(self.groups, dim=1)
-        scores = q @ k.transpose(-1, -2) * self.scale + mask
-        return scores.softmax(dim=-1) @ v
-
-
 class AttentionTile(nn.Module):
     """One 32x32 score window, d=128, four output channel tiles.
 
