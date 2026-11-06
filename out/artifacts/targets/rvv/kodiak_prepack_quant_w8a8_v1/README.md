@@ -38,9 +38,20 @@ plan, capture, ELF, output, and routing hashes.
 The rebuilt s128 OPU and plain-RVV Spike images agree on the full 4,096,000-value output hash.
 The exact OPU ELF additionally passes a complete W8A8 comparison of all logits, plus all 128
 per-token argmaxes, using a debugger dump taken after computation and before the capped UART
-output. Its matched FireSim pair is queued as jobs 3891/3892. The rebuilt Spectformer OPU and
-plain-RVV Spike images agree on the full 1,000-value output hash; the OPU image passes complete
-W8A8 numerical and argmax gates. Its matched FireSim pair 3889/3890 is **verified**: 2,578,301,427
+output. Its matched FireSim pair 3891/3892 is **verified**: 2,252,651,428 OPU versus
+27,453,912,924 plain-RVV target compute cycles, or 12.1874× speedup. The hardware full hashes
+match the exact Spike images. Direct W8A8 numerical comparison of the hardware output covers
+only the 4,096-value UART prefix; the full OPU Spike image passed the separate complete W8A8
+gate. The OPU routes all 19 contractions and 19,797,114,880 valid MACs with 100% static tile
+fill. Valid MACs divided by 1,024 MACs per target cycle and 2,252,651,428 compute cycles give
+**0.858238%** whole-inference effective peak; array-active occupancy is unmeasured. Compared with
+the earlier s128 hardware pair, OPU cycles fall 7.6288%, but that pair used an earlier schedule,
+so the difference does not isolate quant fusion. The exact hashes, comparison scope, bitstream,
+and denominator are in `tinyllama_l2_s128_hardware_evidence.json`.
+
+The rebuilt Spectformer OPU and plain-RVV Spike images agree on the full 1,000-value output
+hash; the OPU image passes complete W8A8 numerical and argmax gates. Its matched FireSim pair
+3889/3890 is **verified**: 2,578,301,427
 OPU versus 5,667,528,436 plain-RVV target compute cycles, or 2.1982× speedup. The OPU routes
 99.6546% of the valid MACs with 73.8223% static tile fill. Its 1,853,155,328 valid routed MACs
 divided by 1,024 MACs per target cycle and 2,578,301,427 target compute cycles give **0.0701905%**
@@ -51,5 +62,4 @@ an observed package A/B and does not isolate a single knob. The archived bitstre
 the live Saturn checkout is off its source pin. Exact hashes and denominator are in
 `spectformer_hardware_evidence.json`.
 
-The s128 FireSim jobs 3891/3892 await final grading. No K1 or physical Kodiak certification is
-claimed.
+No K1 or physical Kodiak certification is claimed.

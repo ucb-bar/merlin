@@ -1,0 +1,78 @@
+{
+  "models": {
+    "tinyllama_l2_s128": {
+      "baseline": {
+        "control_cycles": 27742439123,
+        "device_cycles": 2438693540,
+        "effective_peak_fraction": 0.007927654575244416,
+        "jobs": {
+          "control": 3875,
+          "device": 3871
+        },
+        "speedup": 11.375943171194852
+      },
+      "baseline_scope": "earlier schedule; end-to-end difference is not isolated quant-round effect",
+      "bitstream_artifact_sha256": "f671be16ae5850c2765d897593010f4144654fe49bed0d5fe0d3ebdbd49d9462",
+      "capture_sha256": "e67f6781a5e085d8500ee430748f6c9b2b039cd7592aaf648ce40ce10e899eb6",
+      "hardware_full_hash_and_prefix_match_exact_spike": true,
+      "occupancy": null,
+      "occupancy_reason": "the bitstream has no MAC-active-cycle or valid-lane counter",
+      "opu_signatures_sha256": "c6454e3c73b239dae14d556ef35aebdeb61212d194ae928a7a8b2c662ec501ee",
+      "other_contraction_macs": 0,
+      "peak_mac_per_target_cycle": 1024,
+      "plan_paths": {
+        "baseline": "tasks/chip-packages/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793954503610973263",
+        "quant": "tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793976714876752633"
+      },
+      "quant": {
+        "control_cycles": 27453912924,
+        "device_cycles": 2252651428,
+        "effective_peak_fraction": 0.008582384189445931,
+        "jobs": {
+          "control": 3892,
+          "device": 3891
+        },
+        "speedup": 12.18737732023403,
+        "valid_mac_per_device_target_cycle": 8.788361409992634
+      },
+      "quant_control_cycle_reduction_fraction": 0.010400174177936483,
+      "quant_device_cycle_reduction_fraction": 0.0762876142280674,
+      "quant_effective_peak_gain": 1.0825880603130755,
+      "quant_pair_speedup_gain_fraction": 0.07132895592286537,
+      "routed_contractions": 19,
+      "routed_mac_share": 1.0,
+      "source_pin_reproducibility": {
+        "baseline_all_pins_ok": false,
+        "quant_all_pins_ok": false
+      },
+      "source_plan_sha256": {
+        "baseline": {
+          "plan": "bea7033a76668c15324a937e1c275db47cf694d8e4c88e8323ee57f14601d792",
+          "result": "13feec3c13b03e4162c1f3dc5b6d8390a7ceeadb40e273adb709a5cc3c3e6bdd",
+          "utilization": "7ce3d26cd6285036341438fb236948c2fd060202e40c46beaa42500cbef4b6bb"
+        },
+        "quant": {
+          "plan": "1c32d45c0322b40fca63ee67f8412f1cd85a57d683614d19ec41788d870dc44a",
+          "result": "806fb1eeea51bf58a846b498cad1e4642f7e74a5eac1efd9d73fe7bd8916e1a7",
+          "utilization": "8bcb144ff276f72684deca1251fc99bbcd54ca6dad30faa38995ce6b5b6611c0"
+        }
+      },
+      "static_tile_fill": 1.0,
+      "valid_routed_macs": 19797114880,
+      "w8a8_hardware_numerical_coverage": {
+        "control": {
+          "comparison_complete": false,
+          "n_compared": 4096,
+          "n_reference": 4096000
+        },
+        "device": {
+          "comparison_complete": false,
+          "n_compared": 4096,
+          "n_reference": 4096000
+        }
+      }
+    }
+  },
+  "package": "rvv/kodiak_prepack_quant_w8a8_v1",
+  "schema": "merlin.quant-prepack-hardware-model-evidence.v1"
+}
