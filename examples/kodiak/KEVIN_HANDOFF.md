@@ -123,11 +123,20 @@ independent eager torchAO. The first mismatch was one activation byte at the fir
 `o_proj` (torchAO `-128`, Merlin `-127`), at a negative `-127.5` rounding tie. Both
 rounding instructions behave correctly; the prequant float values already differ.
 Neither model is source-parity certified yet.
+The [trained and holdout activation-code probe](../../experiments/reference-data/spectformer_torchao_activation_code_probe_2026-11-06.md)
+checks Spectformer block-0 fc1 at the exact boundary: with identical norm2
+input, Merlin and TorchAO have bitwise-equal reciprocal scales, signed i8
+activation bytes, i32 matrix output, and f32 fc1 output. Earlier float drift
+flips 12 or 16 codes at the source `-127.5` rounding tie. Changing the
+quantizer would alter the TorchAO program rather than fix this capture.
 The first TinyLlama discrepancy is now localized further: its embedding and first
 RMSNorm squared values match eager torchAO exactly, but Merlin's serial float32
 mean reduction differs from Torch CPU's reduction tree. This changes the normalization
 and ultimately crosses the attention output-projection quantization tie. A reduction
-tree fitted to those eight rows failed on new random rows, so it has not been adopted.
+tree fitted only to those eight rows failed on new random rows and was rejected.
+The later provenance-gated AVX2 K2048 reduction matched Torch CPU's first
+RMSNorm mean bitwise on all eight source rows and 200 independent holdout rows.
+The complete TinyLlama host framework gate has not been rerun after that fix.
 Keep two verdicts separate: exact target-arithmetic image versus scalar twin, and
 framework fidelity versus independent torchAO. The current strict framework gate
 still fails. The full 22-layer eight-token source graph has 155 integer Linear roots
@@ -295,6 +304,17 @@ attention batch matmuls, zero opaque ops, and a complete ABI. Its framework gold
 byte-identical to an independent eager torchAO run; source closure is still unverified, and
 Merlin host execution of this explicit integer graph has a 3–5% per-token relative-L2
 disagreement under investigation. The full model remains a required separate compiler gate.
+The source-only [eight-request TorchAO experiment](../../experiments/reference-data/tinyllama_torchao_batch_utilization_plan_2026-11-06.md)
+ran all 22 layers on one seeded B=8, S=8 input: all 155 eager integer calls
+had M=64 and its full 8×8×32,000 logits were bitwise equal to eight separate
+B=1 calls. This is a path toward filling the existing 64-row logical tile;
+the B8 MLIR capture, route, exact Spike image, FireSim rate, and physical
+array duty have not been measured. For a future source TinyLlama image, the
+[full-output certificate tool](source_output_certificate.py) can verify the
+complete exact Spike output against independent TorchAO `golden.npy` using a
+debugger dump from the same run. It has synthetic adversarial tests; no
+true-source ELF certificate exists yet, and FireSim acceptance remains gated
+separately.
 The two-layer sections above are the measured hardware targets. Their 64-token and 128-token
 exact OPU Spike images also passed complete W8A8 comparisons and all token argmaxes against
 their host reference. The paired FireSim OPU and RVV images are built with one vector hart, matching the
@@ -355,8 +375,13 @@ rc 1 without a bitstream; the bounded log and rc are in Chipyard managed task
 exact-pin direct RTL and FireSim Verilator metasim on its biased K-tail control. Its U250
 post-synthesis report uses **1,267,125 / 1,728,000 CLB LUTs (73.33%)** with zero synthesis
 errors; the [SHA-bound receipt](https://github.com/copparihollmann/chipyard/blob/1cc1690a608cc995b6c4b896f9e19c8ee4cef556/patches/kodiak-vme/evidence/compact-u250-synthesis.json)
-records source pins and the report hash. Placement, routing, timing, bitstream generation,
-and FPGA execution remain pending. No VME FPGA bitstream or model result is claimed yet.
+records source pins and the report hash. Placement subsequently completed with
+**1,335,383 / 1,728,000 CLB LUTs (77.28%)** and zero errors or critical warnings;
+the placed report SHA-256 is
+`f13243399ef0a6c725d1de463b4e8c62809e444e9b1cdaa185a891c0f77f32a9`.
+The build entered global routing on 2026-11-06, with negative intermediate
+timing. Final routing, timing, bitstream generation, and FPGA execution remain
+pending. No VME FPGA bitstream or model result is claimed yet.
 The current OPU FireSim bitstream is usable for the BME flow above. Its archived artifact identity
 was checked during the hardware jobs. Reproducing that archive from a clean source tree remains
 unverified because the live Chipyard/Saturn checkout has pin drift. Physical Kodiak rig access
