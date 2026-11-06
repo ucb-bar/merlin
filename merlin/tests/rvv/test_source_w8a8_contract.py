@@ -54,6 +54,7 @@ def test_source_contract_counts_actual_integer_macs(tmp_path):
     [
         (_MODEL.replace("int8_dyn_act_int8_weight", "int8_weight_only"), "prov.quantization"),
         (_MODEL.replace('"arith.muli"(%lhs32, %rhs32)', '"arith.addi"(%lhs32, %rhs32)'), "malformed"),
+        (_MODEL.replace("value = 0 : i32", "value = 1 : i32"), "without a proven zero initializer"),
     ],
 )
 def test_source_contract_rejects_wrong_scheme_or_arithmetic(tmp_path, source, reason):

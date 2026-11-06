@@ -12,6 +12,7 @@ import hashlib
 from pathlib import Path
 
 from merlin.common import mlir_query as query
+from merlin.kernels.shapes import zero_initialised
 from merlin.targetgen.application_inventory import exact_int_mm_generic_operation, verify_capture_receipt
 
 SOURCE_W8A8_SCHEME = "int8_dyn_act_int8_weight"
@@ -52,10 +53,12 @@ def inspect_source_w8a8(bundle: str | Path) -> dict:
         op for op in query.walk(module, "linalg.generic") if query.attr_str(op, "prov.aten") == "aten._int_mm.default"
     ]
     invalid = [op for op in candidates if not exact_int_mm_generic_operation(op)]
-    if not candidates or invalid:
+    nonzero_init = [op for op in candidates if not zero_initialised(op)]
+    if not candidates or invalid or nonzero_init:
         raise ValueError(
-            f"--dtype int8_w8a8 requires exact signed i8×i8→i32 _int_mm roots; "
-            f"found {len(candidates)} candidates, {len(invalid)} malformed"
+            f"--dtype int8_w8a8 requires exact signed i8×i8→i32 _int_mm roots with zero initializers; "
+            f"found {len(candidates)} candidates, {len(invalid)} malformed, "
+            f"{len(nonzero_init)} without a proven zero initializer"
         )
     valid_macs = 0
     for op in candidates:
