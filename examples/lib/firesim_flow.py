@@ -816,8 +816,11 @@ def build_legs(args) -> Path:
         print("$ " + shlex.join(str(c) for c in cmd), flush=True)
         proc = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
         marker = "\n{\n"
+        payload = proc.stdout
+        if marker in payload:
+            payload = payload[payload.rindex(marker) + 1 :]
         try:
-            result = json.loads(proc.stdout[proc.stdout.rindex(marker) + 1 :])
+            result = json.loads(payload)
         except ValueError as exc:
             raise SystemExit(
                 f"{leg} leg: merlin-compile returned no result (exit {proc.returncode}): "

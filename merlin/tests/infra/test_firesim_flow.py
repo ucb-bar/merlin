@@ -339,6 +339,19 @@ def test_failed_rebuild_cannot_leave_a_prior_firesim_plan_submittable(flow, tmp_
     assert len(list(job.glob("run_*"))) == 1
     assert elf.read_bytes() == b"old"
 
+    # Early toolchain failures emit a JSON object at stdout offset zero. Preserve its reason.
+    monkeypatch.setattr(
+        flow.subprocess,
+        "run",
+        lambda *a, **k: SimpleNamespace(
+            returncode=1,
+            stdout='{"status": "not_run", "reason": "Zephyr toolchain unavailable"}',
+            stderr="",
+        ),
+    )
+    with pytest.raises(SystemExit, match="not_run"):
+        flow.build_legs(args)
+
 
 # ------------------------------------------------------------------------------------------- parsing
 
