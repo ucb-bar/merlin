@@ -280,6 +280,7 @@ def compile_rvv(
     expected_board_target: str | None = None,
     matrix: tuple[str, ...] | None = None,
     matrix_gate: str = "twin",
+    host_cache_dir: str | Path | None = None,
 ) -> dict:
     """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden).
 
@@ -306,6 +307,14 @@ def compile_rvv(
     timeout = int(timeout)
     if timeout < 1:
         raise ValueError("timeout must be a positive whole-session budget in seconds")
+    if host_cache_dir is not None and (run != "host" or dtype != "int8_w8a8" or not verify or matrix is not None):
+        raise ValueError("host cache requires a verified source W8A8 host run without matrix routing")
+    if host_cache_dir is not None:
+        cache_root = Path(host_cache_dir)
+        if cache_root.is_symlink() or not cache_root.is_dir():
+            raise ValueError("host cache must name an existing ordinary directory")
+        if capture_bundle is None:
+            raise ValueError("cache-only host run requires an explicit capture bundle")
     if run in ("spike", "zephyr", "verilator"):
         if board is None:
             return {
@@ -384,6 +393,11 @@ def compile_rvv(
         from .compile.source_quantization import inspect_source_w8a8
 
         source_quantization = inspect_source_w8a8(bundle)
+        if (
+            host_cache_dir is not None
+            and source_quantization["capture_receipt"].get("status") != "verified_materialized"
+        ):
+            raise ValueError("cache-only host run requires a byte-verified materialized capture receipt")
     _trace.artifact("capture", [bundle / "model.mlir"], pipeline="frontend")
     pkg_dir = package or default_package(dtype, bundle=bundle)
     pkg = load_rvv_package(pkg_dir)
@@ -474,6 +488,8 @@ def compile_rvv(
         res = run_model(
             bundle,
             work,
+            cache_dir=host_cache_dir,
+            cache_only=host_cache_dir is not None,
             int8_compute=compute_int8,
             kernel_backend=kernel_backend,
             mesh_target=mesh_target,
@@ -481,6 +497,18 @@ def compile_rvv(
             numeric_policy=numeric_policy,
             transform_audit=transform_audit,
         )
+        if host_cache_dir is not None:
+            cache_evidence = res.get("host_cache")
+            if (
+                not isinstance(cache_evidence, dict)
+                or cache_evidence.get("schema") != "merlin.host_cache.v1"
+                or cache_evidence.get("mode") != "cache_only"
+                or cache_evidence.get("miss_count") != 0
+                or not cache_evidence.get("identity")
+                or cache_evidence.get("verified_after_execution") is not True
+            ):
+                raise ValueError("cache-only host run omitted exact loaded-kernel provenance")
+            out["host_cache"] = cache_evidence
         if kernel_backend == "mesh":
             # THIS MODEL's own layers: how many of its matmuls reached the accelerator and how many
             # fell back to the host kernel. Distinct from the synthetic tile certification below, which
@@ -1352,6 +1380,20 @@ def main(argv: list[str] | None = None) -> int:
             "status": "error",
             "error": f"{type(e).__name__}: {e}",
         }
+        if a.host_cache_dir is not None:
+            from .runtime.dispatch_runtime import HostCacheMiss
+
+            if isinstance(e, HostCacheMiss):
+                res["host_cache"] = {
+                    "schema": "merlin.host_cache.v1",
+                    "mode": "cache_only",
+                    "cache_dir": e.cache_dir,
+                    "identity": e.identity,
+                    "miss_count": e.miss_count,
+                    "missing": e.missing,
+                    "loaded": [],
+                    "loaded_unique": 0,
+                }
     if trace is not None:
         res["trace"] = str(Path(trace.directory).absolute() / "trace.json")
     return command.report(a, res)
@@ -1409,6 +1451,7 @@ def _workflow(a, run: str) -> dict:
             ),
             matrix_gate=a.matrix_gate,
             capture_bundle=a.capture_bundle,
+            host_cache_dir=a.host_cache_dir,
         )
     else:
         return compile_oot(

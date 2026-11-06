@@ -89,6 +89,12 @@ def parser(
     )
     ap.add_argument("--package", default=None, help="override the codegen/OOT package dir")
     ap.add_argument(
+        "--host-cache-dir",
+        type=Path,
+        help="explicit existing host kernel cache for an exact source W8A8 --run host; "
+        "strict cache-only mode refuses every missing kernel without compiling",
+    )
+    ap.add_argument(
         "--board",
         help="board name for RVV execution or an explicitly selected bare-metal --model-build",
     )
@@ -190,6 +196,23 @@ def list_passes(a: argparse.Namespace) -> int:
 
 def validate(ap: argparse.ArgumentParser, a: argparse.Namespace) -> None:
     """Refuse the argument combinations no workflow accepts (``ap.error`` exits)."""
+    if a.host_cache_dir is not None:
+        if (
+            a.model_build
+            or a.model_preflight
+            or a.target != "rvv"
+            or a.run != "host"
+            or a.dtype != "int8_w8a8"
+            or not a.verify
+            or not a.capture_bundle
+            or a.matrix_unit
+        ):
+            ap.error(
+                "--host-cache-dir requires explicit --target rvv --dtype int8_w8a8 --run host "
+                "--capture-bundle and --verify, without a matrix route or model workflow"
+            )
+        if a.host_cache_dir.is_symlink() or not a.host_cache_dir.is_dir():
+            ap.error("--host-cache-dir must name an existing ordinary directory")
     if a.model_build and a.model_preflight:
         ap.error("--model-build and --model-preflight are separate workflows")
     if a.corpus_descriptor is not None and (a.target == "rvv" or a.model_preflight or a.model_build):

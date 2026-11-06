@@ -158,6 +158,74 @@ and check `tier_ok == "w8a8"`. Grading a W8A8 run against the weight-only `golde
 activation-quantization error, not correctness — `merlin-compile` warns when the W8A8 reference is
 missing, and the gate reports which tier carried the verdict.
 
+### A source-quantized TorchAO capture
+
+The `int8_w8a8` route consumes the signed integer matmuls and activation quantization already
+present in the captured MLIR. Its `golden.npy` is the TorchAO framework output, so the host gate
+must compare against that file. A `--host-cache-dir` run is cache-only: it refuses every missing
+kernel before execution and never starts a host JIT. Populate the cache through the supported
+`merlin.runtime.dispatch_runtime.run_model` API first, using an isolated managed task after other
+large builds release scratch and memory. For SpectFormer this compiles roughly 1,361 host kernels.
+
+Run these commands from the Merlin worktree, with `TASK_DIR` naming the managed task. Pin
+`CAPTURE_BUNDLE` to the trained, materialized TorchAO capture and `HOST_PACKAGE` to the selected
+`int8_w8a8` package. Keep `MERLIN_PASSES` identical for population and CLI replay; it is part of
+the cache identity. Set it to `torchao-cpu-avx2-mean` if that pass is being evaluated.
+
+```bash
+set -euo pipefail
+: "${TASK_DIR:?use a managed task}"
+: "${CAPTURE_BUNDLE:?name the materialized TorchAO capture}"
+: "${HOST_PACKAGE:?name the selected W8A8 package}"
+export PYTHONPATH="$PWD/src"
+export TMPDIR="$TASK_DIR/.tmp"
+export HOST_CACHE="$TMPDIR/source-host-cache"
+export HOST_WORK="$TMPDIR/source-host-work"
+mkdir -p "$HOST_CACHE" "$HOST_WORK"
+python - <<'PY'
+import hashlib
+import json
+import os
+from pathlib import Path
+
+import numpy as np
+
+from merlin.compile.source_quantization import inspect_source_w8a8
+from merlin.runtime.dispatch_runtime import run_model
+
+bundle = Path(os.environ["CAPTURE_BUNDLE"])
+work = Path(os.environ["HOST_WORK"])
+contract = inspect_source_w8a8(bundle)
+if contract["capture_receipt"]["status"] != "verified_materialized":
+    raise ValueError("source capture artifacts do not match their materialized receipt")
+run = run_model(bundle, work, cache_dir=Path(os.environ["HOST_CACHE"]), cache_only=False,
+                int8_compute=False)
+if run["host_cache"].get("verified_after_execution") is not True:
+    raise ValueError("host cache lacks post-execution byte verification")
+output_file = work / "output.npy"
+np.save(output_file, run["output"])
+receipt = {
+    "schema": "merlin.source_host_population.v1",
+    "source_quantization": contract,
+    "reference_sha256": hashlib.sha256((bundle / "golden.npy").read_bytes()).hexdigest(),
+    "output_sha256": hashlib.sha256(output_file.read_bytes()).hexdigest(),
+    "host_cache": run["host_cache"],
+}
+(work / "population.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+PY
+merlin-compile --workload spectformer --target rvv --dtype int8_w8a8 \
+  --capture-bundle "$CAPTURE_BUNDLE" --package "$HOST_PACKAGE" \
+  --run host --verify --host-cache-dir "$HOST_CACHE" --json \
+  > "$HOST_WORK/cli-verification.json"
+```
+
+The CLI JSON must report `status=verified`, `verify.tier_ok=w8a8`, `host_cache.miss_count=0`,
+and `host_cache.verified_after_execution=true` before this source can advance to a hardware gate.
+`run_mismatch` is a real framework mismatch even when the output is finite or the cosine is high.
+The cache receipt binds each loaded binary to its build manifest, including the kernel text,
+compiler inputs and binary hash. This records a reproducible local build and byte-bound execution;
+it is not an independent attestation of who produced those files.
+
 ## Status, measured
 
 `spike`, 1 hart, int8 (W8A8), graded against the W8A8 reference:
