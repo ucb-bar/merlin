@@ -94,8 +94,8 @@ For utilization, use [the formula and evidence](UTILIZATION.md) and
 `python examples/lib/opu_utilization.py <verified-plan-dir>`. The current bitstream has 1,024
 physical int8 MAC cells but no active-cycle counter. The baseline ~0.05–0.12% figures and the
 prepacked s64 device's 0.874215% are
-**whole-inference effective throughput as a fraction of peak**, not array occupancy. Exact
-Earlier Spectformer and 64-token TinyLlama Spike images executed 105 and 143 OPU shim calls respectively,
+**whole-inference effective throughput as a fraction of peak**, not array occupancy. Earlier
+Spectformer and 64-token TinyLlama Spike images executed 105 and 143 OPU shim calls respectively,
 with zero scalar fallbacks. The graded 128-token pair gives **2.5061×** control-over-device
 speedup and **0.115576%** whole-inference effective peak for the OPU image; the bitstream still
 has no array-active counter.
@@ -151,3 +151,8 @@ MACs, or **8.79153% effective peak within calls**. Those calls take 9.76384% of 
 inference; whole-inference effective peak is 0.858391%. This profile used the aligned prepack
 image before fill elision. Its full hash, all 19 rows, and bitstream SHA passed the hardware
 verifier; physical array occupancy is still unmeasured.
+On those exact profiled images, the OPU call windows occupy 2.47845% of Spectformer and
+9.76384% of TinyLlama target cycles. Even zero-cycle OPU calls would limit end-to-end improvement
+to 1.02541× and 1.10820× respectively if other work stayed fixed. The next large gains require
+reducing the remaining model work as well as improving OPU calls; these bounds do not transfer
+to the separate fill-elided image.

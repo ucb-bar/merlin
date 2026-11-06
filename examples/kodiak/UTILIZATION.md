@@ -123,6 +123,14 @@ overhead. The Kodiak Spike extension explicitly does not model OPU timing or sta
 not a hardware latency prediction. The FireSim call windows include packing, transfers, stalls,
 and kernel work, and do not measure physical array occupancy.
 
+These same-image call windows also bound the benefit of optimizing only the OPU call path.
+Even if every recorded OPU call took zero cycles and all other work stayed fixed, the profiled
+TinyLlama s64 image could improve by at most `1 / (1 - 0.097638404247) = 1.10820×`, and the
+profiled current-routing Spectformer image by at most
+`1 / (1 - 0.024784468039) = 1.02541×`. These are Amdahl bounds for the two exact profiled
+images, not measured speedups or bounds for the separate fill-elided or prepack delivery
+images. They show why reducing work outside the OPU calls is the larger end-to-end opportunity.
+
 In the profiled Spike image alone, 5,172 per-op rows cover 99.66% of compute cycles; OPU call intervals account
 for 17,063,688 cycles (1.06% of the profiled total) and `linalg.generic` for 66.76% of
 attributed cycles. These are simulator diagnostics, not hardware occupancy.
