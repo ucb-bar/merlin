@@ -24,6 +24,7 @@ unrecognized op raises (no silent skips).
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,18 @@ _NP = {
 
 class DispatchRuntimeError(RuntimeError):
     pass
+
+
+class HostCacheMiss(DispatchRuntimeError):
+    """A strict host cache replay could not satisfy its kernel set."""
+
+    def __init__(self, missing: list[tuple[str, str]], *, cache_dir: Path, identity: dict[str, Any]):
+        self.miss_count = len(missing)
+        self.missing = [{"key": key, "symbol": symbol} for key, symbol in missing]
+        self.cache_dir = str(cache_dir)
+        self.identity = identity
+        sample = ", ".join(f"{key} ({symbol})" for key, symbol in missing[:8])
+        super().__init__(f"host cache miss_count={self.miss_count} before execution: {sample}")
 
 
 # bf16 has no native numpy dtype; we store it as the raw 16-bit pattern (uint16) so the
@@ -602,10 +615,11 @@ def execute(
     mesh_package: str | None = None,
     counters: dict | None = None,
     numeric_policy: dict | None = None,
+    cache_only: bool = False,
 ) -> list[np.ndarray]:
     """Run the outlined model on bound arguments; return the driver's result arrays.
 
-    ``cache_dir`` persists compiled kernel ``.so``s keyed by kernel-body hash, so repeated
+    ``cache_dir`` persists compiled kernel ``.so``s keyed by kernel-body and compiler identity, so repeated
     runs (debugging, the multi-step action loop) skip recompilation. ``tap(op, value)`` is
     an optional callback invoked after every node with its produced value — the per-op
     bisection hook.
@@ -619,8 +633,23 @@ def execute(
 
     workdir = Path(workdir)
     cache_dir = Path(cache_dir) if cache_dir is not None else None
+    if cache_only and cache_dir is None:
+        raise DispatchRuntimeError("cache_only requires cache_dir")
+    if cache_dir is not None and cache_dir.is_symlink():
+        raise DispatchRuntimeError(f"host cache requires a non-symlink directory: {cache_dir}")
+    if cache_only and not cache_dir.is_dir():
+        raise DispatchRuntimeError(f"cache_only requires an existing cache directory: {cache_dir}")
     if cache_dir is not None:
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        if not cache_only:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        from .host_cache_identity import host_cache_identity
+
+        try:
+            _host_identity = host_cache_identity()
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            raise DispatchRuntimeError(f"cannot attest host cache compiler identity: {error}") from error
+        cache_dir = cache_dir.resolve(strict=True)
+        _host_cache_loaded: dict[str, dict] = {}
     module = outline_result.module
     driver = next(op for op in module.walk() if op.name == "func.func" and op.sym_name.data == entry)
     block = driver.body.blocks[0]
@@ -635,6 +664,8 @@ def execute(
     from ..llvmlower.portable_math import cache_token as _transcendental_cache_token
 
     _cache_salt = "\n// transcendental_math=" + _transcendental_cache_token()
+    if cache_dir is not None:
+        _cache_salt += "\n// host_compiler_identity=" + _host_identity["sha256"]
 
     def _kernel_digest(kernel_text: str) -> str:
         return hashlib.sha1((kernel_text + _cache_salt).encode()).hexdigest()[:16]
@@ -687,6 +718,28 @@ def execute(
         return _host_kfn_cache.get(sym)
 
     mesh_counts: dict = counters if counters is not None else {}  # per-CALL, not
+    if cache_dir is not None:
+        mesh_counts["host_cache"] = {
+            "schema": "merlin.host_cache.v1",
+            "mode": "cache_only" if cache_only else "read_write",
+            "cache_dir": str(cache_dir),
+            "identity": _host_identity,
+            "loaded": [],
+            "miss_count": 0,
+            "verified_after_execution": False,
+        }
+
+    def _record_host_cache(digest: str, so: Path) -> None:
+        if cache_dir is None or digest in _host_cache_loaded:
+            return
+        from .host_cache_identity import _file
+
+        if so.is_symlink():
+            raise DispatchRuntimeError(f"host cache refuses symlinked shared object: {so}")
+        info = _file(so)
+        _host_cache_loaded[digest] = {"key": digest, **info}
+        mesh_counts["host_cache"]["loaded"] = list(_host_cache_loaded.values())
+
     native_architecture = {"machine": platform.machine(), "system": platform.system(), "basis": "executing_process"}
     if kernel_backend != "mesh":
         mesh_counts.setdefault("target_executed", False)
@@ -806,8 +859,11 @@ def execute(
                 digest = _kernel_digest(key)
                 so = cache_dir / f"{digest}.so"
                 if not so.is_file():
+                    if cache_only:
+                        raise HostCacheMiss([(digest, symbol)], cache_dir=cache_dir, identity=_host_identity)
                     compile_host(km, workdir / symbol.replace("$", "_"))
                     shutil.copy2(workdir / symbol.replace("$", "_") / "model_host.so", so)
+                _record_host_cache(digest, so)
                 model = HostModel.load(str(so), scalar_result_dtype=host_scalar_result_dtype(km))
             else:
                 model = compile_host(km, workdir / symbol.replace("$", "_"))
@@ -856,10 +912,16 @@ def execute(
             seen.add(sym)
             ktext = _ktext(sym)
             digest = _kernel_digest(ktext)
-            if digest not in todo and not (cache_dir / f"{digest}.so").is_file():
+            cached_so = cache_dir / f"{digest}.so"
+            if cache_only and cached_so.is_symlink():
+                raise DispatchRuntimeError(f"host cache refuses symlinked shared object before execution: {cached_so}")
+            if digest not in todo and not cached_so.is_file():
                 todo[digest] = (ktext, sym)
         if not todo:
             return
+        if cache_only:
+            missing = [(digest, sym) for digest, (_, sym) in sorted(todo.items())]
+            raise HostCacheMiss(missing, cache_dir=cache_dir, identity=_host_identity)
 
         jobs = [
             (ktext, str(workdir / sym.replace("$", "_")), str(cache_dir / f"{digest}.so"))
@@ -1213,6 +1275,17 @@ def execute(
     execute.last_unique_kernels = n_unique
     if results is None:
         raise DispatchRuntimeError("driver had no func.return")
+    if cache_dir is not None:
+        from .host_cache_identity import _file
+
+        # A mutable cache can change after its pre-load hash. Refuse the receipt
+        # if any object differs after the driver has run. External mutation in
+        # the narrow interval between a hash and dlopen remains an OS-level race.
+        for loaded in _host_cache_loaded.values():
+            after = _file(Path(loaded["path"]))
+            if after != {key: loaded[key] for key in ("path", "bytes", "sha256")}:
+                raise DispatchRuntimeError(f"host cache object changed during execution: {loaded['path']}")
+        mesh_counts["host_cache"]["verified_after_execution"] = True
     return results
 
 
@@ -1312,6 +1385,7 @@ def run_model(
     mesh_package: str | None = None,
     numeric_policy: dict | None = None,
     transform_audit: bool | str | None = None,
+    cache_only: bool = False,
 ) -> dict[str, Any]:
     """Outline + bind + execute a captured model; gate against ``golden.npy``.
 
@@ -1436,6 +1510,7 @@ def run_model(
         args,
         Path(workdir),
         cache_dir=cache_dir,
+        cache_only=cache_only,
         tap=tap,
         qinner=qinner,
         kernel_backend=kernel_backend,
