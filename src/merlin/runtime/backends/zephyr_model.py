@@ -2780,9 +2780,18 @@ def build_app(
     elif ram_bytes_override is None:
 
         def _link(size: int) -> str:
+            # A relink starts from a FRESH build directory. Kconfig keeps CONFIG_SRAM_SIZE from the
+            # first configure (it has a prompt, so the old .config wins over the new devicetree), and the
+            # heap is sized from it: a relinked region used to change the overlay and nothing else.
             nonlocal overlay
+            if overlay != _overlay_for(size) and build_dir.exists():
+                import shutil as _shutil
+
+                _shutil.rmtree(build_dir)
             overlay = _overlay_for(size)
-            return _emit_and_build()
+            build_hash = _emit_and_build()
+            _zmem.require_linked_ram(build_dir, size)
+            return build_hash
 
         ram_bytes, build_hash = _zmem.link_to_fit(
             budget,

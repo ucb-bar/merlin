@@ -351,6 +351,38 @@ def image_span(elf: str | Path, dram_base: int, limit: int) -> int:
     return max(ends) - dram_base if ends else 0
 
 
+def linked_ram_bytes(build_dir: str | Path) -> int | None:
+    """The RAM size the image was CONFIGURED for: ``CONFIG_SRAM_SIZE`` (KiB) in the build's ``.config``.
+
+    It is what the linker's RAM region and the C library's heap are both sized from -- not the devicetree
+    overlay, which only seeds it on a fresh configure."""
+    config = Path(build_dir) / "zephyr" / ".config"
+    try:
+        text = config.read_text(errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key.strip() == "CONFIG_SRAM_SIZE" and value.strip().isdigit():
+            return int(value.strip()) * 1024
+    return None
+
+
+def require_linked_ram(build_dir: str | Path, region_bytes: int) -> None:
+    """Refuse an image configured for a different RAM size than the region it is reported under.
+
+    MEASURED: a relink that changed only the overlay left ``CONFIG_SRAM_SIZE`` at the first configure's
+    value, so a 2-layer TinyLlama "relinked for 288 MiB" kept a 256 MiB link region and a 19.5 MiB heap
+    for 39 MiB of heap residue -- an image that would end in ``FAIL alloc`` -- while its record said 288.
+    """
+    linked = linked_ram_bytes(build_dir)
+    if linked != region_bytes:
+        raise _error(
+            f"the image was configured for {_mib(linked)} MiB of RAM, not the {_mib(region_bytes)} MiB region "
+            f"it is linked for (CONFIG_SRAM_SIZE in {Path(build_dir) / 'zephyr' / '.config'})"
+        )
+
+
 def link_to_fit(
     budget: MemoryBudget,
     first_region: int,

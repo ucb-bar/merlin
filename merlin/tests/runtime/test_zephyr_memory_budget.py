@@ -236,3 +236,14 @@ def test_the_report_carries_sum_peak_arena_and_region():
     assert d["arena_bytes"] == 37 * MIB and d["region_bytes"] == 288 * MIB and d["fits"] is True
     line = zmem.summary_line(d)
     assert "buffers sum 362.0" in line and "peak live 36.0" in line and "region 288.0 of 512.0" in line
+
+
+def test_an_image_configured_for_a_stale_ram_size_is_refused(tmp_path):
+    """Kconfig keeps CONFIG_SRAM_SIZE from the first configure, and the heap is sized from it: a relink that
+    changed only the overlay reported 288 MiB while linking a 256 MiB image with a 19.5 MiB heap."""
+    (tmp_path / "zephyr").mkdir()
+    (tmp_path / "zephyr" / ".config").write_text("CONFIG_FOO=y\nCONFIG_SRAM_SIZE=262144\n")
+    assert zmem.linked_ram_bytes(tmp_path) == 256 * MIB
+    zmem.require_linked_ram(tmp_path, 256 * MIB)
+    with pytest.raises(ZephyrModelError, match="configured for 256.0 MiB of RAM, not the 288.0 MiB region"):
+        zmem.require_linked_ram(tmp_path, 288 * MIB)
