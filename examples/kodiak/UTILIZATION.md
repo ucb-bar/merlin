@@ -1,0 +1,51 @@
+# OPU utilization on the one-core FireSim board
+
+The configured unit has a 64 × 64 logical tile and a 256-bit datapath for 8-bit operands. Each
+operand takes two beats; a full tile takes four issue cycles. Its **theoretical fully active datapath
+peak** is therefore `64 × 64 / 4 = 1,024 MAC per target cycle`. Count a multiply-accumulate as one
+MAC. This is a capacity bound, not a measured busy signal.
+
+Three different quantities answer different questions:
+
+| Quantity | Formula | Spectformer result |
+|---|---|---:|
+| Routed MAC share | valid MACs assigned to OPU / all contraction MACs | 98.9501% |
+| Structural tile fill | valid routed MACs / padded OPU tile MAC slots | 75.5733% |
+| Whole-inference effective OPU throughput | valid routed MACs / (`METRIC cycles` × 1,024) | 0.0508795% of peak |
+
+The numerator is **valid model work**, `Σ b × m × n × k` over routed contractions, excluding padded
+lanes. Spectformer has 57 routed contractions and 1,840,054,272 valid routed MACs; 19,523,584
+contraction MACs remain on RVV. With edge tiles rounded to 64, the static padded slot count is
+`Σ b × ceil(m/64) × ceil(n/64) × 64² × k = 2,434,793,472`. Thus 594,739,200 slots are padding.
+These counts come from the exact OPU image's `opu_signatures.json` and `routing_report.json`.
+
+FireSim job 3858, the Spike-gated spectformer image with build hash `41758fde53331576`, completed
+in 3,531,733,777 `METRIC cycles`. That metric is the target `mcycle` delta around the compute region
+per inference, excluding FireSim host time; it includes model work, packing, setup, stalls, and other
+operations. `1,840,054,272 / (3,531,733,777 × 1,024) = 0.000508795`, or **0.0508795%**. The
+64³ GEMM device job 3854 completed 262,144 valid MACs in 792,242 target cycles, or **0.0323134%**
+of peak across its full compute region; its tile fill is 100%.
+
+These percentages are **end-to-end effective throughput**, not the MAC array's active-cycle
+utilization. The current bitstream has no software-visible counter for active cycles or valid lanes.
+Actual array occupancy needs an RTL counter or trace measuring busy cycles and useful lanes. Static
+opcode counts in an ELF cannot supply it. A timed kernel window would narrow the denominator but
+would still include loads, packing, and stalls. FireSim's ~15 MHz simulation rate measures host
+emulation speed and does not enter any utilization formula.
+
+The spectformer image passed its W8A8 numerical gate; its complete output hash matched the exact
+Spike-gated image. Its hash does not bit-match the older W8A8 golden, whose libm policy differs.
+The pinned FireSim bitstream artifact matched the job's tar. The local Saturn source pin still
+reports drift in the clock-gate config, so this measurement does not certify all source pins.
+
+Evidence in this task checkout:
+
+- `out/artifacts/probes/firesim_kodiak_opu/spectformer_merlin_compile_h1/firesim/results.json`
+- `out/artifacts/probes/firesim_kodiak_opu/spectformer_merlin_compile_h1/routing/opu_signatures.json`
+- `out/artifacts/probes/firesim_kodiak_opu/spectformer_merlin_compile_h1/routing/routing_report.json`
+- `out/artifacts/measurements/firesim_alveo_u250_firesim_kodiak_opu_1core/op_gemm_64x64x64/`
+
+To recompute the structural counts, sum the `b`, `m`, `n`, and `k` fields of the routed rows in
+`opu_signatures.json` with the two formulas above. For another model, use that image's routing
+sidecar and its own FireSim `METRIC cycles`; do not substitute Spike cycles or the plain-RVV control's
+cycles for OPU hardware timing.

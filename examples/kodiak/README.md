@@ -462,6 +462,8 @@ For each leg it checks, and reports every check it could not make as a problem r
 It writes `firesim/results.json` in the job directory and a measurement under
 `out/artifacts/measurements/firesim_alveo_u250_firesim_kodiak_opu_1core/<model>/`, whose provenance
 names the pinned bitstream artifact it matched (by the tar FireSim reports, compared by sha256).
+See [OPU utilization](UTILIZATION.md) for the target-cycle denominator, routed MAC count, tile fill,
+and the limits of the current hardware counters.
 
 ### The reference result
 
