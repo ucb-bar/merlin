@@ -145,3 +145,59 @@ def test_cache_only_rejects_legacy_kernel_before_execution(tmp_path, monkeypatch
         dispatch_runtime.execute(
             outlined, [np.ones(1, np.float32)], tmp_path / "work", cache_dir=cache, cache_only=True
         )
+
+
+def test_read_write_population_creates_manifest_then_strict_replay(tmp_path, monkeypatch):
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.llvmlower.abi import HostModel
+    from merlin.runtime import dispatch_runtime
+    from merlin.xdsl_dialects.lowering.outline import OutlineResult
+
+    module = parse_mlir_text("""builtin.module {
+      func.func @forward(%x: tensor<1xf32>) -> tensor<1xf32> {
+        %y = func.call @forward$kernel_0(%x) : (tensor<1xf32>) -> tensor<1xf32>
+        func.return %y : tensor<1xf32>
+      }
+      func.func private @forward$kernel_0(%x: tensor<1xf32>) -> tensor<1xf32> {
+        func.return %x : tensor<1xf32>
+      }
+    }""")
+    outlined = OutlineResult(module, [])
+    identity, *_ = _synthetic_identity(tmp_path / "identity", monkeypatch)
+    monkeypatch.setattr("merlin.runtime.host_cache_identity.host_cache_identity", identity)
+    monkeypatch.setenv("MERLIN_COMPILE_WORKERS", "1")
+
+    compiled = []
+
+    def fake_compile(args):
+        _, workdir, so = args
+        work = Path(workdir)
+        work.mkdir(parents=True)
+        (work / "lowering_recipe.json").write_text(
+            json.dumps({"schema": "merlin.lowering_recipe.v1", "status": "returned", "commands": [{"argv": ["stub"]}]})
+        )
+        Path(so).write_bytes(b"synthetic compiled object")
+        compiled.append(so)
+
+    class StubHostModel:
+        scalar_result_dtype = None
+
+        def __call__(self, _args):
+            return None
+
+    monkeypatch.setattr(dispatch_runtime, "_compile_kernel_so", fake_compile)
+    monkeypatch.setattr(HostModel, "load", lambda *_a, **_k: StubHostModel())
+    cache = tmp_path / "cache"
+    first, replay = {}, {}
+    dispatch_runtime.execute(outlined, [np.ones(1, np.float32)], tmp_path / "work", cache_dir=cache, counters=first)
+    assert len(compiled) == 1
+    assert (
+        first["host_cache"]["loaded"][0]["manifest"]["object_sha256"]
+        == hashlib.sha256(b"synthetic compiled object").hexdigest()
+    )
+    dispatch_runtime.execute(
+        outlined, [np.ones(1, np.float32)], tmp_path / "replay", cache_dir=cache, cache_only=True, counters=replay
+    )
+    assert len(compiled) == 1
+    assert replay["host_cache"]["verified_after_execution"] is True
+    assert replay["host_cache"]["loaded"] == first["host_cache"]["loaded"]
