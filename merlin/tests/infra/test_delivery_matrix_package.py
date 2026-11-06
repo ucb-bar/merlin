@@ -114,6 +114,35 @@ def test_a_run_twin_is_described_as_graded():
     assert "grades bit-exact" in txt
 
 
+def test_alternate_schedule_never_inherits_k1_or_bundle_status(tmp_path, monkeypatch):
+    md = _load_packager()
+    package = repo_root() / "out/artifacts/targets/rvv/kodiak_prepack_w8a8_v1"
+    monkeypatch.setattr(md, "RVV_PACKAGE", package)
+    (tmp_path / "delivery_status.md").write_text("K1 certified for a different package")
+    assert md.model_status({"unknown": tmp_path}) == {}
+    spectformer = md.model_status({"spectformer": tmp_path})["spectformer"]
+    assert "no K1 or physical Kodiak certification" in spectformer
+    assert "K1 certified for a different package" not in spectformer
+
+
+def test_matrix_delivery_verdict_names_the_gate_that_actually_ran():
+    md = _load_packager()
+    matrix = _matrix_binary(gate_ok=True, matrix={"twin_simulated": True})
+    assert md._verdict(matrix) == "twin PASS; image unrun"
+    debug = {**matrix, "debug": True}
+    assert md._verdict(debug) == "audited; image unrun"
+
+
+def test_kodiak_readme_keeps_separate_opu_gates_separate():
+    md = _load_packager()
+    b = _matrix_binary(matrix={"unit": "saturn_opu"})
+    brd, man = _manifest([b], status={"m": "No physical Kodiak execution yet."})
+    txt = md._readme(brd, man)
+    assert "exact matrix images in this zip were not executed" in txt
+    assert "A simulator or RTL run of a separate image does not grade these ELF bytes" in txt
+    assert "no simulator we have can execute" not in txt
+
+
 def test_a_matrix_image_does_not_pull_in_the_scalar_section():
     """The section says the binaries it describes contain no vector instructions at all. A matrix image is
     full of them, and selecting it with `backend != "rvv"` said otherwise."""

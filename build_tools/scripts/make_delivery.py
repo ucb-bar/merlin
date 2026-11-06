@@ -30,6 +30,7 @@ a final manual step if that is how it is being sent.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -53,7 +54,8 @@ from merlin.runtime.backends import zephyr_model as zm  # noqa: E402
 from merlin.runtime.boards import CONSOLE_HTIF  # noqa: E402
 
 #: The RVV schedule package every image is lowered with (--rvv-package overrides it).
-RVV_PACKAGE = repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8"
+DEFAULT_RVV_PACKAGE = repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8"
+RVV_PACKAGE = DEFAULT_RVV_PACKAGE
 
 #: How each board is loaded and run, in ITS OWN flow. Quoted from the board's own repo so the authors
 #: recognise it, rather than a command we invented.
@@ -1096,9 +1098,9 @@ def main(argv=None) -> int:
         "--matrix-harts",
         default="",
         help="comma-separated hart counts to ALSO build with contractions ROUTED TO A "
-        "MATRIX EXTENSION (needs --matrix-unit/--matrix-config). Those images carry "
-        "instructions no simulator here can execute, so each is graded through a "
-        "scalar stand-in twin built from the same lowering — see build_matrix.",
+        "MATRIX EXTENSION (needs --matrix-unit/--matrix-config). This builder gates each "
+        "through a scalar stand-in twin from the same lowering when simulation is enabled "
+        "— see build_matrix.",
     )
     ap.add_argument(
         "--matrix-unit",
@@ -1234,7 +1236,11 @@ def main(argv=None) -> int:
         if not a.out:
             print("[make_delivery] --refresh needs --out <an existing package dir>", file=sys.stderr)
             return 2
-        return refresh_package(Path(a.out), twin=Path(a.twin_of) if a.twin_of else None)
+        return refresh_package(
+            Path(a.out),
+            twin=Path(a.twin_of) if a.twin_of else None,
+            package_override=a.rvv_package is not None,
+        )
 
     overrides = {}
     if a.dram_mb:
@@ -1798,6 +1804,7 @@ def main(argv=None) -> int:
             "notes": brd.notes,
         },
         "dtype": a.dtype,
+        "rvv_package": _rvv_package_receipt(),
         "binaries": binaries,
         "problems": problems,
         # Facts about THIS package that no descriptor and no build can state, chiefly which hardware its
@@ -1876,16 +1883,39 @@ STATUS_FILE = "delivery_status.md"
 
 
 def model_status(bundles: dict[str, Path]) -> dict[str, str]:
-    """``{model: status text}`` for the models being packaged: :data:`STATUS`, else the bundle's
-    :data:`STATUS_FILE`. A model with neither is left out, and :func:`_derived_problems` says so."""
+    """Return status text bound to the selected schedule package.
+
+    The built-in descriptions include K1 evidence for the default RVV package. An alternate
+    schedule must provide its own text in its manifest; otherwise the
+    delivery records missing status instead of inheriting another package's certification.
+    """
     out: dict[str, str] = {}
+    alternate = RVV_PACKAGE.resolve() != DEFAULT_RVV_PACKAGE.resolve()
+    package_text = load_rvv_package(RVV_PACKAGE).manifest.get("delivery_status", {}) if alternate else {}
     for model, bundle in bundles.items():
-        text = STATUS.get(model)
-        if text is None and (Path(bundle) / STATUS_FILE).is_file():
-            text = (Path(bundle) / STATUS_FILE).read_text(encoding="utf-8").strip() or None
+        if alternate:
+            text = package_text.get(model)
+        else:
+            text = STATUS.get(model)
+            if text is None and (Path(bundle) / STATUS_FILE).is_file():
+                text = (Path(bundle) / STATUS_FILE).read_text(encoding="utf-8").strip() or None
         if text:
             out[model] = text
     return out
+
+
+def _rvv_package_receipt() -> dict:
+    selected = load_rvv_package(RVV_PACKAGE)
+    names = ("manifest.yaml", "knobs.yaml", "schedule.mlir")
+    return {
+        "id": selected.manifest.get("package_id") or selected.manifest.get("run_id"),
+        "status": selected.manifest.get("status"),
+        "file_sha256": {
+            name: hashlib.sha256((RVV_PACKAGE / name).read_bytes()).hexdigest()
+            for name in names
+            if (RVV_PACKAGE / name).is_file()
+        },
+    }
 
 
 def _derived_problems(binaries: list[dict], status: dict[str, str] | None = None) -> list[str]:
@@ -1965,7 +1995,7 @@ def _ungated_problem(binaries: list[dict]) -> str | None:
     return f"{UNGATED_PREFIX} " + "; ".join(parts) + "."
 
 
-def refresh_package(dest: Path, twin: Path | None = None) -> int:
+def refresh_package(dest: Path, twin: Path | None = None, *, package_override: bool = False) -> int:
     """Recompute a built package's derived fields, README and zip WITHOUT rebuilding its binaries.
 
     The binaries and their gate results are the expensive, immutable part of a delivery; the manifest
@@ -1976,6 +2006,16 @@ def refresh_package(dest: Path, twin: Path | None = None) -> int:
     if twin is not None:
         attach_twin_evidence(dest, twin)
     man = json.loads((dest / "manifest.json").read_text())
+    if package_override:
+        selected = _rvv_package_receipt()
+        old_id = (man.get("rvv_package") or {}).get("id")
+        if old_id is not None and old_id != selected["id"]:
+            raise ValueError(f"refresh package id {selected['id']} does not match built image package {old_id}")
+        man["rvv_package"] = selected
+        if RVV_PACKAGE.resolve() != DEFAULT_RVV_PACKAGE.resolve():
+            package_text = load_rvv_package(RVV_PACKAGE).manifest.get("delivery_status", {})
+            models = {b["model"] for b in man["binaries"]}
+            man["status"] = {model: package_text[model] for model in models if model in package_text}
     brd = boards.board(
         man["board"]["name"],
         dram_bytes=man["board"]["dram_bytes"],
@@ -1983,7 +2023,7 @@ def refresh_package(dest: Path, twin: Path | None = None) -> int:
         vlen=man["board"]["vlen"],
     )
     man["problems"] = [p for p in man.get("problems", []) if not p.startswith(DERIVED_PREFIXES)]
-    man["problems"] += _derived_problems(man["binaries"], {**STATUS, **(man.get("status") or {})})
+    man["problems"] += _derived_problems(man["binaries"], man.get("status") or {})
     # Both are pure functions of the descriptor, so a package built before the packager recorded them
     # can state them without rebuilding a byte. `silicon` is NOT filled here: it needs a returned probe
     # log, and inventing an absent measurement is the one thing this field exists to prevent.
@@ -2252,6 +2292,10 @@ def _upload_note(seconds) -> str:
 def _verdict(b: dict) -> str:
     """What we can honestly say about one binary. `not simulated` is a distinct answer from a gate
     that ran and did not pass — conflating them would let a skipped check read as a soft failure."""
+    if b.get("debug") and b.get("spike_cycles") is None:
+        return "audited; image unrun"
+    if b.get("backend") == "matrix" and b.get("gate_ok"):
+        return "twin PASS; image unrun"
     if b.get("gate_ok"):
         return "PASS"
     return "not simulated" if b.get("spike_cycles") is None else "see status"
@@ -2544,6 +2588,14 @@ So there is no `expected_console.txt` for these rows and `spike_cycles` is `null
 no reference than one we did not produce. `grade.py` still scores the console YOU send back against the
 same references, which is the comparison that matters — the W8A8 golden is in this package."""
         )
+        matrix_execution_note = (
+            "The exact matrix images in this zip were not executed by this delivery builder. "
+            "A simulator or RTL run of a separate image does not grade these ELF bytes."
+        )
+        arithmetic_note = (
+            "outside this package's scalar-twin gate. Any separate simulator or RTL evidence must "
+            "name its exact image before it can support a claim about these binaries."
+        )
         matrix_doc = f"""
 ## The matrix-unit images, and exactly what backs them
 
@@ -2559,13 +2611,10 @@ of every function in the shipped ELF are compared against the encodings derived 
 image must contain them while its stand-in twin must contain none. The counts are in `manifest.json`
 under `matrix.unit_instruction_counts`.
 
-They carry instructions no simulator we have can execute, so
-unlike every other binary here they were **not** run before shipping. Their evidence is in two halves,
-and both are real:
+{matrix_execution_note} Their evidence is in two halves:
 
 {twin_bullet}
-- **The unit's own arithmetic** is certified separately, on the unit's RTL, against a frozen corpus of
-  shapes that includes the ones this model actually produces.
+- **The unit's own arithmetic**: {arithmetic_note}
 
 {twin_console_note}
 
@@ -2590,7 +2639,7 @@ built for it will not run on one without it.
         for b in manifest["binaries"]
     )
     statuses = "\n".join(
-        f"- **{m}** — {(manifest.get('status') or {}).get(m) or STATUS.get(m, 'no status recorded')}"
+        f"- **{m}** — {(manifest.get('status') or {}).get(m) or 'no status recorded'}"
         for m in sorted({b["model"] for b in manifest["binaries"]})
     )
     vlen = brd.vlen or 128
@@ -2907,11 +2956,15 @@ as a lower bound. The packager refuses to ship an image whose arena is below tha
     return f"""\
 # Merlin int8 {isa_line} binaries for `{brd.name}`
 
-Compiled by the Merlin flow (model2MLIR capture -> int8 W8A8 lowering -> certified RVV schedule ->
+Compiled by the Merlin flow (model2MLIR capture -> int8 W8A8 lowering -> selected RVV schedule ->
 {image}). **Each binary is self-contained**: inputs and weights are baked in, so there is no
 filesystem, no host I/O, no arguments, and nothing to install on the board.
 
-We have no access to this board — you running these is the first time they touch the real chip.
+The selected RVV schedule is `{(manifest.get('rvv_package') or {}).get('id', 'unrecorded')}`;
+`manifest.json` records SHA-256 digests of its recipe files.
+
+These exact ELFs have not run on the physical board; check the board-specific loader and status
+below before using them.
 {notes_doc}
 ## What we built for
 
