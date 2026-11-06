@@ -40,6 +40,14 @@ and board options.
 | TinyLlama two-layer, 64 tokens | 15,380,012,801 cycles | 27,955,258,588 cycles | Full 2,048,000-value hash/prefix match Spike; 4,096-prefix hardware W8A8 pass |
 | TinyLlama two-layer, 128 tokens | 16,727,634,195 cycles | 41,920,445,165 cycles | Both full 4,096,000-value hashes/prefixes match Spike; 4,096-prefix hardware W8A8 pass |
 
+An aligned-weight prepack s64 OPU image completed as FireSim job 3866 in **1,101,993,218**
+target cycles with the same full 2,048,000-value hash as the verified baseline. Its matched RVV
+control is running as job 3867, so the new pair's speedup and grade are pending. This device
+result performs 9,865,003,008 valid routed MACs, or **0.874215% of the 1,024-MAC/cycle
+theoretical peak across the inference**; the earlier OPU image measured 0.0626384%. The s128
+aligned-prepack OPU and RVV images have both passed exact Spike gates, including the baseline's
+full 4,096,000-value hash, but have not yet been submitted to FireSim.
+
 The full TinyLlama model's weights alone are about 1.2 GiB and do not fit this 512 MiB board.
 The two-layer sections above are the hardware targets. The 64-token and 128-token exact OPU
 Spike images also passed complete W8A8 comparisons and all token argmaxes against their host
@@ -48,7 +56,8 @@ one-core bitstream.
 
 For utilization, use [the formula and evidence](UTILIZATION.md) and
 `python examples/lib/opu_utilization.py <verified-plan-dir>`. The current bitstream has 1,024
-physical int8 MAC cells but no active-cycle counter. The reported ~0.05–0.12% figures are
+physical int8 MAC cells but no active-cycle counter. The baseline ~0.05–0.12% figures and the
+prepacked s64 device's 0.874215% are
 **whole-inference effective throughput as a fraction of peak**, not array occupancy. Exact
 Spectformer and 64-token TinyLlama Spike images executed 105 and 143 OPU shim calls respectively,
 with zero scalar fallbacks. The graded 128-token pair gives **2.5061×** control-over-device
@@ -63,8 +72,19 @@ the live Chipyard/Saturn checkout has pin drift. Physical Kodiak rig access and 
 separate from FireSim; follow the Kodiak package's `RUNNING.md` and coordinate with the rig owner
 before any chip load or reset.
 
-As of 2026-11-05, `ssh -o BatchMode=yes kodiak-rig hostname` returns `bwrckodiak` from the
-garden host with `SSH_AUTH_SOCK` unset. The relay no longer depends on a laptop. A read-only
-occupancy check found three tmux sessions, including two marked attached; no UDP ping, hello
-program, Merlin image, or reset has been attempted. Get an owner-confirmed test window before
-using the physical rig.
+As of 2026-11-06, `ssh -o BatchMode=yes kodiak-rig hostname` returns `bwrckodiak` without a
+laptop relay. In an owner-confirmed exclusive window, a SHA-verified JTAG program restored FPGA
+Ethernet and UDP ping. The exact OPU-direct benchmark that passed in August then failed at the
+chip's `0x1000` BootAddrReg readback under the historical uncredited `--no-reset` loader path.
+No Merlin image was loaded; existing tmux sessions were preserved. The hash-verified comparison
+is in `out/artifacts/probes/chipyard_kodiak/physical_probe_20261106/receipt_addendum.json`.
+Chip power/reset/clock/wiring and the Vivado version difference still need investigation before
+direct Kodiak testing. The Spike-gated small GEMM OPU/RVV images are ready for retry after the
+known positive control passes.
+
+A sparse Spectformer OPU profile image passed its exact Spike gate with all 90 routed calls,
+matching full output hash, and **10.6057% effective peak during OPU call windows on Spike**.
+Its FireSim job 3868 is queued behind the prepack control. This call-window rate includes packing
+and stalls; it is not physical MAC array occupancy. A separate draft Chipyard counter patch is
+available as [PR 2395](https://github.com/ucb-bar/chipyard/pull/2395), but no instrumented
+bitstream or counter measurement exists yet.
