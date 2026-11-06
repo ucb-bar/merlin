@@ -20,8 +20,13 @@ contraction MACs remain on RVV. With edge tiles rounded to 64, the static padded
 These counts come from the exact OPU image's `opu_signatures.json` and `routing_report.json`.
 The two-layer TinyLlama sections also route all 19 contractions in their current h1 builds:
 9,865,003,008 valid MACs at 64 tokens and 19,797,114,880 at 128 tokens. Their shapes fill the
-64 × 64 OPU tiles completely by this static calculation. Their Spike runs are correctness checks,
-so these counts alone do **not** give a hardware throughput or active-cycle utilization number.
+64 × 64 OPU tiles completely by this static calculation. The 64-token OPU image completed on the
+one-core FireSim bitstream as job 3860 in 15,380,012,801 target `METRIC cycles`, with its full
+2,048,000-element output hash matching the exact Spike-gated image. Its whole-inference effective
+throughput is `9,865,003,008 / (15,380,012,801 × 1,024) = 0.000626384`, or **0.0626384% of
+peak** (0.641417 valid MAC per target cycle). The paired RVV control and the 128-token FireSim
+pair are still running; no speedup or 128-token hardware throughput is established yet. The
+100% static tile fill does **not** imply 100% active-cycle occupancy.
 
 FireSim job 3858, the Spike-gated spectformer image with build hash `41758fde53331576`, completed
 in 3,531,733,777 `METRIC cycles`. That metric is the target `mcycle` delta around the compute region
@@ -50,6 +55,8 @@ Evidence in this task checkout:
 - `out/artifacts/probes/firesim_kodiak_opu/spectformer_merlin_compile_h1/firesim/results.json`
 - `out/artifacts/probes/firesim_kodiak_opu/spectformer_merlin_compile_h1/routing/opu_signatures.json`
 - `out/artifacts/probes/firesim_kodiak_opu/spectformer_merlin_compile_h1/routing/routing_report.json`
+- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/device/uartlog`
+- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/routing/opu_signatures.json`
 - `out/artifacts/measurements/firesim_alveo_u250_firesim_kodiak_opu_1core/op_gemm_64x64x64/`
 
 To recompute the structural counts, sum the `b`, `m`, `n`, and `k` fields of the routed rows in
