@@ -38,7 +38,7 @@ and board options.
 | --- | ---: | ---: | --- |
 | Spectformer int8 | 3,531,733,777 target compute cycles | 6,120,729,118 cycles | W8A8 pass; full hash/prefix match its Spike image |
 | TinyLlama two-layer, 64 tokens | 15,380,012,801 cycles | 27,955,258,588 cycles | Full 2,048,000-value hash/prefix match Spike; 4,096-prefix hardware W8A8 pass |
-| TinyLlama two-layer, 128 tokens | 16,727,634,195 cycles; device job 3862 completed | Control job 3864 pending | Full 4,096,000-value hash matches Spike; pair grade pending |
+| TinyLlama two-layer, 128 tokens | 16,727,634,195 cycles | 41,920,445,165 cycles | Both full 4,096,000-value hashes/prefixes match Spike; 4,096-prefix hardware W8A8 pass |
 
 The full TinyLlama model's weights alone are about 1.2 GiB and do not fit this 512 MiB board.
 The two-layer sections above are the hardware targets. The 64-token and 128-token exact OPU
@@ -51,8 +51,9 @@ For utilization, use [the formula and evidence](UTILIZATION.md) and
 physical int8 MAC cells but no active-cycle counter. The reported ~0.05–0.12% figures are
 **whole-inference effective throughput as a fraction of peak**, not array occupancy. Exact
 Spectformer and 64-token TinyLlama Spike images executed 105 and 143 OPU shim calls respectively,
-with zero scalar fallbacks. The 128-token device result awaits its paired FireSim grade before
-publication as a speedup or utilization result.
+with zero scalar fallbacks. The graded 128-token pair gives **2.5061×** control-over-device
+speedup and **0.115576%** whole-inference effective peak for the OPU image; the bitstream still
+has no array-active counter.
 
 The Kodiak OPU target uses legacy BME instructions. It cannot execute Iris's Zvt/VME encodings;
 those need a separate VME-enabled Kodiak RTL configuration and bitstream. The current OPU FireSim

@@ -28,8 +28,13 @@ peak** (0.641417 valid MAC per target cycle). The paired plain-RVV control, job 
 in 27,955,258,588 target compute cycles on the same bitstream. The hardware W8A8 gate compared
 the 4,096-value prefix for each leg; both full-output hashes and prefixes matched their exact
 Spike-gated images. The graded OPU speedup is
-`27,955,258,588 / 15,380,012,801 = 1.8176×`. The 128-token FireSim pair is still running. The
-100% static tile fill does **not** imply 100% active-cycle occupancy.
+`27,955,258,588 / 15,380,012,801 = 1.8176×`. The 128-token pair also passed on the same
+one-core bitstream: device job 3862 took 16,727,634,195 target compute cycles and RVV control
+job 3864 took 41,920,445,165, for **2.5061×** speedup. Both full 4,096,000-value hashes and
+prefixes matched their exact Spike images; the hardware W8A8 gate compared each 4,096-value
+prefix. Its 19,797,114,880 valid routed MACs give **1.18350 valid MAC per target cycle** and
+`19,797,114,880 / (16,727,634,195 × 1,024) = 0.00115576`, or **0.115576%** of whole-inference
+peak. The 100% static tile fill does **not** imply 100% active-cycle occupancy.
 
 Static routing also cannot prove that the runtime shim used the OPU. At return from
 `merlin_run_multi`, a Spike debugger read the exact shipped s64 ELF's OPU shim counters:
@@ -126,7 +131,11 @@ Evidence in this task checkout:
 - `out/artifacts/probes/firesim_kodiak_opu/spectformer_merlin_compile_h1/routing/routing_report.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/device/uartlog`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/results.json`
+- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/utilization.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/routing/opu_signatures.json`
+- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793936116770167230/firesim/results.json`
+- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793936116770167230/firesim/utilization.json`
+- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793936116770167230/device/routing/opu_signatures.json`
 - `out/artifacts/measurements/firesim_alveo_u250_firesim_kodiak_opu_1core/op_gemm_64x64x64/`
 - `out/artifacts/probes/firesim_kodiak_opu/dynamic_opu_counters/` (exact-ELF Spike debugger reads)
 
