@@ -21,8 +21,8 @@
       "other_contraction_macs": 6422528,
       "peak_mac_per_target_cycle": 1024,
       "plan_paths": {
-        "baseline": "/scratch/agustin/merlin/tasks/chip-packages/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793965368611649945",
-        "quant": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793976714611401525"
+        "baseline": "tasks/chip-packages/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793965368611649945",
+        "quant": "tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793976714611401525"
       },
       "quant": {
         "control_cycles": 5667528436,

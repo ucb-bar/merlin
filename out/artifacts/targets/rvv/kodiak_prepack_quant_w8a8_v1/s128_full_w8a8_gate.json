@@ -2,7 +2,7 @@
   "schema": "merlin.exact-spike-full-w8a8.v1",
   "model": "tinyllama_l2_s128",
   "package": "rvv/kodiak_prepack_quant_w8a8_v1",
-  "plan": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793976714876752633",
+  "plan": "tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793976714876752633",
   "elf_sha256": "50c0a9aa0d5474600796df27472820d210f2ee1096b19d601e1aee61555de013",
   "build_hash": "8e699e608eb13ae5",
   "debug_cmd_sha256": "fdf2338db69ad4293208b5aa0dd978e8f27c6fd3ce8e0a0894d3c07039e49272",

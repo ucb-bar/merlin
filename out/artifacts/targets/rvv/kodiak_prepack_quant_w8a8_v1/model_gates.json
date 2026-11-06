@@ -59,11 +59,11 @@
           },
           "routing_sidecars": {
             "opu_signatures.json": {
-              "path": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793976714611401525/device/routing/opu_signatures.json",
+              "path": "tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793976714611401525/device/routing/opu_signatures.json",
               "sha256": "94e69ec67bcf183d1bf59e362686e3b59b258e53a8c715715212f152a1500b49"
             },
             "routing_report.json": {
-              "path": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793976714611401525/device/routing/routing_report.json",
+              "path": "tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793976714611401525/device/routing/routing_report.json",
               "sha256": "2cf24c59ea9aa8529bed811bf028cbfc578942b19aa34633b62c3e5b1c8265fc"
             }
           },
@@ -102,7 +102,7 @@
           }
         }
       },
-      "plan": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793976714611401525",
+      "plan": "tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793976714611401525",
       "plan_sha256": "e3ec5eb5a2172191cfdebd5e4b6f6bc7f8f0867e30c53e105a412227daac486f",
       "vlen": 512
     },
@@ -174,11 +174,11 @@
           },
           "routing_sidecars": {
             "opu_signatures.json": {
-              "path": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793976714876752633/device/routing/opu_signatures.json",
+              "path": "tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793976714876752633/device/routing/opu_signatures.json",
               "sha256": "c6454e3c73b239dae14d556ef35aebdeb61212d194ae928a7a8b2c662ec501ee"
             },
             "routing_report.json": {
-              "path": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793976714876752633/device/routing/routing_report.json",
+              "path": "tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793976714876752633/device/routing/routing_report.json",
               "sha256": "1fdf00a8e4c3c1304498bb43284f4c18fc6ac053fb42e27aae5ebeb7cd0b86a1"
             }
           },
@@ -217,7 +217,7 @@
           }
         }
       },
-      "plan": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793976714876752633",
+      "plan": "tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793976714876752633",
       "plan_sha256": "1c32d45c0322b40fca63ee67f8412f1cd85a57d683614d19ec41788d870dc44a",
       "vlen": 512
     },
@@ -279,11 +279,11 @@
           },
           "routing_sidecars": {
             "opu_signatures.json": {
-              "path": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793978312584828016/device/routing/opu_signatures.json",
+              "path": "tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793978312584828016/device/routing/opu_signatures.json",
               "sha256": "cff687d7c5da09f5086141f6eea48203ba24175d1611d3d62c8e039dec5e674a"
             },
             "routing_report.json": {
-              "path": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793978312584828016/device/routing/routing_report.json",
+              "path": "tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793978312584828016/device/routing/routing_report.json",
               "sha256": "dc5877a981de958b72e29bde299f6de0c776ca4ca40a990939811e9e786b4f84"
             }
           },
@@ -322,7 +322,7 @@
           }
         }
       },
-      "plan": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793978312584828016",
+      "plan": "tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793978312584828016",
       "plan_sha256": "b1cae9b7fb8863d35cef71df87fdf14b90aa1c45cbc7d3e55582edcf0148e5a7",
       "vlen": 512
     }

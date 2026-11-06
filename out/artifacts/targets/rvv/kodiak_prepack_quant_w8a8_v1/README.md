@@ -14,6 +14,9 @@ exact Spike full 2,048,000-element output hashes and prefixes; their 4,096-eleme
 prefix gates passed. Full W8A8 numerical comparison of the FireSim output was not available from
 the capped console. The source SHA values, jobs, bitstream digest, and utilization are in
 `firesim_evidence.json`.
+Paths beginning with `tasks/` in the tracked evidence identify the originating managed Merlin
+task relative to its workspace root. They are provenance labels, not inputs needed to load this
+package. The recorded hashes bind the immutable plans, ELFs, and result files.
 
 The OPU device routed all 19 contractions and 9,865,003,008 valid MACs, with 100% static tile
 fill. It achieved 9.649235 valid MACs per target compute cycle, or **0.942308% of the
