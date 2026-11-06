@@ -73,6 +73,29 @@ def test_generic_and_custom_forms_cover_stores_and_effect_only_calls():
     assert len(markers) == len(table) + 1
 
 
+def test_structural_instrumentation_preserves_raw_float_bit_patterns():
+    """MLIR spells infinities/NaNs as hex bits; changing those bytes changes model math."""
+    source = """module {
+      func.func @forward() -> tensor<4xf32> {
+        %minus_inf = arith.constant dense<0xFF800000> : tensor<4xf32>
+        %quiet_nan = arith.constant dense<0x7FC00000> : tensor<4xf32>
+        return %minus_inf : tensor<4xf32>
+      }
+    }"""
+    instrumented, _ = op_profile.instrument(source, structural=True)
+    assert "dense<0xFF800000>" in instrumented
+    assert "dense<0x7FC00000>" in instrumented
+    parse(instrumented).verify()
+
+    from merlin.llvmlower.passes_xdsl import _attach_c_interface
+
+    lowered_input, attached = _attach_c_interface(instrumented)
+    assert attached == 1
+    assert "dense<0xFF800000>" in lowered_input
+    assert "dense<0x7FC00000>" in lowered_input
+    assert "llvm.emit_c_interface" in lowered_input
+
+
 def test_cached_input_module_is_never_mutated_and_existing_marker_refuses():
     module = parse(SOURCE)
     original = str(module)

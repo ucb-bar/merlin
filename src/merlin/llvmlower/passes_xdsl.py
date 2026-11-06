@@ -15,9 +15,10 @@ These run before the upstream pipeline:
 from __future__ import annotations
 
 import string
+from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any, Callable
+from typing import Any
 
 from ..frontends.linalg_mlir import make_context, parse_mlir_text  # noqa: F401
 
@@ -886,7 +887,7 @@ class _Dequant:
     result_type: str
 
 
-def _parse_dequant(line: str) -> "_Dequant | None":
+def _parse_dequant(line: str) -> _Dequant | None:
     """Split a dequantize line into :class:`_Dequant`, or ``None`` if it is not one."""
     body = line.lstrip()
     indent = line[: len(line) - len(body)]
@@ -927,7 +928,7 @@ def _parse_dequant(line: str) -> "_Dequant | None":
             return _Dequant(indent, result, operands, int(body[digits_at:digits_end]), *parsed)
 
 
-def _dequant_to_generic(op: "_Dequant") -> str:
+def _dequant_to_generic(op: _Dequant) -> str:
     ind, res = op.indent, op.result
     init = f"%dq_init_{res[1:]}"  # %123 -> %dq_init_123 (suffixing %123 is invalid)
     wty, sty, zty, outty = (t.strip() for t in (op.weight_type, op.scale_type, op.zero_type, op.result_type))
@@ -1009,7 +1010,12 @@ def _attach_c_interface(text: str) -> tuple[str, int]:
                     module.verify()
                     stream = StringIO()
                     Printer(stream=stream, print_generic_format=True).print_op(module)
-                    return stream.getvalue() + "\n", 1
+                    # Generic functions reach this branch after the structural profiler has
+                    # printed them through xDSL. Another parse/print must keep raw dense float
+                    # bits, or e.g. a -inf splat becomes the finite integer 0xFF800000.
+                    from merlin.llvmlower.dense_literals import preserve_raw_dense_bits
+
+                    return preserve_raw_dense_bits(text, stream.getvalue()), 1
             return text, 0
         at = start + 1
         name_at = start + len(_FUNC_HEAD)

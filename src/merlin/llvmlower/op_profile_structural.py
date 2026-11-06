@@ -15,6 +15,7 @@ from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, StringAttr, i32
 from xdsl.printer import Printer
 
 from merlin.common.mlir_query import op_name
+from merlin.llvmlower.dense_literals import DenseLiteralError, preserve_raw_dense_bits
 
 
 def _parse_text(text):
@@ -113,4 +114,9 @@ def instrument_text(mlir_text: str, *, function: str = "forward"):
     module, table = instrument_module(_parse_text(mlir_text), function=function)
     stream = StringIO()
     Printer(stream=stream, print_generic_format=True).print_op(module)
-    return stream.getvalue() + "\n", table
+    try:
+        return preserve_raw_dense_bits(mlir_text, stream.getvalue()), table
+    except DenseLiteralError as exc:
+        from .op_profile import OpProfileError
+
+        raise OpProfileError(f"cannot safely reprint dense constants: {exc}") from exc
