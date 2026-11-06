@@ -1,76 +1,91 @@
-# Multi-Task DiT float capture
+# Multi-Task DiT bringup
 
-This example captures LeRobot 0.6.1 Multi-Task DiT through Model2MLIR and torch-mlir, beside the existing Qwen bringup example. DiT and text-projection weights are randomly initialized, CLIP encoders are pretrained, and no accuracy claim is made. It performs no quantization and compiles no Atlas executable.
+Capture LeRobot Multi-Task DiT through Merlin's capture worker, inventory the complete exported forward, and qualify isolated Atlas launches using real captured operands. The float export and the FP8/BF16 device launch experiments are separate precision boundaries. Neither establishes connected policy execution or trained task accuracy.
 
-The full forward includes observation encoding, both CLIP towers, all six DiT blocks at all ten DDIM timesteps, scheduler updates, and the final action slice. The ABI takes already normalized observations and explicit initial noise. Dataset normalization, policy queues, and stochastic noise generation are outside the boundary. Camera count and robot dimensions are workload choices. DDIM and ten inference steps override the scheduler defaults; the architecture is retained.
+The pretrained input is the community checkpoint `NONHUMAN-RESEARCH/multi-task-dit-training-fruits`, revision `d8e9ce7000808c3a8c52d291f5d7f7899713cd27`. It is not an official LeRobot checkpoint. Its `config.json` SHA-256 is `cb76a7924ce2aee52ae699425a01491dc0c9da2fd781245bd99ccd46a1718f22`, and its `model.safetensors` SHA-256 is `b2bb33c5b137abf32ace687b06fff60cb4c25dc08696f61a0ce19115a189c698`. The loader verifies every entry in its supplied `SHA256SUMS`; capture receipts retain configuration, processor, tokenizer, and weight identities.
 
-The source is `lerobot.policies.multi_task_dit.modeling_multi_task_dit.MultiTaskDiTPolicy`. Both encoders and the tokenizer load the local `openai/clip-vit-base-patch16` snapshot at `57c216476eefef5ab752ec549e440a49ae4ae5f3`. The receipt hashes its checkpoint, configuration, and tokenizer files. Offline flags are set before importing the Hugging Face clients.
+The random workload retains the earlier two-camera, ten-step DDIM setup with random DiT and text-projection weights and pretrained CLIP encoders. The checkpoint workload uses its saved three-camera architecture, 100 Euler flow-matching steps, observation normalization, and action unnormalization. Its raw image input is `[1,2,3,3,376,672]`; eval-mode crops produce 224 x 224 images. Both workloads use horizon 32, six DiT blocks of width 512, eight 64-channel heads, and output `[1,24,14]`. Inputs are synthetic, and initial noise is explicit. Tokenization and policy queues remain outside the tensor ABI.
 
-| Input | Shape | Dtype |
-| --- | --- | --- |
-| images | 1 x 2 x 2 x 3 x 224 x 224 | float32 |
-| state | 1 x 2 x 14 | float32 |
-| language tokens | 1 x 77 | int64 |
-| language attention mask | 1 x 77 | int64 |
-| initial noise | 1 x 32 x 14 | float32 |
-| output actions | 1 x 24 x 14 | float32 |
+## Capture
 
-The horizon is 32, observation history is 2, hidden width is 512, and each of six DiT blocks has eight 64-channel heads. Timesteps are `[90, 80, 70, 60, 50, 40, 30, 20, 10, 0]`. Python, NumPy, and PyTorch seeds are 0, deterministic algorithms are required, and model construction uses `torch.manual_seed(0)`. A separate generator seeded with 0 draws uniform images followed by normal noise; state is zero. The instruction is `Pick up the red block and place it in the bowl.`
-
-## Offline reproduction
-
-Python 3.12, torch 2.10.0+cpu, torch-mlir 20260531.828, Model2MLIR [`8893a37`](https://github.com/ucb-bar/model2MLIR/tree/8893a37480b4560f701089e5bf408644573a906f), transformers 5.5.4, diffusers 0.39.0, and xDSL 0.74.0 were used. Install them in a fresh Python 3.12 virtual environment (`venv/` below), with `WHEELS` pointing at a local wheel directory if you install offline: `pip --no-index --find-links "$WHEELS" torch==2.10.0+cpu torch-mlir==20260531.828 transformers==5.5.4 diffusers==0.39.0 xdsl==0.74.0`. Set `HF_HOME` to a Hugging Face cache that holds the pretrained CLIP encoders, and `M2M` to a Model2MLIR checkout at the pin above.
+Use Python 3.12, torch 2.10.0+cpu, torch-mlir 20260531.828, xDSL 0.68.0, LeRobot 0.6.1, transformers 5.5.4, diffusers 0.39.0, and Model2MLIR `8893a37480b4560f701089e5bf408644573a906f`. Install from local wheels with network access disabled. Capture receipts record observed versions. All inspected Merlin lock versions match except Pillow: the local CPython 3.12 environment has 12.3.0, while the lock requires 12.2.0. The exact cached Pillow wheel targets CPython 3.14, and the completed local source-cache audit found no compatible source. Full lock matching remains pending. `HF_HOME` must contain CLIP revision `57c216476eefef5ab752ec549e440a49ae4ae5f3`. The explicit torchvision compatibility flag supplies only a missing NMS schema for import; this model never invokes NMS or compiled image operators.
 
 ```bash
-export TMPDIR="$PWD/tmp"
-export HF_HOME="${HF_HOME:?set to a Hugging Face cache with the CLIP encoders}"
-export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+export TMPDIR="$PWD/tmp" TEMP="$PWD/tmp" TMP="$PWD/tmp"
+mkdir -p "$TMPDIR"
+export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1
 export OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4
-export PYTHONDONTWRITEBYTECODE=1
 export MTDIT_TORCHVISION_SCHEMA_COMPAT=1
-M2M="${M2M:?set to a Model2MLIR checkout at 8893a37}"
 EXAMPLE=merlin/examples/atlas/model_bringup/multi_task_dit
-nice -n 10 venv/bin/python "$EXAMPLE/capture.py" \
-  --m2m-dir "$M2M" --threads 4 --out "$PWD/out/capture-full"
-nice -n 10 venv/bin/python "$EXAMPLE/capture.py" \
-  --m2m-dir "$M2M" --threads 4 --region block --out "$PWD/out/capture-block"
-nice -n 10 venv/bin/python -m pytest -q -p no:cacheprovider "$EXAMPLE/test_capture.py"
-nice -n 10 venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/torch-mlir-opt \
-  --verify-each out/capture-full/model.mlir -o /dev/null
+nice -n 10 venv/bin/python "$EXAMPLE/capture.py" --m2m-dir "$M2M" \
+  --out "$PWD/out/capture-random"
+nice -n 10 venv/bin/python "$EXAMPLE/capture.py" --m2m-dir "$M2M" \
+  --checkpoint "$CHECKPOINT" --out "$PWD/out/capture-checkpoint"
 ```
 
-Capture output directories must be fresh. Other genuine first-step regions are available with `--region vision`, `text`, or `dit`; their inputs come from hooks on the seeded policy. The block capture is the first real DiT block, with its complete conditioning and rotary inputs.
+The pinned xDSL 0.68.0 resolves the earlier printer API mismatch. The original DDIM scheduler still leaves 38 mangled `aten_select_int` calls, so that failure is not a version artifact. The static lookup specialization removes them without changing eager output. A parsed census counts calls to external declarations, including sanitized symbols; the worker tail text alone is insufficient.
 
-The cached torchvision 0.26.0 wheel targets torch 2.11 and CUDA. This CPU experiment uses only torchvision's Python tensor transforms. The explicit compatibility flag defines the absent NMS operator schema for import-time fake registration; it supplies no NMS implementation. The model never invokes NMS or the unavailable compiled image extension. This is an environment workaround, recorded in every receipt.
+The default backend invokes Merlin's own `_m2m_capture_worker`, preserves its bundle, parses opaque calls, and checks exported and Model2MLIR-prepared programs against eager exactly. Fresh output directories are required. Set `MTDIT_STATIC_SCHEDULER=0` for the original DDIM table-indexing control. The default freezes scalar lookup addressing while retaining scheduler arithmetic. `--backend torch_mlir` retains the earlier public Model2MLIR companion and `--region block|vision|text|dit`; it is a fallback capture path, and receipts distinguish it from Merlin's worker.
 
-## Capture artifacts and checks
+The public companion for the checkpoint uses the same loader through an explicit environment setting:
 
-`capture.py` calls the public `m2m.convert(..., backend="torch_mlir", allow_fallback=False, capture_trace=True)` API described by Merlin's capture guide. It supplies the already exported program and requires the original and Model2MLIR-prepared programs to match eager exactly on the saved inputs. Both checks passed with max absolute error 0.0 for the full policy and first block. The test also checks complete denoising-loop scheduling and action slicing with a small independent fake policy.
+```bash
+MTDIT_CHECKPOINT="$CHECKPOINT" nice -n 10 venv/bin/python "$EXAMPLE/capture.py" \
+  --backend torch_mlir --m2m-dir "$M2M" --threads 2 \
+  --out "$PWD/out/capture-checkpoint-torch-mlir"
+```
 
-Pinned Model2MLIR's torch-mlir bridge prints a structural view with resource payloads elided. The example instruments only the bridge's public `export_and_import` call to save the same returned MLIR module before that print, with all payloads present. No model operations or lowering passes are replaced. `model.mlir` is the complete resource-backed text, and `model.mlirbc` is its bytecode. Both persisted forms parse and verify with the pinned torch-mlir bindings; the wheel's LLVM 23 `torch-mlir-opt --verify-each` also verifies the text. No LLVM source build is required.
+Its trained prepared-export check also fails exactly; the complete MLIR and bytecode remain retained. The native torch-mlir module verifies, while the xDSL 0.68 bridge cannot parse the custom `tensor.extract_slice` format. These are separate diagnostics, and this path does not use an FX fallback.
 
-`structural.mlir` is Model2MLIR's elided inspection view. Its hash is the one bound by `frontend-trace.json`; it must not be executed as a weight-complete model. The separate `receipt.json` binds the unelided text, bytecode, raw exported program, weights, inputs, eager output, inventory, package versions, source scripts, and CLIP checkpoint files. `weights.safetensors` retains the raw export's named state; the executable MLIR uses frozen resource constants directly. This companion output has its own receipt schema and is not advertised as a Merlin staged capture bundle.
+The trained checkpoint raw export equals its original eager objective exactly. The stock worker bundle completed with zero opaque calls, but its prepared/decomposed replay differs from eager by up to `3.0517578125e-05`; that capture is marked failed and retained for diagnosis. Random-policy capture passes original, raw-export, and prepared-export equality exactly. The trained prepared-export gate remains pending.
 
-Entry tensors and weights are FP32. The lowering widens normalization intermediates to f64 and returns FP32; it also retains integer token/index tensors and boolean masks. There are no FP8, BF16, FP16, quantize, or dequantize operations in the captured MLIR. The detailed dtype and shape counts are in `inventory.json`. This is a floating-point capture with widened temporaries, so it is not an exclusively f32 IR.
+## Inventory and launch qualification
 
-The existing Merlin `_m2m_capture_worker.py` was tried separately. Its fixed FX-importer path initially fails on the xDSL 0.74 `Printer.print` method rename. A diagnostic printer adapter lets it materialize a same-conversion bundle, but the parsed bundle metadata and private function calls retain 38 unresolved `aten.select.int` calls in scheduler indexing. Its worker tail incorrectly reports zero because its text census misses generic-form calls. That bundle remains diagnostic; the successful capture here explicitly selects Model2MLIR's torch-mlir backend.
+The checkpoint forward inventory contains 32,525 operations across 41 kinds, 3,545 linear calls, one patch convolution, and 624 attention calls. Candidate linear and attention placement accounts for 359,531,242,176 of 361,690,282,525 semantic FLOPs (99.4031%). The remaining 2,159,040,349 semantic FLOPs and movement obligations stay uncovered. This percentage is semantic work, not measured runtime share.
 
-Host numerical MLIR execution is PENDING. A targeted call to the `llvm_m2m_toolchain` probe in `build_tools/scripts/check_repro_env.py`, using `src/merlin/llvmlower/toolchain.py`, finds the selected compiler interpreter but no clang-23. No host executable was built, and no MLIR-versus-eager numerical agreement is claimed. The original and prepared PyTorch exported-program comparisons are separate passing checks. Initial zero adaLN gates make the first block an identity; random initialization and seeded output equality do not establish trained behavior or internal numerical fidelity.
+`launch_inventory.py` reads the full exported program, uses atlas-kernels' operation/FLOP conventions, and retains actual projection and attention boundaries with hashes. It records every denoising iteration and separates projection bias from GEMM. Candidate geometric coverage is distinct from directly supported FP32 coverage. LayerNorm is not RMSNorm; patch gathering, embeddings, QuickGELU, adaLN modulation, rotary layout, scheduler arithmetic, residual glue, and movement require explicit accounting.
 
-## Atlas family coverage
+```bash
+nice -n 10 venv/bin/python "$EXAMPLE/launch_inventory.py" \
+  --export out/capture-checkpoint/exported.pt2 \
+  --inputs out/capture-checkpoint/inputs.npz --expected out/capture-checkpoint/eager.npy \
+  --receipt out/capture-checkpoint/receipt.json --library "$KERNELS" \
+  --out out/inventory-checkpoint
+```
 
-The reference is atlas-kernels `0333da05f4b172b126f7203ec1077a2cd6f5ede7`, `coverage/mapping.yaml`, SHA-256 `b70b5562ae808b158ba9e94d177d14d407a7767208ccd9c79963ffa94dcb2a2f`. `inventory.py` parses and verifies MLIR, recursively counts operations including scalar regions, inventories operand/result tensor dtype and shape occurrences, records contraction shapes and generic scalar bodies, and labels conservative family candidates. Repeated SSA uses count as repeated type occurrences.
+`qualify.py` uses the shared kernel library, full-K projection panels split at 128 with tails padded to a multiple of 32, supplied real Q/K/V, and captured attention masks. Independent target-arithmetic goldens apply to projections. Attention retains FP32 fidelity metrics and exact timed/functional equality without an independent byte golden. The driver requires compiler tier `verified` and assembler/emitter word equality, then runs functional and timed `npu_model` at `47b8599` with `numerics="rtl"`. The official performance pass uses unmodified `74982e7` speed-of-light and roofline APIs in a separate process. See the driver's `--help` for preparation, worker, report, and run modes.
 
-The full graph contains 23,307 recursive operations: 485 `linalg.matmul`, 168 `linalg.batch_matmul`, one `linalg.conv_2d_nchw_fchw`, and 5,034 `linalg.generic`. The 654 named contractions include the full ten-step denoising loop. The standalone first block has seven contractions. `out/operator-inventory.md` and each capture's `inventory.json` retain all operation counts and contraction shapes.
+Use a separate Python 3.14 simulator environment with NumPy, PyTorch, PyYAML, and tabulate. Set `NPU_RTL` to unmodified `47b8599`, `NPU_PERF` to unmodified `74982e7`, and `ATLAS_BIN` to the verified compiler tools. Preparation deliberately opts into the library's d64 synchronous-DMA attention variant; the default attention stream is unchanged.
 
-| Captured computation | Existing family relationship | Remaining qualification or gap |
-| --- | --- | --- |
-| 485 matrix projections | `projection_gemm` geometry | Existing kernels require FP8 E4M3 operands and BF16 accumulation; full K/N panels, padding, biases, and composition remain unqualified here. |
-| 168 batched attention contractions | `attention` geometry at head dimension 64 | 24 vision score/value contractions, 24 text score/value contractions, and 120 DiT score/value contractions. Existing GQA, masking, layout, softmax, and FP8/BF16 boundaries need qualification. |
-| One 16 x 16 stride-16 vision patch convolution | Projection after patch gather is a potential route | The existing `resnet_patch_gather` family covers 3 x 3 patches, so it does not supply this gather. |
-| DiT tanh GELU and gated/residual arithmetic | Portions resemble `smol_fusion`, `epilogue`, and `rne_add` | Fused boundary restrictions apply; general adaLN scale, shift, gates, and FP32 residual arithmetic lack a qualified route. |
-| CLIP QuickGELU, layer normalization, and embedding lookup | No complete matching family | LayerNorm is not RMSNorm. Generic sigmoid/QuickGELU and embedding require additional implementations or an explicit host route. |
-| DiT rotary and timestep math | Rotary portions resemble `rope` | Source rotary layout, table ownership, sin/cos, timestep embeddings, and scheduler arithmetic remain unqualified. |
-| Tensor reshapes, transposes, slices, concatenation, and mask assertions | Layout or host-control obligations | An inventory association does not implement these boundaries or a whole-model execution schedule. |
+```bash
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+nice -n 10 "$MODEL_PYTHON" "$EXAMPLE/qualify.py" --prepare \
+  --inventory out/inventory-checkpoint/boundaries.json \
+  --out out/qualification-checkpoint --library "$KERNELS" \
+  --model-root "$NPU_RTL" --perf-root "$NPU_PERF" --atlas-bin "$ATLAS_BIN" \
+  --attention-sync-dma
+nice -n 10 "$MODEL_PYTHON" "$EXAMPLE/qualify.py" --run --mode rtl \
+  --out out/qualification-checkpoint --workers 2
+nice -n 10 "$MODEL_PYTHON" "$EXAMPLE/qualify.py" --run --mode official \
+  --out out/qualification-checkpoint --workers 2
+nice -n 10 "$MODEL_PYTHON" "$EXAMPLE/qualify.py" --report \
+  --out out/qualification-checkpoint
+```
 
-Under the requested no-quantization policy, zero of these float contractions has a directly supported Atlas execution route in that mapping. Family resemblance does not admit FP32 or f64 to the FP8/BF16 kernels. The capture remains floating point, and no precision-policy transformation, Atlas simulation, performance measurement, or trained accuracy result is claimed.
+All 22 launch kinds pass compiler tier `verified`, assembler/emitter equality, exact RTL timed/functional equality, and exact official/RTL output and cycle agreement. All 19 projection kinds also pass independent target-arithmetic goldens. The 44,640 launches per checkpoint forward comprise 44,016 projection panels and 624 attention calls.
+
+| Count-weighted device cycles | Official SOL cycles | SOL fraction | Modeled headroom |
+| ---: | ---: | ---: | ---: |
+| 29,428,888,176 | 22,248,586,752 | 75.6012% | 7,180,301,424 |
+
+Artifacts, arenas, programs, captures, and hash receipts belong in `out/`, outside Git. Cycle totals are count-weighted isolated-launch estimates; they exclude host dispatch, connected transfers, uncovered work, and hardware timing. The companion atlas-kernels `coverage/ROOFLINE-MTDIT.md` records the measured scope and pending gates.
+
+## Offline tests
+
+```bash
+nice -n 10 venv/bin/python -m pytest -q -p no:cacheprovider "$EXAMPLE"
+nice -n 10 venv/bin/python -m pytest -q -p no:cacheprovider \
+  merlin/examples/atlas/model_bringup/qwen/tests
+```
+
+`inventory.py` retains the earlier verified float-MLIR census. The float path does not quantize tensors or compile a connected Atlas policy. No task accuracy, host executable, hardware RTL, QEMU, or FireSim result is implied by isolated launch qualification.
