@@ -361,7 +361,7 @@ The current OPU FireSim bitstream is usable for the BME flow above. Its archived
 was checked during the hardware jobs. Reproducing that archive from a clean source tree remains
 unverified because the live Chipyard/Saturn checkout has pin drift. Physical Kodiak rig access
 and scheduling are separate from FireSim. For physical operations, follow the newer
-[Kodiak RUNNING.md at `0bf31a9`](https://github.com/ucb-bar/kodiak-mlir/blob/0bf31a91046cf5b5193831ed3042bc40aa9830e3/RUNNING.md),
+[Kodiak RUNNING.md at `f2ebd82`](https://github.com/ucb-bar/kodiak-mlir/blob/f2ebd82302deb6b7a40ba118649df0bfcd393b55/RUNNING.md),
 which corrects the historical health check, wrapper behavior, and Arduino reset command. Merlin
 setup pins that same package commit; its bundled delivery loader note uses the same proven
 OPU-direct control.
@@ -381,7 +381,7 @@ No Merlin image was loaded; existing tmux sessions were preserved. The current r
 and FPGA bitstream hashes and the August/current section-map comparison are in
 `out/artifacts/probes/chipyard_kodiak/physical_probe_20261106/receipt_addendum.json`;
 no August ELF hash survives to prove byte identity. An
-[offline replay of the SHA-verified loader](https://github.com/ucb-bar/kodiak-mlir/blob/0bf31a91046cf5b5193831ed3042bc40aa9830e3/evidence/bootaddr_host_replay_20261106/receipt.json)
+[offline replay of the SHA-verified loader](https://github.com/ucb-bar/kodiak-mlir/blob/f2ebd82302deb6b7a40ba118649df0bfcd393b55/evidence/bootaddr_host_replay_20261106/receipt.json)
 shows that it treats any UDP packet as a write acknowledgment and shortens its nominal two-second
 read wait to one second after a read ACK. A valid synthetic response at 1.5 seconds then yields
 `None`. The physical logs contain no raw packet timestamps, so this host bug is a plausible
@@ -390,18 +390,18 @@ remain possible. A timestamped host packet trace is needed before assigning the 
 The rig's tracked Arduino firmware accepts only `all`, `fpga`, `0`, and `1`; the suggested
 `arduino_all.sh t` is a no-op for its reset pins. Its shell wrapper can return exit zero with no
 serial reply. The earlier reset log is empty and does not record its argument, so a confirmed
-Arduino chip-0 reset remains untested. [The read-only audit](https://github.com/ucb-bar/kodiak-mlir/blob/0bf31a91046cf5b5193831ed3042bc40aa9830e3/evidence/arduino_reset_command_audit_20261106/receipt.json)
+Arduino chip-0 reset remains untested. [The read-only audit](https://github.com/ucb-bar/kodiak-mlir/blob/f2ebd82302deb6b7a40ba118649df0bfcd393b55/evidence/arduino_reset_command_audit_20261106/receipt.json)
 and the pinned rig guide give the exact next exclusive-window sequence: capture the BootAddr
 datagrams first, then test a separately acknowledged chip-0 reset if needed. No Arduino or UDP
 command was sent in that audit. The rig login cannot currently use `tcpdump` or `dumpcap`, so
 raw late-packet evidence requires owner-enabled capture or an instrumented receive path.
 The rig's current `execute_program.sh` can print PASS for a nonzero loader exit before its
-timeout; [the SHA-bound read-only audit](https://github.com/ucb-bar/kodiak-mlir/blob/0bf31a91046cf5b5193831ed3042bc40aa9830e3/evidence/rig_host_wrapper_audit_20261106/receipt.json)
+timeout; [the SHA-bound read-only audit](https://github.com/ucb-bar/kodiak-mlir/blob/f2ebd82302deb6b7a40ba118649df0bfcd393b55/evidence/rig_host_wrapper_audit_20261106/receipt.json)
 requires grading the actual console, exit status, and model output.
-The pinned [bounded late-reply probe](https://github.com/ucb-bar/kodiak-mlir/blob/0bf31a91046cf5b5193831ed3042bc40aa9830e3/evidence/bootaddr_late_rx_probe_20261106/README.md)
+The pinned [bounded late-reply probe](https://github.com/ucb-bar/kodiak-mlir/blob/f2ebd82302deb6b7a40ba118649df0bfcd393b55/evidence/bootaddr_late_rx_probe_20261106/README.md)
 is ready for a separate exclusive-window diagnostic if packet capture remains unavailable;
 its offline pass is not a physical-chip verdict.
-The [offline host-loader patch candidate](https://github.com/ucb-bar/kodiak-mlir/blob/0bf31a91046cf5b5193831ed3042bc40aa9830e3/evidence/bootaddr_host_patch_candidate_20261106/README.md)
+The [offline host-loader patch candidate](https://github.com/ucb-bar/kodiak-mlir/blob/f2ebd82302deb6b7a40ba118649df0bfcd393b55/evidence/bootaddr_host_patch_candidate_20261106/README.md)
 keeps the read deadline at 2 seconds and validates write ACKs. Its SHA-bound
 scripted replay passes, but the rig's tracked loader is unchanged and the
 physical BootAddrReg failure remains unexplained without packet timing.
