@@ -427,6 +427,8 @@ bit. This avoids structural profiling changing the program under test. The image
 `out/artifacts/probes/firesim_kodiak_opu/<model>_firesim_h1/run_<id>/` so a queued job's ELF cannot be
 replaced by a later rebuild. Budget the timeout from the model's
 cycles: at 15 MHz, seconds ≈ cycles / 1.5e7, plus a few minutes per job for FPGA programming.
+The DEVICE job also archives the exact image's `routing_report.json` and `opu_signatures.json`
+with SHA-256 hashes; use those counts with the measured target cycles for utilization.
 
 For the TinyLlama sections, the scalar twin may take hours on Spike. Use `--gate independent-rvv`
 to compile the same-lowering pair without executing the twin, run the shipped OPU image on its

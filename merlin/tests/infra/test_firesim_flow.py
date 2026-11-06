@@ -118,6 +118,9 @@ def test_whole_model_legs_stage_only_exact_spike_gated_images(
     for leg in flow.LEGS:
         binaries[leg] = tmp_path / f"source-{leg}.elf"
         binaries[leg].write_bytes(leg.encode())
+    routing = tmp_path / "routing_report.json"
+    routing.write_text("{}")
+    (tmp_path / "opu_signatures.json").write_text("[]")
 
     def compile_image(cmd, **kwargs):
         assert cmd[cmd.index("--package") + 1] == str(flow.REPO / "out/artifacts/targets/rvv/test")
@@ -125,6 +128,7 @@ def test_whole_model_legs_stage_only_exact_spike_gated_images(
         matrix = (
             {
                 "unit_instruction_counts": {"OPMACC": 1},
+                "routing_report": str(routing),
                 "shipped_on_simulator": {
                     "status": "verified",
                     "bit_exact_vs_twin": bit_exact,
@@ -186,6 +190,7 @@ def test_whole_model_legs_stage_only_exact_spike_gated_images(
         assert staged.read_bytes() == binaries[leg].read_bytes()
         assert manifest["legs"][leg]["spike_gate"]["verify"]["gate_ok"] is True
         assert manifest["legs"][leg]["spike_output_identity"]["out_hash"]["elems"] == 1
+    assert Path(manifest["legs"]["device"]["routing_sidecars"]["routing_report.json"]["path"]).read_text() == "{}"
 
 
 def test_whole_model_legs_require_w8a8_reference_before_compile(flow, tmp_path, monkeypatch):
@@ -212,6 +217,9 @@ def test_independent_rvv_gate_requires_exact_board_output_identity(flow, tmp_pat
     binaries = {leg: tmp_path / f"{leg}.elf" for leg in flow.LEGS}
     for leg, binary in binaries.items():
         binary.write_bytes(leg.encode())
+    routing = tmp_path / "routing_report.json"
+    routing.write_text("{}")
+    (tmp_path / "opu_signatures.json").write_text("[]")
 
     def compile_image(cmd, **kwargs):
         assert cmd[cmd.index("--board") + 1] == "fs"
@@ -232,7 +240,11 @@ def test_independent_rvv_gate_requires_exact_board_output_identity(flow, tmp_pat
             "binary": str(binaries[leg]),
             "build_hash": leg,
             "verify": {"gate_ok": True, "tier_ok": "w8a8"},
-            "matrix": {"unit_instruction_counts": {"OPMACC": 1}, "shipped_on_simulator": shipped}
+            "matrix": {
+                "unit_instruction_counts": {"OPMACC": 1},
+                "routing_report": str(routing),
+                "shipped_on_simulator": shipped,
+            }
             if leg == "device"
             else None,
             "output_identity": identity,
@@ -267,6 +279,10 @@ def test_independent_rvv_gate_requires_exact_board_output_identity(flow, tmp_pat
     assert plan["capture_sha256"] == flow._capture_sha256(bundle)
     assert plan["legs"]["device"]["spike_gate"]["method"] == "independent-rvv"
     assert plan["legs"]["device"]["spike_gate"]["independent_rvv_bit_exact"] is True
+    sidecar = Path(plan["legs"]["device"]["routing_sidecars"]["routing_report.json"]["path"])
+    sidecar.write_text("changed")
+    with pytest.raises(SystemExit, match="routing sidecar changed"):
+        flow.collect(job)
 
 
 def test_collect_rejects_capture_changed_since_pair_build(flow, tmp_path):

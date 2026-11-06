@@ -599,6 +599,11 @@ def collect(
     expected_capture = manifest.get("capture_sha256")
     if expected_capture and _capture_sha256(bundle) != expected_capture:
         raise SystemExit("capture bundle changed since the paired FireSim images were built")
+    for row in manifest["legs"].values():
+        for name, sidecar in (row.get("routing_sidecars") or {}).items():
+            path = Path(sidecar["path"])
+            if not path.is_file() or _sha256(path) != sidecar["sha256"]:
+                raise SystemExit(f"routing sidecar changed since the FireSim image was built: {name}")
     refs = _references(bundle)
     legs: dict[str, Any] = {}
     for leg, row in manifest["legs"].items():
@@ -815,6 +820,21 @@ def build_legs(args) -> Path:
         shutil.copy2(source, elf)
         if _sha256(source) != _sha256(elf):
             raise SystemExit(f"{leg} leg: staged ELF differs from the spike-gated image")
+        routing_sidecars = None
+        if leg == "device":
+            routing_source = Path(matrix["routing_report"])
+            signature_source = routing_source.parent / "opu_signatures.json"
+            if not routing_source.is_file() or not signature_source.is_file():
+                raise SystemExit("device leg: exact image has no routing report or OPU signatures")
+            routing_dir = out / "routing"
+            routing_dir.mkdir()
+            routing_sidecars = {}
+            for source_sidecar in (routing_source, signature_source):
+                staged = routing_dir / source_sidecar.name
+                shutil.copy2(source_sidecar, staged)
+                if _sha256(source_sidecar) != _sha256(staged):
+                    raise SystemExit(f"device leg: staged {source_sidecar.name} differs from the image's sidecar")
+                routing_sidecars[source_sidecar.name] = {"path": str(staged), "sha256": _sha256(staged)}
         counts = _unit_counts(elf, args.matrix_support_target, args.matrix_unit)
         if leg == "device" and not counts:
             raise SystemExit("device leg: staged ELF has no matrix-unit instructions")
@@ -828,6 +848,7 @@ def build_legs(args) -> Path:
             "harts": args.harts,
             "vlen": brd.vlen,
             "unit_instruction_counts": counts,
+            "routing_sidecars": routing_sidecars,
             "spike_output_identity": identity,
             "spike_gate": {
                 "method": gate if leg == "device" else "w8a8",
