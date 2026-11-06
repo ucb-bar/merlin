@@ -68,7 +68,7 @@ A bracketed counter run, synthesis, and a counter-equipped bitstream remain pend
 configurations and receipts separate.
 
 The tested VME source is published on Chipyard fork branch `feat/kodiak-zvt-vme` at
-`5311b459762f594c834569c494efa013d31de48e` and Saturn branch `feat/kodiak-zvt-vme`
+`0d911e2d4ff722800829da70af7768c2755ca332` and Saturn branch `feat/kodiak-zvt-vme`
 at `4359c36b710bb230335fc2866a28bd3f1911ed6e`. Chipyard's public Rocket gitlink stays
 at `fc745a8`; its `patches/kodiak-vme/README.md` and SHA-checked application script carry the
 focused scalar-Rocket CSR guard fix. A fresh managed checkout applied that patch and passed
@@ -82,3 +82,6 @@ zero output/guard errors, `KT DONE`, and exit zero. Its kernel interval was 2,76
 the full simulator ran 1,840,130 target cycles. The SHA-bound receipt is
 `/scratch/agustin/chipyard/tasks/kodiak-vme-portability-2/.tmp/vme_k33_metasim/receipt.json`.
 This does not establish FPGA bitstream timing or physical Kodiak ASIC support.
+The metasim receipt is pinned to Chipyard `5311b459`; the newer published branch head adds
+only `patches/kodiak-vme/apply-firesim-worktree-build.sh` and its SHA-verified build patch for
+the Iris FireSim base `e1bdea8`. Hardware gitlinks and generated RTL are unchanged.
