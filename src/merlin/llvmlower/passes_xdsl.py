@@ -643,6 +643,15 @@ def _layer_norm_chunked_sums_selected() -> bool:
     return switched("layer-norm-chunked-sums", os.environ.get("MERLIN_LAYER_NORM_CHUNKED_SUMS") == "1")
 
 
+def _torchao_cpu_avx2_mean_selected() -> bool:
+    """Whether the explicit captured Torch CPU mean order is selected."""
+    import os
+
+    from .optional_passes import switched
+
+    return switched("torchao-cpu-avx2-mean", os.environ.get("MERLIN_TORCHAO_CPU_AVX2_MEAN") == "1")
+
+
 def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
     from ..xdsl_dialects.ir_inspection import record_stage
 
@@ -666,6 +675,16 @@ def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
 
             stats["layer_norm_sums_chunked"] = chunk_layer_norm_sums(
                 module, allow_reassociation=True, assume_finite_intermediates=True, on_rewrite=on_quant_rewrite
+            )
+        if statistic == "quant_ext_lowered" and _torchao_cpu_avx2_mean_selected():
+            import os
+
+            from .torchao_cpu_mean import rewrite_torchao_cpu_avx2_means
+
+            stats["torchao_cpu_avx2_means"] = rewrite_torchao_cpu_avx2_means(
+                module,
+                source_commit=os.environ.get("MERLIN_TORCHAO_CPU_SOURCE_COMMIT", ""),
+                on_rewrite=on_quant_rewrite,
             )
     return stats
 

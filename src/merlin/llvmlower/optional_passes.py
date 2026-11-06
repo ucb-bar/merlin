@@ -193,6 +193,19 @@ REGISTRY: tuple[OptionalPass, ...] = (
         on_by_default=True,
     ),
     OptionalPass(
+        name="torchao-cpu-avx2-mean",
+        summary="replay the captured PyTorch AVX2 f32 mean summation order",
+        changes=(
+            "a provenance-marked TorchAO W8A8 f32 K=2048 mean sum over the last axis uses "
+            "the captured PyTorch cascade order; requires the exact source CPU "
+            "commit and AVX2 dispatch assertion"
+        ),
+        exactness=NUMERICS_CHANGING,
+        default="off",
+        stage="lowering",
+        switch="MERLIN_TORCHAO_CPU_AVX2_MEAN",
+    ),
+    OptionalPass(
         name="int-softmax",
         summary="softmax exp as the integer I-BERT exp",
         changes="math.exp in a softmax becomes a fixed-point polynomial and power-of-two shift",

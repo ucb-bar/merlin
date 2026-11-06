@@ -1,15 +1,17 @@
-"""Explicit Torch2.10 AVX2 source order for contiguous last-axis f32 sums.
+"""Explicit Torch AVX2 source order for contiguous last-axis f32 sums.
 
 The source SumKernel.cpp cascade has four groups of eight lanes, chunks of
 sixteen groups, and sequential terminal additions. This builder covers the
 first two cascade levels (8 <= width < 8192); larger axes are refused.
 Caller proof of source dispatch, contiguous logical order, finite intermediate
 values and RNE is required. This is never an automatic reassociation policy.
+The pinned TorchAO 2.16.0.dev20261104 CPU wheel uses the same K=2048 order.
 """
 
 from __future__ import annotations
 
 CPU_SUM_F32_AVX2_POLICY = "torch_2_10_cpu_sum_f32_avx2"
+TORCHAO_20261104_AVX2_POLICY = "torchao_20261104_cpu_sum_f32_avx2"
 
 
 def build_cpu_sum_lastdim(
@@ -22,7 +24,7 @@ def build_cpu_sum_lastdim(
     from xdsl.ir import Block, Region
     from xdsl.ir.affine import AffineMap
 
-    if backend_policy != CPU_SUM_F32_AVX2_POLICY:
+    if backend_policy not in (CPU_SUM_F32_AVX2_POLICY, TORCHAO_20261104_AVX2_POLICY):
         raise ValueError("explicit pinned AVX2 source sum policy required")
     if not allow_reassociation or not assume_finite_intermediates:
         raise ValueError("finite intermediates and source reassociation contract required")
