@@ -42,11 +42,12 @@ and board options.
 
 An aligned-weight prepack s64 OPU image completed as FireSim job 3866 in **1,101,993,218**
 target cycles with the same full 2,048,000-value hash as the verified baseline. Its matched RVV
-control is running as job 3867, so the new pair's speedup and grade are pending. This device
-result performs 9,865,003,008 valid routed MACs, or **0.874215% of the 1,024-MAC/cycle
+control completed as job 3867 in 13,689,726,593 target cycles. Both images matched their
+exact Spike full hashes and prefixes, and the pair graded VERIFIED: **12.4227× OPU speedup**.
+The device performs 9,865,003,008 valid routed MACs, or **0.874215% of the 1,024-MAC/cycle
 theoretical peak across the inference**; the earlier OPU image measured 0.0626384%. The s128
 aligned-prepack OPU and RVV images have both passed exact Spike gates, including the baseline's
-full 4,096,000-value hash, but have not yet been submitted to FireSim.
+full 4,096,000-value hash; their FireSim device is queued as job 3871.
 
 The full TinyLlama model's weights alone are about 1.2 GiB and do not fit this 512 MiB board.
 The two-layer sections above are the hardware targets. The 64-token and 128-token exact OPU
@@ -84,7 +85,9 @@ known positive control passes.
 
 A sparse Spectformer OPU profile image passed its exact Spike gate with all 90 routed calls,
 matching full output hash, and **10.6057% effective peak during OPU call windows on Spike**.
-Its FireSim job 3868 is queued behind the prepack control. This call-window rate includes packing
+Its first FireSim submission 3868 failed before boot due to a queue SSH environment error;
+the same exact image is resubmitted as job 3872 with the working queue wrapper. This call-window
+rate includes packing
 and stalls; it is not physical MAC array occupancy. A separate draft Chipyard counter patch is
 available as [PR 2395](https://github.com/ucb-bar/chipyard/pull/2395), but no instrumented
 bitstream or counter measurement exists yet.
@@ -94,4 +97,5 @@ call rows, 26,595,355 call cycles, and **36.2236% effective peak during those ca
 Its full hash and routing sidecar match the FireSim device image. The profile image's earlier
 debug memory probe had written into embedded weights; Merlin now probes only beyond linker
 `_end`, and the corrected image passes the complete output gate. Its hardware call-window rate
-is still pending.
+is still pending: the first direct queue submission failed before boot for the same SSH
+environment reason, and its exact ELF was resubmitted with the working wrapper as job 3873.

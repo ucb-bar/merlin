@@ -51,7 +51,10 @@ timing**. The aligned prepack OPU image subsequently completed on FireSim as job
 1,101,993,218 target cycles, with the same full output hash as the accepted baseline. Its
 whole-inference effective throughput is `9,865,003,008 / (1,101,993,218 × 1,024) =
 0.00874215`, or **0.874215% of peak**, about 13.96 times the baseline device's rate. The
-matched RVV prepack control job 3867 is pending, so its paired speedup and grade remain open.
+matched RVV prepack control job 3867 completed in 13,689,726,593 target cycles. Both legs
+matched their exact Spike full hashes and prefixes and graded VERIFIED, yielding **12.4227×**
+control-over-device speedup. The collector persisted the numerator, denominator, peak and
+explicitly unmeasured array occupancy in the pair's `firesim/utilization.json`.
 
 A separate sparse profiled image of that exact prepack lowering passed Spike with the same
 full-output hash, prefix, prepared MLIR and routing sidecar. Its 19 selected OPU rows account
@@ -158,6 +161,7 @@ Evidence in this task checkout:
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/device/uartlog`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/results.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/utilization.json`
+- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793948837985216810/firesim/utilization.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/routing/opu_signatures.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793936116770167230/firesim/results.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793936116770167230/firesim/utilization.json`
