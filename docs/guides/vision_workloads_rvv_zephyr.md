@@ -161,8 +161,11 @@ missing, and the gate reports which tier carried the verdict.
 ### A source-quantized TorchAO capture
 
 The `int8_w8a8` route consumes the signed integer matmuls and activation quantization already
-present in the captured MLIR. Its `golden.npy` is the TorchAO framework output, so the host gate
-must compare against that file. A `--host-cache-dir` run is cache-only: it refuses every missing
+present in the captured MLIR. It runs with `int8_compute=False`, so Merlin does not quantize the
+TorchAO graph a second time. This source graph can feed an OPU BME route or a future VME Zvt route;
+the target route must preserve its quantization semantics. Its `golden.npy` is the TorchAO framework
+output, so the host gate must compare against that file. A `--host-cache-dir` run is cache-only: it
+refuses every missing
 kernel before execution and never starts a host JIT. Populate the cache through the supported
 `merlin.runtime.dispatch_runtime.run_model` API first, using an isolated managed task after other
 large builds release scratch and memory. For SpectFormer this compiles roughly 1,361 host kernels.
@@ -225,6 +228,14 @@ and `host_cache.verified_after_execution=true` before this source can advance to
 The cache receipt binds each loaded binary to its build manifest, including the kernel text,
 compiler inputs and binary hash. This records a reproducible local build and byte-bound execution;
 it is not an independent attestation of who produced those files.
+
+The trained SpectFormer TorchAO capture inspected on 2026-11-06 has a byte-verified materialized
+receipt (`bd554a8c…`), source MLIR SHA256 `9ae3f772…`, and framework `golden.npy` SHA256
+`a131a679…`. Its earlier source host output was finite with cosine 0.99997751 and relative L2
+0.00718247, but the strict framework gate **failed**: max-normalized error 0.0167634 exceeded
+0.01, and significant-element relative error 0.663304 exceeded 0.05. A fresh cache population
+and CLI replay under the compiler/pass-aware identity must be measured before any OPU or VME
+hardware acceptance claim.
 
 ## Status, measured
 

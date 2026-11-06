@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from types import SimpleNamespace
 
@@ -165,6 +166,9 @@ def test_source_w8a8_host_cache_is_strict_and_preserves_source_reference(tmp_pat
     assert result["status"] == "verified"
     assert result["host_cache"] == evidence
     assert result["reference"]["kind"] == "torchao_w8a8_framework"
+    assert result["reference"]["sha256"] == hashlib.sha256((bundle / "golden.npy").read_bytes()).hexdigest()
+    assert result["source_quantization"]["source_mlir_sha256"] == contract["source_mlir_sha256"]
+    assert result["source_quantization"]["capture_receipt"]["status"] == "verified_materialized"
     assert result["verify"]["tier_ok"] == "w8a8"
 
     def unverified_cache(_bundle, _work, **_kwargs):
