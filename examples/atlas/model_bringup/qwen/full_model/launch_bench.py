@@ -65,6 +65,8 @@ def main():
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--job-timeout", type=int, default=1800)
     parser.add_argument("--plan-only", action="store_true")
+    parser.add_argument("--projection-fusions", action="store_true",
+                        help="also qualify opt-in exact QKV bias and o/down residual panels; no connected model claim")
     args = parser.parse_args()
     if not 1 <= args.workers <= 8:
         parser.error("workers must be between 1 and 8")
@@ -104,6 +106,10 @@ def main():
         run([args.model_python, HERE / "qualify_projections.py", "--library", args.library,
              "--model-root", args.model_root, "--atlas-bin", args.atlas_bin,
              "--capture", args.out / "capture", "--out", args.out / "qualification"], env)
+    if args.projection_fusions and not args.plan_only:
+        run([args.model_python, args.library / "kernels/projection_gemm/qualify_qwen_fusions.py",
+             "--model-root", args.model_root, "--atlas-bin", args.atlas_bin,
+             "--out", args.out / "projection-fusions", "--timed"], env)
     record = dict(tensor_source="seeded random FP32 full-model weights; no pretrained checkpoint",
                   kernels_revision=subprocess.check_output(["git", "-C", str(args.library), "rev-parse", "HEAD"], text=True).strip(),
                   model_revision=subprocess.check_output(["git", "-C", str(args.model_root), "rev-parse", "HEAD"], text=True).strip(),
@@ -111,6 +117,13 @@ def main():
                                    for name in ("atlas-opt", "atlas-emit")},
                   mapping_sha256=hashlib.sha256((HERE / "mapping.yaml").read_bytes()).hexdigest(),
                   connected_device_execution="PENDING", plan_only=args.plan_only)
+    if args.projection_fusions:
+        record["projection_fusions"] = dict(
+            selection="exact QKV bias and o/down residual panel epilogues",
+            qualification="PENDING" if args.plan_only else str(args.out / "projection-fusions/summary.json"),
+            tensor_source="seeded synthetic panels, separate from model capture",
+            connected_device_execution="PENDING", host_time_saved="unmeasured",
+        )
     (args.out / "run.json").write_text(json.dumps(record, indent=2) + "\n")
 
 

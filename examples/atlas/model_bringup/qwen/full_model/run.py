@@ -129,6 +129,8 @@ def main():
     parser.add_argument("--job-timeout", type=int, default=1800)
     parser.add_argument("--plan-only", action="store_true")
     parser.add_argument("--skip-real-capture", action="store_true")
+    parser.add_argument("--projection-fusions", action="store_true",
+                        help="also qualify opt-in exact QKV bias and o/down residual panels; no connected model claim")
     parser.add_argument("--capture-python", type=Path)
     parser.add_argument("--model-python", type=Path)
     parser.add_argument("--library-root", type=Path)
@@ -276,6 +278,13 @@ def main():
             ],
             env=env,
         )
+    if args.projection_fusions and not args.plan_only:
+        run(
+            [model, library / "kernels/projection_gemm/qualify_qwen_fusions.py",
+             "--model-root", model_root, "--atlas-bin", args.atlas_bin,
+             "--out", args.out / "projection-fusions", "--timed"],
+            env=env,
+        )
     record = dict(
         kernels_revision=observed_revision(library),
         kernels_root=str(library),
@@ -293,6 +302,13 @@ def main():
         compiler_route="hand-written kernel generators; Atlas compiler verification/encoding gate",
         model_bench=str(args.out / "bench/MODEL-BENCH.md"),
     )
+    if args.projection_fusions:
+        record["projection_fusions"] = dict(
+            selection="exact QKV bias and o/down residual panel epilogues",
+            qualification="PENDING" if args.plan_only else str(args.out / "projection-fusions/summary.json"),
+            tensor_source="seeded synthetic panels, separate from real capture",
+            connected_device_execution="PENDING", host_time_saved="unmeasured",
+        )
     (args.out / "run.json").write_text(json.dumps(record, indent=2) + "\n")
     print("Model bench:", record["model_bench"])
 
