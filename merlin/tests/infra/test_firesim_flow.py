@@ -205,6 +205,175 @@ def test_whole_model_legs_require_w8a8_reference_before_compile(flow, tmp_path, 
         flow.build_legs(args)
 
 
+@pytest.mark.parametrize("framework_ok", [True, False])
+def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(flow, tmp_path, monkeypatch, framework_ok):
+    from merlin.targetgen import application_inventory
+
+    flow._board = lambda name: SimpleNamespace(name=name, bitstream="alveo_u250_firesim_kodiak_opu_1core", vlen=512)
+    bundle = tmp_path / "spectformer_torchao_w8a8"
+    bundle.mkdir()
+    (bundle / "model.mlir").write_text("module {}")
+    np.save(bundle / "golden.npy", np.zeros(1, dtype=np.float32))
+    monkeypatch.setattr(application_inventory, "verify_capture_receipt", lambda path: {"status": "verified"})
+    framework = {
+        "run": "host",
+        "dtype": "int8_w8a8",
+        "bundle": str(bundle),
+        "status": "verified" if framework_ok else "run_mismatch",
+        "verify": {"tier_ok": "w8a8" if framework_ok else None},
+        "reference": {"kind": "torchao_w8a8_framework", "sha256": flow._sha256(bundle / "golden.npy")},
+        "source_quantization": {
+            "source_scheme": "int8_dyn_act_int8_weight",
+            "source_mlir_sha256": flow._sha256(bundle / "model.mlir"),
+            "reference_kind": "torchao_w8a8_framework",
+            "integer_matmuls": 41,
+            "capture_receipt": {"status": "verified"},
+        },
+    }
+    framework_path = tmp_path / "framework.json"
+    framework_path.write_text("host build progress\n" + json.dumps(framework, indent=2))
+    args = SimpleNamespace(
+        bundle="source_spectformer",
+        capture_bundle=bundle,
+        dtype="int8_w8a8",
+        framework_result=framework_path,
+        allow_framework_mismatch=False,
+        board="firesim_kodiak_opu",
+        harts=1,
+        package="rvv/test",
+        matrix_support_target="kodiak",
+        matrix_unit="saturn_opu",
+        matrix_config="KodiakOPUConfig",
+        matrix_kernel=None,
+        gate="twin",
+        spike_timeout=30,
+        timeout=60,
+    )
+    if not framework_ok:
+        with pytest.raises(SystemExit, match="diagnostic-only plan"):
+            flow.build_legs(args)
+        args.allow_framework_mismatch = True
+    binaries = {leg: tmp_path / f"{leg}.elf" for leg in flow.LEGS}
+    for leg, elf in binaries.items():
+        elf.write_bytes(leg.encode())
+    routing = tmp_path / "routing_report.json"
+    routing.write_text("{}")
+    (tmp_path / "opu_signatures.json").write_text("[]")
+    identity = {"out_hash": {"algo": "fnv1a32", "elems": 1, "value": 1}, "prefix_sha256": "x"}
+
+    def compile_image(cmd, **kwargs):
+        assert cmd[cmd.index("--capture-bundle") + 1] == str(bundle)
+        assert cmd[cmd.index("--dtype") + 1] == "int8_w8a8"
+        assert ("--no-verify" in cmd) == (not framework_ok)
+        leg = "device" if "--matrix-unit" in cmd else "control"
+        result = {
+            "status": "verified" if framework_ok else "ran",
+            "binary": str(binaries[leg]),
+            "build_hash": leg,
+            "verify": {"tier_ok": "w8a8"} if framework_ok else {},
+            "output_identity": identity,
+        }
+        if leg == "device":
+            result["matrix"] = {
+                "unit_instruction_counts": {"OPMACC": 1},
+                "routing_report": str(routing),
+                "shipped_on_simulator": {
+                    "status": "verified",
+                    "verify": {"tier_ok": "w8a8"} if framework_ok else {},
+                    "bit_exact_vs_twin": True,
+                    "output_identity": identity,
+                },
+            }
+        return SimpleNamespace(returncode=0, stdout="log\n" + json.dumps(result, indent=2), stderr="")
+
+    monkeypatch.setattr(flow.subprocess, "run", compile_image)
+    monkeypatch.setattr(flow, "_unit_counts", lambda elf, *a: {"OPMACC": 1} if "device" in str(elf) else {})
+    job = flow.build_legs(args)
+    manifest = flow.load(job)
+    assert manifest["bundle"] == str(bundle)
+    assert manifest["source"]["reference"]["file"] == "golden.npy"
+    assert manifest["diagnostic_only"] == (not framework_ok)
+    assert manifest["legs"]["device"]["spike_output_identity"] == identity
+    assert manifest["legs"]["control"]["spike_output_identity"] == identity
+    if not framework_ok:
+        with pytest.raises(SystemExit, match="requires explicit --submit-diagnostic"):
+            flow.submit(job)
+        with pytest.raises(SystemExit, match="cannot submit"):
+            flow.submit(job, submit_diagnostic=True)
+        uart = tmp_path / "uartlog"
+        uart.write_text("diagnostic output")
+        monkeypatch.setattr(
+            flow,
+            "grade_leg",
+            lambda *a, **kw: {
+                "status": "verified",
+                "out_hash_matches_spike": True,
+                "prefix_matches_spike": True,
+            },
+        )
+        monkeypatch.setattr(
+            flow,
+            "_result",
+            lambda manifest, legs: {
+                "all_verified": True,
+                "provenance": {"bitstream_artifact": {"matched": True, "ok": True}},
+            },
+        )
+        result = flow.collect(job, uartlogs={leg: uart for leg in flow.LEGS}, measurement=False)
+        assert result["target_pair_spike_identity"] is True
+        assert result["framework_fidelity"] == "failed"
+        assert result["acceptance"] is False
+        assert result["all_verified"] is False
+
+
+def test_diagnostic_opu_utilization_uses_verified_hardware_identity(tmp_path):
+    utilization = _load("opu_utilization")
+    run = tmp_path / "run"
+    (run / "firesim").mkdir(parents=True)
+    (run / "device" / "routing").mkdir(parents=True)
+    signatures = {
+        "count": 1,
+        "routed": [{"b": 1, "m": 64, "n": 64, "k": 64}],
+        "macs": {"routed": 64**3, "not_routed": 0},
+    }
+    sidecar = run / "device" / "routing" / "opu_signatures.json"
+    sidecar.write_text(json.dumps(signatures))
+    (run / "device" / "leg.json").write_text(
+        json.dumps(
+            {
+                "board": "firesim_kodiak_opu",
+                "harts": 1,
+                "vlen": 512,
+                "routing_sidecars": {
+                    "opu_signatures.json": {"sha256": utilization.hashlib.sha256(sidecar.read_bytes()).hexdigest()}
+                },
+            }
+        )
+    )
+    result = {
+        "all_verified": False,
+        "diagnostic_only": True,
+        "target_pair_hardware_verified": True,
+        "acceptance": False,
+        "framework_fidelity": "failed",
+        "board": "firesim_kodiak_opu",
+        "harts": 1,
+        "bitstream": "alveo_u250_firesim_kodiak_opu_1core",
+        "device": {"status": "graded_with_problems", "cycles": 1024, "queue_job": 1},
+        "control": {"status": "graded_with_problems", "cycles": 2048, "queue_job": 2},
+    }
+    path = run / "firesim" / "results.json"
+    path.write_text(json.dumps(result))
+    measured = utilization.measure(run)
+    assert measured["whole_inference_effective_peak_fraction"] == pytest.approx(0.25)
+    assert measured["diagnostic_only"] is True
+    assert measured["acceptance"] is False
+    result["target_pair_hardware_verified"] = False
+    path.write_text(json.dumps(result))
+    with pytest.raises(ValueError, match="hardware identity verification"):
+        utilization.measure(run)
+
+
 @pytest.mark.parametrize(("same", "capture_drift"), [(True, False), (False, False), (True, True)])
 def test_independent_rvv_gate_requires_exact_board_output_identity(flow, tmp_path, monkeypatch, same, capture_drift):
     from merlin.common import artifacts

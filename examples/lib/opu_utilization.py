@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Recompute OPU work and end-to-end throughput from one verified FireSim pair.
+"""Recompute OPU work and end-to-end throughput from one identity-verified FireSim pair.
 
 This deliberately does not report array-active occupancy: the current bitstream
 does not expose MAC-active cycles or valid lanes. Geometry is tied to the named
@@ -27,13 +27,15 @@ def _read_json(path: Path) -> dict:
 
 
 def measure(run_dir: Path) -> dict:
-    """Use exact-image routing and target mcycle, after full hardware grading."""
+    """Use exact-image routing and target mcycle after hardware identity grading."""
     result = _read_json(run_dir / "firesim/results.json")
     leg = _read_json(run_dir / "device/leg.json")
-    if not result.get("all_verified") or any(
-        result.get(part, {}).get("status") != "verified" for part in ("device", "control")
-    ):
-        raise ValueError("both FireSim legs must be fully verified")
+    accepted_pair = result.get("all_verified") and all(
+        result.get(part, {}).get("status") == "verified" for part in ("device", "control")
+    )
+    diagnostic_pair = result.get("diagnostic_only") and result.get("target_pair_hardware_verified")
+    if not (accepted_pair or diagnostic_pair):
+        raise ValueError("both FireSim legs need accepted grades or diagnostic hardware identity verification")
     if result.get("board") != leg.get("board") or result.get("harts") != leg.get("harts"):
         raise ValueError("FireSim result and exact-image leg disagree on board or hart count")
     if result["harts"] != 1:
@@ -79,6 +81,9 @@ def measure(run_dir: Path) -> dict:
         raise ValueError("verified target METRIC cycles must be positive integers")
 
     return {
+        "diagnostic_only": bool(diagnostic_pair),
+        "acceptance": bool(result.get("acceptance", accepted_pair)),
+        "framework_fidelity": result.get("framework_fidelity", "not_checked"),
         "board": result["board"],
         "bitstream": result["bitstream"],
         "device_job": result["device"]["queue_job"],

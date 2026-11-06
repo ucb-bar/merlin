@@ -145,6 +145,38 @@ integer roots and instruction count are checked. Run a separate exact Spike
 pair gate, then a bitstream-pinned FireSim pair gate. A compiled image does not
 inherit the older weight-only capture's numerical results.
 
+For the one-core OPU FireSim pair, first save the JSON from the exact capture's
+host framework comparison, then build both Spike-gated images from that same
+explicit capture:
+
+```sh
+merlin-compile --workload spectformer_torchao_w8a8 --target rvv \
+  --dtype int8_w8a8 --capture-bundle /path/to/final/spectformer_torchao_w8a8_20261106 \
+  --package out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1 \
+  --run host --verify --json > "$TMPDIR/spectformer_torchao_framework.json"
+python examples/lib/firesim_flow.py legs spectformer_torchao_w8a8_20261106 \
+  --capture-bundle /path/to/final/spectformer_torchao_w8a8_20261106 \
+  --dtype int8_w8a8 --framework-result "$TMPDIR/spectformer_torchao_framework.json" \
+  --board firesim_kodiak_opu --package rvv/kodiak_prepack_quant_w8a8_v1 \
+  --harts 1 --matrix-support-target kodiak --matrix-unit saturn_opu \
+  --matrix-config KodiakOPUConfig --gate twin
+```
+
+The bridge checks the host result's source MLIR, receipt, and TorchAO golden,
+then requires shipped OPU versus scalar twin and device versus plain RVV to be
+bit-exact on the selected board's Spike model. The resulting plan names the
+one-core OPU bitstream and hashes both staged ELFs. With the current failed
+framework comparison, the second command requires `--allow-framework-mismatch`
+and creates a **diagnostic-only** plan. To run that exact pair on FireSim for
+target-arithmetic diagnosis, pass its printed job directory to
+`firesim_flow.py submit <job-dir> --submit-diagnostic`. Ordinary `--submit`
+refuses a diagnostic plan. Collection records `framework_fidelity: failed` and
+`acceptance: false` even if both hardware outputs match their Spike images.
+When the bitstream pin, target compute cycles, and both exact-image identities
+check out, it still reports the routed MAC work, static tile fill, and
+whole-inference effective peak as **diagnostic** utilization; array-active
+occupancy remains unmeasured without hardware counters.
+
 The source capture uses signed i8 operands, i32 accumulation, and source-owned
 scales/dequantization. OPU and compact VME select different kernels and
 encodings from those same typed integer contractions. Do not re-quantize the

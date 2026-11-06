@@ -165,6 +165,13 @@ def _capture_sha256(bundle: Path) -> str:
     return h.hexdigest()
 
 
+def _compile_result(stdout: str) -> dict[str, Any]:
+    """Parse merlin-compile's final pretty-printed JSON after any build progress lines."""
+    marker = "\n{\n"
+    payload = stdout[stdout.rindex(marker) + 1 :] if marker in stdout else stdout
+    return json.loads(payload)
+
+
 # --------------------------------------------------------------------------------------------- plan
 
 
@@ -179,6 +186,7 @@ def plan(
     timeout_s: int = 3600,
     capture_sha256: str | None = None,
     host: dict[str, Any] | None = None,
+    source: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Write ``<job_dir>/firesim_job.json`` and the workload definition; return the manifest.
 
@@ -213,6 +221,9 @@ def plan(
         "legs": rows,
         "jobs": {},
     }
+    if source is not None:
+        manifest["source"] = source
+        manifest["diagnostic_only"] = bool(source["diagnostic_only"])
     write_workload(job_dir, manifest)
     _save(job_dir, manifest)
     return manifest
@@ -308,6 +319,10 @@ def describe(job_dir: Path, manifest: dict[str, Any], host: dict[str, Any], **kw
         row = manifest["legs"][leg]
         lines.append(f"  {leg:8} {row['elf']}  build_hash={row.get('build_hash') or '?'}")
     lines.append("")
+    if manifest.get("diagnostic_only"):
+        lines.append("  DIAGNOSTIC ONLY: TorchAO framework parity failed; acceptance is disabled.")
+        lines.append(f"  Explicit hardware probe: {SELF} submit {job_dir} --submit-diagnostic")
+        return "\n".join(lines)
     if host["chipyard"] is None:
         lines.append("  MERLIN_CHIPYARD is unset: set it to the chipyard whose sims/firesim deploys this bitstream.")
     elif not host["workload_installed"]:
@@ -345,7 +360,14 @@ def describe(job_dir: Path, manifest: dict[str, Any], host: dict[str, Any], **kw
 # --------------------------------------------------------------------------------------------- submit
 
 
-def submit(job_dir: Path, *, priority: int = 5, project: str = "merlin-examples", timeout_s: int | None = None) -> dict:
+def submit(
+    job_dir: Path,
+    *,
+    priority: int = 5,
+    project: str = "merlin-examples",
+    timeout_s: int | None = None,
+    submit_diagnostic: bool = False,
+) -> dict:
     """Run every leg through the queue, one at a time, and keep each job's evidence under
     ``<job_dir>/firesim/<leg>/``. Uses the checkpoint harness's submission, which hashes the staged ELF
     before the queue is asked to run it and copies the client log, daemon log and UART out of the queue's
@@ -354,6 +376,11 @@ def submit(job_dir: Path, *, priority: int = 5, project: str = "merlin-examples"
 
     job_dir = Path(job_dir).resolve()
     manifest = load(job_dir)
+    _validate_source_plan(manifest)
+    if manifest.get("diagnostic_only") and not submit_diagnostic:
+        raise SystemExit("diagnostic-only source plan requires explicit --submit-diagnostic")
+    if submit_diagnostic and not manifest.get("diagnostic_only"):
+        raise SystemExit("--submit-diagnostic requires a diagnostic-only source plan")
     for leg, row in manifest["legs"].items():
         elf = Path(row["elf"])
         if not elf.is_file() or _sha256(elf) != row.get("elf_sha256"):
@@ -513,6 +540,31 @@ def _references(bundle: Path) -> dict:
     return refs
 
 
+def _plan_references(manifest: dict[str, Any]) -> dict:
+    """The source TorchAO golden is golden.npy; legacy re-quantized bundles use golden_w8a8.npy."""
+    bundle = Path(manifest["bundle"])
+    if (manifest.get("source") or {}).get("dtype") == "int8_w8a8":
+        import numpy as np
+
+        return {"w8a8": np.load(bundle / "golden.npy")}
+    return _references(bundle)
+
+
+def _validate_source_plan(manifest: dict[str, Any]) -> None:
+    source = manifest.get("source")
+    if source is None:
+        return
+    bundle = Path(manifest["bundle"])
+    framework = Path(source["framework_result"])
+    if (
+        not framework.is_file()
+        or _sha256(framework) != source["framework_result_sha256"]
+        or _sha256(bundle / "golden.npy") != source["reference"]["sha256"]
+        or _capture_sha256(bundle) != source["capture_sha256"]
+    ):
+        raise SystemExit("source capture, golden, or framework result changed since the FireSim plan")
+
+
 def grade_leg(
     uart: str,
     *,
@@ -599,12 +651,13 @@ def collect(
     expected_capture = manifest.get("capture_sha256")
     if expected_capture and _capture_sha256(bundle) != expected_capture:
         raise SystemExit("capture bundle changed since the paired FireSim images were built")
+    _validate_source_plan(manifest)
     for row in manifest["legs"].values():
         for name, sidecar in (row.get("routing_sidecars") or {}).items():
             path = Path(sidecar["path"])
             if not path.is_file() or _sha256(path) != sidecar["sha256"]:
                 raise SystemExit(f"routing sidecar changed since the FireSim image was built: {name}")
-    refs = _references(bundle)
+    refs = _plan_references(manifest)
     legs: dict[str, Any] = {}
     for leg, row in manifest["legs"].items():
         uart_path, results_dir = None, None
@@ -636,10 +689,40 @@ def collect(
             **graded,
         }
     result = _result(manifest, legs)
+    if source := manifest.get("source"):
+        result["framework_fidelity"] = "passed" if source["framework_status"] == "verified" else "failed"
+        result["target_pair_spike_identity"] = len(legs) == len(manifest["legs"]) and all(
+            leg.get("out_hash_matches_spike") and leg.get("prefix_matches_spike") for leg in legs.values()
+        )
+        artifact = result["provenance"].get("bitstream_artifact") or {}
+        result["target_pair_hardware_verified"] = (
+            result["target_pair_spike_identity"]
+            and artifact.get("matched") is True
+            and artifact.get("ok") is True
+            and all(
+                leg.get("hw_config") == manifest["hw_config"]
+                and leg.get("sim_passed") is True
+                and isinstance(leg.get("cycles"), int)
+                and leg["cycles"] > 0
+                and all(p.startswith("output fails the gate") for p in leg.get("problems", ()))
+                for leg in legs.values()
+            )
+        )
+        result["acceptance"] = (
+            result["all_verified"]
+            and result["framework_fidelity"] == "passed"
+            and artifact.get("matched") is True
+            and artifact.get("ok") is True
+        )
+        if manifest.get("diagnostic_only"):
+            result["all_verified"] = False
+            result["diagnostic_only"] = True
     result_path = job_dir / "firesim" / "results.json"
     result_path.parent.mkdir(parents=True, exist_ok=True)
     result_path.write_text(json.dumps(result, indent=2, default=str) + "\n")
-    if result["all_verified"] and manifest["hw_config"] == "alveo_u250_firesim_kodiak_opu_1core":
+    if (result["all_verified"] or result.get("target_pair_hardware_verified")) and manifest["hw_config"] == (
+        "alveo_u250_firesim_kodiak_opu_1core"
+    ):
         sidecars = manifest["legs"].get("device", {}).get("routing_sidecars") or {}
         if "opu_signatures.json" not in sidecars:
             # Older single-operator plans lack the immutable routing numerator. Preserve their
@@ -741,6 +824,79 @@ def summary(result: dict[str, Any]) -> str:
 # --------------------------------------------------------------------------------------------- legs
 
 
+def _source_gate(args, bundle: Path, brd) -> dict[str, Any] | None:
+    """Bind a source W8A8 FireSim pair to a checked framework result and pinned OPU board."""
+    dtype = getattr(args, "dtype", "int8")
+    capture = getattr(args, "capture_bundle", None)
+    if dtype == "int8" and capture is None:
+        return None
+    if dtype != "int8_w8a8" or capture is None:
+        raise SystemExit("source FireSim legs require both --dtype int8_w8a8 and --capture-bundle")
+    if getattr(args, "gate", "twin") != "twin":
+        raise SystemExit("source FireSim legs require the exact shipped-versus-twin Spike gate")
+    if (brd.name, brd.bitstream, args.harts, args.matrix_support_target, args.matrix_unit, args.matrix_config) != (
+        "firesim_kodiak_opu",
+        "alveo_u250_firesim_kodiak_opu_1core",
+        1,
+        "kodiak",
+        "saturn_opu",
+        "KodiakOPUConfig",
+    ):
+        raise SystemExit("source OPU legs require the pinned one-core Kodiak OPU board and routing configuration")
+    if not (bundle / "golden.npy").is_file():
+        raise SystemExit("source FireSim legs require the TorchAO framework golden.npy")
+    gate_path = getattr(args, "framework_result", None)
+    if gate_path is None:
+        raise SystemExit("source FireSim legs require --framework-result from an exact --run host --verify compile")
+    gate = _compile_result(Path(gate_path).read_text())
+    expected = _sha256(bundle / "golden.npy")
+    reference = gate.get("reference") or {}
+    source = gate.get("source_quantization") or {}
+    if (
+        gate.get("run"),
+        gate.get("dtype"),
+        Path(gate.get("bundle", "")).resolve(),
+        reference.get("kind"),
+        reference.get("sha256"),
+        source.get("source_scheme"),
+        source.get("source_mlir_sha256"),
+        source.get("reference_kind"),
+    ) != (
+        "host",
+        "int8_w8a8",
+        bundle.resolve(),
+        "torchao_w8a8_framework",
+        expected,
+        "int8_dyn_act_int8_weight",
+        _sha256(bundle / "model.mlir"),
+        "torchao_w8a8_framework",
+    ):
+        raise SystemExit("framework result does not bind this capture and its TorchAO golden")
+    if source.get("integer_matmuls", 0) <= 0 or source.get("capture_receipt") is None:
+        raise SystemExit("framework result lacks signed source matmuls or capture receipt")
+    from merlin.targetgen.application_inventory import verify_capture_receipt
+
+    receipt = verify_capture_receipt(bundle / "model.mlir")
+    if receipt.get("status") != "verified" or receipt != source["capture_receipt"]:
+        raise SystemExit("capture receipt changed or is unverified since the framework gate")
+    verified = gate.get("status") == "verified" and gate.get("verify", {}).get("tier_ok") == "w8a8"
+    diagnostic = not verified
+    if diagnostic and not getattr(args, "allow_framework_mismatch", False):
+        raise SystemExit(
+            "TorchAO framework gate has not passed; use --allow-framework-mismatch for a diagnostic-only plan"
+        )
+    return {
+        "dtype": dtype,
+        "capture_sha256": _capture_sha256(bundle),
+        "reference": {"file": "golden.npy", "sha256": expected, "kind": "torchao_w8a8_framework"},
+        "framework_result": str(Path(gate_path).resolve()),
+        "framework_result_sha256": _sha256(Path(gate_path)),
+        "framework_status": gate.get("status"),
+        "source_quantization": source,
+        "diagnostic_only": diagnostic,
+    }
+
+
 def build_legs(args) -> Path:
     """Spike-gate exact merlin-compile images, then plan their FireSim jobs."""
     from merlin.common.artifacts import recaptures_dir
@@ -748,14 +904,17 @@ def build_legs(args) -> Path:
     from merlin.runtime.backends import output_identity
 
     brd = _board(args.board)
-    bundle = recaptures_dir() / args.bundle
+    capture = getattr(args, "capture_bundle", None)
+    bundle = Path(capture).resolve() if capture else recaptures_dir() / args.bundle
     if not (bundle / "model.mlir").is_file():
         raise SystemExit(f"{bundle} is not a capture bundle; capture it first (run.sh capture <model>)")
-    if not (bundle / "golden_w8a8.npy").is_file():
+    dtype = getattr(args, "dtype", "int8")
+    if dtype == "int8" and not (bundle / "golden_w8a8.npy").is_file():
         raise SystemExit(f"{bundle}: FireSim requires the model's W8A8 reference before building")
+    source = _source_gate(args, bundle, brd)
     capture_path = bundle.resolve()
     capture_sha256 = _capture_sha256(capture_path)
-    model = args.bundle.removesuffix("_int8_full")
+    model = bundle.name if source else args.bundle.removesuffix("_int8_full")
     job_base = artifacts_dir() / "probes" / brd.name / f"{model}_firesim_h{args.harts}"
     job_base.mkdir(parents=True, exist_ok=True)
     old_plan = job_base / MANIFEST
@@ -783,7 +942,7 @@ def build_legs(args) -> Path:
             "--workload",
             model,
             "--dtype",
-            "int8",
+            dtype,
             "--target",
             "rvv",
             "--board",
@@ -794,12 +953,14 @@ def build_legs(args) -> Path:
             str(args.harts),
             "--run",
             "spike",
-            "--verify",
+            "--no-verify" if source and source["diagnostic_only"] else "--verify",
             "--json",
             "--no-capture",
             "--timeout",
             str(args.spike_timeout),
         ]
+        if source:
+            cmd += ["--capture-bundle", str(bundle)]
         if leg == "device":
             cmd += [
                 "--matrix-unit",
@@ -815,12 +976,8 @@ def build_legs(args) -> Path:
                 cmd += ["--matrix-gate", "shipped"]
         print("$ " + shlex.join(str(c) for c in cmd), flush=True)
         proc = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
-        marker = "\n{\n"
-        payload = proc.stdout
-        if marker in payload:
-            payload = payload[payload.rindex(marker) + 1 :]
         try:
-            result = json.loads(payload)
+            result = _compile_result(proc.stdout)
         except ValueError as exc:
             raise SystemExit(
                 f"{leg} leg: merlin-compile returned no result (exit {proc.returncode}): "
@@ -828,12 +985,18 @@ def build_legs(args) -> Path:
             ) from exc
         matrix = result.get("matrix") or {}
         shipped = matrix.get("shipped_on_simulator") or {}
-        if proc.returncode or result.get("status") != "verified" or result.get("verify", {}).get("tier_ok") != "w8a8":
+        diagnostic = bool(source and source["diagnostic_only"])
+        expected_status = "ran" if diagnostic else "verified"
+        if (
+            proc.returncode
+            or result.get("status") != expected_status
+            or (not diagnostic and result.get("verify", {}).get("tier_ok") != "w8a8")
+        ):
             raise SystemExit(f"{leg} leg failed its spike W8A8 gate: {result.get('status')}; {proc.stderr[-1000:]}")
         if leg == "device":
             device_gate_ok = (
                 shipped.get("status") == "verified"
-                and shipped.get("verify", {}).get("tier_ok") == "w8a8"
+                and (diagnostic or shipped.get("verify", {}).get("tier_ok") == "w8a8")
                 and matrix.get("unit_instruction_counts")
             )
             if gate == "twin":
@@ -846,10 +1009,10 @@ def build_legs(args) -> Path:
         identity = shipped.get("output_identity") if leg == "device" else result.get("output_identity")
         if not identity or not identity.get("out_hash") or not identity.get("prefix_sha256"):
             raise SystemExit(f"{leg} leg: spike gate has no complete output identity")
-        source = Path(result["binary"])
+        built_elf = Path(result["binary"])
         elf = out / "zephyr.elf"
-        shutil.copy2(source, elf)
-        if _sha256(source) != _sha256(elf):
+        shutil.copy2(built_elf, elf)
+        if _sha256(built_elf) != _sha256(elf):
             raise SystemExit(f"{leg} leg: staged ELF differs from the spike-gated image")
         routing_sidecars = None
         if leg == "device":
@@ -882,9 +1045,11 @@ def build_legs(args) -> Path:
             "routing_sidecars": routing_sidecars,
             "spike_output_identity": identity,
             "spike_gate": {
-                "method": gate if leg == "device" else "w8a8",
+                "method": ("twin_diagnostic" if leg == "device" else "execution_only")
+                if diagnostic
+                else (gate if leg == "device" else "w8a8"),
                 "status": result["status"],
-                "verify": result["verify"],
+                "verify": result.get("verify", {}),
                 "shipped_on_simulator": shipped if leg == "device" else None,
             },
         }
@@ -892,7 +1057,7 @@ def build_legs(args) -> Path:
         legs[leg] = row
     if bundle.resolve() != capture_path or _capture_sha256(capture_path) != capture_sha256:
         raise SystemExit("capture bundle changed while building the paired FireSim images")
-    if gate == "independent-rvv":
+    if gate == "independent-rvv" or source:
         same = output_identity.same_output(
             legs["device"]["spike_output_identity"], legs["control"]["spike_output_identity"]
         )
@@ -909,6 +1074,7 @@ def build_legs(args) -> Path:
         harts=args.harts,
         timeout_s=args.timeout,
         capture_sha256=capture_sha256,
+        source=source,
     )
     return job_dir
 
@@ -939,13 +1105,15 @@ def _pairs(values: list[str] | None, kind) -> dict:
 def _after_plan(job_dir: Path, args) -> int:
     manifest = load(job_dir)
     print(describe(job_dir, manifest, host_config(), priority=args.priority, timeout_s=args.timeout), flush=True)
-    if not args.submit:
-        print("\n  (not submitted: pass --submit to run these on the FPGA)")
+    if args.submit and args.submit_diagnostic:
+        raise SystemExit("choose either --submit or --submit-diagnostic")
+    if not (args.submit or args.submit_diagnostic):
+        print("\n  (not submitted: use the printed command when ready)")
         return 0
-    submit(job_dir, priority=args.priority, timeout_s=args.timeout)
+    submit(job_dir, priority=args.priority, timeout_s=args.timeout, submit_diagnostic=args.submit_diagnostic)
     result = collect(job_dir)
     print(summary(result))
-    return 0 if result["all_verified"] else 1
+    return 0 if result.get("acceptance", result["all_verified"]) else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -954,11 +1122,24 @@ def main(argv: list[str] | None = None) -> int:
 
     def _queue_flags(p):
         p.add_argument("--submit", action="store_true", help="actually run on the FPGA (default: print only)")
+        p.add_argument(
+            "--submit-diagnostic",
+            action="store_true",
+            help="run a framework-failing source plan for hardware diagnosis only",
+        )
         p.add_argument("--priority", type=int, default=5, choices=PRIORITIES)
         p.add_argument("--timeout", type=int, default=None, help="RUNNING-phase limit per leg, seconds")
 
     lg = sub.add_parser("legs", help="build + audit device/control legs of a whole model, then plan")
     lg.add_argument("bundle", help="capture bundle name under out/artifacts/recaptures/ (e.g. spectformer_int8_full)")
+    lg.add_argument("--capture-bundle", type=Path, help="explicit relocated TorchAO source capture for both legs")
+    lg.add_argument("--dtype", choices=("int8", "int8_w8a8"), default="int8")
+    lg.add_argument("--framework-result", type=Path, help="JSON result from exact capture's host framework gate")
+    lg.add_argument(
+        "--allow-framework-mismatch",
+        action="store_true",
+        help="plan a diagnostic pair if framework parity fails",
+    )
     lg.add_argument("--board", required=True)
     lg.add_argument("--package", required=True, help="RVV package under out/artifacts/targets/")
     lg.add_argument("--harts", type=int, default=1)
