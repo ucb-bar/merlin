@@ -58,8 +58,10 @@ and Rocket matrix-decoder `fc745a8` sources. Distinct one-core SoC and FireSim c
 changes are isolated in that task and pass source compile and target FIRRTL elaboration
 after a separate Rocket CSR guard fix. The SBT logs report Java `20.0.2-internal` and Espresso
 for those passing runs; toolchain pinning is still being checked. Exact Zvt ELF/Spike now passes
-for a fresh VLEN512 biased K-tail image, while Kodiak VME direct RTL and a new
-VME bitstream are still pending; the current OPU bitstream remains BME only. The separate
-exact-pin OPU counter task has passed Firechip compile, target FIRRTL elaboration, Golden Gate,
+for a fresh VLEN512 biased K-tail image. The current OPU bitstream remains BME only. That exact
+35 × 63 × 33 biased K-tail ELF has since passed direct Kodiak VME Verilator/SerialTL with
+the same pinned Spike digest, zero output/guard errors, and `KT DONE`; the larger RTL suite
+and a VME bitstream remain pending. The separate exact-pin OPU counter task has passed Firechip
+compile, target FIRRTL elaboration, Golden Gate,
 and Verilator metasim build using Espresso. A bracketed counter run, synthesis, and a
 counter-equipped bitstream remain pending. Keep the configurations and receipts separate.

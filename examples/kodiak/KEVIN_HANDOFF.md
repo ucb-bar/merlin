@@ -118,8 +118,12 @@ Spike with exact digests and zero output/guard errors; evidence and limits are i
 The [Kodiak Zvt/VME configuration plan](ZVT_VME_PLAN.md) lists the exact pins and gates needed
 before a Kodiak board may advertise Zvt support. A distinct managed Kodiak VME one-core
 configuration now passes FIRRTL elaboration, and a fresh VLEN512 biased K-tail ELF passes
-the pinned Zvt Spike with zero output/guard errors. Kodiak VME direct RTL and a new bitstream
-remain pending; these results do not change the physical OPU ASIC.
+the pinned Zvt Spike. The exact ELF also passed direct Kodiak VME Verilator/SerialTL: the
+35 × 63 × 33 biased case produced the same digest `0x15d98143c9a17f64`, zero output/guard
+errors, and `KT DONE`. The local SHA-bound receipt is
+`/scratch/agustin/chipyard/tasks/kodiak-zvt-vme-firechip/.tmp/kodiak_vme_k33_bias_elf/rtl_receipt.json`.
+A VME FireSim bitstream and broader Kodiak RTL suite remain pending; these results do not
+change the physical OPU ASIC.
 The current OPU FireSim
 bitstream is usable for the BME flow above. Its archived artifact identity was checked during the
 hardware jobs, while reproducing that archive from a clean source tree remains unverified because
