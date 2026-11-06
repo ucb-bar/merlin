@@ -1,0 +1,334 @@
+{
+  "knobs_sha256": "7cde03f3ccb22fd0a6c14e933c2cafc41277cb51d4986d0f7af1a7bc598d840b",
+  "models": {
+    "spectformer": {
+      "board": "firesim_kodiak_opu",
+      "capture_sha256": "6ba976f5c848018a2872c959eada50280a081f317b9cd83feeb624030af443c3",
+      "hardware_config": "alveo_u250_firesim_kodiak_opu_1core",
+      "harts": 1,
+      "legs": {
+        "control": {
+          "build_hash": "a108e726eeb9421b",
+          "elf_sha256": "437c2ae9991bfec6d5fcd010277c91265ebacc978c0b2de541113ae12246455a",
+          "leg_sha256": "eae2e139626397eccbc4a6e43d754aae9257b46df0a841c035559239c59dc612",
+          "output_identity": {
+            "out_hash": {
+              "algo": "fnv1a32",
+              "elems": 1000,
+              "value": 3242232599
+            },
+            "prefix_elems": 1000,
+            "prefix_sha256": "c8b9becaf888cf1175c9924657ac8f86f4f2c12b6bcf02f10d9a1415637a3aa7"
+          },
+          "routing_sidecars": null,
+          "spike_cycles": null,
+          "verify": {
+            "compared_fraction": 1.0,
+            "comparison_complete": true,
+            "coverage_ok": true,
+            "fp32_cos": 0.9998820424079895,
+            "fp32_max_rel": 1.1361043453216553,
+            "fp32_rel": 0.04391858993085987,
+            "gate_ok": true,
+            "max_rel": 4.053456905239727e-06,
+            "min_coverage": 0.0,
+            "n_compared": 1000,
+            "n_reference": 1000,
+            "tier_ok": "w8a8",
+            "tiers": [
+              "fp32",
+              "w8a8"
+            ],
+            "w8a8_cos": 1.0,
+            "w8a8_max_rel": 4.053456905239727e-06,
+            "w8a8_rel": 1.953510742062544e-07
+          }
+        },
+        "device": {
+          "build_hash": "6613d6c076f18eae",
+          "elf_sha256": "51506fe37a6866d25c8d12a8ad053620703972e839788b06cd2699f81b4befaf",
+          "leg_sha256": "ca8cf4cdadc2c7c4d21061a88a3184c2920c4983a53ebf7b62bf2dad75282448",
+          "output_identity": {
+            "out_hash": {
+              "algo": "fnv1a32",
+              "elems": 1000,
+              "value": 3242232599
+            },
+            "prefix_elems": 1000,
+            "prefix_sha256": "c8b9becaf888cf1175c9924657ac8f86f4f2c12b6bcf02f10d9a1415637a3aa7"
+          },
+          "routing_sidecars": {
+            "opu_signatures.json": {
+              "path": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793976714611401525/device/routing/opu_signatures.json",
+              "sha256": "94e69ec67bcf183d1bf59e362686e3b59b258e53a8c715715212f152a1500b49"
+            },
+            "routing_report.json": {
+              "path": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793976714611401525/device/routing/routing_report.json",
+              "sha256": "2cf24c59ea9aa8529bed811bf028cbfc578942b19aa34633b62c3e5b1c8265fc"
+            }
+          },
+          "spike_cycles": 1334524346,
+          "verify": {
+            "compared_fraction": 1.0,
+            "comparison_complete": true,
+            "cos": 1.0,
+            "coverage_ok": true,
+            "fp32_argmax": true,
+            "fp32_cos": 0.9998820424079895,
+            "fp32_max_rel": 1.1361043453216553,
+            "fp32_rel": 0.04391858993085987,
+            "gate_ok": true,
+            "max_rel": 4.053456905239727e-06,
+            "min_coverage": 0.0,
+            "n_compared": 1000,
+            "n_reference": 1000,
+            "of": "shipped image on the unit's spike model",
+            "ok": true,
+            "per_element_basis": "relative",
+            "per_element_guarded": true,
+            "quant_excess": 1.0000022579428787,
+            "quant_floor_abs": 0.2111821174621582,
+            "rel": 1.953510742062544e-07,
+            "run_dev_abs": 0.2111825942993164,
+            "tier_ok": "w8a8",
+            "tiers": [
+              "fp32",
+              "w8a8"
+            ],
+            "w8a8_argmax": true,
+            "w8a8_cos": 1.0,
+            "w8a8_max_rel": 4.053456905239727e-06,
+            "w8a8_rel": 1.953510742062544e-07
+          }
+        }
+      },
+      "plan": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793976714611401525",
+      "plan_sha256": "e3ec5eb5a2172191cfdebd5e4b6f6bc7f8f0867e30c53e105a412227daac486f",
+      "vlen": 512
+    },
+    "tinyllama_l2_s128": {
+      "board": "firesim_kodiak_opu",
+      "capture_sha256": "e67f6781a5e085d8500ee430748f6c9b2b039cd7592aaf648ce40ce10e899eb6",
+      "full_w8a8_gate": {
+        "comparison_complete": true,
+        "n_compared": 4096000,
+        "n_reference": 4096000,
+        "receipt": "s128_full_w8a8_gate.json",
+        "sha256": "b02b828ac85622b3b0fbaa01a46a21a15b9adf7546c26af8417a2cd322695193",
+        "token_argmax_matches_w8a8": true,
+        "w8a8_cos": 1.0,
+        "w8a8_rel": 1.1961278947790213e-07
+      },
+      "hardware_config": "alveo_u250_firesim_kodiak_opu_1core",
+      "harts": 1,
+      "legs": {
+        "control": {
+          "build_hash": "a77fc3a53aed5785",
+          "elf_sha256": "c98e5a6f93c3fc72d960c4ab45aa1af7915151ea47a09fb9e2a0fcb9e96f9515",
+          "leg_sha256": "6ba335aa15b780bf7199d2e5e43d4e0edaf2c2013ab90b503b1f60ac707882d7",
+          "output_identity": {
+            "out_hash": {
+              "algo": "fnv1a32",
+              "elems": 4096000,
+              "value": 3546047976
+            },
+            "prefix_elems": 4096,
+            "prefix_sha256": "487deaa2024526b3e9f7a45df948abace93ba7388af4c270ba8578ef049a17bb"
+          },
+          "routing_sidecars": null,
+          "spike_cycles": null,
+          "verify": {
+            "compared_fraction": 0.001,
+            "comparison_complete": false,
+            "coverage_ok": true,
+            "fp32_cos": 0.9935566186904907,
+            "fp32_max_rel": 17.13538932800293,
+            "fp32_rel": 0.08595290782724858,
+            "gate_ok": true,
+            "max_rel": 0.0,
+            "min_coverage": 0.0,
+            "n_compared": 4096,
+            "n_reference": 4096000,
+            "tier_ok": "w8a8",
+            "tiers": [
+              "fp32",
+              "w8a8"
+            ],
+            "w8a8_cos": 1.0,
+            "w8a8_max_rel": 0.0,
+            "w8a8_rel": 0.0
+          }
+        },
+        "device": {
+          "build_hash": "8e699e608eb13ae5",
+          "elf_sha256": "50c0a9aa0d5474600796df27472820d210f2ee1096b19d601e1aee61555de013",
+          "leg_sha256": "74dd603ca30363d8f5e84d1472e6dc77ea3cea664cd5b70139622656572800a9",
+          "output_identity": {
+            "out_hash": {
+              "algo": "fnv1a32",
+              "elems": 4096000,
+              "value": 3546047976
+            },
+            "prefix_elems": 4096,
+            "prefix_sha256": "487deaa2024526b3e9f7a45df948abace93ba7388af4c270ba8578ef049a17bb"
+          },
+          "routing_sidecars": {
+            "opu_signatures.json": {
+              "path": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793976714876752633/device/routing/opu_signatures.json",
+              "sha256": "c6454e3c73b239dae14d556ef35aebdeb61212d194ae928a7a8b2c662ec501ee"
+            },
+            "routing_report.json": {
+              "path": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793976714876752633/device/routing/routing_report.json",
+              "sha256": "1fdf00a8e4c3c1304498bb43284f4c18fc6ac053fb42e27aae5ebeb7cd0b86a1"
+            }
+          },
+          "spike_cycles": 1064810671,
+          "verify": {
+            "compared_fraction": 0.001,
+            "comparison_complete": false,
+            "cos": 1.0,
+            "coverage_ok": true,
+            "fp32_argmax": true,
+            "fp32_cos": 0.9935566186904907,
+            "fp32_max_rel": 17.13538932800293,
+            "fp32_rel": 0.08595290782724858,
+            "gate_ok": true,
+            "max_rel": 0.0,
+            "min_coverage": 0.0,
+            "n_compared": 4096,
+            "n_reference": 4096000,
+            "of": "shipped image on the unit's spike model",
+            "ok": true,
+            "per_element_basis": "relative",
+            "per_element_guarded": true,
+            "quant_excess": 1.0,
+            "quant_floor_abs": 0.9488885402679443,
+            "rel": 0.0,
+            "run_dev_abs": 0.9488885402679443,
+            "tier_ok": "w8a8",
+            "tiers": [
+              "fp32",
+              "w8a8"
+            ],
+            "w8a8_argmax": true,
+            "w8a8_cos": 1.0,
+            "w8a8_max_rel": 0.0,
+            "w8a8_rel": 0.0
+          }
+        }
+      },
+      "plan": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793976714876752633",
+      "plan_sha256": "1c32d45c0322b40fca63ee67f8412f1cd85a57d683614d19ec41788d870dc44a",
+      "vlen": 512
+    },
+    "tinyllama_l2_s64": {
+      "board": "firesim_kodiak_opu",
+      "capture_sha256": "d2c4db370950a69e121bc8dffb166abf98bd517e28c8a89219c6899055e39820",
+      "hardware_config": "alveo_u250_firesim_kodiak_opu_1core",
+      "harts": 1,
+      "legs": {
+        "control": {
+          "build_hash": "7869ea69a87dc4a2",
+          "elf_sha256": "2bbc90d4b8d87d19ddb25cb3d8f9806a535f963d5a2dd5f6a0969d3d841c25bb",
+          "leg_sha256": "4ed611f2951b04d71f95ba214e9279675c1a65724adf53b9532b1414c4a687e5",
+          "output_identity": {
+            "out_hash": {
+              "algo": "fnv1a32",
+              "elems": 2048000,
+              "value": 2628075425
+            },
+            "prefix_elems": 4096,
+            "prefix_sha256": "2f7e1f7f9b4aed8f876b3aba5b18fbbc4e97138b66bfb1d4fcb93adf63e41bcf"
+          },
+          "routing_sidecars": null,
+          "spike_cycles": null,
+          "verify": {
+            "compared_fraction": 0.002,
+            "comparison_complete": false,
+            "coverage_ok": true,
+            "fp32_cos": 0.993905782699585,
+            "fp32_max_rel": 16.920560836791992,
+            "fp32_rel": 0.08471485010142629,
+            "gate_ok": true,
+            "max_rel": 0.0,
+            "min_coverage": 0.0,
+            "n_compared": 4096,
+            "n_reference": 2048000,
+            "tier_ok": "w8a8",
+            "tiers": [
+              "fp32",
+              "w8a8"
+            ],
+            "w8a8_cos": 1.0,
+            "w8a8_max_rel": 0.0,
+            "w8a8_rel": 0.0
+          }
+        },
+        "device": {
+          "build_hash": "135fa750917f195f",
+          "elf_sha256": "d4a37da725d2b4ed66b8581f73f4b4bb17222d4f328e7a1679f7051bdac7292e",
+          "leg_sha256": "d52205b9b258f53fa42368042adfc787fbe671f6552d8325e17e208ebe258a00",
+          "output_identity": {
+            "out_hash": {
+              "algo": "fnv1a32",
+              "elems": 2048000,
+              "value": 2628075425
+            },
+            "prefix_elems": 4096,
+            "prefix_sha256": "2f7e1f7f9b4aed8f876b3aba5b18fbbc4e97138b66bfb1d4fcb93adf63e41bcf"
+          },
+          "routing_sidecars": {
+            "opu_signatures.json": {
+              "path": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793978312584828016/device/routing/opu_signatures.json",
+              "sha256": "cff687d7c5da09f5086141f6eea48203ba24175d1611d3d62c8e039dec5e674a"
+            },
+            "routing_report.json": {
+              "path": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793978312584828016/device/routing/routing_report.json",
+              "sha256": "dc5877a981de958b72e29bde299f6de0c776ca4ca40a990939811e9e786b4f84"
+            }
+          },
+          "spike_cycles": 474445615,
+          "verify": {
+            "compared_fraction": 0.002,
+            "comparison_complete": false,
+            "cos": 1.0,
+            "coverage_ok": true,
+            "fp32_argmax": true,
+            "fp32_cos": 0.993905782699585,
+            "fp32_max_rel": 16.920560836791992,
+            "fp32_rel": 0.08471485010142629,
+            "gate_ok": true,
+            "max_rel": 0.0,
+            "min_coverage": 0.0,
+            "n_compared": 4096,
+            "n_reference": 2048000,
+            "of": "shipped image on the unit's spike model",
+            "ok": true,
+            "per_element_basis": "relative",
+            "per_element_guarded": true,
+            "quant_excess": 1.0,
+            "quant_floor_abs": 0.9352208599448204,
+            "rel": 0.0,
+            "run_dev_abs": 0.9352208599448204,
+            "tier_ok": "w8a8",
+            "tiers": [
+              "fp32",
+              "w8a8"
+            ],
+            "w8a8_argmax": true,
+            "w8a8_cos": 1.0,
+            "w8a8_max_rel": 0.0,
+            "w8a8_rel": 0.0
+          }
+        }
+      },
+      "plan": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793978312584828016",
+      "plan_sha256": "b1cae9b7fb8863d35cef71df87fdf14b90aa1c45cbc7d3e55582edcf0148e5a7",
+      "vlen": 512
+    }
+  },
+  "package": "rvv/kodiak_prepack_quant_w8a8_v1",
+  "schedule_sha256": "928064a1264cf3dd4e70c1f6d162f989c3cc67160c36e2c19a94e731c10867b4",
+  "schema": "merlin.quant-prepack-model-gates.v1",
+  "scope": "exact immutable device/control ELFs on Spike; no FireSim submission for these rebuilt images"
+}
