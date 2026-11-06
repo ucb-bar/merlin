@@ -35,10 +35,12 @@ accumulates in i32; the source converts i32 to f32, multiplies the row and chann
 scales, then adds the f32 bias. Those scale and bias operations remain outside the
 matrix kernel. The next quantized Linear layer dynamically quantizes its own input.
 
-The existing OPU and compact VME shim ABIs consume signed i8 A/B and write i32 C.
-Their packers may change layout, and their instruction words are different, but
-neither may change the source's values or apply another quantization pass. The
-`--dtype int8_w8a8` token names the torchAO **source recipe**. Matrix routing sees
+The existing Kodiak OPU and Iris VME shim ABIs consume signed i8 A/B and write
+i32 C. Kodiak's compact VME route is under construction and must satisfy this
+same interface before it is a model target. Their packers may change layout,
+and their instruction words are different, but neither may change the source's
+values or apply another quantization pass. The `--dtype int8_w8a8` token names
+the torchAO **source recipe**. Matrix routing sees
 `signed_int8` as the operand storage format and `int32` as the accumulator format;
 the `int8` entry in `quant_formats.registry.yaml` describes the older weight-only
 capture and must not stand in for this source recipe.
