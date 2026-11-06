@@ -53,6 +53,8 @@ def verify_manifest(so: Path, *, key: str, kernel_text: str, identity: dict[str,
         return None
     try:
         record = json.loads(path.read_text())
+        if not isinstance(record, dict):
+            return None
         obj = _file(so)
         expected = {
             "schema": SCHEMA,

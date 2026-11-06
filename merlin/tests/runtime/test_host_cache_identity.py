@@ -127,6 +127,12 @@ def test_cache_only_rejects_legacy_kernel_before_execution(tmp_path, monkeypatch
             outlined, [np.ones(1, np.float32)], tmp_path / "work", cache_dir=cache, cache_only=True
         )
     sealed_manifest.write_text(original_manifest)
+    sealed_manifest.write_text("[]")
+    with pytest.raises(dispatch_runtime.HostCacheIntegrityError, match="host cache integrity refusal"):
+        dispatch_runtime.execute(
+            outlined, [np.ones(1, np.float32)], tmp_path / "work", cache_dir=cache, cache_only=True
+        )
+    sealed_manifest.write_text(original_manifest)
     tampered = json.loads(original_manifest)
     tampered["kernel_text_sha256"] = "0" * 64
     sealed_manifest.write_text(json.dumps(tampered))
