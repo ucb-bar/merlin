@@ -23,6 +23,43 @@ Hash the raw little-endian f32 bytes *before* NumPy conversion. Verify the byte 
 
 Compute a stable plan identity from the exact fields in the first two table rows, with canonical JSON, instead of hashing the mutable `firesim_job.json` file: FireSim submission may update its `jobs` map. Recheck every pin while collecting a result. Preserve the raw buffer and evidence files alongside the certificate; a JSON statement of their hashes without the files cannot be reverified. Certificate creation and verification should be separate commands, and a synthetic test must demonstrate rejection of a corrupted raw tail, wrong ELF, wrong capture/reference, mismatched same-run console, missing debugger artifact, and prefix-only gate.
 
+## Certificate command
+
+`examples/kodiak/source_output_certificate.py` implements the separate
+`create` and `verify` steps without changing the FireSim plan. Stage the raw
+dump, complete same-run console, debugger commands and log, exact ELF
+disassembly, and Spike version text under `JOB/full_output/LEG/` first. The
+Spike executable itself may live elsewhere; its bytes are hashed. For each
+leg, provide the observed buffer address and halt PC from that exact run:
+
+```sh
+JOB=/path/to/exact/source/fireSim/run_123
+LEG=device
+EVIDENCE="$JOB/full_output/$LEG"
+PYTHONPATH=src python examples/kodiak/source_output_certificate.py create "$JOB" \
+  --leg "$LEG" --raw "$EVIDENCE/raw.bin" \
+  --console "$EVIDENCE/console.txt" \
+  --debugger-commands "$EVIDENCE/commands.txt" \
+  --debugger-log "$EVIDENCE/debugger.log" \
+  --disassembly "$EVIDENCE/disassembly.txt" \
+  --spike-version "$EVIDENCE/spike_version.txt" \
+  --spike /path/to/exact/spike --output-address 0x80002000 --halt-pc 0x80001000
+PYTHONPATH=src python examples/kodiak/source_output_certificate.py verify \
+  "$EVIDENCE/certificate.json"
+```
+
+The hexadecimal addresses above are placeholders, not a pointer recipe.
+The debugger command file must resolve `MERLIN_OUTPUT_PTR[0]` from the staged
+ELF, and its log and disassembly must identify the observed addresses. The
+tool refuses a short dump, mismatched console or image, altered evidence,
+non-finite values, a failed complete TorchAO W8A8 gate, or a per-token
+argmax mismatch. The certificate stays in its original job directory so the
+verifier can reopen every referenced file. Queue `jobs` changes do not
+invalidate its stable plan identity. A certificate's FNV check is still
+non-cryptographic, as described below. The tool validates the staged evidence
+and its consistency with the console; it cannot independently attest that an
+operator captured the debugger files from the claimed physical process.
+
 ## Acceptance boundary
 
 Only a validated certificate from **both** exact source Spike legs can set `target_output_complete_on_spike=true`. The existing FireSim hardware check must still verify its board/bitstream artifact, staged ELF, full HASH and prefix against the corresponding certified Spike run, plus normal completion and cycles. Its current FNV1a32 is 32-bit and non-cryptographic: this proves whole-buffer *consistency under the FNV check*, not cryptographic equality of the unprinted hardware tail. Report that limit explicitly. For a cryptographic whole-output hardware claim, add a target-produced SHA-256 over the output bytes or an independently captured full FireSim memory buffer from the same run; bind it to the certificate and hardware job. Never mark source hardware whole-output fidelity as proved by matching device/control FNV hashes alone.
