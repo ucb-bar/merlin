@@ -125,12 +125,12 @@ gates, and all debug twins passed ELF audits, with 90 OPU routes. The two-layer 
 chipyard delivery labels its unrun OPU ELFs `UNGATED`. Neither package
 claims physical Kodiak execution or K1 certification for the new schedule.
 On this shared host, the rebuilt Spectformer h1/h2 chipyard delivery is staged at
-`out/artifacts/delivery/kodiak-spectformer-prepack-v1-final-r3.zip` (SHA-256
-`1f5a89962e5fd32720b5b62de6d2e57403bb49a8a8632cb9f114d1d5a5009523`). This revision
+`out/artifacts/delivery/kodiak-spectformer-prepack-v1-final-r4.zip` (SHA-256
+`c340d88c3a6d054bd6d6cb258935124056534d2c380541927df28f57140de679`). This revision
 changes only the embedded README's physical loader instructions to the proven OPU-direct control
 and gives standalone readers a pinned link to Kodiak's current rig procedure;
 all 22 other archive members, including every ELF, match the previous zip byte for byte. The
-task-local revision receipt is `.tmp/kodiak-spectformer-prepack-v1-final-r3.receipt.json`. The zip
+task-local revision receipt is `.tmp/kodiak-spectformer-prepack-v1-final-r4.receipt.json`. The zip
 passed archive integrity and contains eight ELFs, its manifest, audits, and grading script.
 Its four plain images passed W8A8 gates and h2 matches h1. It is an ignored local artifact,
 not a Git-tracked download or a physical-chip execution receipt. Kevin can copy that zip from
@@ -198,7 +198,7 @@ The current OPU FireSim bitstream is usable for the BME flow above. Its archived
 was checked during the hardware jobs. Reproducing that archive from a clean source tree remains
 unverified because the live Chipyard/Saturn checkout has pin drift. Physical Kodiak rig access
 and scheduling are separate from FireSim. For physical operations, follow the newer
-[Kodiak RUNNING.md at `d7c75fc`](https://github.com/ucb-bar/kodiak-mlir/blob/d7c75fc/RUNNING.md),
+[Kodiak RUNNING.md at `76b95b9`](https://github.com/ucb-bar/kodiak-mlir/blob/76b95b9/RUNNING.md),
 which corrects the historical health check and wrapper behavior. Merlin setup pins that same
 package commit; its bundled delivery loader note uses the same proven OPU-direct control.
 Coordinate with the rig owner before any chip load or reset.
@@ -216,9 +216,13 @@ a portable receipt is in Kodiak `evidence/bootaddr_select_chip_20261106/` at com
 No Merlin image was loaded; existing tmux sessions were preserved. The current rig ELF, loader,
 and FPGA bitstream hashes and the August/current section-map comparison are in
 `out/artifacts/probes/chipyard_kodiak/physical_probe_20261106/receipt_addendum.json`;
-no August ELF hash survives to prove byte identity. The loader treats any UDP response as a write
-acknowledgment and makes one two-second readback attempt without a packet trace, so a host timing
-or protocol fault remains possible alongside chip power/reset/clock/wiring or FPGA bridge faults.
+no August ELF hash survives to prove byte identity. An
+[offline replay of the SHA-verified loader](https://github.com/ucb-bar/kodiak-mlir/blob/76b95b9/evidence/bootaddr_host_replay_20261106/receipt.json)
+shows that it treats any UDP packet as a write acknowledgment and shortens its nominal two-second
+read wait to one second after a read ACK. A valid synthetic response at 1.5 seconds then yields
+`None`. The physical logs contain no raw packet timestamps, so this host bug is a plausible
+explanation, not proof that the chip replied. Chip power/reset/clock/wiring or FPGA bridge faults
+remain possible. A timestamped host packet trace is needed before assigning the failure.
 The Vivado version also differs. Direct Kodiak testing remains gated on a successful historical
 control readback; the Spike-gated small GEMM OPU/RVV images are ready for that retry.
 
