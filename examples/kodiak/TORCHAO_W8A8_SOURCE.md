@@ -116,3 +116,8 @@ reproduces the holdout host output without compilation and isolates small
 spectral-filter, norm2, and GELU differences on identical inputs. TorchAO fc1
 matches bitwise on the same host norm2 tensor; shifted norm2 inputs produce
 larger fc1 differences on both images.
+The [FFT stage probe](../../experiments/reference-data/spectformer_torchao_fft_stage_probe_2026-11-06.md)
+finds the first same-input spectral difference in the forward width DFT on
+both trained and holdout images. Complex multiplication is bitwise exact on
+the same FFT input; inverse FFT has a separate small difference. No
+whole-model parity fix follows from those small stage differences yet.
