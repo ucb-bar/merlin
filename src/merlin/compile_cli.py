@@ -280,6 +280,7 @@ def compile_rvv(
     expected_board_target: str | None = None,
     matrix: tuple[str, ...] | None = None,
     matrix_gate: str = "twin",
+    op_profile: bool = False,
     host_cache_dir: str | Path | None = None,
 ) -> dict:
     """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden).
@@ -657,6 +658,7 @@ def compile_rvv(
                 matrix=matrix,
                 matrix_gate=matrix_gate,
                 int8_compute=compute_int8,
+                op_profile=op_profile,
             )
 
         def _build(fs):
@@ -1450,6 +1452,7 @@ def _workflow(a, run: str) -> dict:
                 (a.matrix_unit, a.matrix_config, a.matrix_support_target, a.matrix_kernel) if a.matrix_unit else None
             ),
             matrix_gate=a.matrix_gate,
+            op_profile=a.op_profile,
             capture_bundle=a.capture_bundle,
             host_cache_dir=a.host_cache_dir,
         )

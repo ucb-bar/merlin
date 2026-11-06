@@ -163,6 +163,7 @@ def build_matrix_pair(
     vlen: int | None = None,
     sdk_dir: Path | None = None,
     debug: bool = False,
+    profile_ship: bool = False,
     iters: int = 1,
     warmup: int = 0,
     int8_compute: bool = True,
@@ -206,6 +207,9 @@ def build_matrix_pair(
             n_harts=harts,
             sdk_dir=sdk_dir,
             debug=dbg,
+            # A requested profile selects the routed call ABI, independent of the provider's unit name.
+            # The backend refuses an empty OPU-call selector, so another ABI cannot pass silently.
+            profile_dump_opu_only=profile_ship,
             matrix=routing,
             matrix_scalar_tile=stand_in,
             rvv_schedule=rvv_schedule,
@@ -216,7 +220,9 @@ def build_matrix_pair(
         )
 
     ship_where, twin_where = f"board_h{harts}", f"twin_h{harts}"
-    ship = build(stand_in=False, dbg=False, where=ship_where)
+    # Profiling must instrument the ELF that ships, not a separate debug twin. Instrument the
+    # scalar stand-in too so the pair's lowering digest still compares like with like.
+    ship = build(stand_in=False, dbg=profile_ship, where=ship_where)
     ship_dir = work / ship_where
     counts = _audit(ship["elf"], encodings)
     report = routing_report(ship_dir, routing)
@@ -234,7 +240,9 @@ def build_matrix_pair(
                 "instructions, so it would compute on the host core and prove nothing about the unit"
             )
         )
-    twin = build(stand_in=True, dbg=False, where=twin_where)
+    twin = build(stand_in=True, dbg=profile_ship, where=twin_where)
+    if profile_ship and ("op_profile_table" not in ship or "op_profile_table" not in twin):
+        raise RuntimeError("profiled matrix pair lacks an instrumented operation table")
     digest, twin_digest = _lowering_digest(ship_dir), _lowering_digest(work / twin_where)
     if digest != twin_digest:
         raise RuntimeError(

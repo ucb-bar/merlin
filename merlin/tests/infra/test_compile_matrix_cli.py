@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -22,6 +23,28 @@ _MATRIX = ["--matrix-unit", "unit_a", "--matrix-config", "ConfigA", "--matrix-su
         (["--workload", "w", "--dtype", "int8", "--matrix-unit", "unit_a"], "given together"),
         (["--workload", "w", "--dtype", "fp32", *_MATRIX, "--run", "spike", "--board", "b"], "--dtype int8"),
         (["--workload", "w", "--dtype", "int8", *_MATRIX, "--run", "k1"], "--run spike|zephyr --board"),
+        (
+            [
+                "--workload",
+                "w",
+                "--dtype",
+                "int8",
+                "--run",
+                "spike",
+                "--board",
+                "b",
+                "--matrix-unit",
+                "saturn_opu",
+                "--matrix-config",
+                "c",
+                "--matrix-support-target",
+                "t",
+                "--matrix-gate",
+                "build",
+                "--op-profile",
+            ],
+            "--op-profile requires a gated matrix route",
+        ),
     ],
 )
 def test_matrix_flags_are_refused_outside_their_route(argv, message, capsys):
@@ -102,6 +125,131 @@ def test_the_twin_is_what_runs_and_both_binaries_are_reported(tmp_path, monkeypa
         int8_compute=False,
     )
     assert seen["pair"]["int8_compute"] is False
+
+
+def test_profiled_matrix_gate_pins_the_shipped_table_and_requires_one_hit(tmp_path, monkeypatch):
+    ship_dir = tmp_path / "board_h1"
+    ship_dir.mkdir()
+    table = ship_dir / "op_profile_table.json"
+    table.write_text(json.dumps([{"id": 0, "mlir_op": "func.call", "callee": "@merlin_opu_0"}]))
+    (ship_dir / "opu_signatures.json").write_text(json.dumps({"routed": [{"symbol": "merlin_opu_0"}]}))
+    elf = ship_dir / "zephyr.elf"
+    elf.write_bytes(b"profiled shipped image")
+    pair = matrix_image.MatrixPair(
+        ship={"elf": elf, "op_profile_table": table},
+        twin={"elf": tmp_path / "twin.elf", "ram_bytes": 1},
+        debug=None,
+        lowering_digest="same",
+        unit_instruction_counts={"OPMACC": 1},
+        debug_instruction_counts={},
+        report={"routed_contractions": 1},
+        ship_dir=ship_dir,
+    )
+    seen = {}
+
+    def fake_pair(*args, **kwargs):
+        seen["profile_ship"] = kwargs["profile_ship"]
+        return pair
+
+    monkeypatch.setattr(matrix_image, "build_matrix_pair", fake_pair)
+    monkeypatch.setattr(zm, "image_cpus", lambda board, harts: harts)
+    monkeypatch.setattr("merlin.runtime.boards.board", lambda name: SimpleNamespace(vlen=512, dram_base=0x80000000))
+    monkeypatch.setattr(matrix_leg, "_run_shipped_on_device_simulator", lambda *args, **kwargs: evidence)
+    evidence = {
+        "status": "verified",
+        "profile": {
+            "iters": 1,
+            "prof_marks": 2,
+            "routed_calls": 1,
+            "routed_one_hit": True,
+            "rows_valid": True,
+            "cycles_reconciled": True,
+        },
+    }
+    args = dict(
+        board="b",
+        harts=1,
+        iters=1,
+        warmup=0,
+        timeout=1,
+        matrix=("saturn_opu", "c", "t"),
+        matrix_gate="shipped",
+        op_profile=True,
+    )
+    out = compile_cli._compile_matrix(
+        {}, Path("bundle"), tmp_path, SimpleNamespace(schedule_text="s", cflags=[]), [], {}, **args
+    )
+    assert seen["profile_ship"] is True
+    assert out["matrix"]["op_profile_table"] == str(table)
+    assert out["matrix"]["shipped_on_simulator"]["profile"]["routed_one_hit"] is True
+    evidence["profile"]["routed_one_hit"] = False
+    with pytest.raises(RuntimeError, match="one complete verified Spike inference"):
+        compile_cli._compile_matrix(
+            {}, Path("bundle"), tmp_path, SimpleNamespace(schedule_text="s", cflags=[]), [], {}, **args
+        )
+
+
+def test_profile_spike_result_refuses_repeated_or_unknown_rows(tmp_path):
+    table = tmp_path / "op_profile_table.json"
+    table.write_text(json.dumps([{"id": 0, "mlir_op": "func.call", "callee": "@merlin_opu_0"}]))
+    pair = SimpleNamespace(ship={"op_profile_table": table})
+    result = {
+        "metrics": {"iters": 1, "prof_marks": 2, "prof_dump_selected": 1, "prof_total_ticks": 30, "cycles": 100},
+        "console": "PROF 0 20 1\n",
+    }
+    assert matrix_leg._profile_spike_result(pair, result)["routed_one_hit"] is True
+    assert matrix_leg._profile_spike_result(pair, result)["cycles_reconciled"] is True
+    result["console"] = "PROF 0 20 2\n"
+    assert matrix_leg._profile_spike_result(pair, result)["routed_one_hit"] is False
+    result["console"] = "PROF 0 20 1\nPROF 1 10 1\n"
+    assert matrix_leg._profile_spike_result(pair, result)["rows_valid"] is False
+
+
+def test_profiled_pair_instruments_the_shipped_elf_and_its_digest_twin(tmp_path, monkeypatch):
+    provider = SimpleNamespace(
+        load_contract=lambda unit: None, derive_encodings=lambda c: SimpleNamespace(encodings={})
+    )
+    routing = SimpleNamespace(unit="saturn_opu", config="c", support_target="t", provider=lambda: provider)
+    board = SimpleNamespace(check_matrix_route=lambda *route: None, check_matrix_image=lambda h: None)
+    monkeypatch.setattr("merlin.runtime.boards.board", lambda name: board)
+    monkeypatch.setattr("merlin.targetgen.unit_pins.require", lambda *args: None)
+    monkeypatch.setattr(matrix_image, "_selected_kernel", lambda route: SimpleNamespace())
+    monkeypatch.setattr(matrix_image, "routing_report", lambda *args: {"routed_contractions": 1})
+    monkeypatch.setattr(
+        matrix_image,
+        "_audit",
+        lambda elf, enc: {} if "twin" in str(elf) else {"OPMACC": 1},
+    )
+    seen = []
+
+    def fake_build(bundle, work, **kwargs):
+        work = Path(work)
+        work.mkdir(parents=True)
+        (work / "model.o").write_bytes(b"same profiled lowering")
+        (work / "cgen").mkdir()
+        (work / "cgen" / "weights.bin").write_bytes(b"weights")
+        (work / "op_profile_table.json").write_text("[]")
+        elf = work / "zephyr.elf"
+        elf.write_bytes(b"profiled ELF")
+        seen.append((work.name, kwargs["debug"], kwargs["profile_dump_opu_only"]))
+        return {"elf": elf, "op_profile_table": work / "op_profile_table.json"}
+
+    monkeypatch.setattr(zm, "build_app", fake_build)
+    pair = matrix_image.build_matrix_pair(
+        Path("bundle"),
+        tmp_path,
+        board="b",
+        harts=1,
+        cpus=2,
+        routing=routing,
+        features=frozenset(),
+        rvv_schedule="s",
+        cflags=[],
+        profile_ship=True,
+    )
+    assert seen == [("board_h1", True, True), ("twin_h1", True, True)]
+    assert pair.ship["elf"].is_file() and pair.twin["elf"].is_file()
+    assert pair.debug is None and pair.lowering_digest
 
 
 def test_a_multi_hart_block_that_does_not_lower_is_re_derived_once(tmp_path, monkeypatch):

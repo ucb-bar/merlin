@@ -821,7 +821,9 @@ def _result(manifest: dict[str, Any], legs: dict[str, Any]) -> dict[str, Any]:
         "provenance": provenance.record(pins=pins, extra={"bitstream_artifact": artifact}),
     }
     dev, ctl = legs.get("device", {}), legs.get("control", {})
-    if dev.get("cycles") and ctl.get("cycles"):
+    if manifest["legs"].get("device", {}).get("profile"):
+        result["speedup_unavailable"] = "profiled device ELF has instrumentation; control ELF is unprofiled"
+    elif dev.get("cycles") and ctl.get("cycles"):
         result["speedup_control_over_device"] = ctl["cycles"] / dev["cycles"]
     result["all_verified"] = bool(legs) and all(leg.get("status") == "verified" for leg in legs.values())
     return result
@@ -853,6 +855,8 @@ def summary(result: dict[str, Any]) -> str:
             lines.append(f"           problem: {problem}")
     if result.get("speedup_control_over_device"):
         lines.append(f"  device speedup over control: {result['speedup_control_over_device']:.3f}x")
+    elif reason := result.get("speedup_unavailable"):
+        lines.append(f"  device speedup over control: unavailable ({reason})")
     if utilization := result.get("utilization"):
         effective_peak = utilization.get("whole_inference_effective_peak_fraction")
         peak_display = (
@@ -865,6 +869,11 @@ def summary(result: dict[str, Any]) -> str:
             f"whole-inference effective peak={peak_display} "
             "array-active occupancy=unmeasured"
         )
+        if window_peak := utilization.get("opu_window_effective_peak_fraction"):
+            lines.append(
+                f"  profiled OPU call window: cycles={utilization['opu_call_window_cycles']} "
+                f"effective peak={window_peak:.4%}"
+            )
     elif reason := result.get("utilization_unavailable"):
         lines.append(f"  OPU utilization: unavailable ({reason})")
     art = result["provenance"].get("bitstream_artifact", {})
@@ -1139,6 +1148,8 @@ def build_legs(args) -> Path:
             ]
             if args.matrix_kernel:
                 cmd += ["--matrix-kernel", args.matrix_kernel]
+            if getattr(args, "profile", False):
+                cmd += ["--op-profile"]
             if gate == "independent-rvv":
                 cmd += ["--matrix-gate", "shipped"]
         print("$ " + shlex.join(str(c) for c in cmd), flush=True)
@@ -1196,12 +1207,22 @@ def build_legs(args) -> Path:
         if leg == "device":
             routing_source = Path(matrix["routing_report"])
             signature_source = routing_source.parent / "opu_signatures.json"
+            profile_source = Path(matrix["op_profile_table"]) if getattr(args, "profile", False) else None
             if not routing_source.is_file() or not signature_source.is_file():
                 raise SystemExit("device leg: exact image has no routing report or OPU signatures")
+            if profile_source is not None and (
+                not profile_source.is_file()
+                or _sha256(profile_source) != matrix.get("op_profile_table_sha256")
+                or not (shipped.get("profile") or {}).get("routed_one_hit")
+                or not (shipped.get("profile") or {}).get("rows_valid")
+                or not (shipped.get("profile") or {}).get("cycles_reconciled")
+                or (shipped.get("profile") or {}).get("iters") != 1
+            ):
+                raise SystemExit("device leg: profiled ELF lacks its exact verified Spike operation table")
             routing_dir = out / "routing"
             routing_dir.mkdir()
             routing_sidecars = {}
-            for source_sidecar in (routing_source, signature_source):
+            for source_sidecar in (routing_source, signature_source, *([profile_source] if profile_source else [])):
                 staged = routing_dir / source_sidecar.name
                 shutil.copy2(source_sidecar, staged)
                 if _sha256(source_sidecar) != _sha256(staged):
@@ -1220,6 +1241,7 @@ def build_legs(args) -> Path:
             "harts": args.harts,
             "vlen": brd.vlen,
             "unit_instruction_counts": counts,
+            "profile": leg == "device" and bool(getattr(args, "profile", False)),
             "routing_sidecars": routing_sidecars,
             "spike_output_identity": identity,
             "spike_gate": {
@@ -1229,6 +1251,12 @@ def build_legs(args) -> Path:
                 "status": result["status"],
                 "verify": result.get("verify", {}),
                 "shipped_on_simulator": shipped if leg == "device" else None,
+                "elf_sha256": _sha256(elf),
+                "profile_table_sha256": (
+                    routing_sidecars["op_profile_table.json"]["sha256"]
+                    if leg == "device" and getattr(args, "profile", False)
+                    else None
+                ),
             },
         }
         (out / "leg.json").write_text(json.dumps(row, indent=2) + "\n")
@@ -1330,6 +1358,9 @@ def main(argv: list[str] | None = None) -> int:
     lg.add_argument("--matrix-config", required=True)
     lg.add_argument("--matrix-support-target", required=True)
     lg.add_argument("--matrix-kernel", help="the device leg's matrix kernel (registered name or C file)")
+    lg.add_argument(
+        "--profile", action="store_true", help="build and Spike-gate the exact profiled OPU image submitted to FireSim"
+    )
     lg.add_argument("--spike-timeout", type=int, default=14400, help="spike gate limit per image, seconds")
     lg.add_argument(
         "--gate",

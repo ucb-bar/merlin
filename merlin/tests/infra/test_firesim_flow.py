@@ -143,11 +143,17 @@ def _plan(flow, tmp_path: Path, bundle: Path) -> Path:
 
 
 @pytest.mark.parametrize(
-    ("bit_exact", "control_has_unit", "tier"),
-    [(True, False, "w8a8"), (False, False, "w8a8"), (True, True, "w8a8"), (True, False, "fp32")],
+    ("bit_exact", "control_has_unit", "tier", "profile"),
+    [
+        (True, False, "w8a8", False),
+        (False, False, "w8a8", False),
+        (True, True, "w8a8", False),
+        (True, False, "fp32", False),
+        (True, False, "w8a8", True),
+    ],
 )
 def test_whole_model_legs_stage_only_exact_spike_gated_images(
-    flow, tmp_path, monkeypatch, bit_exact, control_has_unit, tier
+    flow, tmp_path, monkeypatch, bit_exact, control_has_unit, tier, profile
 ):
     from merlin.common import artifacts
 
@@ -164,10 +170,14 @@ def test_whole_model_legs_stage_only_exact_spike_gated_images(
     routing = tmp_path / "routing_report.json"
     routing.write_text("{}")
     (tmp_path / "opu_signatures.json").write_text("[]")
+    profile_table = tmp_path / "op_profile_table.json"
+    if profile:
+        profile_table.write_text('[{"id": 0, "mlir_op": "func.call", "callee": "@merlin_opu_0"}]')
 
     def compile_image(cmd, **kwargs):
         assert cmd[cmd.index("--package") + 1] == str(flow.REPO / "out/artifacts/targets/rvv/test")
         leg = "device" if "--matrix-unit" in cmd else "control"
+        assert ("--op-profile" in cmd) == (profile and leg == "device")
         matrix = (
             {
                 "unit_instruction_counts": {"OPMACC": 1},
@@ -191,6 +201,15 @@ def test_whole_model_legs_stage_only_exact_spike_gated_images(
         }
         if matrix:
             matrix["shipped_on_simulator"]["output_identity"] = result["output_identity"]
+            if profile:
+                matrix["op_profile_table"] = str(profile_table)
+                matrix["op_profile_table_sha256"] = flow._sha256(profile_table)
+                matrix["shipped_on_simulator"]["profile"] = {
+                    "routed_one_hit": True,
+                    "rows_valid": True,
+                    "cycles_reconciled": True,
+                    "iters": 1,
+                }
         return SimpleNamespace(returncode=0, stdout="build log\n" + json.dumps(result, indent=2), stderr="")
 
     monkeypatch.setattr(flow.subprocess, "run", compile_image)
@@ -204,12 +223,13 @@ def test_whole_model_legs_stage_only_exact_spike_gated_images(
         board="fs",
         package="rvv/test",
         harts=1,
-        matrix_unit="opu",
+        matrix_unit="saturn_opu",
         matrix_config="cfg",
         matrix_support_target="kodiak",
         matrix_kernel=None,
         spike_timeout=40,
         timeout=7200,
+        profile=profile,
     )
     if not bit_exact:
         with pytest.raises(SystemExit, match="bit-exact twin gate"):
@@ -234,6 +254,21 @@ def test_whole_model_legs_stage_only_exact_spike_gated_images(
         assert manifest["legs"][leg]["spike_gate"]["verify"]["gate_ok"] is True
         assert manifest["legs"][leg]["spike_output_identity"]["out_hash"]["elems"] == 1
     assert Path(manifest["legs"]["device"]["routing_sidecars"]["routing_report.json"]["path"]).read_text() == "{}"
+    if profile:
+        row = manifest["legs"]["device"]
+        assert row["profile"] is True and manifest["legs"]["control"]["profile"] is False
+        monkeypatch.setattr("merlin.common.provenance.record", lambda **kwargs: {})
+        monkeypatch.setattr(flow, "_bitstream_artifact", lambda path: {})
+        paired = flow._result(manifest, {"device": {"cycles": 100}, "control": {"cycles": 400}})
+        assert "speedup_control_over_device" not in paired
+        assert "instrumentation" in paired["speedup_unavailable"]
+        table_pin = row["routing_sidecars"]["op_profile_table.json"]
+        assert Path(table_pin["path"]).read_bytes() == profile_table.read_bytes()
+        assert row["spike_gate"]["profile_table_sha256"] == table_pin["sha256"]
+        assert row["spike_gate"]["elf_sha256"] == row["elf_sha256"]
+        Path(table_pin["path"]).write_text("tampered")
+        with pytest.raises(SystemExit, match="routing sidecar changed"):
+            flow.collect(job, measurement=False)
 
 
 def test_whole_model_legs_require_w8a8_reference_before_compile(flow, tmp_path, monkeypatch):
@@ -561,9 +596,11 @@ def test_diagnostic_opu_utilization_uses_verified_hardware_identity(tmp_path):
 
     def write_profile(hits: int, *, unknown: bool = False) -> None:
         console = _uart(np.array([0.0], np.float32), cycles=1024, build_hash="test-build")
-        rows = f"PROF 0 100 {hits}\n" + ("PROF 99 1 1\n" if unknown else "")
+        rows = f"PROF 0 512 {hits}\n" + ("PROF 99 1 1\n" if unknown else "")
         console = console.replace(
-            "METRIC cycles 1024\n", "METRIC cycles 1024\nMETRIC iters 1\nMETRIC prof_marks 2\n" + rows
+            "METRIC cycles 1024\n",
+            "METRIC cycles 1024\nMETRIC iters 1\nMETRIC prof_marks 2\n"
+            "METRIC prof_total_ticks 900\nMETRIC prof_dump_selected 1\n" + rows,
         )
         uart.write_text(console)
         leg["spike_output_identity"] = output_identity.output_identity(zephyr_model._parse_console(console, 0))
@@ -575,6 +612,8 @@ def test_diagnostic_opu_utilization_uses_verified_hardware_identity(tmp_path):
     proven = utilization.measure(run)
     assert proven["dynamic_routed_work_verified"] is True
     assert proven["whole_inference_effective_peak_fraction"] == pytest.approx(0.25)
+    assert proven["opu_call_window_cycles"] == 512
+    assert proven["opu_window_effective_peak_fraction"] == pytest.approx(0.5)
     assert proven["profiled_console_sha256"] == utilization.hashlib.sha256(uart.read_bytes()).hexdigest()
     write_profile(2)
     repeated = utilization.measure(run)

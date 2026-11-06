@@ -124,6 +124,11 @@ def parser(
         "default kernel. A hand-written kernel's stand-in twin is Merlin's scalar reference",
     )
     ap.add_argument(
+        "--op-profile",
+        action="store_true",
+        help="instrument the shipped OPU ELF and its gate twin with per-operation counters",
+    )
+    ap.add_argument(
         "--corpus-descriptor",
         type=Path,
         help="explicit OOT corpus descriptor; prefer a released descriptor (this CLI does not verify its seal)",
@@ -242,6 +247,10 @@ def validate(ap: argparse.ArgumentParser, a: argparse.Namespace) -> None:
         ap.error("RVV gsim execution requires an explicit --model-build and matching board")
 
     matrix = (a.matrix_unit, a.matrix_config, a.matrix_support_target)
+    if a.op_profile and (
+        not a.matrix_unit or a.run not in ("spike", "zephyr") or a.matrix_gate == "build" or a.iters != 1 or a.warmup
+    ):
+        ap.error("--op-profile requires a gated matrix route, spike|zephyr, one timed inference and no warmup")
     if any(matrix):
         if not all(matrix):
             ap.error("--matrix-unit, --matrix-config and --matrix-support-target are given together")

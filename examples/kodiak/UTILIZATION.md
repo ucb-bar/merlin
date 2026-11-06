@@ -25,6 +25,14 @@ valid-MAC rate and whole-inference effective peak until a SHA-pinned per-op tabl
 same-image FireSim UART prove one timed inference with exactly one hit at each routed call
 site. Static route share, static tile fill, target cycles, and paired speedup remain available.
 The separately verified profiled FireSim images below do have that dynamic hit evidence.
+For new plans, `python examples/lib/firesim_flow.py legs ... --profile` builds the **shipped**
+OPU ELF and its scalar gate twin with the same per-op instrumentation, Spike-gates the exact
+shipped ELF, and stages its SHA-pinned `op_profile_table.json` beside the ELF. The collector
+uses that table and the same job's FireSim UART to prove dynamic work. Profiling changes the
+device ELF and its cycle count, so the report withholds device/control speedup when the RVV
+control is unprofiled. The profiled receipt also gives OPU call-window cycles and valid-MAC
+effective peak within that window; it still cannot measure PE duty. Measure speedup with a
+separate unprofiled pair.
 The two-layer TinyLlama sections also route all 19 contractions in their current h1 builds:
 9,865,003,008 valid MACs at 64 tokens and 19,797,114,880 at 128 tokens. Their shapes fill the
 64 × 64 OPU tiles completely by this static calculation. The 64-token OPU image completed on the

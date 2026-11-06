@@ -9,6 +9,9 @@ shipped-image leg, so a whole-model delivery is gated exactly like one ``merlin-
 
 from __future__ import annotations
 
+import hashlib
+import json
+from collections import Counter
 from pathlib import Path
 
 
@@ -28,6 +31,7 @@ def _compile_matrix(
     matrix,
     matrix_gate="twin",
     int8_compute=True,
+    op_profile=False,
 ) -> dict:
     """The matrix-unit leg of ``compile_rvv``: shipped image + stand-in twin, the twin gated on spike."""
     from merlin.kernels import matrix_kernels
@@ -59,6 +63,7 @@ def _compile_matrix(
             iters=iters,
             warmup=warmup,
             int8_compute=int8_compute,
+            profile_ship=op_profile,
         )
 
     try:
@@ -118,6 +123,12 @@ def _compile_matrix(
             },
         }
     )
+    if op_profile:
+        table_path = Path(pair.ship.get("op_profile_table") or "")
+        if not table_path.is_file():
+            raise RuntimeError("profiled shipped image has no operation table")
+        out["matrix"]["op_profile_table"] = str(table_path)
+        out["matrix"]["op_profile_table_sha256"] = hashlib.sha256(table_path.read_bytes()).hexdigest()
     if matrix_gate == "build":
         out["matrix"].update(
             twin_executed=False,
@@ -136,6 +147,8 @@ def _compile_matrix(
             independent_control_required=True,
             gated_via="shipped image on the declared unit simulator; independent control comparison required",
         )
+        if op_profile:
+            _require_profiled_spike(out["matrix"], shipped)
         out["verification_scope"] = "shipped_w8a8_only; independent control identity pending"
         out["status"] = shipped.get("status", "error")
         out["verify"] = shipped.get("verify", {})
@@ -175,10 +188,86 @@ def _compile_matrix(
         pair, routing, brd, cpus=cpus, timeout=shipped_timeout, refs=refs, twin=res
     )
     out["matrix"]["shipped_on_simulator"] = shipped
+    if op_profile:
+        _require_profiled_spike(out["matrix"], shipped)
     if shipped.get("status") in SHIPPED_FAILURES and out["status"] == "verified":
         # The twin agreeing while the unit's own datapath disagrees is exactly what this leg exists for.
         out["status"] = shipped["status"]
     return out
+
+
+def _require_profiled_spike(matrix: dict, shipped: dict) -> None:
+    """Require one exact, fully marked Spike inference before planning a profiled ELF."""
+    table_bytes = Path(matrix["op_profile_table"]).read_bytes()
+    if hashlib.sha256(table_bytes).hexdigest() != matrix["op_profile_table_sha256"]:
+        raise RuntimeError("profile table changed after the shipped ELF was built")
+    table = json.loads(table_bytes)
+    if not isinstance(table, list) or {row["id"] for row in table} != set(range(len(table))):
+        raise RuntimeError("profiled shipped image has incomplete operation IDs")
+    calls = [
+        row["id"]
+        for row in table
+        if row.get("mlir_op") == "func.call" and str(row.get("callee") or "").startswith("@merlin_opu_")
+    ]
+    # The sidecar is produced by the same lowering as the table; compare its symbols, not just counts.
+    signatures_path = Path(matrix["op_profile_table"]).with_name("opu_signatures.json")
+    signatures = json.loads(signatures_path.read_text())
+    routed = signatures.get("routed") or []
+    if not calls or Counter(table[i]["callee"].removeprefix("@") for i in calls) != Counter(
+        row["symbol"] for row in routed
+    ):
+        raise RuntimeError("profiled OPU call sites differ from routed signatures")
+    profile = shipped.get("profile") or {}
+    if (
+        shipped.get("status") != "verified"
+        or profile.get("iters") != 1
+        or profile.get("prof_marks") != len(table) + 1
+        or profile.get("routed_one_hit") is not True
+        or profile.get("rows_valid") is not True
+        or profile.get("cycles_reconciled") is not True
+        or profile.get("routed_calls") != len(calls)
+    ):
+        raise RuntimeError("shipped profiled ELF lacks one complete verified Spike inference")
+
+
+def _profile_spike_result(pair, res: dict) -> dict | None:
+    """Summarize the shipped ELF's own Spike counters without embedding a large UART in JSON."""
+    table_path = pair.ship.get("op_profile_table")
+    if not table_path:
+        return None
+    table = json.loads(Path(table_path).read_text())
+    calls = {
+        row["id"]
+        for row in table
+        if row.get("mlir_op") == "func.call" and str(row.get("callee") or "").startswith("@merlin_opu_")
+    }
+    rows = {}
+    for line in (res.get("console") or "").splitlines():
+        if not line.startswith("PROF "):
+            continue
+        fields = line.split()
+        if len(fields) != 4:
+            raise RuntimeError("malformed Spike PROF row")
+        op_id, ticks, hits = map(int, fields[1:])
+        if op_id in rows or op_id < 0 or ticks < 0 or hits < 0:
+            raise RuntimeError("duplicate or invalid Spike PROF row")
+        rows[op_id] = (ticks, hits)
+    metrics = res.get("metrics") or {}
+    attributed = metrics.get("prof_total_ticks")
+    cycles = metrics.get("cycles")
+    printed_ticks = sum(ticks for ticks, _ in rows.values())
+    return {
+        "iters": metrics.get("iters"),
+        "prof_marks": metrics.get("prof_marks"),
+        "prof_dump_selected": metrics.get("prof_dump_selected"),
+        "routed_calls": len(calls),
+        "routed_one_hit": bool(calls) and calls.issubset(rows) and all(rows[i][1] == 1 for i in calls),
+        "rows_valid": set(rows).issubset(range(len(table))) and metrics.get("prof_dump_selected") == len(rows),
+        "cycles_reconciled": isinstance(attributed, int)
+        and isinstance(cycles, int)
+        and 0 < sum(rows[i][0] for i in calls if i in rows) <= printed_ticks <= attributed <= cycles,
+        "console_sha256": hashlib.sha256((res.get("console") or "").encode()).hexdigest(),
+    }
 
 
 #: Wall-clock bound of the shipped image's simulator run, relative to the twin's (see _compile_matrix).
@@ -244,6 +333,8 @@ def _run_shipped_on_device_simulator(pair, routing, brd, *, cpus: int, timeout: 
         "output_identity": output_identity.output_identity(res),
         **_sim_meta(sim),
     }
+    if profile := _profile_spike_result(pair, res):
+        got["profile"] = profile
     output = res.get("output") if res.get("output") is not None else res.get("prefix")
     if output is None or not len(output):
         return {**got, "status": "run_failed", "reason": (res.get("console") or "")[-1500:]}
@@ -341,6 +432,8 @@ def _run_shipped_on_spike_extension(pair, routing, brd, *, cpus: int, timeout: i
 
     got: dict = {**meta, "status": "ran", "spike_cycles": res.get("metrics", {}).get("cycles")}
     got["output_identity"] = output_identity.output_identity(res)
+    if profile := _profile_spike_result(pair, res):
+        got["profile"] = profile
     output = res.get("output") if res.get("output") is not None else res.get("prefix")
     if output is None or not len(output):
         return {**got, "status": "run_failed", "reason": (res.get("console") or "")[-1500:]}
