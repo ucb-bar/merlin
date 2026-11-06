@@ -138,9 +138,10 @@ Its four plain images passed W8A8 gates and h2 matches h1. It is an ignored loca
 not a Git-tracked download or a physical-chip execution receipt. Kevin must copy this zip from
 the shared host to retain the exact delivered ELF bytes. The manifest observes Saturn
 `e16a301d`, which differs from its declared `ea373800` pin; the recorded ISA source digest is
-recoverable from four tracked files at `e16a301d`. Rebuilding the full ELFs from the tracked
-prepack package and transferred capture still needs compiler/toolchain closure and fresh Spike,
-ELF, and hardware gates. The exact prepack FireSim device/control jobs
+recoverable from [four tracked files at `e16a301d`](SPECTFORMER_R5_SOURCE.md). Kevin can build
+a fresh package from the tracked prepack schedule and transferred capture, but must record its
+Chipyard, Zephyr, and toolchain pins and rerun Spike, ELF, and hardware gates. A byte-identical
+rebuild of these ELFs remains unproven. The exact prepack FireSim device/control jobs
 3886/3888 subsequently graded VERIFIED:
 **2,733,902,458** versus **5,840,140,166** target compute cycles, **2.13619×** paired speedup,
 and identical full 1,000-value hashes to their exact Spike images. Its 90 routed contractions
