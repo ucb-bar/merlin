@@ -38,6 +38,14 @@ def signal_group(process, signum):
         pass  # The simulator can exit between the wait timeout and signal.
 
 
+class SimulatorTerminated(InterruptedError):
+    """Turn runner termination into bounded child cleanup and a receipt."""
+
+
+def terminated(signum, frame):
+    raise SimulatorTerminated("simulator runner terminated by signal " + str(signum))
+
+
 def run_simulator(simulator, elf, out, *, dramsim_ini=None, max_cycles=2000000000,
                   wall_seconds=43200, verbose=False, extra_args=(), env=None):
     simulator, elf, out = (safe_path(p) for p in (simulator, elf, out))
@@ -67,29 +75,55 @@ def run_simulator(simulator, elf, out, *, dramsim_ini=None, max_cycles=200000000
     status = {"command": command, "elf": str(elf), "simulator": str(simulator),
               "elf_sha256": sha256(elf),
               "max_cycles": max_cycles, "wall_limit_seconds": wall_seconds,
-              "timed_out": False, "returncode": 127}
-    with (out / "sim.log").open("w") as log:
+              "timed_out": False, "returncode": 127, "simulator_reaped": False}
+    process = None
+    previous_term = signal.signal(signal.SIGTERM, terminated)
+    previous_int = signal.getsignal(signal.SIGINT)
+    try:
+        with (out / "sim.log").open("w") as log:
+            try:
+                process = subprocess.Popen(command, cwd=out, env=child_env, stdin=subprocess.DEVNULL,
+                                           stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                status["returncode"] = process.wait(timeout=wall_seconds)
+            except subprocess.TimeoutExpired:
+                status.update(timed_out=True, returncode=124)
+            except KeyboardInterrupt:
+                status["returncode"] = 130
+            except SimulatorTerminated as error:
+                status.update(returncode=128 + signal.SIGTERM, error=str(error))
+            except OSError as error:
+                status["error"] = str(error)
+                log.write(str(error) + "\n")
+    except BaseException as error:
+        status.update(returncode=1, error=type(error).__name__ + ": " + str(error))
+    finally:
+        # A second signal must not interrupt teardown or suppress the failure receipt.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
         try:
-            with subprocess.Popen(command, cwd=out, env=child_env, stdin=subprocess.DEVNULL,
-                                  stdout=log, stderr=subprocess.STDOUT, start_new_session=True) as process:
+            if process is not None:
                 try:
-                    status["returncode"] = process.wait(timeout=wall_seconds)
-                except (subprocess.TimeoutExpired, KeyboardInterrupt) as error:
-                    status["timed_out"] = isinstance(error, subprocess.TimeoutExpired)
-                    signal_group(process, signal.SIGINT)
-                    try:
+                    if process.poll() is None:
+                        signal_group(process, signal.SIGINT)
                         process.wait(timeout=20)
-                    except subprocess.TimeoutExpired:
-                        signal_group(process, signal.SIGKILL)
-                        process.wait()
+                except subprocess.TimeoutExpired:
+                    pass
+                finally:
+                    # The leader can exit while its descendants remain in the group.
+                    signal_group(process, signal.SIGKILL)
+                    process.wait()
                     status["process_returncode"] = process.returncode
-                    status["returncode"] = 124 if status["timed_out"] else 130
-        except OSError as error:
-            status["error"] = str(error)
-            log.write(str(error) + "\n")
-    status["wall_seconds"] = time.monotonic() - started
-    (out / "exit-status.txt").write_text(str(status["returncode"]) + "\n")
-    write_json(out / "run.json", status)
+                    status["simulator_reaped"] = process.returncode is not None
+        except BaseException as error:
+            status.update(returncode=1, cleanup_error=type(error).__name__ + ": " + str(error))
+        finally:
+            try:
+                status["wall_seconds"] = time.monotonic() - started
+                (out / "exit-status.txt").write_text(str(status["returncode"]) + "\n")
+                write_json(out / "run.json", status)
+            finally:
+                signal.signal(signal.SIGTERM, previous_term)
+                signal.signal(signal.SIGINT, previous_int)
     return status
 
 

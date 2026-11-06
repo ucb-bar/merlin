@@ -13,6 +13,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest import mock
@@ -194,14 +195,14 @@ class SimulatorRunnerTest(TemporaryTree):
 
     def test_timeout_interrupt_and_forced_cleanup_record_failure(self):
         for label, first, cleanup, code, signals in (
-                ("timeout", subprocess.TimeoutExpired("sim", 1), None, 124, [signal.SIGINT]),
-                ("interrupt", KeyboardInterrupt(), None, 130, [signal.SIGINT]),
+                ("timeout", subprocess.TimeoutExpired("sim", 1), None, 124, [signal.SIGINT, signal.SIGKILL]),
+                ("interrupt", KeyboardInterrupt(), None, 130, [signal.SIGINT, signal.SIGKILL]),
                 ("forced", subprocess.TimeoutExpired("sim", 1), subprocess.TimeoutExpired("sim", 20),
                  124, [signal.SIGINT, signal.SIGKILL])):
             with self.subTest(case=label):
                 process = mock.MagicMock(pid=123, returncode=-2)
-                process.__enter__.return_value = process
-                process.wait.side_effect = [first, cleanup, None] if cleanup else [first, None]
+                process.poll.return_value = None
+                process.wait.side_effect = [first, cleanup, None] if cleanup else [first, None, None]
                 with mock.patch.object(run_sim.subprocess, "Popen", return_value=process) as popen, \
                         mock.patch.object(run_sim, "signal_group") as kill:
                     result = run_sim.run_simulator(self.simulator, self.elf, self.root / label, wall_seconds=1)
@@ -211,6 +212,70 @@ class SimulatorRunnerTest(TemporaryTree):
                 self.assertTrue(popen.call_args.kwargs["start_new_session"])
                 self.assertEqual(json.loads((self.root / label / "run.json").read_text())["returncode"], code)
                 self.assertEqual((self.root / label / "exit-status.txt").read_text(), str(code) + "\n")
+
+    def test_sigterm_reaps_fake_simulator_and_records_failure(self):
+        # An actual child catches lifecycle mistakes that a mocked wait cannot.
+        ready = self.root / "ready.json"
+        child = "import os,signal,time; signal.signal(signal.SIGINT,signal.SIG_IGN); time.sleep(120)"
+        self.simulator.write_text(
+            "#!" + sys.executable + "\n"
+            "import json,os,pathlib,subprocess,sys,time\n"
+            "descendant=subprocess.Popen([sys.executable,'-c'," + repr(child) + "])\n"
+            "pathlib.Path(" + repr(str(ready)) + ").write_text(json.dumps([os.getpid(),descendant.pid]))\n"
+            "time.sleep(120)\n")
+        out = self.root / "terminated"
+        previous_term = signal.getsignal(signal.SIGTERM)
+        runner = subprocess.Popen([sys.executable, str(Path(run_sim.__file__).absolute()),
+                                  "--simulator", str(self.simulator), "--elf", str(self.elf),
+                                  "--out", str(out), "--wall-seconds", "120"],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        pids = []
+        try:
+            deadline = time.monotonic() + 10
+            while not ready.exists() and runner.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertTrue(ready.exists(), "fake simulator did not start")
+            pids = json.loads(ready.read_text())
+            runner.send_signal(signal.SIGTERM)
+            self.assertEqual(runner.wait(timeout=10), 143)
+            receipt = json.loads((out / "run.json").read_text())
+            self.assertEqual(receipt["returncode"], 143)
+            self.assertFalse(receipt["timed_out"])
+            self.assertTrue(receipt["simulator_reaped"])
+            self.assertEqual((out / "exit-status.txt").read_text(), "143\n")
+            self.assertEqual(signal.getsignal(signal.SIGTERM), previous_term)
+            for pid in pids:
+                state = Path(f"/proc/{pid}/stat")
+                # An adopted descendant may briefly remain as a non-running zombie.
+                deadline = time.monotonic() + 5
+                while state.exists() and state.read_text().split()[2] != "Z" and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertTrue(not state.exists() or state.read_text().split()[2] == "Z")
+            self.assertFalse(Path(f"/proc/{pids[0]}").exists(), "simulator leader was not reaped")
+        finally:
+            if runner.poll() is None:
+                runner.kill()
+                runner.wait()
+            if pids:
+                try:
+                    os.killpg(pids[0], signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+    def test_unexpected_wait_error_still_cleans_up_and_records_failure(self):
+        process = mock.MagicMock(pid=123, returncode=-9)
+        process.poll.return_value = None
+        process.wait.side_effect = [RuntimeError("fixture wait failure"), None, None]
+        previous_term = signal.getsignal(signal.SIGTERM)
+        with mock.patch.object(run_sim.subprocess, "Popen", return_value=process), \
+                mock.patch.object(run_sim, "signal_group") as kill:
+            result = run_sim.run_simulator(self.simulator, self.elf, self.root / "wait-error")
+        self.assertEqual(result["returncode"], 1)
+        self.assertIn("fixture wait failure", result["error"])
+        self.assertTrue(result["simulator_reaped"])
+        self.assertEqual([call.args[1] for call in kill.call_args_list], [signal.SIGINT, signal.SIGKILL])
+        self.assertEqual(signal.getsignal(signal.SIGTERM), previous_term)
+        self.assertEqual(json.loads((self.root / "wait-error/run.json").read_text()), result)
 
     def test_reserved_plusargs_rejected_before_launch(self):
         with mock.patch.object(run_sim.subprocess, "Popen") as popen:
