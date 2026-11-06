@@ -18,6 +18,10 @@ lanes. Spectformer has 57 routed contractions and 1,840,054,272 valid routed MAC
 contraction MACs remain on RVV. With edge tiles rounded to 64, the static padded slot count is
 `Σ b × ceil(m/64) × ceil(n/64) × 64² × k = 2,434,793,472`. Thus 594,739,200 slots are padding.
 These counts come from the exact OPU image's `opu_signatures.json` and `routing_report.json`.
+The two-layer TinyLlama sections also route all 19 contractions in their current h1 builds:
+9,865,003,008 valid MACs at 64 tokens and 19,797,114,880 at 128 tokens. Their shapes fill the
+64 × 64 OPU tiles completely by this static calculation. Their Spike runs are correctness checks,
+so these counts alone do **not** give a hardware throughput or active-cycle utilization number.
 
 FireSim job 3858, the Spike-gated spectformer image with build hash `41758fde53331576`, completed
 in 3,531,733,777 `METRIC cycles`. That metric is the target `mcycle` delta around the compute region
