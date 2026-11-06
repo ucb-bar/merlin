@@ -272,10 +272,12 @@ static void merlin_vme_scalar(int32_t *c, const int8_t *at, const int8_t *b, con
 {{
   for (size_t i = i0; i < i0 + tm; ++i)
     for (size_t j = j0; j < j0 + tn; ++j) {{
-      int32_t sum = bias ? bias[j] : 0;
+      /* The unit accumulates modulo 2^32. Use unsigned arithmetic so the
+       * scalar twin has the same result without signed-overflow UB. */
+      uint32_t sum = bias ? (uint32_t)bias[j] : 0u;
       for (size_t kk = 0; kk < k; ++kk)
-        sum += (int32_t)at[kk * m + i] * (int32_t)b[kk * n + j];
-      c[i * n + j] = sum;
+        sum += (uint32_t)((int32_t)at[kk * m + i] * (int32_t)b[kk * n + j]);
+      c[i * n + j] = (int32_t)sum;
     }}
 }}
 
