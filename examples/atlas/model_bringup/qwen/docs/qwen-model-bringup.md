@@ -88,7 +88,7 @@ python3 examples/atlas/model_bringup/qwen/full_model/run.py --setup
 python3 examples/atlas/model_bringup/qwen/full_model/run.py -o out/qwen-full-model-new
 ```
 
-The end-to-end driver was exercised with its isolated capture/model environments. Three graph-extraction tests additionally cover exact boundary execution, separation of repeated model calls and explicit refusal of missing regions. The local measured run is `out/qwen-full-model-final`: it holds the inventory, checkpoint identity, kernel program receipts, tensors, generated PyTorch modules, raw/normalized Linalg and qualification outputs. Raw data and images are not committed. [MODEL-BENCH.md](../full_model/MODEL-BENCH.md) contains all launch results and the unmapped-operation table.
+The end-to-end driver was exercised with its isolated capture/model environments. Three graph-extraction tests additionally cover exact boundary execution, separation of repeated model calls, and explicit refusal of missing regions. The local measured run is `out/qwen-full-model-final`: it holds the inventory, checkpoint identity, kernel program receipts, tensors, generated PyTorch modules, raw/normalized Linalg, and qualification outputs. Raw data and images are not committed. [MODEL-BENCH.md](../full_model/MODEL-BENCH.md) retains all launch results and the unmapped-operation summary; the generated detailed table remains in the run artifacts.
 
 Pinned checkpoint: `ad9f0ae0864d7fbcd1cd905e3c6c5b069cc8b562`; atlas-kernels: `80c5f27d4bcded9c1ca7618a17ffcdbae2be7a39`; npu_model: `47b8599d8ffbe5ddd96059ffe2b5be2427a410f5`.
 

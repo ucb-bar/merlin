@@ -2,7 +2,7 @@
 
 Integration note (2026-11-05): This is historical evidence replayed from `5884524e3cf85027e08734526c1e3dbf0a093686`; its original measurements and unsupported-variant observations have not been rerun by this port. Current D128 attention and width-1536 RMSNorm support, explicit Qwen epsilon, local source selection, and validation status are described in the [Qwen integration README](../README.md).
 
-Ran all five compiled Qwen kernels, each in unscheduled, boundary-DMA-only and scheduled form, through `npu_speed_of_light.roofline.speed_of_light` from `~/projects/npu_model` at `47b8599d8ffbe5ddd96059ffe2b5be2427a410f5`. The model checkout was read without modification. These are simulator results.
+Ran all five compiled Qwen kernels, each in unscheduled, boundary-DMA-only, and scheduled form, through `npu_speed_of_light.roofline.speed_of_light` from the selected npu_model checkout at `47b8599d8ffbe5ddd96059ffe2b5be2427a410f5`. The model checkout was read without modification. These are simulator results.
 
 There are 30 measured runs: five kernels × three pipelines × two memory backends. Each run decodes the existing emitted words, requires exact instruction re-encoding, uses RTL numerical mode, and checks virtual-reference output bytes and the entire initialized DRAM region, including input and guard preservation. All 30 passed with zero runtime errors and no outstanding execution-unit work. The roofline tool's nine tests also passed when run from the model repository. An initial invocation from the Atlas directory failed two built-in-program tests because their assembly paths depend on the working directory; custom emitted programs used here do not depend on those paths.
 
@@ -79,10 +79,10 @@ Full K=1536 projection, RMSNorm/QKV and full residual MLP have no emitted progra
 
 The tables above summarize all five kernels. Detailed per-resource reports and provenance remain local in `out/qwen-roofline/roofline.txt` and `out/qwen-roofline/roofline.json`. Raw datasets and plot images are not tracked in the repository.
 
-From the Atlas repository, using the prepared model environment and emitted campaign artifacts:
+From the Merlin repository root, set `NPU_MODEL_ROOT` to the selected physical npu_model checkout and use the prepared model environment and emitted campaign artifacts:
 
 ```sh
-PYTHONPATH="$HOME/projects/npu_model" out/model-venv/bin/python examples/atlas/model_bringup/qwen/roofline_workloads.py --campaign out/qwen-final -o out/qwen-roofline-new
+PYTHONPATH="$NPU_MODEL_ROOT" out/model-venv/bin/python examples/atlas/model_bringup/qwen/roofline_workloads.py --campaign out/qwen-final -o out/qwen-roofline-new
 ```
 
 The runner reads the selected model checkout through `PYTHONPATH`; unlike the original campaign's older pinned model, that checkout must include `npu_speed_of_light/roofline.py`. It records model revision, roofline/curve hashes, program hashes, and per-resource charges. Existing results are not overwritten.
