@@ -88,3 +88,10 @@ Its FireSim job 3868 is queued behind the prepack control. This call-window rate
 and stalls; it is not physical MAC array occupancy. A separate draft Chipyard counter patch is
 available as [PR 2395](https://github.com/ucb-bar/chipyard/pull/2395), but no instrumented
 bitstream or counter measurement exists yet.
+
+The aligned-prepack TinyLlama s64 image also has an exact Spike-gated sparse profile: 19 OPU
+call rows, 26,595,355 call cycles, and **36.2236% effective peak during those calls on Spike**.
+Its full hash and routing sidecar match the FireSim device image. The profile image's earlier
+debug memory probe had written into embedded weights; Merlin now probes only beyond linker
+`_end`, and the corrected image passes the complete output gate. Its hardware call-window rate
+is still pending.

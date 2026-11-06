@@ -47,7 +47,21 @@ unaligned embedded weight base and took the shim's scalar fallback even though i
 contained OPU instructions. Merlin `6a6d81d46` aligns that blob in the Zephyr link. The corrected
 prepack image matches the complete output hash and prefix digest and measures 598,027,952
 Spike compute cycles versus 1,496,997,872 for the baseline. This is **functional-simulator
-timing**; its FireSim timing is pending.
+timing**. The aligned prepack OPU image subsequently completed on FireSim as job 3866 in
+1,101,993,218 target cycles, with the same full output hash as the accepted baseline. Its
+whole-inference effective throughput is `9,865,003,008 / (1,101,993,218 × 1,024) =
+0.00874215`, or **0.874215% of peak**, about 13.96 times the baseline device's rate. The
+matched RVV prepack control job 3867 is pending, so its paired speedup and grade remain open.
+
+A separate sparse profiled image of that exact prepack lowering passed Spike with the same
+full-output hash, prefix, prepared MLIR and routing sidecar. Its 19 selected OPU rows account
+for 26,595,355 of 598,466,269 Spike target cycles (4.4439% of the inference). Valid routed
+work divided by those OPU call cycles and 1,024 MAC/cycle is **36.2236% effective peak during
+OPU calls**; the whole-inference fraction on that profiled Spike image is 1.60975%. These are
+simulator rates and must not be combined with FireSim's cycle count to infer hardware issue duty.
+The first profile attempt changed the output because fixed memory-diagnostic probes wrote inside
+the 147 MiB embedded weights. The corrected image probes only beyond linker `_end` and passed
+the exact output gate. Its FireSim hardware call-window measurement is pending.
 
 The accepted Spectformer h1 OPU ELF likewise recorded **105 calls, 0 scalar fallbacks** at the
 same point. `dynamic_opu_counters/receipt.json` records each exact ELF's SHA-256 and the debugger
@@ -151,6 +165,7 @@ Evidence in this task checkout:
 - `out/artifacts/measurements/firesim_alveo_u250_firesim_kodiak_opu_1core/op_gemm_64x64x64/`
 - `out/artifacts/probes/firesim_kodiak_opu/dynamic_opu_counters/` (exact-ELF Spike debugger reads)
 - `out/artifacts/probes/firesim_kodiak_opu/spectformer_profiled_opu_sparse_h1/spike_gate.json`
+- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_prepack_profiled_opu_safe_h1/spike_profile_utilization.json`
 
 For a graded immutable FireSim pair, `python examples/lib/opu_utilization.py <run_dir>` recomputes
 the counts and ratios from the exact image's SHA-checked routing sidecar and the two hardware
