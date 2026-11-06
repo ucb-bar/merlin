@@ -24,14 +24,20 @@ whole-model framework parity still needs a new gate.
 git clone --branch feat/OPU-VME https://github.com/ucb-bar/merlin.git
 cd merlin/examples/kodiak
 ./run.sh setup --llvm <llvm23-install> --chipyard <chipyard> --zephyr-sdk <zephyr-sdk-0.17.0>
-./run.sh preflight --require package
+./run.sh preflight --require package --require-pin saturn_opu_int8
 ./run.sh op gemm 64 64 64
 ./run.sh kernel-test opu_tile_loop --quick
 ```
 
 `setup` prints any missing dependency or pin drift. The required `package` preflight exits
-nonzero if its build prerequisites are missing; it must pass before using the output
-as a hardware image. `op gemm` compares RVV, a scalar matrix twin, and the shipped OPU image on
+nonzero if its build prerequisites are missing; `--require-pin` also fails closed on a
+missing or refusing matrix source pin. Both checks must pass before building an OPU image.
+A `[stop]` pin row means matrix builds will refuse that source even if
+`--require package` alone exits zero. For compact
+VME, use its separately pinned Chipyard/Saturn source and require `[ok]` for
+`saturn_vme_kodiak`, `rocket_chip_kodiak_vme`, `spike_zvt`, and
+`chipyard_kodiak_vme`. The two source configurations are distinct; passing VME
+pin checks does not certify the archived OPU build source. `op gemm` compares RVV, a scalar matrix twin, and the shipped OPU image on
 its pinned Spike extension. To test a custom C kernel, register it under the Kodiak package's
 `kernels/` and pass `--matrix-kernel <name>`; the kernel ABI and test flow are in that package's
 README.

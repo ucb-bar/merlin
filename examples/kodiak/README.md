@@ -52,9 +52,11 @@ Times measured on a 48-core host from an empty `out/`, no `.venv`, no `.env` (20
 3. **The OPU's saturn.** If setup says `[drift] saturn_opu_int8`, OPU builds refuse that checkout.
    Put it on the pin (the commands below), or, if it is not yours to move, add
    `MERLIN_ALLOW_OFF_PIN=saturn_opu_int8` to `.env` and every build records the drift.
-4. **`./run.sh preflight --require package`** (1 s): the package stage must pass, every pinned source
-   must say `ok` or `warn`, and there should be no `!` in the settings list. A `!` is a shell export
-   overriding what setup recorded: `unset` it.
+4. **`./run.sh preflight --require package --require-pin saturn_opu_int8`** (1 s): the package
+   prerequisites and the OPU source pin must both pass. `--require package` alone checks only
+   host prerequisites and can exit zero while the matrix pin is `[stop]`. Other units listed
+   in the report, such as the separately pinned VME source, need their own pin gate when selected.
+   A `!` in the settings list is a shell export overriding what setup recorded: `unset` it.
 5. **`./run.sh op gemm 64 64 64`** (about 1 min): `rvv`, `matrix` and `matrix_on_spike` all `verified`.
 6. **A whole model**, with no download (deterministic weights):
    `./run.sh capture encoder_block --loader ../workloads/encoder_block/loader.py` (about 2 min), then
@@ -108,7 +110,7 @@ The stages:
 
 ```bash
 ./run.sh setup [--llvm P] [--chipyard D] [--zephyr-sw D] [--zephyr-sdk D] [--m2m D] [--no-fetch]
-./run.sh preflight --require package
+./run.sh preflight --require package --require-pin saturn_opu_int8
 ./run.sh probe
 ./run.sh op <gemm|gemm_nt|conv2d|attention|encoder_block|loader.py> [dims] [--harts 2]
 ./run.sh capture <model>          # any model model2MLIR can capture, + its W8A8 golden
