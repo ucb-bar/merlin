@@ -708,7 +708,7 @@ def _materialize_session(
     return 0 if ok else 3
 
 
-def _write_leaf_constants(mdl, inputs, weights_path: str, dest: Path) -> str | None:
+def _write_leaf_constants(mdl, inputs, weights_path: str, dest: Path, *, exported_program=None) -> str | None:
     """Write manifest-listed ``@forward`` buffers and lifted constants omitted from weights.
 
     Use m2m's bundle layout: ``buf::<dotted name>`` for buffers and the
@@ -732,11 +732,25 @@ def _write_leaf_constants(mdl, inputs, weights_path: str, dest: Path) -> str | N
         if "b_" + name.replace(".", "_") in buffers:
             extra["buf::" + name] = tensor.detach().float().cpu().numpy()
     if lifted:
-        from m2m.capture.bundle import _lifted_constants
+        if exported_program is None:
+            raise RuntimeError("lifted constants require the exact conversion's ExportedProgram")
+        from m2m.capture.bundle import _numpy_safe
+        from torch.export.graph_signature import InputKind
 
-        found: dict = {}
-        _lifted_constants(mdl, tuple(inputs), found)
-        extra.update({key: value for key, value in found.items() if key in lifted})
+        constants = dict(getattr(exported_program, "constants", {}) or {})
+        state = dict(getattr(exported_program, "state_dict", {}) or {})
+        for spec in exported_program.graph_signature.input_specs:
+            if spec.kind != InputKind.CONSTANT_TENSOR:
+                continue
+            name = str(getattr(spec.arg, "name", ""))
+            if name not in lifted:
+                continue
+            target = str(spec.target)
+            value = constants.get(target)
+            if value is None:
+                value = state.get(target)
+            if value is not None and hasattr(value, "detach"):
+                extra[name] = _numpy_safe(value)
     recovered = {"b_" + key[len("buf::") :].replace(".", "_") for key in extra if key.startswith("buf::")}
     missing = sorted(buffers - recovered) + [name for name in lifted if name not in extra]
     if missing:
@@ -1372,7 +1386,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         # An untransformed capture's golden IS the float model's output.
         reference = outputs if float_reference is None else float_reference["outputs"]
         (out / "float_reference.json").write_text(json.dumps(reference), encoding="utf-8")
-    extra_path = _write_leaf_constants(mdl, inputs, weights_path, out / "extra.npz")
+    extra_path = _write_leaf_constants(
+        mdl, inputs, weights_path, out / "extra.npz", exported_program=res.exported_program
+    )
     precision = frontend_trace.get("precision") or {}
     precision_exact = precision.get("status") != "projected" and not precision.get("projections")
     meta = {
