@@ -80,6 +80,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--vlen", type=int, default=512)
     ap.add_argument("--arena-mb", type=int, default=0, help="0 = derive from the model's activation peak (see below)")
     ap.add_argument(
+        "--profile",
+        action="store_true",
+        help="instrument per-op cycles; gate this exact image on Spike before FireSim timing",
+    )
+    ap.add_argument(
         "--runner",
         help="installed FireSim runner name (or set MERLIN_FIRESIM_RUNNER). Only a runner that WATCHES the "
         "console needs its terminal marker in the image; an image run through the queue's "
@@ -150,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
         cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
         vlen=a.vlen,
         inputs_npz=bundle / "inputs.npz",
-        debug=False,
+        debug=a.profile,
         completion_metric_prefix=getattr(selected_runner, "completion_metric_prefix", None),
         **kw,
     )
@@ -184,6 +189,7 @@ def main(argv: list[str] | None = None) -> int:
         "harts": a.harts,
         "vlen": a.vlen,
         "arena_mb": arena_mb,
+        "profile": a.profile,
         "package": a.package,
         "unit": a.unit,
         "config": a.config,
