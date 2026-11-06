@@ -1,6 +1,7 @@
 """CPU-only controls for the portable ResNet ISS bridge; no QEMU/Core runs."""
 
 import hashlib
+import importlib
 import json
 from pathlib import Path
 import socket
@@ -19,6 +20,44 @@ from elf_image import memory_instruction, mmio_sites
 from gdb_remote import Remote, decode_response, frame
 from model_device import Device
 from bundle_payload_fixture import write_bundle_payloads
+from run import pin_sources, pin_helper_closure, verify_source_bookends
+
+
+class SourceBookendsTest(unittest.TestCase):
+    def test_full_smol_pins_phase_and_deferred_fusion_validator_closure(self):
+        contract = importlib.import_module("smol_full_contract")
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary) / "fixture"
+            payload.write_bytes(b"fixture")
+            pins = {}
+            pin_sources(pins, contract, "smol-full", payload, payload)
+            names = {Path(path).name for path in pins}
+            self.assertTrue({"smol_full_phases.py", "smol_full_plan.py", "smol_fusion_assets.py",
+                             "smol_fusion_program.py", "smol_fusion_fp8.py", "smol_attention_assets.py",
+                             "atlas_kernels_path.py", "kernel_library.py"} <= names, names)
+            verify_source_bookends(pins)
+
+    def test_deferred_transitive_and_relative_import_mutations_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            package = root / "fixture_package"
+            package.mkdir()
+            sources = {root / "entry.py": "def check():\n    from fixture_package import validator\n",
+                       package / "__init__.py": "# package admission\n",
+                       package / "validator.py": "from .phase import validate\n",
+                       package / "phase.py": "def validate(): return True\n"}
+            for path, source in sources.items():
+                path.write_text(source)
+            pins = {str(root / "entry.py"): hashlib.sha256(sources[root / "entry.py"].encode()).hexdigest()}
+            pin_helper_closure(pins)
+            self.assertEqual(set(pins), {str(path) for path in sources})
+            verify_source_bookends(pins)
+            for path, source in sources.items():
+                with self.subTest(helper=path.name):
+                    path.write_text(source + "# changed during replay\n")
+                    with self.assertRaisesRegex(ValueError, "changed host ISA helper or input"):
+                        verify_source_bookends(pins)
+                    path.write_text(source)
 
 
 class BundleTest(unittest.TestCase):

@@ -5,6 +5,7 @@ Whole-model qualification requires a final live receipt. No SoC/FPGA binding.
 """
 
 import argparse
+import ast
 from contextlib import suppress
 import importlib
 import json
@@ -123,6 +124,63 @@ def pin_sources(pins, contract, workload, elf, qemu):
     for module in ("atlas_tooling", "atlas_path_guard", "atlas_host_layout", "run_model_tile", "atlas_tile_arithmetic"):
         path = checked(Path(sys.modules[module].__file__).absolute())
         pins[str(path)] = sha(path)
+    pin_helper_closure(pins)
+
+
+def pin_helper_closure(pins):
+    """Pin local imports, including imports inside optional validator functions.
+
+    Parsing source rather than walking sys.modules covers helpers first imported
+    during completion, without executing unused workload or generator code.
+    """
+    tools = Path(__file__).absolute().parents[1]
+    local_roots = [tools / "host_iss", tools, kernel_library.LIBRARY, *kernel_library.DIRECTORIES]
+    pending = [Path(path) for path in pins if Path(path).suffix == ".py"]
+    seen = set()
+    while pending:
+        source = checked(pending.pop())
+        if source in seen:
+            continue
+        seen.add(source)
+        actual = sha(source)
+        if str(source) in pins and pins[str(source)] != actual:
+            raise ValueError("changed host ISA helper during admission: " + str(source))
+        pins[str(source)] = actual
+        for node in ast.walk(ast.parse(source.read_text(), filename=str(source))):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+                roots = [source.parent, *local_roots]
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                names = [module] if module else []
+                names += [(module + "." if module else "") + alias.name for alias in node.names
+                          if alias.name != "*"]
+                roots = ([source.parents[node.level - 1]] if node.level else
+                         [source.parent, *local_roots])
+            else:
+                continue
+            for name in names:
+                parts = name.split(".")
+                candidates = []
+                for root in roots:
+                    candidates += [(root, root.joinpath(*parts).with_suffix(".py")),
+                                   (root, root.joinpath(*parts, "__init__.py"))]
+                for root, candidate in candidates:
+                    path = checked(candidate)
+                    if path.is_file():
+                        pending.append(path)
+                        # Importing a submodule also executes its package initializers.
+                        for index in range(1, len(parts)):
+                            package = checked(root.joinpath(*parts[:index], "__init__.py"))
+                            if package.is_file():
+                                pending.append(package)
+                        break
+
+
+def verify_source_bookends(pins):
+    for path, expected_hash in pins.items():
+        if sha(checked(Path(path))) != expected_hash:
+            raise ValueError("changed host ISA helper or input: " + path)
 
 
 def close_resources(receipt, process, device, remote, original_cwd,
@@ -315,7 +373,7 @@ def run(args):
                 completion['uart_sites'] = uart_sites
             bundle.verify_bookends()
             device.verify_bookends()
-            assert all(sha(Path(path)) == expected_hash for path, expected_hash in pins.items())
+            verify_source_bookends(pins)
             assert time.monotonic() < deadline, "absolute completion deadline"
             receipt.update(status="PASS_RV64_HOST_WITH_MODEL_DEVICE",
                 kernels=device.completed, mmio_accesses=accesses,
