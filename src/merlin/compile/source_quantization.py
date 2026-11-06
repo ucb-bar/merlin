@@ -30,6 +30,24 @@ def inspect_source_w8a8(bundle: str | Path) -> dict:
         raise ValueError(
             f"--dtype int8_w8a8 requires module prov.quantization={SOURCE_W8A8_SCHEME!r}; {source} declares {scheme!r}"
         )
+    # The scheme name alone does not identify the activation arithmetic. Older
+    # TorchAO captures leave these calls opaque, losing their quant_min/max and
+    # eps arguments. Their legacy fallback transcribes a different reduced-range
+    # profile from the explicit [-128, 127] graph in the current source captures.
+    # An exact-source route must use its own captured operations, regardless of
+    # which TorchAO version produced them.
+    opaque_affine = [
+        op.callee.root_reference.data
+        for op in query.walk(module, "func.call")
+        if op.callee.root_reference.data.startswith(
+            ("torchao_choose_qparams_affine_default", "torchao_quantize_affine_default")
+        )
+    ]
+    if opaque_affine:
+        raise ValueError(
+            "--dtype int8_w8a8 requires explicit captured activation quantization; "
+            f"opaque TorchAO affine calls lose their numerical parameters: {sorted(set(opaque_affine))}"
+        )
     candidates = [
         op for op in query.walk(module, "linalg.generic") if query.attr_str(op, "prov.aten") == "aten._int_mm.default"
     ]
@@ -48,6 +66,7 @@ def inspect_source_w8a8(bundle: str | Path) -> dict:
     receipt = verify_capture_receipt(source)
     return {
         "source_scheme": scheme,
+        "activation_quantization": "explicit_source_graph",
         # This is the integer ROOT's storage/accumulation type. It is deliberately
         # distinct from the torchAO recipe; quant_formats.registry.yaml's `int8`
         # entry describes a weight-only capture and is not this source scheme.

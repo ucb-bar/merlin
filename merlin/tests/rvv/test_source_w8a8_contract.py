@@ -38,6 +38,7 @@ def _bundle(tmp_path, source=_MODEL):
 def test_source_contract_counts_actual_integer_macs(tmp_path):
     contract = inspect_source_w8a8(_bundle(tmp_path))
     assert contract["source_scheme"] == "int8_dyn_act_int8_weight"
+    assert contract["activation_quantization"] == "explicit_source_graph"
     assert contract["matrix_operand_format"] == "signed_int8"
     assert contract["matrix_accumulator_format"] == "int32"
     assert contract["integer_matmuls"] == 1
@@ -55,6 +56,23 @@ def test_source_contract_counts_actual_integer_macs(tmp_path):
 )
 def test_source_contract_rejects_wrong_scheme_or_arithmetic(tmp_path, source, reason):
     with pytest.raises(ValueError, match=reason):
+        inspect_source_w8a8(_bundle(tmp_path, source))
+
+
+def test_source_contract_rejects_opaque_affine_with_missing_numerical_parameters(tmp_path):
+    source = _MODEL.replace(
+        "  func.func @forward",
+        "  func.func private @torchao_quantize_affine_default(tensor<4x19xf32>, tensor<4xf32>) -> tensor<4x19xi8>\n"
+        "  func.func @forward",
+    ).replace(
+        "    func.return %result",
+        "    %x = tensor.empty() : tensor<4x19xf32>\n"
+        "    %s = tensor.empty() : tensor<4xf32>\n"
+        "    %unused = func.call @torchao_quantize_affine_default(%x, %s) : "
+        "(tensor<4x19xf32>, tensor<4xf32>) -> tensor<4x19xi8>\n"
+        "    func.return %result",
+    )
+    with pytest.raises(ValueError, match="opaque TorchAO affine calls"):
         inspect_source_w8a8(_bundle(tmp_path, source))
 
 

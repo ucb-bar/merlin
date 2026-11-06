@@ -89,6 +89,10 @@ these source-exported programs remain pending.
 
 ### TorchAO quantization contract for OPU and VME
 
+The [hardware quantization audit](TORCHAO_HW_QUANTIZATION.md) records the
+receipt-bound activation arithmetic, i32 range bound, and logical tile fill
+for both exact source captures.
+
 The source-authoritative path is torchAO `int8_w8a8`: dynamic signed-int8 activation
 quantization, signed-int8 weights derived from the trained checkpoint, and explicit `_int_mm`
 contractions with int32 accumulation. Preserve the captured scale, zero-point, rounding,
