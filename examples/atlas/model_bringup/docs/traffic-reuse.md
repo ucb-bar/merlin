@@ -50,11 +50,12 @@ Shared symbolic tests check tile origins and output halves; encoded tests guard 
 
 ## Running
 
-Follow [model bringup setup](../README.md#build), including bytecode suppression; export `ATLAS="$VIEW"`, `ATLAS_SOURCE_ROOT="$VIEW"`, and `ATLAS_MLIR_ROOT="$VIEW"`, and use `cd "$VIEW"`. Put `tools` on `PYTHONPATH` and use the same physical dimensions and exponent as the captured contraction. `import kernel_library` puts the generators in the `third_party/atlas-kernels` submodule on `sys.path`.
+Follow [model bringup setup](../README.md#build), including bytecode suppression; export `ATLAS="$VIEW"`, `ATLAS_SOURCE_ROOT="$VIEW"`, and `ATLAS_MLIR_ROOT="$VIEW"`, and use `cd "$VIEW"`. Put `tools` on `PYTHONPATH` and use the same physical dimensions and exponent as the captured contraction. `import kernel_library` puts the generators in the execution view's pinned `third_party/atlas-kernels` library on `sys.path`. Use its source resolver for the relocated helper layout.
 
 ```python
 import kernel_library
-from atlas_program import assembly, code_sources, dma_load_bytes
+from atlas_program import assembly, dma_load_bytes
+from kernel_library import code_sources
 
 m, k, n = 128, 3072, 768
 sources = code_sources(traffic_reuse=True)
