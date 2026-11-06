@@ -51,6 +51,40 @@ def test_matrix_harts_can_be_narrower_than_the_vector_harts():
         odd.check_matrix_image(1)  # the first vector hart (0) has no matrix unit
 
 
+def test_matrix_route_must_match_the_board_decoder_and_elaboration():
+    opu = _board(
+        matrix_support_target="kodiak",
+        matrix_unit="saturn_opu",
+        matrix_config="FireSimKodiakOPU1CoreConfig",
+    )
+    opu.check_matrix_route("kodiak", "saturn_opu", "FireSimKodiakOPU1CoreConfig")
+    for route in (
+        ("kodiak", "saturn_vme", "FireSimKodiakVMECompact1CoreConfig"),
+        ("kodiak", "saturn_opu", "KodiakOPUConfig"),
+        ("iris", "saturn_opu", "FireSimKodiakOPU1CoreConfig"),
+    ):
+        with pytest.raises(boards.BoardRegistryError, match="does not match"):
+            opu.check_matrix_route(*route)
+    with pytest.raises(boards.BoardRegistryError, match="does not match"):
+        _board().check_matrix_route("kodiak", "saturn_vme", "FireSimKodiakVMECompact1CoreConfig")
+
+
+def test_matrix_route_catalog_is_atomic(tmp_path):
+    reg = tmp_path / "boards.yaml"
+    reg.write_text(
+        f"schema_version: 1\nboards:\n  b:\n{_ENTRY}"
+        "    matrix_support_target: kodiak\n"
+        "    matrix_unit: saturn_vme\n"
+        "    matrix_config: FireSimKodiakVMECompact1CoreConfig\n",
+        encoding="utf-8",
+    )
+    loaded = boards.load_boards(reg)["b"]
+    loaded.check_matrix_route("kodiak", "saturn_vme", "FireSimKodiakVMECompact1CoreConfig")
+    reg.write_text(reg.read_text().replace("    matrix_unit: saturn_vme\n", ""), encoding="utf-8")
+    with pytest.raises(boards.BoardRegistryError, match="matrix route must declare all"):
+        boards.load_boards(reg)
+
+
 def test_the_catalog_reads_and_validates_matrix_hart_ids(tmp_path):
     good = tmp_path / "good.yaml"
     good.write_text(f"schema_version: 1\nboards:\n  b:\n{_ENTRY}    matrix_hart_ids: [1]\n", encoding="utf-8")
@@ -69,4 +103,4 @@ def test_the_pair_builder_refuses_before_building():
     from merlin.runtime.backends import matrix_image
 
     src = inspect.getsource(matrix_image.build_matrix_pair)
-    assert src.index("check_matrix_image(harts)") < src.index("def build(")
+    assert src.index("check_matrix_route(") < src.index("check_matrix_image(harts)") < src.index("def build(")

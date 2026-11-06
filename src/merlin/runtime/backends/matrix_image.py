@@ -179,7 +179,9 @@ def build_matrix_pair(
     # the twin too, since it exists only to gate an image that could ship.
     from ..boards import board as _board
 
-    _board(board).check_matrix_image(harts)
+    brd = _board(board)
+    brd.check_matrix_route(routing.support_target, routing.unit, routing.config)
+    brd.check_matrix_image(harts)
     # The unit's encodings and geometry are derived from pinned checkouts. Off the pin in a byte the
     # derivation reads, the image would be about other hardware: refused (UnitPinError) unless allowed.
     from merlin.targetgen import unit_pins

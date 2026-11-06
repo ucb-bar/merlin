@@ -2348,6 +2348,8 @@ def build_app(
     if brd.flow != "zephyr" or brd.zephyr_default_ram_bytes is None or brd.zephyr_link_limit_bytes is None:
         raise ZephyrModelError(f"{brd.name}: selected board lacks a Zephyr port and its memory facts")
     if matrix is not None:
+        brd.check_matrix_route(matrix.support_target, matrix.unit, matrix.config)
+        brd.check_matrix_image(n_harts)
         matrix.provider()  # Refuse unselected/incomplete support before build output or native tools.
     else:
         load_matrix_signatures(Path(work), None)

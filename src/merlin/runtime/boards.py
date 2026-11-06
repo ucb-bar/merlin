@@ -64,6 +64,11 @@ class Board:
     #: matrix unit (a DMA-style vector core beside matrix-equipped ones); a matrix image fanned out onto
     #: it takes an illegal instruction in the tile loop. None = every hart a vector image may use.
     matrix_hart_ids: tuple[int, ...] | None = None
+    #: Exact matrix route decoded by this elaboration. A matrix image must declare all three
+    #: fields; an absent route means that no matrix instruction set has been certified for it.
+    matrix_support_target: str | None = None
+    matrix_unit: str | None = None
+    matrix_config: str | None = None
     vlen: int | None = None  # hardware vector length in bits; None = unknown, assume the V minimum
     ram_label: str | None = None  # required for Zephyr; DT memory label to override
     fpu_sharing: bool | None = None
@@ -166,6 +171,16 @@ class Board:
                 f"{self.name}: a matrix image over {n_harts} hart(s) would run on hart(s) {missing}, which "
                 f"carry no matrix unit (matrix harts: {list(self.matrix_harts)}); the tile loop would trap "
                 f"there. Build {len(self.matrix_harts)} hart(s) or fewer."
+            )
+
+    def check_matrix_route(self, support_target: str, unit: str, config: str) -> None:
+        """Require the image's instruction set and elaboration to match this board exactly."""
+        actual = (self.matrix_support_target, self.matrix_unit, self.matrix_config)
+        requested = (support_target, unit, config)
+        if actual != requested:
+            raise BoardRegistryError(
+                f"{self.name}: matrix route {requested!r} does not match this board's "
+                f"decoded route {actual!r}; select a board for the requested unit and config"
             )
 
     @property
@@ -379,6 +394,10 @@ def _load_catalog(p: Path) -> dict[str, Board]:
                 raise BoardRegistryError(
                     f"{where}: matrix_hart_ids must be distinct vector-capable harts {list(vec)}; got {list(ids)}"
                 )
+        route_fields = ("matrix_support_target", "matrix_unit", "matrix_config")
+        declared = [key for key in route_fields if kwargs.get(key)]
+        if declared and len(declared) != len(route_fields):
+            raise BoardRegistryError(f"{where}: matrix route must declare all of {route_fields}")
         if kwargs.get("host_dts_sha256") is not None and (
             len(kwargs["host_dts_sha256"]) != 64
             or any(letter not in "0123456789abcdef" for letter in kwargs["host_dts_sha256"])
