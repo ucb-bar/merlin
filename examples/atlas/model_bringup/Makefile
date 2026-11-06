@@ -21,7 +21,7 @@ view:
 
 # Both targets fail on skipped required checks and retain separate receipts.
 test: view
-	PYTHONDONTWRITEBYTECODE=1 "$(PYTHON)" run_tests.py tests --mode "$(MODE)" --view "$(VIEW)" --atlas "$(ATLAS_ROOT)" --merlin "$(MERLIN_ROOT)" --kernels "$(KERNELS_ROOT)" $(if $(MODEL_ROOT),--model-root "$(MODEL_ROOT)") --out "$(RESULTS_ROOT)/tests.json"
+	PYTHONDONTWRITEBYTECODE=1 "$(PYTHON)" run_tests.py tests $(if $(TINY_CODEC_MODEL_ROOT),--codec-model-root "$(TINY_CODEC_MODEL_ROOT)") --mode "$(MODE)" --view "$(VIEW)" --atlas "$(ATLAS_ROOT)" --merlin "$(MERLIN_ROOT)" --kernels "$(KERNELS_ROOT)" $(if $(MODEL_ROOT),--model-root "$(MODEL_ROOT)") --out "$(RESULTS_ROOT)/tests.json"
 
 faithfulness: view
 	PYTHONDONTWRITEBYTECODE=1 "$(PYTHON)" run_tests.py faithfulness --mode "$(MODE)" --view "$(VIEW)" --atlas "$(ATLAS_ROOT)" --merlin "$(MERLIN_ROOT)" --kernels "$(KERNELS_ROOT)" $(if $(MODEL_ROOT),--model-root "$(MODEL_ROOT)") --out "$(RESULTS_ROOT)/faithfulness.json"

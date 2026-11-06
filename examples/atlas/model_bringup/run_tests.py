@@ -121,11 +121,12 @@ def main():
     for key in ('view', 'atlas', 'merlin', 'kernels', 'out'):
         parser.add_argument('--' + key, type=Path, required=True)
     parser.add_argument('--model-root', type=Path)
+    parser.add_argument('--codec-model-root', type=Path, help='separate pinned model for test_tiny_full_export')
     parser.add_argument('--mode', choices=('baseline', 'relocated'), default='relocated')
     parser.add_argument('--_test', help=argparse.SUPPRESS)
     parser.add_argument('--timeout', type=float, default=1800, help='maximum seconds per test module (socket regression uses 180)')
     args = parser.parse_args()
-    for key in ('view', 'atlas', 'merlin', 'kernels', 'out', 'model_root'):
+    for key in ('view', 'atlas', 'merlin', 'kernels', 'out', 'model_root', 'codec_model_root'):
         if getattr(args, key) is not None:
             setattr(args, key, getattr(args, key).absolute())
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -146,8 +147,9 @@ def main():
         for key in ('view', 'atlas', 'merlin', 'kernels'):
             cmd.extend(['--' + key, str(getattr(args, key))])
         cmd.extend(['--out', str(output), '--mode', args.mode])
-        if args.model_root:
-            cmd.extend(['--model-root', str(args.model_root)])
+        model = args.codec_model_root if name == 'test/test_tiny_full_export.py' and args.codec_model_root else args.model_root
+        if model:
+            cmd.extend(['--model-root', str(model)])
         start = time.monotonic()
         try:
             limit = min(args.timeout, 180) if name == 'test/test_host_iss_gdb_buffered.py' else args.timeout
