@@ -60,6 +60,16 @@ Hardware profiling and a same-routing FireSim timing comparison are pending. In 
 Spike image alone, 5,172 per-op rows cover 99.66% of compute cycles; OPU call intervals account
 for 17,063,688 cycles (1.06% of the profiled total) and `linalg.generic` for 66.76% of
 attributed cycles. These are simulator diagnostics, not hardware occupancy.
+`python examples/lib/opu_profile_utilization.py
+out/artifacts/probes/firesim_kodiak_opu/spectformer_profiled_h1` verifies the exact ELF,
+full-output identity, every profile row, and routed-MAC sidecar before reporting the two-factor
+breakdown. On Spike, its OPU call windows perform 1,853,155,328 valid MACs in 17,063,688
+cycles: **10.6057% of peak within those call windows** and 0.112324% across the whole
+profiled inference. The call windows include packing, transfers, stalls, and kernel work; the
+10.6057% is therefore effective throughput during calls, not array issue duty. For a FireSim
+UART, pass `--console <uartlog> --hw-summary <HW_CFG_SUMMARY>` from the same job directory;
+the tool requires the pinned bitstream artifact and matching output before producing a hardware
+report.
 
 For correctness, the exact shipped OPU Spike ELFs were stopped after computing their whole-output
 hashes and their complete output buffers were extracted before the UART prefix dump. Each extracted
