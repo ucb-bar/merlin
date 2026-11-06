@@ -6,13 +6,16 @@ random initialization. The default scope is 32-token prefill plus two decodes.
 """
 
 import os
+import sys
 from pathlib import Path
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-MODEL_ID = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
-REVISION = "ad9f0ae0864d7fbcd1cd905e3c6c5b069cc8b562"
+# The library exporter loads this adapter by file path, without adding its
+# directory to sys.path. The random fixture also reuses QwenSession this way.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from checkpoint_identity import MODEL_ID, REVISION, authenticate
 PROMPT = (
     "Explain step by step how a compiler can improve the performance of a neural "
     "network accelerator by reusing matrix tiles, reducing memory transfers, "
@@ -46,8 +49,7 @@ class QwenSession(torch.nn.Module):
 def get_model_and_inputs():
     root = Path(__file__).resolve().parents[5]
     checkpoint = Path(os.environ.get("QWEN_CHECKPOINT", root / "out/qwen-checkpoint"))
-    if not (checkpoint / "model.safetensors").is_file():
-        raise RuntimeError(f"Pinned pretrained checkpoint is missing: {checkpoint}")
+    authenticate(checkpoint)
     model, loading = AutoModelForCausalLM.from_pretrained(
         checkpoint,
         local_files_only=True,

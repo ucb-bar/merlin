@@ -15,6 +15,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from source_roots import MERLIN_ROOT as ROOT, bootstrap_compiler, observed_revision
+from checkpoint_identity import authenticate
 HERE = Path(__file__).resolve().parent
 KERNELS = "ce465827a977ba8451b585f71910726e7f12b885"
 HISTORICAL_KERNELS = "80c5f27d4bcded9c1ca7618a17ffcdbae2be7a39"
@@ -144,6 +145,7 @@ def main():
     if args.setup:
         setup(args)
         return
+    authenticate(args.checkpoint)
     compiler_root = bootstrap_compiler(args.atlas_mlir_root)
     from atlas_mlir.toolchain import bin_dir
     args.atlas_bin = (args.atlas_bin or bin_dir()).resolve()

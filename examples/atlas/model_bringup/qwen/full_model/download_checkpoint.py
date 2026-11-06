@@ -1,36 +1,15 @@
-"""Download and authenticate the exact checkpoint used by the model bringup."""
+"""Download observations; reject use until all snapshot files have trusted pins."""
 
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
 
-from loader import MODEL_ID, REVISION
+from checkpoint_identity import (
+    FILES, MODEL_ID, REVISION, TRUSTED_SHA256, authenticate, identify,
+)
 
-WEIGHTS_SHA256 = "58858233513d76b8703e72eed6ce16807b523328188e13329257fb9594462945"
-
-
-def identify(checkpoint):
-    records = {}
-    for name in (
-        "config.json",
-        "generation_config.json",
-        "model.safetensors",
-        "tokenizer.json",
-        "tokenizer_config.json",
-    ):
-        path = checkpoint / name
-        digest = hashlib.sha256()
-        with path.open("rb") as stream:
-            for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
-                digest.update(block)
-        records[name] = dict(sha256=digest.hexdigest(), bytes=path.stat().st_size)
-    if records["model.safetensors"]["sha256"] != WEIGHTS_SHA256:
-        raise RuntimeError(
-            "Checkpoint weights differ from the pinned pretrained snapshot"
-        )
-    return dict(model=MODEL_ID, revision=REVISION, files=records)
+WEIGHTS_SHA256 = TRUSTED_SHA256["model.safetensors"]
 
 
 def main():
@@ -44,19 +23,14 @@ def main():
         MODEL_ID,
         revision=REVISION,
         local_dir=args.out,
-        allow_patterns=[
-            "config.json",
-            "generation_config.json",
-            "model.safetensors",
-            "tokenizer.json",
-            "tokenizer_config.json",
-        ],
+        allow_patterns=list(FILES),
         max_workers=3,
     )
     identity = identify(args.out)
     (args.out / "checkpoint-identity.json").write_text(
         json.dumps(identity, indent=2) + "\n"
     )
+    authenticate(args.out)
     print(f"Verified pretrained checkpoint: {MODEL_ID}@{REVISION}", flush=True)
 
 

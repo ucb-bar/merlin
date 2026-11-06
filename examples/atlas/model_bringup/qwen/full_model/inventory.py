@@ -5,10 +5,11 @@ import importlib.util
 import json
 from pathlib import Path
 
-from download_checkpoint import identify
+from checkpoint_identity import authenticate
 
 
 def annotate(library, export, checkpoint, prefill, decode_steps):
+    checkpoint_identity = authenticate(checkpoint)
     spec = importlib.util.spec_from_file_location(
         "atlas_export_inventory", library / "coverage/export_ops.py"
     )
@@ -40,7 +41,7 @@ def annotate(library, export, checkpoint, prefill, decode_steps):
         calls=ordered,
         attention=exporter.attention(records),
     )
-    document["sources"]["checkpoint"] = identify(checkpoint)
+    document["sources"]["checkpoint"] = checkpoint_identity
     document["session"] = dict(
         prefill=prefill,
         decode_steps=decode_steps,
