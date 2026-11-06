@@ -266,6 +266,13 @@ def main(argv=None) -> int:
     ap.add_argument("--board", required=True)
     ap.add_argument("--sdk-dir", default=None)
     ap.add_argument("--require", default=None, choices=STAGES, help="exit non-zero unless this stage is runnable")
+    ap.add_argument(
+        "--require-pin",
+        action="append",
+        default=[],
+        metavar="PIN",
+        help="exit non-zero unless this source pin is present and allowed (repeatable)",
+    )
     a = ap.parse_args(argv)
 
     rows, needs_sdk, sdk_ok = _rows(a.board, a.sdk_dir)
@@ -317,6 +324,16 @@ def main(argv=None) -> int:
             sys.stdout.flush()  # or the STOP line lands above the report explaining it
             print(
                 f"\nSTOP: this example's `{a.require}` stage cannot run here. The stages above it still can.",
+                file=sys.stderr,
+            )
+            return 1
+    if a.require_pin:
+        states = {name: state for state, name, _ in pins}
+        failed = [name for name in a.require_pin if states.get(name) not in ("ok", "warn")]
+        if failed:
+            sys.stdout.flush()
+            print(
+                "\nSTOP: required source pin(s) missing or refusing builds: " + ", ".join(failed),
                 file=sys.stderr,
             )
             return 1
