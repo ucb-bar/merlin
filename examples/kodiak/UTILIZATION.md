@@ -97,6 +97,13 @@ exact valid MAC count divided by issued slots. Verify counter annotations and a 
 metasim before a separate U250 bitstream build; the currently pinned bitstream has no such
 counter and cannot yield these values retroactively.
 
+With those counters, report the factors separately over the same inference:
+`valid MACs / (1,024 × inference cycles) = (OPU-window cycles / inference cycles)
+× (issued slots / (1,024 × OPU-window cycles)) × (valid MACs / issued slots)`.
+They distinguish time spent outside OPU calls, array issue duty during those calls, and useful
+work per issued slot. The product must reconcile to the existing end-to-end effective peak;
+the current bitstream measures only that product.
+
 The spectformer image passed its W8A8 numerical gate; its complete output hash matched the exact
 Spike-gated image. Its hash does not bit-match the older W8A8 golden, whose libm policy differs.
 The pinned FireSim bitstream artifact matched the job's tar. The local Saturn source pin still
