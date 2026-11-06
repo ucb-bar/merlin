@@ -3,6 +3,11 @@
 Use Merlin branch `feat/OPU-VME`. The Kodiak and Iris package updates are on their respective
 `handwritten-implementation` branches. Merlin's setup fetches tested package commits, so the
 package branch heads may contain newer documentation than the image-building pins.
+For the **torchAO-source W8A8** SpectFormer and TinyLlama captures, use the
+[portable capture and relocation instructions](TORCHAO_CAPTURE_DELIVERY.md) and the
+[source quantization contract](TORCHAO_W8A8_SOURCE.md). The older archives and
+FireSim figures below describe weight-only source captures followed by Merlin's
+own W8A8 conversion; they remain exact-image performance diagnostics.
 
 ## Compile and check an image
 
