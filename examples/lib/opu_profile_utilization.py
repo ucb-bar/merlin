@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections import Counter
 from pathlib import Path
 
 from merlin.runtime.backends import output_identity, zephyr_model
@@ -87,6 +88,8 @@ def measure(profile_dir: Path, console_path: Path, *, hw_summary: Path | None = 
         raise ValueError("missing positive target METRIC cycles")
 
     table_path = profile_dir / "op_profile_table.json"
+    if _sha(table_path) != gate.get("profile_table_sha256"):
+        raise ValueError("profile table differs from the exact Spike gate receipt")
     table = _json(table_path)
     if not isinstance(table, list) or {row["id"] for row in table} != set(range(len(table))):
         raise ValueError("profile table IDs must be unique and contiguous")
@@ -98,6 +101,8 @@ def measure(profile_dir: Path, console_path: Path, *, hw_summary: Path | None = 
         raise ValueError("profile ticks do not reconcile with the timed inference")
 
     signatures_path = profile_dir / "opu_signatures.json"
+    if _sha(signatures_path) != gate.get("opu_signatures_sha256"):
+        raise ValueError("OPU signatures differ from the exact Spike gate receipt")
     signatures = _json(signatures_path)
     routed = signatures["routed"]
     call_ids = [
@@ -107,6 +112,10 @@ def measure(profile_dir: Path, console_path: Path, *, hw_summary: Path | None = 
     ]
     if len(call_ids) != signatures["count"] or len(routed) != signatures["count"]:
         raise ValueError("profiled OPU calls differ from the exact routing sidecar")
+    profiled_symbols = Counter(str(table[op_id]["callee"]).removeprefix("@") for op_id in call_ids)
+    routed_symbols = Counter(row["symbol"] for row in routed)
+    if profiled_symbols != routed_symbols:
+        raise ValueError("profiled OPU callee multiset differs from the exact routing sidecar")
     valid_macs = sum(row["b"] * row["m"] * row["n"] * row["k"] for row in routed)
     if valid_macs != signatures["macs"]["routed"]:
         raise ValueError("valid MACs differ from exact routing sidecar")
