@@ -7,7 +7,7 @@ MAC. This is a capacity bound, not a measured busy signal.
 
 Three different quantities answer different questions:
 
-| Quantity | Formula | Spectformer result |
+| Quantity | Formula | Original Spectformer image |
 |---|---|---:|
 | Routed MAC share | valid MACs assigned to OPU / all contraction MACs | 98.9501% |
 | Structural tile fill | valid routed MACs / padded OPU tile MAC slots | 75.5733% |
@@ -85,8 +85,8 @@ valid routed MACs give `9,865,003,008 / (1,022,361,106 × 1,024) = 0.00942308`, 
 **0.942308% whole-inference effective peak** (9.64924 valid MAC/target cycle). This is 3.9745%
 fewer OPU target cycles than the verified fill-only device; its matched control improved 0.3144%,
 so the paired speedup grew 3.8116%. Array occupancy remains unmeasured. The trial is not yet
-the default or a released versioned package; its SHA-bound comparison is at
-`/scratch/agustin/merlin/tasks/quantize-fusion-trial/.tmp/quant_fill_hardware_comparison.json`.
+the default or a released versioned package; its SHA-bound comparison is in Merlin managed task
+`quantize-fusion-trial/.tmp/quant_fill_hardware_comparison.json`.
 
 A separate sparse profiled image of that exact prepack lowering passed Spike with the same
 full-output hash, prefix, prepared MLIR and routing sidecar. Its 19 selected OPU rows account
@@ -126,6 +126,16 @@ valid routed MACs (99.6546% of contraction MACs), 73.8223% static tile fill, and
 whole-inference effective peak** (0.609937 valid MAC per target cycle). This is a 13.9722%
 cycle reduction relative to the older accepted OPU Spectformer image, which used a different
 routing policy. Array occupancy remains unmeasured.
+
+The same-routing aligned-prepack Spectformer pair then graded VERIFIED on the same bitstream:
+OPU job 3886 took **2,733,902,458** target compute cycles and plain-RVV control job 3888 took
+**5,840,140,166**, for **2.13619×** paired speedup. Both full 1,000-value output hashes and
+prefixes matched their exact Spike images, and the W8A8 gate passed. Its 90 routed contractions
+perform 1,853,155,328 valid MACs, so whole-inference effective peak is
+`1,853,155,328 / (2,733,902,458 × 1,024) = 0.000661956`, or **0.0661956%**. Static tile fill is
+73.8223%, and array occupancy is still unmeasured. The device takes 10.0179% fewer target
+cycles than same-routing comparator job 3870. Its SHA-bound receipt is
+`out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793965368611649945/firesim/pair_receipt.json`.
 The first full-profile FireSim job 3865 printed the expected full output hash but was canceled after 176 of 5,172 profile
 rows: at that UART rate it could not reach `DONE` before its 7,200-second limit. No hardware
 call-window utilization is inferred from that partial dump. A new image prints only the 90 OPU
@@ -215,8 +225,8 @@ active-row delta of **2,048**, then 651 flat post-event samples; gate-low delta 
 `128 × 2,048 = 262,144` issued MAC slots, exactly the 262,144 valid MACs of the 64³ GEMM.
 The measured **whole-compute row issue duty** is `2,048 / (8 × 791,141) = 0.0323583%`,
 **useful issued-slot efficiency is 100%**, and their product is **0.0323583% useful peak MAC
-utilization**. The SHA-bound metasim receipt at
-`/scratch/agustin/chipyard/tasks/opu-counter-goldengate-pin/.tmp/metasim_matrix_hashonly/utilization_receipt.json`
+utilization**. The SHA-bound metasim receipt in Chipyard managed task
+`opu-counter-goldengate-pin/.tmp/metasim_matrix_hashonly/utilization_receipt.json`
 records exact ELF, simulator, CSV, source, and ROI pins. This validates the counter method in
 metasim. It is not an FPGA array-occupancy measurement; a counter-equipped U250 bitstream and
 model run remain pending.
