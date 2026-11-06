@@ -78,7 +78,13 @@ timing. A current unprofiled comparator built with the same settings has a byte-
 match the profiled image. It takes 1,608,481,484 Spike cycles versus 1,611,163,448 profiled
 cycles, an observed 0.167% difference on Spike. The comparator's
 `spectformer_current_unprofiled_h1/comparison_receipt.json` records both exact ELF digests.
-Hardware profiling and a same-routing FireSim timing comparison are pending. The first full-profile
+The same-routing unprofiled OPU comparator completed as FireSim job 3870 with the expected full
+hash in **3,038,273,721 target compute cycles**. Its SHA-bound receipt reports 1,853,155,328
+valid routed MACs (99.6546% of contraction MACs), 73.8223% static tile fill, and **0.0595642%
+whole-inference effective peak** (0.609937 valid MAC per target cycle). This is a 13.9722%
+cycle reduction relative to the older accepted OPU Spectformer image, which used a different
+routing policy. Array occupancy remains unmeasured. Hardware call-window profiling is pending.
+The first full-profile
 FireSim job 3865 printed the expected full output hash but was canceled after 176 of 5,172 profile
 rows: at that UART rate it could not reach `DONE` before its 7,200-second limit. No hardware
 call-window utilization is inferred from that partial dump. A new image prints only the 90 OPU
@@ -169,6 +175,7 @@ Evidence in this task checkout:
 - `out/artifacts/measurements/firesim_alveo_u250_firesim_kodiak_opu_1core/op_gemm_64x64x64/`
 - `out/artifacts/probes/firesim_kodiak_opu/dynamic_opu_counters/` (exact-ELF Spike debugger reads)
 - `out/artifacts/probes/firesim_kodiak_opu/spectformer_profiled_opu_sparse_h1/spike_gate.json`
+- `out/artifacts/probes/firesim_kodiak_opu/spectformer_current_unprofiled_h1/firesim/comparator_utilization_addendum.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_prepack_profiled_opu_safe_h1/spike_profile_utilization.json`
 
 For a graded immutable FireSim pair, `python examples/lib/opu_utilization.py <run_dir>` recomputes

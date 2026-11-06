@@ -49,6 +49,13 @@ theoretical peak across the inference**; the earlier OPU image measured 0.062638
 aligned-prepack OPU and RVV images have both passed exact Spike gates, including the baseline's
 full 4,096,000-value hash; their FireSim device is queued as job 3871.
 
+A current-routing unprofiled Spectformer OPU comparator completed as FireSim job 3870 in
+**3,038,273,721 target compute cycles** with the same full output hash as its exact Spike image.
+Its 90 routed contractions account for 1,853,155,328 valid MACs, yielding **0.0595642%
+whole-inference effective peak**; the older accepted OPU image used a different routing policy.
+The SHA-bound receipt is in
+`out/artifacts/probes/firesim_kodiak_opu/spectformer_current_unprofiled_h1/firesim/`.
+
 The full TinyLlama model's weights alone are about 1.2 GiB and do not fit this 512 MiB board.
 The two-layer sections above are the hardware targets. The 64-token and 128-token exact OPU
 Spike images also passed complete W8A8 comparisons and all token argmaxes against their host
