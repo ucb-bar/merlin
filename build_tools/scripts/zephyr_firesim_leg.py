@@ -33,6 +33,7 @@ carry none. Either way it fails closed rather than handing back a leg that measu
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 import time
 from pathlib import Path
@@ -196,6 +197,11 @@ def main(argv: list[str] | None = None) -> int:
         "support_target": a.matrix_support_target,
         "matrix_kernel": (b.get("matrix_build") or {}).get("kernel") if routed else None,
         "unit_instruction_counts": counts,
+        "sidecar_sha256": {
+            name: hashlib.sha256((out / name).read_bytes()).hexdigest()
+            for name in ("op_profile_table.json", "opu_signatures.json")
+            if (out / name).is_file()
+        },
     }
     (out / "leg.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     return 0

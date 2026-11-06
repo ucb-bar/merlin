@@ -88,7 +88,9 @@ def measure(profile_dir: Path, console_path: Path, *, hw_summary: Path | None = 
         raise ValueError("missing positive target METRIC cycles")
 
     table_path = profile_dir / "op_profile_table.json"
-    if _sha(table_path) != gate.get("profile_table_sha256"):
+    pinned = leg.get("sidecar_sha256") or {}
+    table_pins = [x for x in (gate.get("profile_table_sha256"), pinned.get("op_profile_table.json")) if x]
+    if not table_pins or any(_sha(table_path) != x for x in table_pins):
         raise ValueError("profile table differs from the exact Spike gate receipt")
     table = _json(table_path)
     if not isinstance(table, list) or {row["id"] for row in table} != set(range(len(table))):
@@ -101,7 +103,8 @@ def measure(profile_dir: Path, console_path: Path, *, hw_summary: Path | None = 
         raise ValueError("profile ticks do not reconcile with the timed inference")
 
     signatures_path = profile_dir / "opu_signatures.json"
-    if _sha(signatures_path) != gate.get("opu_signatures_sha256"):
+    signature_pins = [x for x in (gate.get("opu_signatures_sha256"), pinned.get("opu_signatures.json")) if x]
+    if not signature_pins or any(_sha(signatures_path) != x for x in signature_pins):
         raise ValueError("OPU signatures differ from the exact Spike gate receipt")
     signatures = _json(signatures_path)
     routed = signatures["routed"]
