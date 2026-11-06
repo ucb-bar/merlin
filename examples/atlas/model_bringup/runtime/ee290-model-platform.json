@@ -1,0 +1,17 @@
+{
+  "schema": "atlas.model-platform.v1",
+  "name": "EE290GenericIOSimConfig",
+  "scope": "EE290 VCS software memory contract; no FPGA bitstream or FireSim AGFI",
+  "soc_config_source": "generators/chipyard/src/main/scala/config/EE290Configs.scala::EE290GenericIOSimConfig",
+  "bitstream_identity": null,
+  "firesim_agfi": null,
+  "vmem_base": 536870912,
+  "host_vmem_access_required": false,
+  "dma_arena_base": 4294967296,
+  "completion": "HTIF",
+  "mapping": [
+    {"names": ["atlas-imem"], "base": [131072], "size": [131072], "r": [true], "w": [true], "x": [false], "c": [false]},
+    {"names": ["atlas-csr"], "base": [262144], "size": [28], "r": [true], "w": [true], "x": [false], "c": [false]},
+    {"names": ["system-dram"], "base": [2147483648], "size": [68719476736], "r": [true], "w": [true], "x": [true], "c": [true]}
+  ]
+}

@@ -3,7 +3,8 @@
 
 The configured checkout is used only as a git object database. Files are exported from the declared
 commit, so a dirty checkout or a moving branch cannot change an experiment bundle. This is the Atlas
-counterpart of examples/radiance/phase1/kernel_library/materialize.py and differs from it only in names.
+counterpart of examples/radiance/phase1/kernel_library/materialize.py, with path exclusions for local
+source-access rules. Exporting evidence does not enable selection or admit executable kernels.
 """
 
 from __future__ import annotations
@@ -37,11 +38,25 @@ def _git(repo: Path, *args: str, stdout=None) -> subprocess.CompletedProcess:
     )
 
 
+def _restricted(path: str | Path) -> bool:
+    return any(word in str(path).lower() for word in ("hammer", "vlsi"))
+
+
 def _payload_digest(root: Path) -> tuple[str, int, int]:
+    if _restricted(root):
+        raise ValueError("restricted artifact path")
     digest = hashlib.sha256()
     if root.is_symlink() or not root.is_dir():
         raise ValueError(f"artifact must be a regular directory: {root}")
-    members = sorted(root.rglob("*"))
+    members = []
+    for directory, dirs, files in os.walk(root, followlinks=False):
+        # Filter before descending or inspecting members, including symlink destinations.
+        blocked = [name for name in dirs + files if _restricted(name)]
+        dirs[:] = [name for name in dirs if not _restricted(name)]
+        if blocked:
+            raise ValueError("artifact contains a restricted member")
+        members.extend(Path(directory) / name for name in dirs + files)
+    members.sort()
     for path in members:
         if path.is_symlink() or not (path.is_file() or path.is_dir()):
             raise ValueError(f"unsupported artifact member: {path}")
@@ -60,12 +75,14 @@ def _safe_extract(data: bytes, dest: Path) -> None:
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:") as archive:
         for member in archive.getmembers():
             name = PurePosixPath(member.name)
-            if name.is_absolute() or ".." in name.parts or member.issym() or member.islnk():
+            if _restricted(name) or name.is_absolute() or ".." in name.parts or member.issym() or member.islnk():
                 raise ValueError(f"unsafe archive member: {member.name!r}")
         archive.extractall(dest, filter="data")
 
 
 def materialize(checkout: Path, output: Path) -> dict:
+    if any(_restricted(path) for path in (checkout, output, SELECTION)):
+        raise ValueError("restricted materialization path")
     selection = yaml.safe_load(SELECTION.read_text(encoding="utf-8")) or {}
     commit = str(selection["source_commit"])
     paths = [
@@ -73,9 +90,12 @@ def materialize(checkout: Path, output: Path) -> dict:
         *selection.get("qualified_families", ()),
         *(row["path"] for row in selection.get("experimental_families", ())),
     ]
+    if not paths or any(_restricted(path) for path in paths):
+        raise ValueError("selection needs unrestricted export paths")
     _git(checkout, "cat-file", "-e", f"{commit}^{{commit}}")
     archive = subprocess.run(
-        ["git", "-C", str(checkout), "archive", "--format=tar", commit, "--", *paths],
+        ["git", "-C", str(checkout), "archive", "--format=tar", commit, "--", *paths,
+         ":(exclude,icase)*hammer*", ":(exclude,icase)*vlsi*"],
         check=True,
         capture_output=True,
     ).stdout

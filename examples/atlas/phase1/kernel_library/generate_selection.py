@@ -10,11 +10,14 @@ cannot change the output:
   op instance the qualified builds place on a family. The generator places them with the library's own
   ``build_table.place`` and checks placed Linear K/N against the rules below.
 
-The manifests' ``select`` shapes are prose, so the semantic rule for each family (``FAMILY_RULES``)
-is written here by hand in the field names of examples/radiance/phase1/kernel_library/selection.yaml.
-The generator refuses a family without a rule, a rule without a family, a dtype the manifest does not
-list, a vector transcendental the family emits without declaring it, and recorded projection variant
-M/K/N or placed Linear K/N that the rule would refuse. Other placed shapes are not checked.
+The manifests state shapes in prose. ``manifest_shapes`` interprets the reviewed forms and refuses
+unrecognized prose instead of widening the domain. Semantic aliases and hardware requirements remain
+reviewed metadata in ``FAMILY_RULES``. This catalog covers producer-fused stages, dimension-64 v2
+attention, the documented pool stem, and the manifest RMSNorm width domain. Opt-in standalone stages
+and wide/vision-fast attention are outside this catalog. A rule is authoring evidence, not executable
+admission: numeric policy, fusion composition, layouts, masks, and arena/resource bounds still need
+independent checks. No kernel generator is imported or executed. The library coverage placer only
+cross-checks recorded projection variants and placed Linear K/N; it does not prove model coverage.
 
     python3 examples/atlas/phase1/kernel_library/generate_selection.py --checkout /path/to/atlas-kernels
     python3 examples/atlas/phase1/kernel_library/generate_selection.py --checkout ... --check
@@ -30,16 +33,20 @@ import re
 import subprocess
 import sys
 import tempfile
+from copy import deepcopy
+from itertools import product
 from pathlib import Path
 
 import yaml
 
+from merlin.targetgen.kernel_family_selection import shape_constraint_reasons
+
 HERE = Path(__file__).resolve()
 SELECTION = HERE.parent / "selection.yaml"
 
-# atlas-kernels feat/kernel-library head. Nicolas updates this pin, and reruns this generator, after
-# pushing atlas-kernels to GitHub; source_pr then becomes the pull-request URL.
-SOURCE_COMMIT = "f9be64642907814caad500afd1e6fd6ad4bfcd48"
+# Current Qwen full-model bringup pin, reachable from the public origin/feat/kernel-library.
+# source-map.json retains the older relocation snapshot, not the current bringup requirement.
+SOURCE_COMMIT = "ce465827a977ba8451b585f71910726e7f12b885"
 SOURCE_PR = "https://github.com/ucb-bar/atlas-kernels"
 PACKAGE = "out/artifacts/targets/atlas/kernel_library_v1"
 # Library-wide files a family needs to import and build on its own: the make targets, the import hook,
@@ -48,8 +55,6 @@ PACKAGE = "out/artifacts/targets/atlas/kernel_library_v1"
 SHARED_PATHS = ("Makefile", "atlas_kernels_path.py", "lib", "kernels/common.mk")
 
 MXU = ("systolic_array", "fp8_mxu", "bf16_accumulate")
-MULT32 = {"multiple_of": 32}
-PROJECTION_SHAPE = {"M": MULT32, "K": MULT32, "N": MULT32}
 
 # launch: "standalone" families are launches of their own; "fused" families are stages inside another
 # family's launch, selected through a compound semantic op (as Radiance's rope_qkv_fused is selected by
@@ -59,7 +64,6 @@ FAMILY_RULES = {
         "launch": "standalone",
         "semantic_ops": ["matmul"],
         "dtypes": ["fp8_e4m3"],
-        "shape": PROJECTION_SHAPE,
         "requires_hardware": list(MXU),
         "priority": 40,
         "note": "the library picks the traffic-reuse recipe for an exact MxKxN (kernel.yaml variants); "
@@ -80,7 +84,6 @@ FAMILY_RULES = {
             "matmul_scale",
         ],
         "dtypes": ["fp8_e4m3"],
-        "shape": PROJECTION_SHAPE,
         "requires_hardware": [*MXU, "vector_unit", "exp", "reciprocal", "tanh"],
         "priority": 60,
         "note": "its plain add truncates; matmul_add selects rne_add (priority 70) for the exact BF16 sum",
@@ -91,7 +94,6 @@ FAMILY_RULES = {
         "stage_dtype": "bf16",
         "semantic_ops": ["matmul_add"],
         "dtypes": ["fp8_e4m3"],
-        "shape": PROJECTION_SHAPE,
         "requires_hardware": [*MXU, "vector_unit", "tanh"],
         "priority": 70,
         "note": None,
@@ -102,46 +104,32 @@ FAMILY_RULES = {
         "stage_dtype": "bf16",
         "semantic_ops": ["matmul_rope"],
         "dtypes": ["fp8_e4m3"],
-        "shape": {
-            "M": {"min": 32, "max": 128, "multiple_of": 32},
-            "K": MULT32,
-            "N": {"multiple_of": 64},
-            "head_dim": {"eq": 64},
-        },
         "requires_hardware": [*MXU, "vector_unit", "tanh"],
         "priority": 100,
-        "note": "qualified at M 32 and 128 only; the schema has no set constraint, so M 64 and 96 also match",
+        "note": "producer post-pass only; standalone BF16 RoPE is outside this catalog",
     },
     "rmsnorm": {
         "launch": "standalone",
         "semantic_ops": ["rmsnorm"],
         "dtypes": ["bf16"],
-        "shape": {"rows": {"min": 32, "max": 128, "multiple_of": 32}, "cols": {"eq": 2048}},
         "requires_hardware": ["vector_unit", "sqrt", "reciprocal"],
         "priority": 80,
-        "note": "qualified at rows 32 and 128 only; the schema has no set constraint, so rows 64 and 96 also match",
+        "note": "physical rows 32 or 128; logical width equals physical width; "
+        "epsilon needs separate numeric admission",
     },
     "attention": {
         "launch": "standalone",
         "semantic_ops": ["attention_gqa", "attention_gqa_causal", "attention_gqa_masked"],
         "dtypes": ["bf16"],
-        "shape": {
-            "Sq": {"min": 1, "max": 4096},
-            "Sk": {"min": 1, "max": 2048},
-            "D": {"eq": 64},
-            "QH": {"min": 1},
-            "KVH": {"min": 1},
-        },
         "requires_hardware": [*MXU, "vector_unit", "exp", "reciprocal"],
         "priority": 100,
-        "note": "Sq and Sk are logical (the kernel pads to 32-row tiles); QH must be a multiple of KVH, "
-        "which the schema cannot express",
+        "note": "dimension-64 v2, unpacked heads; ceil(Sq/32)*ceil(Sk/32) <= 2048; "
+        "masks need separate admission",
     },
     "smol_fusion": {
         "launch": "standalone",
         "semantic_ops": ["matmul_bias_gelu_tanh"],
         "dtypes": ["fp8_e4m3"],
-        "shape": {"M": {"eq": 128}, "K": {"eq": 768}, "N": {"eq": 3072}},
         "requires_hardware": [*MXU, "vector_unit", "tanh"],
         "priority": 90,
         "note": None,
@@ -150,17 +138,9 @@ FAMILY_RULES = {
         "launch": "standalone",
         "semantic_ops": ["max_pool2d"],
         "dtypes": ["fp8_e4m3"],
-        "shape": {
-            "kernel": {"eq": 3},
-            "stride": {"eq": 2},
-            "padding": {"eq": 1},
-            "channels": MULT32,
-            "height": {"min": 1},
-            "width": {"min": 1},
-        },
-        "requires_hardware": ["vector_unit"],
+        "requires_hardware": [*MXU, "vector_unit"],
         "priority": 80,
-        "note": "exact only for nonnegative inputs, which the schema cannot express",
+        "note": "manifest-qualified stem geometry only; exactness also requires nonnegative normal FP8 inputs",
     },
     "resnet_patch_gather": {
         "launch": "fused",
@@ -168,15 +148,9 @@ FAMILY_RULES = {
         "stage_dtype": "fp8_e4m3",
         "semantic_ops": ["conv2d_im2col_matmul"],
         "dtypes": ["fp8_e4m3"],
-        "shape": {
-            "channels": MULT32,
-            "kernel": {"min": 1, "max": 3},
-            "stride": {"min": 1, "max": 2},
-            "out_channels": MULT32,
-        },
         "requires_hardware": list(MXU),
         "priority": 80,
-        "note": "channels must be a power of two and the kernel odd, which the schema cannot express",
+        "note": "1x1/3x3 with same padding; physical M/K, blocked recipe, and arena bounds need separate admission",
     },
 }
 
@@ -208,13 +182,12 @@ SEMANTIC_OPS = frozenset(
 )
 
 HEADER = """\
-# Generated by generate_selection.py from atlas-kernels {short} (kernels/*/kernel.yaml and the
-# coverage/ placed-instance counts and Linear K/N checks); do not edit by hand. Same schema and field
-# names as examples/radiance/phase1/kernel_library/selection.yaml.
+# Generated by generate_selection.py from atlas-kernels {short}; do not edit by hand.
+# Shape rules derive from pinned kernels/*/kernel.yaml, with coverage placement cross-checks.
+# Radiance v1 field names, plus exact sets, powers of two, divisibility, and tiled-product bounds.
 #
-# The pin is the local feat/kernel-library head. Nicolas updates SOURCE_COMMIT in the generator and
-# reruns it after pushing atlas-kernels to GitHub; source_pr then names the pull request. There is no
-# atlas_kernels entry in merlin/contract/hardware_pins.yaml yet (see the phase 1 README).
+# This is the current Qwen full-model bringup pin, reachable from public origin/feat/kernel-library.
+# source-map.json records the older relocation snapshot. No information treatment is enabled.
 """
 
 COMPILER_COMMENT = """\
@@ -257,7 +230,10 @@ def _tree(checkout: Path, commit: str, path: str, *, directories_only: bool = Fa
         capture_output=True,
         text=True,
     ).stdout
-    return [line for line in out.splitlines() if line]
+    return [
+        line for line in out.splitlines()
+        if line and not any(word in line.lower() for word in ("hammer", "vlsi"))
+    ]
 
 
 def _load_build_table(source: str):
@@ -271,21 +247,8 @@ def _load_build_table(source: str):
 
 
 def _refusals(shape: dict, constraints: dict) -> list[str]:
-    """Same constraint semantics as the semantic_kernel_family_registry_v1 selector."""
-    reasons = []
-    for name, constraint in constraints.items():
-        if name not in shape:
-            continue
-        value = shape[name]
-        if "eq" in constraint and value != constraint["eq"]:
-            reasons.append(f"{name}={value} != {constraint['eq']}")
-        if "min" in constraint and value < constraint["min"]:
-            reasons.append(f"{name}={value} < {constraint['min']}")
-        if "max" in constraint and value > constraint["max"]:
-            reasons.append(f"{name}={value} > {constraint['max']}")
-        if "multiple_of" in constraint and value % constraint["multiple_of"]:
-            reasons.append(f"{name}={value} not a multiple of {constraint['multiple_of']}")
-    return reasons
+    """Check the dimensions provided by a partial coverage record against the shared matcher."""
+    return shape_constraint_reasons(shape, {name: rule for name, rule in constraints.items() if name in shape})
 
 
 def _pad32(value: int) -> int:
@@ -328,6 +291,81 @@ def _check_rule(family: str, rule: dict) -> None:
             raise SelectionSourceError(f"{family}: pool geometry cannot match the implemented kernel")
 
 
+def manifest_shapes(manifests: dict) -> dict:
+    """Interpret only reviewed manifest forms; unknown source prose must be reviewed explicitly."""
+    def require(family, key, expected):
+        value = manifests[family]["constraints"][key]
+        if value != expected:
+            raise SelectionSourceError(f"{family}: unreviewed manifest constraint {key}: {value!r}")
+        return value
+
+    projection = {}
+    for source, dimension in (("m", "M"), ("k", "K"), ("n", "N")):
+        text = manifests["projection_gemm"]["constraints"][source]
+        match = re.fullmatch(r"multiple of ([1-9][0-9]*)", text)
+        if not match:
+            raise SelectionSourceError(f"projection_gemm: unreviewed {source}: {text!r}")
+        projection[dimension] = {"min": int(match[1]), "multiple_of": int(match[1])}
+
+    norm = manifests["rmsnorm"]["constraints"]
+    rows = re.fullmatch(r"([1-9][0-9]*) \(prefill\) or ([1-9][0-9]*) \(one decode row padded\)", norm["rows"])
+    width = re.fullmatch(
+        r"positive multiples of ([1-9][0-9]*) through ([1-9][0-9]*); "
+        r"pinned resident path for 960 and 2048; streamed standalone path otherwise",
+        norm["width"],
+    )
+    if not rows or not width:
+        raise SelectionSourceError("rmsnorm: unreviewed row/width domain")
+    norm_shape = {"rows": {"one_of": sorted(map(int, rows.groups()))},
+                  "cols": {"min": int(width[1]), "max": int(width[2]), "multiple_of": int(width[1])}}
+
+    rope = manifests["rope"]
+    require("rope", "rows", "producer M 32 or 128; standalone positive physical M multiple of 32")
+    producer = [tuple(map(int, shape.split("x"))) for model in rope["models"] for shape in model["shapes"]]
+    # The documented producer shapes form a complete Cartesian domain; never widen a correlated set.
+    axes = [sorted({shape[index] for shape in producer}) for index in range(3)]
+    if set(product(*axes)) != set(producer):
+        raise SelectionSourceError("rope: producer shapes need correlated alternatives")
+    rope_shape = {dim: {"one_of": values} for dim, values in zip(("M", "K", "N"), axes)}
+    rope_shape["head_dim"] = {"eq": rope["constraints"]["head_dimension"]}
+
+    require("attention", "gqa", "query_heads a multiple of kv_heads")
+    require(
+        "attention", "tiles",
+        "dimension 64: at most 64 key tiles and 128 query tiles; wide: key_tiles*head_dim*32 <= 262144 bytes, "
+        "at most 128 query tiles, query_tiles*key_tiles <= 2048",
+    )
+    # stage_v2's 16 KiB descriptor area holds 2048 eight-byte descriptors, including D64.
+    attention = {
+        "Sq": {"min": 1, "max": 4096, "tile_product_max": {"dimension": "Sk", "tile": 32, "max": 2048}},
+        "Sk": {"min": 1, "max": 2048}, "D": {"eq": 64},
+        "QH": {"min": 1, "multiple_of_dimension": "KVH"}, "KVH": {"min": 1},
+    }
+
+    fusion_shape = manifests["smol_fusion"]["select"][0]["shape"].split()[0]
+    fusion = {dim: {"eq": int(value)} for dim, value in zip(("M", "K", "N"), fusion_shape.split("x"), strict=True)}
+    # The source validator has correlated register/VMEM geometry. Keep only the qualified stem case.
+    pool_shapes = [shape for model in manifests["resnet_pool"]["models"] for shape in model["shapes"]]
+    if len(pool_shapes) != 1:
+        raise SelectionSourceError("resnet_pool: review new qualified geometries")
+    channels, height, width = map(int, pool_shapes[0].split(" -> ")[0].split("x"))
+    pool = {"kernel": {"eq": 3}, "stride": {"eq": 2}, "padding": {"eq": 1},
+            "channels": {"eq": channels}, "height": {"eq": height}, "width": {"eq": width}}
+
+    require("resnet_patch_gather", "channels", "power of two, multiple of 32")
+    require("resnet_patch_gather", "kernel", "odd with same padding")
+    require("resnet_patch_gather", "stride", "1 or 2")
+    select = manifests["resnet_patch_gather"]["select"][0]["shape"]
+    if select != "kernel 1 or 3, stride 1 or 2":
+        raise SelectionSourceError("resnet_patch_gather: unreviewed select geometry")
+    patch = {"channels": {"min": 32, "multiple_of": 32, "power_of_two": True},
+             "kernel": {"one_of": [1, 3]}, "stride": {"one_of": [1, 2]},
+             "out_channels": {"min": 32, "multiple_of": 32}}
+    return {"projection_gemm": projection, "epilogue": deepcopy(projection), "rne_add": deepcopy(projection),
+            "rmsnorm": norm_shape, "rope": rope_shape, "attention": attention,
+            "smol_fusion": fusion, "resnet_pool": pool, "resnet_patch_gather": patch}
+
+
 def collect(checkout: Path, commit: str) -> dict:
     """Read and cross-check the pinned sources; return the data the YAML is rendered from."""
     raw_mlir = os.environ.get("MERLIN_ATLAS_MLIR")
@@ -348,8 +386,12 @@ def collect(checkout: Path, commit: str) -> dict:
         if manifest.get("schema") != "atlas.kernel.v1" or manifest.get("family") != family:
             raise SelectionSourceError(f"kernels/{family}/kernel.yaml is not an atlas.kernel.v1 manifest of {family}")
         manifests[family] = manifest
+    shapes = manifest_shapes(manifests)
+    rules = deepcopy(FAMILY_RULES)
+    for family, rule in rules.items():
+        rule.setdefault("shape", shapes[family])
     for family, manifest in manifests.items():
-        rule = FAMILY_RULES[family]
+        rule = rules[family]
         # A fused stage is requested with the dtype of the launch it joins, so its dtypes are checked
         # against that family's manifest and its own manifest must list the dtype the stage consumes.
         owner = manifests[rule.get("fused_into", family)]
@@ -374,13 +416,17 @@ def collect(checkout: Path, commit: str) -> dict:
             raise SelectionSourceError(f"{family}: a fused stage needs fused_into and compound semantic ops")
         _check_rule(family, rule)
 
-    projection = FAMILY_RULES["projection_gemm"]["shape"]
+    projection = rules["projection_gemm"]["shape"]
     for variant in manifests["projection_gemm"].get("variants", ()):
         for use in variant.get("uses", ()):
             m, k, n = use["mkn"]
             reasons = _refusals({"M": m, "K": k, "N": n}, projection)
             if reasons:
                 raise SelectionSourceError(f"projection_gemm variant {variant['name']} {m}x{k}x{n}: {reasons}")
+
+    for family, rule in rules.items():
+        if rule["shape"] != shapes[family]:
+            raise SelectionSourceError(f"{family}: shape differs from the pinned manifest domain")
 
     table = _load_build_table(_show(checkout, commit, "coverage/build_table.py"))
     instances = {}
@@ -400,13 +446,14 @@ def collect(checkout: Path, commit: str) -> dict:
                 shape = {"K": _pad32(k), "N": _pad32(n)}
                 if family == "smol_fusion":
                     shape = {"K": k, "N": n}
-                reasons = _refusals(shape, FAMILY_RULES[family]["shape"])
+                reasons = _refusals(shape, rules[family]["shape"])
                 if reasons:
                     raise SelectionSourceError(f"{model} {row['module']} on {family}: {reasons}")
     return {
         "commit": commit,
         "order": order,
         "manifests": manifests,
+        "rules": rules,
         "instances": instances,
         "atlas_mlir_pin": pin_check,
     }
@@ -417,7 +464,7 @@ def _flow(value) -> str:
         return "{" + ", ".join(f"{key}: {_flow(item)}" for key, item in value.items()) + "}"
     if isinstance(value, (list, tuple)):
         return "[" + ", ".join(_flow(item) for item in value) + "]"
-    return str(value)
+    return str(value).lower() if isinstance(value, bool) else str(value)
 
 
 def render(data: dict) -> str:
@@ -437,7 +484,7 @@ def render(data: dict) -> str:
         "qualified_families:",
         *(f"  - kernels/{family}" for family in data["order"]),
         "",
-        "# Every family runs on npu_model 47b8599 (numerics rtl) in a qualified Atlas build; none is experimental.",
+        "# Candidate authoring families, not a claim of numerical qualification at this revision.",
         "experimental_families: []",
         "",
         COMPILER_COMMENT.rstrip("\n"),
@@ -446,7 +493,7 @@ def render(data: dict) -> str:
         "  rules:",
     ]
     for family in data["order"]:
-        rule = FAMILY_RULES[family]
+        rule = data["rules"][family]
         stage = " ".join(str(data["manifests"][family]["stage"]).split())
         launch = f"fused into {rule['fused_into']}" if rule["launch"] == "fused" else "standalone launch"
         lines.append(f"    # {launch}; kernel.yaml stage: {stage}")
@@ -464,7 +511,7 @@ def render(data: dict) -> str:
     text = "\n".join(lines) + "\n"
     parsed = yaml.safe_load(text)
     for rule in parsed["compiler_selection"]["rules"]:
-        expected = FAMILY_RULES[rule["family"].split("/", 1)[1]]
+        expected = data["rules"][rule["family"].split("/", 1)[1]]
         if any(rule[key] != expected[key] for key in ("semantic_ops", "dtypes", "shape", "requires_hardware")):
             raise AssertionError(f"rendered rule for {rule['family']} does not round-trip")
     return text

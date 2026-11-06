@@ -1,0 +1,60 @@
+name: atlas-model-bringup
+
+# Authenticated fixtures and both model revisions are provisioned out of band.
+# Manual dispatch keeps this qualification off unprovisioned hosted runners.
+on:
+  workflow_dispatch:
+
+jobs:
+  qualification:
+    runs-on: [self-hosted, atlas-model-bringup]
+    timeout-minutes: 180
+    env:
+      ATLAS_ROOT: ${{ vars.ATLAS_ROOT }}
+      KERNELS_ROOT: ${{ vars.ATLAS_KERNELS_ROOT }}
+      MODEL_ROOT: ${{ vars.ATLAS_MODEL_ROOT }}
+      TINY_CODEC_MODEL_ROOT: ${{ vars.ATLAS_TINY_CODEC_MODEL_ROOT }}
+      PYTHON: ${{ vars.ATLAS_MODEL_PYTHON }}
+      ATLAS_MLIR_BIN: ${{ vars.ATLAS_MLIR_BIN }}
+      MODEL_OUTPUT_ROOT: ${{ vars.ATLAS_MODEL_OUTPUT_ROOT }}
+      VIEW: ${{ vars.ATLAS_MODEL_VIEW }}
+      RESULTS_ROOT: ${{ vars.ATLAS_MODEL_RESULTS_ROOT }}
+      SMOL_REPLAY: ${{ vars.ATLAS_SMOL_REPLAY }}
+      SMOL_KERNEL_ASSETS: ${{ vars.ATLAS_SMOL_KERNEL_ASSETS }}
+      SMOL_BLOCK_BUNDLE: ${{ vars.ATLAS_SMOL_BLOCK_BUNDLE }}
+      SMOL_ATTENTION_ADMISSION_ROOT: ${{ vars.ATLAS_SMOL_ATTENTION_ADMISSION_ROOT }}
+      SMOL_PHASE_BUNDLE: ${{ vars.ATLAS_SMOL_PHASE_BUNDLE }}
+      SMOL_RAW_BASELINE_REPO: ${{ vars.ATLAS_SMOL_RAW_BASELINE_REPO }}
+      TINY_FULL_CAPTURE: ${{ vars.ATLAS_TINY_FULL_CAPTURE }}
+      TINY_FULL_CODEC: ${{ vars.ATLAS_TINY_FULL_CODEC }}
+      TINY_ATTENTION_CAPTURE: ${{ vars.ATLAS_TINY_ATTENTION_CAPTURE }}
+      TINY_ATTENTION_RELOCATE: ${{ vars.ATLAS_TINY_ATTENTION_RELOCATE }}
+      RISCV_CC: ${{ vars.ATLAS_RISCV_CC }}
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: require provisioned inputs
+        shell: bash
+        run: |
+          for name in ATLAS_ROOT KERNELS_ROOT MODEL_ROOT TINY_CODEC_MODEL_ROOT PYTHON ATLAS_MLIR_BIN MODEL_OUTPUT_ROOT VIEW RESULTS_ROOT SMOL_REPLAY SMOL_KERNEL_ASSETS SMOL_BLOCK_BUNDLE SMOL_ATTENTION_ADMISSION_ROOT SMOL_PHASE_BUNDLE SMOL_RAW_BASELINE_REPO TINY_FULL_CAPTURE TINY_FULL_CODEC TINY_ATTENTION_CAPTURE TINY_ATTENTION_RELOCATE RISCV_CC; do
+            test -n "${!name}" || { echo "PENDING: provision $name" >&2; exit 1; }
+          done
+          test ! -e "$VIEW" && test ! -e "$VIEW.inventory.json"
+          mkdir -p "$MODEL_OUTPUT_ROOT" "$RESULTS_ROOT"
+      - name: strict moved suite and required source joins
+        shell: bash
+        run: |
+          export MERLIN_ROOT="$GITHUB_WORKSPACE"
+          export TMPDIR="$MODEL_OUTPUT_ROOT/tmp"
+          mkdir -p "$TMPDIR"
+          nice -n 10 make -C examples/atlas/model_bringup check PYTHON="$PYTHON" \
+            MERLIN_ROOT="$MERLIN_ROOT" ATLAS_ROOT="$ATLAS_ROOT" KERNELS_ROOT="$KERNELS_ROOT" \
+            MODEL_ROOT="$MODEL_ROOT" TINY_CODEC_MODEL_ROOT="$TINY_CODEC_MODEL_ROOT" \
+            VIEW="$VIEW" RESULTS_ROOT="$RESULTS_ROOT"
+      - name: retain qualification receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-model-bringup-receipts
+          path: ${{ env.RESULTS_ROOT }}
+          if-no-files-found: error

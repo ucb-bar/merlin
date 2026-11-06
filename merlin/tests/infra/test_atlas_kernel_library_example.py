@@ -5,6 +5,7 @@ local-checkout tests skip only when MERLIN_ATLAS_KERNELS is absent. An explicitl
 must contain the pinned commit; the tests export from it and regenerate selection.yaml from it.
 """
 
+import ast
 import hashlib
 import importlib.util
 import io
@@ -22,7 +23,7 @@ from merlin.common.paths import repo_root
 
 EXAMPLE = "examples/atlas/phase1/kernel_library"
 RADIANCE = "examples/radiance/phase1/kernel_library"
-PINNED = "f9be64642907814caad500afd1e6fd6ad4bfcd48"
+PINNED = "ce465827a977ba8451b585f71910726e7f12b885"
 
 
 def _load(path, name):
@@ -46,8 +47,8 @@ def load_generator():
 
 
 def load_registry():
-    # The only implementation of semantic_kernel_family_registry_v1, the schema both selections use.
-    return _load("examples/muon/support/backend/muon_kernel_selection.py", "semantic_kernel_family_registry")
+    from merlin.targetgen import kernel_family_selection
+    return kernel_family_selection
 
 
 def _selection():
@@ -57,7 +58,7 @@ def _selection():
 def test_selection_bytes_and_pinned_semantics_preserved():
     module = load_materializer()
     payload = module.SELECTION.read_bytes()
-    assert hashlib.sha256(payload).hexdigest() == "dbb769227ba1a5aaba4ef5091ea5697a0eb52ba1c1357a45aae2b2b565a25990"
+    assert hashlib.sha256(payload).hexdigest() == "c2a0710640d6f993d5ff1a188bfa92b003c332582918fc760ce462d50ce9a5f2"
     selection = yaml.safe_load(payload)
     assert selection["source_commit"] == PINNED
     assert selection["package"] == "out/artifacts/targets/atlas/kernel_library_v1"
@@ -101,7 +102,7 @@ VPU = ["vector_unit", "exp", "reciprocal", "sqrt", "tanh"]
             "kernels/rope",
         ),
         ({"op": "rmsnorm", "dtype": "bf16", "shape": {"rows": 128, "cols": 2048}}, "kernels/rmsnorm"),
-        ({"op": "rmsnorm", "dtype": "bf16", "shape": {"rows": 128, "cols": 960}}, None),
+        ({"op": "rmsnorm", "dtype": "bf16", "shape": {"rows": 128, "cols": 960}}, "kernels/rmsnorm"),
         (
             {
                 "op": "attention_gqa_causal",
@@ -160,7 +161,7 @@ def test_fused_stage_families_are_selected_through_compound_ops():
     assert text.count("# fused into projection_gemm;") == 4
 
 
-def test_materializer_differs_from_radiance_only_in_names():
+def test_materializer_preserves_radiance_cli_and_git_wrapper():
     def body(path):
         text = (repo_root() / path).read_text(encoding="utf-8")
         return text[text.index("from __future__") :]
@@ -175,7 +176,14 @@ def test_materializer_differs_from_radiance_only_in_names():
     ]:
         assert old in renamed
         renamed = renamed.replace(old, new)
-    assert renamed == body(f"{EXAMPLE}/materialize.py")
+    atlas = body(f"{EXAMPLE}/materialize.py")
+    # Export integrity is exercised below. Atlas additionally prunes locally restricted paths.
+    for function in ("_git", "main"):
+        def source(text):
+            module = ast.parse(text)
+            node = next(row for row in module.body if isinstance(row, ast.FunctionDef) and row.name == function)
+            return ast.dump(node, include_attributes=False)
+        assert source(renamed) == source(atlas)
 
 
 def test_cli_preserves_default_output_without_running_materialization(tmp_path, monkeypatch):
@@ -257,7 +265,12 @@ def synthetic_export(tmp_path, monkeypatch):
         member.size = len(b"fixture")
         stream.addfile(member, io.BytesIO(b"fixture"))
     monkeypatch.setattr(module, "_git", lambda *args: None)
-    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(stdout=archive.getvalue()))
+    commands = []
+    def run(args, **kwargs):
+        commands.append(args)
+        return SimpleNamespace(stdout=archive.getvalue())
+    monkeypatch.setattr(module, "_test_archive_commands", commands, raising=False)
+    monkeypatch.setattr(module.subprocess, "run", run)
     output = tmp_path / "export"
     manifest = module.materialize(tmp_path, output)
     return module, output, manifest
@@ -521,3 +534,125 @@ def test_local_checkout_refuses_rules_that_disagree_with_the_library(monkeypatch
     monkeypatch.setattr(generator, "FAMILY_RULES", rules)
     with pytest.raises(generator.SelectionSourceError, match=message):
         generator.collect(checkout, PINNED)
+
+
+@pytest.mark.parametrize("rows", [32, 128])
+@pytest.mark.parametrize("cols", [32, 960, 2048, 4096, 7136])
+def test_norm_manifest_width_domain(rows, cols):
+    report = load_registry().select_kernel_family(
+        {"op": "rmsnorm", "dtype": "bf16", "shape": {"rows": rows, "cols": cols}},
+        {"features": MXU + VPU}, _selection(),
+    )
+    assert report.selected_family == "kernels/rmsnorm"
+
+
+@pytest.mark.parametrize(
+    ("op", "dtype", "shape"),
+    [
+        ("rmsnorm", "bf16", {"rows": 64, "cols": 2048}),
+        ("rmsnorm", "bf16", {"rows": 96, "cols": 2048}),
+        ("rmsnorm", "bf16", {"rows": 32, "cols": 7168}),
+        ("rmsnorm", "bf16", {"rows": 32, "cols": 7135}),
+        ("matmul_rope", "fp8_e4m3", {"M": 64, "K": 2048, "N": 256, "head_dim": 64}),
+        ("matmul_rope", "fp8_e4m3", {"M": 96, "K": 2048, "N": 256, "head_dim": 64}),
+        ("matmul_rope", "fp8_e4m3", {"M": 32, "K": 2048, "N": 512, "head_dim": 64}),
+        ("attention_gqa", "bf16", {"Sq": 128, "Sk": 128, "D": 64, "QH": 15, "KVH": 4}),
+        ("attention_gqa", "bf16", {"Sq": 128, "Sk": 128, "D": 64, "QH": 4, "KVH": 8}),
+        ("attention_gqa", "bf16", {"Sq": 128, "Sk": 128, "D": 64, "QH": 4}),
+        ("attention_gqa", "bf16", {"Sq": 4097, "Sk": 128, "D": 64, "QH": 4, "KVH": 2}),
+        ("attention_gqa", "bf16", {"Sq": 128, "Sk": 2049, "D": 64, "QH": 4, "KVH": 2}),
+        ("attention_gqa", "bf16", {"Sq": 32, "Sk": 64, "D": 128, "QH": 4, "KVH": 2}),
+        ("conv2d_im2col_matmul", "fp8_e4m3", {"channels": 96, "kernel": 3, "stride": 1, "out_channels": 64}),
+        ("conv2d_im2col_matmul", "fp8_e4m3", {"channels": 64, "kernel": 2, "stride": 1, "out_channels": 64}),
+        ("max_pool2d", "fp8_e4m3", {"kernel": 3, "stride": 2, "padding": 1,
+                                    "channels": 96, "height": 112, "width": 112}),
+        ("max_pool2d", "fp8_e4m3", {"kernel": 3, "stride": 2, "padding": 1,
+                                    "channels": 64, "height": 112, "width": 111}),
+    ],
+)
+def test_catalog_refuses_outside_reviewed_shape_domains(op, dtype, shape):
+    report = load_registry().select_kernel_family(
+        {"op": op, "dtype": dtype, "shape": shape}, {"features": MXU + VPU}, _selection(),
+    )
+    assert report.selected_family is None
+
+
+@pytest.mark.parametrize(
+    ("op", "shape", "family"),
+    [
+        ("max_pool2d", {"kernel": 3, "stride": 2, "padding": 1, "channels": 64,
+                        "height": 112, "width": 112}, "resnet_pool"),
+        ("conv2d_im2col_matmul", {"channels": 64, "kernel": 3, "stride": 2,
+                                 "out_channels": 128}, "resnet_patch_gather"),
+    ],
+)
+def test_pool_and_patch_reviewed_shapes(op, shape, family):
+    report = load_registry().select_kernel_family(
+        {"op": op, "dtype": "fp8_e4m3", "shape": shape}, {"features": MXU + VPU}, _selection(),
+    )
+    assert report.selected_family == f"kernels/{family}"
+
+
+def test_local_pin_matches_current_bringup_and_public_tracking_branch():
+    checkout = _local_checkout()
+    runner = repo_root() / "examples/atlas/model_bringup/qwen/full_model/run.py"
+    module = ast.parse(runner.read_text())
+    current = next(ast.literal_eval(row.value) for row in module.body
+                   if isinstance(row, ast.Assign)
+                   and any(isinstance(t, ast.Name) and t.id == "KERNELS" for t in row.targets))
+    assert current == PINNED
+    subprocess.run(["git", "-C", str(checkout), "merge-base", "--is-ancestor",
+                    PINNED, "origin/feat/kernel-library"], check=True)
+
+
+def test_local_manifest_drift_requires_review():
+    generator = load_generator()
+    data = generator.collect(_local_checkout(), PINNED)
+    data["manifests"]["rmsnorm"]["constraints"]["rows"] = "32 through 128"
+    with pytest.raises(generator.SelectionSourceError, match="unreviewed row/width"):
+        generator.manifest_shapes(data["manifests"])
+
+
+def test_archive_applies_local_source_access_exclusions(synthetic_export):
+    module, _, _ = synthetic_export
+    assert module._test_archive_commands[0][-2:] == [
+        ":(exclude,icase)*hammer*", ":(exclude,icase)*vlsi*",
+    ]
+
+
+def test_digest_prunes_before_inspecting_restricted_members(tmp_path, monkeypatch):
+    module = load_materializer()
+    # Mock names only: no restricted file or directory is created or inspected.
+    def walk(*args, **kwargs):
+        dirs = ["restricted-hammer-directory", "safe"]
+        yield str(tmp_path), dirs, []
+        raise AssertionError("digest must reject before traversal resumes")
+    monkeypatch.setattr(module.os, "walk", walk)
+    with pytest.raises(ValueError, match="restricted member"):
+        module._payload_digest(tmp_path)
+
+
+def test_catalog_remains_disabled_authoring_evidence():
+    selection = _selection()
+    assert "authoring evidence" in selection["purpose"]
+    assert tuple(selection["prohibited_uses"]) == load_generator().PROHIBITED_USES
+    descriptor = yaml.safe_load((repo_root() / "examples/atlas/target/descriptor.yaml").read_text())
+    assert not descriptor.get("information_sets")
+
+
+@pytest.mark.parametrize(("sq", "sk", "selected"), [(1024, 2048, True), (1025, 2048, False),
+                                                    (4096, 512, True), (4096, 513, False)])
+def test_attention_descriptor_capacity(sq, sk, selected):
+    report = load_registry().select_kernel_family(
+        {"op": "attention_gqa", "dtype": "bf16", "shape": {"Sq": sq, "Sk": sk, "D": 64, "QH": 4, "KVH": 2}},
+        {"features": MXU + VPU}, _selection(),
+    )
+    assert (report.selected_family == "kernels/attention") == selected
+
+
+def test_pool_requires_mxu_capabilities():
+    report = load_registry().select_kernel_family(
+        {"op": "max_pool2d", "dtype": "fp8_e4m3", "shape": {"kernel": 3, "stride": 2, "padding": 1,
+         "channels": 64, "height": 112, "width": 112}}, {"features": VPU}, _selection(),
+    )
+    assert report.selected_family is None

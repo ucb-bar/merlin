@@ -42,11 +42,16 @@ from source_relocation import physical_path as safe
 FIELDS = tuple(name for name, _ in Frame._fields_)
 
 
-@unittest.skipUnless(
-    all(os.environ.get(name) for name in ("SMOL_REPLAY", "SMOL_CHECKPOINT", "SMOL_ATTENTION_HEADERS")),
-    "Optional target-policy vision fixtures are not configured",
-)
 class PolicyVisionReplayTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        names = ("SMOL_REPLAY", "SMOL_CHECKPOINT", "SMOL_ATTENTION_HEADERS")
+        if not any(name in os.environ for name in names):
+            raise unittest.SkipTest("Optional target-policy vision fixtures are not configured")
+        missing = [name for name in names if not os.environ.get(name)]
+        if missing:
+            raise ValueError("Missing or empty target-policy vision fixtures: " + ", ".join(missing))
+
     def test_actual_both_images_all_vision_predecessors_and_prefix_rows(self):
         torch.set_num_threads(1)
         root = safe(os.environ["SMOL_REPLAY"])
@@ -218,6 +223,33 @@ class PolicyVisionReplayTest(unittest.TestCase):
                 )
                 + "\n"
             )
+
+
+class PolicyVisionAdmissionTest(unittest.TestCase):
+    def test_unconfigured_is_optional(self):
+        with patch.dict(os.environ, {}, clear=True), self.assertRaises(unittest.SkipTest):
+            PolicyVisionReplayTest.setUpClass()
+
+    def test_partial_configuration_fails(self):
+        names = ("SMOL_REPLAY", "SMOL_CHECKPOINT", "SMOL_ATTENTION_HEADERS")
+        for name in names:
+            for config in ({name: "/fixture"}, {key: "/fixture" for key in names if key != name}):
+                with self.subTest(config=config), patch.dict(os.environ, config, clear=True):
+                    with self.assertRaisesRegex(ValueError, "Missing or empty"):
+                        PolicyVisionReplayTest.setUpClass()
+
+    def test_explicit_empty_configuration_fails(self):
+        names = ("SMOL_REPLAY", "SMOL_CHECKPOINT", "SMOL_ATTENTION_HEADERS")
+        for name in names:
+            for config in ({name: ""}, {key: "" if key == name else "/fixture" for key in names}):
+                with self.subTest(name=name, config=config), patch.dict(os.environ, config, clear=True):
+                    with self.assertRaisesRegex(ValueError, name):
+                        PolicyVisionReplayTest.setUpClass()
+
+    def test_complete_configuration_is_admitted(self):
+        config = dict.fromkeys(("SMOL_REPLAY", "SMOL_CHECKPOINT", "SMOL_ATTENTION_HEADERS"), "/fixture")
+        with patch.dict(os.environ, config, clear=True):
+            PolicyVisionReplayTest.setUpClass()
 
 
 class PolicyGraphReplayTest(graph.PolicyGraphTest):

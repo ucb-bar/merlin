@@ -205,6 +205,7 @@ jobs:
       # (merlin/tests/ir/test_lit_suite.py drives merlin/tests/data/lit), and `uv sync --frozen --all-extras`
       # above installs the `verify` extra it and the SMT tests need. Neither needs its own step; a
       # second invocation would only make it look like more is being checked than is.
+      # Includes fixture-free Atlas source-view and strict-runner controls, following Radiance.
       - name: tests (fast subset; hardware buckets self-skip via skipif)
         run: uv run --no-sync pytest merlin/tests/infra merlin/tests/ir merlin/tests/kernels merlin/tests/targetgen -q -m "not slow and not integration"
 
