@@ -62,6 +62,12 @@ Spike s64/s128 images pass complete Merlin W8A8 comparisons. No independent torc
 parity check for either small model is recorded. The separate full 22-layer TinyLlama
 independent torchAO reference currently disagrees on its first token, so its compiled result
 is not a validated full-model quantized inference.
+The source-authoritative next gate is model2MLIR's separate `int8_w8a8` torchAO capture:
+it exports dynamic activation quantization and integer `aten._int_mm` contractions. The
+current `int8` bundles instead export weight-only float contractions and Merlin adds its own
+W8A8 transformation afterward. Keep their performance measurements as measurements of
+those exact images; do not present them as parity with the torchAO W8A8 program. Capture,
+compile, exact Spike, and FireSim checks for the torchAO-exported program are pending.
 A fresh-host check verified the Spectformer capture files and reached compilation, but that host
 lacked the Zephyr/Spike toolchain, so full lowering from a transferred capture remains unverified.
 On the current shared host, the installed workload is `merlin-kodiak` and the queue client needs
