@@ -6,11 +6,9 @@ real built object when present.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from merlin.common.paths import merlin_dir, repo_root
+from merlin.common.paths import repo_root
 from merlin.kernels.decode import objdump, rvv
 
 # A canonical llvm-objdump -d --no-aliases snippet (riscv64 RVV), mixed vtypes + a loop back-edge.
@@ -43,6 +41,13 @@ def test_tokenize_structured(tmp_path, monkeypatch):
     assert mnem == ["vsetivli", "vle32.v", "vsetivli", "vfmul.vv", "vfadd.vv", "bne"]
     assert raws[0].operands[2:4] == ["e32", "m2"]  # comma-split operands, not regex
     assert raws[-1].addr == 0x14 and raws[-1].operands[-1] == "0x0"
+
+
+def test_tokenize_llvm18_little_endian_byte_columns():
+    text = "Disassembly of section .text:\n80000d3c: d7 60 00 b2  \t<unknown>\n80000d40: 46 8b  \tc.mv\ts6, a7\n"
+    raws = objdump.tokenize_text(text)
+    assert [(r.hexcode, r.mnemonic) for r in raws] == [("b20060d7", "<unknown>"), ("8b46", "c.mv")]
+    assert raws[1].operands == ["s6", "a7"]
 
 
 def test_decode_tracks_effective_vtype(tmp_path, monkeypatch):

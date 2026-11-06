@@ -43,6 +43,18 @@ def test_the_operand_generator_is_the_drivers_function():
     assert "0x9e3779b97f4a7c15" in driver and "(seed & 0xffffffull) << 40" in driver
 
 
+def test_signed_endpoint_case_reaches_all_four_int8_products_in_host_and_image():
+    shapes, _ = KT.sweep(64, MK.Constraints(), quick=True)
+    endpoint = next(shape for shape in shapes if shape.name == "signed_endpoints")
+    assert endpoint.k == 33
+    at, b, _ = KT.operands(endpoint, 0)
+    assert at[0, :2].tolist() == [-128, 127]
+    assert b[0, :2].tolist() == [-128, 127]
+    assert {(int(x) * int(y)) for x in at[0, :2] for y in b[0, :2]} == {16384, -16256, 16129}
+    driver = KT.emit_driver([endpoint], kernel_func="k", ref_func="r", align=16)
+    assert "A[sl * as] = -128" in driver and "B[sl * bs + 1] = 127" in driver
+
+
 def test_the_verdict_localises_a_wrong_element_and_a_trap():
     good = KT.Shape("good", 2, 3, 4, seed=3)
     bad = KT.Shape("bad", 2, 3, 4, seed=5)

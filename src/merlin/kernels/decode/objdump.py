@@ -139,18 +139,37 @@ def _parse_line(line: str, section: str) -> RawInsn | None:
     right = right.strip()
     if not right:
         return None
-    parts = right.split(None, 2)  # [hexword, mnemonic, operands?]
-    if len(parts) < 2:
-        return None
-    hexword, mnemonic = parts[0], parts[1]
+    # LLVM 18 prints little-endian bytes separated by spaces; newer LLVM builds
+    # also print one numeric word. Keep the numeric word in target bit order for
+    # ISA field decoding, while accepting either disassembly spelling.
+    raw, separator, asm = right.partition("\t")
+    if separator:
+        bytes_or_word = raw.split()
+        if len(bytes_or_word) > 1 and all(len(byte) == 2 for byte in bytes_or_word):
+            hexword = "".join(reversed(bytes_or_word))
+        elif len(bytes_or_word) == 1:
+            hexword = bytes_or_word[0]
+        else:
+            return None
+        parts = asm.split(None, 1)
+        if not parts:
+            return None
+        mnemonic = parts[0]
+        operand_text = parts[1] if len(parts) == 2 else ""
+    else:
+        parts = right.split(None, 2)  # legacy whitespace-only dump
+        if len(parts) < 2:
+            return None
+        hexword, mnemonic = parts[0], parts[1]
+        operand_text = parts[2] if len(parts) == 3 else ""
     # the encoding word is hex; if parts[0] isn't hex this isn't an instruction line.
     try:
         int(hexword, 16)
     except ValueError:
         return None
     operands: list[str] = []
-    if len(parts) == 3:
-        operands = [o.strip() for o in parts[2].split(",") if o.strip()]
+    if operand_text:
+        operands = [o.strip() for o in operand_text.split(",") if o.strip()]
     return RawInsn(addr=addr, mnemonic=mnemonic, operands=operands, hexcode=hexword, section=section)
 
 

@@ -109,6 +109,11 @@ def operands(shape: Shape, slice_: int) -> tuple[np.ndarray, np.ndarray, np.ndar
     amp = int(shape.amplitude)
     at = _draw(seed, 1, shape.k * shape.m, 2 * amp + 1, -amp).astype(np.int8).reshape(shape.k, shape.m)
     b = _draw(seed, 2, shape.k * shape.n, 2 * amp + 1, -amp).astype(np.int8).reshape(shape.k, shape.n)
+    if shape.name == "signed_endpoints":
+        # The normal amplitude-127 draw cannot produce -128. Put all four endpoint
+        # products in the first 2x2 output block without changing the random body.
+        at[0, :2] = (-128, 127)
+        b[0, :2] = (-128, 127)
     bias = _draw(seed, 3, shape.n, 2001, -1000).astype(np.int32) if shape.bias else None
     return at, b, bias
 
@@ -160,6 +165,7 @@ def sweep(
         Shape("deep_k", te, te, 512, why="a long reduction"),
         Shape("deeper_k", 2 * te, te, 1000, why="a long reduction with a K tail"),
         Shape("full_range", te, te, 256, amplitude=127, why="largest operand magnitudes"),
+        Shape("signed_endpoints", te, te, 33, amplitude=127, why="all four signed-int8 endpoint products and K tail"),
         Shape("bias", te, te, 64, bias=True, why="non-NULL bias"),
         Shape("bias_edges", te + 3, 2 * te - 1, 33, bias=True, why="bias with partial tiles"),
         Shape("bias_narrow", 1, te + 1, 7, bias=True, why="bias, one row"),
@@ -222,7 +228,8 @@ def emit_driver(shapes: Sequence[Shape], *, kernel_func: str, ref_func: str, ali
     bias_max = max(s.batch * _round_up(s.n, words) for s in shapes)
     c_max = max(s.batch * _round_up(s.m * s.n + GUARD_WORDS, words) for s in shapes)
     rows = "\n".join(
-        f'  {{"{s.name}", {s.m}u, {s.n}u, {s.k}u, {int(s.bias)}, {s.batch}u, {s.amplitude}, {s.seed}u}},'
+        f'  {{"{s.name}", {s.m}u, {s.n}u, {s.k}u, '
+        f"{int(s.bias)}, {s.batch}u, {s.amplitude}, {s.seed}u, {int(s.name == 'signed_endpoints')}}},"
         for s in shapes
     )
     return f"""\
@@ -235,7 +242,7 @@ def emit_driver(shapes: Sequence[Shape], *, kernel_func: str, ref_func: str, ali
 void {kernel_func}(int32_t *, const int8_t *, const int8_t *, const int32_t *, size_t, size_t, size_t);
 void {ref_func}(int32_t *, const int8_t *, const int8_t *, const int32_t *, size_t, size_t, size_t);
 
-struct kt_shape {{ const char *name; size_t m, n, k; int bias; size_t batch; long amp; uint64_t seed; }};
+struct kt_shape {{ const char *name; size_t m, n, k; int bias; size_t batch; long amp; uint64_t seed; int endpoints; }};
 static const struct kt_shape SHAPES[] = {{
 {rows}
 }};
@@ -292,6 +299,10 @@ int main(long hart)
       const uint64_t seed = s->seed + sl;
       for (size_t i = 0; i < s->k * s->m; ++i) A[sl * as + i] = (int8_t)draw(seed, 1, i, 2 * s->amp + 1, -s->amp);
       for (size_t i = 0; i < s->k * s->n; ++i) B[sl * bs + i] = (int8_t)draw(seed, 2, i, 2 * s->amp + 1, -s->amp);
+      if (s->endpoints) {{
+        A[sl * as] = -128; A[sl * as + 1] = 127;
+        B[sl * bs] = -128; B[sl * bs + 1] = 127;
+      }}
       if (s->bias)
         for (size_t i = 0; i < s->n; ++i) BIAS[sl * ns + i] = (int32_t)draw(seed, 3, i, 2001, -1000);
     }}
