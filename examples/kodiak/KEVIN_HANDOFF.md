@@ -118,8 +118,11 @@ gates, and all debug twins passed ELF audits, with 90 OPU routes. The two-layer 
 chipyard delivery labels its unrun OPU ELFs `UNGATED`. Neither package
 claims physical Kodiak execution or K1 certification for the new schedule.
 On this shared host, the rebuilt Spectformer h1/h2 chipyard delivery is staged at
-`out/artifacts/delivery/kodiak-spectformer-prepack-v1-final.zip` (SHA-256
-`3c0871423e0d38c9466dbfded01932f0d569c95a2222c178d915fabdfe5b04a2`). The zip
+`out/artifacts/delivery/kodiak-spectformer-prepack-v1-final-r2.zip` (SHA-256
+`1d7b94bed8250451da9811da5fa0225b40bf5a9435f4f698f6587ac760474a0c`). This revision
+changes only the embedded README's physical loader instructions to the proven OPU-direct control;
+all 22 other archive members, including every ELF, match the previous zip byte for byte. The
+task-local revision receipt is `.tmp/kodiak-spectformer-prepack-v1-final-r2.receipt.json`. The zip
 passed archive integrity and contains eight ELFs, its manifest, audits, and grading script.
 Its four plain images passed W8A8 gates and h2 matches h1. It is an ignored local artifact,
 not a Git-tracked download or a physical-chip execution receipt. Kevin can copy that zip from
