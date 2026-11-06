@@ -129,5 +129,7 @@ whole-inference effective peak, and 1.8176× control-over-device speedup. It del
 `null` for array-active occupancy. The older Spectformer run predates the immutable leg receipt,
 so its arithmetic is shown explicitly above instead of being silently admitted by this tool.
 The FireSim collector saves this calculation automatically as `firesim/utilization.json` and
-embeds it in `firesim/results.json` for every fully verified pair on the pinned one-core OPU
-bitstream; its console summary prints utilization alongside speedup.
+embeds it in `firesim/results.json` for every fully verified immutable whole-model pair with
+an exact OPU signatures sidecar on the pinned one-core bitstream. Older single-operator plans
+without a SHA-checked sidecar retain their correctness grade and explicitly report utilization
+unavailable. The console summary prints utilization alongside speedup.

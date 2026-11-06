@@ -26,8 +26,9 @@ OPU instructions, checks the exact images on Spike, and prints an immutable Fire
 `--submit` to place the pair in the shared FPGA queue. The control leg is plain RVV on the **same
 OPU bitstream**. `./run.sh firesim-collect <plan-dir> --job device=N --job control=M` grades the
 returned full-output hashes, W8A8 numerical gate, bitstream identity, and target compute cycles.
-For a verified OPU pair it also saves `firesim/utilization.json` with routed MAC share, static
-tile fill, whole-inference effective peak, and an explicit unmeasured array occupancy field.
+For a verified whole-model OPU pair with an exact routing sidecar, it saves
+`firesim/utilization.json` with routed MAC share, static tile fill, whole-inference effective
+peak, and an explicit unmeasured array occupancy field.
 The queue can take hours. See [the full example guide](README.md) for capture, build, package,
 and board options.
 
