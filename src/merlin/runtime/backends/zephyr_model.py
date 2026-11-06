@@ -2460,6 +2460,11 @@ def build_app(
 
     # 3. weights.bin -> binary blob object; archive it with model.o.
     _run([ld, "-r", "-b", "binary", "-o", work / "weights_blob.o", "weights.bin"], cwd=cgen)
+    # GNU ld gives a binary input section byte alignment. A prepacked matrix weight is read
+    # directly from this blob by the OPU shim, which requires a 32-byte aligned B pointer;
+    # otherwise it silently takes its scalar GEMM fallback. All generated weight offsets are
+    # aligned, so align the blob's input section before the final Zephyr link places it.
+    _run([objcopy, "--set-section-alignment", ".data=32", work / "weights_blob.o"])
     weights_size = (cgen / "weights.bin").stat().st_size
 
     # Build identity, part one: the lowered model object plus the weights blob -- what computes the

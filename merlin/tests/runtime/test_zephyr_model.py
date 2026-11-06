@@ -14,6 +14,7 @@ minute-plus). The FireSim leg is driven separately (needs the FPGA + queue daemo
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -65,9 +66,16 @@ def test_zephyr_app_builds_for_chipyard_board(tmp_path):
     zm = _zm()
     bundle = REPO / "out/artifacts" / "recaptures" / "small_consistent"
     if not (bundle / "model.mlir").is_file():
-        pytest.skip("small_consistent not captured")
+        bundle = REPO / "out/artifacts" / "recaptures" / "op_gemm_64x64x64_int8_full"
+    if not (bundle / "model.mlir").is_file():
+        pytest.skip("no small Zephyr build fixture captured")
     b = zm.build_app(bundle, tmp_path, board="chipyard_riscv64", rvv_hart=1, arena_mb=64, cpus=2)
     assert Path(b["elf"]).is_file()
+    symbols = subprocess.check_output(["nm", "--defined-only", str(b["elf"])], text=True)
+    weights_start = next(
+        int(line.split()[0], 16) for line in symbols.splitlines() if line.endswith(" _binary_weights_bin_start")
+    )
+    assert weights_start % 32 == 0
 
 
 def test_gate_multi_tier_and_legacy():
