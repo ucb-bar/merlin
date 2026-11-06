@@ -121,7 +121,17 @@ covers the 4,096-value UART prefix. The separately gated exact OPU Spike image p
 effective peak**. Static tile fill is 100%; array occupancy remains unmeasured. The
 [SHA-bound evidence](../../out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/tinyllama_l2_s128_hardware_evidence.json)
 records both legs and the comparison scope. The older s64 hardware result is bound to the same
-knob/schedule bytes but a different package manifest; the rebuilt s64 pair is running.
+knob/schedule bytes but a different package manifest. The **rebuilt package's own** s64
+pair 3893/3894 is now VERIFIED on the pinned one-core bitstream: **1,022,361,106** OPU versus
+**13,646,684,998** RVV target compute cycles, or **13.3482×** speedup. Both full
+2,048,000-value hardware hashes match exact Spike; direct hardware W8A8 comparison covers
+the 4,096-value UART prefix. All 19 contractions and 9,865,003,008 valid MACs route to OPU
+with 100% static tile fill. Those valid MACs divided by 1,024 MACs/cycle and measured OPU
+cycles give **0.942308% whole-inference effective peak**; array occupancy is unmeasured.
+Both cycle counts equal the earlier trial pair 3876/3887, confirming the named package's
+observed timing without assuming ELF byte identity. The
+[SHA-bound rebuilt-pair evidence](../../out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/tinyllama_l2_s64_hardware_evidence.json)
+records exact plans, captures, bitstream, and numerical scope.
 The s128 aligned-prepack OPU/RVV pair also graded VERIFIED on the pinned one-core bitstream:
 device job 3871 took 2,438,693,540 target cycles, matched control job 3875 took
 27,742,439,123, and both full 4,096,000-value hashes and prefixes matched their exact Spike

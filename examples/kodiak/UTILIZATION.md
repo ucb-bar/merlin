@@ -86,9 +86,21 @@ valid routed MACs give `9,865,003,008 / (1,022,361,106 × 1,024) = 0.00942308`, 
 fewer OPU target cycles than the verified fill-only device; its matched control improved 0.3144%,
 so the paired speedup grew 3.8116%. Array occupancy remains unmeasured. A versioned opt-in
 package now carries the same knob and schedule bytes; its rebuilt images have separate identities
-and exact Spike gates. The rebuilt Spectformer and s128 pairs passed FireSim; the s64 pair is
-running. The trial's SHA-bound comparison
-is in Merlin managed task `quantize-fusion-trial/.tmp/quant_fill_hardware_comparison.json`.
+and exact Spike gates. The rebuilt Spectformer, s64, and s128 pairs all passed FireSim. The trial's
+SHA-bound comparison is in Merlin managed task
+`quantize-fusion-trial/.tmp/quant_fill_hardware_comparison.json`.
+
+The rebuilt quant-package s64 pair independently graded VERIFIED: device job 3893 took
+**1,022,361,106 target compute cycles** and matched plain-RVV control 3894 took
+**13,646,684,998**, for **13.3482×** speedup. Both full 2,048,000-value hashes match their
+exact Spike images; direct hardware W8A8 comparison covers the 4,096-value UART prefixes.
+Its 19 OPU routes have **9,865,003,008 valid MACs** and 100% static tile fill, so
+`9,865,003,008 / (1,022,361,106 × 1,024) = 0.0094230815`, or **0.942308%** whole-inference
+effective peak (9.64924 valid MAC per target cycle). Array occupancy remains unmeasured.
+Both target cycle counts equal the prior quant-round trial pair 3876/3887, which had the
+same knob and schedule bytes but a different package manifest. The
+[SHA-bound rebuilt-pair receipt](../../out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/tinyllama_l2_s64_hardware_evidence.json)
+states the exact comparison and reproducibility limits.
 
 The rebuilt quant-package s128 image completed on the pinned one-core FireSim bitstream as
 device job 3891 in **2,252,651,428 target compute cycles**. Its matched plain-RVV control,
