@@ -1,6 +1,6 @@
 """How much of a board's DRAM a Zephyr model image needs, and the refusal when it does not fit.
 
-An image's RAM region holds four things, and this module prices each from the build's own products
+An image's RAM region holds three things, and this module prices each from the build's own products
 rather than from a formula:
 
 * the IMAGE itself -- code, the weights blob (linked ``.data``), the embedded inputs, the per-hart
@@ -434,10 +434,10 @@ def link_to_fit(
 def planned_lowering() -> Iterator[str]:
     """Select the arena plan's passes for one lowering, unless the build deselected them by name.
 
-    Yields the resulting policy: ``static-arena`` (both on, the default), ``static-arena-unsunk`` (the
-    arena over end-of-function frees, which reuses nothing) or ``heap`` (the arena deselected). Process-wide
-    for the duration, as the pass selection is (the lowering reads it in child processes too), so the
-    caller holds the IR lock around it.
+    Yields the resulting policy: ``static-arena`` (the arena over sunk frees, the default),
+    ``static-arena-unsunk`` (the arena over end-of-function frees, which reuses nothing) or ``heap`` (the
+    arena deselected). Process-wide for the duration, as the pass selection is (the lowering reads it in
+    child processes too), so the caller holds the IR lock around it.
     """
     from ...llvmlower import optional_passes as op
 
