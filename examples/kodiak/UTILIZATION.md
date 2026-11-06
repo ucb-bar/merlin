@@ -24,8 +24,10 @@ The two-layer TinyLlama sections also route all 19 contractions in their current
 one-core FireSim bitstream as job 3860 in 15,380,012,801 target `METRIC cycles`, with its full
 2,048,000-element output hash matching the exact Spike-gated image. Its whole-inference effective
 throughput is `9,865,003,008 / (15,380,012,801 × 1,024) = 0.000626384`, or **0.0626384% of
-peak** (0.641417 valid MAC per target cycle). The paired RVV control and the 128-token FireSim
-pair are still running; no speedup or 128-token hardware throughput is established yet. The
+peak** (0.641417 valid MAC per target cycle). The paired plain-RVV control, job 3861, completed
+in 27,955,258,588 target compute cycles on the same bitstream. Both legs passed W8A8 and matched
+their exact Spike-gated full hashes and prefixes; the graded OPU speedup is
+`27,955,258,588 / 15,380,012,801 = 1.8176×`. The 128-token FireSim pair is still running. The
 100% static tile fill does **not** imply 100% active-cycle occupancy.
 
 For correctness, the exact shipped OPU Spike ELFs were stopped after computing their whole-output
@@ -66,6 +68,7 @@ Evidence in this task checkout:
 - `out/artifacts/probes/firesim_kodiak_opu/spectformer_merlin_compile_h1/routing/opu_signatures.json`
 - `out/artifacts/probes/firesim_kodiak_opu/spectformer_merlin_compile_h1/routing/routing_report.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/device/uartlog`
+- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/results.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/routing/opu_signatures.json`
 - `out/artifacts/measurements/firesim_alveo_u250_firesim_kodiak_opu_1core/op_gemm_64x64x64/`
 
