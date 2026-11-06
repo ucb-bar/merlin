@@ -93,6 +93,15 @@ The [hardware quantization audit](TORCHAO_HW_QUANTIZATION.md) records the
 receipt-bound activation arithmetic, i32 range bound, and logical tile fill
 for both exact source captures.
 
+For a current source host verdict, use the [receipted cache population and strict
+replay procedure](../../docs/guides/vision_workloads_rvv_zephyr.md#a-source-quantized-torchao-capture).
+The cache key covers Merlin lowering source, active pass settings, compiler and
+Python package bytes; each loaded object has a verified construction manifest.
+The earlier SpectFormer and TinyLlama caches predate this identity and cannot
+serve as current host evidence. A cache-only miss is a failed preflight, not a
+model output. Fresh population is deferred until the VME Vivado run releases
+scratch and memory.
+
 The source-authoritative path is torchAO `int8_w8a8`: dynamic signed-int8 activation
 quantization, signed-int8 weights derived from the trained checkpoint, and explicit `_int_mm`
 contractions with int32 accumulation. Preserve the captured scale, zero-point, rounding,
