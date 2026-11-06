@@ -133,9 +133,12 @@ all 22 other archive members, including every ELF, match the previous zip byte f
 task-local revision receipt is `.tmp/kodiak-spectformer-prepack-v1-final-r4.receipt.json`. The zip
 passed archive integrity and contains eight ELFs, its manifest, audits, and grading script.
 Its four plain images passed W8A8 gates and h2 matches h1. It is an ignored local artifact,
-not a Git-tracked download or a physical-chip execution receipt. Kevin can copy that zip from
-this shared host or regenerate it after transferring the capture using the tracked prepack
-package. The exact prepack FireSim device/control jobs 3886/3888 subsequently graded VERIFIED:
+not a Git-tracked download or a physical-chip execution receipt. Kevin must copy this zip from
+the shared host to retain the exact r4 ELF bytes. Its manifest records seven uncommitted Saturn
+source changes, so the declared source commit alone cannot reproduce those bytes. The tracked
+prepack package and transferred capture can produce a fresh package, but that new output needs
+fresh Spike, ELF, and hardware gates before use. The exact prepack FireSim device/control jobs
+3886/3888 subsequently graded VERIFIED:
 **2,733,902,458** versus **5,840,140,166** target compute cycles, **2.13619×** paired speedup,
 and identical full 1,000-value hashes to their exact Spike images. Its 90 routed contractions
 account for 1,853,155,328 valid MACs, 73.8223% static tile fill, and **0.0661956% whole-inference
