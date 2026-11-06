@@ -102,9 +102,21 @@ output with the correct argmax, but failed its framework gate (relative L2 `0.00
 cosine `0.99997751`). In a bounded pretrained TinyLlama true-source run, the first three
 quantized q/k/v contractions had byte-identical signed operands and int32 accumulators to
 independent eager torchAO. The first mismatch was one activation byte at the first attention
-`o_proj` (torchAO `-128`, Merlin `-127`), at a negative `-127.5` rounding tie. Its prequant
-float and scale are being checked to locate the cause; neither model is source-parity
-certified yet.
+`o_proj` (torchAO `-128`, Merlin `-127`), at a negative `-127.5` rounding tie. Both
+rounding instructions behave correctly; the prequant float values already differ.
+Neither model is source-parity certified yet.
+The first TinyLlama discrepancy is now localized further: its embedding and first
+RMSNorm squared values match eager torchAO exactly, but Merlin's serial float32
+mean reduction differs from Torch CPU's reduction tree. This changes the normalization
+and ultimately crosses the attention output-projection quantization tie. A reduction
+tree fitted to those eight rows failed on new random rows, so it has not been adopted.
+Keep two verdicts separate: exact target-arithmetic image versus scalar twin, and
+framework fidelity versus independent torchAO. The current strict framework gate
+still fails. The full 22-layer eight-token source graph has 155 integer Linear roots
+and 8,275,361,792 valid integer MACs; its M=8 rows fill only **12.5% of 64-row
+logical tiles** before any runtime effects. The OPU and compact VME cost models
+project all 155 roots as candidates, but no emitted route or physical-cell duty is
+measured for this source image.
 
 A fresh-host check verified the Spectformer capture files and reached compilation, but that host
 lacked the Zephyr/Spike toolchain, so full lowering from a transferred capture remains unverified.
@@ -166,6 +178,14 @@ and array occupancy remains unmeasured. Compared with the prepack pair on the sa
 routing, and bitstream, OPU cycles fell 5.6915%. Compiler source revisions differ, so this
 observed package comparison does not isolate a single knob. The SHA-bound tracked receipt is
 `out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/spectformer_hardware_evidence.json`.
+A separate [same-source round-even A/B](SPECTFORMER_ROUNDINTRINSIC_AB.md) on the same
+one-core bitstream graded all four exact images VERIFIED. Baseline OPU/control jobs
+3895/3896 took 2,733,902,458/5,840,140,166 cycles; intrinsic jobs 3897/3898 took
+2,539,617,917/5,660,152,596. The intrinsic saved **7.10649% device cycles** and
+raised valid-MAC whole-inference effective peak from **0.06619556% to 0.07125962%**.
+Both images routed the same 1,853,155,328 valid MACs; call-window cycles and physical
+array occupancy were not measured. These are older weight-only-source images followed
+by Merlin W8A8, not torchAO-source parity evidence.
 The rebuilt s128 pair 3891/3892 also graded VERIFIED: **2,252,651,428** OPU versus
 **27,453,912,924** RVV target compute cycles, or **12.1874×** speedup. Both full
 4,096,000-value hardware hashes match the exact Spike images; direct hardware W8A8 comparison
