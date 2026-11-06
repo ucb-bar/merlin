@@ -877,7 +877,8 @@ def _source_gate(args, bundle: Path, brd) -> dict[str, Any] | None:
     from merlin.targetgen.application_inventory import verify_capture_receipt
 
     receipt = verify_capture_receipt(bundle / "model.mlir")
-    if receipt.get("status") != "verified" or receipt != source["capture_receipt"]:
+    # This verifier proves materialized bytes, not independent source closure.
+    if receipt.get("status") != "verified_materialized" or receipt != source["capture_receipt"]:
         raise SystemExit("capture receipt changed or is unverified since the framework gate")
     verified = gate.get("status") == "verified" and gate.get("verify", {}).get("tier_ok") == "w8a8"
     diagnostic = not verified

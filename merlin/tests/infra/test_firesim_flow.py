@@ -216,7 +216,9 @@ def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(
     bundle.mkdir()
     (bundle / "model.mlir").write_text("module {}")
     np.save(bundle / "golden.npy", np.zeros(1, dtype=np.float32))
-    monkeypatch.setattr(application_inventory, "verify_capture_receipt", lambda path: {"status": "verified"})
+    monkeypatch.setattr(
+        application_inventory, "verify_capture_receipt", lambda path: {"status": "verified_materialized"}
+    )
     framework = {
         "run": "host",
         "dtype": "int8_w8a8",
@@ -229,7 +231,7 @@ def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(
             "source_mlir_sha256": flow._sha256(bundle / "model.mlir"),
             "reference_kind": "torchao_w8a8_framework",
             "integer_matmuls": 41,
-            "capture_receipt": {"status": "verified"},
+            "capture_receipt": {"status": "verified_materialized"},
         },
     }
     framework_path = tmp_path / "framework.json"
