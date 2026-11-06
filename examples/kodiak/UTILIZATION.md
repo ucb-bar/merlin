@@ -137,6 +137,18 @@ perform 1,853,155,328 valid MACs, so whole-inference effective peak is
 73.8223%, and array occupancy is still unmeasured. The device takes 10.0179% fewer target
 cycles than same-routing comparator job 3870. Its SHA-bound receipt is
 `out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793965368611649945/firesim/pair_receipt.json`.
+
+The opt-in quant fusion Spectformer pair also graded VERIFIED on that one-core bitstream:
+OPU job 3889 took **2,578,301,427** target compute cycles and RVV control 3890 took
+**5,667,528,436**, giving **2.19816×** paired speedup. Both full 1,000-value output hashes
+matched exact Spike and both hardware W8A8 gates covered every value. With the unchanged
+1,853,155,328 valid routed MACs, whole-inference effective peak is
+`1,853,155,328 / (2,578,301,427 × 1,024) = 0.000701905`, or **0.0701905%**. Static fill remains
+73.8223%; physical array occupancy remains unmeasured. OPU cycles are 5.6915% below the
+prepack pair, but compiler source revisions differ, so the observed A/B does not isolate the
+fusion knob alone. The tracked SHA-bound evidence is
+`out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/spectformer_hardware_evidence.json`.
+
 The first full-profile FireSim job 3865 printed the expected full output hash but was canceled after 176 of 5,172 profile
 rows: at that UART rate it could not reach `DONE` before its 7,200-second limit. No hardware
 call-window utilization is inferred from that partial dump. A new image prints only the 90 OPU

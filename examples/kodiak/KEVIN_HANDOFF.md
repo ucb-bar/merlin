@@ -96,8 +96,15 @@ Spike images. Its 4,096-value hardware W8A8 prefix passed. The pair gives **13.3
 [versioned opt-in quant package](../../out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/README.md)
 adds only `fuse_quantize_round_convert` to the prepack schedule. Its rebuilt s64, s128, and
 Spectformer images pass exact OPU and independent-RVV Spike full-hash gates; s128 also passes a
-complete 4,096,000-logit W8A8 and 128-token argmax check. The package's rebuilt Spectformer and
-s128 matched FireSim pairs are jobs 3889/3890 and 3891/3892, pending final grading. The older
+complete 4,096,000-logit W8A8 and 128-token argmax check. The package's rebuilt Spectformer
+pair 3889/3890 graded VERIFIED: **2,578,301,427** OPU versus **5,667,528,436** RVV target cycles,
+**2.19816×** paired speedup, full 1,000-value hash and W8A8 pass on both legs. Its 1,853,155,328
+valid routed MACs give **0.0701905% whole-inference effective peak**; static tile fill is 73.8223%
+and array occupancy remains unmeasured. Compared with the prepack pair on the same capture,
+routing, and bitstream, OPU cycles fell 5.6915%. Compiler source revisions differ, so this
+observed package comparison does not isolate a single knob. The SHA-bound tracked receipt is
+`out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/spectformer_hardware_evidence.json`.
+The s128 pair 3891/3892 is still awaiting final grading. The older
 s64 hardware result is bound to the same knob/schedule bytes but a different package manifest;
 the rebuilt s64 images have not run on FireSim. Array occupancy is still unmeasured.
 The s128 aligned-prepack OPU/RVV pair also graded VERIFIED on the pinned one-core bitstream:
