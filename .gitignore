@@ -189,6 +189,8 @@ selfcheck_out/
 !/out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/firesim_evidence.json
 !/out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/model_gates.json
 !/out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/s128_full_w8a8_gate.json
+!/out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/spectformer_hardware_evidence.json
+!/out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/tinyllama_l2_s128_hardware_evidence.json
 !/out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/README.md
 # A target descriptor's FROZEN host lane must be readable from the sandbox workspace, which is built
 # from tracked content -- an untracked package resolves to nothing there and the run dies in setup

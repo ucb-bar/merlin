@@ -37,5 +37,16 @@ The exact OPU ELF additionally passes a complete W8A8 comparison of all logits, 
 per-token argmaxes, using a debugger dump taken after computation and before the capped UART
 output. Its matched FireSim pair is queued as jobs 3891/3892. The rebuilt Spectformer OPU and
 plain-RVV Spike images agree on the full 1,000-value output hash; the OPU image passes complete
-W8A8 numerical and argmax gates. Its matched FireSim pair is jobs 3889/3890. Both new hardware
-pairs await final grading. No K1 or physical Kodiak certification is claimed.
+W8A8 numerical and argmax gates. Its matched FireSim pair 3889/3890 is **verified**: 2,578,301,427
+OPU versus 5,667,528,436 plain-RVV target compute cycles, or 2.1982× speedup. The OPU routes
+99.6546% of the valid MACs with 73.8223% static tile fill. Its 1,853,155,328 valid routed MACs
+divided by 1,024 MACs per target cycle and 2,578,301,427 target compute cycles give **0.0701905%**
+whole-inference effective peak; physical array occupancy is unmeasured. Compared with the prior
+prepack pair on the same capture, routing, and bitstream, OPU cycles fall 5.6915%, control cycles
+fall 2.9556%, and paired speedup rises 2.9010%. The compiler source revisions differ, so this is
+an observed package A/B and does not isolate a single knob. The archived bitstream digest matches;
+the live Saturn checkout is off its source pin. Exact hashes and denominator are in
+`spectformer_hardware_evidence.json`.
+
+The s128 FireSim jobs 3891/3892 await final grading. No K1 or physical Kodiak certification is
+claimed.

@@ -1,0 +1,78 @@
+{
+  "models": {
+    "spectformer": {
+      "baseline": {
+        "control_cycles": 5840140166,
+        "device_cycles": 2733902458,
+        "effective_peak_fraction": 0.0006619555846640963,
+        "jobs": {
+          "control": 3888,
+          "device": 3886
+        },
+        "speedup": 2.1361918560446314
+      },
+      "baseline_scope": "same capture, routing, and bitstream; prepack schedule without quant-round fusion; compiler source revisions differ, so this is an observed package A/B rather than pure single-knob attribution",
+      "bitstream_artifact_sha256": "f671be16ae5850c2765d897593010f4144654fe49bed0d5fe0d3ebdbd49d9462",
+      "capture_sha256": "6ba976f5c848018a2872c959eada50280a081f317b9cd83feeb624030af443c3",
+      "hardware_full_hash_and_prefix_match_exact_spike": true,
+      "occupancy": null,
+      "occupancy_reason": "the bitstream has no MAC-active-cycle or valid-lane counter",
+      "opu_signatures_sha256": "94e69ec67bcf183d1bf59e362686e3b59b258e53a8c715715212f152a1500b49",
+      "other_contraction_macs": 6422528,
+      "peak_mac_per_target_cycle": 1024,
+      "plan_paths": {
+        "baseline": "/scratch/agustin/merlin/tasks/chip-packages/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793965368611649945",
+        "quant": "/scratch/agustin/merlin/tasks/quantize-fusion-trial/merlin/out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793976714611401525"
+      },
+      "quant": {
+        "control_cycles": 5667528436,
+        "device_cycles": 2578301427,
+        "effective_peak_fraction": 0.0007019047428080254,
+        "jobs": {
+          "control": 3890,
+          "device": 3889
+        },
+        "speedup": 2.19816363465093,
+        "valid_mac_per_device_target_cycle": 0.718750456635418
+      },
+      "quant_control_cycle_reduction_fraction": 0.02955609370557699,
+      "quant_device_cycle_reduction_fraction": 0.05691535575626594,
+      "quant_effective_peak_gain": 1.060350209393884,
+      "quant_pair_speedup_gain_fraction": 0.02901039924431026,
+      "routed_contractions": 90,
+      "routed_mac_share": 0.9965462440955202,
+      "source_pin_reproducibility": {
+        "baseline_all_pins_ok": false,
+        "quant_all_pins_ok": false
+      },
+      "source_plan_sha256": {
+        "baseline": {
+          "plan": "ef56a4e730225742f99f4243641d27e96a92922a4d266e84c87b3376232dec0a",
+          "result": "7fc46a53d87ee787348559589aa46b1e9cc7d708a77d99d08aa196e7364f9268",
+          "utilization": "42c4fc8f876972242d5248117827d4eb7c8dcc899bf92cdc450cd1cc86bdd54b"
+        },
+        "quant": {
+          "plan": "e3ec5eb5a2172191cfdebd5e4b6f6bc7f8f0867e30c53e105a412227daac486f",
+          "result": "1fa00cf5795d3d6c918f746a1ef666c5aa7be80ae7f0fc282efcac7113dc90b0",
+          "utilization": "3c26ec0c21cfa7b588d18dd762e9a4ce3af5b4ecad8aab44ec7eb157a0197abc"
+        }
+      },
+      "static_tile_fill": 0.7382233252401837,
+      "valid_routed_macs": 1853155328,
+      "w8a8_hardware_numerical_coverage": {
+        "control": {
+          "comparison_complete": true,
+          "n_compared": 1000,
+          "n_reference": 1000
+        },
+        "device": {
+          "comparison_complete": true,
+          "n_compared": 1000,
+          "n_reference": 1000
+        }
+      }
+    }
+  },
+  "package": "rvv/kodiak_prepack_quant_w8a8_v1",
+  "schema": "merlin.quant-prepack-hardware-model-evidence.v1"
+}
