@@ -9,6 +9,9 @@ Current strict Merlin host comparisons against those references fail, so these
 bundles are **compiler inputs**, not numerical or hardware acceptance evidence.
 The source-authoritative archives have not yet been packaged or transferred;
 the paths below identify the original captures on this shared host.
+The [receipt-bound packaging command](SOURCE_ARCHIVE_PACKAGING.md) is ready and
+its read-only SpectFormer check passed; it will write archives when the shared
+scratch guard permits.
 
 ## Capture identities and scope
 

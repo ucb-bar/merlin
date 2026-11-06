@@ -12,6 +12,8 @@ The `./run.sh firesim --models spectformer` command below selects the older
 `spectformer_int8_full` capture. It does not build the torchAO-source W8A8
 program. A source-authoritative OPU image and its matched Spike and FireSim
 checks remain pending.
+The [source archive packaging procedure](SOURCE_ARCHIVE_PACKAGING.md) records
+the immutable receipt and archive hashes Kevin needs before relocation.
 
 ## Compile and check an image
 
