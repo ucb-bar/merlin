@@ -107,6 +107,10 @@ against the exact SpectFormer source returned a structured
 The task-local `.env` points at removed LLVM paths; export a live LLVM 23
 `MERLIN_MLIR_INSTALL` before population and replay, with matching `MERLIN_CLANG` and
 `MERLIN_MLIR_TRANSLATE` as shown in the guide.
+The source FireSim planner now rechecks the strict host receipt, compiler
+identity, each loaded object and its construction manifest before creating
+either an acceptance or diagnostic plan. Keep that cache and the same tool
+environment available through planning.
 
 The source-authoritative path is torchAO `int8_w8a8`: dynamic signed-int8 activation
 quantization, signed-int8 weights derived from the trained checkpoint, and explicit `_int_mm`
