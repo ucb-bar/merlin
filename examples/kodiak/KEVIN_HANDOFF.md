@@ -138,17 +138,21 @@ coordinate with the rig owner before any chip load or reset.
 
 As of 2026-11-06, `ssh -o BatchMode=yes kodiak-rig hostname` returns `bwrckodiak` without a
 laptop relay. In an owner-confirmed exclusive window, a SHA-verified JTAG program restored FPGA
-Ethernet and UDP ping. The exact OPU-direct benchmark that passed in August then failed at the
-chip's `0x1000` BootAddrReg readback under the historical uncredited `--no-reset` loader path.
-An additional bounded retry explicitly selected chip 0 after FPGA ping; selection ACKed, but
-the same historical ELF still read `None` at `0x1000` before execution. Its SHA-bound receipt is
+Ethernet and UDP ping. The OPU-direct benchmark at the historically passing path then failed at
+the chip's `0x1000` BootAddrReg readback under the historical uncredited `--no-reset` loader path.
+An additional bounded retry requested chip 0 after FPGA ping and received a UDP response, but
+the current ELF at that historical path still read `None` at `0x1000` before execution. Its
+SHA-bound receipt is
 `out/artifacts/probes/chipyard_kodiak/physical_probe_20261106/select_chip_diagnostic_20261106/receipt.json`;
 a portable receipt is in Kodiak `evidence/bootaddr_select_chip_20261106/` at commit `6b2285f`.
-No Merlin image was loaded; existing tmux sessions were preserved. The hash-verified comparison
-is in `out/artifacts/probes/chipyard_kodiak/physical_probe_20261106/receipt_addendum.json`.
-Chip power/reset/clock/wiring and the Vivado version difference still need investigation before
-direct Kodiak testing. The Spike-gated small GEMM OPU/RVV images are ready for retry after the
-known positive control passes.
+No Merlin image was loaded; existing tmux sessions were preserved. The current rig ELF, loader,
+and FPGA bitstream hashes and the August/current section-map comparison are in
+`out/artifacts/probes/chipyard_kodiak/physical_probe_20261106/receipt_addendum.json`;
+no August ELF hash survives to prove byte identity. The loader treats any UDP response as a write
+acknowledgment and makes one two-second readback attempt without a packet trace, so a host timing
+or protocol fault remains possible alongside chip power/reset/clock/wiring or FPGA bridge faults.
+The Vivado version also differs. Direct Kodiak testing remains gated on a successful historical
+control readback; the Spike-gated small GEMM OPU/RVV images are ready for that retry.
 
 A sparse Spectformer OPU profile image passed its exact Spike gate with all 90 routed calls,
 matching full output hash, and **10.6057% effective peak during OPU call windows on Spike**.
