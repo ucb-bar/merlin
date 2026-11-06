@@ -73,7 +73,10 @@ Kodiak adds two things to the common setup:
 * the **OPU's RTL**: `$MERLIN_CHIPYARD/generators/saturn` must be saturn `ea373800` (pin
   `saturn_opu_int8`, branch `opu-int8` on the fork `miles-rusch-berkeley/saturn-vectors`) with
   `<kodiak-mlir>/firesim/01-saturn-OPUConfigs.patch` applied as shipped, which adds `KodiakOPUConfig`
-  (leave its passthrough-model path alone; FPGA builds read it from `$MERLIN_EICG_PASSTHROUGH_V`). The
+  (leave its passthrough-model path alone to preserve the pin). For a new FPGA elaboration,
+  `$MERLIN_EICG_PASSTHROUGH_V` must reach the **remote build process** and name the passthrough
+  Verilog file there; an export only in the local launcher is insufficient. If that cannot be
+  arranged, a changed patch and a coordinated source-pin update are required. The
   OPU's encodings and tile geometry are read from there, so setup checks every file that derivation
   reads, by content. Another commit whose read files are byte-identical is a warning (builds record the
   revision). A read file that differs blocks every OPU build (`op`, `build --opu`, `matrix`, `firesim`)
