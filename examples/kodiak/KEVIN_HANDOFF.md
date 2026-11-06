@@ -103,11 +103,11 @@ one-core bitstream.
 For utilization, use [the formula and evidence](UTILIZATION.md) and
 `python examples/lib/opu_utilization.py <verified-plan-dir>`. The current bitstream has 1,024
 physical int8 MAC cells but no active-cycle counter. The baseline ~0.05–0.12% figures and the
-prepacked s64 device's 0.874215% are
+fill-elided prepacked s64 device's 0.904856% are
 **whole-inference effective throughput as a fraction of peak**, not array occupancy. Earlier
 Spectformer and 64-token TinyLlama Spike images executed 105 and 143 OPU shim calls respectively,
-with zero scalar fallbacks. The graded 128-token pair gives **2.5061×** control-over-device
-speedup and **0.115576%** whole-inference effective peak for the OPU image; the bitstream still
+with zero scalar fallbacks. The baseline 128-token pair gives **2.5061×** control-over-device
+speedup and **0.115576%** whole-inference effective peak for its OPU image; the bitstream still
 has no array-active counter.
 
 The Kodiak OPU target uses legacy BME instructions. It cannot execute Iris's Zvt/VME encodings;
@@ -124,12 +124,17 @@ errors, and `KT DONE`. The local SHA-bound receipt is
 `/scratch/agustin/chipyard/tasks/kodiak-zvt-vme-firechip/.tmp/kodiak_vme_k33_bias_elf/rtl_receipt.json`.
 A VME FireSim bitstream and broader Kodiak RTL suite remain pending; these results do not
 change the physical OPU ASIC.
-The current OPU FireSim
-bitstream is usable for the BME flow above. Its archived artifact identity was checked during the
-hardware jobs, while reproducing that archive from a clean source tree remains unverified because
-the live Chipyard/Saturn checkout has pin drift. Physical Kodiak rig access and scheduling are
-separate from FireSim; follow the Kodiak package's `RUNNING.md` and coordinate with the rig owner
-before any chip load or reset.
+The reproducible source is on the [Chipyard fork branch](https://github.com/copparihollmann/chipyard/tree/feat/kodiak-zvt-vme)
+at `dba3cf043` and [Saturn branch](https://github.com/miles-rusch-berkeley/saturn-vectors/tree/feat/kodiak-zvt-vme)
+at `4359c36`. Chipyard pins a public Rocket base and carries
+the exact CSR guard patch plus application instructions in `patches/kodiak-vme/README.md`;
+a fresh managed checkout with that patch passed JDK 17 Firechip compilation and FireSim FIRRTL,
+and reproduced the tested device tree. This is a source gate, not a VME FPGA image.
+The current OPU FireSim bitstream is usable for the BME flow above. Its archived artifact identity
+was checked during the hardware jobs. Reproducing that archive from a clean source tree remains
+unverified because the live Chipyard/Saturn checkout has pin drift. Physical Kodiak rig access
+and scheduling are separate from FireSim; follow the Kodiak package's `RUNNING.md` and
+coordinate with the rig owner before any chip load or reset.
 
 As of 2026-11-06, `ssh -o BatchMode=yes kodiak-rig hostname` returns `bwrckodiak` without a
 laptop relay. In an owner-confirmed exclusive window, a SHA-verified JTAG program restored FPGA

@@ -65,3 +65,11 @@ and a VME bitstream remain pending. The separate exact-pin OPU counter task has 
 compile, target FIRRTL elaboration, Golden Gate,
 and Verilator metasim build using Espresso. A bracketed counter run, synthesis, and a
 counter-equipped bitstream remain pending. Keep the configurations and receipts separate.
+
+The tested VME source is published on Chipyard fork branch `feat/kodiak-zvt-vme` at
+`dba3cf043408fd60bde2f66be1a12592f4e7b27d` and Saturn branch `feat/kodiak-zvt-vme`
+at `4359c36b710bb230335fc2866a28bd3f1911ed6e`. Chipyard's public Rocket gitlink stays
+at `fc745a8`; its `patches/kodiak-vme/README.md` and SHA-checked application script carry the
+focused scalar-Rocket CSR guard fix. A fresh managed checkout applied that patch and passed
+JDK 17 Firechip compilation and FireSim FIRRTL; its generated device tree was byte-identical
+to the source used for the direct RTL result. No VME FPGA bitstream has been built.
