@@ -194,6 +194,22 @@ cycles)`, and useful slot efficiency is the exact valid MAC count divided by iss
 Verify this readout with a known GEMM in metasim before a separate U250 bitstream build; the
 currently pinned bitstream has no such counter and cannot yield these values retroactively.
 
+That known-GEMM metasim gate now passes with an instrumented source graph. A hash-only 64³
+OPU image preserved the exact model archive, weights, and timed compute code of the accepted
+GEMM; it removed only the post-hash 4,096-value UART dump. Pinned OPU Spike returned the same
+full hash and compute cycles as the original source image. On bounded Verilator FireSim metasim,
+the new image reported full FNV hash `2089162557` over 4,096 values, `DONE`, exit zero, and
+**791,141 target compute cycles**. AutoCounter had 1,330 flat pre-event samples, then an
+active-row delta of **2,048**, then 651 flat post-event samples; gate-low delta was zero. Thus
+`128 × 2,048 = 262,144` issued MAC slots, exactly the 262,144 valid MACs of the 64³ GEMM.
+The measured **whole-compute row issue duty** is `2,048 / (8 × 791,141) = 0.0323583%`,
+**useful issued-slot efficiency is 100%**, and their product is **0.0323583% useful peak MAC
+utilization**. The SHA-bound metasim receipt at
+`/scratch/agustin/chipyard/tasks/opu-counter-goldengate-pin/.tmp/metasim_matrix_hashonly/utilization_receipt.json`
+records exact ELF, simulator, CSV, source, and ROI pins. This validates the counter method in
+metasim. It is not an FPGA array-occupancy measurement; a counter-equipped U250 bitstream and
+model run remain pending.
+
 With those counters, report the factors separately over the same inference:
 `valid MACs / (1,024 × inference cycles) = (OPU-window cycles / inference cycles)
 × (issued slots / (1,024 × OPU-window cycles)) × (valid MACs / issued slots)`.

@@ -171,9 +171,14 @@ stalls; they do not measure physical MAC array occupancy. Kodiak's functional Sp
 does not model OPU timing, so its 10.6057% call-window rate is not a hardware latency forecast.
 A separate draft Chipyard counter patch is
 available as [PR 2395](https://github.com/ucb-bar/chipyard/pull/2395), but no instrumented
-bitstream or counter measurement exists yet. A managed exact-pin counter source now passes
+bitstream or FPGA counter measurement exists yet. A managed exact-pin counter source now passes
 Firechip compile, target FIRRTL elaboration, Golden Gate, and a Verilator metasim build with
-JDK 17 and Espresso. A bracketed GEMM counter run and U250 synthesis remain pending.
+JDK 17 and Espresso. Its bracketed 64³ GEMM metasim run also passed: full expected hash,
+`DONE`, exit zero, 791,141 target compute cycles, active-row delta 2,048, gate-low delta zero,
+and flat samples before and after the burst. This gives **0.0323583% whole-compute row issue
+duty** and **100% useful issued-slot efficiency** for that one fully filled GEMM. The SHA-bound
+receipt is `/scratch/agustin/chipyard/tasks/opu-counter-goldengate-pin/.tmp/metasim_matrix_hashonly/utilization_receipt.json`.
+U250 synthesis and actual model/FPGA counter measurements remain pending.
 
 The aligned-prepack TinyLlama s64 image also has an exact Spike-gated sparse profile: 19 OPU
 call rows, 26,595,355 call cycles, and **36.2236% effective peak during those calls on Spike**.
