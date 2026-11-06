@@ -26,6 +26,8 @@ OPU instructions, checks the exact images on Spike, and prints an immutable Fire
 `--submit` to place the pair in the shared FPGA queue. The control leg is plain RVV on the **same
 OPU bitstream**. `./run.sh firesim-collect <plan-dir> --job device=N --job control=M` grades the
 returned full-output hashes, W8A8 numerical gate, bitstream identity, and target compute cycles.
+For a verified OPU pair it also saves `firesim/utilization.json` with routed MAC share, static
+tile fill, whole-inference effective peak, and an explicit unmeasured array occupancy field.
 The queue can take hours. See [the full example guide](README.md) for capture, build, package,
 and board options.
 
@@ -34,7 +36,7 @@ and board options.
 | Workload | Exact one-core OPU FireSim result | Matched RVV control | Output check |
 | --- | ---: | ---: | --- |
 | Spectformer int8 | 3,531,733,777 target compute cycles | 6,120,729,118 cycles | W8A8 pass; full hash/prefix match its Spike image |
-| TinyLlama two-layer, 64 tokens | 15,380,012,801 cycles | 27,955,258,588 cycles | Full 2,048,000-value hash/prefix match Spike; complete W8A8 pass |
+| TinyLlama two-layer, 64 tokens | 15,380,012,801 cycles | 27,955,258,588 cycles | Full 2,048,000-value hash/prefix match Spike; 4,096-prefix hardware W8A8 pass |
 | TinyLlama two-layer, 128 tokens | 16,727,634,195 cycles; device job 3862 completed | Control job 3864 pending | Full 4,096,000-value hash matches Spike; pair grade pending |
 
 The full TinyLlama model's weights alone are about 1.2 GiB and do not fit this 512 MiB board.

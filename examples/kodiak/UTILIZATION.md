@@ -25,8 +25,9 @@ one-core FireSim bitstream as job 3860 in 15,380,012,801 target `METRIC cycles`,
 2,048,000-element output hash matching the exact Spike-gated image. Its whole-inference effective
 throughput is `9,865,003,008 / (15,380,012,801 × 1,024) = 0.000626384`, or **0.0626384% of
 peak** (0.641417 valid MAC per target cycle). The paired plain-RVV control, job 3861, completed
-in 27,955,258,588 target compute cycles on the same bitstream. Both legs passed W8A8 and matched
-their exact Spike-gated full hashes and prefixes; the graded OPU speedup is
+in 27,955,258,588 target compute cycles on the same bitstream. The hardware W8A8 gate compared
+the 4,096-value prefix for each leg; both full-output hashes and prefixes matched their exact
+Spike-gated images. The graded OPU speedup is
 `27,955,258,588 / 15,380,012,801 = 1.8176×`. The 128-token FireSim pair is still running. The
 100% static tile fill does **not** imply 100% active-cycle occupancy.
 
@@ -120,3 +121,6 @@ s64 run directory above returns 9,865,003,008 valid MACs, 100% static fill, 0.06
 whole-inference effective peak, and 1.8176× control-over-device speedup. It deliberately returns
 `null` for array-active occupancy. The older Spectformer run predates the immutable leg receipt,
 so its arithmetic is shown explicitly above instead of being silently admitted by this tool.
+The FireSim collector saves this calculation automatically as `firesim/utilization.json` and
+embeds it in `firesim/results.json` for every fully verified pair on the pinned one-core OPU
+bitstream; its console summary prints utilization alongside speedup.
