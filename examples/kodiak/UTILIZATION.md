@@ -165,6 +165,13 @@ images. They show why reducing work outside the OPU calls is the larger end-to-e
 In the profiled Spike image alone, 5,172 per-op rows cover 99.66% of compute cycles; OPU call intervals account
 for 17,063,688 cycles (1.06% of the profiled total) and `linalg.generic` for 66.76% of
 attributed cycles. These are simulator diagnostics, not hardware occupancy.
+Twelve GELU rows using scalar `math.erf` account for 414,558,626 of 1,611,163,447 total
+profiled Spike compute cycles (25.7304%). An isolated exact-image memoization probe preserved
+the full hash but found only 970 cache hits among 2,408,448 erf calls (0.0403%). Its lookup alone
+cost eight target cycles per call; even before cache-store cost it needed about 4.82% hits to
+break even. Memoization is rejected, and this Spike share is not a FireSim speedup forecast.
+The SHA-bound probe receipt is in Merlin managed task
+`spectformer-gelu-trial/.tmp/erf_memo_trial_receipt.json`.
 `python examples/lib/opu_profile_utilization.py
 out/artifacts/probes/firesim_kodiak_opu/spectformer_profiled_h1` verifies the exact ELF,
 full-output identity, every selected profile row, SHA-pinned table and routing sidecar, and OPU callee
