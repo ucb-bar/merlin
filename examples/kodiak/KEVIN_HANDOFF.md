@@ -145,6 +145,9 @@ The aligned-prepack TinyLlama s64 image also has an exact Spike-gated sparse pro
 call rows, 26,595,355 call cycles, and **36.2236% effective peak during those calls on Spike**.
 Its full hash and routing sidecar match the FireSim device image. The profile image's earlier
 debug memory probe had written into embedded weights; Merlin now probes only beyond linker
-`_end`, and the corrected image passes the complete output gate. Its hardware call-window rate
-is still pending: the first direct queue submission failed before boot for the same SSH
-environment reason, and its exact ELF was resubmitted with the working wrapper as job 3873.
+`_end`, and the corrected image passes the complete output gate. Its exact FireSim retry,
+job 3873, measured **109,580,333 OPU call-window cycles** for 9,865,003,008 valid routed
+MACs, or **8.79153% effective peak within calls**. Those calls take 9.76384% of the profiled
+inference; whole-inference effective peak is 0.858391%. This profile used the aligned prepack
+image before fill elision. Its full hash, all 19 rows, and bitstream SHA passed the hardware
+verifier; physical array occupancy is still unmeasured.

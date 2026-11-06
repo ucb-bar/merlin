@@ -76,7 +76,17 @@ OPU calls**; the whole-inference fraction on that profiled Spike image is 1.6097
 simulator rates and must not be combined with FireSim's cycle count to infer hardware issue duty.
 The first profile attempt changed the output because fixed memory-diagnostic probes wrote inside
 the 147 MiB embedded weights. The corrected image probes only beyond linker `_end` and passed
-the exact output gate. Its FireSim hardware call-window measurement is pending.
+the exact output gate. The same exact sparse profile image completed on FireSim as job 3873 with
+all 19 rows, full hash, and `DONE`. Its **109,580,333 OPU call-window target cycles** are
+9.76384% of 1,122,307,701 whole-inference target cycles. The 9,865,003,008 valid routed
+MACs therefore give **8.79153% effective peak during hardware OPU call windows** and
+0.858391% whole-inference effective peak for this profiled image. The matching unprofiled
+prepack image, job 3866, took 20,314,483 fewer cycles (1.8434% profiling overhead). This
+profile precedes the separate fill-elision optimization, and its call-window rate must not be
+silently assigned to job 3874. Spike's OPU extension does not model timing or stalls, so its
+36.2236% diagnostic rate is not a hardware latency forecast. The pinned bitstream and complete
+output identity are SHA-checked in `hardware_profile_utilization.json`; actual array issue duty
+remains unmeasured.
 
 The accepted Spectformer h1 OPU ELF likewise recorded **105 calls, 0 scalar fallbacks** at the
 same point. `dynamic_opu_counters/receipt.json` records each exact ELF's SHA-256 and the debugger
@@ -200,6 +210,7 @@ Evidence in this task checkout:
 - `out/artifacts/probes/firesim_kodiak_opu/spectformer_current_unprofiled_h1/firesim/comparator_utilization_addendum.json`
 - `out/artifacts/probes/firesim_kodiak_opu/spectformer_profiled_opu_sparse_h1/hardware_profile_utilization.json`
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_prepack_profiled_opu_safe_h1/spike_profile_utilization.json`
+- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_prepack_profiled_opu_safe_h1/hardware_profile_utilization.json`
 
 For a graded immutable FireSim pair, `python examples/lib/opu_utilization.py <run_dir>` recomputes
 the counts and ratios from the exact image's SHA-checked routing sidecar and the two hardware
