@@ -71,10 +71,17 @@ selects 40 roots, declining only the 1×1000×256 head: 1,644,167,168 valid MACs
 2,147,483,648 padded slots, or 76.5625%. Every SpectFormer integer root has K
 divisible by 64, so this workload does not test K-tail handling. A separate VME
 128×128×33 biased case with four full logical tiles and signed `-128`/`127` endpoints
-passed pinned Zvt Spike; direct compact RTL is pending. A new OPU 64×64×33 endpoint
-case passed the package's 42-shape quick kernel sweep on a local Spike extension, but
-that extension's manifest records source pin drift. Neither microkernel result is a
-whole-model torchAO verdict.
+passed pinned Zvt Spike. Its direct compact RTL attempt reached `KT BEGIN` but stopped
+at the RAM guard before a case verdict, so RTL remains unverified. A new OPU 64×64×33
+endpoint case passed the package's 42-shape quick kernel sweep on a fresh extension
+built from independently attested exact Saturn `ea373800` source bytes plus the
+published Kodiak config patch. The extension SHA is
+`fe9d77b85a0a9d9be6a391e9d154226208a75f115ac569505f980960204f8338`;
+the 13-file source attestation SHA is
+`fb8c30d5e716418850badc0c8d1adec6ca226502850f5fce14599d82a93b35bf`.
+The built-in pin checker cannot verify a Git archive without `.git`, so this is an
+exact-byte attested simulator test, not a built-in pin-check pass. Neither
+microkernel result is a whole-model torchAO verdict.
 
 The acceptance sequence is framework golden → unchanged-source Merlin host output
 → matrix twin on Spike → shipped image on the declared OPU simulator → FireSim on the
