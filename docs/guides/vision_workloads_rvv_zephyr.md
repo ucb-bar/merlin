@@ -174,12 +174,21 @@ Run these commands from the Merlin worktree, with `TASK_DIR` naming the managed 
 `CAPTURE_BUNDLE` to the trained, materialized TorchAO capture and `HOST_PACKAGE` to the selected
 `int8_w8a8` package. Keep `MERLIN_PASSES` identical for population and CLI replay; it is part of
 the cache identity. Set it to `torchao-cpu-avx2-mean` if that pass is being evaluated.
+Resolve the actual LLVM 23 tools before population and replay. This task's
+ignored `.env` currently points at a removed install, so allowing its defaults
+would fail before the cache can be populated. Set `MERLIN_MLIR_INSTALL` to an
+existing LLVM 23 install on the execution host and keep the same tool bytes
+for population and replay.
 
 ```bash
 set -euo pipefail
 : "${TASK_DIR:?use a managed task}"
 : "${CAPTURE_BUNDLE:?name the materialized TorchAO capture}"
 : "${HOST_PACKAGE:?name the selected W8A8 package}"
+export MERLIN_MLIR_INSTALL="${MERLIN_MLIR_INSTALL:?select a live LLVM 23 install}"
+export MERLIN_CLANG="$MERLIN_MLIR_INSTALL/bin/clang-23"
+export MERLIN_MLIR_TRANSLATE="$MERLIN_MLIR_INSTALL/bin/mlir-translate"
+test -x "$MERLIN_CLANG" && test -x "$MERLIN_MLIR_TRANSLATE"
 export PYTHONPATH="$PWD/src"
 export TMPDIR="$TASK_DIR/.tmp"
 export HOST_CACHE="$TMPDIR/source-host-cache"

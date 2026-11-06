@@ -101,6 +101,12 @@ The earlier SpectFormer and TinyLlama caches predate this identity and cannot
 serve as current host evidence. A cache-only miss is a failed preflight, not a
 model output. Fresh population is deferred until the VME Vivado run releases
 scratch and memory.
+An [empty-cache probe](../../experiments/reference-data/spectformer_torchao_host_cache_preflight_2026-11-06.md)
+against the exact SpectFormer source returned a structured
+`HostCacheMiss` for all 1,361 kernels, zero loaded objects, and no compilation.
+The task-local `.env` points at removed LLVM paths; export a live LLVM 23
+`MERLIN_MLIR_INSTALL` before population and replay, with matching `MERLIN_CLANG` and
+`MERLIN_MLIR_TRANSLATE` as shown in the guide.
 
 The source-authoritative path is torchAO `int8_w8a8`: dynamic signed-int8 activation
 quantization, signed-int8 weights derived from the trained checkpoint, and explicit `_int_mm`
