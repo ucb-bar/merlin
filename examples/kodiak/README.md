@@ -240,14 +240,24 @@ runs into, in the order you will meet it:
   environment variables, so `M2M_RESNET_RANDOM=1 ./run.sh capture resnet50_v1_5` passes them through.
 * **Time.** The capture and the W8A8 golden both run the whole model on the host: about 5 minutes each
   for ResNet-50. Each spike gate is one single-threaded simulation of a whole inference.
-* **Kodiak's 512 MiB.** The image holds the weights plus an activation arena sized to the sum of every
-  allocation the lowered model makes (the bound that holds whatever the allocator reclaims), plus slack.
-  A model that does not fit is refused before linking, with both sizes; ResNet-50 at 224x224 needs
-  624 MiB. Shrink the input with your own loader (at 112x112 it fits) or the model.
+* **Kodiak's 512 MiB.** The image holds the weights, the code and a STATIC ACTIVATION ARENA planned at
+  build time: each buffer is freed after its last use and all of them are seated in one arena sized to
+  the peak of what is live at once, not the sum of everything the model allocates. What the plan cannot
+  seat stays on the heap, priced at its sum. Every build prints and records the budget (`memory` in the
+  build record, `plan` in the delivery manifest): buffers summed, peak live, arena, heap, weights,
+  code, region. ResNet-50 at 224x224 needs 146 MiB (its buffers sum to 375 MiB; the arena is 41 MiB),
+  where sizing to the sum asked for 624 MiB. A TinyLlama section (`examples/workloads/causal_lm_section`)
+  of 2 layers at 128 tokens fits the stock 256 MiB region; 8 layers at 128 tokens, or 2 layers at 512
+  tokens, fill the board. The whole model does not fit: its weights alone are about 1.2 GiB. A model
+  that does not fit is refused naming every term. `--no-pass static-arena --no-pass sink-deallocs`
+  restores the old heap-only layout. The OPU image does not get the plan's reuse yet (see
+  `docs/design/static_arena_wiring.md`): ResNet-50's needs 507 MiB at 1 hart and is refused at 2.
 * **Weight-only int8.** The int8 capture quantizes weights with torchao's default filter, which matches
   `nn.Linear` only: a CNN's convolution weights stay f32 in the bundle. Merlin's W8A8 build still
   quantizes those convolutions (`conv_int8`) and routes them to the OPU, but the image carries their
-  weights as f32: ResNet-50's weights blob is 96 MB, about 4x its int8 size.
+  weights as f32: ResNet-50's weights blob is 96 MB, about 4x its int8 size. `--pass prequantize-weights`
+  stores them as int8 plus a per-channel scale instead (the same formula, applied at build time; refused
+  when a weight cannot be proven to feed only its contraction).
 * **What routes is priced.** A contraction routes when the OPU's estimate, derived from its tile edge
   and datapath width, beats the vector unit's, so the deep layers of a small input (7x7 = 49 output
   pixels, padded to a 64-wide tile) route too; `priced_sub_tile_routes` in the routing report lists each

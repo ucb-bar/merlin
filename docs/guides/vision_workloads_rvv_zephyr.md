@@ -349,10 +349,11 @@ Sizing the region's headroom from weight bytes alone assumes activations are sma
 parameters, which is false for an encoder whose attention matrices dwarf its weights.
 `mlir_query.activation_peak_bytes` measures peak simultaneously-live intermediate bytes by liveness
 over the captured IR (every tensor is statically shaped, so footprints are exact; arguments are
-excluded because weights bind from the blob), and `_ram_for_weights` uses
-`max(weight-scaled, peak + 128 MB)` — strictly ≥ the old value, so no image that boots today gets a
-smaller region. Measured effect: `deepjscc` / `lstmnetvit` / `spectformer` stay at the 256 MB default,
-`tiny_llama` int8 stays at 1744 MB, and `whisper_tiny` grows 288 → 464 MB.
+excluded because weights bind from the blob). That estimate no longer sizes the region: a Zephyr image
+now carries a static activation arena planned over the lowered model's own allocations (buffers freed
+at last use, seated at their peak), and the region is the linked image plus the heap residue plus a
+margin derived from the Zephyr heap (`runtime/backends/zephyr_memory.py`, design note
+`static_arena_wiring`). Small models still stay at the 256 MB default.
 
 ## Reproducing
 

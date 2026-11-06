@@ -3,12 +3,76 @@ title: "Design note: the static memory arena and the path we actually measure"
 kind: design
 status: current
 owner: core
-last_verified: 2026-09-04
+last_verified: 2026-11-05
 related: [runtime_escape_audit, compiler_plane]
-code_refs: [src/merlin/xdsl_dialects/lowering/arena_plan.py, src/merlin/llvmlower/arena_bind.py, src/merlin/llvmlower/lower.py, src/merlin/xdsl_dialects/lowering/dispatch_program.py, src/merlin/runtime/program.py, src/merlin/llvmlower/pipeline.py]
+code_refs: [src/merlin/xdsl_dialects/lowering/arena_plan.py, src/merlin/llvmlower/arena_bind.py, src/merlin/llvmlower/lower.py, src/merlin/xdsl_dialects/lowering/dispatch_program.py, src/merlin/runtime/program.py, src/merlin/llvmlower/pipeline.py, src/merlin/runtime/backends/zephyr_memory.py]
 ---
 
 # The static arena and the path we actually measure
+
+## Zephyr images: the arena is the default, and it sizes the region
+
+A Zephyr model image is lowered with its ACTIVATION MEMORY PLAN selected unless a build deselects a part
+of it by name (`runtime/backends/zephyr_memory.py`, `planned_lowering`):
+
+- `sink-deallocs` moves each free to the buffer's last use (checked structurally for use-after-free on
+  every runner, including the accumulator-resident one);
+- `fold-uniform-fill-copy` fills each copy destination directly instead of copying from the ONE
+  zero-filled accumulator init CSE shares across every contraction of a shape -- a buffer whose
+  ownership the deallocation pass resolves only at run time, so it was freed at the end of the call and
+  live from the first layer to the last (73 of them, 110 MiB, on an 8-layer TinyLlama section);
+- `static-arena` then packs the buffers at the PEAK of what is live instead of their sum, placing them
+  under four greedy orders and keeping the smallest arena.
+
+All three are exact. Together they are the follow-up the rest of this note asked for.
+
+The region the image is linked for is no longer weights + sum + 128 MiB. It is
+
+    linked image (measured from the ELF: code, data, stacks, embedded inputs, weights, the arena in .bss)
+  + heap residue (what the binder refused, at its SUM -- the bound that holds whatever the allocator
+    does with frees: a request is carved from a hole or from the untouched tail, and the tail only
+    shrinks by requests already counted)
+  + allocator margin (per allocation a chunk header, the round-up to CHUNK_UNIT -- read from the Zephyr
+    tree's lib/heap/heap.h -- and the aligned-allocation padding; once, the heap's bookkeeping)
+
+linked once at an estimate and corrected to the measured image (a linker overflow is retried at the
+size it reports; a relink starts from a fresh configure, because Kconfig otherwise keeps the first
+configure's CONFIG_SRAM_SIZE, from which both the link region and the heap are sized). A need beyond
+the board's DRAM is refused naming every term. Measured on Kodiak (`chipyard_kodiak`, 512 MiB), RVV
+image, 1 hart; "before" is the old rule applied to the same build:
+
+| model | buffers summed | peak live | arena | heap residue | image | region before | region now |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| spectformer | 96.5 MiB | 11.4 MiB | 11.4 MiB | 0 | 31 MiB | 256 MiB | 256 MiB |
+| ResNet-50 @224 | 375 MiB | 41.3 MiB | 41.3 MiB | 0 | 146 MiB | 624 MiB, refused | 256 MiB |
+| TinyLlama, 2 layers x 128 tokens | 216 MiB | 78.4 MiB | 78.4 MiB | 0 | 250 MiB | 528 MiB, refused | 256 MiB |
+| TinyLlama, 2 layers x 512 tokens | 772 MiB | 265 MiB | 276.5 MiB | 0 | 498 MiB | ~1.1 GiB, refused | 512 MiB |
+| TinyLlama, 8 layers x 128 tokens | 385 MiB | 78.4 MiB | 78.4 MiB | 0 | 503 MiB | ~940 MiB, refused | 512 MiB |
+
+Output is bit-identical where the numerics did not change: spectformer's output hash is the same as
+before the plan at 1 and 2 harts, RVV and OPU; ResNet-50's W8A8 max_rel is 0.0. Spectformer's cycles
+FELL with the plan (4.40e9 -> 3.57e9 on spike at 1 hart; 2.13e9 -> 1.65e9 for the OPU image), so the
+`noalias` concern below did not materialize there.
+
+What the plan cannot reach yet:
+
+- The OPU leg. A routed contraction is a tensor-valued call to an external function, so bufferization
+  cannot see that it writes its init operand, and the deallocation pass resolves every buffer around it
+  at run time (end-of-function frees): the arena reuses nothing. ResNet-50 @224's OPU image needs 507 MiB
+  at 1 hart and 523 MiB at 2 harts, where its RVV image needs 146 MiB. The fix belongs in the routing
+  rewrite (a destination-passing call on memrefs, or a bufferizable op), not here.
+- A 2-hart image hands each buffer's descriptor to the outlined OpenMP region through a struct on the
+  stack; the binder refuses a handle stored there (it cannot follow it into the region), so those
+  buffers stay on the heap.
+
+The binder's descriptor rule changed with this: it follows each allocation's HANDLE (the pointer `free`
+accepts) through the descriptor it is inserted into, field-sensitively, any `alloca` the descriptor is
+spilled to and values loaded back, and refuses only that allocation when a carrier escapes the call or
+reaches a second free or an unknown callee. It used to switch the relaxation off for the whole
+function on any unknown callee, and `@dealloc_helper` is one, which left 123 of spectformer's
+allocations on the heap. The DATA pointer kernels receive is still not followed, by the argument
+below: the input program is correct under malloc/free, so no access through it falls outside the
+window.
 
 ## What is wired now
 
