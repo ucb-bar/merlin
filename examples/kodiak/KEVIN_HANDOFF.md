@@ -125,19 +125,22 @@ gates, and all debug twins passed ELF audits, with 90 OPU routes. The two-layer 
 chipyard delivery labels its unrun OPU ELFs `UNGATED`. Neither package
 claims physical Kodiak execution or K1 certification for the new schedule.
 On this shared host, the rebuilt Spectformer h1/h2 chipyard delivery is staged at
-`out/artifacts/delivery/kodiak-spectformer-prepack-v1-final-r4.zip` (SHA-256
-`c340d88c3a6d054bd6d6cb258935124056534d2c380541927df28f57140de679`). This revision
-changes only the embedded README's physical loader instructions to the proven OPU-direct control
-and gives standalone readers a pinned link to Kodiak's current rig procedure;
-all 22 other archive members, including every ELF, match the previous zip byte for byte. The
-task-local revision receipt is `.tmp/kodiak-spectformer-prepack-v1-final-r4.receipt.json`. The zip
-passed archive integrity and contains eight ELFs, its manifest, audits, and grading script.
+`out/artifacts/delivery/kodiak-spectformer-prepack-v1-final-r5.zip` (SHA-256
+`ce9f33f186ff3478ca00bf9c105e677df1dfafc50b3132673dd15b34934dcbf3`). This revision
+corrects the embedded README's source-provenance caveat: the seven dirty paths were untracked
+benchmark outputs/cache, and the four ISA/geometry files used for its source digest match
+committed Saturn `e16a301d`. It preserves r4's proven OPU-direct loader instructions and pinned
+rig guide link. All 22 non-README archive members, including every ELF, match r4 byte for byte.
+The task-local revision receipt is `.tmp/kodiak-spectformer-prepack-v1-final-r5.receipt.json`. The zip
+passed archive integrity and contains eight model ELFs plus a VLEN probe, its manifest, audits,
+and grading script.
 Its four plain images passed W8A8 gates and h2 matches h1. It is an ignored local artifact,
 not a Git-tracked download or a physical-chip execution receipt. Kevin must copy this zip from
-the shared host to retain the exact r4 ELF bytes. Its manifest records seven uncommitted Saturn
-source changes, so the declared source commit alone cannot reproduce those bytes. The tracked
-prepack package and transferred capture can produce a fresh package, but that new output needs
-fresh Spike, ELF, and hardware gates before use. The exact prepack FireSim device/control jobs
+the shared host to retain the exact delivered ELF bytes. The manifest observes Saturn
+`e16a301d`, which differs from its declared `ea373800` pin; the recorded ISA source digest is
+recoverable from four tracked files at `e16a301d`. Rebuilding the full ELFs from the tracked
+prepack package and transferred capture still needs compiler/toolchain closure and fresh Spike,
+ELF, and hardware gates. The exact prepack FireSim device/control jobs
 3886/3888 subsequently graded VERIFIED:
 **2,733,902,458** versus **5,840,140,166** target compute cycles, **2.13619×** paired speedup,
 and identical full 1,000-value hashes to their exact Spike images. Its 90 routed contractions
