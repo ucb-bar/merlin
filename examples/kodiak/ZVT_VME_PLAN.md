@@ -27,6 +27,10 @@ encoding path, not a Kodiak VME SoC or bitstream. See Iris `handwritten-implemen
 3. Add a separate Merlin `saturn_vme` Kodiak board/unit contract with explicit VME pins,
    geometry, instruction audit, Zephyr image, and fail-closed bitstream matching. The
    candidate int8 tile edge is `VLEN/8 = 64`; confirm it from elaborated hardware.
+   The pinned VME RTL has `(DLEN/8)²` physical int8 MAC cells, so `DLEN=256` gives
+   **1,024 MAC per fully active cycle** even though the logical tile is 64 × 64. This is
+   a capacity bound, not measured array duty; a later utilization report must account
+   for clock gating, MAC enable, row/column masks, and valid model work.
 
 The host-side Zvt matrix CSRs need Rocket `Matrix.scala` support for `sf.msetmtype` and
 `sf.msettn/m/k`. The RTL source encodes those under OP-V `0x57`, `funct3=7`, with
