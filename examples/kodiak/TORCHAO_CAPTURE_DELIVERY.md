@@ -12,6 +12,9 @@ the paths below identify the original captures on this shared host.
 The [receipt-bound packaging command](SOURCE_ARCHIVE_PACKAGING.md) is ready and
 its read-only SpectFormer check passed; it will write archives when the shared
 scratch guard permits.
+For the TinyLlama source's first RMSNorm reduction, the
+[captured Torch CPU mean-order diagnostic](TORCHAO_CPU_MEAN_FIDELITY.md) can be
+selected explicitly; its first-layer pass is not a whole-model verdict.
 
 ## Capture identities and scope
 

@@ -14,6 +14,9 @@ program. A source-authoritative OPU image and its matched Spike and FireSim
 checks remain pending.
 The [source archive packaging procedure](SOURCE_ARCHIVE_PACKAGING.md) records
 the immutable receipt and archive hashes Kevin needs before relocation.
+The [captured Torch CPU reduction diagnostic](TORCHAO_CPU_MEAN_FIDELITY.md)
+explains an opt-in source-order fix for TinyLlama's first observed divergence;
+whole-model framework parity still needs a new gate.
 
 ## Compile and check an image
 
