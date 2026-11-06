@@ -29,6 +29,17 @@ returned full-output hashes, W8A8 numerical gate, bitstream identity, and target
 For a verified whole-model OPU pair with an exact routing sidecar, it saves
 `firesim/utilization.json` with routed MAC share, static tile fill, whole-inference effective
 peak, and an explicit unmeasured array occupancy field.
+On the current shared host, the installed workload is `merlin-kodiak` and the queue client needs
+the working-directory launchers. Before `--submit`, set:
+
+```sh
+export MERLIN_FIRESIM_WORKLOAD=merlin-kodiak
+export MERLIN_FIRESIM_CLIENT_DROP_ENV=HOME,USER,LOGNAME
+export MERLIN_FIRESIM_CLIENT_PATH_PREFIX="$(git rev-parse --show-toplevel)/merlin/experiments/gemmini_perf_bench/scripts/firesim_queue_cwd_launcher"
+```
+
+On another host, use its installed workload or install the default `merlin-zephyr` manifest as
+the printed plan instructs. The plan names the exact workload and boot binary before submission.
 The queue can take hours. See [the full example guide](README.md) for capture, build, package,
 and board options.
 

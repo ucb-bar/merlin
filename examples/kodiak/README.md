@@ -411,6 +411,7 @@ particular machine.
 | `MERLIN_FIRESIM_QUEUE_CLIENT` | the raw queue client, if not `$MERLIN_EXT_FIRESIM_QUEUE/bin/firesim-queue` | optional |
 | `MERLIN_FIRESIM_WORKLOAD` | the FireSim workload the ELF boots under (default `merlin-zephyr`) | optional |
 | `MERLIN_FIRESIM_CLIENT_DROP_ENV` | e.g. `HOME,USER,LOGNAME` when the queue daemon runs as another account | optional |
+| `MERLIN_FIRESIM_CLIENT_PATH_PREFIX` | directory of client-side `firesim`/`make` launchers when the queue daemon needs a different working directory | optional |
 
 The workload is a three-line JSON that each job directory carries
 (`firesim/workload/<workload>.json`). If your FireSim does not have it yet, the printed plan says the
