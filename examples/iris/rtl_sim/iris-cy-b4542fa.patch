@@ -1,0 +1,65 @@
+diff --git a/generators/chipyard/src/main/scala/config/ChipletConfigs.scala b/generators/chipyard/src/main/scala/config/ChipletConfigs.scala
+index fb99eac2..b49cd17c 100644
+--- a/generators/chipyard/src/main/scala/config/ChipletConfigs.scala
++++ b/generators/chipyard/src/main/scala/config/ChipletConfigs.scala
+@@ -151,7 +151,7 @@ class ComputeChiplet1Config extends Config(
+   new testchipip.soc.WithChipIdPinWidth(2) ++
+   new testchipip.soc.WithChipIdPin ++
+   new testchipip.ctc.WithCTC(Seq(new testchipip.ctc.CTCParams(
+-    translationParams = InwardAddressTranslatorParams(chipID=1, offset=0x100000000L), 
++    translationParams = Some(InwardAddressTranslatorParams(chipID=1, offset=0x100000000L)), 
+     offchip=Seq.tabulate(3)(i => AddressSet(0x100000000L << i, 0x100000000L - 1)), 
+     phyParams = None))) ++ 
+   new chipyard.RocketConfig
+@@ -162,7 +162,7 @@ class ComputeChiplet2Config extends Config(
+   new testchipip.soc.WithChipIdPinWidth(2) ++
+   new testchipip.soc.WithChipIdPin ++
+   new testchipip.ctc.WithCTC(Seq(new testchipip.ctc.CTCParams(
+-    translationParams = InwardAddressTranslatorParams(chipID=2, offset=0x100000000L), 
++    translationParams = Some(InwardAddressTranslatorParams(chipID=2, offset=0x100000000L)), 
+     offchip=Seq.tabulate(3)(i => AddressSet(0x100000000L << i, 0x100000000L - 1)), 
+     phyParams = None))) ++ 
+   new chipyard.RocketConfig
+@@ -174,11 +174,11 @@ class IOChipletConfig extends Config(
+   new testchipip.soc.WithChipIdPin ++
+   new testchipip.ctc.WithCTC(Seq(
+     new testchipip.ctc.CTCParams(
+-      translationParams = InwardAddressTranslatorParams(chipID=0, offset=0x100000000L), 
++      translationParams = Some(InwardAddressTranslatorParams(chipID=0, offset=0x100000000L)), 
+       offchip=Seq(AddressSet(0x200000000L, 0x100000000L - 1)), 
+       phyParams = None), 
+     new testchipip.ctc.CTCParams(
+-      translationParams = InwardAddressTranslatorParams(chipID=0, offset=0x100000000L), 
++      translationParams = Some(InwardAddressTranslatorParams(chipID=0, offset=0x100000000L)), 
+       offchip=Seq(AddressSet(0x400000000L, 0x100000000L - 1)), 
+       phyParams = None)
+     )) ++ 
+diff --git a/generators/chipyard/src/main/scala/config/IrisConfigs.scala b/generators/chipyard/src/main/scala/config/IrisConfigs.scala
+index 7b0ad9ba..465d0c47 100644
+--- a/generators/chipyard/src/main/scala/config/IrisConfigs.scala
++++ b/generators/chipyard/src/main/scala/config/IrisConfigs.scala
+@@ -101,16 +101,14 @@ object IrisNoCParams {
+ }
+ 
+ /** Tacit trace encoder and trace sinks. */
+-class WithIrisTacitTrace
+-    extends Config(
+-      // One DMA sink per tile with a port on each bus, chosen by its bus_select
+-      // register (soft-reset the DMA before changing it):
+-      //   0 (reset): FBUS -> SBUS, reaches the SBUS scratchpad, or DRAM through the L2
+-      //   1:         MBUS -> DRAM below the L2 (bypasses it)
+-      new tacit.WithTraceSinkDMA(1, buses = Some(Seq(FBUS, MBUS))) ++        new tacit.WithTraceSinkAlways(0) ++
+-        // new chipyard.WithTacitTraceArbiterMonitor ++
+-        new chipyard.WithTacitParallelEncoder
+-    )
++// merlin rtl-sim: the Tacit trace fragment does not compile at b4542fa
++// (chipyard.WithTacitParallelEncoder is defined nowhere; tacit's chipyard glue
++// needs a traceParams field the pinned Shuttle tile lacks), so the trace
++// encoder and its sinks are left out. Nothing else in IrisConfig changes.
++class WithIrisTacitTrace extends Config(Parameters.empty)
++
++/** IrisConfig without the Tacit trace encoder/sinks (see above). */
++class IrisNoTraceConfig extends Config(new IrisConfig)
+ 
+ /** Widens the SBUS to 256b and drops the per-bus error devices. Sits on top of
+   * the chip-specific WithSbusNoC.

@@ -15,6 +15,11 @@
         For a board that names a FireSim `bitstream`, also plan one FireSim job per image (firesim_flow.py)
         and print its submission; --firesim-submit runs them and grades the result.
 
+    chip_flow.py rtl <kept dir> --board B [--legs rvv,matrix] [--sim S] [--plusarg +x=y]
+        Run the images ``op`` kept on the board's chipyard Verilator simulator, grade each, and compare it
+        bit for bit (dumped prefix and whole-tensor hash) with its spike run; record RTL mcycle and wall
+        time in ``<kept dir>/rtl_sim.json``.
+
 The board, the matrix unit and its configuration are arguments: a chip example passes its own. Nothing
 here names a chip.
 """
@@ -527,6 +532,148 @@ def _firesim(kept: Path, name: str, args, results: dict) -> int:
     return 0 if result["all_verified"] else 1
 
 
+#: The kept images ``rtl`` can run, and where ``op`` recorded each one's spike answer and count in summary.json.
+RTL_LEGS = {
+    "rvv": ("rvv.elf", ("rvv", "output_identity"), ("rvv", "cycles")),
+    "matrix": (
+        "matrix.elf",
+        ("matrix", "matrix", "shipped_on_simulator", "output_identity"),
+        ("matrix", "matrix", "shipped_on_simulator", "spike_cycles"),
+    ),
+}
+
+
+def _dig(d: dict, keys: tuple[str, ...]):
+    for k in keys:
+        d = d.get(k) if isinstance(d, dict) else None
+    return d
+
+
+def _sim_tree_pins(sim: Path, target: str | None) -> dict:
+    """Verify every pin declared for ``target`` whose sources are in the tree ``sim`` was built from.
+
+    A chipyard simulator lives at ``<tree>/sims/verilator/<binary>``; a pin is checked against that tree (or
+    its ``nested_path`` in it) when its ``requires_paths`` are present there. A tree that differs from its
+    pin -- a local fix needed to build at all -- is recorded as drift, not hidden.
+    """
+    from merlin.common import provenance
+
+    tree = sim.resolve().parents[2]
+    out = {}
+    for name, p in provenance.load_pins().items():
+        if not target or target not in p.targets:
+            continue
+        root = tree / p.nested_path if p.nested_in else tree
+        if p.requires_paths and all((root / rel).exists() for rel in p.requires_paths):
+            out[name] = provenance.verify(name, checkout=root)
+    return out
+
+
+def rtl(args) -> int:
+    """Run kept images on the board's chipyard Verilator simulator and compare each with its spike run.
+
+    The images are the ones ``op`` kept (``rvv.elf`` and, when routed, ``matrix.elf``); their spike answers
+    are in that directory's summary.json. Each RTL console is parsed by the same OUT/HASH/METRIC/DONE reader,
+    graded against the W8A8 golden, and compared bit for bit (dumped prefix and whole-tensor hash) with spike.
+    Writes ``rtl_sim.json`` and one ``rtl_<leg>.log`` console per image into the directory.
+    """
+    import time
+
+    from merlin.common import provenance
+    from merlin.runtime.backends import output_identity
+    from merlin.runtime.backends import zephyr_model as zm
+    from merlin.runtime.boards import board as board_desc
+
+    kept = Path(args.kept).resolve()
+    summary = json.loads((kept / "summary.json").read_text(encoding="utf-8"))
+    desc = board_desc(args.board)
+    sim = Path(args.sim).resolve() if args.sim else zm.verilator_sim(board=args.board)
+    if sim is None or not sim.is_file():
+        cfg, env_name = zm._verilator_facts(args.board, None)
+        raise SystemExit(
+            f"no Verilator simulator for {args.board} (config {cfg}): build one (README.md, 'RTL simulation') "
+            f"and point {env_name} at it, or pass --sim"
+        )
+    name = summary["rvv"]["workload"]
+    refs = _references(name)
+    pins = _sim_tree_pins(sim, desc.target)
+    report: dict = {
+        "board": args.board,
+        "workload": name,
+        "harts": summary["rvv"].get("harts"),
+        "sim": str(sim),
+        "sim_config": sim.name.rpartition("harness-")[2] or None,
+        "provenance": provenance.record(pins=pins, artifacts={"sim": sim}),
+        "legs": {},
+    }
+
+    def simulate(elf: Path) -> tuple[str, int | None, float]:
+        cmd = [str(sim), "+permissive", *args.plusarg, "+permissive-off", str(elf)]
+        print(f"$ {' '.join(cmd)}", flush=True)
+        started = time.monotonic()
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=args.timeout)
+            console, rc = proc.stdout + proc.stderr, proc.returncode
+        except subprocess.TimeoutExpired as exc:
+            out = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+            console, rc = out + f"\n[timeout after {args.timeout}s]\n", None
+        return console, rc, time.monotonic() - started
+
+    # Each image is its own simulator process (single-digit kHz each), so they run side by side.
+    from concurrent.futures import ThreadPoolExecutor
+
+    legs = [leg for leg in args.legs.split(",") if (kept / RTL_LEGS[leg][0]).is_file()]
+    for leg in args.legs.split(","):
+        if leg not in legs:
+            report["legs"][leg] = {"status": "skipped", "reason": f"{RTL_LEGS[leg][0]} not kept"}
+    with ThreadPoolExecutor(max_workers=max(1, len(legs))) as pool:
+        runs = dict(zip(legs, pool.map(lambda leg: simulate(kept / RTL_LEGS[leg][0]), legs)))
+    for leg in legs:
+        elf_name, ident_keys, count_keys = RTL_LEGS[leg]
+        elf = kept / elf_name
+        console, rc, wall = runs[leg]
+        (kept / f"rtl_{leg}.log").write_text(console, encoding="utf-8")
+        got: dict = {"elf": str(elf), "rc": rc, "wall_s": round(wall, 1), "console": str(kept / f"rtl_{leg}.log")}
+        spike_ident, spike_count = _dig(summary, ident_keys), _dig(summary, count_keys)
+        got["spike"] = {"output_identity": spike_ident, "count": spike_count}
+        try:
+            res = zm._parse_console(console, rc if rc is not None else -1)
+        except zm.ZephyrModelError as exc:
+            report["legs"][leg] = {**got, "status": "run_failed", "error": str(exc)[-1500:]}
+            continue
+        mine = output_identity.output_identity(res)
+        same = output_identity.same_output(mine, spike_ident)
+        g = zm._gate(res["outputs"], refs)
+        got.update(
+            {
+                "rtl_cycles": res["metrics"].get("cycles"),
+                "metrics": res["metrics"],
+                "output_identity": mine,
+                "bit_exact_vs_spike": same,
+                "verify": {"gate_ok": bool(g.get("ok")), **g},
+            }
+        )
+        got["status"] = "verified" if (g.get("ok") and same is True) else "run_mismatch"
+        report["legs"][leg] = got
+    (kept / "rtl_sim.json").write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+    print(f"\n== {name} on {report['sim_config']} RTL ({sim})")
+    for leg, r in report["legs"].items():
+        ident = r.get("output_identity") or {}
+        spike_run = r.get("spike") or {}
+        spike = spike_run.get("output_identity") or {}
+        print(
+            f"  {leg:7} {r['status']:12} rtl_cycles={r.get('rtl_cycles')} spike_count={spike_run.get('count')}"
+            f"  hash rtl/spike={_dig(ident, ('out_hash', 'value'))}/{_dig(spike, ('out_hash', 'value'))}"
+            f"  bit_exact_vs_spike={r.get('bit_exact_vs_spike')}  wall={r.get('wall_s')}s"
+        )
+        if r.get("error") or r.get("reason"):
+            print(f"         {str(r.get('error') or r.get('reason'))[:400]}")
+    for pname, cite in (report["provenance"].get("pin_citations") or {}).items():
+        print(f"  {pname}: {cite}")
+    print(f"  report: {kept / 'rtl_sim.json'}")
+    return 0 if all(r["status"] in ("verified", "skipped") for r in report["legs"].values()) else 1
+
+
 def _keep(name: str, args, results: dict) -> Path:
     """Copy the ELFs, the routing report and the summary out of the compiler's scratch directories into
     ``out/artifacts/probes/<board>/<name>/``, which is what someone copies to a board."""
@@ -573,7 +720,16 @@ def main(argv: list[str] | None = None) -> int:
     o.add_argument("--recapture", action="store_true", help="capture again even if the bundle exists")
     o.add_argument("--firesim-submit", action="store_true", help="on a FireSim board, run the images on the FPGA")
     o.add_argument("--firesim-timeout", type=int, default=1800, help="FireSim RUNNING-phase limit per image, s")
+    r = sub.add_parser("rtl")
+    r.add_argument("kept", help="a directory `op` kept (out/artifacts/probes/<board>/<op>_h<N>)")
+    r.add_argument("--board", required=True)
+    r.add_argument("--legs", default="rvv,matrix", help="comma-separated: " + ",".join(RTL_LEGS))
+    r.add_argument("--sim", help="the Verilator simulator; default: the board target's MERLIN_<TARGET>_VERILATOR")
+    r.add_argument("--plusarg", action="append", default=[], help="extra simulator plusarg, e.g. +max-cycles=N")
+    r.add_argument("--timeout", type=int, default=6 * 3600, help="wall-clock bound per image, s")
     args = ap.parse_args(argv)
+    if args.cmd == "rtl":
+        return rtl(args)
     if args.cmd == "capture":
         print(capture(args.name, args.loader.resolve() if args.loader else None))
         return 0

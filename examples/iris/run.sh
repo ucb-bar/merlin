@@ -27,6 +27,11 @@
 #   ./run.sh matrix --models a,b [--harts 1,2] [--legs matrix]
 #                                 model regression matrix: each model x harts x {RVV, RVV+VME}, every
 #                                 image gated on spike, h2 checked bit-identical to h1
+#   ./run.sh rtl-sim build [--tree D] [--jobs N]
+#                                 the Verilator simulator of IrisConfig (minus its trace fragment, which
+#                                 does not compile at the pin) from a full iris-cy tree; see README.md
+#   ./run.sh rtl-sim run <kept dir> [--legs rvv,matrix]
+#                                 run the images `op` kept on that simulator; compare each with spike
 #
 # The VME route derives the unit's encodings and geometry from $MERLIN_CHIPYARD_IRIS (a chipyard iris-cy
 # checkout at pin chipyard_iris, with generators/saturn at saturn_vme and generators/rocket-chip at
@@ -34,6 +39,7 @@
 set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/common.sh"
 BOARD=iris_rtl
+IRIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The VME route's executable support and the unit facts it derives from, named by the iris package
 # (contracts/matrix_units.yaml, contracts/overlay.yaml), never inferred.
 MATRIX_SUPPORT=iris
@@ -132,8 +138,33 @@ matrix)
       --matrix-support-target "$MATRIX_SUPPORT" ${KERNEL_ARGS[@]+"${KERNEL_ARGS[@]}"} "${@:2}"
   ex_note "table: out/artifacts/probes/model_matrix/$BOARD/MATRIX.md (one JSON per cell beside it)"
   ;;
+rtl-sim)
+  # The Verilator elaboration of the chip, built from a full chipyard iris-cy tree (README.md, "RTL
+  # simulation"), and the images `op` kept run on it, each compared bit for bit with its spike run.
+  shift
+  case "${1:-}" in
+  build)
+    shift
+    ex_run "$IRIS_DIR/rtl_sim/build_sim.sh" "$@"
+    ;;
+  run)
+    shift
+    if [ $# -lt 1 ]; then echo "usage: $0 rtl-sim run <kept dir> [--legs rvv,matrix] [--sim S]" >&2; exit 2; fi
+    KEPT="$(ex_abs "$1")"; shift
+    # Where `rtl-sim build` puts it, unless $MERLIN_IRIS_VERILATOR (or --sim) names another build.
+    SIM_ARGS=()
+    DEFAULT_SIM="$REPO_ROOT/out/build/ext/chipyard_iris_rtl/sims/verilator/simulator-chipyard.harness-IrisNoTraceConfig"
+    if [ -z "${MERLIN_IRIS_VERILATOR:-}" ] && [ -x "$DEFAULT_SIM" ]; then SIM_ARGS=(--sim "$DEFAULT_SIM"); fi
+    ex_run "$PY" "$EX_LIB_DIR/chip_flow.py" rtl "$KEPT" --board "$BOARD" ${SIM_ARGS[@]+"${SIM_ARGS[@]}"} "$@"
+    ;;
+  *)
+    echo "usage: $0 rtl-sim build [--tree D] | rtl-sim run <kept dir> [--legs rvv,matrix] [--sim S]" >&2
+    exit 2
+    ;;
+  esac
+  ;;
 *)
-  sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,39p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac
