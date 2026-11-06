@@ -41,7 +41,7 @@ def _integer_roots(path: Path) -> tuple[str | None, list[tuple[str, str, str]]]:
     return scheme, roots
 
 
-def relocate(source: Path, destination: Path) -> dict:
+def relocate(source: Path, destination: Path, *, expected_source_receipt_sha256: str | None = None) -> dict:
     source, destination = source.resolve(), destination.resolve()
     if not source.is_dir() or not (source / "model.mlir").is_file():
         raise ValueError(f"saved capture is absent: {source}")
@@ -50,10 +50,19 @@ def relocate(source: Path, destination: Path) -> dict:
     if source == destination or source in destination.parents:
         raise ValueError("destination must be outside the source capture")
 
+    source_receipt_path = source / "capture_receipt.json"
+    source_receipt_digest = _digest(source_receipt_path)
+    if expected_source_receipt_sha256 is not None:
+        if len(expected_source_receipt_sha256) != 64 or any(
+            char not in "0123456789abcdef" for char in expected_source_receipt_sha256
+        ):
+            raise ValueError("expected source receipt SHA256 must be 64 lowercase hex digits")
+        if source_receipt_digest["sha256"] != expected_source_receipt_sha256:
+            raise ValueError("source receipt differs from the published SHA256")
+
     original_check = verify_capture_receipt(source / "model.mlir")
     if original_check.get("status") != "verified_materialized":
         raise ValueError(f"source capture receipt failed: {original_check.get('errors')}")
-    source_receipt_path = source / "capture_receipt.json"
     original_receipt = json.loads(source_receipt_path.read_bytes())
     artifact_records = original_receipt["artifacts"]
     original_mlir = source / "model.mlir"
@@ -132,8 +141,22 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("source", type=Path, help="untouched, extracted capture with its original receipt")
     parser.add_argument("destination", type=Path, help="fresh final bundle directory")
+    parser.add_argument(
+        "--expected-source-receipt-sha256",
+        help="published SHA256 of the original capture_receipt.json; reject a self-consistent replacement",
+    )
     args = parser.parse_args(argv)
-    print(json.dumps(relocate(args.source, args.destination), indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            relocate(
+                args.source,
+                args.destination,
+                expected_source_receipt_sha256=args.expected_source_receipt_sha256,
+            ),
+            indent=2,
+            sort_keys=True,
+        )
+    )
     return 0
 
 

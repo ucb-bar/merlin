@@ -7,6 +7,8 @@ from the receipt. Every source receipt states `source_closure_verified: false`.
 The independent `golden.npy` files are TorchAO W8A8 framework references.
 Current strict Merlin host comparisons against those references fail, so these
 bundles are **compiler inputs**, not numerical or hardware acceptance evidence.
+The source-authoritative archives have not yet been packaged or transferred;
+the paths below identify the original captures on this shared host.
 
 ## Capture identities and scope
 
@@ -67,11 +69,15 @@ final directory with the helper:
 ```sh
 PYTHONPATH=src python examples/kodiak/relocate_capture.py \
   /path/to/extracted/spectformer_torchao_w8a8_20261106 \
-  /path/to/final/spectformer_torchao_w8a8_20261106
+  /path/to/final/spectformer_torchao_w8a8_20261106 \
+  --expected-source-receipt-sha256 bd554a8cba6caf1b9c9c133073b7a839d3e596b70b2304d99c66aa03cd31038d
 ```
 
-The command verifies the source receipt, copies every receipted artifact,
-changes only that module attribute to the adjacent final `weights.safetensors`,
+Use the corresponding source receipt SHA256 from the table for either TinyLlama
+capture. The option rejects a self-consistent replacement of both a capture
+and its receipt. When an archive is published, verify the archive SHA256 before
+extraction as well. The command verifies the source receipt, copies every
+receipted artifact, changes only that module attribute to the adjacent final `weights.safetensors`,
 and writes a new `capture_receipt.json`. It preserves the original bytes in
 `model.source.mlir` and `capture_receipt.source.json`. The new
 `relocation_receipt.json` records both SHA256 identities, the unchanged typed
@@ -98,8 +104,10 @@ merlin-compile --workload spectformer --target rvv --dtype int8_w8a8 \
   --run host --verify --json
 ```
 
-For bounded and full TinyLlama, substitute the corresponding derived bundle
-path and a descriptive workload label. A failed `--verify` is a real numerical
+This command runs the host RVV framework comparison only. It does not emit an
+OPU or VME hardware acceptance result. For bounded and full TinyLlama,
+substitute the corresponding derived bundle path and a descriptive workload
+label. A failed `--verify` is a real numerical
 gate failure, not permission to replace `golden.npy`. A `--no-verify` run may
 diagnose compilation, image execution, or OPU routing but does not establish
 TorchAO framework fidelity. Report framework comparison, exact Spike, matched

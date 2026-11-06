@@ -8,6 +8,10 @@ For the **torchAO-source W8A8** SpectFormer and TinyLlama captures, use the
 [source quantization contract](TORCHAO_W8A8_SOURCE.md). The older archives and
 FireSim figures below describe weight-only source captures followed by Merlin's
 own W8A8 conversion; they remain exact-image performance diagnostics.
+The `./run.sh firesim --models spectformer` command below selects the older
+`spectformer_int8_full` capture. It does not build the torchAO-source W8A8
+program. A source-authoritative OPU image and its matched Spike and FireSim
+checks remain pending.
 
 ## Compile and check an image
 
