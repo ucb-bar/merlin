@@ -428,6 +428,20 @@ bit. This avoids structural profiling changing the program under test. The image
 replaced by a later rebuild. Budget the timeout from the model's
 cycles: at 15 MHz, seconds ≈ cycles / 1.5e7, plus a few minutes per job for FPGA programming.
 
+For the TinyLlama sections, the scalar twin may take hours on Spike. Use `--gate independent-rvv`
+to compile the same-lowering pair without executing the twin, run the shipped OPU image on its
+declared Spike model, and require its whole-output hash and prefix digest to match a fresh plain-RVV
+control built for the **same FireSim board**. Both legs must also pass W8A8. The job plan records
+this gate and a digest of the capture bytes explicitly. TinyLlama's W8A8 golden comparison covers
+the printed 4,096-element prefix; OPU/RVV whole-output identity uses the images' 32-bit hash and
+prefix SHA-256. This does not separately check the scalar twin's packing path. The default remains
+the scalar-twin gate.
+
+```bash
+./run.sh firesim --models tinyllama_l2_s64 --gate independent-rvv --timeout 7200
+./run.sh firesim --models tinyllama_l2_s128 --gate independent-rvv --timeout 14400
+```
+
 ### Without the shared queue
 
 With `MERLIN_EXT_FIRESIM_QUEUE` unset the plan prints the equivalent manual steps for a FireSim you run

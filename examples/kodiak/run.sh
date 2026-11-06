@@ -186,8 +186,8 @@ firesim)
         --matrix-config "$MATRIX_CONFIG" --matrix-support-target "$MATRIX_SUPPORT" \
         ${KERNEL_ARGS[@]+"${KERNEL_ARGS[@]}"} "$@" ${SUBMIT[@]+"${SUBMIT[@]}"}
   done
-  ex_note "both exact FireSim ELFs passed on spike before this plan: the OPU image used its package's"
-  ex_note "functional spike model and matched the scalar twin bit for bit."
+  ex_note "both exact FireSim ELFs passed on Spike before this plan: the OPU image used its package's"
+  ex_note "functional model; the job plan records the selected twin or independent-RVV identity gate."
   ;;
 
 firesim-collect)

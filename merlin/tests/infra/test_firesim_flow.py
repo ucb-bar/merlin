@@ -200,6 +200,93 @@ def test_whole_model_legs_require_w8a8_reference_before_compile(flow, tmp_path, 
         flow.build_legs(args)
 
 
+@pytest.mark.parametrize(("same", "capture_drift"), [(True, False), (False, False), (True, True)])
+def test_independent_rvv_gate_requires_exact_board_output_identity(flow, tmp_path, monkeypatch, same, capture_drift):
+    from merlin.common import artifacts
+
+    bundle = tmp_path / "test_model_int8_full"
+    bundle.mkdir()
+    (bundle / "model.mlir").write_text("module {}")
+    np.save(bundle / "golden_w8a8.npy", np.zeros(1, dtype=np.float32))
+    monkeypatch.setattr(artifacts, "recaptures_dir", lambda: tmp_path)
+    binaries = {leg: tmp_path / f"{leg}.elf" for leg in flow.LEGS}
+    for leg, binary in binaries.items():
+        binary.write_bytes(leg.encode())
+
+    def compile_image(cmd, **kwargs):
+        assert cmd[cmd.index("--board") + 1] == "fs"
+        leg = "device" if "--matrix-unit" in cmd else "control"
+        assert ("--matrix-gate" in cmd) == (leg == "device")
+        if leg == "device":
+            assert cmd[cmd.index("--matrix-gate") + 1] == "shipped"
+        elif capture_drift:
+            (bundle / "model.mlir").write_text("module { changed }")
+        identity = {
+            "out_hash": {"algo": "fnv1a32", "elems": 1, "value": 1 if same or leg == "control" else 2},
+            "prefix_sha256": "same-prefix",
+            "prefix_elems": 1,
+        }
+        shipped = {"status": "verified", "verify": {"gate_ok": True, "tier_ok": "w8a8"}, "output_identity": identity}
+        result = {
+            "status": "verified",
+            "binary": str(binaries[leg]),
+            "build_hash": leg,
+            "verify": {"gate_ok": True, "tier_ok": "w8a8"},
+            "matrix": {"unit_instruction_counts": {"OPMACC": 1}, "shipped_on_simulator": shipped}
+            if leg == "device"
+            else None,
+            "output_identity": identity,
+        }
+        return SimpleNamespace(returncode=0, stdout="build log\n" + json.dumps(result, indent=2), stderr="")
+
+    monkeypatch.setattr(flow.subprocess, "run", compile_image)
+    monkeypatch.setattr(flow, "_unit_counts", lambda elf, *args: {"OPMACC": 1} if "device" in str(elf) else {})
+    args = SimpleNamespace(
+        bundle=bundle.name,
+        board="fs",
+        package="rvv/test",
+        harts=1,
+        matrix_unit="opu",
+        matrix_config="cfg",
+        matrix_support_target="kodiak",
+        matrix_kernel=None,
+        gate="independent-rvv",
+        spike_timeout=40,
+        timeout=7200,
+    )
+    if not same:
+        with pytest.raises(SystemExit, match="do not match bit for bit"):
+            flow.build_legs(args)
+        return
+    if capture_drift:
+        with pytest.raises(SystemExit, match="capture bundle changed"):
+            flow.build_legs(args)
+        return
+    job = flow.build_legs(args)
+    plan = flow.load(job)
+    assert plan["capture_sha256"] == flow._capture_sha256(bundle)
+    assert plan["legs"]["device"]["spike_gate"]["method"] == "independent-rvv"
+    assert plan["legs"]["device"]["spike_gate"]["independent_rvv_bit_exact"] is True
+
+
+def test_collect_rejects_capture_changed_since_pair_build(flow, tmp_path):
+    bundle, _ = _bundle(tmp_path)
+    elf = tmp_path / "device.elf"
+    elf.write_bytes(b"image")
+    job = tmp_path / "job"
+    flow.plan(
+        job,
+        board="fs",
+        name="test_model",
+        bundle=bundle,
+        legs={"device": {"elf": elf}},
+        capture_sha256=flow._capture_sha256(bundle),
+    )
+    np.save(bundle / "golden_w8a8.npy", np.ones(24, dtype=np.float32))
+    with pytest.raises(SystemExit, match="capture bundle changed"):
+        flow.collect(job)
+
+
 def test_failed_rebuild_cannot_leave_a_prior_firesim_plan_submittable(flow, tmp_path, monkeypatch):
     from merlin.common import artifacts
 

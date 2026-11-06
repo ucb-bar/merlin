@@ -12,7 +12,9 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, iters, warmup, timeout, matrix) -> dict:
+def _compile_matrix(
+    out: dict, bundle, work, pkg, feats, refs, *, board, harts, iters, warmup, timeout, matrix, matrix_gate="twin"
+) -> dict:
     """The matrix-unit leg of ``compile_rvv``: shipped image + stand-in twin, the twin gated on spike."""
     from merlin.kernels import matrix_kernels
     from merlin.llvmlower.impr_features import OPU_MATMUL_NAME
@@ -103,6 +105,21 @@ def _compile_matrix(out: dict, bundle, work, pkg, feats, refs, *, board, harts, 
     )
     import time
 
+    if matrix_gate == "shipped":
+        shipped = _run_shipped_on_device_simulator(pair, routing, brd, cpus=cpus, timeout=timeout, refs=refs, twin=None)
+        out["matrix"].update(
+            shipped_on_simulator=shipped,
+            twin_executed=False,
+            independent_control_required=True,
+            gated_via="shipped image on the declared unit simulator; independent control comparison required",
+        )
+        out["verification_scope"] = "shipped_w8a8_only; independent control identity pending"
+        out["status"] = shipped.get("status", "error")
+        out["verify"] = shipped.get("verify", {})
+        out["output_identity"] = shipped.get("output_identity")
+        return out
+    if matrix_gate != "twin":
+        raise ValueError(f"unknown matrix gate: {matrix_gate}")
     started = time.monotonic()
     res = zm.run_on_spike(
         pair.twin["elf"],

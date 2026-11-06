@@ -150,6 +150,21 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def _capture_sha256(bundle: Path) -> str:
+    """Bind both image builds to every named byte of the captured model and reference."""
+    h = hashlib.sha256()
+    for path in sorted(bundle.rglob("*")):
+        if not path.is_file():
+            continue
+        h.update(str(path.relative_to(bundle)).encode())
+        h.update(b"\0")
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1 << 20), b""):
+                h.update(chunk)
+        h.update(b"\0")
+    return h.hexdigest()
+
+
 # --------------------------------------------------------------------------------------------- plan
 
 
@@ -162,6 +177,7 @@ def plan(
     legs: dict[str, dict[str, Any]],
     harts: int = 1,
     timeout_s: int = 3600,
+    capture_sha256: str | None = None,
     host: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Write ``<job_dir>/firesim_job.json`` and the workload definition; return the manifest.
@@ -186,6 +202,7 @@ def plan(
         "schema": SCHEMA,
         "name": name,
         "bundle": str(Path(bundle).resolve()),
+        "capture_sha256": capture_sha256,
         "board": brd.name,
         "hw_config": brd.bitstream,
         "vlen": brd.vlen,
@@ -578,7 +595,11 @@ def collect(
     host = host_config()
     jobs = {**{k: int(v) for k, v in manifest.get("jobs", {}).items()}, **(jobs or {})}
     uartlogs = dict(uartlogs or {})
-    refs = _references(Path(manifest["bundle"]))
+    bundle = Path(manifest["bundle"])
+    expected_capture = manifest.get("capture_sha256")
+    if expected_capture and _capture_sha256(bundle) != expected_capture:
+        raise SystemExit("capture bundle changed since the paired FireSim images were built")
+    refs = _references(bundle)
     legs: dict[str, Any] = {}
     for leg, row in manifest["legs"].items():
         uart_path, results_dir = None, None
@@ -691,6 +712,7 @@ def build_legs(args) -> Path:
     """Spike-gate exact merlin-compile images, then plan their FireSim jobs."""
     from merlin.common.artifacts import recaptures_dir
     from merlin.common.paths import artifacts_dir
+    from merlin.runtime.backends import output_identity
 
     brd = _board(args.board)
     bundle = recaptures_dir() / args.bundle
@@ -698,6 +720,8 @@ def build_legs(args) -> Path:
         raise SystemExit(f"{bundle} is not a capture bundle; capture it first (run.sh capture <model>)")
     if not (bundle / "golden_w8a8.npy").is_file():
         raise SystemExit(f"{bundle}: FireSim requires the model's W8A8 reference before building")
+    capture_path = bundle.resolve()
+    capture_sha256 = _capture_sha256(capture_path)
     model = args.bundle.removesuffix("_int8_full")
     job_base = artifacts_dir() / "probes" / brd.name / f"{model}_firesim_h{args.harts}"
     job_base.mkdir(parents=True, exist_ok=True)
@@ -713,6 +737,9 @@ def build_legs(args) -> Path:
     if not package.is_absolute():
         package = REPO / "out" / "artifacts" / "targets" / package
     legs = {}
+    gate = getattr(args, "gate", "twin")
+    if gate not in ("twin", "independent-rvv"):
+        raise SystemExit(f"unknown FireSim gate: {gate}")
     for leg in LEGS:
         out = job_dir / leg
         out.mkdir(parents=True, exist_ok=True)
@@ -751,6 +778,8 @@ def build_legs(args) -> Path:
             ]
             if args.matrix_kernel:
                 cmd += ["--matrix-kernel", args.matrix_kernel]
+            if gate == "independent-rvv":
+                cmd += ["--matrix-gate", "shipped"]
         print("$ " + shlex.join(str(c) for c in cmd), flush=True)
         proc = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
         marker = "\n{\n"
@@ -765,13 +794,19 @@ def build_legs(args) -> Path:
         shipped = matrix.get("shipped_on_simulator") or {}
         if proc.returncode or result.get("status") != "verified" or result.get("verify", {}).get("tier_ok") != "w8a8":
             raise SystemExit(f"{leg} leg failed its spike W8A8 gate: {result.get('status')}; {proc.stderr[-1000:]}")
-        if leg == "device" and not (
-            shipped.get("status") == "verified"
-            and shipped.get("bit_exact_vs_twin") is True
-            and shipped.get("verify", {}).get("tier_ok") == "w8a8"
-            and matrix.get("unit_instruction_counts")
-        ):
-            raise SystemExit("device leg: shipped OPU image did not pass its spike model and bit-exact twin gate")
+        if leg == "device":
+            device_gate_ok = (
+                shipped.get("status") == "verified"
+                and shipped.get("verify", {}).get("tier_ok") == "w8a8"
+                and matrix.get("unit_instruction_counts")
+            )
+            if gate == "twin":
+                device_gate_ok = device_gate_ok and shipped.get("bit_exact_vs_twin") is True
+            if not device_gate_ok:
+                raise SystemExit(
+                    "device leg: shipped OPU image did not pass its spike model and "
+                    + ("bit-exact twin gate" if gate == "twin" else "W8A8 gate")
+                )
         identity = shipped.get("output_identity") if leg == "device" else result.get("output_identity")
         if not identity or not identity.get("out_hash") or not identity.get("prefix_sha256"):
             raise SystemExit(f"{leg} leg: spike gate has no complete output identity")
@@ -795,6 +830,7 @@ def build_legs(args) -> Path:
             "unit_instruction_counts": counts,
             "spike_output_identity": identity,
             "spike_gate": {
+                "method": gate if leg == "device" else "w8a8",
                 "status": result["status"],
                 "verify": result["verify"],
                 "shipped_on_simulator": shipped if leg == "device" else None,
@@ -802,7 +838,26 @@ def build_legs(args) -> Path:
         }
         (out / "leg.json").write_text(json.dumps(row, indent=2) + "\n")
         legs[leg] = row
-    plan(job_dir, board=brd.name, name=model, bundle=bundle, legs=legs, harts=args.harts, timeout_s=args.timeout)
+    if bundle.resolve() != capture_path or _capture_sha256(capture_path) != capture_sha256:
+        raise SystemExit("capture bundle changed while building the paired FireSim images")
+    if gate == "independent-rvv":
+        same = output_identity.same_output(
+            legs["device"]["spike_output_identity"], legs["control"]["spike_output_identity"]
+        )
+        if same is not True:
+            raise SystemExit(f"device/control exact-board Spike outputs do not match bit for bit: {same}")
+        legs["device"]["spike_gate"]["independent_rvv_bit_exact"] = True
+        (job_dir / "device" / "leg.json").write_text(json.dumps(legs["device"], indent=2) + "\n")
+    plan(
+        job_dir,
+        board=brd.name,
+        name=model,
+        bundle=bundle,
+        legs=legs,
+        harts=args.harts,
+        timeout_s=args.timeout,
+        capture_sha256=capture_sha256,
+    )
     return job_dir
 
 
@@ -860,6 +915,12 @@ def main(argv: list[str] | None = None) -> int:
     lg.add_argument("--matrix-support-target", required=True)
     lg.add_argument("--matrix-kernel", help="the device leg's matrix kernel (registered name or C file)")
     lg.add_argument("--spike-timeout", type=int, default=14400, help="spike gate limit per image, seconds")
+    lg.add_argument(
+        "--gate",
+        choices=("twin", "independent-rvv"),
+        default="twin",
+        help="matrix correctness gate: scalar twin (default), or exact-board OPU Spike vs independent RVV",
+    )
     _queue_flags(lg)
     sb = sub.add_parser("submit", help="print (or with --submit, run) the queue jobs of a job directory")
     sb.add_argument("job_dir", type=Path)

@@ -95,11 +95,18 @@ def parser(
     ap.add_argument(
         "--matrix-unit",
         help="rvv int8: ALSO route large int8 contractions to this matrix unit (a unit the support "
-        "provider declares). Builds the shipped image plus a scalar stand-in twin and gates the twin, "
-        "since no functional simulator executes the unit; needs --matrix-config and "
+        "provider declares). Builds the shipped image plus a scalar stand-in twin; by default gates "
+        "both on Spike when the unit has a declared simulator. Needs --matrix-config and "
         "--matrix-support-target",
     )
     ap.add_argument("--matrix-config", help="the elaborated hardware configuration the unit's geometry is read from")
+    ap.add_argument(
+        "--matrix-gate",
+        choices=("twin", "shipped"),
+        default="twin",
+        help="spike matrix verification: run the same-lowering scalar twin (default), or gate the shipped "
+        "image on its declared unit simulator; the latter also needs an independent control for bit identity",
+    )
     ap.add_argument(
         "--matrix-support-target",
         help="the support provider (on MERLIN_TARGET_PATH or vendored) that owns the matrix_lowering plugin",
@@ -222,6 +229,8 @@ def validate(ap: argparse.ArgumentParser, a: argparse.Namespace) -> None:
             "--matrix-kernel selects the kernel of a matrix route: give --matrix-unit/--matrix-config/"
             "--matrix-support-target too"
         )
+    elif a.matrix_gate != "twin":
+        ap.error("--matrix-gate shipped requires --matrix-unit/--matrix-config/--matrix-support-target")
     if a.model_preflight and (a.target == "rvv" or not a.capture_bundle or not a.deployment_dtype):
         ap.error("--model-preflight requires an OOT --target, --capture-bundle, and --deployment-dtype")
     if not (a.model_preflight or a.model_build) and not a.workload:
