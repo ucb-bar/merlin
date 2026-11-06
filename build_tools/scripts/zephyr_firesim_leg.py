@@ -39,6 +39,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
+OPU_DUMP_MODE = "opu"  # target-ok: the sparse selector matches the generated merlin_opu_* call ABI
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -86,12 +87,20 @@ def main(argv: list[str] | None = None) -> int:
         help="instrument per-op cycles; gate this exact image on Spike before FireSim timing",
     )
     ap.add_argument(
+        "--profile-dump",
+        choices=("all", OPU_DUMP_MODE),
+        default="all",
+        help="print all profiled operations, or only OPU calls for a slow FireSim UART",
+    )
+    ap.add_argument(
         "--runner",
         help="installed FireSim runner name (or set MERLIN_FIRESIM_RUNNER). Only a runner that WATCHES the "
         "console needs its terminal marker in the image; an image run through the queue's "
         "`runworkload-full` ends on its own exit, so with neither set the image carries no marker",
     )
     a = ap.parse_args(argv)
+    if a.profile_dump == OPU_DUMP_MODE and (not a.profile or a.leg != "device"):
+        ap.error(f"--profile-dump {OPU_DUMP_MODE} requires --profile and --leg device")
     if not a.matrix_support_target:
         ap.error("routing and unit audit require --matrix-support-target (not inferred from --unit)")
 
@@ -157,6 +166,7 @@ def main(argv: list[str] | None = None) -> int:
         vlen=a.vlen,
         inputs_npz=bundle / "inputs.npz",
         debug=a.profile,
+        profile_dump_opu_only=a.profile_dump == OPU_DUMP_MODE,
         completion_metric_prefix=getattr(selected_runner, "completion_metric_prefix", None),
         **kw,
     )
@@ -191,6 +201,7 @@ def main(argv: list[str] | None = None) -> int:
         "vlen": a.vlen,
         "arena_mb": arena_mb,
         "profile": a.profile,
+        "profile_dump": a.profile_dump,
         "package": a.package,
         "unit": a.unit,
         "config": a.config,

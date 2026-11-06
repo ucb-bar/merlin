@@ -78,6 +78,8 @@ def measure(profile_dir: Path, console_path: Path, *, hw_summary: Path | None = 
         raise ValueError("profiled image did not pass its exact Spike gate")
 
     console = console_path.read_text(errors="replace")
+    if "DONE" not in console.splitlines():
+        raise ValueError("profiled image did not reach DONE")
     result = zephyr_model._parse_console(console, 0)
     if result["metrics"].get("build_hash") != leg["build_hash"]:
         raise ValueError("console build hash differs from profiled image")
@@ -86,6 +88,8 @@ def measure(profile_dir: Path, console_path: Path, *, hw_summary: Path | None = 
     cycles = result["metrics"].get("cycles")
     if not isinstance(cycles, int) or cycles <= 0:
         raise ValueError("missing positive target METRIC cycles")
+    if result["metrics"].get("iters") != 1:
+        raise ValueError("OPU call-window attribution requires exactly one timed inference")
 
     table_path = profile_dir / "op_profile_table.json"
     pinned = leg.get("sidecar_sha256") or {}
@@ -95,12 +99,9 @@ def measure(profile_dir: Path, console_path: Path, *, hw_summary: Path | None = 
     table = _json(table_path)
     if not isinstance(table, list) or {row["id"] for row in table} != set(range(len(table))):
         raise ValueError("profile table IDs must be unique and contiguous")
+    if result["metrics"].get("prof_marks") != len(table) + 1:
+        raise ValueError("profile mark count differs from one complete forward invocation")
     rows = _profile_rows(console)
-    if set(rows) != set(range(len(table))) or any(hits == 0 for _, hits in rows.values()):
-        raise ValueError("console lacks a positive hit count for every profiled operation")
-    attributed = sum(ticks for ticks, _ in rows.values())
-    if attributed != result["metrics"].get("prof_total_ticks") or attributed > cycles:
-        raise ValueError("profile ticks do not reconcile with the timed inference")
 
     signatures_path = profile_dir / "opu_signatures.json"
     signature_pins = [x for x in (gate.get("opu_signatures_sha256"), pinned.get("opu_signatures.json")) if x]
@@ -119,6 +120,21 @@ def measure(profile_dir: Path, console_path: Path, *, hw_summary: Path | None = 
     routed_symbols = Counter(row["symbol"] for row in routed)
     if profiled_symbols != routed_symbols:
         raise ValueError("profiled OPU callee multiset differs from the exact routing sidecar")
+    dump_mode = leg.get("profile_dump", "all")
+    if dump_mode not in {"all", "opu"}:
+        raise ValueError(f"unknown profile dump mode {dump_mode!r}")
+    expected_ids = set(call_ids) if dump_mode == "opu" else set(range(len(table)))
+    if set(rows) != expected_ids or any(hits == 0 for _, hits in rows.values()):
+        raise ValueError("console lacks the exact positive-hit rows selected by the profiled image")
+    emitted = result["metrics"].get("prof_dump_selected")
+    if (dump_mode == "opu" and emitted != len(call_ids)) or (emitted is not None and emitted != len(rows)):
+        raise ValueError("reported profile selector count differs from the emitted rows")
+    attributed = result["metrics"].get("prof_total_ticks")
+    printed_ticks = sum(ticks for ticks, _ in rows.values())
+    if not isinstance(attributed, int) or printed_ticks > attributed or attributed > cycles:
+        raise ValueError("profile ticks do not reconcile with the timed inference")
+    if dump_mode == "all" and printed_ticks != attributed:
+        raise ValueError("full profile rows do not sum to prof_total_ticks")
     valid_macs = sum(row["b"] * row["m"] * row["n"] * row["k"] for row in routed)
     if valid_macs != signatures["macs"]["routed"]:
         raise ValueError("valid MACs differ from exact routing sidecar")
@@ -153,6 +169,7 @@ def measure(profile_dir: Path, console_path: Path, *, hw_summary: Path | None = 
         "target_inference_cycles": cycles,
         "attributed_op_cycles": attributed,
         "profile_coverage": attributed / cycles,
+        "profile_dump": dump_mode,
         "routed_call_sites": len(call_ids),
         "valid_routed_macs": valid_macs,
         "padded_opu_mac_slots": padded_slots,

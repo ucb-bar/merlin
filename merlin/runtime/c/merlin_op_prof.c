@@ -89,6 +89,17 @@ static uint32_t merlin_prof_hits[MERLIN_PROF_MAX_OPS];
 static uint64_t merlin_prof_overflow_ticks;
 static uint32_t merlin_prof_overflow_hits;
 static uint64_t merlin_prof_last_t;
+/* A Zephyr image may select a small, build-pinned subset for a slow UART. All
+ * operations still contribute to prof_total_ticks; selection affects output only.
+ * Other substrates retain their existing dump protocol. */
+#ifdef MERLIN_PROF_ZEPHYR
+__attribute__((weak)) int merlin_prof_should_emit(int32_t id) {
+  (void)id;
+  return 1;
+}
+#else
+#define merlin_prof_should_emit(id) 1
+#endif
 #if !(defined(MERLIN_PROF_BAREMETAL) && defined(MERLIN_PROF_HEARTBEAT_CYCLES))
 static uint64_t merlin_prof_marks;
 #endif
@@ -218,6 +229,9 @@ void merlin_prof_mark(int32_t id) {
  * plus a summary the driver uses to check the profiler accounted for the whole run. */
 void merlin_prof_dump(void) {
   uint64_t total = merlin_prof_overflow_ticks;
+#ifdef MERLIN_PROF_ZEPHYR
+  uint64_t emitted = 0;
+#endif
 #ifdef MERLIN_PROF_BAREMETAL
   /* Thousands of short lines, and the console flushes per line by default -- one host round-trip per
    * ~25 bytes. On FireSim that is the difference between a few minutes and about five hours. Held for
@@ -227,11 +241,19 @@ void merlin_prof_dump(void) {
   for (int i = 0; i < MERLIN_PROF_MAX_OPS; i++) {
     if (merlin_prof_hits[i] == 0) continue;
     total += merlin_prof_ticks[i];
-    merlin_prof_emit_op(i, merlin_prof_ticks[i], merlin_prof_hits[i]);
+    if (merlin_prof_should_emit(i)) {
+      merlin_prof_emit_op(i, merlin_prof_ticks[i], merlin_prof_hits[i]);
+#ifdef MERLIN_PROF_ZEPHYR
+      emitted++;
+#endif
+    }
   }
   if (merlin_prof_overflow_hits)
     merlin_prof_emit_op(-1, merlin_prof_overflow_ticks, merlin_prof_overflow_hits);
   merlin_prof_emit_metric("prof_total_ticks", total);
+#ifdef MERLIN_PROF_ZEPHYR
+  merlin_prof_emit_metric("prof_dump_selected", emitted);
+#endif
   merlin_prof_emit_metric("prof_marks", merlin_prof_marks);
 #ifdef MERLIN_PROF_BAREMETAL
   htif_line_flush(1);
