@@ -926,6 +926,13 @@ def build_legs(args) -> Path:
     # A queued FireSim job stages its ELF later, when the daemon gets the FPGA. Never overwrite an ELF
     # a previous queue request may still reference, even if this build fails its spike gate.
     job_dir = job_base / f"run_{time.time_ns()}"
+    if source:
+        job_dir.mkdir(parents=True)
+        staged_framework = job_dir / "framework_result.json"
+        shutil.copy2(source["framework_result"], staged_framework)
+        if _sha256(staged_framework) != source["framework_result_sha256"]:
+            raise SystemExit("staged framework result differs from the host-gated result")
+        source["framework_result"] = str(staged_framework)
     package = Path(args.package)
     if not package.is_absolute():
         package = REPO / "out" / "artifacts" / "targets" / package

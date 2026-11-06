@@ -165,7 +165,8 @@ python examples/lib/firesim_flow.py legs spectformer_torchao_w8a8_20261106 \
 The bridge checks the host result's source MLIR, receipt, and TorchAO golden,
 then requires shipped OPU versus scalar twin and device versus plain RVV to be
 bit-exact on the selected board's Spike model. The resulting plan names the
-one-core OPU bitstream and hashes both staged ELFs. With the current failed
+one-core OPU bitstream, hashes both staged ELFs, and retains the exact host
+result in its run directory. With the current failed
 framework comparison, the second command requires `--allow-framework-mismatch`
 and creates a **diagnostic-only** plan. To run that exact pair on FireSim for
 target-arithmetic diagnosis, pass its printed job directory to
