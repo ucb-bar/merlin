@@ -32,6 +32,11 @@ the scheme name does not select a fixed range.
 Both OPU BME and compact VME Zvt kernels accept signed i8 A and B, perform
 signed products, and return i32 C. They must preserve the source bytes and
 leave scale, zero-point, rounding, and f32 bias in the surrounding graph.
+The source W8A8 preflight now rejects any tagged integer contraction without
+a proven zero initializer; a matrix shim writes its output and would otherwise
+drop a live addend. Both exact captures pass this check. OPU scalar tile and
+fallback paths use unsigned 32-bit accumulation for defined modulo arithmetic,
+matching the VME scalar twin at a future overflowing endpoint.
 The worst possible signed product magnitude is `128 × 128 = 16,384`. The
 largest captured K is 1,024 for SpectFormer and 5,632 for TinyLlama, so a
 worst-case dot has magnitude at most 16,777,216 and 92,274,688 respectively,
