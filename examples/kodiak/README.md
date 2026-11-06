@@ -273,7 +273,9 @@ runs into, in the order you will meet it:
   of 2 layers at 128 tokens fits a 256 MiB region on RVV. Its h1 OPU image relinks for a 448 MiB
   region; the exact OPU and RVV Spike images and a matched one-core FireSim pair have passed
   numerical gates ([measured scope](KEVIN_HANDOFF.md)). Eight layers at 128 tokens, or 2 layers at 512 tokens,
-  fill the board. The whole model does not fit: its weights alone are about 1.2 GiB. A model
+  fill physical Kodiak's 512 MiB. The whole model does not fit physical Kodiak: its weights
+  alone are about 1.2 GiB. The one-core OPU FireSim target has 16 GiB simulated DRAM and a
+  separate external-weight layout; a full-model OPU run there remains unbuilt and unverified. A model
   that does not fit is refused naming every term. `--no-pass static-arena --no-pass sink-deallocs`
   restores the old heap-only layout. The OPU image does not get the plan's reuse yet (see
   `docs/design/static_arena_wiring.md`): ResNet-50's needs 507 MiB at 1 hart and is refused at 2.

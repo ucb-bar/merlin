@@ -132,13 +132,14 @@ gates, and all debug twins passed ELF audits, with 90 OPU routes. The two-layer 
 chipyard delivery labels its unrun OPU ELFs `UNGATED`. Neither package
 claims physical Kodiak execution or K1 certification for the new schedule.
 On this shared host, the rebuilt Spectformer h1/h2 chipyard delivery is staged at
-`out/artifacts/delivery/kodiak-spectformer-prepack-v1-final-r6.zip` (SHA-256
-`b91d043999a09c70e5695327ed61d9ac058aa6321b07d530ca5cc2e841db1da3`). This revision
+`out/artifacts/delivery/kodiak-spectformer-prepack-v1-final-r7.zip` (SHA-256
+`ec88d656fbbb1b32f479e788f7769cd9e29d7afaa1cad7141633e8a73e074015`). This revision
 refreshes the embedded README's pinned rig guide link and warns that the suggested Arduino `t`
-command cannot pulse the current firmware's reset pins. It preserves r5's corrected source
+command cannot pulse the current firmware's reset pins, and that the rig wrapper's PASS label
+does not check a nonzero loader exit. It preserves r5's corrected source
 provenance note: the four ISA/geometry files used for its source digest match committed Saturn
 `e16a301d`. All 22 non-README archive members, including every ELF, match r5 byte for byte.
-The task-local revision receipt is `.tmp/kodiak-spectformer-prepack-v1-final-r6.receipt.json`. The zip
+The task-local revision receipt is `.tmp/kodiak-spectformer-prepack-v1-final-r7.receipt.json`. The zip
 passed archive integrity and contains eight model ELFs plus a VLEN probe, its manifest, audits,
 and grading script.
 Its four plain images passed W8A8 gates and h2 matches h1. It is an ignored local artifact,
@@ -163,8 +164,11 @@ whole-inference effective peak**; the older accepted OPU image used a different 
 The SHA-bound receipt is in
 `out/artifacts/probes/firesim_kodiak_opu/spectformer_current_unprofiled_h1/firesim/`.
 
-The full TinyLlama model's weights alone are about 1.2 GiB and do not fit this 512 MiB board.
-The two-layer sections above are the hardware targets. The 64-token and 128-token exact OPU
+The full TinyLlama model's weights alone are about 1.2 GiB and do not fit **physical Kodiak's
+512 MiB DRAM**. The pinned one-core OPU FireSim target has 16 GiB of simulated DRAM and a
+separate external-weight layout, so its capacity alone does not rule out the full model; a
+full-model OPU image has not been built or verified on that target. The two-layer sections above
+are the measured hardware targets. The 64-token and 128-token exact OPU
 Spike images also passed complete W8A8 comparisons and all token argmaxes against their host
 reference. The paired FireSim OPU and RVV images are built with one vector hart, matching the
 one-core bitstream.
@@ -211,13 +215,14 @@ These are source and simulator gates, not a VME FPGA image.
 The first VLEN512/DLEN256 VME U250 build passed synthesis and `opt_design` but failed placement
 DRC `UTLZ-1`: 2,208,803 slice LUTs were required and 1,728,000 are available. The build ended
 rc 1 without a bitstream; the bounded log and rc are in Chipyard managed task
-`kodiak-vme-portability-2/.tmp/`. A separate VLEN512/DLEN128 compact VME candidate is undergoing
-exact-pin source and RTL checks before any U250 claim.
+`kodiak-vme-portability-2/.tmp/`. A separate VLEN512/DLEN128 compact VME candidate passed
+exact-pin direct RTL and FireSim Verilator metasim on its biased K-tail control; U250 synthesis
+is running. No VME FPGA bitstream or model result is claimed yet.
 The current OPU FireSim bitstream is usable for the BME flow above. Its archived artifact identity
 was checked during the hardware jobs. Reproducing that archive from a clean source tree remains
 unverified because the live Chipyard/Saturn checkout has pin drift. Physical Kodiak rig access
 and scheduling are separate from FireSim. For physical operations, follow the newer
-[Kodiak RUNNING.md at `8dbd269`](https://github.com/ucb-bar/kodiak-mlir/blob/8dbd269cb3169934c65f9da21e18de522aad3993/RUNNING.md),
+[Kodiak RUNNING.md at `f4e5351`](https://github.com/ucb-bar/kodiak-mlir/blob/f4e535133142d0a7b0edf4b14ca7c69aa5b3150b/RUNNING.md),
 which corrects the historical health check, wrapper behavior, and Arduino reset command. Merlin
 setup pins that same package commit; its bundled delivery loader note uses the same proven
 OPU-direct control.
@@ -237,7 +242,7 @@ No Merlin image was loaded; existing tmux sessions were preserved. The current r
 and FPGA bitstream hashes and the August/current section-map comparison are in
 `out/artifacts/probes/chipyard_kodiak/physical_probe_20261106/receipt_addendum.json`;
 no August ELF hash survives to prove byte identity. An
-[offline replay of the SHA-verified loader](https://github.com/ucb-bar/kodiak-mlir/blob/8dbd269cb3169934c65f9da21e18de522aad3993/evidence/bootaddr_host_replay_20261106/receipt.json)
+[offline replay of the SHA-verified loader](https://github.com/ucb-bar/kodiak-mlir/blob/f4e535133142d0a7b0edf4b14ca7c69aa5b3150b/evidence/bootaddr_host_replay_20261106/receipt.json)
 shows that it treats any UDP packet as a write acknowledgment and shortens its nominal two-second
 read wait to one second after a read ACK. A valid synthetic response at 1.5 seconds then yields
 `None`. The physical logs contain no raw packet timestamps, so this host bug is a plausible
@@ -246,10 +251,14 @@ remain possible. A timestamped host packet trace is needed before assigning the 
 The rig's tracked Arduino firmware accepts only `all`, `fpga`, `0`, and `1`; the suggested
 `arduino_all.sh t` is a no-op for its reset pins. Its shell wrapper can return exit zero with no
 serial reply. The earlier reset log is empty and does not record its argument, so a confirmed
-Arduino chip-0 reset remains untested. [The read-only audit](https://github.com/ucb-bar/kodiak-mlir/blob/8dbd269cb3169934c65f9da21e18de522aad3993/evidence/arduino_reset_command_audit_20261106/receipt.json)
+Arduino chip-0 reset remains untested. [The read-only audit](https://github.com/ucb-bar/kodiak-mlir/blob/f4e535133142d0a7b0edf4b14ca7c69aa5b3150b/evidence/arduino_reset_command_audit_20261106/receipt.json)
 and the pinned rig guide give the exact next exclusive-window sequence: capture the BootAddr
 datagrams first, then test a separately acknowledged chip-0 reset if needed. No Arduino or UDP
-command was sent in that audit.
+command was sent in that audit. The rig login cannot currently use `tcpdump` or `dumpcap`, so
+raw late-packet evidence requires owner-enabled capture or an instrumented receive path.
+The rig's current `execute_program.sh` can print PASS for a nonzero loader exit before its
+timeout; [the SHA-bound read-only audit](https://github.com/ucb-bar/kodiak-mlir/blob/f4e535133142d0a7b0edf4b14ca7c69aa5b3150b/evidence/rig_host_wrapper_audit_20261106/receipt.json)
+requires grading the actual console, exit status, and model output.
 The Vivado version also differs. Direct Kodiak testing remains gated on a successful historical
 control readback; the Spike-gated small GEMM OPU/RVV images are ready for that retry.
 
