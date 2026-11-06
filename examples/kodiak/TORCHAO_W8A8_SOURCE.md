@@ -108,3 +108,6 @@ shows bit-exact im2col and same-input TorchAO fc1/fc2, with the first arithmetic
 drift in float patch convolution. An independent image reproduces the
 one-byte activation-threshold effects; patch-only substitution does not clear
 the complete-output gate.
+The [CPU convolution backend probe](../../experiments/reference-data/spectformer_torchao_mkldnn_sensitivity_2026-11-06.md)
+shows that Torch's fused MKLDNN bias is a major source of that first drift;
+disabling MKLDNN still does not clear the whole-model gate on either input.
