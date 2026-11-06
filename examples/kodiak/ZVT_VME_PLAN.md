@@ -96,4 +96,10 @@ The original VLEN512/DLEN256 `FireSimKodiakVME1CoreConfig` U250 build passed syn
 bitstream. Its log and rc are in managed Chipyard task `kodiak-vme-portability-2/.tmp/` as
 `vme-u250-synthesis.log` and `vme-u250-synthesis.rc`. Do not submit its Zvt ELF to the existing
 BME OPU bitstream. A distinct VLEN512/DLEN128 compact VME configuration is undergoing exact-pin
-source, RTL, and area gates; it is not a proven U250 image yet.
+source, RTL, and area gates. Its exact 35 × 63 × 33 biased K-tail ELF passed pinned Spike,
+direct RTL, and FireSim Verilator metasim. The compact U250 `synth_1` report now records
+1,267,125 / 1,728,000 CLB LUTs (**73.33%**) with zero synthesis errors; its
+[SHA-bound report and receipt](https://github.com/copparihollmann/chipyard/blob/1cc1690a608cc995b6c4b896f9e19c8ee4cef556/patches/kodiak-vme/evidence/compact-u250-synthesis.json)
+are published on the Chipyard feature branch. This is a post-synthesis estimate. Placement,
+routing, timing, bitstream generation, and FPGA execution remain unverified, so it is not a
+proven U250 image yet.

@@ -258,8 +258,11 @@ The first VLEN512/DLEN256 VME U250 build passed synthesis and `opt_design` but f
 DRC `UTLZ-1`: 2,208,803 slice LUTs were required and 1,728,000 are available. The build ended
 rc 1 without a bitstream; the bounded log and rc are in Chipyard managed task
 `kodiak-vme-portability-2/.tmp/`. A separate VLEN512/DLEN128 compact VME candidate passed
-exact-pin direct RTL and FireSim Verilator metasim on its biased K-tail control; U250 synthesis
-is running. No VME FPGA bitstream or model result is claimed yet.
+exact-pin direct RTL and FireSim Verilator metasim on its biased K-tail control. Its U250
+post-synthesis report uses **1,267,125 / 1,728,000 CLB LUTs (73.33%)** with zero synthesis
+errors; the [SHA-bound receipt](https://github.com/copparihollmann/chipyard/blob/1cc1690a608cc995b6c4b896f9e19c8ee4cef556/patches/kodiak-vme/evidence/compact-u250-synthesis.json)
+records source pins and the report hash. Placement, routing, timing, bitstream generation,
+and FPGA execution remain pending. No VME FPGA bitstream or model result is claimed yet.
 The current OPU FireSim bitstream is usable for the BME flow above. Its archived artifact identity
 was checked during the hardware jobs. Reproducing that archive from a clean source tree remains
 unverified because the live Chipyard/Saturn checkout has pin drift. Physical Kodiak rig access
