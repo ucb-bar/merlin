@@ -119,6 +119,50 @@ def test_a_strided_view_takes_the_counted_fallback_and_is_still_right(tmp_path):
     assert lib2.merlin_t_fallbacks() == 1
 
 
+def test_scalar_fallback_wraps_at_i32_endpoint_without_signed_overflow(tmp_path):
+    # 131072 * (-128 * -128) is 2^31. The fallback promises the matrix unit's
+    # modulo-i32 result; signed C accumulation is undefined at the last term.
+    source = matrix_shim.emit_translation_unit(
+        _KERNEL,
+        "test_kernel",
+        {"merlin_t_gemm_0": (1, 1, 131072)},
+        alignment_bytes=16,
+        prefix="merlin_t",
+        scratch_bytes=1,
+    )
+    c = tmp_path / "overflow.c"
+    c.write_text(
+        str(source)
+        + """
+#include <string.h>
+static int8_t a[131072], b[131072];
+int main(void) {
+  memset(a, -128, sizeof(a)); memset(b, -128, sizeof(b));
+  int32_t out = 0;
+  merlin_t_scalar_gemm(&out, a, b, 1, 1, 131072, 131072, 1, 1, 1, 1, 1);
+  return out == INT32_MIN ? 0 : 1;
+}
+"""
+    )
+    exe = tmp_path / "overflow"
+    built = subprocess.run(
+        [
+            "cc",
+            "-O2",
+            "-fsanitize=signed-integer-overflow",
+            "-fno-sanitize-recover=signed-integer-overflow",
+            str(c),
+            "-o",
+            str(exe),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert built.returncode == 0, built.stderr
+    result = subprocess.run([str(exe)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
 def test_batched_entry_loops_over_slices(tmp_path):
     bsz, m, n, k = 3, 5, 6, 4
     lib, _ = _build({"merlin_t_gemm_b": (bsz, m, n, k)}, tmp_path)

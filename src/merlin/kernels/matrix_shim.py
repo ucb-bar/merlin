@@ -210,11 +210,11 @@ static void {p}_scalar_gemm(int32_t *c, const int8_t *a, const int8_t *b, size_t
 {{
   for (size_t i = 0; i < m; ++i)
     for (size_t j = 0; j < n; ++j) {{
-      int32_t sum = 0;
+      uint32_t sum = 0;
       for (size_t kk = 0; kk < k; ++kk)
-        sum += (int32_t)a[(intptr_t)i * a_st0 + (intptr_t)kk * a_st1]
-             * (int32_t)b[(intptr_t)kk * b_st0 + (intptr_t)j * b_st1];
-      c[(intptr_t)i * c_st0 + (intptr_t)j * c_st1] = sum;
+        sum += (uint32_t)((int32_t)a[(intptr_t)i * a_st0 + (intptr_t)kk * a_st1]
+                        * (int32_t)b[(intptr_t)kk * b_st0 + (intptr_t)j * b_st1]);
+      c[(intptr_t)i * c_st0 + (intptr_t)j * c_st1] = (int32_t)sum;
     }}
 }}
 

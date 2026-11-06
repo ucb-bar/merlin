@@ -152,7 +152,7 @@ def emit_microkernel(encodings: Mapping[str, Any], spec: KernelSpec, *, derivati
         )
     _require(encodings, spec.accumulate, spec.broadcast, spec.readout)
     acc, bcast, out = (encodings[spec.accumulate], encodings[spec.broadcast], encodings[spec.readout])
-    md, vr, vc, vo = _x(spec.matrix_reg), _x(spec.row_vreg), _x(spec.col_vreg), _x(spec.out_vreg)
+    md, vc, vo = _x(spec.matrix_reg), _x(spec.col_vreg), _x(spec.out_vreg)
 
     def _fused(row_reg: int) -> str:
         """One reduction step, with the left operand in ``row_reg``."""
@@ -209,10 +209,10 @@ static void {spec.func_name}_tile(int32_t *c, const int8_t *at, const int8_t *b,
    * validates is the same code the device build runs, not a re-implementation of it. */
   for (size_t i = 0; i < ml; ++i)
     for (size_t j = 0; j < nl; ++j) {{
-      int32_t sum = bias ? bias[j] : 0;
+      uint32_t sum = bias ? (uint32_t)bias[j] : 0u;
       for (size_t kk = 0; kk < k; ++kk)
-        sum += (int32_t)at[kk * m + i] * (int32_t)b[kk * n + j];
-      c[i * n + j] = sum;
+        sum += (uint32_t)((int32_t)at[kk * m + i] * (int32_t)b[kk * n + j]);
+      c[i * n + j] = (int32_t)sum;
     }}
   return;
 #else
@@ -465,7 +465,7 @@ void {spec.func_name}(int32_t *c, const int8_t *at, const int8_t *b, const int32
 """
 
 
-def _reduction_loop(fused: str, fused_alt: "str | None", spec: KernelSpec) -> str:
+def _reduction_loop(fused: str, fused_alt: str | None, spec: KernelSpec) -> str:
     """The k-loop, rotating the left-operand register across steps when a second one is given.
 
     Unrolled by two so consecutive steps use different left-operand registers. The point is WHICH
@@ -514,8 +514,8 @@ def _reduction_loop(fused: str, fused_alt: "str | None", spec: KernelSpec) -> st
 def emit_reference_c(func_name: str = "opu_gemm_i8_ref") -> str:
     """A scalar C reference with the SAME signature, for a host-side or in-image comparison.
 
-    Accumulates in ``int32_t`` and lets it wrap, matching hardware with no saturation logic. On the int8
-    datapath the wrap is unreachable for any realistic reduction length (see
+    Accumulates in ``uint32_t`` and casts the wrapped result to int32, matching hardware with no
+    saturation logic. On the int8 datapath the wrap is unreachable for any realistic reduction length (see
     :mod:`kernels.opu_corpus`), so this agrees with a saturating implementation on every real input — it
     is written this way so it would still agree if that ever stopped being true.
     """
@@ -529,10 +529,10 @@ void {func_name}(int32_t *c, const int8_t *at, const int8_t *b, const int32_t *b
 {{
   for (size_t i = 0; i < m; ++i) {{
     for (size_t j = 0; j < n; ++j) {{
-      int32_t sum = bias ? bias[j] : 0;              /* wraps, as the accumulator does */
+      uint32_t sum = bias ? (uint32_t)bias[j] : 0u;  /* wraps, as the accumulator does */
       for (size_t kk = 0; kk < k; ++kk)
-        sum += (int32_t)at[kk * m + i] * (int32_t)b[kk * n + j];
-      c[i * n + j] = sum;
+        sum += (uint32_t)((int32_t)at[kk * m + i] * (int32_t)b[kk * n + j]);
+      c[i * n + j] = (int32_t)sum;
     }}
   }}
 }}

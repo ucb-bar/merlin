@@ -13,6 +13,7 @@ tail-undisturbed policy, and the two operand lengths must come from different re
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -144,6 +145,44 @@ class TestGeneratedSource:
         tail = "size_t m, size_t n, size_t k)"
         for src in (emit_microkernel(_TABLE, _SPEC), emit_reference_c()):
             assert args in src and tail in src
+
+
+def test_scalar_tile_and_reference_wrap_biased_i32_endpoint_without_ub(tmp_path):
+    if shutil.which("cc") is None:
+        pytest.skip("needs a host C compiler")
+    src = emit_microkernel(_TABLE, _SPEC) + emit_reference_c()
+    c = tmp_path / "overflow.c"
+    c.write_text(
+        src
+        + f"""
+int main(void) {{
+  int8_t a = 1, b = 1;
+  int32_t bias = INT32_MAX, got = 0, ref = 0;
+  {_SPEC.func_name}(&got, &a, &b, &bias, 1, 1, 1);
+  opu_gemm_i8_ref(&ref, &a, &b, &bias, 1, 1, 1);
+  return got == INT32_MIN && ref == INT32_MIN ? 0 : 1;
+}}
+"""
+    )
+    exe = tmp_path / "overflow"
+    built = subprocess.run(
+        [
+            "cc",
+            "-O2",
+            "-DOPU_SCALAR_TILE",
+            "-DOPU_TILE_EDGE=64",
+            "-fsanitize=signed-integer-overflow",
+            "-fno-sanitize-recover=signed-integer-overflow",
+            str(c),
+            "-o",
+            str(exe),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert built.returncode == 0, built.stderr
+    result = subprocess.run([str(exe)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
 
 
 def _compile(src: str, tmp_path: Path) -> Path:
@@ -437,7 +476,6 @@ class TestTilingIsNumericallyExact:
         fn(out.ctypes.data, lhs.ctypes.data, rhs.ctypes.data, bias.ctypes.data, m, n, k)
         assert (out == np.broadcast_to(bias, (m, n))).all(), out
         assert (out == OC.reference(lhs, rhs, bias)).all()
-
 
 
 def test_the_partial_n_padding_bound_follows_the_spec():
