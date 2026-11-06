@@ -72,7 +72,11 @@ Evidence in this task checkout:
 - `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/routing/opu_signatures.json`
 - `out/artifacts/measurements/firesim_alveo_u250_firesim_kodiak_opu_1core/op_gemm_64x64x64/`
 
-To recompute the structural counts, sum the `b`, `m`, `n`, and `k` fields of the routed rows in
-`opu_signatures.json` with the two formulas above. For another model, use that image's routing
-sidecar and its own FireSim `METRIC cycles`; do not substitute Spike cycles or the plain-RVV control's
-cycles for OPU hardware timing.
+For a graded immutable FireSim pair, `python examples/lib/opu_utilization.py <run_dir>` recomputes
+the counts and ratios from the exact image's SHA-checked routing sidecar and the two hardware
+`METRIC cycles` fields. It accepts only the named one-core bitstream with its pinned
+`vLen=512, dLen=256, int8` geometry, and requires both legs verified. For example, passing the
+s64 run directory above returns 9,865,003,008 valid MACs, 100% static fill, 0.0626384%
+whole-inference effective peak, and 1.8176× control-over-device speedup. It deliberately returns
+`null` for array-active occupancy. The older Spectformer run predates the immutable leg receipt,
+so its arithmetic is shown explicitly above instead of being silently admitted by this tool.
