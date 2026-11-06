@@ -854,11 +854,15 @@ def summary(result: dict[str, Any]) -> str:
     if result.get("speedup_control_over_device"):
         lines.append(f"  device speedup over control: {result['speedup_control_over_device']:.3f}x")
     if utilization := result.get("utilization"):
+        effective_peak = utilization.get("whole_inference_effective_peak_fraction")
+        peak_display = (
+            f"{effective_peak:.4%}" if effective_peak is not None else "unavailable (dynamic call hits unverified)"
+        )
         lines.append(
             "  OPU utilization: "
             f"routed MAC share={utilization['routed_mac_share']:.1%} "
             f"static tile fill={utilization['static_tile_fill']:.1%} "
-            f"whole-inference effective peak={utilization['whole_inference_effective_peak_fraction']:.4%} "
+            f"whole-inference effective peak={peak_display} "
             "array-active occupancy=unmeasured"
         )
     elif reason := result.get("utilization_unavailable"):

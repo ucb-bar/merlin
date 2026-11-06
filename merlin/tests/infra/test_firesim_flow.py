@@ -487,7 +487,7 @@ def test_diagnostic_opu_utilization_uses_verified_hardware_identity(tmp_path):
     (run / "device" / "routing").mkdir(parents=True)
     signatures = {
         "count": 1,
-        "routed": [{"b": 1, "m": 64, "n": 64, "k": 64}],
+        "routed": [{"symbol": "merlin_opu_gemm_i8_0", "b": 1, "m": 64, "n": 64, "k": 64}],
         "macs": {"routed": 64**3, "not_routed": 0},
     }
     sidecar = run / "device" / "routing" / "opu_signatures.json"
@@ -519,9 +519,74 @@ def test_diagnostic_opu_utilization_uses_verified_hardware_identity(tmp_path):
     path = run / "firesim" / "results.json"
     path.write_text(json.dumps(result))
     measured = utilization.measure(run)
-    assert measured["whole_inference_effective_peak_fraction"] == pytest.approx(0.25)
+    assert measured["whole_inference_effective_peak_fraction"] is None
+    assert measured["dynamic_routed_work_verified"] is False
+    assert measured["static_tile_fill"] == 1.0
     assert measured["diagnostic_only"] is True
     assert measured["acceptance"] is False
+    flow = _load("firesim_flow")
+    rendered = flow.summary(
+        {
+            "model": "synthetic",
+            "bitstream": result["bitstream"],
+            "harts": 1,
+            "provenance": {},
+            "utilization": measured,
+        }
+    )
+    assert "whole-inference effective peak=unavailable (dynamic call hits unverified)" in rendered
+
+    from merlin.runtime.backends import output_identity, zephyr_model
+
+    table = [{"id": 0, "mlir_op": "func.call", "callee": "@merlin_opu_gemm_i8_0"}]
+    table_path = run / "device" / "routing" / "op_profile_table.json"
+    table_path.write_text(json.dumps(table))
+    leg_path = run / "device" / "leg.json"
+    leg = json.loads(leg_path.read_text())
+    leg["routing_sidecars"]["op_profile_table.json"] = {
+        "sha256": utilization.hashlib.sha256(table_path.read_bytes()).hexdigest()
+    }
+    leg["build_hash"] = "test-build"
+    elf = run / "device" / "zephyr.elf"
+    elf.write_bytes(b"profiled exact image")
+    elf_sha = utilization.hashlib.sha256(elf.read_bytes()).hexdigest()
+    leg["elf"] = str(elf)
+    leg["spike_gate"] = {
+        "elf_sha256": elf_sha,
+        "profile_table_sha256": leg["routing_sidecars"]["op_profile_table.json"]["sha256"],
+    }
+    result["device"]["elf_sha256"] = elf_sha
+    uart = run / "firesim" / "device" / "uartlog"
+    uart.parent.mkdir()
+
+    def write_profile(hits: int, *, unknown: bool = False) -> None:
+        console = _uart(np.array([0.0], np.float32), cycles=1024, build_hash="test-build")
+        rows = f"PROF 0 100 {hits}\n" + ("PROF 99 1 1\n" if unknown else "")
+        console = console.replace(
+            "METRIC cycles 1024\n", "METRIC cycles 1024\nMETRIC iters 1\nMETRIC prof_marks 2\n" + rows
+        )
+        uart.write_text(console)
+        leg["spike_output_identity"] = output_identity.output_identity(zephyr_model._parse_console(console, 0))
+        leg_path.write_text(json.dumps(leg))
+        result["device"]["uartlog"] = str(uart)
+        path.write_text(json.dumps(result))
+
+    write_profile(1)
+    proven = utilization.measure(run)
+    assert proven["dynamic_routed_work_verified"] is True
+    assert proven["whole_inference_effective_peak_fraction"] == pytest.approx(0.25)
+    assert proven["profiled_console_sha256"] == utilization.hashlib.sha256(uart.read_bytes()).hexdigest()
+    write_profile(2)
+    repeated = utilization.measure(run)
+    assert repeated["dynamic_routed_work_verified"] is False
+    assert repeated["whole_inference_effective_peak_fraction"] is None
+    write_profile(1, unknown=True)
+    assert utilization.measure(run)["whole_inference_effective_peak_fraction"] is None
+    write_profile(1)
+    leg["spike_gate"]["profile_table_sha256"] = "0" * 64
+    leg_path.write_text(json.dumps(leg))
+    assert utilization.measure(run)["whole_inference_effective_peak_fraction"] is None
+
     result["target_pair_hardware_verified"] = False
     path.write_text(json.dumps(result))
     with pytest.raises(ValueError, match="hardware identity verification"):

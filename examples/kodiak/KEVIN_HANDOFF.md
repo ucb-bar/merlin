@@ -46,8 +46,10 @@ OPU instructions, checks the exact images on Spike, and prints an immutable Fire
 OPU bitstream**. `./run.sh firesim-collect <plan-dir> --job device=N --job control=M` grades the
 returned full-output hashes, W8A8 numerical gate, bitstream identity, and target compute cycles.
 For a verified whole-model OPU pair with an exact routing sidecar, it saves
-`firesim/utilization.json` with routed MAC share, static tile fill, whole-inference effective
-peak, and an explicit unmeasured array occupancy field.
+`firesim/utilization.json` with routed MAC share, static tile fill, and paired speedup.
+It reports dynamic valid-MAC rate and whole-inference effective peak only when a
+same-image per-op FireSim profile proves each routed call executed once; array
+occupancy remains explicitly unmeasured on the current bitstream.
 
 The exact capture archives are local delivery artifacts on this shared host, under
 `out/artifacts/delivery/` in this Merlin task. Copy each archive to Kevin's machine and check
@@ -200,18 +202,19 @@ An aligned-weight prepack s64 OPU image completed as FireSim job 3866 in **1,101
 target cycles with the same full 2,048,000-value hash as the verified baseline. Its matched RVV
 control completed as job 3867 in 13,689,726,593 target cycles. Both images matched their
 exact Spike full hashes and prefixes, and the pair graded VERIFIED: **12.4227× OPU speedup**.
-The device performs 9,865,003,008 valid routed MACs, or **0.874215% of the 1,024-MAC/cycle
-theoretical peak across the inference**; the earlier OPU image measured 0.0626384%.
+The device sidecar records 9,865,003,008 valid routed MACs, yielding a **conditional one-hit
+estimate of 0.874215% of the 1,024-MAC/cycle theoretical peak across the inference**;
+the earlier OPU image's corresponding estimate was 0.0626384%.
 
 The current-head fill-elided s64 pair also graded VERIFIED: device job 3874 took 1,064,676,843
 cycles, RVV control job 3877 took 13,689,726,593, and both full hashes/prefixes matched Spike.
-This is **12.8581× speedup** and **0.904856% whole-inference effective peak** for the same
+This is **12.8581× speedup** and **0.904856% (conditional one-hit estimate) whole-inference effective peak** for the same
 9,865,003,008 valid routed MACs. The array-active fraction is not measurable on this bitstream.
 An isolated quant-round fusion trial on top of that schedule also graded VERIFIED on the same
 bitstream: OPU job 3876 took **1,022,361,106** target cycles, matched RVV control 3887 took
 **13,646,684,998**, and both full 2,048,000-value hashes and prefixes matched their exact
 Spike images. Its 4,096-value hardware W8A8 prefix passed. The pair gives **13.3482×** speedup;
-9,865,003,008 valid routed MACs yield **0.942308% whole-inference effective peak**. This is
+9,865,003,008 valid routed MACs yield **0.942308% (conditional one-hit estimate) whole-inference effective peak**. This is
 3.9745% fewer device cycles than fill-only job 3874. The
 [versioned opt-in quant package](../../out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/README.md)
 adds only `fuse_quantize_round_convert` to the prepack schedule. Its rebuilt s64, s128, and
@@ -219,7 +222,7 @@ Spectformer images pass exact OPU and independent-RVV Spike full-hash gates; s12
 complete 4,096,000-logit W8A8 and 128-token argmax check. The package's rebuilt Spectformer
 pair 3889/3890 graded VERIFIED: **2,578,301,427** OPU versus **5,667,528,436** RVV target cycles,
 **2.19816×** paired speedup, full 1,000-value hash and W8A8 pass on both legs. Its 1,853,155,328
-valid routed MACs give **0.0701905% whole-inference effective peak**; static tile fill is 73.8223%
+valid routed MACs give **0.0701905% (conditional one-hit estimate) whole-inference effective peak**; static tile fill is 73.8223%
 and array occupancy remains unmeasured. Compared with the prepack pair on the same capture,
 routing, and bitstream, OPU cycles fell 5.6915%. Compiler source revisions differ, so this
 observed package comparison does not isolate a single knob. The SHA-bound tracked receipt is
@@ -228,7 +231,7 @@ A separate [same-source round-even A/B](SPECTFORMER_ROUNDINTRINSIC_AB.md) on the
 one-core bitstream graded all four exact images VERIFIED. Baseline OPU/control jobs
 3895/3896 took 2,733,902,458/5,840,140,166 cycles; intrinsic jobs 3897/3898 took
 2,539,617,917/5,660,152,596. The intrinsic saved **7.10649% device cycles** and
-raised valid-MAC whole-inference effective peak from **0.06619556% to 0.07125962%**.
+raised the conditional one-hit valid-MAC whole-inference estimate from **0.06619556% to 0.07125962%**.
 Both images routed the same 1,853,155,328 valid MACs; call-window cycles and physical
 array occupancy were not measured. These are older weight-only-source images followed
 by Merlin W8A8, not torchAO-source parity evidence.
@@ -237,7 +240,7 @@ The rebuilt s128 pair 3891/3892 also graded VERIFIED: **2,252,651,428** OPU vers
 4,096,000-value hardware hashes match the exact Spike images; direct hardware W8A8 comparison
 covers the 4,096-value UART prefix. The separately gated exact OPU Spike image passed all
 4,096,000 W8A8 logits and 128 argmaxes. Its 19,797,114,880 valid routed MACs, divided by
-1,024 MACs per cycle and the OPU target compute cycles, give **0.858238% whole-inference
+1,024 MACs per cycle and the OPU target compute cycles, give **0.858238% (conditional one-hit estimate) whole-inference
 effective peak**. Static tile fill is 100%; array occupancy remains unmeasured. The
 [SHA-bound evidence](../../out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/tinyllama_l2_s128_hardware_evidence.json)
 records both legs and the comparison scope. The older s64 hardware result is bound to the same
@@ -247,7 +250,7 @@ pair 3893/3894 is now VERIFIED on the pinned one-core bitstream: **1,022,361,106
 2,048,000-value hardware hashes match exact Spike; direct hardware W8A8 comparison covers
 the 4,096-value UART prefix. All 19 contractions and 9,865,003,008 valid MACs route to OPU
 with 100% static tile fill. Those valid MACs divided by 1,024 MACs/cycle and measured OPU
-cycles give **0.942308% whole-inference effective peak**; array occupancy is unmeasured.
+cycles give **0.942308% (conditional one-hit estimate) whole-inference effective peak**; array occupancy is unmeasured.
 Both cycle counts equal the earlier trial pair 3876/3887, confirming the named package's
 observed timing without assuming ELF byte identity. The
 [SHA-bound rebuilt-pair evidence](../../out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/tinyllama_l2_s64_hardware_evidence.json)
@@ -256,7 +259,7 @@ The s128 aligned-prepack OPU/RVV pair also graded VERIFIED on the pinned one-cor
 device job 3871 took 2,438,693,540 target cycles, matched control job 3875 took
 27,742,439,123, and both full 4,096,000-value hashes and prefixes matched their exact Spike
 images. The hardware W8A8 gate passed on the 4,096-value prefixes. The **11.37594×** paired
-speedup accompanies 19,797,114,880 valid routed MACs, 100% static tile fill, and **0.792765%
+speedup accompanies 19,797,114,880 valid routed MACs, 100% static tile fill, and **0.792765% (conditional one-hit estimate)
 whole-inference effective peak** for the OPU image. Physical array occupancy remains unmeasured.
 The SHA-bound receipt is
 `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793954503610973263/firesim/pair_receipt.json`.
@@ -291,13 +294,13 @@ rebuild of these ELFs remains unproven. The exact prepack FireSim device/control
 3886/3888 subsequently graded VERIFIED:
 **2,733,902,458** versus **5,840,140,166** target compute cycles, **2.13619×** paired speedup,
 and identical full 1,000-value hashes to their exact Spike images. Its 90 routed contractions
-account for 1,853,155,328 valid MACs, 73.8223% static tile fill, and **0.0661956% whole-inference
+account for 1,853,155,328 valid MACs, 73.8223% static tile fill, and **0.0661956% (conditional one-hit estimate) whole-inference
 effective peak** on the OPU image. Array occupancy remains unmeasured. The SHA-bound pair receipt
 is `out/artifacts/probes/firesim_kodiak_opu/spectformer_firesim_h1/run_1793965368611649945/firesim/pair_receipt.json`.
 
 A current-routing unprofiled Spectformer OPU comparator completed as FireSim job 3870 in
 **3,038,273,721 target compute cycles** with the same full output hash as its exact Spike image.
-Its 90 routed contractions account for 1,853,155,328 valid MACs, yielding **0.0595642%
+Its 90 routed contractions account for 1,853,155,328 valid MACs, yielding **0.0595642% (conditional one-hit estimate)
 whole-inference effective peak**; the older accepted OPU image used a different routing policy.
 The SHA-bound receipt is in
 `out/artifacts/probes/firesim_kodiak_opu/spectformer_current_unprofiled_h1/firesim/`.
@@ -342,11 +345,12 @@ one-core bitstream.
 For utilization, use [the formula and evidence](UTILIZATION.md) and
 `python examples/lib/opu_utilization.py <verified-plan-dir>`. The current bitstream has 1,024
 physical int8 MAC cells but no active-cycle counter. The baseline ~0.05–0.12% figures and the
-fill-elided prepacked s64 device's 0.904856% are
-**whole-inference effective throughput as a fraction of peak**, not array occupancy. Earlier
+fill-elided prepacked s64 device's 0.904856% (conditional one-hit estimate) are
+**historical static one-hit throughput proxies as a fraction of peak**. They are not
+dynamic utilization or array occupancy without same-image call-hit evidence. Earlier
 Spectformer and 64-token TinyLlama Spike images executed 105 and 143 OPU shim calls respectively,
 with zero scalar fallbacks. The baseline 128-token pair gives **2.5061×** control-over-device
-speedup and **0.115576%** whole-inference effective peak for its OPU image; the bitstream still
+speedup and **0.115576% (conditional one-hit estimate)** whole-inference effective peak for its OPU image; the bitstream still
 has no array-active counter.
 
 The Kodiak OPU target uses legacy BME instructions. It cannot execute Iris's Zvt/VME encodings;
