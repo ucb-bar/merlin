@@ -25,6 +25,19 @@ SOLE_USE = """module {
 }
 """
 
+GENERIC_SOLE_USE = """"builtin.module"() ({
+  "func.func"() <{sym_name = "forward", function_type = (tensor<4x8xi8>) -> tensor<8x4xi8>}> ({
+  ^bb0(%0: tensor<4x8xi8>):
+    %1 = "tensor.empty"() : () -> tensor<8x4xi8>
+    %2 = "linalg.transpose"(%0, %1) <{permutation = array<i64: 1, 0>}> ({
+    ^bb0(%3: i8, %4: i8):
+      "linalg.yield"(%3) : (i8) -> ()
+    }) : (tensor<4x8xi8>, tensor<8x4xi8>) -> tensor<8x4xi8>
+    "func.return"(%2) : (tensor<8x4xi8>) -> ()
+  }) : () -> ()
+}) {prov.weights_file = "old/weights.safetensors"} : () -> ()
+"""
+
 
 def _write_safetensors(path, tensors: dict[str, np.ndarray]) -> None:
     header, off, blobs = {}, 0, []
@@ -96,6 +109,36 @@ def test_the_weight_is_stored_transposed_and_the_transpose_is_gone(bundle, tmp_p
     assert rec.effect["weights_pre_transposed"] == 1
     assert rec.effect["bytes_moved_per_inference_before"] == 32
     assert rec.effect["bytes_moved_per_inference_after"] == 0
+
+
+def test_generic_mlir_weight_hoist_changes_ir_and_bytes_together(bundle, tmp_path):
+    src, w, _ = bundle
+    (src / "model.mlir").write_text(GENERIC_SOLE_USE)
+    dst = tmp_path / "generic"
+    rec = br.hoist_weight_transposes(src, dst)
+
+    text = (dst / "model.mlir").read_text()
+    assert '"linalg.transpose"' not in text
+    assert '"tensor.empty"' not in text
+    assert "function_type = (tensor<8x4xi8>)" in text
+    assert "^bb0(%0: tensor<8x4xi8>)" in text
+    assert '"func.return"(%0)' in text
+    assert f'prov.weights_file = "{dst / "weights.safetensors"}"' in text
+    assert np.array_equal(_read_safetensors(dst / "weights.safetensors")["w"], w.T)
+    assert rec.effect["transposes_removed"] == 1
+    assert rec.effect["ops_removed"] == 2
+    assert rec.effect["weights_file_retargeted"] is True
+
+
+def test_hoist_refuses_to_change_weight_bytes_if_ir_rewrite_misses(bundle, tmp_path, monkeypatch):
+    src, _, _ = bundle
+    (src / "model.mlir").write_text(GENERIC_SOLE_USE)
+    monkeypatch.setattr(br, "rewrite_transposed_args", lambda text, _args, _name: (text, 0))
+    dst = tmp_path / "refused"
+
+    with pytest.raises(br.RewriteRefused, match="removed 0 operations for 1 transposes"):
+        br.hoist_weight_transposes(src, dst)
+    assert not dst.exists(), "a refused rewrite must not publish altered weights"
 
 
 def test_the_rewrite_records_itself(bundle, tmp_path):

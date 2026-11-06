@@ -50,7 +50,7 @@ FEATURE = "prepack_weight_layout"
 
 #: bump when the produced bundle's BYTES would change, so cached bundles from an older rewrite are
 #: not reused under the new semantics
-REWRITE_VERSION = "2"
+REWRITE_VERSION = "3"
 
 #: files whose content defines the rewrite's input; the cache key is (name, size, mtime_ns) of each
 _KEY_FILES = ("model.mlir", "weights.safetensors", "weights.safetensors.manifest.json")

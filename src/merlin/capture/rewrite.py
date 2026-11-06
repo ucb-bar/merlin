@@ -113,22 +113,107 @@ def _replace_ssa(line: str, old: str, new: str) -> str:
     return "".join(out)
 
 
-def rewrite_transposed_args(mlir_text: str, args: set[int]) -> tuple[str, int]:
+def _split_type_list(text: str) -> list[str]:
+    """Split an MLIR type list at top-level commas, leaving nested type syntax intact."""
+    pairs = {"(": ")", "<": ">", "[": "]", "{": "}"}
+    stack: list[str] = []
+    start = 0
+    parts: list[str] = []
+    for i, char in enumerate(text):
+        if char in pairs:
+            stack.append(pairs[char])
+        elif stack and char == stack[-1]:
+            stack.pop()
+        elif char == "," and not stack:
+            parts.append(text[start:i].strip())
+            start = i + 1
+    if stack:
+        raise RewriteRefused("unbalanced MLIR type list while hoisting weight transpose")
+    parts.append(text[start:].strip())
+    return parts
+
+
+def _closing_paren(text: str, opening: int) -> int:
+    depth = 0
+    for i in range(opening, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    raise RewriteRefused("unbalanced MLIR argument list while hoisting weight transpose")
+
+
+def _generic_transpose(line: str, want: set[str]) -> tuple[str, str, str, str, str] | None:
+    """Return (result, source, empty, source type, result type) for an eligible generic op."""
+    marker = ' = "linalg.transpose"('
+    if marker not in line:
+        return None
+    result, _, tail = line.partition(marker)
+    operands_end = tail.find(")")
+    if operands_end < 0:
+        raise RewriteRefused("generic linalg.transpose has no operand-list close")
+    operands = [item.strip() for item in tail[:operands_end].split(",")]
+    if len(operands) != 2 or operands[0] not in want:
+        return None
+    if "permutation = array<i64: 1, 0>" not in tail:
+        raise RewriteRefused(f"{result.strip()}: expected a two-dimensional swap permutation")
+    type_marker = " : ("
+    if type_marker not in tail:
+        raise RewriteRefused(f"{result.strip()}: generic transpose has no operand types")
+    type_tail = "(" + tail.split(type_marker, 1)[1]
+    type_end = _closing_paren(type_tail, 0)
+    types = _split_type_list(type_tail[1:type_end])
+    if len(types) != 2 or " -> " not in type_tail[type_end:]:
+        raise RewriteRefused(f"{result.strip()}: generic transpose has unexpected type signature")
+    out_type = type_tail[type_end:].split(" -> ", 1)[1].strip()
+    if types[1] != out_type:
+        raise RewriteRefused(f"{result.strip()}: transpose destination/result types disagree")
+    return result.strip(), operands[0], operands[1], types[0], out_type
+
+
+def rewrite_transposed_args(mlir_text: str, args: set[int], func_name: str = "forward") -> tuple[str, int]:
     """Delete each hoisted `linalg.transpose` (and the `tensor.empty` feeding its `outs`), give the
     argument the transposed type, and forward every use of the transpose result to the argument.
 
     Returns the new text and the number of ops removed. Structural line handling, no regex: an op is
-    found by its `= linalg.transpose ins(` shape and its operands by `partition`, per the repo's
-    no-regex rule.
+    found by its operation spelling and its operands by `partition`, per the repo's no-regex rule.
     """
     want = {f"%{a}" for a in args}
     lines = mlir_text.splitlines()
 
     drop_defs: set[str] = set()
+    drop_region_lines: set[int] = set()
     subst: dict[str, str] = {}
     retype: dict[str, tuple[str, str]] = {}
-    for line in lines:
+    for index, line in enumerate(lines):
         s = line.strip()
+        if ' = "linalg.transpose"(' in s and " : (" not in s:
+            # Generic MLIR prints a linalg.transpose region on several lines. Its operand
+            # types live on the closing line, and the region must disappear with the op.
+            indent = len(line) - len(line.lstrip())
+            closing = next(
+                (
+                    j
+                    for j in range(index + 1, len(lines))
+                    if lines[j].startswith(" " * indent + "})") and " : (" in lines[j]
+                ),
+                None,
+            )
+            if closing is None:
+                raise RewriteRefused("generic linalg.transpose region has no typed closing line")
+            s += " " + lines[closing].strip()
+        else:
+            closing = index
+        generic = _generic_transpose(s, want)
+        if generic is not None:
+            res, src, outs_val, in_t, out_t = generic
+            drop_defs.update((res, outs_val))
+            drop_region_lines.update(range(index + 1, closing + 1))
+            subst[res] = src
+            retype[src] = (in_t, out_t)
+            continue
         if " = linalg.transpose ins(" not in s:
             continue
         res = s.split(" =", 1)[0].strip()
@@ -145,18 +230,45 @@ def rewrite_transposed_args(mlir_text: str, args: set[int]) -> tuple[str, int]:
 
     out_lines: list[str] = []
     dropped = 0
-    for line in lines:
+    generic_header_found = False
+    generic_block_found = False
+    for index, line in enumerate(lines):
+        if index in drop_region_lines:
+            continue
         s = line.strip()
         defname = s.split(" =", 1)[0].strip() if " =" in s else None
         if defname in drop_defs:
             dropped += 1
             continue
-        if s.startswith("func.func @forward"):
+        if s.startswith(f"func.func @{func_name}("):
             for arg, (old_t, new_t) in retype.items():
                 line = line.replace(f"{arg}: {old_t}", f"{arg}: {new_t}")
+        elif s.startswith('"func.func"()') and f'sym_name = "{func_name}"' in s and retype:
+            marker = "function_type = ("
+            if marker not in line:
+                raise RewriteRefused("generic forward has no function_type")
+            start = line.index(marker) + len(marker) - 1
+            end = _closing_paren(line, start)
+            types = _split_type_list(line[start + 1 : end])
+            for arg, (old_t, new_t) in retype.items():
+                index = int(arg[1:])
+                if index >= len(types) or types[index] != old_t:
+                    raise RewriteRefused(f"forward arg {arg} has unexpected type in function_type")
+                types[index] = new_t
+            line = line[: start + 1] + ", ".join(types) + line[end:]
+            generic_header_found = True
+        elif s.startswith("^bb0(") and generic_header_found and not generic_block_found and retype:
+            for arg, (old_t, new_t) in retype.items():
+                needle = f"{arg}: {old_t}"
+                if line.count(needle) != 1:
+                    raise RewriteRefused(f"forward block arg {arg} has unexpected type")
+                line = line.replace(needle, f"{arg}: {new_t}", 1)
+            generic_block_found = True
         for res, src in subst.items():
             line = _replace_ssa(line, res, src)
         out_lines.append(line)
+    if generic_header_found and not generic_block_found:
+        raise RewriteRefused("generic forward block argument types were not updated")
     return "\n".join(out_lines) + "\n", dropped
 
 
@@ -244,14 +356,16 @@ def retarget_weights_file(mlir_text: str, weights_path: Path | str) -> tuple[str
     `gemma2_2b_int8_full_seq8_pretransposed` and every other `_pretransposed` bundle on disk still
     name the ORIGINAL `weights.safetensors`, so anyone reading one concludes it is stock.
 
-    Structural, no regex: the attribute is found by its literal key on the module line and its value
-    ends at the next quote.
+    Structural, no regex: the attribute is found by its literal key and its value ends at the next
+    quote. Generic MLIR prints module attributes on the closing line.
     """
     key = 'prov.weights_file = "'
+    if mlir_text.count(key) > 1:
+        raise RewriteRefused("multiple prov.weights_file attributes; provenance is ambiguous")
     out: list[str] = []
     changed = False
     for line in mlir_text.splitlines():
-        if not changed and line.lstrip().startswith("builtin.module") and key in line:
+        if not changed and key in line:
             head, _, rest = line.partition(key)
             _old, quote, tail = rest.partition('"')
             if quote:
@@ -349,6 +463,22 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str, func_name: str = "
     if problems:
         raise RewriteRefused(f"cannot pre-apply the weight layout of {src.name}: " + "; ".join(problems))
 
+    new_text, dropped = rewrite_transposed_args(mlir_text, set(by_arg), func_name)
+    if dropped != 2 * len(by_arg):
+        raise RewriteRefused(
+            f"{src.name}: removed {dropped} operations for {len(by_arg)} transposes; "
+            "refusing to alter weight bytes without removing each transpose and its empty destination"
+        )
+    # The count proves only that the expected text was deleted; parsing proves that the
+    # updated function signature, block arguments and remaining uses still form valid IR.
+    with IR_LOCK:
+        mq.parse(new_text)
+    # Point provenance at the blob this bundle will have. Resolve this before writing any
+    # bytes so an ambiguous or stale path cannot leave a partial output directory.
+    new_text, retargeted = retarget_weights_file(new_text, (dst / "weights.safetensors").resolve())
+    if 'prov.weights_file = "' in mlir_text and not retargeted:
+        raise RewriteRefused(f"{src.name}: provenance still points at the original weight blob")
+
     dst.mkdir(parents=True, exist_ok=True)
     done = _rewrite_safetensors(src, dst, set(want))
     if done != len(want):  # belt-and-braces: the checks above should make this
@@ -362,9 +492,6 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str, func_name: str = "
             entry["shape"] = [entry["shape"][1], entry["shape"][0]]
     (dst / "weights.safetensors.manifest.json").write_text(json.dumps(man, indent=2))
 
-    new_text, dropped = rewrite_transposed_args(mlir_text, set(by_arg))
-    # Point the provenance at the blob this bundle actually has (see `retarget_weights_file`).
-    new_text, retargeted = retarget_weights_file(new_text, (dst / "weights.safetensors").resolve())
     (dst / "model.mlir").write_text(new_text)
 
     skipped = _carry_sidecars(src, dst, _HOIST_WRITES)
