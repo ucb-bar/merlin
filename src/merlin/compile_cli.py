@@ -702,7 +702,22 @@ def compile_rvv(
         if refs:
             out["verify"] = {
                 "gate_ok": bool(res.get("ok")),
-                **{k: v for k, v in res.items() if k.endswith(("_cos", "_rel", "_max_rel"))},
+                **{
+                    k: v
+                    for k, v in res.items()
+                    if k.endswith(("_cos", "_rel", "_max_rel"))
+                    or k
+                    in (
+                        "tier_ok",
+                        "tiers",
+                        "n_compared",
+                        "n_reference",
+                        "compared_fraction",
+                        "comparison_complete",
+                        "coverage_ok",
+                        "min_coverage",
+                    )
+                },
             }
             out["status"] = "verified" if res.get("ok") else "run_mismatch"
         return out

@@ -53,6 +53,8 @@ def _bundle(tmp_path: Path) -> tuple[Path, np.ndarray]:
 
 
 def _uart(values: np.ndarray, *, cycles: int, build_hash: str, done: bool = True) -> str:
+    from merlin.runtime.backends.zephyr_model import out_hash_fnv1a32
+
     bits = [struct.unpack("<I", struct.pack("<f", float(v)))[0] for v in values]
     lines = [
         "*** Booting Zephyr OS build 852bb170cc56 ***",
@@ -61,7 +63,12 @@ def _uart(values: np.ndarray, *, cycles: int, build_hash: str, done: bool = True
         "STAGE boot hart=0 t=73",
     ]
     if done:
-        lines += [f"METRIC cycles {cycles}", f"OUT {len(bits)} {' '.join(map(str, bits))}", "DONE"]
+        lines += [
+            f"METRIC cycles {cycles}",
+            f"OUT {len(bits)} {' '.join(map(str, bits))}",
+            f"HASH fnv1a32 {len(bits)} {out_hash_fnv1a32(values)}",
+            "DONE",
+        ]
         lines += ["Simulation complete.", f"*** PASSED *** after {cycles * 2} cycles"]
     lines += [
         "Emulation Performance Summary",
@@ -92,14 +99,20 @@ def _plan(flow, tmp_path: Path, bundle: Path) -> Path:
     return job
 
 
-@pytest.mark.parametrize("bit_exact", [True, False])
-def test_whole_model_legs_stage_only_exact_spike_gated_images(flow, tmp_path, monkeypatch, bit_exact):
+@pytest.mark.parametrize(
+    ("bit_exact", "control_has_unit", "tier"),
+    [(True, False, "w8a8"), (False, False, "w8a8"), (True, True, "w8a8"), (True, False, "fp32")],
+)
+def test_whole_model_legs_stage_only_exact_spike_gated_images(
+    flow, tmp_path, monkeypatch, bit_exact, control_has_unit, tier
+):
     from merlin.common import artifacts
 
     model = "test_model"
     bundle = tmp_path / f"{model}_int8_full"
     bundle.mkdir()
     (bundle / "model.mlir").write_text("module {}")
+    np.save(bundle / "golden_w8a8.npy", np.zeros(1, dtype=np.float32))
     monkeypatch.setattr(artifacts, "recaptures_dir", lambda: tmp_path)
     binaries = {}
     for leg in flow.LEGS:
@@ -115,7 +128,7 @@ def test_whole_model_legs_stage_only_exact_spike_gated_images(flow, tmp_path, mo
                 "shipped_on_simulator": {
                     "status": "verified",
                     "bit_exact_vs_twin": bit_exact,
-                    "verify": {"gate_ok": True},
+                    "verify": {"gate_ok": True, "tier_ok": "w8a8"},
                 },
             }
             if leg == "device"
@@ -125,12 +138,20 @@ def test_whole_model_legs_stage_only_exact_spike_gated_images(flow, tmp_path, mo
             "status": "verified",
             "binary": str(binaries[leg]),
             "build_hash": leg,
-            "verify": {"gate_ok": True},
+            "verify": {"gate_ok": True, "tier_ok": tier},
             "matrix": matrix,
+            "output_identity": {"out_hash": {"algo": "fnv1a32", "elems": 1, "value": 1}, "prefix_sha256": "x"},
         }
+        if matrix:
+            matrix["shipped_on_simulator"]["output_identity"] = result["output_identity"]
         return SimpleNamespace(returncode=0, stdout="build log\n" + json.dumps(result, indent=2), stderr="")
 
     monkeypatch.setattr(flow.subprocess, "run", compile_image)
+    monkeypatch.setattr(
+        flow,
+        "_unit_counts",
+        lambda elf, *args: {"OPMACC": 1} if "device" in str(elf) or control_has_unit else {},
+    )
     args = SimpleNamespace(
         bundle=f"{model}_int8_full",
         board="fs",
@@ -148,13 +169,72 @@ def test_whole_model_legs_stage_only_exact_spike_gated_images(flow, tmp_path, mo
             flow.build_legs(args)
         assert not (tmp_path / "out" / "artifacts" / "probes" / "fs" / f"{model}_firesim_h1" / flow.MANIFEST).exists()
         return
+    if tier != "w8a8":
+        with pytest.raises(SystemExit, match="W8A8 gate"):
+            flow.build_legs(args)
+        return
+    if control_has_unit:
+        with pytest.raises(SystemExit, match="control leg: staged ELF contains"):
+            flow.build_legs(args)
+        return
     job = flow.build_legs(args)
+    assert job.parent.name == f"{model}_firesim_h1" and job.name.startswith("run_")
     manifest = flow.load(job)
     assert manifest["timeout_s"] == 7200
     for leg in flow.LEGS:
         staged = Path(manifest["legs"][leg]["elf"])
         assert staged.read_bytes() == binaries[leg].read_bytes()
         assert manifest["legs"][leg]["spike_gate"]["verify"]["gate_ok"] is True
+        assert manifest["legs"][leg]["spike_output_identity"]["out_hash"]["elems"] == 1
+
+
+def test_whole_model_legs_require_w8a8_reference_before_compile(flow, tmp_path, monkeypatch):
+    from merlin.common import artifacts
+
+    bundle = tmp_path / "test_model_int8_full"
+    bundle.mkdir()
+    (bundle / "model.mlir").write_text("module {}")
+    monkeypatch.setattr(artifacts, "recaptures_dir", lambda: tmp_path)
+    args = SimpleNamespace(bundle=bundle.name, board="fs", harts=1)
+    with pytest.raises(SystemExit, match="requires the model's W8A8 reference"):
+        flow.build_legs(args)
+
+
+def test_failed_rebuild_cannot_leave_a_prior_firesim_plan_submittable(flow, tmp_path, monkeypatch):
+    from merlin.common import artifacts
+
+    bundle = tmp_path / "test_model_int8_full"
+    bundle.mkdir()
+    (bundle / "model.mlir").write_text("module {}")
+    np.save(bundle / "golden_w8a8.npy", np.zeros(1, dtype=np.float32))
+    monkeypatch.setattr(artifacts, "recaptures_dir", lambda: tmp_path)
+    job = tmp_path / "out/artifacts/probes/fs/test_model_firesim_h1"
+    elf = tmp_path / "old_nan.elf"
+    elf.write_bytes(b"old")
+    flow.plan(job, board="fs", name="test_model", bundle=bundle, legs={"device": {"elf": elf}})
+    monkeypatch.setattr(
+        flow.subprocess,
+        "run",
+        lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr="compile failed"),
+    )
+    args = SimpleNamespace(
+        bundle=bundle.name,
+        board="fs",
+        package="rvv/test",
+        harts=1,
+        matrix_unit="opu",
+        matrix_config="cfg",
+        matrix_support_target="kodiak",
+        matrix_kernel=None,
+        spike_timeout=40,
+        timeout=7200,
+    )
+    with pytest.raises(SystemExit, match="returned no result"):
+        flow.build_legs(args)
+    assert not (job / flow.MANIFEST).exists()
+    assert len(list(job.glob("firesim_job.previous_*.json"))) == 1
+    assert len(list(job.glob("run_*"))) == 1
+    assert elf.read_bytes() == b"old"
 
 
 # ------------------------------------------------------------------------------------------- parsing
@@ -288,6 +368,28 @@ def test_a_faithful_run_is_verified_and_the_speedup_reported(flow, tmp_path):
     assert res["speedup_control_over_device"] == pytest.approx(1.58)
     assert (job / "firesim" / "results.json").is_file()
     assert res["provenance"]["bitstream_artifact"]["matched"] is False  # an undeclared tar is not pinned
+
+
+def test_collect_requires_the_full_spike_output_even_when_the_printed_prefix_passes(flow, tmp_path):
+    from merlin.runtime.backends import output_identity
+    from merlin.runtime.backends import zephyr_model as zm
+
+    bundle, w8 = _bundle(tmp_path)
+    job = _plan(flow, tmp_path, bundle)
+    good = zm._parse_console(_uart(w8, cycles=10, build_hash="aaaa"), 0)
+    manifest = flow.load(job)
+    manifest["legs"]["device"]["spike_output_identity"] = output_identity.output_identity(good)
+    flow._save(job, manifest)
+    uart = _uart(w8, cycles=10, build_hash="aaaa")
+    uart = uart.replace(
+        f"HASH fnv1a32 {w8.size} {good['out_hash']['value']}",
+        f"HASH fnv1a32 {w8.size} {good['out_hash']['value'] ^ 1}",
+    )
+    device = _results_dir(tmp_path, "d", uart)
+    result = flow.collect(job, uartlogs={"device": device / "uartlog"}, measurement=False)
+    assert result["device"]["grade"]["tier_ok"] == "w8a8"
+    assert result["device"]["out_hash_matches_spike"] is False
+    assert any("whole-output HASH differs" in p for p in result["device"]["problems"])
 
 
 def test_a_run_on_another_bitstream_or_of_another_image_is_not_verified(flow, tmp_path):

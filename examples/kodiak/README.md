@@ -423,7 +423,8 @@ boot, a few minutes per leg.
 OPU; the CONTROL leg uses plain RVV. Both exact ELFs pass the W8A8 spike gate before submission, and
 the shipped DEVICE ELF also runs on the package's OPU spike model and must match its scalar twin bit for
 bit. This avoids structural profiling changing the program under test. The images land in
-`out/artifacts/probes/firesim_kodiak_opu/<model>_firesim_h1/`. Budget the timeout from the model's
+`out/artifacts/probes/firesim_kodiak_opu/<model>_firesim_h1/run_<id>/` so a queued job's ELF cannot be
+replaced by a later rebuild. Budget the timeout from the model's
 cycles: at 15 MHz, seconds ≈ cycles / 1.5e7, plus a few minutes per job for FPGA programming.
 
 ### Without the shared queue
@@ -452,7 +453,9 @@ For each leg it checks, and reports every check it could not make as a problem r
 - the image: the console's `METRIC build_hash` must be the planned image's, and the ELF must not have
   been rebuilt since it was planned;
 - the answer: the `OUT` line against the bundle's `golden_w8a8.npy` (Merlin's host W8A8 datapath; the
-  device should reproduce it, `w8a8` tier: cos > 0.999, rel < 1e-2) and the whole-tensor `HASH`;
+  device should reproduce it, `w8a8` tier: cos > 0.999, rel < 1e-2). If `OUT` is truncated, this
+  numerical grade covers only its reported prefix. The FireSim whole-tensor `HASH` must exactly match
+  the hash of the same ELF's Spike run; the printed prefix must match that Spike run bit for bit too;
 - the cycles: `METRIC cycles` (the compute region), FireSim's wall clock and effective frequency, and
   the device leg's speedup over the control leg.
 

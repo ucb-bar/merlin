@@ -41,6 +41,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -504,6 +505,7 @@ def grade_leg(
     hw_summary: dict[str, str],
 ) -> dict[str, Any]:
     """One leg's verdict. Every check that could not be made is a named problem, never a pass."""
+    from merlin.runtime.backends import output_identity
     from merlin.runtime.backends import zephyr_model as zm
 
     out: dict[str, Any] = {"problems": [], **read_sim_footer(uart)}
@@ -539,9 +541,23 @@ def grade_leg(
             if k.endswith(("_cos", "_rel", "_max_rel", "_argmax"))
             or k in ("ok", "tier_ok", "tiers", "n_compared", "n_reference", "comparison_complete")
         }
-        if not gate.get("ok"):
+        if not gate.get("ok") or gate.get("tier_ok") != "w8a8":
             out["problems"].append(f"output fails the gate (tier_ok={gate.get('tier_ok')})")
     digest = res.get("out_hash")
+    expected_identity = row.get("spike_output_identity")
+    if expected_identity is not None:
+        expected_hash = expected_identity.get("out_hash")
+        if not expected_hash:
+            out["problems"].append("spike gate has no whole-output HASH")
+        elif digest != expected_hash:
+            out["problems"].append(
+                f"whole-output HASH differs from the spike-gated image: {digest!r} != {expected_hash!r}"
+            )
+        out["out_hash_matches_spike"] = bool(expected_hash) and digest == expected_hash
+        observed_identity = output_identity.output_identity(res)
+        if observed_identity.get("prefix_sha256") != expected_identity.get("prefix_sha256"):
+            out["problems"].append("printed output prefix differs from the spike-gated image")
+        out["prefix_matches_spike"] = observed_identity.get("prefix_sha256") == expected_identity.get("prefix_sha256")
     if digest and "w8a8" in refs and int(digest["elems"]) == int(refs["w8a8"].size):
         # The OUT line is a prefix of a large tensor; the hash covers all of it.
         out["out_hash_matches_w8a8"] = zm.out_hash_fnv1a32(refs["w8a8"]) == digest["value"]
@@ -680,8 +696,19 @@ def build_legs(args) -> Path:
     bundle = recaptures_dir() / args.bundle
     if not (bundle / "model.mlir").is_file():
         raise SystemExit(f"{bundle} is not a capture bundle; capture it first (run.sh capture <model>)")
+    if not (bundle / "golden_w8a8.npy").is_file():
+        raise SystemExit(f"{bundle}: FireSim requires the model's W8A8 reference before building")
     model = args.bundle.removesuffix("_int8_full")
-    job_dir = artifacts_dir() / "probes" / brd.name / f"{model}_firesim_h{args.harts}"
+    job_base = artifacts_dir() / "probes" / brd.name / f"{model}_firesim_h{args.harts}"
+    job_base.mkdir(parents=True, exist_ok=True)
+    old_plan = job_base / MANIFEST
+    if old_plan.is_file():
+        archive = job_base / f"firesim_job.previous_{time.time_ns()}.json"
+        old_plan.rename(archive)
+        print(f"[firesim] archived prior plan at {archive}; it cannot be submitted as this build", flush=True)
+    # A queued FireSim job stages its ELF later, when the daemon gets the FPGA. Never overwrite an ELF
+    # a previous queue request may still reference, even if this build fails its spike gate.
+    job_dir = job_base / f"run_{time.time_ns()}"
     package = Path(args.package)
     if not package.is_absolute():
         package = REPO / "out" / "artifacts" / "targets" / package
@@ -736,20 +763,28 @@ def build_legs(args) -> Path:
             ) from exc
         matrix = result.get("matrix") or {}
         shipped = matrix.get("shipped_on_simulator") or {}
-        if proc.returncode or result.get("status") != "verified" or result.get("verify", {}).get("gate_ok") is not True:
+        if proc.returncode or result.get("status") != "verified" or result.get("verify", {}).get("tier_ok") != "w8a8":
             raise SystemExit(f"{leg} leg failed its spike W8A8 gate: {result.get('status')}; {proc.stderr[-1000:]}")
         if leg == "device" and not (
             shipped.get("status") == "verified"
             and shipped.get("bit_exact_vs_twin") is True
-            and shipped.get("verify", {}).get("gate_ok") is True
+            and shipped.get("verify", {}).get("tier_ok") == "w8a8"
             and matrix.get("unit_instruction_counts")
         ):
             raise SystemExit("device leg: shipped OPU image did not pass its spike model and bit-exact twin gate")
+        identity = shipped.get("output_identity") if leg == "device" else result.get("output_identity")
+        if not identity or not identity.get("out_hash") or not identity.get("prefix_sha256"):
+            raise SystemExit(f"{leg} leg: spike gate has no complete output identity")
         source = Path(result["binary"])
         elf = out / "zephyr.elf"
         shutil.copy2(source, elf)
         if _sha256(source) != _sha256(elf):
             raise SystemExit(f"{leg} leg: staged ELF differs from the spike-gated image")
+        counts = _unit_counts(elf, args.matrix_support_target, args.matrix_unit)
+        if leg == "device" and not counts:
+            raise SystemExit("device leg: staged ELF has no matrix-unit instructions")
+        if leg == "control" and counts:
+            raise SystemExit(f"control leg: staged ELF contains matrix-unit instructions: {counts}")
         row = {
             "leg": leg,
             "elf": str(elf),
@@ -757,7 +792,8 @@ def build_legs(args) -> Path:
             "board": brd.name,
             "harts": args.harts,
             "vlen": brd.vlen,
-            "unit_instruction_counts": matrix.get("unit_instruction_counts", {}),
+            "unit_instruction_counts": counts,
+            "spike_output_identity": identity,
             "spike_gate": {
                 "status": result["status"],
                 "verify": result["verify"],
@@ -768,6 +804,16 @@ def build_legs(args) -> Path:
         legs[leg] = row
     plan(job_dir, board=brd.name, name=model, bundle=bundle, legs=legs, harts=args.harts, timeout_s=args.timeout)
     return job_dir
+
+
+def _unit_counts(elf: Path, support_target: str, unit: str) -> dict[str, int]:
+    """Audit the staged image against instruction encodings derived from its selected provider."""
+    from merlin.kernels.decode import opu as opu_audit
+    from merlin.targetgen.plugins import load_declared
+
+    provider = load_declared(support_target, "matrix_lowering")
+    encodings = provider.derive_encodings(provider.load_contract(unit)).encodings
+    return {k: int(v) for k, v in sorted((opu_audit.audit_object(elf, encodings).counts or {}).items()) if v}
 
 
 # --------------------------------------------------------------------------------------------- cli
