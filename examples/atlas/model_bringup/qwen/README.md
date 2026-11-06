@@ -6,7 +6,7 @@ For the actual pretrained-model export, graph-derived PyTorch regions and model-
 
 These are ordinary PyTorch subgraphs of `deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B`, the Qwen2 model in [Radiance PR #1](https://github.com/ucb-bar/radiance-kernels/pull/1). See the [results and recommendations](docs/qwen-results.md) for measured cycles, numerical error, and the exact boundaries of each workload. The follow-up [roofline analysis](docs/qwen-roofline.md) includes per-resource lower bounds, default/faster-memory comparisons, raw reports and reproduction.
 
-Use the compiler wheel or a separate compiler checkout selected by `--atlas-mlir-root`, `ATLAS_MLIR_ROOT`, or the sibling `atlas-mlir` directory. `--atlas-bin` or `ATLAS_OOT_BIN_DIR` selects built `atlas-opt` and `atlas-emit` tools. Run commands from the Merlin repository:
+This setup uses two atlas-mlir sources. Jeremy Mills' separate `feat/pip-package` work at [56b7673f151e56587b6793d44802df5881e0b4ba](https://github.com/ucb-bar/atlas-mlir/tree/56b7673f151e56587b6793d44802df5881e0b4ba), including the initial `25bbaf5` and `a92d173` commits, supplies the compiler wheel, `atlasc` driver, Python capture APIs, and toolchain discovery. Compiler-only [atlas-mlir PR #26](https://github.com/ucb-bar/atlas-mlir/pull/26) at `0dac108`, built in Release mode, supplies the `atlas-opt` and `atlas-emit` executables; it does not supply the Python package. Merlin's source-root bootstrap uses `--atlas-mlir-root`, `ATLAS_MLIR_ROOT`, or the sibling `atlas-mlir` directory to choose the package source. Set `PYTHONPATH` to its `python` directory and Merlin's `src` directory, and include the simulator source when needed. Set `ATLAS_OOT_BIN_DIR` to the separate compiler's `build/bin` directory; `atlas_mlir.toolchain.bin_dir()` discovers that directory, and `--atlas-bin` must receive the same directory. `ATLAS_MLIR_BIN` is not a toolchain environment override. The diagnostic measurement stage also needs the package source checkout because the wheel omits `check_program_decode.py` and `atlas_virtual_evaluator.py`. Fresh native attention and SwiGLU compilation needs the additional compiler support described in [local integration](docs/local-integration.md). Run commands from the Merlin repository after applying that two-source setup:
 
 ```sh
 python3 examples/atlas/model_bringup/qwen/run.py --setup
@@ -17,11 +17,11 @@ Setup downloads pinned Merlin and NPU-model sources and creates three isolated P
 
 For already prepared environments, override `--capture-python`, `--merlin-python`, `--model-python`, `--merlin-root`, and `--model-root`. The current Merlin checkout is the default frontend source. Explicit local source roots are accepted, and `provenance.json` records observed revisions and compiler hashes separately from the historical pins. The setup action remains an optional network-dependent convenience; prepared local roots do not require it.
 
-The campaign captures all workloads, then compiles supported graphs through Merlin and Atlas and executes their emitted instructions on the NPU model. Full-width source graphs that are unsupported, or whose search times out, are recorded in `summary.json`; they do not get fabricated performance numbers. Unexpected failures in the supported attention or SwiGLU graph stop the run. The K=1536 projection has a 60-second search budget in the repeatable campaign; the report also records an earlier failed 300-second experiment.
+The campaign captures all workloads, then compiles supported graphs through Merlin and Atlas and executes their emitted instructions on the NPU model. Full-width source graphs that are unsupported, or whose search times out, are recorded in `summary.json`; they do not get fabricated performance numbers. Attention or SwiGLU compilation failures stop the run; the pinned compiler needs additional support before either fresh graph is qualified. The K=1536 projection has a 60-second search budget in the repeatable campaign; the report also records an earlier failed 300-second experiment.
 
 Each compiled workload retains:
 
-- The original and normalized Linalg, argument manifest, tensor inputs and f32 reference outputs.
+- Captured Linalg, argument manifest, tensor inputs, and f32 reference outputs. The pinned package writes raw Linalg; historical normalized artifacts are not reproduced.
 - Precision policy, source hash, Merlin request and ABI, verified native artifacts.
 - Original unscheduled, boundary-DMA-only, and scheduled machine programs.
 - Re-encoded instruction checks, model traces, bit-exact output/DRAM guard checks,
@@ -33,7 +33,7 @@ The input values and weights are seeded synthetic tensors. The full Qwen archite
 
 ## Integration provenance
 
-This replay derives from `a92d1732dd436e2b99637046eaa2a151f3407de0`, `63759308bdc33587679ff1349d00cd3fa4a616a6`, and `5884524e3cf85027e08734526c1e3dbf0a093686` by Jeremy Mills. Model workflows, reports, and tests moved into this directory. Generic capture, normalization, the `atlasc` entrypoint, precision lowering, compiler support files, and compiler tests remain in atlas-mlir.
+This replay derives from `a92d1732dd436e2b99637046eaa2a151f3407de0`, `63759308bdc33587679ff1349d00cd3fa4a616a6`, and `5884524e3cf85027e08734526c1e3dbf0a093686` by Jeremy Mills. Model workflows, reports, and tests moved into this directory. Generic capture, the `atlasc` entrypoint, precision lowering, compiler support files, and compiler tests belong to atlas-mlir. The pinned `feat/pip-package` tree does not include the historical normalization or sigmoid graph lowering used by this earlier campaign.
 
 The current kernel library provides D128 attention with GQA and streamed RMSNorm at width 1536. `full_model/mapping.yaml` requests epsilon `1.0e-6`. Qualification must still check Qwen's causal masks, 12 query heads and 2 KV heads from export, cached-decode lengths, RoPE, QKV biases, and precision boundaries. Historical reports retain their original no-variant observations and measurements.
 

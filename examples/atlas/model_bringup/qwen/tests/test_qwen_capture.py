@@ -45,11 +45,10 @@ class QwenCaptureTest(unittest.TestCase):
         t.testing.assert_close(self.kernels.SwiGLUTile()(x, g, u, d), expected)
 
     @unittest.skipUnless(importlib.util.find_spec("torch_mlir"), "requires the capture extra: torch_mlir")
-    def test_fresh_attention_and_sigmoid_capture_normalizes(self):
+    def test_fresh_attention_and_sigmoid_capture(self):
         from source_roots import bootstrap_compiler
         bootstrap_compiler()
         from atlas_mlir.capture import capture, load
-        from atlas_mlir.normalize import normalize_linalg
 
         with tempfile.TemporaryDirectory() as tmp:
             # The loader contains a dataclass; loading must register its module.
@@ -57,16 +56,20 @@ class QwenCaptureTest(unittest.TestCase):
             attention = capture(model, inputs, Path(tmp) / "attention")
             source = attention.linalg.read_text()
             self.assertEqual(source.count("linalg.matmul"), 8)
-            self.assertEqual(source.count("linalg.reduce"), 2)
-            self.assertNotIn("arith.truncf", source)
-            self.assertNotIn("tensor<32xi64>", source)
-            self.assertEqual(normalize_linalg(source), source)
+            # The pip-package API returns raw torch-mlir output. Normalization
+            # and native compilation are separate from this capture contract.
+            for artifact in (attention.arguments, attention.weights, attention.inputs):
+                self.assertIsNotNone(artifact)
+                self.assertTrue(artifact.is_file())
+            self.assertIn("func.func @forward", source)
             swiglu = capture(
                 self.kernels.SwiGLUTile(), inputs[:4], Path(tmp) / "swiglu"
             )
             self.assertIn("math.exp", swiglu.linalg.read_text())
             self.assertIn("arith.negf", swiglu.linalg.read_text())
-            self.assertTrue((swiglu.linalg.parent / "raw-linalg.mlir").exists())
+            for artifact in (swiglu.arguments, swiglu.weights, swiglu.inputs):
+                self.assertIsNotNone(artifact)
+                self.assertTrue(artifact.is_file())
 
     @unittest.skipUnless(importlib.util.find_spec("torch_mlir"), "requires the capture extra: torch_mlir")
     def test_live_argmax_indices_are_preserved(self):
