@@ -342,7 +342,7 @@ def verify_pin_item(
         fix=[
             "put it on the pin (the chip example's README has the exact steps):",
             *(f"  {c}" for c in fix),
-            f"or accept it knowingly (each build records the drift): {D.ALLOW_OFF_PIN_ENV}={name} in .env",
+            *([] if allowed else [f"or accept it knowingly (builds record it): {D.ALLOW_OFF_PIN_ENV}={name} in .env"]),
         ],
     )
 

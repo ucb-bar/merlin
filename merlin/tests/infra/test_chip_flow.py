@@ -233,3 +233,23 @@ def test_a_roster_capture_uses_the_configured_capture_interpreter(tmp_path, monk
     py.write_text("#!/bin/sh\n", encoding="utf-8")
     monkeypatch.setenv("MERLIN_M2M_PYTHON", str(py))
     assert _capture_python(tmp_path, "somemodel") == py
+
+
+def test_a_captured_model_gets_its_status_from_its_loader_docstring(tmp_path, capsys):
+    """make_delivery refuses a model with no status text, so `build --models <a model captured here>` failed
+    after every image had passed its gate. The loader's own docstring says what the model is."""
+    flow = _load("chip_flow")
+    frontend = {"citation": "model2mlir_capture abc (pinned)"}
+    loader = tmp_path / "loader.py"
+    loader.write_text('"""A small encoder.\n\nMore detail."""\n')
+    flow.write_status(tmp_path, loader, frontend)
+    text = (tmp_path / flow.STATUS_FILE).read_text()
+    assert text.startswith("A small encoder.") and "model2mlir_capture abc (pinned)" in text
+    (tmp_path / flow.STATUS_FILE).write_text("mine\n")
+    flow.write_status(tmp_path, loader, frontend)  # never overwritten
+    assert (tmp_path / flow.STATUS_FILE).read_text() == "mine\n"
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    loader.write_text("x = 1\n")
+    flow.write_status(bare, loader, frontend)  # nothing invented
+    assert not (bare / flow.STATUS_FILE).exists() and "no docstring" in capsys.readouterr().out

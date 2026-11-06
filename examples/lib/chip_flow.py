@@ -140,6 +140,34 @@ def bundle_on_pin(bundle: Path) -> bool:
     return bool(got.get("ok")) and (got.get("verification") or {}).get("observed", {}).get("commit") == pin.commit
 
 
+#: Beside a bundle: the model's status text for a delivery package's README (make_delivery.STATUS_FILE).
+STATUS_FILE = "delivery_status.md"
+
+
+def write_status(bundle: Path, loader: Path, frontend: dict) -> None:
+    """Start ``bundle``'s status text from its loader's own docstring (what its author says the model is)
+    and how it was captured, unless one is there already. A package refuses a model with no status, so a
+    model captured here would otherwise fail ``build`` after every image had passed its gate. No docstring:
+    nothing is invented, and the note says what to write."""
+    import ast
+
+    if (bundle / STATUS_FILE).exists():
+        return
+    try:
+        doc = ast.get_docstring(ast.parse(loader.read_text(encoding="utf-8"))) or ""
+    except (OSError, SyntaxError, ValueError):
+        doc = ""
+    if not doc:
+        print(f"note: {loader} has no docstring; write what the model is to {bundle / STATUS_FILE} before packaging")
+        return
+    about = doc.split("\n\n")[0].strip()
+    (bundle / STATUS_FILE).write_text(
+        f"{about}\n\nCaptured from `{loader.name}` by {frontend.get('citation')}: int8 weights, W8A8 computed and "
+        "graded by Merlin. (Started from the loader's docstring; say here what to expect of this model.)\n",
+        encoding="utf-8",
+    )
+
+
 def capture(name: str, loader: Path | None, *, env: dict | None = None) -> Path:
     from merlin.integrations.model2mlir import CapturePinError, require_capture_pin
 
@@ -189,6 +217,7 @@ def capture(name: str, loader: Path | None, *, env: dict | None = None) -> Path:
     if _run(cmd, env=env).returncode != 0 or not (bundle / "model.mlir").is_file():
         raise SystemExit(f"capture of {name} failed; see the output above")
     (bundle / FRONTEND_PIN).write_text(json.dumps(frontend, indent=2, default=str) + "\n", encoding="utf-8")
+    write_status(bundle, loader or Path(m2m) / "workloads" / name / "loader.py", frontend)
     # Weight-only int8 capture; Merlin computes W8A8. This writes the reference a W8A8 image is graded
     # against (Merlin's own host datapath: it checks the DEVICE reproduces the host).
     if _run([PY, "build_tools/scripts/make_w8a8_golden.py", bundle]).returncode != 0:
@@ -358,6 +387,8 @@ def op(args) -> int:
                     print(f"note: {m.pin} is {m.verdict} off its pin ({seen}); the build records it")
         except unit_pins.UnitPinError as exc:
             raise SystemExit(f"not building {name} for {args.matrix_unit}: {exc}") from None
+        except Exception as exc:  # noqa: BLE001 -- the support cannot be read here; the build's own gate says why
+            print(f"note: could not check {args.matrix_unit}'s pins before building ({type(exc).__name__}: {exc})")
     bundle = bundle_dir(name)
     if args.recapture or not (bundle / "golden_w8a8.npy").is_file() or not bundle_on_pin(bundle):
         capture(name, loader, env=env)

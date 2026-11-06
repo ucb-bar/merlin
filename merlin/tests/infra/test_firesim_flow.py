@@ -296,6 +296,7 @@ def test_op_on_a_firesim_board_plans_only_gated_images(flow, tmp_path, monkeypat
     bundle, _ = _bundle(tmp_path)
     monkeypatch.setitem(sys.modules, "firesim_flow", flow)
     monkeypatch.setattr(chip, "bundle_dir", lambda name: bundle)
+    monkeypatch.setattr(chip, "bundle_on_pin", lambda bundle: True)  # captured by model2MLIR at its pin
     monkeypatch.setattr(chip, "capture", lambda *a, **k: pytest.fail("bundle exists; no capture"))
     results = iter([_op_results(tmp_path, status)["rvv"], _op_results(tmp_path, status)["matrix"]])
     monkeypatch.setattr(chip, "_compile", lambda name, args, matrix: next(results))
