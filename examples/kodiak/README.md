@@ -23,8 +23,11 @@ re-run `./run.sh setup`. To try an unpublished change first, select your clone e
 
 ## Quick start on a new machine
 
+For Kevin's tested branch, current model results, and hardware limits, see
+[the OPU handoff](KEVIN_HANDOFF.md).
+
 ```bash
-git clone https://github.com/ucb-bar/merlin.git && cd merlin/examples/kodiak
+git clone --branch feat/OPU-VME https://github.com/ucb-bar/merlin.git && cd merlin/examples/kodiak
 # the three things too big to install for you (setup prints how to get any it cannot find):
 ./run.sh setup --llvm <llvm23-install> --chipyard <chipyard> --zephyr-sdk <zephyr-sdk-0.17.0>
 ./run.sh preflight                # every stage should say [ok ]
