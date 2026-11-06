@@ -187,9 +187,10 @@ The current OPU FireSim bitstream is usable for the BME flow above. Its archived
 was checked during the hardware jobs. Reproducing that archive from a clean source tree remains
 unverified because the live Chipyard/Saturn checkout has pin drift. Physical Kodiak rig access
 and scheduling are separate from FireSim. For physical operations, follow the newer
-[Kodiak RUNNING.md at `392ba40`](https://github.com/ucb-bar/kodiak-mlir/blob/392ba40/RUNNING.md),
+[Kodiak RUNNING.md at `d7c75fc`](https://github.com/ucb-bar/kodiak-mlir/blob/d7c75fc/RUNNING.md),
 which corrects the historical health check and wrapper behavior. Merlin setup pins that same
-package commit. Coordinate with the rig owner before any chip load or reset.
+package commit; its bundled delivery loader note uses the same proven OPU-direct control.
+Coordinate with the rig owner before any chip load or reset.
 
 On this garden host as of 2026-11-06, `ssh -o BatchMode=yes kodiak-rig hostname` returns
 `bwrckodiak` without a laptop relay. Kevin needs owner-provided access on any other host.
