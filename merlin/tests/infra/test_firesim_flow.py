@@ -292,6 +292,7 @@ def test_source_torchao_pair_binds_capture_and_refuses_diagnostic_submit(flow, t
     manifest = flow.load(job)
     assert manifest["bundle"] == str(bundle)
     assert manifest["source"]["reference"]["file"] == "golden.npy"
+    assert manifest["source"]["framework_gate_ok"] is framework_ok
     assert manifest["diagnostic_only"] == (not framework_ok)
     assert manifest["legs"]["device"]["spike_output_identity"] == identity
     assert manifest["legs"]["control"]["spike_output_identity"] == identity

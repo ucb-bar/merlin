@@ -690,7 +690,7 @@ def collect(
         }
     result = _result(manifest, legs)
     if source := manifest.get("source"):
-        result["framework_fidelity"] = "passed" if source["framework_status"] == "verified" else "failed"
+        result["framework_fidelity"] = "passed" if source["framework_gate_ok"] is True else "failed"
         result["target_pair_spike_identity"] = len(legs) == len(manifest["legs"]) and all(
             leg.get("out_hash_matches_spike") and leg.get("prefix_matches_spike") for leg in legs.values()
         )
@@ -892,6 +892,7 @@ def _source_gate(args, bundle: Path, brd) -> dict[str, Any] | None:
         "framework_result": str(Path(gate_path).resolve()),
         "framework_result_sha256": _sha256(Path(gate_path)),
         "framework_status": gate.get("status"),
+        "framework_gate_ok": verified,
         "source_quantization": source,
         "diagnostic_only": diagnostic,
     }
