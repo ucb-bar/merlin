@@ -72,6 +72,33 @@ earlier capture, 41 explicit signed i8 × i8 → i32 matrix contractions coverin
 its dense MACs, zero opaque ops, and a finite 1,000-value framework golden. The full-model
 TinyLlama torchAO capture is described below. Exact compiler, Spike, and FireSim checks for
 these source-exported programs remain pending.
+
+### TorchAO quantization contract for OPU and VME
+
+The source-authoritative path is torchAO `int8_w8a8`: dynamic signed-int8 activation
+quantization, signed-int8 trained weights, and explicit `_int_mm` contractions with int32
+accumulation. Preserve the captured scale, zero-point, rounding, clamp, and dequantization
+arithmetic around each contraction. Do not apply Merlin's earlier W8A8 rewrite to this
+already-quantized graph. The `int8` storage-format label alone does not certify the
+source quantization recipe; the capture scheme and framework golden must travel with the
+image. OPU BME and future VME Zvt use different instruction encodings, but both consume
+the same integer contraction and must produce the same int32 result before source
+dequantization. The current matrix shim passes no integer bias, so any float bias and
+scale multiplication stay in the surrounding graph.
+
+For the trained Spectformer source capture, static geometry projects all **41** integer
+contractions to the OPU: **1,644,423,168 valid MACs / 2,164,260,864 padded logical tile
+slots = 75.9808% projected tile fill**. The compact VME configuration (`VLEN=512`,
+`DLEN=128`) projects **40** of them to Zvt; the 1 × 1000 × 256 head stays on the
+scalar path under the current cost model. Its projected fill is **1,644,167,168 /
+2,147,483,648 = 76.5625%**. These are static estimates, not routed-image evidence or
+physical MAC-cell occupancy. Spectformer's integer K dimensions are multiples of 64,
+so a separate K33 case must cover the Zvt tail. A signed `-128`/`127` endpoint case is
+also required before declaring source quantization compatible with VME RTL. Strict
+equality to the independent torchAO framework golden remains the compiler gate; the
+existing Merlin-host discrepancy is under investigation and these projections are not
+model correctness claims.
+
 A fresh-host check verified the Spectformer capture files and reached compilation, but that host
 lacked the Zephyr/Spike toolchain, so full lowering from a transferred capture remains unverified.
 On the current shared host, the installed workload is `merlin-kodiak` and the queue client needs
