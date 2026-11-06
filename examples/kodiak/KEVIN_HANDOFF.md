@@ -62,6 +62,13 @@ The current-head fill-elided s64 pair also graded VERIFIED: device job 3874 took
 cycles, RVV control job 3877 took 13,689,726,593, and both full hashes/prefixes matched Spike.
 This is **12.8581× speedup** and **0.904856% whole-inference effective peak** for the same
 9,865,003,008 valid routed MACs. The array-active fraction is not measurable on this bitstream.
+An isolated quant-round fusion trial on top of that schedule also graded VERIFIED on the same
+bitstream: OPU job 3876 took **1,022,361,106** target cycles, matched RVV control 3887 took
+**13,646,684,998**, and both full 2,048,000-value hashes and prefixes matched their exact
+Spike images. Its 4,096-value hardware W8A8 prefix passed. The pair gives **13.3482×** speedup;
+9,865,003,008 valid routed MACs yield **0.942308% whole-inference effective peak**. This is
+3.9745% fewer device cycles than fill-only job 3874. The trial is isolated while a versioned
+opt-in package and s128/Spectformer gates are prepared; array occupancy is still unmeasured.
 The s128 aligned-prepack OPU/RVV pair also graded VERIFIED on the pinned one-core bitstream:
 device job 3871 took 2,438,693,540 target cycles, matched control job 3875 took
 27,742,439,123, and both full 4,096,000-value hashes and prefixes matched their exact Spike
