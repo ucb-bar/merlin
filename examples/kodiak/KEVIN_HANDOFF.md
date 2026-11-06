@@ -150,6 +150,12 @@ input, Merlin and TorchAO have bitwise-equal reciprocal scales, signed i8
 activation bytes, i32 matrix output, and f32 fc1 output. Earlier float drift
 flips 12 or 16 codes at the source `-127.5` rounding tie. Changing the
 quantizer would alter the TorchAO program rather than fix this capture.
+The [Torch 2.16 AVX2 LayerNorm reproducer](../../experiments/reference-data/torch216_avx2_ln256_probe_2026-11-06.md)
+matches native width-256 means, reciprocal standard deviations, and affine outputs
+bitwise on trained, holdout, and independent random inputs. It isolates one
+source-arithmetic cause of the drift; the captured LayerNorm is already a
+multi-operation region, so the provenance-gated compiler rewrite and unchanged
+full-model framework gate are still pending.
 The first TinyLlama discrepancy is now localized further: its embedding and first
 RMSNorm squared values match eager torchAO exactly, but Merlin's serial float32
 mean reduction differs from Torch CPU's reduction tree. This changes the normalization
