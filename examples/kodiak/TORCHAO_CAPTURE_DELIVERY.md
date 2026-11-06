@@ -148,6 +148,20 @@ inherit the older weight-only capture's numerical results.
 The source capture uses signed i8 operands, i32 accumulation, and source-owned
 scales/dequantization. OPU and compact VME select different kernels and
 encodings from those same typed integer contractions. Do not re-quantize the
-source graph or import an OPU packed tile as VME input. The compact VME board
-route needs its own board identity and qualified FPGA bitstream before model
-execution can be claimed.
+source graph or import an OPU packed tile as VME input. The compact Kodiak VME
+provider now has its own `saturn_vme` contract and board decoder identity. A
+compile-only VME image uses the same derived capture and package path as above,
+with these substitutions:
+
+```sh
+--board firesim_kodiak_vme_compact \
+--matrix-unit saturn_vme --matrix-config KodiakVMECompact1CoreConfig
+```
+
+Keep `--matrix-support-target kodiak --matrix-gate build --run spike`; the
+VME route requires a pinned Zvt Spike source and a configured LLVM 23 clang
+for its vector-register clobbers. A signed 64×64×33 device **object** has been
+compiled and audited against the compact source pins, with 71 Zvt instructions
+(20 integer matrix multiplies), zero in its scalar twin and no unaccounted
+words. That object is not a linked model image or a numerical gate. The compact
+board declares no bitstream, so no VME FPGA model execution can yet be claimed.

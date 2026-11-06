@@ -310,7 +310,16 @@ The Kodiak OPU target uses legacy BME instructions. It cannot execute Iris's Zvt
 those need a separate VME-enabled Kodiak RTL configuration and bitstream. On the separate Iris
 VME configuration, three direct SerialTL RTL cases (K33, biased edge, batch-3) now pass pinned
 Spike with exact digests and zero output and guard errors; evidence and limits are in Iris commit
-`e13f7cc` on `handwritten-implementation`. The larger 44-case RTL gate is still unverified.
+`e13f7cc` on `handwritten-implementation`. The larger 44-case direct RTL run
+timed out after 36 cases passed against pinned Spike; it stopped at `deep_k`,
+and guarded split replays remain pending.
+Kodiak's `handwritten-implementation` package now declares a separate compact
+VME board and `saturn_vme` contract, with exact compiler route identity and
+source pins. It shares the signed i8×i8→i32 Zvt emitter with Iris and retains
+the OPU route separately. The [TorchAO delivery instructions](TORCHAO_CAPTURE_DELIVERY.md)
+give the source-preserving compile-only VME command. A compact signed K33 VME
+object compiled with 71 Zvt instructions (20 integer matrix multiplies), zero
+in its scalar twin, but linked Spike and model gates remain pending.
 The [Kodiak Zvt/VME configuration plan](ZVT_VME_PLAN.md) lists the exact pins and gates needed
 before a Kodiak board may advertise Zvt support. A distinct managed Kodiak VME one-core
 configuration now passes FIRRTL elaboration, and a fresh VLEN512 biased K-tail ELF passes
@@ -325,7 +334,7 @@ output and guard errors, digest `0x15d98143c9a17f64`, `KT DONE`, and exit zero. 
 was 2,761 target cycles in this simulator. The SHA-bound receipt is in Chipyard managed task
 `kodiak-vme-portability-2/.tmp/vme_k33_metasim/receipt.json`.
 The reproducible source is on the [Chipyard fork branch](https://github.com/copparihollmann/chipyard/tree/feat/kodiak-zvt-vme)
-at `0d911e2d` and [Saturn branch](https://github.com/miles-rusch-berkeley/saturn-vectors/tree/feat/kodiak-zvt-vme)
+at `0c0fcd39` and [Saturn branch](https://github.com/miles-rusch-berkeley/saturn-vectors/tree/feat/kodiak-zvt-vme)
 at `4359c36`. Chipyard pins a public Rocket base and carries
 the exact CSR guard patch plus application instructions in `patches/kodiak-vme/README.md`;
 a fresh managed checkout with that patch passed JDK 17 Firechip compilation and FireSim FIRRTL,
