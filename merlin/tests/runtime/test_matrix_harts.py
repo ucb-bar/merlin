@@ -8,10 +8,13 @@ those are, so the board declares them and a matrix image that would reach any ot
 from __future__ import annotations
 
 import inspect
+from types import SimpleNamespace
 
 import pytest
 
 from merlin.runtime import boards
+from merlin.runtime.backends.zephyr_model import MatrixRouting
+from merlin.targetgen import plugins
 
 _ENTRY = (
     "    dram_bytes: 256 MiB\n    dram_base: 0x80000000\n    harts: 3\n    vector_harts: 2\n"
@@ -67,6 +70,27 @@ def test_matrix_route_must_match_the_board_decoder_and_elaboration():
             opu.check_matrix_route(*route)
     with pytest.raises(boards.BoardRegistryError, match="does not match"):
         _board().check_matrix_route("kodiak", "saturn_vme", "FireSimKodiakVMECompact1CoreConfig")
+
+
+def test_matrix_provider_can_select_distinct_unit_adapters_without_shared_state(monkeypatch):
+    def adapter():
+        return SimpleNamespace(
+            **{
+                name: lambda *args, **kwargs: None
+                for name in ("geometry", "selector", "rewrite_prepared_file", "load_signatures", "build_object")
+            }
+        )
+
+    opu, vme = adapter(), adapter()
+    package = SimpleNamespace(for_unit=lambda unit: {"saturn_opu": opu, "saturn_vme": vme}[unit])
+    monkeypatch.setattr(plugins, "load_declared", lambda target, plugin: package)
+    assert MatrixRouting("kodiak", "saturn_opu", "KodiakOPUConfig").provider() is opu
+    assert MatrixRouting("kodiak", "saturn_vme", "KodiakVMECompact1CoreConfig").provider() is vme
+    with pytest.raises(plugins.PluginError, match="declares no unit 'unknown'"):
+        MatrixRouting("kodiak", "unknown", "SomeConfig").provider()
+
+    monkeypatch.setattr(plugins, "load_declared", lambda target, plugin: opu)
+    assert MatrixRouting("iris", "saturn_vme", "IrisConfig").provider() is opu
 
 
 def test_matrix_route_catalog_is_atomic(tmp_path):

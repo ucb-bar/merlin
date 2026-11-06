@@ -666,6 +666,14 @@ class MatrixRouting:
         from ...targetgen.plugins import PluginError, load_declared
 
         provider = load_declared(self.support_target, "matrix_lowering")
+        choose = getattr(provider, "for_unit", None)
+        if choose is not None:
+            if not callable(choose):
+                raise PluginError(f"{self.support_target!r}: matrix_lowering.for_unit is not callable")
+            try:
+                provider = choose(self.unit)
+            except KeyError as exc:
+                raise PluginError(f"{self.support_target!r}: matrix_lowering declares no unit {self.unit!r}") from exc
         required = ("geometry", "selector", "rewrite_prepared_file", "load_signatures", "build_object")
         missing = [name for name in required if not callable(getattr(provider, name, None))]
         if missing:
