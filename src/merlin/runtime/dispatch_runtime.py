@@ -62,6 +62,17 @@ class HostCacheMiss(DispatchRuntimeError):
         super().__init__(f"host cache miss_count={self.miss_count} before execution: {sample}")
 
 
+class HostCacheIntegrityError(DispatchRuntimeError):
+    """A keyed cache path exists but its construction receipt cannot be verified."""
+
+    def __init__(self, key: str, so: Path, *, cache_dir: Path, identity: dict[str, Any]):
+        self.key = key
+        self.path = str(so)
+        self.cache_dir = str(cache_dir)
+        self.identity = identity
+        super().__init__(f"host cache integrity refusal for {key}: object or construction manifest invalid at {so}")
+
+
 # bf16 has no native numpy dtype; we store it as the raw 16-bit pattern (uint16) so the
 # compiled kernels (which read/write bf16) see the right bytes, and the numpy view ops
 # (reshape/concat/slice — pure data movement) stay byte-correct. Float arithmetic on bf16
@@ -729,15 +740,19 @@ def execute(
             "verified_after_execution": False,
         }
 
-    def _record_host_cache(digest: str, so: Path) -> None:
+    def _record_host_cache(digest: str, kernel_text: str, so: Path) -> None:
         if cache_dir is None or digest in _host_cache_loaded:
             return
         from .host_cache_identity import _file
+        from .host_cache_manifest import verify_manifest
 
         if so.is_symlink():
             raise DispatchRuntimeError(f"host cache refuses symlinked shared object: {so}")
+        provenance = verify_manifest(so, key=digest, kernel_text=kernel_text, identity=_host_identity)
+        if provenance is None:
+            raise DispatchRuntimeError(f"host cache object lacks valid construction receipt: {so}")
         info = _file(so)
-        _host_cache_loaded[digest] = {"key": digest, **info}
+        _host_cache_loaded[digest] = {"key": digest, **info, **provenance}
         mesh_counts["host_cache"]["loaded"] = list(_host_cache_loaded.values())
 
     native_architecture = {"machine": platform.machine(), "system": platform.system(), "basis": "executing_process"}
@@ -858,12 +873,26 @@ def execute(
 
                 digest = _kernel_digest(key)
                 so = cache_dir / f"{digest}.so"
-                if not so.is_file():
+                from .host_cache_manifest import manifest_path, verify_manifest, write_manifest
+
+                if so.is_symlink() or manifest_path(so).is_symlink():
+                    raise DispatchRuntimeError(f"host cache refuses symlinked object or manifest: {so}")
+                valid = verify_manifest(so, key=digest, kernel_text=key, identity=_host_identity)
+                if valid is None and (so.exists() or manifest_path(so).exists()):
+                    raise HostCacheIntegrityError(digest, so, cache_dir=cache_dir, identity=_host_identity)
+                if valid is None:
                     if cache_only:
                         raise HostCacheMiss([(digest, symbol)], cache_dir=cache_dir, identity=_host_identity)
                     compile_host(km, workdir / symbol.replace("$", "_"))
                     shutil.copy2(workdir / symbol.replace("$", "_") / "model_host.so", so)
-                _record_host_cache(digest, so)
+                    write_manifest(
+                        so,
+                        key=digest,
+                        kernel_text=key,
+                        identity=_host_identity,
+                        workdir=workdir / symbol.replace("$", "_"),
+                    )
+                _record_host_cache(digest, key, so)
                 model = HostModel.load(str(so), scalar_result_dtype=host_scalar_result_dtype(km))
             else:
                 model = compile_host(km, workdir / symbol.replace("$", "_"))
@@ -887,6 +916,8 @@ def execute(
         import os as _os
 
         from xdsl.dialects.builtin import ModuleOp, StringAttr
+
+        from .host_cache_manifest import manifest_path, verify_manifest, write_manifest
 
         # Pre-index kernel funcs by symbol in ONE walk -- extract_kernel walks the whole
         # module per call (O(module)), which is O(symbols x module) overall and dominates
@@ -913,9 +944,12 @@ def execute(
             ktext = _ktext(sym)
             digest = _kernel_digest(ktext)
             cached_so = cache_dir / f"{digest}.so"
-            if cache_only and cached_so.is_symlink():
-                raise DispatchRuntimeError(f"host cache refuses symlinked shared object before execution: {cached_so}")
-            if digest not in todo and not cached_so.is_file():
+            if cached_so.is_symlink() or manifest_path(cached_so).is_symlink():
+                raise DispatchRuntimeError(f"host cache refuses symlinked object or manifest: {cached_so}")
+            valid = verify_manifest(cached_so, key=digest, kernel_text=ktext, identity=_host_identity)
+            if valid is None and (cached_so.exists() or manifest_path(cached_so).exists()):
+                raise HostCacheIntegrityError(digest, cached_so, cache_dir=cache_dir, identity=_host_identity)
+            if digest not in todo and valid is None:
                 todo[digest] = (ktext, sym)
         if not todo:
             return
@@ -935,6 +969,14 @@ def execute(
         else:
             with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as ex:
                 list(ex.map(_compile_kernel_so, jobs))
+        for digest, (ktext, sym) in todo.items():
+            write_manifest(
+                cache_dir / f"{digest}.so",
+                key=digest,
+                kernel_text=ktext,
+                identity=_host_identity,
+                workdir=workdir / sym.replace("$", "_"),
+            )
 
     precompile_parallel()
 

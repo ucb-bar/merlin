@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import numpy as np
@@ -52,6 +53,7 @@ def test_cache_only_rejects_legacy_kernel_before_execution(tmp_path, monkeypatch
     from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.llvmlower import kernel_backend, portable_math
     from merlin.runtime import dispatch_runtime
+    from merlin.runtime.host_cache_manifest import manifest_path, write_manifest
     from merlin.xdsl_dialects._common import text as to_text
     from merlin.xdsl_dialects.lowering.outline import OutlineResult
 
@@ -87,6 +89,11 @@ def test_cache_only_rejects_legacy_kernel_before_execution(tmp_path, monkeypatch
     new_salt = old_salt + "\n// host_compiler_identity=" + identity()["sha256"]
     key = hashlib.sha1((ktext + new_salt).encode()).hexdigest()[:16]
     (cache / f"{key}.so").write_bytes(b"current cached native object")
+    build = tmp_path / "build"
+    build.mkdir()
+    recipe = {"schema": "merlin.lowering_recipe.v1", "status": "returned", "commands": [{"argv": ["test-lowerer"]}]}
+    (build / "lowering_recipe.json").write_text(json.dumps(recipe))
+    write_manifest(cache / f"{key}.so", key=key, kernel_text=ktext, identity=identity(), workdir=build)
 
     class StubHostModel:
         scalar_result_dtype = None
@@ -103,14 +110,31 @@ def test_cache_only_rejects_legacy_kernel_before_execution(tmp_path, monkeypatch
     assert receipt["miss_count"] == 0
     assert receipt["verified_after_execution"] is True
     assert receipt["identity"]["sha256"] == identity()["sha256"]
-    assert receipt["loaded"] == [
-        {
-            "key": key,
-            "path": str((cache / f"{key}.so").resolve()),
-            "bytes": len(b"current cached native object"),
-            "sha256": hashlib.sha256(b"current cached native object").hexdigest(),
-        }
-    ]
+    assert len(receipt["loaded"]) == 1
+    loaded = receipt["loaded"][0]
+    assert loaded["key"] == key
+    assert loaded["path"] == str((cache / f"{key}.so").resolve())
+    assert loaded["bytes"] == len(b"current cached native object")
+    assert loaded["sha256"] == hashlib.sha256(b"current cached native object").hexdigest()
+    assert loaded["manifest_path"] == str(manifest_path(cache / f"{key}.so"))
+    assert loaded["manifest"]["compiler_identity_sha256"] == identity()["sha256"]
+
+    sealed_manifest = manifest_path(cache / f"{key}.so")
+    original_manifest = sealed_manifest.read_text()
+    sealed_manifest.unlink()
+    with pytest.raises(dispatch_runtime.HostCacheIntegrityError, match="host cache integrity refusal"):
+        dispatch_runtime.execute(
+            outlined, [np.ones(1, np.float32)], tmp_path / "work", cache_dir=cache, cache_only=True
+        )
+    sealed_manifest.write_text(original_manifest)
+    tampered = json.loads(original_manifest)
+    tampered["kernel_text_sha256"] = "0" * 64
+    sealed_manifest.write_text(json.dumps(tampered))
+    with pytest.raises(dispatch_runtime.HostCacheIntegrityError, match="host cache integrity refusal"):
+        dispatch_runtime.execute(
+            outlined, [np.ones(1, np.float32)], tmp_path / "work", cache_dir=cache, cache_only=True
+        )
+    sealed_manifest.write_text(original_manifest)
 
     class MutatingHostModel(StubHostModel):
         def __call__(self, _args):
