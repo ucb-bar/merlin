@@ -124,12 +124,18 @@ errors, and `KT DONE`. The local SHA-bound receipt is
 `/scratch/agustin/chipyard/tasks/kodiak-zvt-vme-firechip/.tmp/kodiak_vme_k33_bias_elf/rtl_receipt.json`.
 A VME FireSim bitstream and broader Kodiak RTL suite remain pending; these results do not
 change the physical OPU ASIC.
+The same exact ELF also passed bounded FireSim metasim on the generated VME RTL: zero
+output/guard errors, digest `0x15d98143c9a17f64`, `KT DONE`, and exit zero. Its kernel interval
+was 2,761 target cycles in this simulator. The SHA-bound receipt is
+`/scratch/agustin/chipyard/tasks/kodiak-vme-portability-2/.tmp/vme_k33_metasim/receipt.json`.
 The reproducible source is on the [Chipyard fork branch](https://github.com/copparihollmann/chipyard/tree/feat/kodiak-zvt-vme)
-at `dba3cf043` and [Saturn branch](https://github.com/miles-rusch-berkeley/saturn-vectors/tree/feat/kodiak-zvt-vme)
+at `5311b459` and [Saturn branch](https://github.com/miles-rusch-berkeley/saturn-vectors/tree/feat/kodiak-zvt-vme)
 at `4359c36`. Chipyard pins a public Rocket base and carries
 the exact CSR guard patch plus application instructions in `patches/kodiak-vme/README.md`;
 a fresh managed checkout with that patch passed JDK 17 Firechip compilation and FireSim FIRRTL,
-and reproduced the tested device tree. This is a source gate, not a VME FPGA image.
+and reproduced the tested device tree. The branch head also fixes an old TraceRV host
+`libdwarf` API call; Golden Gate and Verilator metasim build passed without changing generated
+RTL. These are source and simulator gates, not a VME FPGA image.
 The current OPU FireSim bitstream is usable for the BME flow above. Its archived artifact identity
 was checked during the hardware jobs. Reproducing that archive from a clean source tree remains
 unverified because the live Chipyard/Saturn checkout has pin drift. Physical Kodiak rig access

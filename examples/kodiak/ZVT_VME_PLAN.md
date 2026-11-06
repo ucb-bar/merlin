@@ -56,20 +56,29 @@ decoded Kodiak bitstream.
 A managed Kodiak VME task now has the tested Chipyard `b4542fac`, Saturn VME `536774bd`,
 and Rocket matrix-decoder `fc745a8` sources. Distinct one-core SoC and FireSim configuration
 changes are isolated in that task and pass source compile and target FIRRTL elaboration
-after a separate Rocket CSR guard fix. The SBT logs report Java `20.0.2-internal` and Espresso
-for those passing runs; toolchain pinning is still being checked. Exact Zvt ELF/Spike now passes
+after a separate Rocket CSR guard fix. The first passing SBT logs report Java `20.0.2-internal`
+and Espresso; the fresh published-source validation below passed with JDK 17 and Espresso.
+Exact Zvt ELF/Spike now passes
 for a fresh VLEN512 biased K-tail image. The current OPU bitstream remains BME only. That exact
 35 × 63 × 33 biased K-tail ELF has since passed direct Kodiak VME Verilator/SerialTL with
 the same pinned Spike digest, zero output/guard errors, and `KT DONE`; the larger RTL suite
 and a VME bitstream remain pending. The separate exact-pin OPU counter task has passed Firechip
-compile, target FIRRTL elaboration, Golden Gate,
-and Verilator metasim build using Espresso. A bracketed counter run, synthesis, and a
-counter-equipped bitstream remain pending. Keep the configurations and receipts separate.
+compile, target FIRRTL elaboration, Golden Gate, and Verilator metasim build using Espresso.
+A bracketed counter run, synthesis, and a counter-equipped bitstream remain pending. Keep the
+configurations and receipts separate.
 
 The tested VME source is published on Chipyard fork branch `feat/kodiak-zvt-vme` at
-`dba3cf043408fd60bde2f66be1a12592f4e7b27d` and Saturn branch `feat/kodiak-zvt-vme`
+`5311b459762f594c834569c494efa013d31de48e` and Saturn branch `feat/kodiak-zvt-vme`
 at `4359c36b710bb230335fc2866a28bd3f1911ed6e`. Chipyard's public Rocket gitlink stays
 at `fc745a8`; its `patches/kodiak-vme/README.md` and SHA-checked application script carry the
 focused scalar-Rocket CSR guard fix. A fresh managed checkout applied that patch and passed
 JDK 17 Firechip compilation and FireSim FIRRTL; its generated device tree was byte-identical
 to the source used for the direct RTL result. No VME FPGA bitstream has been built.
+The Chipyard branch head adds only a host TraceRV `libdwarf` API fix over that source state.
+Golden Gate generated SystemVerilog with the same hash before and after the host fix, and the
+Verilator metasim binary built. The exact fresh Zvt ELF then passed bounded FireSim metasim:
+the biased 35 × 63 × 33 case had the pinned Spike/direct RTL digest `0x15d98143c9a17f64`,
+zero output/guard errors, `KT DONE`, and exit zero. Its kernel interval was 2,761 target cycles;
+the full simulator ran 1,840,130 target cycles. The SHA-bound receipt is
+`/scratch/agustin/chipyard/tasks/kodiak-vme-portability-2/.tmp/vme_k33_metasim/receipt.json`.
+This does not establish FPGA bitstream timing or physical Kodiak ASIC support.
