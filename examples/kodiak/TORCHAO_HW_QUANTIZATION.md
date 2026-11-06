@@ -46,7 +46,11 @@ logical tile fill is 8/64 = 12.5%** on either unit. It is a poor match for
 single-sequence inference; token batching or a smaller logical tile would
 need a separately proven source/accuracy and hardware configuration. A
 large speedup from this workload cannot be called high array duty. The
-captured activation maximum, reciprocal, round/clamp, dequantization, and
+[eight-request batching experiment](../../experiments/reference-data/tinyllama_torchao_batch_utilization_plan_2026-11-06.md)
+specifies the source shape and complete-model gates needed to test whether
+flattening independent requests fills the existing 64-row tile.
+
+The captured activation maximum, reciprocal, round/clamp, dequantization, and
 float attention/normalization remain outside the integer matrix unit; their
 time must remain in the whole-inference denominator. SpectFormer has a
 projected OPU fill of 75.9808% for 41 roots and compact VME fill of 76.5625%
