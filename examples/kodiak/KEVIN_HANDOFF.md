@@ -352,6 +352,15 @@ Spectformer and 64-token TinyLlama Spike images executed 105 and 143 OPU shim ca
 with zero scalar fallbacks. The baseline 128-token pair gives **2.5061×** control-over-device
 speedup and **0.115576% (conditional one-hit estimate)** whole-inference effective peak for its OPU image; the bitstream still
 has no array-active counter.
+For a future exact-image dynamic rate, add `--profile` to
+`python examples/lib/firesim_flow.py legs ...`. That opt-in route instruments
+the shipped OPU ELF and its scalar gate twin, requires the complete Spike
+profile, then checks each routed call's hit count and cycle window in the
+same-image FireSim UART. It reports valid-MAC throughput over the OPU call
+window and full inference. The profiled ELF has extra instructions, so its
+result does not inherit an unprofiled pair's speedup; run a separate unprofiled
+pair for that comparison. Neither result measures physical PE duty without a
+counter-equipped bitstream.
 
 The Kodiak OPU target uses legacy BME instructions. It cannot execute Iris's Zvt/VME encodings;
 those need a separate VME-enabled Kodiak RTL configuration and bitstream. On the separate Iris

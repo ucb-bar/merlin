@@ -181,8 +181,15 @@ refuses a diagnostic plan. Collection records `framework_fidelity: failed` and
 `acceptance: false` even if both hardware outputs match their Spike images.
 When the bitstream pin, target compute cycles, and both exact-image identities
 check out, it still reports the routed MAC work, static tile fill, and
-whole-inference effective peak as **diagnostic** utilization; array-active
-occupancy remains unmeasured without hardware counters.
+measured target cycles as **diagnostic** evidence. Dynamic valid-MAC rate is
+unavailable without the same-image per-op profile, and array-active occupancy
+remains unmeasured without hardware counters.
+Add `--profile` to `firesim_flow.py legs` for a separate instrumented shipped
+image and scalar twin. The same-image FireSim per-op profile then proves each
+routed call executed once and supplies measured OPU call-window and
+whole-inference valid-MAC rates. The ordinary unprofiled pair supplies speedup;
+the profiler's extra instructions make a mixed profiled/unprofiled speedup
+invalid. A source diagnostic plan remains diagnostic with profiling enabled.
 
 Source acceptance also needs a complete target-output comparison with the
 independent TorchAO golden. Existing older TinyLlama s64/s128 images print
