@@ -67,7 +67,8 @@ for 17,063,688 cycles (1.06% of the profiled total) and `linalg.generic` for 66.
 attributed cycles. These are simulator diagnostics, not hardware occupancy.
 `python examples/lib/opu_profile_utilization.py
 out/artifacts/probes/firesim_kodiak_opu/spectformer_profiled_h1` verifies the exact ELF,
-full-output identity, every profile row, and routed-MAC sidecar before reporting the two-factor
+full-output identity, every profile row, SHA-pinned table and routing sidecar, and OPU callee
+multiset before reporting the two-factor
 breakdown. On Spike, its OPU call windows perform 1,853,155,328 valid MACs in 17,063,688
 cycles: **10.6057% of peak within those call windows** and 0.112324% across the whole
 profiled inference. The call windows include packing, transfers, stalls, and kernel work; the
@@ -104,20 +105,24 @@ opcode counts in an ELF cannot supply it. A timed kernel window would narrow the
 would still include loads, packing, and stalls. FireSim's ~15 MHz simulation rate measures host
 emulation speed and does not enter any utilization formula.
 
-For a new instrumented bitstream, count OPU active row cycles as the ROI-gated sum of
-`PopCount(io.op.macc)` and count ROI core cycles over the same software markers. This OPU has
-eight rows of 128 int8 MAC cells. Then issued MAC slots are `128 × active row cycles`, array
-issue duty is `active row cycles / (8 × ROI core cycles)`, and useful slot efficiency is the
-exact valid MAC count divided by issued slots. Verify counter annotations and a known GEMM in
-metasim before a separate U250 bitstream build; the currently pinned bitstream has no such
-counter and cannot yield these values retroactively.
+For a new instrumented bitstream, accumulate `PopCount(io.op.macc)` continuously. This OPU
+has eight rows of 128 int8 MAC cells. FireSim AutoCounter accumulates on every target cycle
+but writes CSV samples only while its trigger is active, so the trigger must remain on across
+flat, idle sample plateaus before and after compute. Subtract the cumulative row values at
+those plateaus; reject missing or non-flat samples, wrap, or OPU work outside the measured
+window. With the exact image's target `METRIC cycles` for that same compute region, issued
+MAC slots are `128 × row-count delta`, array issue duty is `row-count delta / (8 × compute
+cycles)`, and useful slot efficiency is the exact valid MAC count divided by issued slots.
+Verify this readout with a known GEMM in metasim before a separate U250 bitstream build; the
+currently pinned bitstream has no such counter and cannot yield these values retroactively.
 
 With those counters, report the factors separately over the same inference:
 `valid MACs / (1,024 × inference cycles) = (OPU-window cycles / inference cycles)
 × (issued slots / (1,024 × OPU-window cycles)) × (valid MACs / issued slots)`.
 They distinguish time spent outside OPU calls, array issue duty during those calls, and useful
 work per issued slot. The product must reconcile to the existing end-to-end effective peak;
-the current bitstream measures only that product.
+the current bitstream measures only that product. Do not combine these factors from different
+images or bitstreams.
 
 The spectformer image passed its W8A8 numerical gate; its complete output hash matched the exact
 Spike-gated image. Its hash does not bit-match the older W8A8 golden, whose libm policy differs.
