@@ -92,8 +92,14 @@ bitstream: OPU job 3876 took **1,022,361,106** target cycles, matched RVV contro
 **13,646,684,998**, and both full 2,048,000-value hashes and prefixes matched their exact
 Spike images. Its 4,096-value hardware W8A8 prefix passed. The pair gives **13.3482×** speedup;
 9,865,003,008 valid routed MACs yield **0.942308% whole-inference effective peak**. This is
-3.9745% fewer device cycles than fill-only job 3874. The trial is isolated while a versioned
-opt-in package and s128/Spectformer gates are prepared; array occupancy is still unmeasured.
+3.9745% fewer device cycles than fill-only job 3874. The
+[versioned opt-in quant package](../../out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/README.md)
+adds only `fuse_quantize_round_convert` to the prepack schedule. Its rebuilt s64, s128, and
+Spectformer images pass exact OPU and independent-RVV Spike full-hash gates; s128 also passes a
+complete 4,096,000-logit W8A8 and 128-token argmax check. The package's rebuilt Spectformer and
+s128 matched FireSim pairs are jobs 3889/3890 and 3891/3892, pending final grading. The older
+s64 hardware result is bound to the same knob/schedule bytes but a different package manifest;
+the rebuilt s64 images have not run on FireSim. Array occupancy is still unmeasured.
 The s128 aligned-prepack OPU/RVV pair also graded VERIFIED on the pinned one-core bitstream:
 device job 3871 took 2,438,693,540 target cycles, matched control job 3875 took
 27,742,439,123, and both full 4,096,000-value hashes and prefixes matched their exact Spike

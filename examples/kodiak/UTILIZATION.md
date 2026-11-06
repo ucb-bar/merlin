@@ -84,9 +84,10 @@ their exact Spike images, and the hardware W8A8 prefix passed. The unchanged 9,8
 valid routed MACs give `9,865,003,008 / (1,022,361,106 × 1,024) = 0.00942308`, or
 **0.942308% whole-inference effective peak** (9.64924 valid MAC/target cycle). This is 3.9745%
 fewer OPU target cycles than the verified fill-only device; its matched control improved 0.3144%,
-so the paired speedup grew 3.8116%. Array occupancy remains unmeasured. The trial is not yet
-the default or a released versioned package; its SHA-bound comparison is in Merlin managed task
-`quantize-fusion-trial/.tmp/quant_fill_hardware_comparison.json`.
+so the paired speedup grew 3.8116%. Array occupancy remains unmeasured. A versioned opt-in
+package now carries the same knob and schedule bytes; its rebuilt images have separate identities
+and exact Spike gates, while their new FireSim results are pending. The trial's SHA-bound comparison
+is in Merlin managed task `quantize-fusion-trial/.tmp/quant_fill_hardware_comparison.json`.
 
 A separate sparse profiled image of that exact prepack lowering passed Spike with the same
 full-output hash, prefix, prepared MLIR and routing sidecar. Its 19 selected OPU rows account
