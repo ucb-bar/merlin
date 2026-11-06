@@ -16,6 +16,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from source_roots import MERLIN_ROOT as ROOT, bootstrap_compiler, observed_revision
 from checkpoint_identity import authenticate
+from bench_admission import admit_bench
 HERE = Path(__file__).resolve().parent
 KERNELS = "ce465827a977ba8451b585f71910726e7f12b885"
 HISTORICAL_KERNELS = "80c5f27d4bcded9c1ca7618a17ffcdbae2be7a39"
@@ -253,6 +254,8 @@ def main():
         ],
         env=env,
     )
+    launch_qualification = (dict(status="PENDING", reason="plan-only") if args.plan_only
+                            else admit_bench(args.out / "bench"))
     if not args.plan_only and not args.skip_real_capture:
         run(
             [
@@ -303,6 +306,7 @@ def main():
         },
         compiler_route="hand-written kernel generators; Atlas compiler verification/encoding gate",
         model_bench=str(args.out / "bench/MODEL-BENCH.md"),
+        launch_qualification=launch_qualification,
     )
     if args.projection_fusions:
         record["projection_fusions"] = dict(

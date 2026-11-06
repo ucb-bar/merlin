@@ -34,7 +34,12 @@ The second command requires a fresh `out/qwen-full-model`; use `-o DIR` for a ne
 4. `bench_model.py` measures the resulting launches on seeded synthetic data.
    It requires the library verified tier, equal assembler/emitter
    words, independent arithmetic goldens where available, and equal functional
-   and cycle-model outputs. These schedules come from the kernel library, not
+   and cycle-model outputs. Both drivers reject missing or false
+   `timed_output_equal` and reject projection rows without `bit_exact: true`
+   before capture, qualification, or a successful `run.json`. Empty or duplicate
+   launch receipts also fail. The fixed random-weight fixture additionally
+   requires 9 distinct variants; pretrained session dimensions can vary.
+   `run.json` marks plan-only admission as PENDING. These schedules come from the kernel library, not
    Merlin's semantic compiler. Missing variants remain failures of coverage.
 5. `capture_boundaries.py` exports and executes the real session, requires exact
    agreement with eager PyTorch, and cuts executable PyTorch graph regions for

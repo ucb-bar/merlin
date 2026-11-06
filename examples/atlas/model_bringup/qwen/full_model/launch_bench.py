@@ -13,6 +13,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+from bench_admission import admit_bench
+
 HERE = Path(__file__).resolve().parent
 
 
@@ -90,13 +92,9 @@ def main():
          "--atlas-mlir-bin", args.atlas_bin, "--min-tier", "verified", "--workers", args.workers,
          "--job-timeout", args.job_timeout, "--out", args.out / "bench",
          *(["--plan-only"] if args.plan_only else [])], env)
+    launch_qualification = dict(status="PENDING", reason="plan-only")
     if not args.plan_only:
-        launches = json.loads((args.out / "bench/MODEL-BENCH.json").read_text())["launches"]
-        failed = [row["key"] for row in launches
-                  if row["status"] != "ok" or row.get("timed_output_equal") is not True
-                  or (row["family"] == "projection_gemm" and row.get("bit_exact") is not True)]
-        if len(launches) != 9 or failed:
-            raise RuntimeError(f"Qwen launch qualification failed: {len(launches)} variants; {failed}")
+        launch_qualification = admit_bench(args.out / "bench", expected_variants=9)
         run([sys.executable, HERE / "capture_boundaries.py", "--loader", HERE / "random_loader.py",
              "--skip-linalg", "--out", args.out / "capture"], env)
         capture_record = args.out / "capture/capture.json"
@@ -116,7 +114,8 @@ def main():
                   compiler_sha256={name: hashlib.sha256((args.atlas_bin / name).read_bytes()).hexdigest()
                                    for name in ("atlas-opt", "atlas-emit")},
                   mapping_sha256=hashlib.sha256((HERE / "mapping.yaml").read_bytes()).hexdigest(),
-                  connected_device_execution="PENDING", plan_only=args.plan_only)
+                  connected_device_execution="PENDING", plan_only=args.plan_only,
+                  launch_qualification=launch_qualification)
     if args.projection_fusions:
         record["projection_fusions"] = dict(
             selection="exact QKV bias and o/down residual panel epilogues",
