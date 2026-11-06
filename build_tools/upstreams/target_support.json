@@ -25,8 +25,8 @@
         "target": "kodiak",
         "repo": "https://github.com/ucb-bar/kodiak-mlir.git",
         "branch": "handwritten-implementation",
-        "commit": "f4e535133142d0a7b0edf4b14ca7c69aa5b3150b",
-        "tree": "947c5df281f4308758eed1ee87a1a058bebf0c21",
+        "commit": "4499b7c35be3c45dd9ce9690ae96fa4142b46ee2",
+        "tree": "f6479d51e9ab7c8514e10576849b8cceb2c8046c",
         "extends": "rvv",
         "example": "examples/kodiak",
         "core_references": [
