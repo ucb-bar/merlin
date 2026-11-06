@@ -46,8 +46,13 @@ _ALLOC_SYMBOL = "@malloc("
 REGION_GRANULE_BYTES = 16 * 1024 * 1024
 
 #: The passes that turn per-intermediate heap allocations into the static arena. ON for a Zephyr image
-#: unless deselected (``--no-pass``); both are exact (bit-identical output) and both check themselves.
-MEMORY_PLAN_PASSES = ("sink-deallocs", "static-arena")
+#: unless deselected (``--no-pass``); all three are exact (bit-identical output) and check themselves.
+#: ``fold-uniform-fill-copy`` belongs to the plan because of what it frees: CSE shares ONE zero-filled
+#: accumulator init across every contraction of the same shape, each contraction copies it, and that one
+#: buffer is live -- and, its ownership resolved only at run time, freed only at the end of the call --
+#: from the first layer to the last. Measured on an 8-layer TinyLlama section: 73 such buffers, 110 MiB
+#: the arena could not seat; filling each destination directly leaves none.
+MEMORY_PLAN_PASSES = ("sink-deallocs", "static-arena", "fold-uniform-fill-copy")
 
 #: The largest alignment ``malloc`` pads an allocation to. The C library asks the heap for
 #: ``alignof(max_align_t)``; this bound is the memref lowering's own buffer alignment, which no ABI's
@@ -261,8 +266,13 @@ class MemoryBudget:
             f"every buffer summed {_mib(self.allocation_sum_bytes)} MiB)",
             f"  heap residue       {_mib(self.heap.bytes)} MiB in {self.heap.allocations} allocation(s) the plan "
             f"could not seat{self._refusal_reasons()}",
-            f"  code and runtime   {image}{_mib(self.code_bytes)} MiB (code, data, stacks, embedded inputs)",
-            f"  allocator margin   {_mib(self.margin_bytes)} MiB",
+            "  code and runtime   "
+            + (
+                "not linked: the terms above already exceed the board"
+                if image_at_least and not self.code_bytes
+                else f"{image}{_mib(self.code_bytes)} MiB (code, data, stacks, embedded inputs)"
+            ),
+            f"  allocator margin   {self.margin_bytes / 1024:.0f} KiB",
         ]
         if self.policy != "static-arena":
             lines.append("  the static arena plan is deselected; selecting it (the default) reuses buffers")

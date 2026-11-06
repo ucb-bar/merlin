@@ -154,6 +154,16 @@ def test_a_model_that_does_not_fit_is_refused_naming_every_term():
         assert term in text, (term, text)
 
 
+def test_a_floor_over_the_board_says_the_code_was_never_linked():
+    """Refused before linking (weights + arena + heap already exceed the DRAM), the code term is not a
+    number: printing it as 0 MiB read as "the code is free"."""
+    b = _budget(weights_bytes=500 * MIB)
+    b.image_bytes = b.weights_bytes + b.arena_bytes
+    text = b.refusal(image_at_least=True)
+    assert "needs at least" in text and "not linked" in text and "0.0 MiB (code" not in text
+    assert "allocator margin   " in text and "KiB" in text
+
+
 def test_an_overflow_at_the_whole_board_is_refused_with_a_lower_bound():
     b = _budget()
 
@@ -175,6 +185,7 @@ def test_the_plan_is_on_for_an_image_unless_deselected_by_name(monkeypatch):
     with zmem.planned_lowering() as policy:
         assert policy == "static-arena"
         assert op.switched("sink-deallocs", False) and op.switched("static-arena", False)
+        assert "fold_uniform_fill_copy" in (op.selected_features(frozenset()) or ())
     assert op.active() == op.Selection()  # restored
     monkeypatch.setenv(op.ENV, "-static-arena")
     with zmem.planned_lowering() as policy:

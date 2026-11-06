@@ -408,8 +408,14 @@ def run_source(*, tag_bmm_tails: bool = False) -> str:
 
     The dealloc-placement check wraps ``_run_stages`` LAST, so stage 2 -- where bufferization and the
     deallocation passes run -- goes through it: sinking a free on this runner is verified exactly as on
-    the plain one, instead of being refused for want of the check."""
-    from .pipeline import DEALLOC_CHECK_PRELUDE, DEALLOC_CHECK_RUNNER
+    the plain one, instead of being refused for want of the check. The uniform-fill-copy stage is
+    spliced with the plain runner's argv slot for the same reason: selected, it must run here too."""
+    from .pipeline import (
+        _UNIFORM_FILL_COPY_MID_SRC,
+        _UNIFORM_FILL_COPY_PRELUDE,
+        DEALLOC_CHECK_PRELUDE,
+        DEALLOC_CHECK_RUNNER,
+    )
 
     return (
         "import sys\n"
@@ -427,8 +433,10 @@ def run_source(*, tag_bmm_tails: bool = False) -> str:
         + _PARALLEL_COARSEN_PRELUDE
         + _PANEL_PARALLEL_PRELUDE
         + _BMM_TAIL_PAD_PRELUDE
+        + _UNIFORM_FILL_COPY_PRELUDE
         + _REWRITER_SRC
         + _MID_STAGE_SRC
+        + _UNIFORM_FILL_COPY_MID_SRC
         + _PANEL_PARALLEL_MID_SRC
         + _PARALLEL_GRAIN_LATE_SRC
         + _PARALLEL_TEAM_STAGE_SRC

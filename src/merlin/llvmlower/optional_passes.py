@@ -139,6 +139,18 @@ REGISTRY: tuple[OptionalPass, ...] = (
         switch="MERLIN_STATIC_ARENA",
     ),
     OptionalPass(
+        name="fold-uniform-fill-copy",
+        summary="fill each copy destination directly instead of copying from a shared uniform buffer",
+        changes=(
+            "a private buffer written once with a constant and then only copied from (an accumulator's "
+            "zero init that CSE shared across every contraction) disappears; each copy becomes the fill"
+        ),
+        exactness=EXACT,
+        default="on for Zephyr images (their activation memory plan), off elsewhere",
+        stage="lowering",
+        feature="fold_uniform_fill_copy",
+    ),
+    OptionalPass(
         name="prequantize-weights",
         summary="store constant contraction weights as int8 + per-channel scale in the weights blob",
         changes=(
