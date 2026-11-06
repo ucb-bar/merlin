@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-11-05
 related: [target_resolution, adding_a_target, zephyr, model2mlir]
-code_refs: [examples/lib/chip_setup.py, src/merlin/targetgen/support_pins.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, build_tools/upstreams/target_support.json, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, src/merlin/targetgen/rtl/matrix_isa.py, src/merlin/kernels/matrix_shim.py, src/merlin/compile_cli.py, src/merlin/compile/matrix_leg.py, src/merlin/targetgen/spike_extension.py, build_tools/scripts/vendor_support.py]
+code_refs: [examples/lib/chip_setup.py, examples/lib/preflight.py, src/merlin/common/pin_drift.py, src/merlin/targetgen/unit_pins.py, src/merlin/targetgen/support_pins.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, build_tools/upstreams/target_support.json, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, src/merlin/targetgen/rtl/matrix_isa.py, src/merlin/kernels/matrix_shim.py, src/merlin/compile_cli.py, src/merlin/compile/matrix_leg.py, src/merlin/targetgen/spike_extension.py, build_tools/scripts/vendor_support.py]
 ---
 
 # Chip packages layered on a base target
@@ -86,7 +86,10 @@ left. Paths can be passed as flags or exported; whatever is found and right is r
 (the process environment still wins), and `run.sh` loads `.env`, so no later shell needs exports.
 Because the environment wins, a stale export (a `ZEPHYR_BASE` left from an old workspace) would replace
 what setup just verified in every later command; setup ends with a warning naming each such variable,
-and `preflight` says when a missing path is one your shell exports. `unset` them.
+and `preflight` lists every setting with its effective value and where it came from (`.env`, or a shell
+export, flagged `!` when it overrides what `.env` records). `unset` them. `run.sh` lists the keys it
+loaded from `.env` in `MERLIN_DOTENV_KEYS`, which is how the two tell a recorded value from an export.
+A `/path/to/...` placeholder (a `.env` copied from `.env.example`) is treated as unset.
 
 **Done by setup** (cheap; downloads and builds of minutes):
 
@@ -94,8 +97,8 @@ and `preflight` says when a missing path is one your shell exports. `unset` them
 |---|---|---|
 | Merlin's venv (`uv sync`) | `.venv/` | ~150 MB, under a minute |
 | the chip's support package at its pinned commit, with its base (`--support`) | `out/build/generated/pinned/<chip>@<sha12>/` | a few MB, seconds |
-| model2MLIR, cloned at its pin (`model2mlir_capture`) unless `--m2m`/`MERLIN_M2M_DIR` names one | `out/build/ext/model2MLIR/` | ~50 MB |
-| capture venv: Python 3.12, PyTorch nightly (CPU), `torch-mlir==20260531.828` (the wheel matching the LLVM pin), model2MLIR's own libraries (xdsl, structlog, ...) at the versions its `uv.lock` records, torchao, timm; model2MLIR on its path by a `.pth`, so a shared or read-only checkout works | `out/build/venv/model2mlir/` | ~1.3 GB, 2-5 min |
+| model2MLIR at its pin (`model2mlir_capture`): cloned unless `--m2m`/`MERLIN_M2M_DIR` names one; setup's own clone, when clean, is moved onto the pin when the pin moves | `out/build/ext/model2MLIR/` | ~50 MB |
+| capture venv: Python 3.12; `torch==2.14.1`, `torchvision==0.29.1`, `torchao==0.18.0` from PyTorch's CPU index (it keeps every release; the nightly index keeps about two months); `torch-mlir==20260531.828` (the wheel matching the LLVM pin); model2MLIR's libraries (xdsl, structlog, ...) at the versions its `uv.lock` records, the rest at setup's own pins (`CAPTURE_UNLOCKED_PINS`); model2MLIR on its path by a `.pth`, so a shared or read-only checkout works. Setup checks the torch / torch-mlir pair by importing an exported module, and writes what it installed to `merlin-capture-env.json` | `out/build/venv/model2mlir/` | ~1.3 GB, 2-5 min |
 | Zephyr west workspace: `zephyr-chipyard-sw` (`dev`), its `zephyr_ws/zephyr` submodule, `west init --mf west-riscv.yml`, `west update` (skipped when `ZEPHYR_BASE` is set) | `out/build/ext/zephyr-chipyard-sw/` | ~2 GB, 5-10 min |
 | a chip's spike model of its unit, when its package declares one (Kodiak's OPU) | `out/build/spike-ext/<chip>/` | seconds |
 | a simulator built from a verified pinned source (Iris's riscv-isa-sim with Zvt) | `out/build/<pin>/` | ~0.3 GB, ~2 min on 32 cores |
@@ -122,9 +125,25 @@ the next run finds it. A simulator is built (`--build-spike <pin>=<VAR>`) only f
 out of tree into `out/build/<pin>/`, with a `merlin-build.json` recording the commit, the source digest
 and the binary's sha256; it is rebuilt only when one of those changes.
 
-A pin inside a prerequisite you configured (`--verify-pin`, e.g. Kodiak's `saturn_opu_int8` inside
-`$MERLIN_CHIPYARD`) is verified and reported as a warning when it drifts: the flow still runs, and every
-build records the revision it read.
+A pin inside a prerequisite you configured (`--verify-pin`, and every pin the fetched package's matrix
+units are read from, e.g. Kodiak's `saturn_opu_int8` inside `$MERLIN_CHIPYARD`) is verified by what a
+build reads from it.
+
+### Which drift blocks
+
+Each pin's drift is sorted by whether it changes a result or only its citation
+(`merlin.common.pin_drift.materiality`):
+
+| pin | drift that only warns (results right, recorded) | drift that blocks |
+|---|---|---|
+| a matrix unit's sources (`saturn_opu_int8`, `saturn_vme`, `rocket_chip_iris`; from the package's matrix contract, `merlin.targetgen.unit_pins`) | another commit or branch whose every file the encoding and geometry derivation reads (the unit's `sources`, `config_scala`, `mixin_scala`, the pin's `requires_paths`) is byte-identical to the pin's, or to a local edit the pin declares | any such file different or unreadable, a required file missing: every build that routes to the unit refuses it (`build_matrix_pair`, a chip example's `op`) |
+| `model2mlir_capture` | none | any: another commit or a changed read file. Its read set is a sample of what a capture depends on, so captures refuse it (`require_capture_pin`); a bundle records the revision that captured it, and `op` recaptures one made off the pin |
+| a pinned checkout setup finds (`--checkout-pin`: `chipyard_iris`, `spike_zvt`) | none | any: setup reports `drift` and builds no simulator from it |
+
+A blocked stage prints the commands that put the checkout on its pin (from the registry:
+`repo_observed` or `repo_canonical`, `branch`, `commit`). To build from it anyway, name the pin in
+`MERLIN_ALLOW_OFF_PIN` (comma-separated, shell or `.env`): the stage proceeds and what it builds records
+the drift. `preflight` lists each of these pins as `ok`, `warn` or `stop`.
 
 ## What a chip package contains
 

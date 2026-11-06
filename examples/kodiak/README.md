@@ -34,6 +34,30 @@ git clone https://github.com/ucb-bar/merlin.git && cd merlin/examples/kodiak
 ./run.sh op my_op/loader.py       # your own one-operator model (see examples/workloads/gemm/loader.py)
 ```
 
+### First hour: checklist
+
+Times measured on a 48-core host from an empty `out/`, no `.venv`, no `.env` (2026-11-05).
+
+1. **Have the big three** (setup finds them, never installs them): LLVM/MLIR 23 at llvm-project
+   `a47bddcc` ([`llvm_toolchain.md`](../../docs/guides/llvm_toolchain.md)), chipyard after
+   `./build-setup.sh riscv-tools`, the Zephyr SDK 0.17.0. Plus `uv`, `git`, `make`, `g++`, `dtc` on PATH.
+2. **`./run.sh setup --llvm <prefix> --chipyard <dir> --zephyr-sdk <dir>`**: about 5 min the first time
+   (most of it Zephyr's `west update`), seconds after. Exit 0 means nothing is left; otherwise it
+   lists each open item with its commands. Run them, run setup again.
+3. **The OPU's saturn.** If setup says `[drift] saturn_opu_int8`, OPU builds refuse that checkout.
+   Put it on the pin (the commands below), or, if it is not yours to move, add
+   `MERLIN_ALLOW_OFF_PIN=saturn_opu_int8` to `.env` and every build records the drift.
+4. **`./run.sh preflight`** (1 s): every stage `[ok ]`, every pinned source `ok` or `warn`, and no
+   `!` in the settings list. A `!` is a shell export overriding what setup recorded: `unset` it.
+5. **`./run.sh op gemm 64 64 64`** (about 1 min): `rvv`, `matrix` and `matrix_on_spike` all `verified`.
+6. **A whole model**, with no download (deterministic weights):
+   `./run.sh capture encoder_block --loader ../workloads/encoder_block/loader.py` (about 2 min), then
+   `./run.sh build --opu --models encoder_block` (about 2 min): each image gated on spike, packaged under
+   `out/artifacts/delivery/example-kodiak/`. `build`'s default model, deepjscc, has to be captured
+   first (`./run.sh capture deepjscc`), and its model2MLIR loader imports upstream code from a path on
+   the machine it was written on: `git clone https://github.com/mingyuyng/DiffJSCC` and
+   `export DIFFJSCC_DIR=<that clone>` before capturing it.
+
 `setup` needs `uv` and `git`, and is safe to re-run: each step is skipped when its result is already
 there. Exporting the paths instead of passing flags works too (`MERLIN_MLIR_INSTALL` or `MERLIN_CLANG`,
 `MERLIN_CHIPYARD`, `ZEPHYR_SDK_INSTALL_DIR`, and `ZEPHYR_BASE` if you already have a Zephyr workspace);
@@ -46,15 +70,20 @@ Kodiak adds two things to the common setup:
 
 * the **OPU's RTL**: `$MERLIN_CHIPYARD/generators/saturn` must be saturn `ea373800` (pin
   `saturn_opu_int8`, branch `opu-int8` on the fork `miles-rusch-berkeley/saturn-vectors`) with
-  `<kodiak-mlir>/firesim/01-saturn-OPUConfigs.patch` applied, which adds `KodiakOPUConfig`. The OPU's
-  encodings and tile geometry are read from there. Setup verifies it and warns when it is another
-  revision (every build then records which revision it read):
+  `<kodiak-mlir>/firesim/01-saturn-OPUConfigs.patch` applied as shipped, which adds `KodiakOPUConfig`
+  (leave its passthrough-model path alone; FPGA builds read it from `$MERLIN_EICG_PASSTHROUGH_V`). The
+  OPU's encodings and tile geometry are read from there, so setup checks every file that derivation
+  reads, by content. Another commit whose read files are byte-identical is a warning (builds record the
+  revision). A read file that differs blocks every OPU build (`op`, `build --opu`, `matrix`, `firesim`)
+  with these commands, until you either run them or accept the drift with
+  `MERLIN_ALLOW_OFF_PIN=saturn_opu_int8` in `.env` (each build then records it):
 
   ```bash
+  PKG="$(<merlin>/.venv/bin/merlin-target-fetch kodiak --root)"    # kodiak-mlir, fetched by setup
   cd $MERLIN_CHIPYARD/generators/saturn
-  git remote add opu https://github.com/miles-rusch-berkeley/saturn-vectors.git
-  git fetch opu opu-int8 && git checkout -B opu-int8 ea373800169ce7bbb9ca27ececf74101a7caf9d5
-  git apply "$(merlin-target-fetch kodiak --root)/firesim/01-saturn-OPUConfigs.patch"
+  git fetch https://github.com/miles-rusch-berkeley/saturn-vectors.git ea373800169ce7bbb9ca27ececf74101a7caf9d5
+  git checkout -B opu-int8 ea373800169ce7bbb9ca27ececf74101a7caf9d5
+  git apply "$PKG/firesim/01-saturn-OPUConfigs.patch"
   ```
 
 * the OPU's **spike model** (§2c), which setup builds into `out/build/spike-ext/kodiak/` and records as

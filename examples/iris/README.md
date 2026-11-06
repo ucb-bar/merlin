@@ -25,6 +25,24 @@ pinned rvv base at `base/rvv-mlir`).
 ./run.sh capture my_model --loader path/to/loader.py
 ```
 
+### First hour: checklist
+
+Times measured on a 48-core host (2026-11-05), after the Kodiak example had set up the same clone.
+
+1. **Have the big three** the Kodiak example needs (LLVM/MLIR 23, chipyard with riscv-tools, the Zephyr
+   SDK 0.17.0; setup finds them, never installs them), plus `uv`, `git`, `make`, `g++`, `dtc`.
+2. **Iris's two checkouts.** Point `MERLIN_CHIPYARD_IRIS` and `MERLIN_SPIKE_ZVT_SRC` at ones you have,
+   or let the first `./run.sh setup` print the clone commands (below) and run them: about 0.5 GB.
+3. **`./run.sh setup --llvm <prefix> --chipyard <dir> --zephyr-sdk <dir>`**: about 2.5 min with the
+   Zephyr workspace already there (the Zvt spike build is most of it), about 7.5 min on an empty clone.
+   Exit 0 means nothing is left. A checkout on another revision is reported with the commands that
+   move it, and never used.
+4. **`./run.sh preflight`** (1 s): every stage `[ok ]`, `saturn_vme`, `rocket_chip_iris` and
+   `spike_zvt` `ok`, and no `!` in the settings list (a `!` is a shell export overriding what setup
+   recorded: `unset` it).
+5. **`./run.sh op gemm 64 64 64`** (under 1 min): `rvv` and `matrix` `verified`, and "shipped ELF on a
+   simulator that implements the unit: verified".
+
 ## Setup
 
 `./run.sh setup` fetches iris-mlir at its pinned commit, does everything the Kodiak example's does (the
