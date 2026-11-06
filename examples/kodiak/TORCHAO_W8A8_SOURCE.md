@@ -103,3 +103,8 @@ Comparison covers the full 1,000-element output. This remains a **failed framewo
 fidelity gate**. A separately labelled target-arithmetic diagnostic may compare a
 source-preserving OPU image and scalar twin on exact Spike/FireSim; such a result
 cannot be called torchAO framework parity while this gate fails.
+The [first-divergence report](../../experiments/reference-data/spectformer_torchao_w8a8_source_parity_2026-11-06.md)
+shows bit-exact im2col and same-input TorchAO fc1/fc2, with the first arithmetic
+drift in float patch convolution. An independent image reproduces the
+one-byte activation-threshold effects; patch-only substitution does not clear
+the complete-output gate.
