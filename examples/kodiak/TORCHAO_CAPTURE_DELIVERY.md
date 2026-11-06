@@ -115,3 +115,33 @@ FireSim, and physical Kodiak as separate gates. The current strict host
 framework comparison fails for SpectFormer (relative L2 `0.00718247` with
 other thresholds exceeded) and the TinyLlama source graph; no saved capture
 should be described as a complete passing hardware flow on that basis.
+
+## Compile a source-preserving OPU image
+
+The host command above does not emit an OPU ELF. With a selected pinned Kodiak
+support provider, board catalog, Zephyr SDK, and RISC-V cross compiler, build
+the shipped image and its same-lowering scalar twin from the **same derived
+capture**:
+
+```sh
+merlin-compile --workload spectformer_torchao_w8a8 --target rvv \
+  --dtype int8_w8a8 --capture-bundle /path/to/final/spectformer_torchao_w8a8_20261106 \
+  --board firesim_kodiak_opu --package out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1 \
+  --matrix-support-target kodiak --matrix-unit saturn_opu --matrix-config KodiakOPUConfig \
+  --matrix-gate build --run spike --harts 1 --no-capture --json
+```
+
+`--matrix-gate build` runs **no simulator** despite the `--run spike` target
+selection. It reports the shipped `binary`, `twin_binary`, instruction audit,
+routing report, and `verification_scope: none`. Keep both ELF bytes and the
+report; an image is ready for a simulator gate only after its actual routed
+integer roots and instruction count are checked. Run a separate exact Spike
+pair gate, then a bitstream-pinned FireSim pair gate. A compiled image does not
+inherit the older weight-only capture's numerical results.
+
+The source capture uses signed i8 operands, i32 accumulation, and source-owned
+scales/dequantization. OPU and compact VME select different kernels and
+encodings from those same typed integer contractions. Do not re-quantize the
+source graph or import an OPU packed tile as VME input. The compact VME board
+route needs its own board identity and qualified FPGA bitstream before model
+execution can be claimed.
