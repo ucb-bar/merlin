@@ -52,6 +52,16 @@ that suffix. Both TinyLlama archives were extracted and passed the materialized 
 check after that rename. The relocated Spectformer and s64 TinyLlama captures also passed the
 prepack weight rewrite, with the generated bundles pointing at their own weight files. These
 receipts do not prove source closure. The archives are ignored local files, not Git downloads.
+A capture's `scheme=int8_weight_only` describes its stored torchAO Linear weights; it is not
+itself an end-to-end W8A8 verdict. Merlin's selected package uses
+`dtype_strategy=int8_w8a8`, dynamically quantizes activations, and grades its images against
+Merlin's host W8A8 golden. Spectformer's complete 1,000-value hardware output passes that
+gate. The two-layer TinyLlama FireSim legs directly compare the first 4,096 UART values to
+that golden; their complete output hashes match the exact Spike images, and the shipped OPU
+Spike s64/s128 images pass complete Merlin W8A8 comparisons. No independent torchAO W8A8
+parity check for either small model is recorded. The separate full 22-layer TinyLlama
+independent torchAO reference currently disagrees on its first token, so its compiled result
+is not a validated full-model quantized inference.
 A fresh-host check verified the Spectformer capture files and reached compilation, but that host
 lacked the Zephyr/Spike toolchain, so full lowering from a transferred capture remains unverified.
 On the current shared host, the installed workload is `merlin-kodiak` and the queue client needs
@@ -184,8 +194,16 @@ The SHA-bound receipt is in
 
 The full TinyLlama model's weights alone are about 1.2 GiB and do not fit **physical Kodiak's
 512 MiB DRAM**. The pinned one-core OPU FireSim target has 16 GiB of simulated DRAM and a
-separate external-weight layout, so its capacity alone does not rule out the full model; a
-full-model OPU image has not been built or verified on that target. The two-layer sections above
+separate external-weight layout, so its capacity alone does not rule out the full model. A
+full 22-layer, 8-token capture with `ids` entry has produced matched one-core shipped OPU and
+scalar-twin Zephyr ELFs (~1.30 GB each; 1,336,420,368-byte LOAD memory span). The shipped ELF
+completed on the pinned OPU Spike model with `DONE`, 256,000 output elements and whole-output
+FNV1a32 `3198730293`, but failed the Merlin host W8A8 gate on its 4,096-value UART prefix
+(cosine 0.938137, relative L2 0.551485); its complete hash also differs from the Merlin host
+W8A8 and independent torchAO references. This is a numerical failure, not a build or simulator
+crash; no full-model FireSim job has been submitted. The capture's source closure remains
+unverified and its independent torchAO W8A8 reference also disagrees with the Merlin host
+golden on token 0. The full model remains a required separate compiler gate. The two-layer sections above
 are the measured hardware targets. The 64-token and 128-token exact OPU
 Spike images also passed complete W8A8 comparisons and all token argmaxes against their host
 reference. The paired FireSim OPU and RVV images are built with one vector hart, matching the
