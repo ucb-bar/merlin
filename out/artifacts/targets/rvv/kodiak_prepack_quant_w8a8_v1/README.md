@@ -32,8 +32,17 @@ Build a new exact pair with:
 
 The package manifest has a distinct identity from the measured s64 trial artifact. Its rebuilt
 s64 OPU and independent plain-RVV images have therefore passed their own exact Spike full-hash
-gate; the rebuilt s64 images have not run on FireSim. See `model_gates.json` for all immutable
-plan, capture, ELF, output, and routing hashes.
+gate. Its rebuilt matched FireSim pair 3893/3894 is also **verified**: 1,022,361,106 OPU versus
+13,646,684,998 plain-RVV target compute cycles, identical to the earlier quant trial pair
+3876/3887. Both full 2,048,000-value hardware hashes match their exact Spike images, and the
+direct W8A8 hardware numerical comparison covers the 4,096-value UART prefix. The 9,865,003,008
+valid routed MACs divided by 1,024 MACs per target cycle and 1,022,361,106 compute cycles give
+**0.942308%** whole-inference effective peak. All 19 contractions are routed with 100% static
+tile fill; physical array occupancy is unmeasured. Against matched fill-only prepack pair
+3874/3877, OPU cycles fall 3.9745%, control cycles fall 0.3144%, and paired speedup rises 3.8116%.
+The capture, OPU signatures, and archived bitstream digest match both reference pairs; the live
+Saturn source checkout remains off its declared pin. See `model_gates.json` for rebuilt image
+Spike pins and `tinyllama_l2_s64_hardware_evidence.json` for the SHA-bound hardware comparison.
 
 The rebuilt s128 OPU and plain-RVV Spike images agree on the full 4,096,000-value output hash.
 The exact OPU ELF additionally passes a complete W8A8 comparison of all logits, plus all 128

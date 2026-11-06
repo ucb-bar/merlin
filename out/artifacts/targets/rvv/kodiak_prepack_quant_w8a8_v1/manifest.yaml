@@ -7,8 +7,10 @@ delivery_status:
   tinyllama_l2_s64: >-
     The exact schedule and knobs passed a one-core FireSim OPU/RVV pair with full hashes matching
     Spike. This package's rebuilt OPU and independent plain-RVV images also pass exact Spike
-    full-hash gates. The rebuilt images have not been tested on FireSim. No K1 or physical Kodiak
-    certification is claimed.
+    full-hash gates. The rebuilt package's matched one-core FireSim pair 3893/3894 is verified
+    with the same target cycles and output identities as the trial pair 3876/3887. Direct hardware
+    W8A8 comparison covers the 4,096-value UART prefix; see tinyllama_l2_s64_hardware_evidence.json.
+    No K1 or physical Kodiak certification is claimed.
   tinyllama_l2_s128: >-
     Exact shipped OPU and independent plain-RVV Spike images agree on the full 4,096,000-value
     output hash. The exact OPU ELF passes complete W8A8 numerical comparison of every logit and
@@ -32,6 +34,7 @@ lineage:
   - out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/s128_full_w8a8_gate.json
   - out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/spectformer_hardware_evidence.json
   - out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/tinyllama_l2_s128_hardware_evidence.json
+  - out/artifacts/targets/rvv/kodiak_prepack_quant_w8a8_v1/tinyllama_l2_s64_hardware_evidence.json
   - merlin/tests/rvv/test_quant_round_fusion.py
   version: 1
 outputs:
