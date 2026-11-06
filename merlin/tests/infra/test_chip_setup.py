@@ -427,6 +427,25 @@ def test_setup_moves_its_own_clean_model2mlir_clone_onto_the_pin(m2m_like):
     assert item.settings["MERLIN_M2M_DIR"] == str(s.own.resolve())
 
 
+def test_setup_uses_owned_capture_venv_when_task_sibling_is_a_main_symlink(m2m_like):
+    """A task's model2MLIR sibling can point at read-only main; setup must not install there."""
+    s = m2m_like
+    main_checkout = s.tmp / "main" / "model2mlir"
+    external_venv = main_checkout / ".venv"
+    external_venv.mkdir(parents=True)
+    marker = external_venv / "keep.txt"
+    marker.write_text("shared\n")
+    task_sibling = s.tmp / "task" / "model2mlir"
+    task_sibling.parent.mkdir()
+    task_sibling.symlink_to(main_checkout, target_is_directory=True)
+
+    item = s.setup.capture_item({"MERLIN_M2M_VENV": str(task_sibling / ".venv")}, None, fetch=True)
+
+    assert item.state == s.setup.OK
+    assert item.settings["MERLIN_M2M_VENV"] == str(s.tmp / "out_build" / "venv" / "model2mlir")
+    assert marker.read_text() == "shared\n"
+
+
 @pytest.mark.parametrize("how", ["dirty", "user_owned", "local_commit"])
 def test_setup_never_moves_a_model2mlir_checkout_that_may_be_someones_work(m2m_like, how):
     s = m2m_like

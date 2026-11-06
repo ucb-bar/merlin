@@ -667,7 +667,17 @@ def capture_item(settings: dict[str, str], m2m_arg: Path | None, *, fetch: bool)
     pin = PROV.load_pins(pins_path)[M2M_PIN]
     own = (_build_dir() / "ext" / "model2MLIR").resolve()
     m2m = (m2m_arg or Path(settings.get("MERLIN_M2M_DIR") or own)).resolve()
-    venv = Path(settings.get("MERLIN_M2M_VENV") or _build_dir() / "venv" / "model2mlir")
+    owned_build = _build_dir().resolve()
+    owned_venv = owned_build / "venv" / "model2mlir"
+    requested_venv = Path(settings.get("MERLIN_M2M_VENV") or owned_venv).resolve()
+    # Project task environments can point at a model2MLIR sibling that is a symlink to the
+    # read-only main checkout. Never install packages or write capture records through it.
+    if requested_venv.is_relative_to(owned_build):
+        venv = requested_venv
+    else:
+        print(f"ignoring MERLIN_M2M_VENV={requested_venv}: outside this checkout's build directory; "
+              f"using {owned_venv}")
+        venv = owned_venv
     py = venv / "bin" / "python"
     name = f"model2MLIR @{pin.commit[:12]} + capture venv"
     clone = [["git", "clone", pin.repo_canonical, m2m], ["git", "-C", m2m, "checkout", "--detach", pin.commit]]
