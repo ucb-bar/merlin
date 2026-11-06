@@ -96,9 +96,10 @@ call-window cycles** out of 3,068,253,185 target compute cycles (2.47845% of inf
 Those calls execute 1,853,155,328 valid MACs, or **2.37980% effective peak within the hardware
 call windows**. The profiled image's whole-inference effective peak is 0.0589822%; the exact
 same-routing unprofiled image took 29,979,464 fewer cycles, a 0.98673% instrumentation
-overhead. Hardware call windows were 4.46× the Spike call-window cycles; this difference is
-under investigation. These windows include packing, transfers, stalls, and kernel work, and do
-not measure physical array occupancy.
+overhead. The Kodiak Spike extension explicitly does not model OPU timing or stalls
+(`kodiak-mlir/spike/opu_ext.cc`); its 17,063,688 call cycles are functional-simulator diagnostics,
+not a hardware latency prediction. The FireSim call windows include packing, transfers, stalls,
+and kernel work, and do not measure physical array occupancy.
 
 In the profiled Spike image alone, 5,172 per-op rows cover 99.66% of compute cycles; OPU call intervals account
 for 17,063,688 cycles (1.06% of the profiled total) and `linalg.generic` for 66.76% of
