@@ -59,15 +59,19 @@ Merlin's host W8A8 golden. Spectformer's complete 1,000-value hardware output pa
 gate. The two-layer TinyLlama FireSim legs directly compare the first 4,096 UART values to
 that golden; their complete output hashes match the exact Spike images, and the shipped OPU
 Spike s64/s128 images pass complete Merlin W8A8 comparisons. No independent torchAO W8A8
-parity check for either small model is recorded. The separate full 22-layer TinyLlama
-independent torchAO reference currently disagrees on its first token, so its compiled result
-is not a validated full-model quantized inference.
+parity check for these earlier hardware images was recorded. The old full 22-layer
+weight-only-capture path disagrees with an independent torchAO W8A8 reference on its first
+token, so that compiled result is not a validated full-model quantized inference.
 The source-authoritative next gate is model2MLIR's separate `int8_w8a8` torchAO capture:
 it exports dynamic activation quantization and integer `aten._int_mm` contractions. The
 current `int8` bundles instead export weight-only float contractions and Merlin adds its own
 W8A8 transformation afterward. Keep their performance measurements as measurements of
-those exact images; do not present them as parity with the torchAO W8A8 program. Capture,
-compile, exact Spike, and FireSim checks for the torchAO-exported program are pending.
+those exact images; do not present them as parity with the torchAO W8A8 program. A new
+trained-checkpoint Spectformer torchAO capture has byte-identical inputs and weights to the
+earlier capture, 41 explicit signed i8 × i8 → i32 matrix contractions covering 88.4299% of
+its dense MACs, zero opaque ops, and a finite 1,000-value framework golden. The full-model
+TinyLlama torchAO capture is described below. Exact compiler, Spike, and FireSim checks for
+these source-exported programs remain pending.
 A fresh-host check verified the Spectformer capture files and reached compilation, but that host
 lacked the Zephyr/Spike toolchain, so full lowering from a transferred capture remains unverified.
 On the current shared host, the installed workload is `merlin-kodiak` and the queue client needs
@@ -209,10 +213,19 @@ FNV1a32 `3198730293`, but failed the Merlin host W8A8 gate on its 4,096-value UA
 W8A8 and independent torchAO references. This is a numerical failure, not a build or simulator
 crash; no full-model FireSim job has been submitted. The capture's source closure remains
 unverified and its independent torchAO W8A8 reference also disagrees with the Merlin host
-golden on token 0. The full model remains a required separate compiler gate. The two-layer sections above
-are the measured hardware targets. The 64-token and 128-token exact OPU
-Spike images also passed complete W8A8 comparisons and all token argmaxes against their host
-reference. The paired FireSim OPU and RVV images are built with one vector hart, matching the
+golden on token 0. The matched plain RVV full-model ELF completed on Spike with the **same
+full hash and prefix bytes** as the OPU ELF, and failed the same host numerical gate. This
+localizes the observed discrepancy to a shared compiled/reference path, not an OPU-only
+arithmetic error. Their 612,415,434 versus 4,871,333,825 Spike cycles are diagnostic and
+must not be used as a certified speedup. A separate full 22-layer pretrained torchAO
+`int8_w8a8` capture now has 155 explicit signed i8 × i8 → i32 Linear contractions, 45 float
+attention batch matmuls, zero opaque ops, and a complete ABI. Its framework golden is
+byte-identical to an independent eager torchAO run; source closure is still unverified, and
+Merlin host execution of this explicit integer graph has a 3–5% per-token relative-L2
+disagreement under investigation. The full model remains a required separate compiler gate.
+The two-layer sections above are the measured hardware targets. Their 64-token and 128-token
+exact OPU Spike images also passed complete W8A8 comparisons and all token argmaxes against
+their host reference. The paired FireSim OPU and RVV images are built with one vector hart, matching the
 one-core bitstream.
 
 For utilization, use [the formula and evidence](UTILIZATION.md) and
