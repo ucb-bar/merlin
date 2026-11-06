@@ -79,13 +79,17 @@ For utilization, use [the formula and evidence](UTILIZATION.md) and
 physical int8 MAC cells but no active-cycle counter. The baseline ~0.05–0.12% figures and the
 prepacked s64 device's 0.874215% are
 **whole-inference effective throughput as a fraction of peak**, not array occupancy. Exact
-Spectformer and 64-token TinyLlama Spike images executed 105 and 143 OPU shim calls respectively,
+Earlier Spectformer and 64-token TinyLlama Spike images executed 105 and 143 OPU shim calls respectively,
 with zero scalar fallbacks. The graded 128-token pair gives **2.5061×** control-over-device
 speedup and **0.115576%** whole-inference effective peak for the OPU image; the bitstream still
 has no array-active counter.
 
 The Kodiak OPU target uses legacy BME instructions. It cannot execute Iris's Zvt/VME encodings;
-those need a separate VME-enabled Kodiak RTL configuration and bitstream. The current OPU FireSim
+those need a separate VME-enabled Kodiak RTL configuration and bitstream. On the separate Iris
+VME configuration, three direct SerialTL RTL cases (K33, biased edge, batch-3) now pass pinned
+Spike with exact digests and zero output/guard errors; evidence and limits are in Iris commit
+`e13f7cc` on `handwritten-implementation`. The larger 44-case RTL gate is still unverified.
+The current OPU FireSim
 bitstream is usable for the BME flow above. Its archived artifact identity was checked during the
 hardware jobs, while reproducing that archive from a clean source tree remains unverified because
 the live Chipyard/Saturn checkout has pin drift. Physical Kodiak rig access and scheduling are
