@@ -1,0 +1,28 @@
+{
+  "all_int_mm_M64": true,
+  "argmax_equal_per_token": true,
+  "batch_sha256": "3e018ff86a271d93040935e698b7414a447934c566c55878914e63bbd18e10eb",
+  "bitwise_equal": true,
+  "elapsed_s": 60.00714633602183,
+  "input_sha256": "abf67a99246071c1c3a704380d76c12e69bcb021ee64613b3f1b1639e5062739",
+  "int_mm_count": 155,
+  "int_mm_lhs_shapes": {
+    "(64, 2048)": 133,
+    "(64, 5632)": 22
+  },
+  "max_abs": 0.0,
+  "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "relative_l2": 0.0,
+  "scheme": "int8_dyn_act_int8_weight",
+  "seed": 0,
+  "serial_sha256": "3e018ff86a271d93040935e698b7414a447934c566c55878914e63bbd18e10eb",
+  "shape": [
+    8,
+    8,
+    32000
+  ],
+  "torch": "2.16.0.dev20261104+cpu",
+  "torchao": "0.18.0",
+  "transformers": "4.57.6",
+  "unique_input_rows": 8
+}

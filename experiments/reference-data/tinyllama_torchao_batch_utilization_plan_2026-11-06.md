@@ -66,7 +66,30 @@ layers or CPU kernel choices at every size. The installed Llama attention
 keeps a batch dimension in Q/K/V and its causal mask, so its source structure
 does not mix sequences; its implementation file has SHA256
 `31bf660a663259134324bc65da4e155951dc89c5ca46471d2325a9938e859e26`.
-Full-model equality must still be measured.
+The Linear-only checks did not test full-model equality.
+
+The [full-model eager probe](tinyllama_torchao_batch_eager_probe.py) now
+measures that boundary on one deterministic B=8, S=8 input with all 22 decoder
+layers, the cached TinyLlama checkpoint, Torch `2.16.0.dev20261104+cpu`,
+TorchAO `0.18.0`, and Transformers `4.57.6`. Its
+[machine-readable result](tinyllama_torchao_batch_eager_2026-11-06.json)
+records input SHA-256 `abf67a99...e5062739` and eight distinct token rows.
+All **155 eager `_int_mm` calls had M=64**, with 133 K=2048 and 22 K=5632.
+The batched 8×8×32,000 logits were **bitwise equal** to stacking eight B=1
+calls on those exact rows (both SHA-256 `3e018ff8...18e10eb`; maximum
+absolute error zero; every token argmax equal). This proves the source
+batching behavior for that input. It does not prove the exported MLIR retains
+M=64, the compiled OPU/VME routes it, or any hardware rate.
+The probe used Model2MLIR commit `90d767a22a2cce1989e4c1bc60704b32612f61f2`
+and Merlin's `M2M_BATCH` loader at blob `d97399e1bf7c67c036c2dcdb1ce136963db18de6`.
+From a managed Merlin worktree with an editable Model2MLIR sibling, rerun it
+with:
+
+```sh
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  PYTHONPATH=../model2mlir ../model2mlir/.venv/bin/python \
+  experiments/reference-data/tinyllama_torchao_batch_eager_probe.py
+```
 
 The captured quantized weight file is 1,299,134,608 bytes and should be
 shared across requests; re-capture must verify identical weight hashes. The
@@ -81,11 +104,11 @@ so batching does not make it a physical-chip workload.
 1. Set `M2M_BATCH=8 M2M_SEQ=8` on
    `examples/workloads/causal_lm_section/loader.py` to capture a
    deterministic `(8,8)` token-ID input with eight independent sequences.
-   Keep the same checkpoint and TorchAO W8A8 configuration. Before capture,
-   compare the complete eager batched logits with eight separate eager calls;
-   record exact tensor hashes and numerical differences. A batch-size change
-   may select different float kernels, so bitwise full-model equality is not
-   assumed from the Linear probe.
+   Keep the same checkpoint and TorchAO W8A8 configuration. The eager
+   batched-versus-serial check above passed for one seeded input; bind the
+   actual capture's input and checkpoint bytes before treating that result as
+   its framework reference. A batch-size change may select different float
+   kernels on another toolchain, so preserve the exact result hashes.
 2. Verify the new capture receipt and framework golden. Inspect all 155
    integer roots: require signed i8 operands, i32 accumulators, M=64, N/K
    unchanged, and no opaque or second quantization pass. Check that the

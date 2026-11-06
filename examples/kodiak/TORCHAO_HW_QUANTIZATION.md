@@ -48,7 +48,10 @@ need a separately proven source/accuracy and hardware configuration. A
 large speedup from this workload cannot be called high array duty. The
 [eight-request batching experiment](../../experiments/reference-data/tinyllama_torchao_batch_utilization_plan_2026-11-06.md)
 specifies the source shape and complete-model gates needed to test whether
-flattening independent requests fills the existing 64-row tile.
+flattening independent requests fills the existing 64-row tile. Its full-model
+eager TorchAO probe found 155 M=64 integer calls and bitwise equality between
+one B=8 call and eight B=1 calls on one seeded input. The B=8 MLIR capture,
+routed image, and hardware utilization remain unverified.
 
 The captured activation maximum, reciprocal, round/clamp, dequantization, and
 float attention/normalization remain outside the integer matrix unit; their
