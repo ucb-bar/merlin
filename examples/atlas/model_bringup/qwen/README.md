@@ -29,7 +29,7 @@ Each compiled workload retains:
 
 The input values and weights are seeded synthetic tensors. The full Qwen architecture uses hidden width 1536, FFN width 8960, and 128-channel heads. The attention experiment uses all 128 head channels in a 32-token unmasked cache window; the SwiGLU experiment is an interior 32-channel partition. The K=128, 256 and 512 projection experiments are reduction partitions, not complete 1536-wide projections. No token throughput, pretrained accuracy, or full-model execution is claimed.
 
-`kernels.py` also contains full-width RMSNorm/QKV, residual MLP, RoPE and GQA PyTorch definitions for extending the campaign. The selected Atlas numerical policy remains diagnostic; in particular its reciprocal domain is [1,32].
+`kernels.py` also contains full-width RMSNorm/QKV and residual MLP PyTorch definitions for extending the campaign. The selected Atlas numerical policy remains diagnostic; in particular its reciprocal domain is [1,32].
 
 ## Integration provenance
 
