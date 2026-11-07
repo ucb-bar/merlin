@@ -87,7 +87,7 @@ class TestTheRoutingIsInertUnlessAsked:
     def test_the_feature_without_a_routing_target_is_refused(self, tmp_path):
         # Silently not routing would be indistinguishable from a feature that did nothing, and the model
         # would grade correctly while reporting a capability it never used.
-        with pytest.raises(ValueError, match="no `matrix=` routing"):
+        with pytest.raises(KeyError, match="unknown impr feature"):
             prepare_for_lowering(_model(tmp_path), tmp_path, features=frozenset({OPU_MATMUL_NAME}), blocking=False)
 
 
@@ -158,7 +158,7 @@ def test_synthetic_matrix_preparation_uses_explicit_provider(synthetic_matrix, t
     prepared, _ = prepare_for_lowering(
         _model(tmp_path),
         tmp_path,
-        features=frozenset({OPU_MATMUL_NAME}),
+        features=frozenset(),
         blocking=False,
         matrix=matrix,
     )
@@ -202,6 +202,21 @@ def test_vector_matrix_without_feature_marker_still_routes(synthetic_matrix, tmp
         _model(tmp_path), tmp_path, features=frozenset(), backend="rvv", blocking=False, matrix=matrix
     )
     assert "func.call @synthetic_matrix_call_0" in prepared.read_text()
+
+
+def test_scalar_matrix_route_uses_selected_extension_marker(synthetic_matrix, tmp_path, monkeypatch):
+    matrix, _ = synthetic_matrix
+    monkeypatch.setattr(MatrixRouting, "route_feature_name", lambda _self: "synthetic_route")
+    prepared, features = prepare_for_lowering(
+        _model(tmp_path),
+        tmp_path,
+        features=frozenset({"synthetic_route"}),
+        backend="scalar",
+        blocking=False,
+        matrix=matrix,
+    )
+    assert "func.call @synthetic_matrix_call_0" in prepared.read_text()
+    assert "synthetic_route" in features
 
 
 def test_the_historical_policy_is_the_providers_own_selector(synthetic_matrix):
@@ -325,7 +340,7 @@ def test_matrix_handoff_refuses_changed_or_unbound_routing(synthetic_matrix, tmp
     prepare_for_lowering(
         _model(tmp_path),
         tmp_path,
-        features=frozenset({OPU_MATMUL_NAME}),
+        features=frozenset(),
         blocking=False,
         matrix=matrix,
     )

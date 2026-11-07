@@ -794,7 +794,8 @@ def prepare_for_lowering(
         from ...llvmlower import perop_blocks as _pb
         from ...llvmlower import weight_panel as _wpan
         from ...llvmlower.impr_features import normalize as _normalize
-        _closed = _normalize(features)
+        route_feature = matrix.route_feature_name() if matrix is not None else None
+        _closed = _normalize(features - {route_feature} if route_feature else features)
         _lanes, _max_rank = None, None
     else:
         raise ZephyrModelError(f"unknown preparation backend {backend!r}")
@@ -901,14 +902,11 @@ def prepare_for_lowering(
     # MATRIX-UNIT ROUTING, before the register blocking below: a contraction that has become a call is no
     # longer on the vector path, so the block table must be derived from the IR that remains. Doing it the
     # other way round would tag ops that no longer exist and leave the routed ones double-claimed.
-    if backend == "scalar":
-        from ...llvmlower.impr_features import OPU_MATMUL_NAME as matrix_feature
-    else:
-        matrix_feature = matrix.route_feature_name() if matrix is not None else None
-        if matrix_feature is not None and matrix_feature not in vector_backend.feature_names():
-            raise ValueError(f"matrix extension route feature {matrix_feature!r} is not provider-registered")
+    matrix_feature = matrix.route_feature_name() if matrix is not None else None
+    if backend == "rvv" and matrix_feature is not None and matrix_feature not in vector_backend.feature_names():
+        raise ValueError(f"matrix extension route feature {matrix_feature!r} is not provider-registered")
 
-    if matrix_feature in features or (backend == "rvv" and matrix is not None and matrix_feature is None):
+    if matrix_feature in features or (matrix is not None and matrix_feature is None):
         if matrix is None:
             # Silently not routing would be indistinguishable from a feature that did nothing, and the
             # model would grade correctly while reporting a capability it never used.
