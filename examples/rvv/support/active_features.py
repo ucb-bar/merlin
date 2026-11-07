@@ -603,3 +603,157 @@ def _accumulator_resident_v3_bmmpad_pipeline(passes: list[str]) -> list[str]:
     )
     out.insert(parallel, "transform-interpreter{entry-point=__transform_bmm_pad}")
     return out
+
+
+# Dynamic RVV register-block schedule variants.
+def _accumulator_resident_v3_kblocked_pre_schedule(MR: int, NR: int, KC: int) -> str:
+    """v3 pre-schedule with a REAL K-blocking tile (the ``KC`` lever, which the plain v3 recipe
+    silently ignores — it tiles K by 1 and never uses KC, so every KC produced the same schedule).
+
+    Why it matters (measured): the emitted inner loop advances B by the full row stride each K step
+    (``addi a0,a0,512`` for N=128 f32), touching a NEW cache line every iteration and re-walking them
+    for every (M,N) tile. Instruction count matches XNNPACK's kernel almost exactly, yet we run ~5x
+    slower — i.e. we are memory-stalled, not instruction-bound. Blocking K by KC keeps a B panel
+    resident across the M/N tiles so those lines are reused before eviction (classic GEMM cache
+    blocking), which is the standard fix for exactly this access pattern.
+
+    Structure: tile [MR, NR] (registers) -> tile K by KC (CACHE) -> tile K by 1 (register-resident
+    accumulation) -> scoped-vectorize [MR, NR, 1]. Pure code generation; no hand ukernel."""
+    return f"""\
+module attributes {{transform.with_named_sequence}} {{
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t1, %lmn:2 = transform.structured.tile_using_for %mm tile_sizes [{MR}, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %mmk = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %tkc, %lkc = transform.structured.tile_using_for %mmk tile_sizes [0, 0, {KC}] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %t2 vector_sizes [{MR}, {NR}, 1] : !transform.any_op
+    %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+      transform.apply_patterns.vector.fold_arith_extension
+      transform.apply_patterns.vector.reduction_to_contract
+    }} : !transform.any_op
+    transform.yield
+  }}
+}}
+"""
+
+
+def _accumulator_resident_v3_unrolled_pre_schedule(MR: int, NR: int, KC: int) -> str:
+    """v3 pre-schedule with M held as MR INDEPENDENT accumulators (the `unroll_m` axis).
+
+    The plain v3 recipe tiles M by MR and vectorizes to a 2-D ``vector<MRxNR>``, so MR must be
+    vectorization-friendly — measured on K1: MR 3/5/6/7 collapse to 193-279x off XNNPACK while MR=4
+    is 5.0x. An expert micro-kernel instead keeps MR SEPARATE accumulator registers (M fully
+    unrolled), which is shape-agnostic and is why XNNPACK can pick MR=7.
+
+    Recipe: tile M by 1 (each row is its own ``vector<NR>`` accumulator) x N by NR, tile K by 1,
+    scoped-vectorize the [1, NR, 1] body, then UNROLL the M loop by MR -> MR independent accumulators
+    carried as separate iter_args. Pure code generation; no hand ukernel."""
+    return f"""\
+module attributes {{transform.with_named_sequence}} {{
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t1, %lmn:2 = transform.structured.tile_using_for %mm tile_sizes [1, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %t2 vector_sizes [1, {NR}, 1] : !transform.any_op
+    transform.loop.unroll %lmn#0 {{ factor = {MR} }} : !transform.any_op
+    %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+      transform.apply_patterns.vector.fold_arith_extension
+      transform.apply_patterns.vector.reduction_to_contract
+    }} : !transform.any_op
+    transform.yield
+  }}
+}}
+"""
+
+
+_VSCALE_LANES_PER_128B = 2
+
+
+def scalable_lanes(NR: int) -> int:
+    """The scalable multiplier ``k`` of ``vector<[k]xT>`` for a register block ``NR`` lanes wide at
+    the RVV MINIMUM VLEN (128 bits). Dtype-independent — see :data:`_VSCALE_LANES_PER_128B`."""
+    if NR % _VSCALE_LANES_PER_128B:
+        raise ValueError(
+            f"vl_strategy='dynamic' needs an even NR (NR counts lanes at the RVV minimum VLEN of "
+            f"128 bits, and a scalable vector<[k]xT> holds 2k of them); got NR={NR}."
+        )
+    return NR // _VSCALE_LANES_PER_128B
+
+
+def _accumulator_resident_v3_scalable_pre_schedule(MR: int, NR: int, KC: int) -> str:
+    """v3 pre-schedule emitting a VL-AGNOSTIC (scalable) register block — the ``vl_strategy=dynamic``
+    axis. Same recipe as :func:`_accumulator_resident_v3_pre_schedule` with the N tile made SCALABLE.
+
+    Why this is the general fix. Our fixed-width codegen asks for ``vector<NRxf32>``, and the backend
+    must size that register group for the worst VLEN the ``march`` string admits (``rv64gcv`` promises
+    only the 128-bit minimum), so on a VLEN=256 part every value got DOUBLE the LMUL it needed and
+    ``vl`` sat at half ``VLMAX``. Pinning ``_zvl256b`` fixes it for ONE board and miscompiles on a
+    narrower one. A scalable ``vector<[k]xf32>`` has no such worst case: its LMUL is fixed by the type
+    and its lane count is whatever the hardware reports, which is what the expert kernels do by
+    calling ``__riscv_vsetvl_e32m4`` at run time. ``NR`` is reinterpreted as lanes at the MINIMUM
+    VLEN (see :func:`scalable_lanes`), so ``NR`` still names the register-block width — it just names
+    the LMUL rather than a lane count that only one board would honour.
+
+    Two things the naive scalable schedule gets wrong, plus one PRECONDITION it inherits (all
+    reproduced against LLVM/MLIR 23, see docs/design/vl_agnostic_codegen.md):
+
+      * The N loop trip count is no longer a compile-time multiple of the tile, so ``vectorize``
+        MASKS every transfer. Masked scalable transfers (a) block
+        ``loop-invariant-subset-hoisting``, which is what makes the accumulator a register-resident
+        ``scf.for`` iter_arg — without it the K loop round-trips C through memory, the exact defect
+        v3 exists to remove — and (b) lower through a ``vector.transpose`` on
+        ``vector<MRx1x[k]xf32>`` that has NO scalable lowering and survives to the LLVM edge
+        (``error: Dialect 'vector' not found for custom op 'vector.transpose'``). THIS transpose,
+        not the ``ub.poison`` the old note named, is the real residue of the "incomplete lowering".
+        FIX: PEEL the N loop (``transform.loop.peel``) so the main loop's tile is exactly
+        ``[k] * vscale`` wide, then vectorize it with ``assume_dynamic_dims_match_vec_sizes`` — the
+        peel is what MAKES that assumption true. No masks, no transpose; the subset hoist fires
+        exactly as in the fixed-width recipe.
+      * The peeled N remainder keeps its ``linalg.matmul`` and falls through
+        ``convert-linalg-to-loops`` to a scalar tail — correct for any N, zero-trip whenever the
+        hardware VL divides N.
+      * PRECONDITION ``MR | M`` (inherited, not introduced). ``assume_dynamic_dims_match_vec_sizes``
+        asserts EVERY dynamic tile dim equals its vector size, INCLUDING M. The static ``MR`` M-tile
+        has a partial last iteration when ``MR`` does not divide M, and the flag then makes the body
+        write ``MR`` rows into a shorter tile (measured on the K1 at 130^3: ``malloc(): corrupted
+        top size``; 128^3 and 100^3, where MR|M, are bit-exact). This is the SAME "MR must divide M"
+        constraint the fixed 2-D ``vector<MRxNR>`` v3 recipe already carries (see
+        expert_gap_attribution.md — small-M falls off a cliff). It is NOT fixed here by peeling M:
+        ``transform.loop.peel`` FAILS on a statically-divisible loop, so an M peel would break the
+        common MR|M case (M=128) to protect the MR∤M one. The M-tail is an orthogonal axis
+        (pad/peel, shared with the fixed recipe); until it lands, MR∤M is fail-closed (the harness
+        records not_run on the crash, never a false timing), not silently wrong.
+
+    ``KC`` is carried for naming parity with the other v3 points; like the plain v3 recipe it does
+    not tile the reduction (``k_block`` is the lever that does)."""
+    k = scalable_lanes(NR)
+    return f"""\
+module attributes {{transform.with_named_sequence}} {{
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t1, %lm, %ln = transform.structured.tile_using_for %mm tile_sizes [{MR}, [{k}], 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %lnf = transform.cast %ln : !transform.any_op to !transform.op<"scf.for">
+    %main, %tail = transform.loop.peel %lnf : (!transform.op<"scf.for">) -> (!transform.any_op, !transform.any_op)
+    %mms = transform.structured.match ops{{["linalg.matmul"]}} in %main : (!transform.any_op) -> !transform.any_op
+    %t2, %lk = transform.structured.tile_using_for %mms tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %t2 vector_sizes [{MR}, [{k}], 1] {{assume_dynamic_dims_match_vec_sizes}} : !transform.any_op
+    %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+      transform.apply_patterns.vector.fold_arith_extension
+      transform.apply_patterns.vector.reduction_to_contract
+    }} : !transform.any_op
+    transform.yield
+  }}
+}}
+"""

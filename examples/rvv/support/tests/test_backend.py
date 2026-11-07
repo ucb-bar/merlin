@@ -254,3 +254,57 @@ def test_other_vector_schedule_variants_keep_frozen_outputs():
             BACKEND.baseline_schedule_text(), BACKEND.normalize_features({name})
         )
         assert hashlib.sha256(schedule.encode()).hexdigest() == expected
+    assert BACKEND.apply_cflags(
+        ["-march=rv64gcv", "-fno-vectorize", "-fno-slp-vectorize", "-O2"],
+        BACKEND.normalize_features({"vectorize_scalar_residue"}),
+    ) == ["-march=rv64gcv", "-O2"]
+
+
+def test_perop_request_and_concrete_schedule_are_provider_owned():
+    assert BACKEND.vec_noncontraction_shape(
+        BACKEND.normalize_features({"vectorize_non_contraction_generics_l16_r5"})
+    ) == (16, 5)
+    assert BACKEND.perop_mr_sentinel(8) == "perop_register_block_mr8"
+    assert BACKEND.perop_nr_sentinel(32) == "perop_register_block_nr32"
+    assert BACKEND.parse_perop_mr_sentinel("perop_register_block_mr8") == 8
+    assert BACKEND.parse_perop_nr_sentinel("perop_register_block_nr32") == 32
+    table = {
+        "linalg.matmul:4x16x16": (4, 16),
+        "linalg.batch_matmul:1x4x8x16": (4, 8),
+    }
+    name = BACKEND.ensure_perop_block(table, 16)
+    assert name == "perop_register_block_2b_16_71170452a5cb"
+    features = BACKEND.normalize_features({name})
+    assert "erase_self_copy" in features
+    schedule = BACKEND.apply_schedule(BACKEND.baseline_schedule_text(), features)
+    assert hashlib.sha256(schedule.encode()).hexdigest() == (
+        "dc83ea37069613f14560900c9225d7b1708f3e091631a6143ed4a1a0b3228353"
+    )
+    assert BACKEND.normalize_features({"conv_register_block"}) == frozenset(
+        {"conv_register_block"}
+    )
+    from rvv_provider.requant_fuse import fused_arms
+
+    assert hashlib.sha256(fused_arms([[0, 4, 8, 2, 0, 8]]).encode()).hexdigest() == (
+        "bea207e9cd39acf29a8da02f0e5006024d9b0cbc4db028cc7f74afd697320ab4"
+    )
+    assert BACKEND.normalize_features(
+        {"fuse_requant_into_contraction_vec"}
+    ) == frozenset({"fuse_requant_into_contraction_vec"})
+
+
+def test_dynamic_v3_register_blocks_resolve_from_names_and_keep_frozen_schedules():
+    cases = {
+        "accum_resident_v3_3_16_16": "f60ff4b7c4600c39955b95926eaee3f93eaf24530addeaab79405e43f16352bb",
+        "accum_resident_v3kb_4_16_32": "ec25e2616a9b4fd2eff05a464e8674f28c2f68a0f4641847d70d19180419734e",
+        "accum_resident_v3u_7_16_16": "21bc0b6d7ebb215dbd70f4281f81cd001d5f244e3ede5d76bd0b44f0caacc08d",
+        "accum_resident_v3vl_4_16_16": "a8e75ae043c8d47f873bbd477c2a58601770335e889cccfc788fd773ee131251",
+        "accum_resident_v3p_x_x_4_8_16": "d85a384b432fc14544172d83c2eb6a476abac94c64ff39b41ae59732d4b14af6",
+    }
+    for name, expected in cases.items():
+        features = BACKEND.normalize_features({name})
+        schedule = BACKEND.apply_schedule(BACKEND.baseline_schedule_text(), features)
+        assert hashlib.sha256(schedule.encode()).hexdigest() == expected
+    assert BACKEND.unclaimed_op_classes("accum_resident_v3p_x_x_4_8_16") == [
+        "linalg.matmul"
+    ]

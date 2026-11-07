@@ -180,6 +180,18 @@ def register_other_vector_features(registry: FeatureRegistry) -> None:
             ),
         )
     )
+    registry.register(
+        ImprFeature(
+            name="vectorize_scalar_residue",
+            action_class="HEURISTIC",
+            description="Allow clang to vectorize scalar residue around explicit RVV contractions.",
+            edit_cflags=lambda flags: [
+                flag
+                for flag in flags
+                if flag not in frozenset(("-fno-vectorize", "-fno-slp-vectorize"))
+            ],
+        )
+    )
 
 
 ATTR_PREFIX = "merlin.vec_red"
