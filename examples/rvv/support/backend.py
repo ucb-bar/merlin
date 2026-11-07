@@ -196,7 +196,7 @@ _FEATURES.register(
     ImprFeature(
         name="intrinsic_microkernel",
         action_class="CODEGEN",
-        description="RVV hand-written intrinsic microkernel ceiling reference; no codegen edit.",
+        description="CEILING REFERENCE (hand-written RVV intrinsic microkernel, not compiler-emitted); no codegen edit.",
     )
 )
 
@@ -918,6 +918,52 @@ def blocking_cost_api():
     from . import blocking_cost
 
     return blocking_cost
+
+
+def weight_prepack_api():
+    """Return the RVV weight-layout prepack implementation."""
+    from . import prepack
+
+    return prepack
+
+
+def requant_fuse_api():
+    """Return the RVV contraction-requantization fusion implementation."""
+    from . import requant_fuse
+
+    return requant_fuse
+
+
+def reduce_vec_api():
+    """Return the RVV reduction vectorizer implementation."""
+    from . import reduce_vec
+
+    return reduce_vec
+
+
+def default_perop_caps(vlen: int | None) -> tuple[int, int, int]:
+    from .perop_caps import default_perop_caps as caps
+
+    return caps(vlen)
+
+
+def frozen_blocks_api():
+    """Return frozen RVV register-block descriptions."""
+    from . import frozen_blocks
+
+    return frozen_blocks
+
+
+def shape_adapted_features(pkg, model_dir: Path | str, *, harts: int = 1) -> list[str]:
+    from .shape_adapt import shape_adapted_features as adapt
+
+    return adapt(pkg, model_dir, harts=harts)
+
+
+def blocking_risks(pkg, model_dir: Path | str) -> list[str]:
+    from .shape_adapt import blocking_risks as risks
+
+    return risks(pkg, model_dir)
 
 
 def lmul_group_api():

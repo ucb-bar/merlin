@@ -18,6 +18,14 @@ PEROP_NR_SENTINEL_PREFIX = f"{PEROP_BLOCK_NAME}_nr"
 
 def _unresolved(name: str):
     def fail(_passes):
+        if name == PEROP_BLOCK_NAME:
+            raise RuntimeError(
+                f"{name!r} reached the lowering pipeline unresolved. It must be consumed by "
+                "runtime.backends.zephyr_model.prepare_for_lowering, which derives the per-op block table "
+                "from the prepared IR, tags the contractions, and replaces this sentinel with the concrete "
+                "ensure_perop_block(...) feature. Lowering with it still set would leave every contraction "
+                "untagged and silently scalar."
+            )
         raise RuntimeError(
             f"{name!r} reached the lowering pipeline unresolved. It must be consumed by "
             "runtime.backends.zephyr_model.prepare_for_lowering before lowering."
@@ -35,17 +43,39 @@ def register_perop_features(registry: FeatureRegistry) -> None:
         ImprFeature(
             name=PEROP_BLOCK_NAME,
             action_class="PASS",
-            description="Request per-contraction RVV register blocking from prepared IR.",
+            description="request PER-CONTRACTION register blocking: derive the widest block legal for each "
+            "contraction's OWN extents (and its own narrowest element width) from the prepared "
+            "IR, tag each contraction, and emit one tile+vectorize arm per distinct block. "
+            "Resolved by prepare_for_lowering into a concrete, table-specific feature; a "
+            "sentinel, so it must never reach lowering itself. Replaces the class-wide clamps "
+            "(one degenerate extent in a class otherwise forces the whole class off the vector "
+            "path). Default-off; baseline byte-identical.",
             edit_pipeline=_unresolved(PEROP_BLOCK_NAME),
             schedule_replace=True,
         )
     )
+    descriptions = {
+        PEROP_NR_FILL_NAME: "widen each contraction's per-op N cap until its NARROWEST element fills a whole "
+        "vector register at the board's VLEN, instead of every op sharing one element count. "
+        "MEASURED model-dependent on the K1: 1.160x faster on spectformer int8, 1.196x slower "
+        "on small_llama int8 -- because the i32 accumulator is what sets LMUL, so a wider N "
+        "tile can push it from m4 to m8 and spill (decoded: 0 -> 6 accumulator spill ops). A "
+        "search knob, not a default. Default-off; baseline byte-identical.",
+        PEROP_MR_FILL_NAME: "derive each contraction's per-op M cap from how many accumulator rows of ITS OWN "
+        "block fit the board's vector register file, instead of every op in the model "
+        "sharing one hand-set number. The N axis of this question has been derived per-op "
+        "for a while (VLEN- and element-width-scaled); M was a single scalar, so two ops "
+        "could differ only by gcd(M) clipping a shared cap. Derived from target facts only "
+        "-- the VLEN built for, the op's own element triple, and the RVV register count. A "
+        "bound on the architecture, not a promise about the allocator, so it is searched "
+        "rather than defaulted. Default-off; baseline byte-identical.",
+    }
     for name in (PEROP_NR_FILL_NAME, PEROP_MR_FILL_NAME):
         registry.register(
             ImprFeature(
                 name=name,
                 action_class="KNOB",
-                description=f"Derive per-contraction RVV register cap: {name}.",
+                description=descriptions[name],
                 edit_pipeline=_unresolved(name),
                 implies=frozenset({PEROP_BLOCK_NAME}),
             )

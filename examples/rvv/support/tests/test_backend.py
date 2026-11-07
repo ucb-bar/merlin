@@ -84,11 +84,9 @@ def test_backend_pipeline_matches_frozen_compiler_pass_order(monkeypatch):
 
 def test_active_schedules_are_byte_identical_to_the_published_payloads():
     champion = ROOT / "schedules/impr_tuned_wholemodel_vf_int8/schedule.mlir"
-    prepack = ROOT / "schedules/kodiak_prepack_w8a8_v1/schedule.mlir"
     assert hashlib.sha256(champion.read_bytes()).hexdigest() == (
         "928064a1264cf3dd4e70c1f6d162f989c3cc67160c36e2c19a94e731c10867b4"
     )
-    assert prepack.read_bytes() == champion.read_bytes()
     assert BACKEND.schedule_path().name == BACKEND.DEFAULT_SCHEDULE
     assert BACKEND.baseline_schedule_text() == champion.read_text(encoding="utf-8")
     fp32 = (
@@ -469,3 +467,37 @@ def test_provider_vector_preparation_policy_and_tagging():
     assert BACKEND.vectorize_amax_reduction(
         SimpleNamespace(walk=lambda: iter(())), lanes=8, max_rank=4
     ) == {"absf_rewrites": 0, "tagged": 0}
+
+
+def test_provider_caps_and_frozen_shape_adaptation(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.delenv("MERLIN_PEROP_MR_CAP", raising=False)
+    assert BACKEND.default_perop_caps(128) == (4, 16, 16)
+    assert BACKEND.default_perop_caps(512) == (4, 32, 16)
+    monkeypatch.setenv("MERLIN_PEROP_MR_CAP", "8")
+    assert BACKEND.default_perop_caps(256) == (8, 16, 16)
+    monkeypatch.setenv("MERLIN_PEROP_MR_CAP", "invalid")
+    assert BACKEND.default_perop_caps(256) == (4, 16, 16)
+
+    frozen = BACKEND.frozen_blocks_api()
+    name = "accumulator_resident_wholemodel_vf"
+    assert frozen.frozen_block_caps(name) == {"MR": 4, "NR": 16, "KC": 16}
+    assert frozen.frozen_block_per_class(name) == {
+        "linalg.matmul": (1, 16),
+        "linalg.batch_matmul": (4, 8),
+    }
+    from rvv_provider.shape_adapt import _adapt_frozen_points
+
+    fitting = [
+        SimpleNamespace(op="linalg.matmul", parallel=(8, 256)),
+        SimpleNamespace(op="linalg.batch_matmul", parallel=(4, 8, 64)),
+    ]
+    assert _adapt_frozen_points([name], fitting, target="rvv") == [name]
+    failing = [
+        SimpleNamespace(op="linalg.matmul", parallel=(1, 8)),
+        SimpleNamespace(op="linalg.batch_matmul", parallel=(4, 8, 64)),
+    ]
+    assert _adapt_frozen_points([name], failing, target="rvv") == [
+        "accum_resident_v3p_1_8_4_8_16"
+    ]

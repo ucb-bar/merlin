@@ -20,14 +20,12 @@ lowering_patterns:
   - lower_transpose
   - lower_shape_cast
 
-# Informational: Saturn-OPU vLen=128 is tuned for LMUL=1 (e32m1); the schedule emits fixed-width
-# vectors, not scalable. The SpacemiT K1 is vLen=256 — a separate measurement axis (do not assume
-# a schedule transfers between VLENs; certify_rvv records the VLEN per target).
+# Informational: this schedule emits fixed-width vectors with LMUL=1 (e32m1). A schedule
+# certified at one VLEN needs a separate measurement on a different vector length.
 lmul_policy: m1
 
 # The RVV-specific cflags. The applier appends zephyr_model._CFLAGS_COMMON. -fno-vectorize /
-# -fno-slp-vectorize disable clang autovec so ONLY the schedule's fixed-width vectors reach the
-# Saturn lanes (autovec emits fractional-LMUL the Saturn-OPU wedges on — the RVV-on-FASED hang).
+# -fno-slp-vectorize disable clang autovectorization so the schedule controls vector widths.
 cflags: ["-march=rv64gcv", "-fno-vectorize", "-fno-slp-vectorize"]
 
 # Selects an existing lowering path; no new lowering logic. fp32 | int8_w8a8 | bf16_f32acc.
