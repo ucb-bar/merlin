@@ -47,6 +47,25 @@ def _rows():
     return np.stack((positive, signed, cancel))
 
 
+def test_host_dispatch_preserves_mean_source_contract(monkeypatch):
+    from merlin.llvmlower.kernel_backend import extract_kernel
+    from merlin.runtime.dispatch_runtime import _normalize_model_module
+    from merlin.xdsl_dialects.lowering.outline import outline_dispatches
+
+    monkeypatch.setenv("MERLIN_TORCHAO_CPU_AVX2_MEAN", "1")
+    monkeypatch.setenv("MERLIN_TORCHAO_CPU_SOURCE_COMMIT", TORCH_SOURCE_COMMIT)
+    source = _source_mean_sum()
+    _normalize_model_module(source, int8_compute=False, quant_passes=None, prequant_gather=False)
+    assert "merlin.torchao_cpu_mean" in text(source)
+    outlined = outline_dispatches(source)
+    assert outlined.module.attributes["prov.quantization"] == source.attributes["prov.quantization"]
+    for dispatch in outlined.dispatches:
+        kernel = extract_kernel(outlined.module, dispatch.symbol)
+        assert kernel.attributes["prov.quantization"] == source.attributes["prov.quantization"]
+        _, stats = preprocess_text(text(kernel))
+        assert stats["torchao_cpu_avx2_means"] == 0
+
+
 @pytest.mark.parametrize("optimization", ["-O0", "-O2"])
 def test_emitted_avx2_source_order_matches_independent_torch_words(tmp_path, monkeypatch, optimization):
     monkeypatch.setenv("MERLIN_TORCHAO_CPU_AVX2_MEAN", "1")

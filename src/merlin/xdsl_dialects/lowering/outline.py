@@ -453,6 +453,12 @@ def outline_dispatches(
             "at capture time (or defined here) before this model can execute."
         )
 
-    out = ModuleOp([new_fn, *kernels, *(declaration.clone() for declaration in declarations.values())])
+    # The outlined module remains the same captured program. Preserve its
+    # quantization and source-CPU provenance so standalone kernels can enforce
+    # the selected numerical policy instead of losing the module contract.
+    out = ModuleOp(
+        [new_fn, *kernels, *(declaration.clone() for declaration in declarations.values())],
+        attributes=dict(module.attributes),
+    )
     out.verify()
     return OutlineResult(module=out, dispatches=dispatches, external_symbols=tuple(declarations))

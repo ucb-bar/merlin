@@ -99,6 +99,7 @@ def host_cache_identity(
     pass_switches = {entry.switch for entry in optional_passes.REGISTRY if entry.switch}
     switches.update({key: env.get(key, "") for key in sorted(pass_switches)})
     switches["MERLIN_TORCHAO_CPU_SOURCE_COMMIT"] = env.get("MERLIN_TORCHAO_CPU_SOURCE_COMMIT", "")
+    switches["MERLIN_TORCHAO_CPU_CAPABILITY"] = env.get("MERLIN_TORCHAO_CPU_CAPABILITY", "")
     inputs: dict[str, Any] = {
         "schema": "merlin.host_cache_identity.v1",
         "merlin_source": _tree(source),

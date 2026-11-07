@@ -915,8 +915,7 @@ def execute(
         import concurrent.futures
         import os as _os
 
-        from xdsl.dialects.builtin import ModuleOp, StringAttr
-
+        from ..llvmlower.kernel_backend import standalone_kernel
         from .host_cache_manifest import manifest_path, verify_manifest, write_manifest
 
         # Pre-index kernel funcs by symbol in ONE walk -- extract_kernel walks the whole
@@ -927,10 +926,7 @@ def execute(
         }
 
         def _ktext(sym: str) -> str:
-            clone = kfuncs[sym].clone()
-            clone.properties["sym_name"] = StringAttr(entry)
-            clone.properties.pop("sym_visibility", None)
-            return to_text(ModuleOp([clone]))
+            return to_text(standalone_kernel(module, kfuncs[sym], entry))
 
         todo: dict[str, tuple] = {}  # digest -> (kernel_text, symbol); deduped by body
         seen: set[str] = set()
@@ -1413,9 +1409,15 @@ def _normalize_model_module(
     quant_passes: list[str] | None,
     prequant_gather: bool,
     quant_select=None,
+    torchao_cpu_avx2_mean: bool | None = None,
+    torchao_cpu_avx2_layer_norm: bool | None = None,
+    torch_source_commit: str | None = None,
+    torch_cpu_capability: str | None = None,
 ) -> None:
     """The one normalization sequence used by execution and exact audit replay."""
     from ..llvmlower.passes_xdsl import (
+        _torchao_cpu_avx2_layer_norm_selected,
+        _torchao_cpu_avx2_mean_selected,
         collapse_overrank_matmul,
         fix_bool_fptosi,
         fix_bool_sitofp,
@@ -1425,6 +1427,34 @@ def _normalize_model_module(
     from ..llvmlower.torchao_affine import lower_torchao_affine_quant
 
     lower_torchao_affine_quant(module)
+    # Source CPU fidelity rewrites need the complete captured region. Outlining
+    # splits native LayerNorm's two reductions and affine into separate kernels,
+    # where a per-kernel lowering pass cannot reconstruct the source operation.
+    if torchao_cpu_avx2_mean is None:
+        torchao_cpu_avx2_mean = _torchao_cpu_avx2_mean_selected()
+    if torchao_cpu_avx2_layer_norm is None:
+        torchao_cpu_avx2_layer_norm = _torchao_cpu_avx2_layer_norm_selected()
+    if torchao_cpu_avx2_mean or torchao_cpu_avx2_layer_norm:
+        import os
+
+        source_commit = (
+            torch_source_commit
+            if torch_source_commit is not None
+            else os.environ.get("MERLIN_TORCHAO_CPU_SOURCE_COMMIT", "")
+        )
+        cpu_capability = (
+            torch_cpu_capability
+            if torch_cpu_capability is not None
+            else os.environ.get("MERLIN_TORCHAO_CPU_CAPABILITY", "")
+        )
+        if torchao_cpu_avx2_mean:
+            from ..llvmlower.torchao_cpu_mean import rewrite_torchao_cpu_avx2_means
+
+            rewrite_torchao_cpu_avx2_means(module, source_commit=source_commit)
+        if torchao_cpu_avx2_layer_norm:
+            from ..llvmlower.torchao_cpu_layer_norm import rewrite_torch216_avx2_layer_norms
+
+            rewrite_torch216_avx2_layer_norms(module, source_commit=source_commit, cpu_capability=cpu_capability)
     collapse_overrank_matmul(module)
     _propagate_quant_inner(module)
     if int8_compute:
@@ -1499,12 +1529,22 @@ def run_model(
     #    (fixes the eager-attention causal-mask sign flip; molmoact decoder).
     # An activation-quant capture leaves torchao's choose_qparams/quantize as opaque calls to
     # externs nothing defines; without this the module cannot even be outlined.
+    from ..llvmlower.passes_xdsl import _torchao_cpu_avx2_layer_norm_selected, _torchao_cpu_avx2_mean_selected
+
+    source_cpu_mean = _torchao_cpu_avx2_mean_selected()
+    source_cpu_layer_norm = _torchao_cpu_avx2_layer_norm_selected()
+    source_commit = _os.environ.get("MERLIN_TORCHAO_CPU_SOURCE_COMMIT", "")
+    cpu_capability = _os.environ.get("MERLIN_TORCHAO_CPU_CAPABILITY", "")
     _normalize_model_module(
         module,
         int8_compute=int8_compute,
         quant_passes=effective_quant_passes,
         prequant_gather=prequant_gather,
         quant_select=quant_select,
+        torchao_cpu_avx2_mean=source_cpu_mean,
+        torchao_cpu_avx2_layer_norm=source_cpu_layer_norm,
+        torch_source_commit=source_commit,
+        torch_cpu_capability=cpu_capability,
     )
     outlined = outline_dispatches(module)
     requested_audit = (
@@ -1524,6 +1564,10 @@ def run_model(
             "quant_passes": effective_quant_passes,
             "prequant_gather": prequant_gather,
             "selection_policy": "all" if quant_select is None else "custom_unreplayable",
+            "torchao_cpu_avx2_mean": source_cpu_mean,
+            "torchao_cpu_avx2_layer_norm": source_cpu_layer_norm,
+            "torch_source_commit": source_commit if source_cpu_mean or source_cpu_layer_norm else "",
+            "torch_cpu_capability": cpu_capability if source_cpu_layer_norm else "",
         },
     )
     transform_audit_qualification = (

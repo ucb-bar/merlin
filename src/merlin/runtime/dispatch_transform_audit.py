@@ -14,13 +14,29 @@ from typing import Any
 
 
 def _validate_normalization_recipe(recipe: dict) -> dict:
-    if not isinstance(recipe, dict) or set(recipe) != {
+    required = {
         "int8_compute",
         "quant_passes",
         "prequant_gather",
         "selection_policy",
-    }:
+    }
+    cpu_fields = {
+        "torchao_cpu_avx2_mean",
+        "torchao_cpu_avx2_layer_norm",
+        "torch_source_commit",
+        "torch_cpu_capability",
+    }
+    if not isinstance(recipe, dict) or not required <= set(recipe) or not set(recipe) <= required | cpu_fields:
         raise ValueError("model normalization recipe is malformed")
+    recipe = {
+        **{
+            "torchao_cpu_avx2_mean": False,
+            "torchao_cpu_avx2_layer_norm": False,
+            "torch_source_commit": "",
+            "torch_cpu_capability": "",
+        },
+        **recipe,
+    }
     if (
         type(recipe["int8_compute"]) is not bool
         or type(recipe["prequant_gather"]) is not bool
@@ -33,6 +49,15 @@ def _validate_normalization_recipe(recipe: dict) -> dict:
             )
         )
         or (recipe["prequant_gather"] and not recipe["int8_compute"])
+        or type(recipe["torchao_cpu_avx2_mean"]) is not bool
+        or type(recipe["torchao_cpu_avx2_layer_norm"]) is not bool
+        or not isinstance(recipe["torch_source_commit"], str)
+        or not isinstance(recipe["torch_cpu_capability"], str)
+        or (
+            (recipe["torchao_cpu_avx2_mean"] or recipe["torchao_cpu_avx2_layer_norm"])
+            and not recipe["torch_source_commit"]
+        )
+        or (recipe["torchao_cpu_avx2_layer_norm"] and not recipe["torch_cpu_capability"])
     ):
         raise ValueError("model normalization recipe has invalid options")
     return dict(recipe)
@@ -201,6 +226,10 @@ def qualify_model_transform_audit(index_path: Path) -> dict[str, Any]:
                 int8_compute=recipe["int8_compute"],
                 quant_passes=replay_passes,
                 prequant_gather=recipe["prequant_gather"],
+                torchao_cpu_avx2_mean=recipe["torchao_cpu_avx2_mean"],
+                torchao_cpu_avx2_layer_norm=recipe["torchao_cpu_avx2_layer_norm"],
+                torch_source_commit=recipe["torch_source_commit"],
+                torch_cpu_capability=recipe["torch_cpu_capability"],
             )
             if to_text(replay_normalized, generic=True) != contents[1]:
                 raise ValueError("archived normalization differs from replay on the exact captured MLIR")

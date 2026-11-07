@@ -23,12 +23,12 @@ def _synthetic_identity(tmp_path: Path, monkeypatch):
     compiler.write_bytes(b"clang old")
     monkeypatch.setattr("merlin.runtime.host_cache_identity.platform.machine", lambda: "test-machine")
 
-    def identity(passes: str = ""):
+    def identity(passes: str = "", capability: str = ""):
         return host_cache_identity(
             source_root=source,
             tool_paths={"clang": compiler},
             package_paths={"xdsl": package},
-            environ={"MERLIN_PASSES": passes},
+            environ={"MERLIN_PASSES": passes, "MERLIN_TORCHAO_CPU_CAPABILITY": capability},
         )
 
     return identity, source, package, compiler
@@ -39,6 +39,9 @@ def test_host_cache_identity_tracks_mean_pass_dirty_source_and_compiler(tmp_path
     original = identity()
     assert identity()["sha256"] == original["sha256"]
     assert identity("torchao-cpu-avx2-mean")["sha256"] != original["sha256"]
+    selected_ln = identity("torchao-cpu-avx2-layer-norm", "AVX2")
+    assert selected_ln["sha256"] != original["sha256"]
+    assert identity("torchao-cpu-avx2-layer-norm", "AVX512")["sha256"] != selected_ln["sha256"]
     (source / "lower.py").write_text("mean = fixed\n")
     changed_source = identity()
     assert changed_source["sha256"] != original["sha256"]

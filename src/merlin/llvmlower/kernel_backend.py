@@ -63,17 +63,22 @@ def signature_of(func) -> KernelSignature:
     )
 
 
-def extract_kernel(module, symbol: str, entry: str = "forward"):
-    """A standalone ``builtin.module`` holding just ``symbol``, renamed to ``entry``."""
+def standalone_kernel(module, func, entry: str = "forward"):
+    """Clone a kernel with the source module's numerical-policy attributes."""
     from xdsl.dialects.builtin import ModuleOp, StringAttr
 
-    func = next((op for op in module.walk() if op.name == "func.func" and op.sym_name.data == symbol), None)
-    if func is None:
-        raise KernelBackendError(f"kernel @{symbol} not found")
     clone = func.clone()
     clone.properties["sym_name"] = StringAttr(entry)
     clone.properties.pop("sym_visibility", None)
-    return ModuleOp([clone])
+    return ModuleOp([clone], attributes=dict(module.attributes))
+
+
+def extract_kernel(module, symbol: str, entry: str = "forward"):
+    """A standalone ``builtin.module`` holding just ``symbol``, renamed to ``entry``."""
+    func = next((op for op in module.walk() if op.name == "func.func" and op.sym_name.data == symbol), None)
+    if func is None:
+        raise KernelBackendError(f"kernel @{symbol} not found")
+    return standalone_kernel(module, func, entry)
 
 
 def host_scalar_result_dtype(kernel_module, entry: str = "forward") -> str | None:

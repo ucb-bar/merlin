@@ -51,6 +51,70 @@ def test_rewrites_complete_region_and_ignores_region_name(monkeypatch):
     assert again == output
 
 
+def test_host_dispatch_rewrites_complete_source_before_outlining(monkeypatch, tmp_path):
+    """The runtime must not hand a split LayerNorm region to the per-kernel pass."""
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.llvmlower.kernel_backend import extract_kernel
+    from merlin.runtime.dispatch_runtime import (
+        _normalize_model_module,
+        qualify_model_transform_audit,
+        record_model_transform_audit,
+    )
+    from merlin.xdsl_dialects._common import text
+    from merlin.xdsl_dialects.lowering.outline import outline_dispatches
+
+    _select(monkeypatch)
+    source = parse_mlir_text(_source())
+    _normalize_model_module(source, int8_compute=False, quant_passes=None, prequant_gather=False)
+    normalized = text(source)
+    assert "merlin.torchao_cpu_layer_norm" in normalized
+    assert "linalg.reduce" not in normalized
+
+    outlined = outline_dispatches(source)
+    assert outlined.module.attributes["prov.quantization"] == source.attributes["prov.quantization"]
+    for dispatch in outlined.dispatches:
+        kernel = extract_kernel(outlined.module, dispatch.symbol)
+        assert kernel.attributes["prov.quantization"] == source.attributes["prov.quantization"]
+        _, stats = preprocess_text(text(kernel))
+        assert stats["torchao_cpu_avx2_layer_norms"] == 0
+
+    source_path = tmp_path / "model.mlir"
+    source_path.write_text(_source())
+    receipt = record_model_transform_audit(
+        source_path,
+        tmp_path,
+        source,
+        outlined,
+        enabled=True,
+        normalization_recipe={
+            "int8_compute": False,
+            "quant_passes": None,
+            "prequant_gather": False,
+            "selection_policy": "all",
+            "torchao_cpu_avx2_mean": False,
+            "torchao_cpu_avx2_layer_norm": True,
+            "torch_source_commit": TORCH_SOURCE_COMMIT,
+            "torch_cpu_capability": "AVX2",
+        },
+    )
+    monkeypatch.delenv("MERLIN_TORCHAO_CPU_AVX2_LAYER_NORM")
+    monkeypatch.delenv("MERLIN_TORCHAO_CPU_SOURCE_COMMIT")
+    monkeypatch.delenv("MERLIN_TORCHAO_CPU_CAPABILITY")
+    assert qualify_model_transform_audit(receipt)["normalization_replay"] == "matched"
+
+
+def test_host_dispatch_refuses_non_w8a8_source(monkeypatch):
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.runtime.dispatch_runtime import _normalize_model_module
+
+    _select(monkeypatch)
+    source = parse_mlir_text(
+        _source().replace('prov.quantization = "int8_dyn_act_int8_weight"', 'prov.quantization = "fp32"')
+    )
+    with pytest.raises(ValueError, match="W8A8 capture"):
+        _normalize_model_module(source, int8_compute=False, quant_passes=None, prequant_gather=False)
+
+
 @pytest.mark.parametrize(
     ("variable", "value", "message"),
     [
