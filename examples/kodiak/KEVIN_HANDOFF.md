@@ -179,7 +179,14 @@ matmul on its own bytes; the accumulator difference equals that one weight
 column, and both dequantized outputs reconstruct bitwise. Small float drift
 is already present in the attention context and later gate/up projections.
 The quantizer and integer matrix root are behaving as specified; the earliest
-float cause is still under investigation.
+float cause is still under investigation. A separate
+[attention-stage receipt](evidence/tinyllama_full22_layer0_attention_f32.json)
+shows the first checked mismatch after bitwise-exact q/k/v projections in
+Torch CPU rotary `cos` and `sin` values (36 and 6 one-ULP elements). With
+identical inputs, the host score matmul, softmax, and context matmul each have
+additional small float differences; a PyTorch 2.16 AVX2 reconstruction from
+the captured q/k/v reproduces the source context bitwise. These measurements
+cover one B1 × S8 capture, with no independent holdout for a compiler change.
 The [trained and holdout activation-code probe](../../experiments/reference-data/spectformer_torchao_activation_code_probe_2026-11-06.md)
 checks Spectformer block-0 fc1 at the exact boundary: with identical norm2
 input, Merlin and TorchAO have bitwise-equal reciprocal scales, signed i8
@@ -205,6 +212,13 @@ prove full source closure. The new SpectFormer full-model gate with both opt-in
 rewrites fails as reported above. Select them together with
 `MERLIN_PASSES=torchao-cpu-avx2-layer-norm,torchao-cpu-avx2-patch-conv` and the pinned
 source commit and AVX2 environment above.
+For future TinyLlama recaptures, the
+[source loader](../workloads/causal_lm_section/README.md) now accepts
+`CAUSAL_LM_REVISION=fe8a4ea1ffedaf415f4da2f062534de366a451e6` with
+offline fail-closed resolution and pinned config/model file SHA checks. The
+historical captures remain byte-valid but lack recorded Torch commit/AVX2
+facts; changing their MLIR or receipts to add those facts would break their
+identities. New receipts still need independent framework and hardware gates.
 The first TinyLlama discrepancy is now localized further: its embedding and first
 RMSNorm squared values match eager torchAO exactly, but Merlin's serial float32
 mean reduction differs from Torch CPU's reduction tree. This changes the normalization
@@ -213,8 +227,9 @@ tree fitted only to those eight rows failed on new random rows and was rejected.
 The later provenance-gated AVX2 K2048 reduction matched Torch CPU's first
 RMSNorm mean bitwise on all eight source rows and 200 independent holdout rows.
 The complete TinyLlama host framework gate was rerun after that fix and failed as
-described above. The parity probe is isolating `down_proj` input quantization and
-integer arithmetic; no source-quantization recipe change is justified yet.
+described above. The `down_proj` quantized byte and integer arithmetic are now
+isolated as described above; attention float fidelity remains the next source
+gate. No source-quantization recipe change is justified.
 Keep two verdicts separate: exact target-arithmetic image versus scalar twin, and
 framework fidelity versus independent torchAO. The current strict framework gate
 still fails. The full 22-layer eight-token source graph has 155 integer Linear roots
