@@ -163,6 +163,16 @@ per-token field reports the failure. Early layer-0 q/k/v roots are bitwise exact
 first material tapped difference is layer-0 MLP `down_proj` at token 4 (`8.72e-5`
 maximum absolute error). The earlier first-attention `o_proj` quantization tie was
 observed before the pinned mean rewrite. Neither model is source-parity certified yet.
+The [bounded layer-0 replay receipt](evidence/tinyllama_full22_layer0_quant_tie.json)
+pins 224 host dispatches and identifies **exactly one differing activation byte**
+in the 1 × 8 × 5632 `down_proj` input: token 4, index 2801 is `-127` on host
+versus `-128` in TorchAO. Its source value divided by the source scale is the
+`-127.5` rounding tie. The host's int32 accumulator matches exact integer
+matmul on its own bytes; the accumulator difference equals that one weight
+column, and both dequantized outputs reconstruct bitwise. Small float drift
+is already present in the attention context and later gate/up projections.
+The quantizer and integer matrix root are behaving as specified; the earliest
+float cause is still under investigation.
 The [trained and holdout activation-code probe](../../experiments/reference-data/spectformer_torchao_activation_code_probe_2026-11-06.md)
 checks Spectformer block-0 fc1 at the exact boundary: with identical norm2
 input, Merlin and TorchAO have bitwise-equal reciprocal scales, signed i8
