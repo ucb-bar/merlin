@@ -1645,7 +1645,15 @@ def lower_to_llvm_ir(
     # `--pass` / `--no-pass` / MERLIN_PASSES add or remove feature-bound optional passes.
     from .optional_passes import selected_features
 
-    feats = normalize(selected_features(features))
+    selected = selected_features(features)
+    from .passes_xdsl import _torchao_cpu_avx2_patch_conv_selected
+
+    if _torchao_cpu_avx2_patch_conv_selected():
+        # The patch source policy requires a single fused rounding per MAC on
+        # every target. A libm fmaf call happens to work on this host, but the
+        # RV64 image needs an explicit llvm.fma to select fmadd.s.
+        selected = frozenset(selected or ()) | {"lower_fma_to_intrinsic"}
+    feats = normalize(selected)
     from .masked_contraction import FEATURE as _MASKED_FEATURE
     from .masked_contraction import MaskEffectContract
 

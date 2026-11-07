@@ -218,6 +218,18 @@ REGISTRY: tuple[OptionalPass, ...] = (
         switch="MERLIN_TORCHAO_CPU_AVX2_LAYER_NORM",
     ),
     OptionalPass(
+        name="torchao-cpu-avx2-patch-conv",
+        summary="replay pinned Torch oneDNN AVX2 f32 SpectFormer patch-convolution order",
+        changes=(
+            "the exact provenance-marked 3x16x16 patch convolution seeds bias before "
+            "H,W,C-order fused accumulation; requires the exact source CPU commit and AVX2 dispatch"
+        ),
+        exactness=NUMERICS_CHANGING,
+        default="off",
+        stage="lowering",
+        switch="MERLIN_TORCHAO_CPU_AVX2_PATCH_CONV",
+    ),
+    OptionalPass(
         name="int-softmax",
         summary="softmax exp as the integer I-BERT exp",
         changes="math.exp in a softmax becomes a fixed-point polynomial and power-of-two shift",
