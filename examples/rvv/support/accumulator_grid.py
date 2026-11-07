@@ -173,7 +173,13 @@ def ensure_mrpad_for_elem_types(
         ImprFeature(
             name=name,
             action_class="PASS",
-            description=f"RVV typed M-pad register block for {a}x{b}->{c} at {MR}x{NR}, BMM N={NR_bmm}.",
+            description=(
+                f"accumulator_resident_wholemodel_vf_mrpad at MR={MR}/NR={NR}/NR_bmm={NR_bmm} "
+                f"with padding values typed for a {types[0]}x{types[1]}->{types[2]} "
+                "contraction. Same recipe and same tail rule; only the pad literals differ, "
+                "because a wrongly-typed pad value is a transform-interpreter error and "
+                "therefore a silent whole-model scalar fallback."
+            ),
             edit_pipeline=_accumulator_resident_v3_mrpad_pipeline,
             edit_schedule=lambda _text, _ty=types, _mr=MR, _nr=NR, _nb=NR_bmm: (
                 _accumulator_resident_v3_mrpad_pre_schedule(

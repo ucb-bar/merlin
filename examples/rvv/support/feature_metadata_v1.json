@@ -1,0 +1,1087 @@
+{
+  "accum_resident_4_16_32": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Accumulator-resident micro-kernel tuning point (MR=4, NR=16, KC=32): register-resident K-loop vector iter_arg accumulator, no per-K memref roundtrip. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accum_resident_4_32_16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Accumulator-resident micro-kernel tuning point (MR=4, NR=32, KC=16): register-resident K-loop vector iter_arg accumulator, no per-K memref roundtrip. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accum_resident_8_16_16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Accumulator-resident micro-kernel tuning point (MR=8, NR=16, KC=16): register-resident K-loop vector iter_arg accumulator, no per-K memref roundtrip. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accum_resident_v2_4_16_32": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "PRE-bufferize accumulator-resident tuning point (MR=4, NR=16, KC=32): tensor-level subset-hoisted vector<MRxNR> K-loop iter_arg accumulator (no per-K memref roundtrip). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accum_resident_v2_4_32_16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "PRE-bufferize accumulator-resident tuning point (MR=4, NR=32, KC=16): tensor-level subset-hoisted vector<MRxNR> K-loop iter_arg accumulator (no per-K memref roundtrip). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accum_resident_v2_8_16_16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "PRE-bufferize accumulator-resident tuning point (MR=8, NR=16, KC=16): tensor-level subset-hoisted vector<MRxNR> K-loop iter_arg accumulator (no per-K memref roundtrip). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accum_resident_v3_4_16_32": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Accumulator-resident vfmacc.vf micro-kernel tuning point (MR=4, NR=16, KC=32): resident vector<MRxNR> K-loop iter_arg accumulator + scalar-A vfmacc.vf. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accum_resident_v3_4_32_16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Accumulator-resident vfmacc.vf micro-kernel tuning point (MR=4, NR=32, KC=16): resident vector<MRxNR> K-loop iter_arg accumulator + scalar-A vfmacc.vf. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accum_resident_v3_8_16_16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Accumulator-resident vfmacc.vf micro-kernel tuning point (MR=8, NR=16, KC=16): resident vector<MRxNR> K-loop iter_arg accumulator + scalar-A vfmacc.vf. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_microkernel": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Transform-dialect accumulator-residency attempt: tile [MR=4,NR=16], bufferize_to_allocation the C tile to a TYPED static memref.alloc, tile K [KC=16], scoped-vectorize -> vector.contract, then POST-bufferize hoist_redundant_vector_transfers -> outerproduct -> vfmacc. Forms a real vfmacc chain and is BIT-EXACT at 32/64/128 AND a non-cube 96x48x160 on spike (general, not cube-overfit). HONEST MEASURED STATUS: the hoist does NOT fully lift the carried accumulator into a pure register iter_arg under RVV's fixed VLEN — the emitted K-loop still round-trips the accumulator through the stack (vl4re8.v/vs4r.v of the accumulator per K-tile, confirmed by objdump), so cca.lift_asm reads accumulator_resident=FALSE and it measures ~19x off the hand intrinsic_microkernel ceiling @64^3 (954,558 vs 50,695). It is the best transform-only accumulator attempt but does NOT close the gap; the genuine closer is a dedicated RVV micro-kernel codegen pass (see action_catalog: compute.accumulator_resident -> CODEGEN, forkable_now=False). Default-off, baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_microkernel_v3": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "COMPILER-EMITTED accumulator-resident, register-blocked, vfmacc.vf RVV GEMM micro-kernel — the genuine answer to the #1 scalable-gap the transform-only v1/v2 features could not reach. Recipe: tile [MR=4,NR=16], tile K by 1, scoped-vectorize -> vector.contract; PRE-bufferize loop-invariant-subset-hoisting makes the accumulator a vector<MRxNR> scf.for iter_arg (register-resident across K); lower contraction -> outerproduct -> vector.fma; then the A-operand scalarization rewrite (accum_microkernel.py) replaces the A vector<MRx1> read + extract:f32 with per-row scalar loads so the backend emits vfmacc.vf (flw) not vfmacc.vv (vmv/vslideup). Emitted K-loop (objdump): ONE B vle32 + MR A flw + MR vfmacc.vf into the resident accumulator + C stored once, 0 in-loop accumulator spills, 0 vfmacc.vv — the hand ceiling's structure, compiler-emitted. BIT-EXACT vs scalar ref at 32/64/128 + non-cube on spike (scalar load of A[i,0] == lane [i,0]). Default-off, baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_mtail": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "M-tail-safe accumulator-resident micro-kernel: the accumulator-resident recipe with the matmul M tile CLAMPED to MR_mm=1 (MR=min(MR,M)). Fixes the M=1 token-decode matmul (smolVLA/rdt2 leading-M=1) that otherwise hits the LLVM-23 masked-transfer_write multi-op vector.mask PipelineError -> silent scalar fallback: with MR_mm<=M the inner vectorize is full (no mask), so the M=1 matmul vectorizes to vfmacc. The M-side analog of accumulator_resident_ntail; the batch_matmul keeps its own MR. Default-off, baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_ntail": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "N-tail-safe accumulator-resident micro-kernel: the accumulator-resident recipe (tile [MR=4,NR=16,KC=16], bufferize_to_allocation C, stream K, scoped-vectorize -> contract -> outerproduct -> vfmacc) with the batch_matmul N tile CLAMPED to NR_bmm=8 (NR=min(NR,N)). Fixes the small-N (e.g. N=8) attention batch_matmul that otherwise hits the LLVM-23 masked-transfer_write PipelineError -> silent scalar fallback: with NR_bmm<=N the inner vectorize is full (no mask), so the attention batch_matmul vectorizes to vfmacc. Bit-exact on spike (B=4,M=32,N=8,K=32). Default-off, baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_v2": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "PRE-bufferize accumulator-resident micro-kernel (the genuine residency the v1 feature could not reach): tile [MR=4,NR=16], tile K by 1, scoped-vectorize -> vector.contract, then on the TENSOR form (before bufferize) run loop-invariant-subset-hoisting so the accumulator transfer pair becomes a vector<MRxNR> scf.for iter_arg (register-resident across K, NO per-K memref roundtrip), then lower contraction -> outerproduct -> vfmacc. Verified by objdump: the K-loop carries the accumulator as an llvm.array<MR x vector<NR>> loop value with NO accumulator load/store inside the loop (unlike v1's per-K vl4re8.v/vs4r.v). Bit-exact at 32/64/128 + a non-cube on spike. Residual: emits vfmacc.vv (A read as vector<MRx1> -> lane-broadcast) not the hand kernel's vfmacc.vf, so a small constant accumulator-spill from A-broadcast pressure remains; closes the residency structure + most of the instret gap but not the full hand ceiling. Default-off, baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Whole-model-safe composed accumulator-resident micro-kernel: the tiled-vfmacc accumulator-resident recipe with BOTH tail clamps inherent in one schedule — matmul MR_mm=1 (M-tail: M=1 token-decode) AND batch_matmul NR_bmm=8 (N-tail: small-N attention). Composes the tiled vfmacc + M-tail + N-tail so the best single config is whole-model-safe by construction (no full-schedule feature clobbers another's clamp). Vectorizes a normal matmul, an M=1 matmul, and an N=8 batch_matmul to vfmacc in ONE schedule (no scalar fallback, no vector.mask PipelineError). Bit-exact on spike across the shape spread. Default-off, baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel_vf": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Whole-model-safe vfmacc.vf accumulator-resident micro-kernel: the v3 PRE-bufferize subset-hoist + A-scalarization recipe (emits vfmacc.vf, ~3 inner-loop insns/FMA, at the hand ceiling) WITH the wholemodel tail clamps inherent (matmul MR_mm=1, batch_matmul NR_bmm=8). The clamps make the small-M openvla/rdt2 matmuls (M=17/20/28) vectorize FULL at NR=32 (no masked transfer_write -> no LLVM-23 PipelineError -> no scalar fallback, unlike bare v3 which degrades to NR=8/non-resident), and the A-scalarization turns the A lane-rebuild into per-row scalar loads so the K-loop emits vfmacc.vf not vfmacc.vv + the ~20-insn vslideup/vmv broadcast ladder. Net: takes the whole-model kernel's K-loop from ~20 to ~3 ops/FMA while keeping NR=32 + accumulator residency it already had — the openvla/rdt2 gap-closer (output/kernels/ceiling/kernel_breakdown.md). Bit-exact (scalar A[i,0] == lane [i,0]). Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel_vf_bmmpad": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Whole-model vfmacc/vwmacc accumulator-resident kernel with batch-matmul M/N padding. Pads attention's parallel M and N extents to MR=4/NR=8, preserving the full 4x8 vector tile while eliminating unlowerable vector.mask-wrapped contracts on odd extents such as smolVLA's 113x113 attention. Zero padding is inferred per operand dtype and the original result slice is copied back. Default-off; the published wholemodel_vf feature is unchanged.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel_vf_mr4": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "MR=4 register-block variant of accumulator_resident_wholemodel_vf for A-operand REUSE (the OpenBLAS MR>1 lever): matmul MR_mm=4 so ONE unit-stride B-row load is shared across 4 vfmacc.vf into 4 resident accumulators, dropping K-loop loads/useful-FMA from 2.0 (MR=1) to 1.25 (1 B-load + 4 A-scalars / 4 FMAs) — MEASURED by the memory-traffic decode on large-M cube/M=20. batch_matmul NR_bmm=8 N-tail clamp retained. CORRECT + bit-exact + A-reuse ONLY on large-M GEMM (M>=MR and M%MR==0); on the small-M openvla/rdt2 matmuls (token dim 1-28) it has no clean M-tile (M=17,1) -> LLVM-23 masked-write PipelineError, or scalar-falls-back (M=16,28) -> would regress the whole model, so it is NOT whole-model-safe for VLAs (use wholemodel_vf, already at XNNPACK's per-FMA traffic floor, there). The openvla/rdt2 A-reuse residual is structural (small token dim), not a matmul-kernel defect; closing it needs a dispatch-level large-M batching/layout pass (output/kernels/ceiling/packing_residual.md). Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel_vf_mrpad": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Per-matmul MR>1 register block with an M-PAD tail — the whole-model-safe A-operand reuse lever. Same v3 vfmacc.vf subset-hoist + A-scalarization recipe as accumulator_resident_wholemodel_vf, but the matmul M tile is a padded MR=4 register block instead of the MR=1 clamp: transform.structured.pad rounds each matmul's M up to a multiple of MR (padding value 0) BEFORE tiling, so every matmul — INCLUDING the M=1/M=17/M=28 VLA-decode matmuls that make bare vf_mr4 trip the LLVM-23 masked-transfer_write PipelineError (M=1 scalar fallback, M=17 NR=8/119-spill) — register-blocks cleanly at MR: ONE unit-stride B-row load shared across MR vfmacc.vf into MR resident accumulators (loads/useful-FMA 2.0 -> 1.25). Bit-exact (padded rows are 0-row@B=0, sliced off by pad's copy_back extract_slice; only real [0:M] rows written). Per-matmul (each op pads to its own next MR multiple — general tail rule, not a per-model constant), so a MIXED-M model (rdt2 M in {1,28}) gets the MR block on every matmul in ONE schedule. batch_matmul path identical to _vf (MR=4 + NR_bmm=8). Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel_vf_mrpad_i8_i8_i32_mr1_nr16_nb8": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "accumulator_resident_wholemodel_vf_mrpad at MR=1/NR=16/NR_bmm=8 with padding values typed for a i8xi8->i32 contraction. Same recipe and same tail rule; only the pad literals differ, because a wrongly-typed pad value is a transform-interpreter error and therefore a silent whole-model scalar fallback.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel_vf_mrpad_i8_i8_i32_mr1_nr32_nb8": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "accumulator_resident_wholemodel_vf_mrpad at MR=1/NR=32/NR_bmm=8 with padding values typed for a i8xi8->i32 contraction. Same recipe and same tail rule; only the pad literals differ, because a wrongly-typed pad value is a transform-interpreter error and therefore a silent whole-model scalar fallback.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel_vf_mrpad_i8_i8_i32_mr1_nr64_nb16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "accumulator_resident_wholemodel_vf_mrpad at MR=1/NR=64/NR_bmm=16 with padding values typed for a i8xi8->i32 contraction. Same recipe and same tail rule; only the pad literals differ, because a wrongly-typed pad value is a transform-interpreter error and therefore a silent whole-model scalar fallback.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel_vf_mrpad_i8_i8_i32_mr2_nr16_nb8": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "accumulator_resident_wholemodel_vf_mrpad at MR=2/NR=16/NR_bmm=8 with padding values typed for a i8xi8->i32 contraction. Same recipe and same tail rule; only the pad literals differ, because a wrongly-typed pad value is a transform-interpreter error and therefore a silent whole-model scalar fallback.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel_vf_mrpad_i8_i8_i32_mr4_nr16_nb8": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "accumulator_resident_wholemodel_vf_mrpad at MR=4/NR=16/NR_bmm=8 with padding values typed for a i8xi8->i32 contraction. Same recipe and same tail rule; only the pad literals differ, because a wrongly-typed pad value is a transform-interpreter error and therefore a silent whole-model scalar fallback.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel_vf_mrpad_i8_i8_i32_mr4_nr32_nb8": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "accumulator_resident_wholemodel_vf_mrpad at MR=4/NR=32/NR_bmm=8 with padding values typed for a i8xi8->i32 contraction. Same recipe and same tail rule; only the pad literals differ, because a wrongly-typed pad value is a transform-interpreter error and therefore a silent whole-model scalar fallback.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel_vf_mrpad_i8_i8_i32_mr4_nr64_nb16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "accumulator_resident_wholemodel_vf_mrpad at MR=4/NR=64/NR_bmm=16 with padding values typed for a i8xi8->i32 contraction. Same recipe and same tail rule; only the pad literals differ, because a wrongly-typed pad value is a transform-interpreter error and therefore a silent whole-model scalar fallback.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel_vf_mrpad_i8_i8_i32_mr8_nr16_nb8": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "accumulator_resident_wholemodel_vf_mrpad at MR=8/NR=16/NR_bmm=8 with padding values typed for a i8xi8->i32 contraction. Same recipe and same tail rule; only the pad literals differ, because a wrongly-typed pad value is a transform-interpreter error and therefore a silent whole-model scalar fallback.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel_vf_mrpad_i8_i8_i32_mr8_nr32_nb16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "accumulator_resident_wholemodel_vf_mrpad at MR=8/NR=32/NR_bmm=16 with padding values typed for a i8xi8->i32 contraction. Same recipe and same tail rule; only the pad literals differ, because a wrongly-typed pad value is a transform-interpreter error and therefore a silent whole-model scalar fallback.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "accumulator_resident_wholemodel_vf_mrpad_i8_i8_i32_mr8_nr64_nb16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "accumulator_resident_wholemodel_vf_mrpad at MR=8/NR=64/NR_bmm=16 with padding values typed for a i8xi8->i32 contraction. Same recipe and same tail rule; only the pad literals differ, because a wrongly-typed pad value is a transform-interpreter error and therefore a silent whole-model scalar fallback.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "approximate_transcendental_activation": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Explicit f32 activation polynomial rewrite, independent of host vectorization. Shares the provenance-scoped exp/erf/tanh approximation with the vectorized activation feature. Normalization and unsupported dtypes retain libm lowering. Changes numerical arithmetic and requires the caller's original model accuracy gate; default off.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "canonicalize_bufferized_result_identity": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Expose upstream bufferized loop/result identities before output conversion; retain source tensor alias and ownership semantics. Explicit and default off.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "erase_self_copy": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "erase `memref.copy %x, %x` (a buffer copied onto itself) after bufferization/cse and before finalize-memref-to-llvm, where it would otherwise survive as an opaque @memrefCopy rank-generic runtime call costing ~79 retired instructions per OUTPUT ELEMENT. Removes the tile-epilogue copy; emits no new code.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "expand_memref_copy": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "rewrite every ranked, statically shaped `memref.copy` to a `linalg.copy` after bufferization and before finalize-memref-to-llvm, so the pipeline's own convert-linalg-to-loops emits an scf load/store nest instead of leaving a call to the rank-generic `@memrefCopy` runtime helper (or a copy-derived `memcpy`). Structure-keyed (ranked + static shape), no shape or model assumption; a copy it cannot prove static is left alone and counted. Default-off, baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "fold_uniform_fill_copy": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Fill proved copy destinations directly from a private uniform buffer; default off.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "fuse_activation_polynomial_fma": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Explicit fused evaluation of the selected f32 activation polynomial. Changes approximation arithmetic; requires the original model accuracy gate. Selects exact FMA intrinsics and leaves normalization expf unchanged; default off.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [
+      "approximate_transcendental_activation",
+      "lower_fma_to_intrinsic"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "fuse_elementwise_after_generalize": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "run elementwise fusion a second time, AFTER linalg-generalize-named-ops. The upstream order fuses (pos 2) before generalizing (pos 3), and fusion only sees linalg.generic -- so every NAMED op is invisible to it. MEASURED on small_llama int8: 39 linalg.broadcast ops at 23.9% of the model, each materialising a per-channel quantization scale into a full weight-sized tensor (a 344-element vector splatted to 44,032 elements, then read straight back). MEASURED AND REFUTED as a whole-model lever on that same model: 3,543,517 -> 4,313,041 ns, 1.22x SLOWER (sustained, n=3, cos identical). It does what it says -- the scalar bucket falls 3.1 -> 2.8 ms -- but the contraction RISES 1.8 -> 2.8 ms, because fusing the dequant chain into the producers perturbs the shape the contraction was vectorized into and costs more than the broadcast it removes. Kept registered so the finding is reproducible and the lever is not re-attempted blindly; the broadcast waste is real but needs a TARGETED fold of the broadcast into its consumer's indexing map, not blanket elementwise fusion. Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "fuse_elementwise_post_contraction": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Run `linalg-fuse-elementwise-ops` (+ canonicalize/cse) after the transform schedule has matched and vectorized the contractions, so the elementwise producer->consumer chains that `linalg-specialize-generic-ops` un-fuses collapse again and each line is touched once. The stage already existed in build_rvv_pipeline but was reachable only through the MERLIN_FUSE_POST environment variable, which no fork can vary -- so the tuning loop could not select it. Attacks the linalg.generic long tail (16.5% of int8 whole-model runtime across 191 ops in 26 classes): the per-row activation-quantize and requant generics each read a scale that `specialize` materialized into a full-size temporary first. MEASURED on small_llama_int8_consistent at the current best config -- linalg.broadcast 50 -> 13, 242,944 -> 60,160 bytes written per inference for zero arithmetic (13.9x amplification removed); emitted `forward` 35,253 -> 31,348 instructions (-11.1%, vector 14,053 -> 12,561 and scalar 13,802 from 15,319, so the vector FRACTION is flat at 0.478 -> 0.477 by construction), model.o 189,008 -> 170,664 bytes, stack alloca 118 -> 103 sites. Output BIT-IDENTICAL on spike (prefix digest cc60e8a90270ec1e either way; tiers ['fp32','w8a8'], tier_ok 'fp32_cos_only', ok True, every gate figure equal to the last digit). NOT the refuted `fuse_elementwise_after_generalize`, which runs the stage on the far side of the generalize anchor and measured 1.22x SLOWER by perturbing the already-vectorized contraction: here vwmacc stays 152 and vredmax 104 while vle32.v 2,116 -> 1,729 and vse32.v 809 -> 581. (fmul.s 0 -> 82 is a small scalar tail this introduces.) THE WALL IS UNMEASURED -- fewer instructions is a reason to measure, not a result: on this same model a transpose fold that removed ops and shrank the object measured 1.09x SLOWER. Structure-keyed (names one upstream pass and one anchor pass; no model, shape, dtype or target). Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "fuse_transpose_b": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "fuse `matmul(A, transpose(B, [1,0]))` into a transpose-b `linalg.matmul` (repoint the B operand to the un-transposed weight + permute its indexing_map (k,n)->(n,k), then erase the dead transpose). Eliminates the standalone SCALAR weight transpose (393 ms / 57% of openvla) and its DRAM buffer with no op materialized; the matmul stays vectorized by the frozen schedule and reads B contiguously along k. Whole-model cross-op fusion; default-off, baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "fused_vfmacc_contraction": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "mined fma_broadcast_policy: form a real vector.contract -> outerproduct(kind=add) -> vector.fma -> llvm.fmuladd -> vfmacc (vectorize_children + lower_contraction outerproduct + lower_outerproduct). Closes the separate-vfmul.vv+vfadd.vv gap. For kernel-sized contraction workloads (vectorize_children explodes on whole models).",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "fused_vfmacc_scalable": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Alias of the fixed fused_vfmacc_tiled recipe: bounded-code (constant MR*KC inner body), K-as-loop, scoped-vectorize (whole-model-safe) tiled vfmacc. Correct + bit-exact at 32/64/128; the whole-model-safe vfmacc for e2e.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "fused_vfmacc_tiled": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "CORRECT, SCALABLE, bounded-code tiled vfmacc: tile matmul [MR=4,NR=16,KC=4] and batch_matmul [1,4,16,4] so M,N,K are all scf.for LOOPS, SCOPED-vectorize the tile only (no whole-func vectorize_children => whole-model-safe, no vector.extract explosion), rebuild the contract via reduction_to_contract, then outerproduct->vector.fma->vfmacc. Inner body = constant MR*KC=16 fma at any M/N/K => .text bounded (no JAL +-1MB wall) and applicable to whole models. Benchmarked vs the full-unroll fused_vfmacc_contraction.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "initialize_tensor_border_only": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Fill only the proved exterior of a fresh tensor destination whose interior is fully overwritten; default off.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [
+      "reuse_tensor_destination"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "intrinsic_microkernel": {
+    "action_class": "CODEGEN",
+    "alternative_group": null,
+    "description": "CEILING REFERENCE (hand-written riscv_vector.h driver, NOT compiler-emitted): a register-blocked, accumulator-resident, K-streaming RVV GEMM micro-kernel (MR=4, NR=vsetvlmax) that keeps the MR x NR accumulator in vector registers across the whole K loop (vfmacc.vf chain, B row + A scalars streamed, C stored once). Spill-free, bit-exact 32/64/128, 1.7x faster than OpenBLAS on the spike proxy (pack-excluded). It is the TARGET for a dedicated RVV micro-kernel codegen pass; the transform-dialect accumulator_resident_microkernel does NOT yet reach it (~19x off @64^3 — still spills the accumulator per K-tile). Marker only (no schedule/pipeline edit); baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "lmul_group_m1": {
+    "action_class": "KNOB",
+    "alternative_group": null,
+    "description": "Pin the vector REGISTER-GROUP WIDTH of auto-vectorized code to LMUL=1, directly (an -mllvm backend option), without changing any tile or vector size. This is the seam the `vector.lmul` divergence actually wants: the N-tile route to the same axis also widens the tail transfer, which is a whole-model scalar-fallback cliff. Derive the width with `ensure_lmul_group(...)` rather than naming a number -- it is acc_bits/operand_bits, capped by what the VLEN can hold. Default-off; a build that does not name it gets byte-identical flags.",
+    "has_cflags": true,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "lmul_group_m2": {
+    "action_class": "KNOB",
+    "alternative_group": null,
+    "description": "Pin the vector REGISTER-GROUP WIDTH of auto-vectorized code to LMUL=2, directly (an -mllvm backend option), without changing any tile or vector size. This is the seam the `vector.lmul` divergence actually wants: the N-tile route to the same axis also widens the tail transfer, which is a whole-model scalar-fallback cliff. Derive the width with `ensure_lmul_group(...)` rather than naming a number -- it is acc_bits/operand_bits, capped by what the VLEN can hold. Default-off; a build that does not name it gets byte-identical flags.",
+    "has_cflags": true,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "lmul_group_m4": {
+    "action_class": "KNOB",
+    "alternative_group": null,
+    "description": "Pin the vector REGISTER-GROUP WIDTH of auto-vectorized code to LMUL=4, directly (an -mllvm backend option), without changing any tile or vector size. This is the seam the `vector.lmul` divergence actually wants: the N-tile route to the same axis also widens the tail transfer, which is a whole-model scalar-fallback cliff. Derive the width with `ensure_lmul_group(...)` rather than naming a number -- it is acc_bits/operand_bits, capped by what the VLEN can hold. Default-off; a build that does not name it gets byte-identical flags.",
+    "has_cflags": true,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "lmul_group_m8": {
+    "action_class": "KNOB",
+    "alternative_group": null,
+    "description": "Pin the vector REGISTER-GROUP WIDTH of auto-vectorized code to LMUL=8, directly (an -mllvm backend option), without changing any tile or vector size. This is the seam the `vector.lmul` divergence actually wants: the N-tile route to the same axis also widens the tail transfer, which is a whole-model scalar-fallback cliff. Derive the width with `ensure_lmul_group(...)` rather than naming a number -- it is acc_bits/operand_bits, capped by what the VLEN can hold. Default-off; a build that does not name it gets byte-identical flags.",
+    "has_cflags": true,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "lmul_widen_n": {
+    "action_class": "KNOB",
+    "alternative_group": null,
+    "description": "mined lmul_grouping_policy: widen the matmul N tile/vector 8->16 so the emitted vector group uses a higher LMUL (m2->m4). Composes with other features in autotune.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "named_int8_contraction": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Emit the canonical 2-D i8xi8->i32 contraction as a MIXED-TYPE linalg.matmul instead of a linalg.generic, so the named-op transform schedules can see it. The int8 quant pass otherwise leaves ZERO linalg.matmul in the module (measured: 15 -> 0 on small_llama_int8), and transform.structured.match on a name nothing carries returns an empty handle -- which makes every one of the 39 linalg.matmul/batch_matmul matchers in this file a vacuous no-op on int8 while still reporting as applied. An 87-fork beam over those levers emitted only 21 distinct binaries. Batched, conv and non-canonical indexing keep the generic form: a named op ASSERTS an indexing convention, so claiming one the op does not have would be a correctness bug rather than a missed optimization. Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "perop_mr_fill_register": {
+    "action_class": "KNOB",
+    "alternative_group": null,
+    "description": "derive each contraction's per-op M cap from how many accumulator rows of ITS OWN block fit the board's vector register file, instead of every op in the model sharing one hand-set number. The N axis of this question has been derived per-op for a while (VLEN- and element-width-scaled); M was a single scalar, so two ops could differ only by gcd(M) clipping a shared cap. Derived from target facts only -- the VLEN built for, the op's own element triple, and the RVV register count. A bound on the architecture, not a promise about the allocator, so it is searched rather than defaulted. Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [
+      "perop_register_block"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "perop_nr_fill_register": {
+    "action_class": "KNOB",
+    "alternative_group": null,
+    "description": "widen each contraction's per-op N cap until its NARROWEST element fills a whole vector register at the board's VLEN, instead of every op sharing one element count. MEASURED model-dependent on the K1: 1.160x faster on spectformer int8, 1.196x slower on small_llama int8 -- because the i32 accumulator is what sets LMUL, so a wider N tile can push it from m4 to m8 and spill (decoded: 0 -> 6 accumulator spill ops). A search knob, not a default. Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [
+      "perop_register_block"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "perop_register_block": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "request PER-CONTRACTION register blocking: derive the widest block legal for each contraction's OWN extents (and its own narrowest element width) from the prepared IR, tag each contraction, and emit one tile+vectorize arm per distinct block. Resolved by prepare_for_lowering into a concrete, table-specific feature; a sentinel, so it must never reach lowering itself. Replaces the class-wide clamps (one degenerate extent in a class otherwise forces the whole class off the vector path). Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "perop_register_block_mr1": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "request PER-CONTRACTION register blocking with the MR cap pinned to 1. Identical to perop_register_block except the cap is NAMED rather than read from MERLIN_PEROP_MR_CAP, so the beam can search it: the best cap is a property of the model's shapes (measured 1.125x from 4 -> 8 on an M=8, traffic-bound model; no further gain at 16). A sentinel, resolved by prepare_for_lowering. Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "perop_register_block_mr16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "request PER-CONTRACTION register blocking with the MR cap pinned to 16. Identical to perop_register_block except the cap is NAMED rather than read from MERLIN_PEROP_MR_CAP, so the beam can search it: the best cap is a property of the model's shapes (measured 1.125x from 4 -> 8 on an M=8, traffic-bound model; no further gain at 16). A sentinel, resolved by prepare_for_lowering. Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "perop_register_block_mr2": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "request PER-CONTRACTION register blocking with the MR cap pinned to 2. Identical to perop_register_block except the cap is NAMED rather than read from MERLIN_PEROP_MR_CAP, so the beam can search it: the best cap is a property of the model's shapes (measured 1.125x from 4 -> 8 on an M=8, traffic-bound model; no further gain at 16). A sentinel, resolved by prepare_for_lowering. Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "perop_register_block_mr8": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "request PER-CONTRACTION register blocking with the MR cap pinned to 8. Identical to perop_register_block except the cap is NAMED rather than read from MERLIN_PEROP_MR_CAP, so the beam can search it: the best cap is a property of the model's shapes (measured 1.125x from 4 -> 8 on an M=8, traffic-bound model; no further gain at 16). A sentinel, resolved by prepare_for_lowering. Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "perop_register_block_nr2": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "request PER-CONTRACTION register blocking with the NR cap pinned to 2. Identical to perop_register_block except the N cap is named and therefore searchable and reproducible. This exposes the model-specific tradeoff between wider panels and i32 accumulator register pressure. A sentinel resolved by prepare_for_lowering; default-off and baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "perop_register_block_nr32": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "request PER-CONTRACTION register blocking with the NR cap pinned to 32. Identical to perop_register_block except the N cap is named and therefore searchable and reproducible. This exposes the model-specific tradeoff between wider panels and i32 accumulator register pressure. A sentinel resolved by prepare_for_lowering; default-off and baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "perop_register_block_nr4": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "request PER-CONTRACTION register blocking with the NR cap pinned to 4. Identical to perop_register_block except the N cap is named and therefore searchable and reproducible. This exposes the model-specific tradeoff between wider panels and i32 accumulator register pressure. A sentinel resolved by prepare_for_lowering; default-off and baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "perop_register_block_nr8": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "request PER-CONTRACTION register blocking with the NR cap pinned to 8. Identical to perop_register_block except the N cap is named and therefore searchable and reproducible. This exposes the model-specific tradeoff between wider panels and i32 accumulator register pressure. A sentinel resolved by prepare_for_lowering; default-off and baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "promote_buffers_to_stack": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "promote small bufferization allocs to the stack after hoisting. Targets LOCALITY, not allocator cost: bufferization gives each intermediate its own memref.alloc (209 of them on small_llama int8, ~3% of wall), and scattered heap buffers mean every intermediate is written and re-read through cache misses. ExecuTorch's memory planner places EVERY activation of the same model into ONE 32,512-byte arena, small enough to stay in L1; we have no whole-model planner wired, and this upstream pass buys much of the same effect. Per-buffer cap (MERLIN_PROMOTE_STACK_BYTES, default 16384) is a stack-overflow guard, not a tuning knob. Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "quantize_before_gather": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "When a contraction's f32 activation operand is produced by a PURE data-movement op (an all-parallel linalg.generic whose body only yields its input, i.e. an element copy), quantize the op's SOURCE with a per-tensor scale instead of quantizing its expanded result with a per-parallel-row one. Quantization is elementwise, so quantize(G(A)) == G(quantize(A)) exactly for a single shared scale; what blocks the commutation today is only the per-row scale, under which one element of A carries a different scale in every im2col column it appears in. This is the case that matters on every convolutional model here: model2MLIR expands every conv into im2col + matmul before merlin sees it (190 such ops in deepjscc int8, 175 in lstmnetvit int8, zero fused conv2d), so the operand being quantized IS the expanded matrix -- deepjscc enc.net.1 quantizes a 147x4096 f32 matrix, ~41x the 1x3x70x70 activation it was gathered from. With the scale moved, the abs-max and the quantize both run on the activation and the gather itself moves i8, 4x less traffic for the same trip count, and the f32 expansion is erased entirely. The abs-max is EXACT in both modes: over the source when the indexing maps and bounds PROVE the gather reads every element, otherwise reduced through the gather's own map (same reads, scalar result, no materialization) -- so a strided or dilated gather that skips elements is handled, not approximated with the coarser amax(A) >= amax(G(A)). Refuses and counts the reason for a computed body, a shared intermediate, a dynamic extent or a non-gather producer. NOT bit-identical: the per-tensor activation scale is a genuine numeric change against the shipped per-row scheme and must pass the accuracy gate on its own. Default-off; with the feature absent the int8 datapath is byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "reuse_tensor_destination": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Forward tensor destinations through proved insert-slice chains before bufferization; default off.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "scalar_squared_sum_accumulator": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Keep structurally proved binary32 squared-sum reductions in scalar SSA; preserve source multiply/add, initialization and increasing-K order. Default off; tensor ownership remains authoritative.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": false,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "specialize_contiguous_copy": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Specialize disjoint static copies to contiguous suffix memcpy and outer strided loops; default off.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": false,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "vectorize_amax_reduction": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "REFUTED, DEFAULT-OFF, DO NOT ENABLE WITHOUT RE-MEASURING. Vectorizes the amax (absolute-max) reduction that dynamic activation quantization emits, by rewriting `math.absf` to a bit-exact `bitcast -> and sign-mask -> bitcast` and tagging single-reduction-dim generics `merlin.vec_red{rank}` for its own BOUNDED tile+vectorize arms. The rewrite is EXACT -- the sign-mask form is the IEEE DEFINITION of absolute value, verified over all 2**32 f32 bit patterns including every NaN payload, and IEEE `maximum` is associative and commutative on the whole domain, so unlike `vectorize_reduction` this needs no `reassociate-fp-reductions` and edits no pipeline pass. It is nonetheless a REGRESSION on the only build measured. MEASURED, resnet50_v1_5_int8_w8a8 through `mining.k1.build_k1_binary` with `rvv/hand_v0_int8`, LINKED ELF: the premise was that `math.absf` is a libm call, and in the binary it is not -- `fabsf` has 0 call sites (LLVM lowers it to `fabs.s`/`vfabs`) while `roundevenf` has 109, and clang's own loop vectorizer already claims these reduction loops (54 `vfredmax.vs`, matching the 54 reduction-innermost amax generics, plus 755 `vfmax.vv`). Turning the feature on moves `forward` 145,891 -> 147,532 instructions (+1,641; vector 23,023 -> 23,898, scalar 122,867 -> 123,633) and collapses `vfredmax.vs` 54 -> 1, because the fixed-width tile pre-commits the reduction and LLVM can no longer recognise the max-reduction idiom. NO board number was taken: there is nothing here worth timing. The census that motivated it stands -- on the prepared int8 modules `math.roundeven` and `math.absf` carry ~50/50 of ALL `math.*` element traffic (resnet50 45.3M elements each per inference; lstmnetvit 4.4M each; small_llama 89.6% of its total between them) while exp/erf/tanh carry 0%, 0.02% and 0% -- so the lever that matters on this family is `fuse_quantize_round_convert`, which attacks the one real libm blocker. Registered so the refutation is citable and re-runnable rather than lost. Baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "vectorize_non_contraction_generics": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Bounded per-rank vectorize of the NON-CONTRACTION all-parallel linalg.generics (elementwise / layout / im2col gather / pad) that the contraction-only schedule leaves for convert-linalg-to-loops to emit as scalar loops. Measured share of the loss: 86-89% of the linalg ops of every captured workload, against whole-model MAC/cycle of 0.40 (spectformer), 0.22 (deepjscc), 0.067 (lstmnetvit) versus ~8 for a VLEN=128 int8 vwmacc datapath. Needs the prepare pass's merlin.vec_r{rank} tags, which build_app enables when this feature is on. MEASURED on deepjscc int8 (spike): emits 394 -> 1945 vector instructions (4.9x, so the lever is NOT inert), output BIT-IDENTICAL, and 484,690,000 -> 621,555,001 cycles, i.e. 1.28x SLOWER, flat at 0.78x across 8/16/32 lanes. That flatness was the tell that the width was never the variable: the tile-and-vectorize-on-tensors realization emits a `memref.copy %x, %x` of each tile INSIDE the innermost loop -- a memcpy of the bytes the vector store just wrote, per 8 elements. It went unattributed because those copies lower to `llvm.memcpy`, not to the `@memrefCopy` the earlier check counted. This feature now IMPLIES `erase_self_copy`, which removes them: measured on the host lowering, the copy call sites the lever adds inside `forward` go from +15 (deepjscc) / +33 (small_llama) to +0 on both, with the vector-instruction gain kept. The output was reported bit-identical at that point and it was NOT: on small_llama int8 the lever answered cos 0.968247 / rel 0.46352 against a baseline 0.999966 / 0.00836, and answered DIFFERENTLY from the same object under a different process memory layout, because a `vector<8xi1>` mask tile is stored PACKED into a buffer every scalar reader addresses one byte per element (56 of 64 bytes left uninitialised, read straight into the attention mask). The arms now refuse a sub-byte element type on the destination or on any input, and with that refusal the output IS bit-identical to the baseline on all three int8 recaptures, in both arm placements, under three memory layouts. See `_vec_bytewise_matchers`. NOT yet claimed as a speedup -- that is a board measurement, and the cycle number above is the one it has to beat. Two known limits remain, both MEASURED and neither fixable from this file: (a) COVERAGE -- `func.func(linalg-specialize-generic-ops)`, which runs before the transform interpreter so the contraction arms can match named ops, rewrites the tagged generics into `linalg.broadcast` and DROPS their `merlin.vec_r{rank}` attribute, so only 15 of 93 tagged ops (deepjscc) ever reach an arm while the prepare pass reports 93; (b) the arms still allocate one extra destination buffer per vectorized op (+12 allocs / +1.05 MB of 50.19 MB cumulative on deepjscc), which is malloc calls rather than per-element traffic.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [
+      "erase_self_copy"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": false
+  },
+  "vectorize_reduction": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Vectorize a standalone reduction (softmax/norm row-reduce, `linalg.reduce`) so it lowers to a HARDWARE vector reduction (`vfredusum.vs` for fp / `vredsum.vs` for int) instead of the scalar convert-linalg-to-loops accumulate the baseline emits. Matches the reduction `linalg.generic` by its reduction iterator (ranks 1/2/3), vectorizes it to `vector.multi_reduction`, lowers that via the inner-reduction strategy to `vector.reduction`, and reassociates the fp reduce so the backend picks the unordered vfredusum. The contraction schedule is left intact (matmul object byte-identical), so it is whole-model-safe. The route for the compute.reduction_form CCA lever (previously a bijection orphan). APPROXIMATION (fp reassociation, cos-gated). Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vectorized_transcendental_activation": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "GENERAL vectorized-activation lowering, PRECISELY TARGETED by provenance: the act_poly rewriter (spliced into the lowering runner before the pass manager) replaces math.erf/exp/tanh with an inline minimax ARITH polynomial ONLY inside a linalg.generic the provenance marks as an elementwise ACTIVATION (gelu/silu/sigmoid/tanh) — NOT a softmax/normalization (whose exp stays on the exact libm path; blanket-rewriting it drove openvla whole-model cos to 0.541). It TAGS each targeted generic (merlin.act_vectorize) and the schedule vectorizes exactly those (no blanket foreach over every generic, no failures(suppress) -> no masked miscompile, no 6+min/config compile blowup). So GELU (erf) and sigmoid/SiLU (exp) vectorize to a vector fmul/fadd (vfmacc) chain while softmax stays correct. Closes the activation gap vs XNNPACK's polynomial RVV kernels (coefficient/structure CEILING REFERENCE; we emit the MLIR). APPROXIMATION: cos>0.999 / max-abs-err <~6e-7 vs libm on REALISTIC ranges (gated on cos/rel error, not bit-exact). Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [
+      "approximate_transcendental_activation"
+    ],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_packed": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "operand-PACKING tiled vfmacc (mined packed_rhs_policy = OpenBLAS ncopy/tcopy, XNNPACK goi-prepack): transform.structured.pack A/B/C into contiguous [MR,NR,KC] register-tile panels, lower pack/unpack to copy loops, fold unit dims, then the scoped-vectorize -> outerproduct -> vfmacc recipe on the packed op so the inner transfers are UNIT-STRIDE contiguous (no strided vector.transfer). Register-tile [4,16,16]. Default-off; baseline byte-identical.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_packed_4_16_16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile (MR=4, NR=16, KC=16). Contiguous packed inner transfers. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_packed_4_16_32": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile (MR=4, NR=16, KC=32). Contiguous packed inner transfers. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_packed_4_16_64": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile (MR=4, NR=16, KC=64). Contiguous packed inner transfers. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_packed_4_32_16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile (MR=4, NR=32, KC=16). Contiguous packed inner transfers. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_packed_4_32_32": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile (MR=4, NR=32, KC=32). Contiguous packed inner transfers. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_packed_4_32_64": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile (MR=4, NR=32, KC=64). Contiguous packed inner transfers. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_packed_8_16_16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile (MR=8, NR=16, KC=16). Contiguous packed inner transfers. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_packed_8_16_32": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile (MR=8, NR=16, KC=32). Contiguous packed inner transfers. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_packed_8_16_64": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile (MR=8, NR=16, KC=64). Contiguous packed inner transfers. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_packed_8_32_16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile (MR=8, NR=32, KC=16). Contiguous packed inner transfers. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_packed_8_32_32": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile (MR=8, NR=32, KC=32). Contiguous packed inner transfers. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_packed_8_32_64": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile (MR=8, NR=32, KC=64). Contiguous packed inner transfers. Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": true,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_t_4_16_16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Tiled-vfmacc tuning point: register-tile (MR=4, NR=16, KC=16). Bounded-code, whole-model-safe tiled vfmacc with this tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_t_4_16_32": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Tiled-vfmacc tuning point: register-tile (MR=4, NR=16, KC=32). Bounded-code, whole-model-safe tiled vfmacc with this tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_t_4_16_64": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Tiled-vfmacc tuning point: register-tile (MR=4, NR=16, KC=64). Bounded-code, whole-model-safe tiled vfmacc with this tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_t_4_32_16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Tiled-vfmacc tuning point: register-tile (MR=4, NR=32, KC=16). Bounded-code, whole-model-safe tiled vfmacc with this tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_t_4_32_32": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Tiled-vfmacc tuning point: register-tile (MR=4, NR=32, KC=32). Bounded-code, whole-model-safe tiled vfmacc with this tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_t_4_32_64": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Tiled-vfmacc tuning point: register-tile (MR=4, NR=32, KC=64). Bounded-code, whole-model-safe tiled vfmacc with this tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_t_8_16_16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Tiled-vfmacc tuning point: register-tile (MR=8, NR=16, KC=16). Bounded-code, whole-model-safe tiled vfmacc with this tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_t_8_16_32": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Tiled-vfmacc tuning point: register-tile (MR=8, NR=16, KC=32). Bounded-code, whole-model-safe tiled vfmacc with this tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_t_8_16_64": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Tiled-vfmacc tuning point: register-tile (MR=8, NR=16, KC=64). Bounded-code, whole-model-safe tiled vfmacc with this tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_t_8_32_16": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Tiled-vfmacc tuning point: register-tile (MR=8, NR=32, KC=16). Bounded-code, whole-model-safe tiled vfmacc with this tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_t_8_32_32": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Tiled-vfmacc tuning point: register-tile (MR=8, NR=32, KC=32). Bounded-code, whole-model-safe tiled vfmacc with this tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  },
+  "vfmacc_t_8_32_64": {
+    "action_class": "PASS",
+    "alternative_group": null,
+    "description": "Tiled-vfmacc tuning point: register-tile (MR=8, NR=32, KC=64). Bounded-code, whole-model-safe tiled vfmacc with this tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
+    "has_cflags": false,
+    "has_pipeline": false,
+    "has_schedule": true,
+    "implies": [],
+    "requires_exactly_one_of": [],
+    "schedule_replace": true
+  }
+}

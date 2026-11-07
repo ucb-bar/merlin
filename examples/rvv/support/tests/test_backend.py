@@ -384,7 +384,7 @@ def test_rvv_schedule_renderer_and_shape_policy_live_in_provider():
 
 def test_all_95_existing_levers_resolve_without_legacy_vector_registry():
     script = """
-import importlib.util, sys, types
+import importlib.util, json, sys, types
 from pathlib import Path
 from merlin.llvmlower.feature_registry import ImprFeature
 root = Path.cwd()
@@ -396,10 +396,31 @@ backend = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = backend
 spec.loader.exec_module(backend)
 names = (root / 'tests/feature_names_v1.txt').read_text().splitlines()
+metadata = json.loads((root / 'feature_metadata_v1.json').read_text())
 assert len(names) == 95
-bound = backend.bind((ImprFeature(name='opu_matmul', action_class='PASS', description='chip extension'),))
+assert set(metadata) == set(names) - {'opu_matmul'}
+bound = backend.bind((ImprFeature(name='opu_matmul', action_class='PASS', description='chip-owned extension'),))
 for name in names:
-    assert bound.registry.get(name).name == name
+    feature = bound.registry.get(name)
+    assert feature.name == name
+    if name == 'opu_matmul':
+        continue
+    expected = metadata[name]
+    assert feature.description == expected['description'], name
+    assert feature.action_class == expected['action_class'], name
+    assert feature.schedule_replace == expected['schedule_replace'], name
+    assert sorted(feature.implies) == expected['implies'], name
+    assert feature.alternative_group == expected['alternative_group'], name
+    assert sorted(feature.requires_exactly_one_of) == expected['requires_exactly_one_of'], name
+    assert (feature.edit_pipeline is not None) == expected['has_pipeline'], name
+    assert (feature.edit_schedule is not None) == expected['has_schedule'], name
+    assert (feature.edit_cflags is not None) == expected['has_cflags'], name
+try:
+    backend.bind().registry.get('opu_matmul')
+except KeyError:
+    pass
+else:
+    raise AssertionError('chip feature leaked into the base RVV provider')
 assert 'merlin.llvmlower.impr_features' not in sys.modules
 assert backend.im2col_pack_api().__name__ == 'rvv_provider.im2col_pack'
 assert backend.weight_panel_api().__name__ == 'rvv_provider.weight_panel'
@@ -501,3 +522,28 @@ def test_provider_caps_and_frozen_shape_adaptation(monkeypatch):
     assert _adapt_frozen_points([name], failing, target="rvv") == [
         "accum_resident_v3p_1_8_4_8_16"
     ]
+
+
+def test_name_derived_feature_descriptions_match_pre_extraction():
+    import json
+
+    from rvv_provider.accumulator_grid import ensure_mrpad_for_elem_types
+
+    expected = json.loads((ROOT / "tests/dynamic_descriptions_v1.json").read_text())
+    names = [
+        BACKEND.ensure_v3_microkernel(3, 16, 16),
+        BACKEND.ensure_v3_kblocked_microkernel(3, 16, 16),
+        BACKEND.ensure_v3_unrolled_microkernel(3, 16, 16),
+        BACKEND.ensure_v3_scalable_microkernel(3, 16, 16),
+        BACKEND.ensure_v3_perop_microkernel(3, 16, 4, 8, 16),
+        BACKEND.perop_mr_sentinel(5),
+        BACKEND.perop_nr_sentinel(7),
+        BACKEND.ensure_perop_block({"linalg.matmul:4x16x16": (4, 16)}, 16),
+        "vectorize_non_contraction_generics_l16_r5",
+        ensure_mrpad_for_elem_types(
+            BACKEND._FEATURES, "i8", "i8", "i32", MR=3, NR=16, NR_bmm=8
+        ),
+    ]
+    assert set(names) == set(expected)
+    for name in names:
+        assert BACKEND._FEATURES.get(name).description == expected[name], name

@@ -110,7 +110,13 @@ def perop_nr_sentinel(registry: FeatureRegistry, nr_cap: int) -> str:
             ImprFeature(
                 name=name,
                 action_class="PASS",
-                description=f"Request per-contraction RVV block with NR cap {n}.",
+                description=(
+                    f"request PER-CONTRACTION register blocking with the NR cap pinned to {n}. "
+                    f"Identical to {PEROP_BLOCK_NAME} except the N cap is named and therefore "
+                    "searchable and reproducible. This exposes the model-specific tradeoff "
+                    "between wider panels and i32 accumulator register pressure. A sentinel "
+                    "resolved by prepare_for_lowering; default-off and baseline byte-identical."
+                ),
                 edit_pipeline=_unresolved(name),
                 schedule_replace=True,
             )
@@ -128,7 +134,14 @@ def perop_mr_sentinel(registry: FeatureRegistry, mr_cap: int) -> str:
             ImprFeature(
                 name=name,
                 action_class="PASS",
-                description=f"Request per-contraction RVV block with MR cap {n}.",
+                description=(
+                    f"request PER-CONTRACTION register blocking with the MR cap pinned to {n}. "
+                    f"Identical to {PEROP_BLOCK_NAME} except the cap is NAMED rather than read from "
+                    f"MERLIN_PEROP_MR_CAP, so the beam can search it: the best cap is a property of "
+                    f"the model's shapes (measured 1.125x from 4 -> 8 on an M=8, traffic-bound "
+                    f"model; no further gain at 16). A sentinel, resolved by prepare_for_lowering. "
+                    f"Default-off; baseline byte-identical."
+                ),
                 edit_pipeline=_unresolved(name),
                 schedule_replace=True,
             )
@@ -160,7 +173,29 @@ def ensure_perop_block(
         ImprFeature(
             name=name,
             action_class="PASS",
-            description=f"Per-contraction RVV block over {len(table)} geometries and {len(blocks)} blocks.",
+            description=(
+                f"Per-op register blocking: {len(blocks)} distinct blocks over "
+                f"{len(table)} contraction geometries, KC={kc}. Each contraction is tiled at the "
+                f"widest block legal for its own extents, matched by the merlin.blk_<MR>x<NR> tag "
+                f"the prepare step applies after specialization. Replaces the per-op-CLASS block, "
+                f"whose smallest member otherwise clamps the whole class (measured: whisper_tiny "
+                f"claims 65.9% of its MACs per class vs 100% per op)."
+                + (
+                    f" {len(pairs)} of them additionally carry a FUSED requantize epilogue "
+                    f"(fuse_requant_into_contraction): the epilogue is tiled and the contraction "
+                    f"and its accumulator fill are fused into that loop, so the i32 accumulator "
+                    f"is converted and scaled in the tile that produced it and the model-sized "
+                    f"i32 tensor is never built."
+                    + (
+                        " The epilogue tile is additionally pre-vectorized at that block."
+                        if vec_epilogue
+                        else " The epilogue tile keeps its loop form and is left to clang, so "
+                        "the lever removes a traversal without reshaping a loop."
+                    )
+                    if pairs
+                    else ""
+                )
+            ),
             edit_pipeline=_accumulator_resident_v3_pipeline,
             edit_schedule=lambda _text, _value=text: _value,
             schedule_replace=True,

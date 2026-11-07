@@ -9,8 +9,10 @@ ordering and the schedule library. API_VERSION is checked by Merlin's loader.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 API_VERSION = 1
@@ -94,6 +96,22 @@ from .vector_features import (
 )
 from .weight_panel import _feature as _weight_panel_feature
 
+_HISTORICAL_METADATA = json.loads(
+    Path(__file__).with_name("feature_metadata_v1.json").read_text(encoding="utf-8")
+)
+
+
+class _RvvFeatureRegistry(FeatureRegistry):
+    """Keep historical feature descriptions while implementations move to this provider."""
+
+    def register(self, feature: ImprFeature) -> ImprFeature:
+        if feature.name in _HISTORICAL_METADATA:
+            feature = replace(
+                feature,
+                description=_HISTORICAL_METADATA[feature.name]["description"],
+            )
+        return super().register(feature)
+
 
 def _legacy_feature(name: str) -> bool:
     """Migration bridge for experimental features not yet extracted to this provider."""
@@ -115,7 +133,7 @@ def _legacy_feature(name: str) -> bool:
     return False
 
 
-_FEATURES = FeatureRegistry(lazy_register=_legacy_feature)
+_FEATURES = _RvvFeatureRegistry(lazy_register=_legacy_feature)
 register_vec_noncontraction(_FEATURES)
 register_grid_features(_FEATURES)
 register_accumulator_grids(_FEATURES)
@@ -952,6 +970,13 @@ def frozen_blocks_api():
     from . import frozen_blocks
 
     return frozen_blocks
+
+
+def shape_adapt_api():
+    """Return RVV workload shape adaptation and pinned-block diagnostics."""
+    from . import shape_adapt
+
+    return shape_adapt
 
 
 def shape_adapted_features(pkg, model_dir: Path | str, *, harts: int = 1) -> list[str]:

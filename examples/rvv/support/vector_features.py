@@ -405,7 +405,12 @@ def ensure_vec_noncontraction(
         ImprFeature(
             name=name,
             action_class="PASS",
-            description=f"Bounded non-contraction RVV vectorization at {lanes} lanes through rank {max_rank}.",
+            description=(
+                f"Bounded per-rank vectorize of the non-contraction all-parallel generics at "
+                f"{lanes} innermost lanes, loop ranks "
+                f"{VEC_NONCONTRACTION_MIN_RANK}..{max_rank} (see {VEC_NONCONTRACTION_NAME}). "
+                f"Default-off; both numbers must be chosen by measurement, not assumed."
+            ),
             edit_schedule=lambda text, _lanes=lanes, _rank=max_rank: (
                 _splice_vec_rank_arms(text, _lanes, _rank)
             ),

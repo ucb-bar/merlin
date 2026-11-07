@@ -16,8 +16,8 @@
       "target": "rvv",
       "repo": "https://github.com/ucb-bar/rvv-mlir.git",
       "branch": "handwritten-implementation",
-      "commit": "52144830fa60066ef2b7a3cc19be7c50ce895ae3",
-      "tree": "4d9e74d98d150effaf577160bf3593cdf492c935",
+      "commit": "1ef5bc2d927d875419c0ea59763078d804b7a9ca",
+      "tree": "aa3f15e0b28d6a8bdf99e0afd4ccc37103367362",
       "in_repo": "examples/rvv/support"
     },
     "packages": [
@@ -219,17 +219,17 @@
       "base_commit": "a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5",
       "catalog_commit": null,
       "root_role": "support",
-      "companion_commit": "52144830fa60066ef2b7a3cc19be7c50ce895ae3",
+      "companion_commit": "1ef5bc2d927d875419c0ea59763078d804b7a9ca",
       "companion_commit_relation": "same_commit",
       "provider_root": ".",
       "provider_role": "support",
       "vendored": {
         "path": "examples/rvv/support",
         "source_record": "examples/rvv/SOURCE.yaml",
-        "commit": "52144830fa60066ef2b7a3cc19be7c50ce895ae3",
-        "tree": "4d9e74d98d150effaf577160bf3593cdf492c935",
-        "vendored_tree": "4d9e74d98d150effaf577160bf3593cdf492c935",
-        "file_count": 45
+        "commit": "1ef5bc2d927d875419c0ea59763078d804b7a9ca",
+        "tree": "aa3f15e0b28d6a8bdf99e0afd4ccc37103367362",
+        "vendored_tree": "aa3f15e0b28d6a8bdf99e0afd4ccc37103367362",
+        "file_count": 47
       },
       "copied_files": 7,
       "file_provenance": "provenance.json",

@@ -21,6 +21,17 @@ A chip package's `provider.yaml` says `extends: {target: rvv, commit: <sha of th
 effective contract and records the exact base revision, so a chip package inherits *all* of RVV and
 notices when this base moves.
 
+## Compiler layout
+
+- `backend.py` builds the RVV pass pipeline and exposes feature, schedule, and preparation APIs.
+- `perop_blocks.py`, `vector_tag.py`, `reduce_vec.py`, `requant_fuse.py`, `im2col_pack.py`, and
+  `weight_panel.py` implement RVV-specific preparation and lowering policy. The supporting feature
+  modules register the named tuning choices.
+- `schedules/` contains Transform dialect programs and knob data. Upstream MLIR supplies the passes
+  those programs invoke; this repository does not ship a custom dialect or pass binary.
+- Merlin owns target-neutral capture, quantization semantics, and scalar compilation. Kodiak and
+  Iris overlays own their OPU and VME extensions.
+
 ## What is on which branch
 
 | branch | what it is |
