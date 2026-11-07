@@ -206,6 +206,18 @@ REGISTRY: tuple[OptionalPass, ...] = (
         switch="MERLIN_TORCHAO_CPU_AVX2_MEAN",
     ),
     OptionalPass(
+        name="torchao-cpu-avx2-layer-norm",
+        summary="replay the captured PyTorch AVX2 f32 width-256 native LayerNorm arithmetic",
+        changes=(
+            "an eligible TorchAO W8A8 native LayerNorm region uses the captured Welford and affine order; "
+            "requires the exact source CPU commit and AVX2 dispatch assertion"
+        ),
+        exactness=NUMERICS_CHANGING,
+        default="off",
+        stage="lowering",
+        switch="MERLIN_TORCHAO_CPU_AVX2_LAYER_NORM",
+    ),
+    OptionalPass(
         name="int-softmax",
         summary="softmax exp as the integer I-BERT exp",
         changes="math.exp in a softmax becomes a fixed-point polynomial and power-of-two shift",

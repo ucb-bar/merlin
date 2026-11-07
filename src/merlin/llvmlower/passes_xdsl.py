@@ -652,6 +652,15 @@ def _torchao_cpu_avx2_mean_selected() -> bool:
     return switched("torchao-cpu-avx2-mean", os.environ.get("MERLIN_TORCHAO_CPU_AVX2_MEAN") == "1")
 
 
+def _torchao_cpu_avx2_layer_norm_selected() -> bool:
+    """Whether the pinned captured Torch CPU native LayerNorm order is selected."""
+    import os
+
+    from .optional_passes import switched
+
+    return switched("torchao-cpu-avx2-layer-norm", os.environ.get("MERLIN_TORCHAO_CPU_AVX2_LAYER_NORM") == "1")
+
+
 def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
     from ..xdsl_dialects.ir_inspection import record_stage
 
@@ -684,6 +693,17 @@ def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
             stats["torchao_cpu_avx2_means"] = rewrite_torchao_cpu_avx2_means(
                 module,
                 source_commit=os.environ.get("MERLIN_TORCHAO_CPU_SOURCE_COMMIT", ""),
+                on_rewrite=on_quant_rewrite,
+            )
+        if statistic == "quant_ext_lowered" and _torchao_cpu_avx2_layer_norm_selected():
+            import os
+
+            from .torchao_cpu_layer_norm import rewrite_torch216_avx2_layer_norms
+
+            stats["torchao_cpu_avx2_layer_norms"] = rewrite_torch216_avx2_layer_norms(
+                module,
+                source_commit=os.environ.get("MERLIN_TORCHAO_CPU_SOURCE_COMMIT", ""),
+                cpu_capability=os.environ.get("MERLIN_TORCHAO_CPU_CAPABILITY", ""),
                 on_rewrite=on_quant_rewrite,
             )
     return stats
