@@ -82,16 +82,39 @@ def native_pipelines(features: frozenset[str] | None = None) -> dict[str, list[s
     from pathlib import PurePath
 
     from merlin.llvmlower import pipeline as P
-    from merlin.llvmlower.impr_features import normalize
+    from merlin.llvmlower.feature_registry import FeatureRegistry
     from merlin.llvmlower.optional_passes import selected_features
+    from merlin.llvmlower.shared_feature_registry import get_shared_feature
+    from merlin.targetgen.target_registry import explicit_targets
 
-    feats = normalize(selected_features(features)) or frozenset()
-    return {
-        "serial": T.split_pipeline(P._upstream_pipeline(feats)),
-        "openmp": T.split_pipeline(P._parallel_pipeline(feats)),
-        # The schedule path is only an option value of the transform pass; the pass list is the same.
-        "vector": T.split_pipeline(P.build_rvv_pipeline(PurePath("<schedule>"), features=feats)),
+    selected = selected_features(features) or frozenset()
+
+    def register_shared(name: str) -> bool:
+        try:
+            feature = get_shared_feature(name)
+        except KeyError:
+            return False
+        shared.register(feature)
+        return True
+
+    shared = FeatureRegistry(register_shared)
+    for name in selected:
+        try:
+            shared.get(name)
+        except KeyError:
+            pass
+    scalar_features = shared.normalize(shared.entries)
+    routes = {
+        "serial": T.split_pipeline(P._upstream_pipeline(scalar_features)),
+        "openmp": T.split_pipeline(P._parallel_pipeline(scalar_features)),
     }
+    if "rvv" in explicit_targets():
+        from merlin.llvmlower.backend_spi import load_vector_codegen
+
+        backend = load_vector_codegen("rvv")
+        vector_features = backend.normalize_features(selected)
+        routes["vector"] = T.split_pipeline(backend.build_pipeline(PurePath("<schedule>"), features=vector_features))
+    return routes
 
 
 #: The order the routes are SHOWN in (front door, the two lowering routes, codegen, the whole-model

@@ -17,6 +17,13 @@ from merlin.runtime.backends import zephyr_model as zm
 _MATRIX = ["--matrix-unit", "unit_a", "--matrix-config", "ConfigA", "--matrix-support-target", "chip_a"]
 
 
+@pytest.fixture(autouse=True)
+def _synthetic_matrix_route_feature(monkeypatch):
+    # The CLI tests use imaginary providers; pin only the extension's marker
+    # declaration here so production can require a real selected package.
+    monkeypatch.setattr(zm.MatrixRouting, "route_feature_name", lambda _self: "opu_matmul")
+
+
 @pytest.mark.parametrize(
     "argv, message",
     [

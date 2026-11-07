@@ -55,6 +55,7 @@ def _checked(target: str, entries: tuple[tuple[str, Any], ...]) -> Any:
         "lmul_group_feature",
         "microkernel_policy_api",
         "blocking_cost_api",
+        "unclaimed_op_classes",
     )
     missing = [name for name in required if not callable(getattr(backend, name, None))]
     if missing:

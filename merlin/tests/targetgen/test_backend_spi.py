@@ -45,6 +45,7 @@ def test_vector_backend_requires_one_compatible_owner(monkeypatch):
             "lmul_group_feature",
             "microkernel_policy_api",
             "blocking_cost_api",
+            "unclaimed_op_classes",
         )
     }
     good = SimpleNamespace(API_VERSION=1, **methods)
@@ -99,6 +100,7 @@ def test_chip_features_bind_only_to_the_selected_backend(monkeypatch):
             "lmul_group_feature",
             "microkernel_policy_api",
             "blocking_cost_api",
+            "unclaimed_op_classes",
         )
     }
     backend = SimpleNamespace(API_VERSION=1, **methods)
@@ -144,6 +146,13 @@ def test_scalar_runtime_flags_never_resolve_vector_provider(monkeypatch):
     assert "-march=rv64gc" in spike_model._harness_cflags(["-march=rv64gc"], backend="scalar")
 
 
+def test_native_pipeline_listing_is_scalar_only_without_vector_provider(monkeypatch):
+    from merlin.compile.debug import native_pipelines
+
+    monkeypatch.setenv("MERLIN_TARGET_PATH", "")
+    assert set(native_pipelines()) == {"serial", "openmp"}
+
+
 def test_vector_lowering_uses_provider_feature_without_old_registry(tmp_path):
     source = """
 from pathlib import Path
@@ -156,6 +165,25 @@ out = lower_to_llvm_ir(
     features=frozenset({'intrinsic_microkernel'}),
 )
 assert 'define void @main' in out
+assert 'merlin.llvmlower.impr_features' not in sys.modules
+"""
+    result = subprocess.run([sys.executable, "-c", source, str(tmp_path)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_vector_preparation_uses_provider_without_old_registry(tmp_path):
+    source = """
+from pathlib import Path
+import sys
+from merlin.runtime.backends.zephyr_model import prepare_for_lowering
+work = Path(sys.argv[1])
+src = work / 'model.mlir'
+src.write_text('module { func.func @main() { return } }')
+prepared, _features = prepare_for_lowering(
+    src, work, backend='rvv', blocking=False,
+    features=frozenset({'fuse_quantize_round_convert'}),
+)
+assert prepared.is_file()
 assert 'merlin.llvmlower.impr_features' not in sys.modules
 """
     result = subprocess.run([sys.executable, "-c", source, str(tmp_path)], capture_output=True, text=True)

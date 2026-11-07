@@ -197,9 +197,10 @@ def _workload_features(pkg, bundle, out: dict, harts: int = 1) -> list[str]:
         # A re-derived point may leave an op class UNCLAIMED: no block wider than one lane is legal
         # for its extents, so its contractions go through convert-linalg-to-loops (scalar). Correct,
         # but a perf fact a reader must not have to decode from a feature name -- so say it.
-        from .llvmlower.impr_features import unclaimed_op_classes
+        from .llvmlower.backend_spi import load_vector_codegen
 
-        unclaimed = sorted({cls for f in feats for cls in unclaimed_op_classes(f)})
+        backend = load_vector_codegen(str(pkg.manifest.get("target", "rvv")))
+        unclaimed = sorted({cls for f in feats for cls in backend.unclaimed_op_classes(f)})
         out["features_shape_adapted"] = {
             "pinned": frozen,
             "used": feats,
