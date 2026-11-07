@@ -25,8 +25,8 @@
         "target": "kodiak",
         "repo": "https://github.com/ucb-bar/kodiak-mlir.git",
         "branch": "handwritten-implementation",
-        "commit": "e4fc6c4a9f53760316e082b3f989ada20c686164",
-        "tree": "52cbda08a069a0dde65ce468c6fc5bac98eaff83",
+        "commit": "927a733b9141c4fb734c095860c02027ef19ff11",
+        "tree": "c7d99647a4e3e96346d61f5113465d1f6eea4f3b",
         "extends": "rvv",
         "example": "examples/kodiak",
         "core_references": [
@@ -90,8 +90,8 @@
         "target": "iris",
         "repo": "https://github.com/ucb-bar/iris-mlir.git",
         "branch": "handwritten-implementation",
-        "commit": "46524a94372ac4d63bb78f3586170b0901db4f8e",
-        "tree": "c4539d599dfd4e353d169bc0195f523a127fd44e",
+        "commit": "7dbe4a9f21ab0f8764b256c4e82643c0c7ab6019",
+        "tree": "5244b82c05c6236eb42078babad78379a33cf247",
         "extends": "rvv",
         "example": "examples/iris",
         "core_references": [
