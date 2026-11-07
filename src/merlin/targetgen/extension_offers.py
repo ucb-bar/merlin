@@ -181,9 +181,13 @@ class _BooleanSelector:
 
 class _CostedSelector(_BooleanSelector):
     def decide(self, operation: Any, *, layout_elements: dict[str, int] | None = None) -> Any:
-        offer = self.extension.offers(operation, layout_elements=layout_elements)[0]
-        decision = offer.detail
-        selected = select_offer((offer,), fallback_cycles=float(decision.chosen.vector_cycles))
+        decision = self.extension._selector.decide(operation, layout_elements=layout_elements)
+        selected = select_extension(
+            (self.extension,),
+            operation,
+            fallback_cycles=float(decision.chosen.vector_cycles),
+            layout_elements=layout_elements,
+        )
         if (selected is not None) != bool(decision.route):
             raise OfferError("extension selection differs from the provider's cost-model decision")
         return decision
