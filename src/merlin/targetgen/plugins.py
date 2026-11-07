@@ -58,6 +58,13 @@ class PluginKey:
 
 
 PLUGIN_KEYS: dict[str, PluginKey] = {
+    "extension": PluginKey(
+        "extension",
+        "A versioned operation extension with offers(operation) and lower(prepared, work). "
+        "Loaded from the declaring provider in an extends chain and selected against fallback costs.",
+        consumed=True,
+        expects="path",
+    ),
     "matrix_lowering": PluginKey(
         "matrix_lowering",
         "Explicit support-provider module for matrix geometry, routing policy, prepared-IR "
