@@ -16,6 +16,9 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.compare` | merlin.compare — unified, spec-driven, versioned comparison driver. |
 | `merlin.compile` | Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, and mesh execution. |
 | `merlin.compile.scheduling` | Scheduling passes over a target's derived on-chip geometry. |
+| `merlin.compiler` | Compiler-owned lowerings shared by backend packages. |
+| `merlin.compiler.lower` | Target-neutral lowering components. |
+| `merlin.compiler.lower.llvm` | Shared MLIR-to-LLVM finalization and ABI contracts. |
 | `merlin.design_pressure` | Design-pressure analysis: workload region -> cutpoints -> pressure metrics -> emitted reports. |
 | `merlin.design_pressure.cutpoints` | Compiler cut points for analysis: the IR levels a workload region is observed at (graph, linalg, dispatch, bufferized, loop, trace), one module per cut point. |
 | `merlin.design_pressure.emit` | Emit the schema-validated design-pressure artifacts: the design_pressure report, the candidate_contracts ladder (I0-I3) and interface candidates. |
