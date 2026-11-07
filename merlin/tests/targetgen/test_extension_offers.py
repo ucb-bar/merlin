@@ -5,7 +5,13 @@ from types import SimpleNamespace
 import pytest
 
 from merlin.llvmlower.matrix_route_cost import CostModelSelector, UnitGeometry
-from merlin.targetgen.extension_offers import MatrixExtension, OfferError, OperationOffer, select_offer
+from merlin.targetgen.extension_offers import (
+    MatrixExtension,
+    OfferError,
+    OperationOffer,
+    select_extension,
+    select_offer,
+)
 
 
 def test_two_offers_select_cheaper_and_reject_tie():
@@ -69,8 +75,58 @@ def test_matrix_extension_rejects_incompatible_api():
     with pytest.raises(OfferError, match="API version"):
         MatrixExtension(_Routing(provider))
 
+    class Missing(_Provider):
+        API_VERSION = None
+
+    with pytest.raises(OfferError, match="API version"):
+        MatrixExtension(_Routing(Missing()))
+
 
 def test_matrix_extension_keeps_provider_identity():
     ext = MatrixExtension(_Routing())
     offer = ext.offers(SimpleNamespace(parallel=(64, 64), reduction=(64,)))[0]
     assert (offer.owner, offer.unit) == ("kodiak", "opu")
+
+
+def test_explicit_boolean_selector_keeps_legacy_behavior():
+    routing = _Routing()
+    routing.select = lambda shape: shape.parallel[0] >= 8
+    selector = MatrixExtension(routing).selector()
+    assert not hasattr(selector, "decide")
+    assert selector(SimpleNamespace(parallel=(8, 3)))
+    assert not selector(SimpleNamespace(parallel=(7, 3)))
+
+
+def test_two_extensions_compose_and_dispatch_lowering():
+    class Extension:
+        API_VERSION = 1
+
+        def __init__(self, owner, cycles):
+            self.owner, self.cycles = owner, cycles
+
+        def offers(self, operation, *, layout_elements=None):
+            assert operation == "contraction"
+            return (OperationOffer(self.owner, "unit", self.cycles),)
+
+        def lower(self, prepared, work, *, select):
+            assert select("contraction")
+            return self.owner, prepared, work
+
+    slower, faster = Extension("slower", 12), Extension("faster", 8)
+    selected = select_extension((slower, faster), "contraction", fallback_cycles=15)
+    assert selected is not None
+    extension, offer = selected
+    assert offer.owner == "faster"
+    assert extension.lower("ir", "work", select=lambda op: op == "contraction") == ("faster", "ir", "work")
+    assert select_extension((slower, faster), "contraction", fallback_cycles=7) is None
+
+
+def test_extension_api_version_is_checked_before_offers():
+    class Incompatible:
+        API_VERSION = 2
+
+        def offers(self, operation, *, layout_elements=None):
+            raise AssertionError("must fail before loading offers")
+
+    with pytest.raises(OfferError, match="API version"):
+        select_extension((Incompatible(),), "op", fallback_cycles=10)

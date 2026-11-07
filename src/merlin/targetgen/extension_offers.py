@@ -45,6 +45,29 @@ class ExtensionV1(Protocol):
     def lower(self, prepared: Any, work: Any, *, select: Callable[[Any], bool]) -> Any: ...
 
 
+def select_extension(
+    extensions: tuple[ExtensionV1, ...],
+    operation: Any,
+    *,
+    fallback_cycles: float,
+    layout_elements: dict[str, int] | None = None,
+) -> tuple[ExtensionV1, OperationOffer] | None:
+    """Arbitrate extensions once, then return the selected owner for lowering.
+
+    The caller supplies the fallback estimate. Extension implementations supply
+    their own offers; neither estimation nor lowerings are hardcoded here.
+    """
+    offered: list[tuple[ExtensionV1, OperationOffer]] = []
+    for extension in extensions:
+        if getattr(extension, "API_VERSION", None) != API_VERSION:
+            raise OfferError(f"extension API version {getattr(extension, 'API_VERSION', None)!r}; need {API_VERSION}")
+        offered.extend((extension, offer) for offer in extension.offers(operation, layout_elements=layout_elements))
+    selected = select_offer(tuple(offer for _, offer in offered), fallback_cycles=fallback_cycles)
+    if selected is None:
+        return None
+    return next((extension, offer) for extension, offer in offered if offer is selected)
+
+
 def select_offer(offers: tuple[OperationOffer, ...], *, fallback_cycles: float) -> OperationOffer | None:
     """Select the cheapest offer below fallback; refuse tied extension costs.
 
@@ -84,7 +107,7 @@ class MatrixExtension:
 
         self.routing = routing
         self.provider = routing.provider()
-        version = getattr(self.provider, "API_VERSION", API_VERSION)  # explicit legacy package adapter
+        version = getattr(self.provider, "API_VERSION", None)
         if version != API_VERSION:
             raise OfferError(f"{routing.support_target}: extension API version {version!r}; need {API_VERSION}")
         self._selector = routing.select if routing.select is not None else routing_selector(routing)
