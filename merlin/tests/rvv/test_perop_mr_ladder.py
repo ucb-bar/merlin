@@ -31,6 +31,7 @@ import sys
 
 from merlin.common.paths import merlin_dir, repo_root
 from merlin.llvmlower import impr_features as F
+from merlin.targetgen.target_registry import effective_target_path
 
 
 def test_the_ladder_is_registered_at_import_not_on_demand():
@@ -44,7 +45,11 @@ def test_the_ladder_is_registered_at_import_not_on_demand():
         "known = F.known()\n"
         "print(json.dumps([n for n in F.PEROP_MR_LADDER if n not in known]))\n"
     )
-    env = {"PYTHONPATH": str(merlin_dir() / "python"), "PATH": "/usr/bin:/bin"}
+    env = {
+        "PYTHONPATH": str(merlin_dir() / "python"),
+        "PATH": "/usr/bin:/bin",
+        "MERLIN_TARGET_PATH": effective_target_path(),
+    }
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=repo_root(), env=env)
     assert r.returncode == 0, r.stderr[-2000:]
     missing = json.loads(r.stdout.strip().splitlines()[-1])
