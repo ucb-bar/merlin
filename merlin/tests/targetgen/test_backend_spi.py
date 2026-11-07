@@ -45,6 +45,14 @@ def test_vector_backend_requires_one_compatible_owner(monkeypatch):
             "lmul_group_feature",
             "microkernel_policy_api",
             "blocking_cost_api",
+            "shape_adapt_api",
+            "default_perop_caps",
+            "legacy_module",
+            "reduction_schedule_api",
+            "frozen_blocks_api",
+            "weight_prepack_api",
+            "requant_fuse_api",
+            "reduce_vec_api",
             "unclaimed_op_classes",
         )
     }
@@ -100,6 +108,14 @@ def test_chip_features_bind_only_to_the_selected_backend(monkeypatch):
             "lmul_group_feature",
             "microkernel_policy_api",
             "blocking_cost_api",
+            "shape_adapt_api",
+            "default_perop_caps",
+            "legacy_module",
+            "reduction_schedule_api",
+            "frozen_blocks_api",
+            "weight_prepack_api",
+            "requant_fuse_api",
+            "reduce_vec_api",
             "unclaimed_op_classes",
         )
     }
