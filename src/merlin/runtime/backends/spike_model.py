@@ -44,7 +44,20 @@ if TYPE_CHECKING:
     from ...llvmlower.entry_weight_projection import GeneratedDispatchABI
     from ...llvmlower.host_transform_chain import HostLLVMTransformChain
 
-RVV_CFLAGS = ["-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"]
+SCALAR_CFLAGS = ["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"]
+
+
+def _rvv_backend():
+    from ...llvmlower.backend_spi import load_vector_codegen
+
+    return load_vector_codegen("rvv")
+
+
+def __getattr__(name: str):
+    if name == "RVV_CFLAGS":
+        return list(_rvv_backend().spike_cflags())
+    raise AttributeError(name)
+
 
 #: Cross-compilation triple for the clang-built objects. Named because more than one object is built with
 #: it now, and clang defaults to the HOST triple -- so an invocation that forgets this rejects every RISC-V
@@ -57,9 +70,11 @@ CLANG_TARGET = "--target=riscv64-unknown-elf"
 _C_DESCRIPTOR_INDEX_BITS = 64
 
 
-def _harness_cflags(model_flags: list[str]) -> list[str]:
+def _harness_cflags(model_flags: list[str], *, backend: str = "rvv") -> list[str]:
     """Give GCC the model's ISA/ABI while retaining GCC-compatible harness options."""
-    flags = list(RVV_CFLAGS)
+    if backend == "rvv":
+        return list(_rvv_backend().spike_harness_cflags(model_flags))
+    flags = list(SCALAR_CFLAGS)
     for prefix in ("-march=", "-mabi=", "-mcmodel="):
         selected = [flag for flag in model_flags if flag.startswith(prefix)]
         if selected:
@@ -159,20 +174,24 @@ def selected_model_compiler_plan(
     same producer owner. If preparation changes features or flags, their full
     observations differ and the downstream source proof must refuse.
     """
-    from ...llvmlower.impr_features import apply_cflags
     from .zephyr_model import march_with_vlen
 
     if backend not in {"rvv", "scalar"}:
         raise SpikeModelError(f"unknown whole-model backend {backend!r}")
-    clang_cflags = list(cflags_override or (RVV_CFLAGS if backend == "rvv" else ["-march=rv64gc", *RVV_CFLAGS[1:]]))
+    clang_cflags = list(cflags_override or (_rvv_backend().spike_cflags() if backend == "rvv" else SCALAR_CFLAGS))
     marches = [flag for flag in clang_cflags if flag.startswith("-march=")]
     if len(marches) != 1:
         raise SpikeModelError("whole-model build requires exactly one -march flag")
-    gcc_cflags = _harness_cflags(clang_cflags)
+    gcc_cflags = _harness_cflags(clang_cflags, backend=backend)
     if vlen is not None and backend == "rvv":
         clang_cflags = march_with_vlen(clang_cflags, vlen)
         gcc_cflags = march_with_vlen(gcc_cflags, vlen)
-    model_cflags = apply_cflags(clang_cflags, frozenset(features or frozenset()))
+    if backend == "rvv":
+        model_cflags = _rvv_backend().apply_cflags(clang_cflags, frozenset(features or frozenset()))
+    else:
+        from ...llvmlower.impr_features import apply_cflags
+
+        model_cflags = apply_cflags(clang_cflags, frozenset(features or frozenset()))
     clang = toolchain.clang()
     observation = target_data_layout.observe_index_width(clang, [CLANG_TARGET, *model_cflags])
     from merlin.common.digest import is_sha256
@@ -670,9 +689,8 @@ def build(
     work.mkdir(parents=True, exist_ok=True)
     (work / "quantization-policy.json").unlink(missing_ok=True)
     compilation = CompilationRecipe(work, producer=Path(__file__))
-    from ...llvmlower.weight_prepack import prepare_build_bundle
-
-    model_dir = prepare_build_bundle(model_dir, work, features)
+    if backend == "rvv":
+        model_dir = _rvv_backend().prepare_build_bundle(model_dir, work, features)
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
     gcc = _spike.gcc_path()
     ld = gcc.with_name("riscv64-unknown-elf-ld")
@@ -691,8 +709,8 @@ def build(
     # BF16 register ABI must match the model. ISA/ABI flags are shared across all units.
     from .zephyr_model import march_with_vlen
 
-    clang_cflags = list(cflags_override or (RVV_CFLAGS if backend == "rvv" else ["-march=rv64gc", *RVV_CFLAGS[1:]]))
-    gcc_cflags = _harness_cflags(clang_cflags)
+    clang_cflags = list(cflags_override or (_rvv_backend().spike_cflags() if backend == "rvv" else SCALAR_CFLAGS))
+    gcc_cflags = _harness_cflags(clang_cflags, backend=backend)
     if vlen is not None and backend == "rvv":
         clang_cflags = march_with_vlen(clang_cflags, vlen)
         gcc_cflags = march_with_vlen(gcc_cflags, vlen)

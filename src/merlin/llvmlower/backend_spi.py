@@ -25,8 +25,24 @@ def _checked(target: str, entries: tuple[tuple[str, Any], ...]) -> Any:
             f"{target}: {owner} codegen API version {getattr(backend, 'API_VERSION', None)!r}; "
             f"Merlin requires {API_VERSION}"
         )
-    if not callable(getattr(backend, "build_pipeline", None)):
-        raise BackendAPIError(f"{target}: {owner} codegen lacks build_pipeline")
+    required = (
+        "build_pipeline",
+        "baseline_schedule_text",
+        "parallel_transform_schedule",
+        "vec_pre_schedule",
+        "normalize_features",
+        "apply_schedule",
+        "apply_pipeline",
+        "apply_cflags",
+        "vector_cflags",
+        "schedule_path",
+        "prepare_build_bundle",
+        "spike_cflags",
+        "spike_harness_cflags",
+    )
+    missing = [name for name in required if not callable(getattr(backend, name, None))]
+    if missing:
+        raise BackendAPIError(f"{target}: {owner} codegen lacks {missing}")
     return backend
 
 
@@ -35,18 +51,3 @@ def load_vector_codegen(target: str) -> Any:
     from merlin.targetgen.plugins import load_declared_chain
 
     return _checked(target, load_declared_chain(target, "rvv_codegen"))
-
-
-def optional_vector_codegen(target: str) -> Any | None:
-    """Migration adapter while the pinned base still has a contract but no codegen.
-
-    A missing declaration alone retains the old in-tree RVV path. An invalid declaration,
-    wrong API version, or multiple providers always fails closed. Remove this adapter when
-    Merlin pins the executable RVV provider.
-    """
-    from merlin.targetgen.plugins import load_declared_chain
-
-    entries = load_declared_chain(target, "rvv_codegen")
-    if not entries:
-        return None
-    return _checked(target, entries)

@@ -10,13 +10,31 @@ from merlin.llvmlower import backend_spi
 def test_vector_backend_requires_one_compatible_owner(monkeypatch):
     from merlin.targetgen import plugins
 
-    good = SimpleNamespace(API_VERSION=1, build_pipeline=lambda *args, **kw: "passes")
+    methods = {
+        name: lambda *args, **kw: "passes"
+        for name in (
+            "build_pipeline",
+            "baseline_schedule_text",
+            "parallel_transform_schedule",
+            "vec_pre_schedule",
+            "normalize_features",
+            "apply_schedule",
+            "apply_pipeline",
+            "apply_cflags",
+            "vector_cflags",
+            "schedule_path",
+            "prepare_build_bundle",
+            "spike_cflags",
+            "spike_harness_cflags",
+        )
+    }
+    good = SimpleNamespace(API_VERSION=1, **methods)
     monkeypatch.setattr(plugins, "load_declared_chain", lambda target, key: (("rvv", good),))
     assert backend_spi.load_vector_codegen("kodiak") is good
     monkeypatch.setattr(plugins, "load_declared_chain", lambda target, key: ())
     with pytest.raises(backend_spi.BackendAPIError, match="expected one"):
         backend_spi.load_vector_codegen("kodiak")
-    bad = SimpleNamespace(API_VERSION=2, build_pipeline=good.build_pipeline)
+    bad = SimpleNamespace(API_VERSION=2, **methods)
     monkeypatch.setattr(plugins, "load_declared_chain", lambda target, key: (("rvv", bad),))
     with pytest.raises(backend_spi.BackendAPIError, match="requires 1"):
         backend_spi.load_vector_codegen("kodiak")
@@ -28,7 +46,7 @@ def test_scalar_lowering_never_resolves_vector_provider(monkeypatch, tmp_path):
     def forbidden(_target):
         raise AssertionError("scalar lowering resolved RVV codegen")
 
-    monkeypatch.setattr(backend_spi, "optional_vector_codegen", forbidden)
+    monkeypatch.setattr(backend_spi, "load_vector_codegen", forbidden)
     source = "module { func.func @main() { return } }"
     lowered = pipeline.lower_to_llvm_ir(source, workdir=tmp_path, vectorize=False)
     assert "define" in lowered

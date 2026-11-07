@@ -51,8 +51,13 @@ _CFLAGS_COMMON = ["-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-f
 # fractional-LMUL (mf2/mf4/mf8) and other configs unsupported by some vector
 # ports. With autovec off, non-contraction generics fall through to scalar loops;
 # only the transform path's fixed-width contraction vectors reach vector lanes.
-RVV_CFLAGS = ["-march=rv64gcv", "-fno-vectorize", "-fno-slp-vectorize", *_CFLAGS_COMMON]
 SCALAR_CFLAGS = ["-march=rv64gc", *_CFLAGS_COMMON]
+
+
+def __getattr__(name: str):
+    if name == "RVV_CFLAGS":
+        return _cflags("rvv")
+    raise AttributeError(name)
 
 
 def march_with_vlen(cflags: list[str], vlen: int | None) -> list[str]:
@@ -79,10 +84,10 @@ def _cflags(backend: str, support_target: str = "rvv") -> list[str]:
     if backend == "scalar":
         return SCALAR_CFLAGS
     if backend == "rvv":
-        from ...llvmlower.backend_spi import optional_vector_codegen
+        from ...llvmlower.backend_spi import load_vector_codegen
 
-        vector_backend = optional_vector_codegen(support_target)
-        return RVV_CFLAGS if vector_backend is None else list(vector_backend.vector_cflags(_CFLAGS_COMMON))
+        vector_backend = load_vector_codegen(support_target)
+        return list(vector_backend.vector_cflags(_CFLAGS_COMMON))
     raise ZephyrModelError(f"unknown backend {backend!r} (want 'scalar' | 'rvv')")
 
 
@@ -2369,9 +2374,12 @@ def build_app(
         raise ZephyrModelError("Zephyr build toolchain unavailable (see env in module doc)")
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
-    from ...llvmlower.weight_prepack import prepare_build_bundle
+    if backend == "rvv":
+        from ...llvmlower.backend_spi import load_vector_codegen
 
-    model_dir = prepare_build_bundle(model_dir, work, features)
+        model_dir = load_vector_codegen(matrix.support_target if matrix else "rvv").prepare_build_bundle(
+            model_dir, work, features
+        )
     # Weights stored as int8 + scale when `prequantize-weights` is selected: the blob carries what the
     # datapath computes with, a quarter of the f32 bytes (weight_prequant).
     from ...llvmlower.weight_prequant import prepare_build_bundle as _prequantized
@@ -2508,9 +2516,16 @@ def build_app(
     # the auto-vectorizer asks for is a backend query, so no tile size reaches it. `features` here is
     # the set `prepare_for_lowering` resolved, so a derived feature is honoured. Empty (the baseline
     # and every IR-only feature set) leaves the flags untouched, so model.o stays byte-identical.
-    from ...llvmlower.impr_features import apply_cflags as _apply_cflags
+    if backend == "rvv":
+        from ...llvmlower.backend_spi import load_vector_codegen
 
-    model_cflags = _apply_cflags(cflags, frozenset(features or frozenset()))
+        model_cflags = load_vector_codegen(matrix.support_target if matrix else "rvv").apply_cflags(
+            cflags, frozenset(features or frozenset())
+        )
+    else:
+        from ...llvmlower.impr_features import apply_cflags as _apply_cflags
+
+        model_cflags = _apply_cflags(cflags, frozenset(features or frozenset()))
     _run([clang, "--target=riscv64-unknown-elf", *model_cflags, "-c", res.ll_path, "-o", work / "model.o"])
 
     # 2. data-driven runtime artifacts (arg table, ciface, weights.bin, embedded io).

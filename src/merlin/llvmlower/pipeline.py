@@ -1415,7 +1415,7 @@ def lower_to_llvm_ir(
     (work / _SOURCE_CHECKPOINT).unlink(missing_ok=True)
     (work / _SOURCE_REPORT).unlink(missing_ok=True)
     recipe_sources = {"pipeline_driver": Path(__file__)}
-    from .impr_features import apply_schedule, normalize
+    from .impr_features import normalize
 
     # `normalize` REJECTS an unregistered name, and the lowering runs in forked/child processes that
     # import this module without importing `llvmlower.lower` (where the runner-gated features are
@@ -1481,7 +1481,12 @@ def lower_to_llvm_ir(
         # every target. A libm fmaf call happens to work on this host, but the
         # RV64 image needs an explicit llvm.fma to select fmadd.s.
         selected = frozenset(selected or ()) | {"lower_fma_to_intrinsic"}
-    feats = normalize(selected)
+    vector_backend = None
+    if vectorize and pipeline is None:
+        from .backend_spi import load_vector_codegen
+
+        vector_backend = load_vector_codegen(codegen_target)
+    feats = vector_backend.normalize_features(selected) if vector_backend is not None else normalize(selected)
     from .masked_contraction import FEATURE as _MASKED_FEATURE
     from .masked_contraction import MaskEffectContract
 
@@ -1527,10 +1532,9 @@ def lower_to_llvm_ir(
     if pipeline is None:
         if vectorize:
             sched = work / "rvv_schedule.mlir"
-            from .backend_spi import load_vector_codegen
-
-            vector_backend = load_vector_codegen(codegen_target)
-            sched_text = apply_schedule(transform_schedule or vector_backend.baseline_schedule_text(), feats)
+            sched_text = vector_backend.apply_schedule(
+                transform_schedule or vector_backend.baseline_schedule_text(), feats
+            )
             sched.write_text(sched_text, encoding="utf-8")
             recipe_sources["transform_schedule"] = sched
             par_sched = None

@@ -260,6 +260,22 @@ def _verified_against_the_pinned_lane(package_dir: str, strategy: str) -> str:
     return package_dir
 
 
+def _provider_owned_rvv_schedule(package_dir: str) -> str:
+    """Select the package bytes from the pinned RVV provider, checking the old registry's choice."""
+    from pathlib import Path
+
+    from ..llvmlower.backend_spi import load_vector_codegen
+
+    local = Path(package_dir)
+    owned = load_vector_codegen("rvv").schedule_path(local.name)
+    for name in ("manifest.yaml", "knobs.yaml", "schedule.mlir"):
+        if (local / name).read_bytes() != (owned / name).read_bytes():
+            raise SystemExit(
+                f"[merlin-compile] selected RVV schedule {local.name!r} differs from pinned provider at {name}"
+            )
+    return str(owned)
+
+
 def default_package(dtype: str, *, bundle: Path | None = None) -> str:
     """The package `merlin-compile` uses when `--package` is not given.
 
@@ -306,7 +322,7 @@ def default_package(dtype: str, *, bundle: Path | None = None) -> str:
         )
     try:
         sel = select_champion("rvv", dtype_strategy=strategy)
-        return _verified_against_the_pinned_lane(str(sel.package_dir), strategy)
+        return _provider_owned_rvv_schedule(_verified_against_the_pinned_lane(str(sel.package_dir), strategy))
     except PublishError:
         # Fall back only WITHIN the datatype. The frozen hand baselines exist for fp32 and int8
         # only, so any other dtype has no same-datatype control to fall back to — and handing
@@ -327,4 +343,4 @@ def default_package(dtype: str, *, bundle: Path | None = None) -> str:
         )
         from ..common.artifacts import artifacts_dir
 
-        return str(artifacts_dir() / "targets" / "rvv" / fallback)
+        return _provider_owned_rvv_schedule(str(artifacts_dir() / "targets" / "rvv" / fallback))
