@@ -2481,6 +2481,7 @@ def build_app(
                 targets=(),
                 textual=True,
                 vectorize=(backend == "rvv"),
+                codegen_target=(matrix.support_target if matrix is not None else "rvv"),
                 transform_schedule=rvv_schedule,
                 features=features,
                 parallel=(backend != "rvv" and n_harts > 1),

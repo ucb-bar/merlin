@@ -1536,6 +1536,7 @@ def lower_to_llvm_ir(
     pipeline: str | None = None,
     timeout: int = 7200,
     vectorize: bool = False,
+    codegen_target: str = "rvv",
     transform_schedule: str | None = None,
     hoist_static_allocs: bool = True,
     parallel: bool = False,
@@ -1739,7 +1740,11 @@ def lower_to_llvm_ir(
                 vec_sched = work / "rvv_vec_pre_schedule.mlir"
                 vec_sched.write_text(vec_text, encoding="utf-8")
                 recipe_sources["vector_pre_schedule"] = vec_sched
-            pipeline = build_rvv_pipeline(
+            from .backend_spi import optional_vector_codegen
+
+            vector_backend = optional_vector_codegen(codegen_target)
+            build_vector_pipeline = build_rvv_pipeline if vector_backend is None else vector_backend.build_pipeline
+            pipeline = build_vector_pipeline(
                 sched,
                 hoist_static_allocs=hoist_static_allocs,
                 features=feats,

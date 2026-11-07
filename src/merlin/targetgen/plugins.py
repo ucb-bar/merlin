@@ -73,6 +73,14 @@ PLUGIN_KEYS: dict[str, PluginKey] = {
         consumed=True,
         expects="path",
     ),
+    "rvv_codegen": PluginKey(
+        "rvv_codegen",
+        "The provider-owned vector codegen module. Loaded from the declaring provider in an "
+        "extends chain; it exports API_VERSION and build_pipeline without self-registering a "
+        "runtime backend. A scalar build never loads it.",
+        consumed=True,
+        expects="path",
+    ),
     "simt_introspect": PluginKey(
         "simt_introspect",
         "The SIMT RTL introspect this package serves, as `<plugin.backend>:<attribute>` -- an attribute of "
@@ -366,3 +374,49 @@ def load_declared(target: str, key: str):
         raise PluginError(f"{target!r} declares no plugin.{key} in {info.contract_path}")
     root = provider_root(info.base, block.get("path"))
     return load_module(root, reference, package_name=target)
+
+
+def load_declared_chain(target: str, key: str) -> tuple[tuple[str, Any], ...]:
+    """Load each declaration of ``key`` in a support provider's base-to-leaf chain.
+
+    A composed contract deliberately does not inherit plugin paths: a base path belongs to the
+    base repository, not the leaf repository. Keep that ownership while composing executable
+    backends. This function loads no undeclared key and verifies every exact base revision before
+    importing any code.
+    """
+    from merlin.common.yaml import safe_load_text
+
+    from .provider_compose import chain, provider_revision
+    from .providers import read_provider
+    from .support_pins import check_single_base
+
+    spec = PLUGIN_KEYS.get(key)
+    if spec is None or not spec.consumed or key == "path":
+        raise PluginError(f"plugin.{key}: not a loadable plugin key")
+    info = resolve_support(target)
+    selected = read_provider(info.base)
+    if selected is None:
+        raise PluginError(f"{target}: selected support root has no provider")
+    lineage = chain(selected)
+    for parent, child in zip(lineage, lineage[1:]):
+        check_single_base(child)
+        pinned = child.extends.commit if child.extends is not None else None
+        actual = provider_revision(parent.root)
+        if pinned is not None and actual != pinned:
+            raise PluginError(f"{child.target}: base {parent.target} is {actual or 'unrecorded'}, expected {pinned}")
+    loaded: list[tuple[str, Any]] = []
+    for provider in lineage:
+        if provider.contract_path is None:
+            continue
+        contract = safe_load_text(provider.contract_path.read_text(encoding="utf-8"))
+        block = contract.get("plugin", {}) if isinstance(contract, dict) else {}
+        if not isinstance(block, dict):
+            raise PluginError(f"{provider.target}: contract plugin block is not a mapping")
+        reference = block.get(key)
+        if reference is None:
+            continue
+        problems = validate({key: reference}, root=provider.root)
+        if problems:
+            raise PluginError("; ".join(problems))
+        loaded.append((provider.target, load_module(provider.root, reference, package_name=provider.target)))
+    return tuple(loaded)
