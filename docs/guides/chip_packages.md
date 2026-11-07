@@ -255,8 +255,9 @@ build with `--matrix-unit/--matrix-config/--matrix-support-target`, on both `mer
 `merlin.runtime.backends.matrix_image.build_matrix_pair`:
 
 * the shipped image, whose selected int8 contractions call the unit's kernel;
-* a stand-in twin, with the same lowering (checked by digest) and a scalar tile body, which is what a
-  functional simulator runs and grades;
+* a stand-in twin, with the same lowering (checked by digest) and a scalar tile body, which runs on
+  plain Spike; when the pinned matrix-unit Spike extension is available, the shipped image is also
+  run and graded on that extension;
 * `routing_report.json`, listing what was routed, what was not and why (dtype, an accumulator that is
   not zero, not a GEMM, the cost model's verdict), the share of contraction MACs on the unit, the same
   split per model site (`macs_by_site`: conv / attention / linear, from provenance), the policy and

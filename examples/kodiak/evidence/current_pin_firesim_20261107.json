@@ -1,0 +1,82 @@
+{
+  "schema": "merlin.kodiak_current_pin_firesim_summary.v1",
+  "compiler_pins": {
+    "merlin": "2f513d484f5d68016811139344ffdfbf8d23cd95",
+    "rvv_mlir": "f33a253431c64f8fed8aaad4bc673cfde82101c4",
+    "kodiak_mlir": "0cf10a3b65b5703b4b5add9e4b4044287c9f1140"
+  },
+  "board": "firesim_kodiak_opu",
+  "hardware_config": "alveo_u250_firesim_kodiak_opu_1core",
+  "bitstream_tar_sha256": "f671be16ae5850c2765d897593010f4144654fe49bed0d5fe0d3ebdbd49d9462",
+  "hwdb_entry_sha256": "76bddc8d3fa9cff6bd6b7d40ca52acb9a1c682cef6b534b7f845aaddf8a170aa",
+  "gemm_64x64x64": {
+    "result_sha256": "94850e20c30fb2a1c589bf1adc0b4eb6e5950fb2cfad8e32de401b81632bb677",
+    "device_job": 3904,
+    "control_job": 3905,
+    "device_elf_sha256": "1a1fb6eb8f3e799bdffe3118dbe1c0c5248bcbadfc7c7444c62b792931b602f2",
+    "control_elf_sha256": "d89232a8be3ba973864261c5ddc02d8a08fbd6da93555ee939b48f1d8238a609",
+    "both_verified": true,
+    "full_output_fnv1a32": 2089162557,
+    "output_elements": 4096,
+    "device_target_cycles": 716259,
+    "control_target_cycles": 909119,
+    "control_over_device_speedup": 1.269260141931899,
+    "valid_macs_static_one_hit": 262144,
+    "geometric_tile_fill": 1.0,
+    "dynamic_mac_rate": null,
+    "physical_pe_duty": null
+  },
+  "spectformer_profiled": {
+    "result_sha256": "65ab6cc687d16cabf87c1e2be5fd682a46f7edb734f2dfba3c34945773cbd713",
+    "device_job": 3906,
+    "control_job": 3907,
+    "device_elf_sha256": "baf3c68ba83416e18faa0a8b2871f0fa8bfbdc411a4c7e147916960d51866960",
+    "control_elf_sha256": "5d21b549d7be9c26b85bac1df33f39ed749cb56852a83b53acfe99138acb5165",
+    "both_verified": true,
+    "full_output_fnv1a32": 3242232599,
+    "output_elements": 1000,
+    "w8a8_numerical_gate_rel": 1.953510742062544e-7,
+    "w8a8_numerical_gate_max_rel": 4.053456905239727e-6,
+    "bitwise_host_w8a8_hash_equal": false,
+    "routed_calls_one_hit": 90,
+    "valid_routed_macs": 1853155328,
+    "unrouted_eligible_macs_static": 6422528,
+    "routed_share_of_static_eligible_macs": 0.9965462440955202,
+    "shape_derived_padded_slots": 2510290944,
+    "geometric_tile_fill": 0.7382233252401837,
+    "profiled_site_breakdown": {
+      "conv": {"calls": 1, "valid_macs": 38535168, "call_cycles": 1875551},
+      "spectral": {"calls": 32, "valid_macs": 12845056, "call_cycles": 17170126},
+      "linear": {"calls": 41, "valid_macs": 1644423168, "call_cycles": 43045653},
+      "attention": {"calls": 16, "valid_macs": 157351936, "call_cycles": 14120529}
+    },
+    "opu_call_window_target_cycles": 76211859,
+    "device_inference_target_cycles": 3062371730,
+    "opu_call_time_share": 0.024886547329771753,
+    "useful_mac_per_opu_call_window_cycle": 24.315839454854395,
+    "useful_fraction_of_configured_1024_mac_peak_in_call_windows": 0.023745936967631245,
+    "physical_pe_duty": null,
+    "paired_speedup": null,
+    "paired_speedup_reason": "device is profiled while control is unprofiled"
+  },
+  "spectformer_unprofiled": {
+    "result_sha256": "f2be6e382253e2dc3844147454153f4519194f3947291cbcff2199a6a4c8bc83",
+    "device_job": 3908,
+    "control_job": 3907,
+    "device_elf_sha256": "bcf2b84dfda66b2195316b7fa865832e28e95c4cd480e9a5fe64781c22210c27",
+    "control_elf_sha256": "5d21b549d7be9c26b85bac1df33f39ed749cb56852a83b53acfe99138acb5165",
+    "both_verified": true,
+    "full_output_fnv1a32": 3242232599,
+    "output_elements": 1000,
+    "device_target_cycles": 3043722303,
+    "control_target_cycles": 6117924967,
+    "control_over_device_speedup": 2.010014172767981,
+    "physical_pe_duty": null
+  },
+  "limits": [
+    "The Spectformer W8A8 numerical gate passes all 1000 outputs; its bitwise host W8A8 hash differs under a recorded libm versus portable math policy mismatch, which is not an independently proved sole cause.",
+    "The tested bitstream tar has an exact SHA but is not declared in Merlin's artifact registry; local Saturn source pin drift was explicitly allowed, so these runs do not prove source-to-bitstream reproduction.",
+    "The Spectformer capture is a legacy W8A8 package. Independent true TorchAO source parity is a separate gate.",
+    "The profiled FireSim call windows include packing, transfers, stalls and kernel work; the pinned bitstream has no PE active or valid-lane counter."
+  ]
+}

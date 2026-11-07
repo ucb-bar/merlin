@@ -373,3 +373,48 @@ a speedup measurement. The [portable SHA-bound summary](evidence/profiled_opu_64
 records exact ELFs, bitstream tar, UARTs, result hashes, and the compiler-source
 citation caveat. This is a legacy operator calibration; TorchAO-source
 SpectFormer and TinyLlama still require separate parity and image gates.
+
+## Current-pin FireSim qualification (2026-11-07)
+
+The [portable receipt](evidence/current_pin_firesim_20261107.json) identifies the
+Merlin, RVV, and Kodiak commits, both ELF hashes for each pair, queue jobs, the
+one-core U250 bitstream archive SHA, and the HWDB entry SHA. Both legs of the
+64³ GEMM and Spectformer pairs completed on FireSim and matched their exact
+Spike outputs. The Spectformer images passed the numerical W8A8 gate over all
+1,000 outputs. Their full output hash matched Spike's shipped image and twin;
+the bitwise host W8A8 golden hash differs under a recorded libm versus portable
+math policy mismatch. That policy difference is not independently established
+as the sole cause of the hash difference.
+
+| Same-instrumentation pair | OPU target cycles | RVV target cycles | RVV / OPU |
+| --- | ---: | ---: | ---: |
+| 64³ GEMM, jobs 3904/3905 | 716,259 | 909,119 | 1.26926× |
+| Unprofiled Spectformer, jobs 3908/3907 | 3,043,722,303 | 6,117,924,967 | 2.01001× |
+
+The GEMM's 262,144 valid MACs and 100% tile fill are *static one-hit* work and
+geometry calculations; that unprofiled image has no same-image dynamic MAC
+rate. The separate profiled Spectformer device job 3906 proves exactly one
+execution of each of its 90 routed calls. Its 1,853,155,328 valid routed MACs
+span 76,211,859 measured OPU call-window target cycles, giving **24.31584 useful
+MACs per call-window cycle**, or **2.37459% of the configured 1,024-MAC/cycle
+capacity**. Those windows are 2.48865% of its 3,062,371,730-cycle inference.
+The share of *static eligible contraction MACs* assigned to OPU is 99.65462%;
+the hit-weighted, shape-derived padded tile fill is 73.82233%. Neither number
+measures physical PE duty. Job 3906 is profiled and its RVV control 3907 is not,
+so their cycle ratio is deliberately excluded from the speedup table.
+
+The [same-image call breakdown](evidence/current_pin_firesim_20261107.json)
+shows why tile fill alone does not explain throughput. The 32 spectral calls
+perform only 12,845,056 valid MACs (0.69% of routed work) but take 17,170,126
+of the 76,211,859 OPU call-window cycles (22.5%, rounded). Across all calls,
+geometric padding is 1.355× slots per valid MAC, while measured call-window
+time is 42.1× the ideal valid-MAC time at the configured peak. The current
+bitstream has no active-cell or valid-lane counters, so packing, transfer, and
+hardware stalls cannot be apportioned. Even eliminating all recorded OPU call
+cycles would improve this exact profiled inference by at most 1.02552×; most
+remaining end-to-end time lies outside those calls.
+
+These are functional results on an identified bitstream archive. The archive
+is not declared in Merlin's artifact registry, and the local Saturn source
+pin was used under an explicit off-pin allowance. They do not establish
+source-to-bitstream reproduction or independent TorchAO-source model parity.
