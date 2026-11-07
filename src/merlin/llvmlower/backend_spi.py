@@ -43,6 +43,8 @@ def _checked(target: str, entries: tuple[tuple[str, Any], ...]) -> Any:
         "accum_microkernel_runner_source",
         "accum_microkernel_rewrite_source",
         "vec_noncontraction_shape",
+        "im2col_pack_api",
+        "weight_panel_api",
     )
     missing = [name for name in required if not callable(getattr(backend, name, None))]
     if missing:

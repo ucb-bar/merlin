@@ -1412,7 +1412,9 @@ def build_k1_binary(
     # whose weights.safetensors and manifest were packed to match and checks the two signatures agree
     # argument by argument before the ABI table is built from it. Returns `model_dir` unchanged when
     # the build packed nothing, so a run naming no feature is byte-identical.
-    from ..llvmlower import weight_panel as _wpan
+    from ..llvmlower.backend_spi import load_vector_codegen
+
+    _wpan = load_vector_codegen("rvv").weight_panel_api()
 
     model_dir, _panel = _wpan.abi_bundle(model_dir, work, prepared)
     if _panel is not None:

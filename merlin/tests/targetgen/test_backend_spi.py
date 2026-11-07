@@ -31,6 +31,8 @@ def test_vector_backend_requires_one_compatible_owner(monkeypatch):
             "accum_microkernel_runner_source",
             "accum_microkernel_rewrite_source",
             "vec_noncontraction_shape",
+            "im2col_pack_api",
+            "weight_panel_api",
         )
     }
     good = SimpleNamespace(API_VERSION=1, **methods)
@@ -72,6 +74,8 @@ def test_chip_features_bind_only_to_the_selected_backend(monkeypatch):
             "accum_microkernel_runner_source",
             "accum_microkernel_rewrite_source",
             "vec_noncontraction_shape",
+            "im2col_pack_api",
+            "weight_panel_api",
         )
     }
     backend = SimpleNamespace(API_VERSION=1, **methods)

@@ -854,7 +854,11 @@ def prepare_for_lowering(
         vector_backend = load_vector_codegen(matrix.support_target if matrix else "rvv")
         _closed = vector_backend.normalize_features(features)
         _lanes, _max_rank = vector_backend.vec_noncontraction_shape(_closed)
+        _ip = vector_backend.im2col_pack_api()
+        _wpan = vector_backend.weight_panel_api()
     elif backend == "scalar":
+        from ...llvmlower import im2col_pack as _ip
+        from ...llvmlower import weight_panel as _wpan
         from ...llvmlower.impr_features import normalize as _normalize
         from ...llvmlower.impr_features import vec_noncontraction_lanes as _vec_lanes
         from ...llvmlower.impr_features import vec_noncontraction_max_rank as _vec_max_rank
@@ -946,11 +950,9 @@ def prepare_for_lowering(
     # packing or per-op scheduling rewrites them. The 155 TinyLlama weight matmuls become calls to
     # one descriptor-driven RVV body; rank-3 attention contractions remain in the normal pipeline.
     if outline_int8:
-        from ...llvmlower import weight_panel as _outline_wpan
-
-        if _outline_wpan.FEATURE in features:
+        if _wpan.FEATURE in features:
             raise ValueError(
-                f"outline_int8 and {_outline_wpan.FEATURE!r} both claim the same rank-2 weight "
+                f"outline_int8 and {_wpan.FEATURE!r} both claim the same rank-2 weight "
                 "contractions; remove the panel-pack feature for an outlined-kernel build"
             )
         from . import outlined_int8_board as _outlined
@@ -1117,7 +1119,6 @@ def prepare_for_lowering(
         _judge_levers_on(prepared)
         return _finish_preparation(prepared)
     from ...llvmlower import im2col_identity_view as _iv
-    from ...llvmlower import im2col_pack as _ip
     from ...llvmlower import perop_blocks as _pb
     from ...llvmlower.impr_features import (
         PEROP_BLOCK_NAME,
@@ -1150,8 +1151,6 @@ def prepare_for_lowering(
             f"and only its schedule carries the fused arms. Named alone it would tag nothing, build "
             f"the baseline, and report as applied. Name both."
         )
-    from ...llvmlower import weight_panel as _wpan
-
     if _wpan.FEATURE in features and not _has_block_request:
         raise ValueError(
             f"{_wpan.FEATURE!r} requires {PEROP_BLOCK_NAME!r} in the same feature set: the panel "
