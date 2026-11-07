@@ -1,0 +1,53 @@
+authoring:
+  author: Kodiak OPU handoff
+  generated_by_agent: true
+  mode: derived_from_verified_package
+family: vector_schedule
+delivery_status:
+  spectformer: >-
+    Spectformer int8 image for Kodiak. Per-image Spike and W8A8 gates are recorded below.
+    This alternate schedule has no K1 or physical Kodiak certification; the older parent
+    schedule's K1 result does not transfer. As of 2026-11-06, the physical chip's 0x1000
+    BootAddrReg positive-control readback still fails before any Merlin image executes.
+  tinyllama_l2_s64: >-
+    Two-layer TinyLlama section at 64 tokens, not the full model. Per-image gates are recorded
+    below. A prior one-core FireSim pair with these schedule bytes passed, but the chipyard
+    delivery images have not run on physical Kodiak. No K1 certification is claimed. As of
+    2026-11-06, the physical chip's 0x1000 BootAddrReg positive-control readback still fails.
+lineage:
+  author: Kodiak OPU handoff
+  depth: 1
+  lever: prepack_weight_layout
+  parent_run_id: impr_tuned_wholemodel_vf_int8
+  source_evidence:
+  - out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8/
+  - examples/kodiak/UTILIZATION.md
+  - out/artifacts/targets/rvv/kodiak_prepack_w8a8_v1/firesim_evidence.json
+  version: 1
+outputs:
+  knobs: knobs.yaml
+  schedule: schedule.mlir
+package_id: kodiak_prepack_w8a8_v1
+publication:
+  certification: not_k1_certified
+  champion: false
+  evidence:
+    portable_receipt: firesim_evidence.json
+    board: firesim_kodiak_opu
+    model: tinyllama_l2_s64
+    device_job: 3866
+    control_job: 3867
+    output_fnv1a32: 2628075425
+    output_elements: 2048000
+    device_compute_cycles: 1101993218
+    control_compute_cycles: 13689726593
+    full_result_sha256: eac67fd88ed18c923cc4f7c748f74d9c652668041d7042c310346344087718b1
+    utilization_sha256: dacfd5b4c8ea6662946f051dbfcd88d47ab304fcd0a689b4196405f343e26fb4
+    note: >-
+      These jobs used the same prepack knob and schedule, before Merlin's later
+      fresh-fill elision; they do not certify this package on K1 or a physical Kodiak chip.
+run_id: kodiak_prepack_w8a8_v1
+schedule_format: transform_dialect_mlir
+status: spike_verified
+target: rvv
+version: 1

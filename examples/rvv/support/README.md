@@ -2,6 +2,11 @@
 
 The **base RISC-V Vector (RVV) layer** for [Merlin](https://github.com/ucb-bar/merlin).
 
+The `handwritten-implementation` branch carries executable RVV pipeline construction in `backend.py`
+and checked schedule payloads in `schedules/`. Merlin loads `plugin.rvv_codegen` from the pinned provider
+root and checks `API_VERSION` before selecting the vector path. A scalar build can run without this
+provider. The pipeline uses upstream MLIR passes; this repository does not define a custom RVV dialect.
+
 Everything in this repository is plain RVV. It contains no matrix-unit or OPU code and no
 chip-specific facts. Chip packages build on it and add only what their chip has:
 
@@ -20,7 +25,8 @@ notices when this base moves.
 
 | branch | what it is |
 |---|---|
-| `main` (this one) | the RVV **support provider** Merlin selects for target `rvv`: `provider.yaml`, `contracts/target_contract.yaml`, `tests/` |
+| `handwritten-implementation` (this branch) | the RVV support provider and executable pipeline selected by Merlin: contract, `backend.py`, schedules, tests |
+| `main` | historical landing page; the repository default branch changes after integration gates pass |
 | `stable/impr_tuned_wholemodel_vf_int8` | int8 W8A8 whole-model schedule (`vwmacc`), K1-verified; the RVV schedule the Kodiak builds use |
 | `stable/sol_k1_int8` | int8 speed-of-light schedule, K1-verified, with its analysis |
 | `baseline-int8_w8a8` | frozen, hand-written, unoptimized int8 control (the before/after reference) |

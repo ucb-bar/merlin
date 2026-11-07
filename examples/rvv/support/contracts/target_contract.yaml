@@ -79,6 +79,8 @@ measurement:
 memory_model:
   resident: false
 name: rvv
+plugin:
+  rvv_codegen: backend.py
 provenance: SpacemiT K1 X60 rv64gcv (VLEN=256); RVV datapaths per merlin.rvvgen.k1 + llvmlower.passes_quant_int (int8 W8A8 vwmacc) + passes_xdsl.lower_bf16_matmul_f32acc.
 requires_human_review: true
 runner:

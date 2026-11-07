@@ -19,9 +19,9 @@
   "files": [
     {
       "path": "contracts/target_contract.yaml",
-      "source": "out/artifacts/targets/rvv/contracts/target_contract.yaml",
+      "source": "rvv-mlir/contracts/target_contract.yaml (provider extension of original snapshot)",
       "source_revision": null,
-      "sha256": "b08117fecc0eef967ce639ab55314d2b8a163dd1733603f11133f452dd8ec4a4"
+      "sha256": "34228f1bdf5b22b4017bbe8df36852eac99edb6d488d58bf69ac971a0ec27b06"
     }
   ]
 }
