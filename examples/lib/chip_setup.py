@@ -388,7 +388,19 @@ def build_spike(pin_name: str, env_name: str, source_item: Item, *, prefix: Path
         )
     build = prefix / "build"
     build.mkdir(parents=True, exist_ok=True)
-    _run([source / "configure", f"--prefix={prefix}"], cwd=build)
+    # Kernel simulation does not use the optional interactive Boost helpers.
+    # Avoid binding a host build to whichever incompatible Boost installation
+    # configure happens to discover through the active toolchain environment.
+    _run(
+        [
+            source / "configure",
+            f"--prefix={prefix}",
+            "--with-boost=no",
+            "--with-boost-asio=no",
+            "--with-boost-regex=no",
+        ],
+        cwd=build,
+    )
     _run(["make", f"-j{jobs or os.cpu_count() or 4}"], cwd=build)
     _run(["make", "install"], cwd=build)
     stamp = {
@@ -675,8 +687,7 @@ def capture_item(settings: dict[str, str], m2m_arg: Path | None, *, fetch: bool)
     if requested_venv.is_relative_to(owned_build):
         venv = requested_venv
     else:
-        print(f"ignoring MERLIN_M2M_VENV={requested_venv}: outside this checkout's build directory; "
-              f"using {owned_venv}")
+        print(f"ignoring MERLIN_M2M_VENV={requested_venv}: outside this checkout's build directory; using {owned_venv}")
         venv = owned_venv
     py = venv / "bin" / "python"
     name = f"model2MLIR @{pin.commit[:12]} + capture venv"
