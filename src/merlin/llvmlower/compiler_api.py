@@ -24,3 +24,10 @@ def class_token(op: str) -> str:
 def par_tag_for(op: str, tiles: tuple[int, ...]) -> str:
     """Stable attribute used to join a parallel chunk with its schedule arm."""
     return f"{PAR_TAG_PREFIX}{class_token(op)}_" + "_".join(str(int(t)) for t in tiles)
+
+
+def splice_passes(passes: list[str]) -> str:
+    """Apply Merlin's shared deallocation and fusion ordering policy to a provider pass list."""
+    from .pipeline import _splice
+
+    return _splice(passes)

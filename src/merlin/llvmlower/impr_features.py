@@ -19,73 +19,20 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from .copy_expand import FEATURE as _EXPAND_COPY_FEATURE
+from .feature_registry import CompositionError, FeatureRegistry, ImprFeature
 from .selfcopy import FEATURE as _SELF_COPY_FEATURE
 from .transpose_fuse import FEATURE as _FUSE_TRANSPOSE_FEATURE
 
-
-@dataclass(frozen=True)
-class ImprFeature:
-    """One named, default-off compiler change.
-
-    ``edit_pipeline`` rewrites the ordered MLIR pass list (PASS/HEURISTIC at the pipeline level).
-    ``edit_schedule`` rewrites the transform-dialect schedule text (PATTERN at the schedule level
-    that goes beyond what a hand-written ``schedule.mlir`` knob expresses). Either may be None.
-    Both are pure functions (input -> new value); they must be deterministic.
-
-    ``schedule_replace`` flags an ``edit_schedule`` that IGNORES its input text and emits a full
-    replacement schedule (e.g. the tiled-vfmacc / accumulator-resident recipes whose structure
-    differs fundamentally from the tile+vectorize baseline). Two such features cannot COMPOSE — the
-    last one in sorted order would silently clobber the other's clamp — so ``apply_schedule`` refuses
-    to apply more than one full-replacement schedule feature at once (the composed, whole-model-safe
-    config is a SINGLE feature with all the clamps inherent). Additive edits (``schedule_replace`` =
-    False, e.g. ``lmul_widen_n``'s string substitution) layer freely on top of a replacement.
-
-    ``edit_cflags`` rewrites the clang flag list for the model object (KNOB at the BACKEND level).
-    It exists because some codegen decisions are not expressible in the IR at all: the width of the
-    vector register group the auto-vectorizer asks for is a backend query, not a type, so no tile
-    size or schedule edit reaches it directly -- the only way this registry could move it before was
-    to widen the N tile and let the group width follow, which changes the vectorized shapes as a side
-    effect and can push a transfer into a masked form the backend rejects (see ``lmul_group``). A
-    ``None`` hook leaves the flags untouched, so a build that names no cflag-editing feature compiles
-    byte-identically.
-
-    ``implies`` names features this one CANNOT be measured without -- lowering hygiene that is a
-    property of the recipe's SHAPE rather than a tuning choice. It exists because a default-off
-    feature whose payoff is cancelled by a separate default-off fix is, in practice, an inert lever:
-    the beam has to discover the conjunction, and everyone who names the feature directly in
-    ``compiler_features`` gets the cancelled version. See ``_tile_epilogue_hygiene``.
-
-    ``alternative_group`` names a family whose members are alternative choices: at most one
-    member may be selected. ``requires_exactly_one_of`` names explicit prerequisites from which
-    exactly one must be selected. Both constraints are checked after the ``implies`` closure;
-    neither selects a prerequisite or drops a conflicting feature automatically.
-    """
-
-    name: str
-    action_class: str  # "PASS" | "HEURISTIC" | "PATTERN"
-    description: str
-    edit_pipeline: Callable[[list[str]], list[str]] | None = None
-    edit_schedule: Callable[[str], str] | None = None
-    edit_cflags: Callable[[list[str]], list[str]] | None = None
-    schedule_replace: bool = False
-    implies: frozenset[str] = frozenset()
-    alternative_group: str | None = None
-    requires_exactly_one_of: frozenset[str] = frozenset()
-
-
-_REGISTRY: dict[str, ImprFeature] = {}
+_FEATURES = FeatureRegistry(lambda name: _try_lazy_register(name))
+_REGISTRY = _FEATURES.entries
 
 
 def register(feature: ImprFeature) -> ImprFeature:
-    if feature.name in _REGISTRY:
-        raise ValueError(f"duplicate impr feature {feature.name!r}")
-    _REGISTRY[feature.name] = feature
-    return feature
+    return _FEATURES.register(feature)
 
 
 #: Cache for :func:`_single_name_lever_modules` (built once per process).
@@ -248,132 +195,27 @@ def _try_lazy_register(name: str) -> bool:
 
 
 def get(name: str) -> ImprFeature:
-    if name not in _REGISTRY and not _try_lazy_register(name):
-        raise KeyError(f"unknown impr feature {name!r}; registered: {sorted(_REGISTRY)}")
-    return _REGISTRY[name]
+    return _FEATURES.get(name)
 
 
 def known() -> list[str]:
-    return sorted(_REGISTRY)
+    return _FEATURES.known()
 
 
 def normalize(features) -> frozenset[str]:
-    """Accept None / list / set / frozenset -> validated frozenset (every name must be registered),
-    closed under ``ImprFeature.implies`` and satisfying declared selection constraints.
-
-    The closure is here, and not at each call site, because ``feats = normalize(...)`` is the single
-    point every consumer reads: the runner selection, the schedule edits, and the argv gates for the
-    self-copy erase / transpose fusion all key off this one set. Expanding anywhere later would let
-    them disagree about which features are on.
-
-    Empty in => empty out, so the frozen baseline stays byte-identical.
-    """
-    if not features:
-        return frozenset()
-    fs = frozenset(features)
-    for n in fs:
-        get(n)  # raises on unknown
-    while True:
-        grown = fs | frozenset().union(*(get(n).implies for n in fs)) if fs else fs
-        if grown == fs:
-            break
-        for n in grown - fs:
-            get(n)  # an implied name must be registered too
-        fs = grown
-
-    groups: dict[str, list[str]] = {}
-    for n in sorted(fs):
-        feature = get(n)
-        if feature.alternative_group is not None:
-            groups.setdefault(feature.alternative_group, []).append(n)
-    for group, members in sorted(groups.items()):
-        if len(members) > 1:
-            raise ValueError(f"feature alternatives in group {group!r} cannot compose: {members}")
-    for n in sorted(fs):
-        required = get(n).requires_exactly_one_of
-        selected = sorted(fs & required)
-        if required and len(selected) != 1:
-            raise ValueError(f"feature {n!r} requires exactly one of {sorted(required)}; selected {selected}")
-    return fs
+    return _FEATURES.normalize(features)
 
 
 def apply_pipeline(passes: list[str], features: frozenset[str]) -> list[str]:
-    """Apply each enabled feature's pipeline edit, in a stable (sorted) order. Empty -> unchanged
-    list object content (identity), so the joined string is byte-identical to the baseline."""
-    if not features:
-        return passes
-    out = list(passes)
-    for name in sorted(features):
-        f = get(name)
-        if f.edit_pipeline is not None:
-            out = f.edit_pipeline(out)
-    return out
-
-
-class CompositionError(ValueError):
-    """Two features both fully REPLACE the transform schedule -> they cannot compose (one would
-    silently clobber the other). The whole-model-safe composed config is a SINGLE feature with all
-    clamps inherent; raise instead of letting sorted order pick a winner."""
+    return _FEATURES.apply_pipeline(passes, features)
 
 
 def apply_schedule(schedule_text: str, features: frozenset[str]) -> str:
-    """Apply each enabled feature's schedule edit so features COMPOSE rather than clobber.
-
-    Full-schedule-REPLACEMENT features (``schedule_replace=True``, e.g. the tiled-vfmacc /
-    accumulator-resident recipes whose ``edit_schedule`` ignores its input) are applied FIRST, and
-    at most ONE is allowed — two would make the result depend on sorted order, silently discarding
-    the other's clamp (the bug WORK-ITEM 2 fixes). Additive edits (``schedule_replace=False``, pure
-    text transforms like ``lmul_widen_n``) then layer on top in stable order. Empty -> unchanged text.
-    """
-    if not features:
-        return schedule_text
-    replacers = [get(n) for n in sorted(features) if get(n).edit_schedule is not None and get(n).schedule_replace]
-    if len(replacers) > 1:
-        raise CompositionError(
-            "cannot compose multiple full-schedule-replacement features "
-            f"{[f.name for f in replacers]}: each emits a complete transform schedule and would "
-            "clobber the others. Enable the single composed feature that carries all clamps "
-            "inherent (e.g. accumulator_resident_wholemodel) instead of stacking replacements."
-        )
-    out = schedule_text
-    if replacers:  # the one replacement runs first (input ignored)
-        out = replacers[0].edit_schedule(out)
-    for name in sorted(features):  # then additive edits layer on top
-        f = get(name)
-        if f.edit_schedule is not None and not f.schedule_replace:
-            out = f.edit_schedule(out)
-    return out
+    return _FEATURES.apply_schedule(schedule_text, features)
 
 
 def apply_cflags(cflags, features: frozenset[str]) -> list[str]:
-    """``cflags`` with every enabled feature's ``edit_cflags`` hook applied, in stable name order.
-
-    Empty ``features`` (the baseline, and every build that names only IR-level features) returns the
-    list unchanged, so the emitted object is byte-identical -- the same invariant
-    :func:`apply_pipeline` / :func:`apply_schedule` carry, extended to the backend flags.
-
-    Unlike a schedule replacement there is no composition hazard here: each hook appends its own
-    ``-mllvm`` option and the flags are independent, so two cflag features layer the way two additive
-    schedule edits do. A feature that wanted to CONTRADICT another on the same option would have to
-    be caught by whoever adds it; today the only such option is the register-group width, and the
-    registrar mints one feature per width so two of them cannot be named without saying so.
-
-    WHO CALLS THIS. Every builder that turns the lowered ``.ll`` into the model object must, or a
-    cflag feature is INERT on that path -- named, resolved, and emitting byte-identical code, which
-    is the failure mode hardest to notice from the outside. Wired today:
-    ``runtime.backends.zephyr_model.build_app`` and ``runtime.backends.spike_model.build``. NOT yet
-    wired: ``mining.k1.build_k1_binary`` (and its staged sibling), which assembles its model-object
-    flag list inline; a cflag feature therefore has no effect on that path until the same call is
-    added there.
-    """
-    out = list(cflags)
-    if not features:
-        return out
-    for name in sorted(features):
-        f = get(name)
-        if f.edit_cflags is not None:
-            out = list(f.edit_cflags(out))
-    return out
+    return _FEATURES.apply_cflags(cflags, features)
 
 
 # ---- registered features ------------------------------------------------------------
