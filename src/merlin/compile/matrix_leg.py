@@ -35,7 +35,6 @@ def _compile_matrix(
 ) -> dict:
     """The matrix-unit leg of ``compile_rvv``: shipped image + stand-in twin, the twin gated on spike."""
     from merlin.kernels import matrix_kernels
-    from merlin.llvmlower.impr_features import OPU_MATMUL_NAME
     from merlin.runtime.backends import output_identity
     from merlin.runtime.backends import zephyr_model as zm
     from merlin.runtime.backends.matrix_image import ROUTING_REPORT, NothingRouted, build_matrix_pair
@@ -45,6 +44,7 @@ def _compile_matrix(
     kernel_spec = rest[0] if rest else None
     brd = _board_desc(board)
     routing = zm.MatrixRouting(unit=unit, config=config, support_target=support, kernel=kernel_spec)
+    route_feature = routing.route_feature_name()
     kernel = matrix_kernels.for_routing(routing)  # a bad name or a missing file fails here, before any build
     cpus = zm.image_cpus(brd, harts)
 
@@ -56,7 +56,7 @@ def _compile_matrix(
             harts=harts,
             cpus=cpus,
             routing=routing,
-            features=frozenset([*fs, OPU_MATMUL_NAME]),
+            features=frozenset([*fs, *([route_feature] if route_feature is not None else [])]),
             rvv_schedule=pkg.schedule_text,
             cflags=pkg.cflags + [flag for flag in zm._CFLAGS_COMMON if flag not in pkg.cflags],
             vlen=brd.vlen,

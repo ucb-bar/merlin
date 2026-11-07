@@ -20,6 +20,7 @@ def test_vector_backend_requires_one_compatible_owner(monkeypatch):
             "parallel_transform_schedule",
             "vec_pre_schedule",
             "normalize_features",
+            "feature_names",
             "apply_schedule",
             "apply_pipeline",
             "apply_cflags",
@@ -32,8 +33,18 @@ def test_vector_backend_requires_one_compatible_owner(monkeypatch):
             "accum_microkernel_runner_source",
             "accum_microkernel_rewrite_source",
             "vec_noncontraction_shape",
+            "tag_vector_generics",
+            "vectorize_amax_reduction",
+            "default_vec_rank_shape",
+            "vec_rank_bounds",
             "im2col_pack_api",
+            "perop_blocks_api",
+            "perop_features_api",
             "weight_panel_api",
+            "lmul_group_api",
+            "lmul_group_feature",
+            "microkernel_policy_api",
+            "blocking_cost_api",
         )
     }
     good = SimpleNamespace(API_VERSION=1, **methods)
@@ -63,6 +74,7 @@ def test_chip_features_bind_only_to_the_selected_backend(monkeypatch):
             "parallel_transform_schedule",
             "vec_pre_schedule",
             "normalize_features",
+            "feature_names",
             "apply_schedule",
             "apply_pipeline",
             "apply_cflags",
@@ -75,8 +87,18 @@ def test_chip_features_bind_only_to_the_selected_backend(monkeypatch):
             "accum_microkernel_runner_source",
             "accum_microkernel_rewrite_source",
             "vec_noncontraction_shape",
+            "tag_vector_generics",
+            "vectorize_amax_reduction",
+            "default_vec_rank_shape",
+            "vec_rank_bounds",
             "im2col_pack_api",
+            "perop_blocks_api",
+            "perop_features_api",
             "weight_panel_api",
+            "lmul_group_api",
+            "lmul_group_feature",
+            "microkernel_policy_api",
+            "blocking_cost_api",
         )
     }
     backend = SimpleNamespace(API_VERSION=1, **methods)

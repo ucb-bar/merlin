@@ -179,6 +179,31 @@ def test_synthetic_matrix_preparation_uses_explicit_provider(synthetic_matrix, t
     assert record["routing_rule"]["policy"]["tile_edge"] == 32
 
 
+def test_vector_matrix_without_feature_marker_still_routes(synthetic_matrix, tmp_path, monkeypatch):
+    """An extension can select a matrix unit without claiming Kodiak's OPU feature."""
+    from merlin.llvmlower import backend_spi
+
+    backend = SimpleNamespace(
+        normalize_features=lambda features: frozenset(features),
+        vec_noncontraction_shape=lambda _features: (None, None),
+        im2col_pack_api=lambda: SimpleNamespace(FEATURE="im2col_panel_pack"),
+        weight_panel_api=lambda: SimpleNamespace(FEATURE="prepack_weight_panels"),
+        perop_blocks_api=lambda: None,
+        LMUL_GROUP_SENTINEL="lmul_register_group",
+        lmul_group_feature=lambda value: f"lmul_group_m{value}",
+        lmul_group_api=lambda: None,
+        feature_names=lambda: (),
+        registry=SimpleNamespace(get=lambda _name: None),
+    )
+    monkeypatch.setattr(backend_spi, "load_vector_codegen", lambda _target: backend)
+    matrix, _ = synthetic_matrix
+    assert matrix.route_feature_name() is None
+    prepared, _features = prepare_for_lowering(
+        _model(tmp_path), tmp_path, features=frozenset(), backend="rvv", blocking=False, matrix=matrix
+    )
+    assert "func.call @synthetic_matrix_call_0" in prepared.read_text()
+
+
 def test_the_historical_policy_is_the_providers_own_selector(synthetic_matrix):
     from dataclasses import replace
 

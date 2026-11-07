@@ -137,7 +137,7 @@ def applicability(schedule_text: str, op_counts: dict[str, int]) -> dict:
     }
 
 
-def inapplicable_features(features, op_counts: dict[str, int]) -> dict[str, dict]:
+def inapplicable_features(features, op_counts: dict[str, int], *, registry=None) -> dict[str, dict]:
     """``{feature name -> applicability}`` for every named feature that CANNOT fire on this module.
 
     Resolves each feature's own schedule text through :mod:`merlin.llvmlower.impr_features`, so it
@@ -145,7 +145,11 @@ def inapplicable_features(features, op_counts: dict[str, int]) -> dict[str, dict
     whose schedule matches by interface rather than by name, are omitted -- this reports only what it
     can actually establish, on the same terms as :func:`applicability`.
     """
-    from merlin.llvmlower.impr_features import get, known
+    if registry is None:
+        from merlin.llvmlower.impr_features import get, known
+    else:
+        get = registry.registry.get
+        known = registry.feature_names
 
     out: dict[str, dict] = {}
     for name in sorted(set(features or ())):

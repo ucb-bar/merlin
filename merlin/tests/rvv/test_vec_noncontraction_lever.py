@@ -89,9 +89,12 @@ def test_tagging_refuses_the_cases_that_break_the_build():
     """
     import inspect
 
-    from merlin.runtime.backends import zephyr_model as zm
+    from merlin.targetgen.plugins import load_declared_chain
 
-    src = inspect.getsource(zm._prepare_model_mlir)
+    _owner, provider = load_declared_chain("rvv", "rvv_codegen")[0]
+    from importlib import import_module
+
+    src = inspect.getsource(import_module(provider.__package__ + ".vector_tag").tag_vector_generics)
     assert "tensor.extract" in src and "memref.load" in src, "gather bodies must be skipped"
     assert 'startswith("math.")' in src, "transcendental bodies must be skipped"
-    assert "% vec_lanes" in src, "the innermost extent must be a whole multiple of the lane count"
+    assert "% lanes" in src, "the innermost extent must be a whole multiple of the lane count"

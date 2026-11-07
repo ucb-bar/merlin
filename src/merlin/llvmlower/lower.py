@@ -16,32 +16,12 @@ from typing import Any
 from merlin.common import compile_trace
 from merlin.common.ir_audit import IrAudit, audit_mode
 
-from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
 from .codegen import build_host_shared, compile_ll
-from .concat_dps import ensure_registered as _register_concat_dps
-
-# Registering here, and not in `impr_features` itself, keeps the epilogue-fusion stage's definition
-# next to the pass list it edits while still making the NAME resolvable: this module is what every
-# whole-model backend imports to lower, so by the time a feature set is normalized for a lowering the
-# entry exists. Idempotent, so a second import is a no-op.
-from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
-from .im2col_pack import ensure_registered as _register_im2col_panel_pack
 from .masked_contraction import MaskEffectContract
-from .named_broadcast_fold import ensure_registered as _register_named_broadcast_fold
 from .passes_xdsl import PREPROCESS_STAGES, preprocess_text
 from .pipeline import lower_to_llvm_ir
-from .prov_cse import ensure_registered as _register_cse_through_provenance
 from .source_expression_interval import IntervalEffectContract
 from .source_scalar_carrier_binding import host_admitted
-from .transpose_maps import ensure_registered as _register_fold_weight_transpose
-
-_register_epilogue_fusion()
-_register_fold_weight_transpose()
-_register_cse_through_provenance()
-_register_concat_dps()
-_register_im2col_panel_pack()
-_register_fold_broadcast_into_generic()
-_register_named_broadcast_fold()
 
 
 #: The stages :func:`lower_model` records, in order. The native passes run between ``upstream-scheduled``

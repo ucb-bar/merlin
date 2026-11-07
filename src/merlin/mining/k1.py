@@ -833,9 +833,9 @@ def _model_compile_flags(pkg, features, model_opt: list[str], *, honor_pkg_cflag
     base = [f"-march={codegen_march()}", f"-mabi={K1_MABI}", *model_opt, "-Wno-override-module"]
     if honor_pkg_cflags:
         base = merge_package_cflags(base, getattr(pkg, "cflags", ()))
-    from ..llvmlower.impr_features import apply_cflags
+    from ..llvmlower.backend_spi import load_vector_codegen
 
-    return apply_cflags(base, features or frozenset())
+    return load_vector_codegen("rvv").apply_cflags(base, features or frozenset())
 
 
 class K1Error(RuntimeError):

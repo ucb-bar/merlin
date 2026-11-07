@@ -203,17 +203,6 @@ def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
     return _proc.run_checked(cmd, error=ZephyrModelError, timeout=timeout, timeout_hint=" (pathological compile)", **kw)
 
 
-#: Innermost lane count the per-rank bounded vectorize uses; the tagging predicate and the
-#: schedule arms in ``impr_features._VEC_RANK_ARMS`` must agree on it.
-_VEC_RANK_LANES = 8
-
-#: Highest loop rank the bounded-vectorize tagger admits, when nothing overrides it. Imported from
-#: the feature registry so the tagger and the schedule arms cannot disagree about it: the arms only
-#: exist for the ranks the feature names, and tagging a rank no arm matches leaves the op scalar
-#: while the tagger reports it as tagged.
-from ...llvmlower.impr_features import VEC_NONCONTRACTION_MAX_RANK as _VEC_RANK_MAX_RANK
-from ...llvmlower.impr_features import VEC_NONCONTRACTION_MIN_RANK as _VEC_RANK_MIN_RANK
-
 #: Caps for per-op register blocking. NR is the widest N tile a block may use (the champion's
 #: cap); KC is carried through to the v3 recipe, which tiles K by 1 and does not use it. MR is
 #: NOT capped here -- perop_blocks.DEFAULT_MR pins it at 1 for a measured instruction-selection
@@ -333,8 +322,9 @@ def _prepare_model_mlir(
     respect_captured_quantization_scope: bool = False,
     bundle_dir: Path | None = None,
     op_counts_out: dict[str, int] | None = None,
-    vec_lanes: int = _VEC_RANK_LANES,
-    vec_max_rank: int = _VEC_RANK_MAX_RANK,
+    vec_lanes: int | None = None,
+    vec_max_rank: int | None = None,
+    vector_backend: Any | None = None,
 ) -> Path:
     """Apply the dispatch_runtime normalization passes to ``model.mlir`` and write the
     prepared module to ``work/model.prepared.mlir``. These make quantized / bf16 /
@@ -509,93 +499,29 @@ def _prepare_model_mlir(
     # per-rank arms below can claim those too -- the same composition `fuse_quantize_round_convert` and
     # `vectorized_transcendental_activation` use. Reported, not silent: a pass that rewrote nothing and
     # a pass that could not reach anything both return 0, and only the counters separate them.
+    # A vector request resolves its implementation from the selected provider. Scalar-only
+    # preparation leaves the provider untouched.
+    if vectorize_amax_reduction or tag_vec_ranks or os.environ.get("MERLIN_VEC_RANK"):
+        if vector_backend is None:
+            from ...llvmlower.backend_spi import load_vector_codegen
+
+            vector_backend = load_vector_codegen("rvv")
+        default_lanes, default_max_rank = vector_backend.default_vec_rank_shape()
+        vec_lanes = vec_lanes or default_lanes
+        vec_max_rank = vec_max_rank or default_max_rank
     if vectorize_amax_reduction:
-        from ...llvmlower import reduce_vec as _reduce_vec
-
-        _vrep: dict = {}
-        _reduce_vec.apply(module, lanes=vec_lanes, min_rank=_VEC_RANK_MIN_RANK, max_rank=vec_max_rank, report_out=_vrep)
-        print("[reduce_vec] vectorize_amax_reduction: " + " ".join(f"{k}={v}" for k, v in sorted(_vrep.items())))
-    # PER-RANK VECTORIZE TAGGING (default OFF -> baseline byte-identical): tag each all-parallel
-    # (non-reduction) linalg.generic with `merlin.vec_r{rank}` so the transform schedule can
-    # BOUNDED-vectorize the scalar non-matmul ops by rank (the win lever for openvla — ~900ms of scalar
-    # parallel generics -> ~110ms vectorized). Reductions (softmax/norm) skipped (need stable form).
-    #
-    # Driven by ``tag_vec_ranks`` — which build_app sets from the FEATURE
-    # ``impr_features.VEC_NONCONTRACTION_NAME`` — so the lever is selectable by the tuning loop instead
-    # of only by an env var it cannot set. MERLIN_VEC_RANK still forces it on for a manual A/B.
-    import os as _os
-
-    if tag_vec_ranks or _os.environ.get("MERLIN_VEC_RANK"):
-        from xdsl.dialects.builtin import UnitAttr
-        from xdsl.ir.affine import AffineBinaryOpExpr
-
-        n_tag = skip_gather = skip_extent = skip_math = skip_rank = skip_map = 0
-        for op in module.walk():
-            if op.name != "linalg.generic":
-                continue
-            its = str(op.properties.get("iterator_types", ""))
-            if "reduction" in its or "parallel" not in its:
-                continue
-            rank = its.count("iterator_type")
-            if not _VEC_RANK_MIN_RANK <= rank <= vec_max_rank:
-                skip_rank += 1
-                continue
-            # A DATA-DEPENDENT GATHER (a tensor.extract / memref.load in the body — the im2col and
-            # pad-index generics) has no affine access to vectorize: `structured.vectorize` fails the
-            # whole pipeline with "Attempted to vectorize, but failed" rather than declining the op.
-            # Measured on deepjscc: tagging these is what made the lever unusable.
-            body = op.regions[0].blocks[0] if op.regions and op.regions[0].blocks else None
-            if body is not None and any(inner.name in ("tensor.extract", "memref.load") for inner in body.ops):
-                skip_gather += 1
-                continue
-            # A NON-PROJECTED-PERMUTATION INDEXING MAP is a gather too, and the body check above
-            # cannot see it. The window read a convolution's im2col expansion emits reaches merlin as
-            # an all-parallel generic whose body only yields its input -- no `tensor.extract` at all --
-            # while its INPUT map is `(d0..d5) -> (d3, d0, d4 + d1, d5 + d2)`. A `vector.transfer_read`
-            # needs a projected permutation, so `structured.vectorize` cannot build one for a compound
-            # result expression and FAILS THE WHOLE PIPELINE ("Attempted to vectorize, but failed")
-            # rather than declining the op. MEASURED: with these ops tagged, one int8 capture's host
-            # lowering aborted outright and its board build silently took the whole-model SCALAR
-            # fallback -- static coverage of `forward` 0.4055 -> 0.2799, i.e. the lever read as a
-            # devectorization. The test is structural -- a COMPOUND result expression, whatever its
-            # operator -- so it covers strided, dilated and padded windows alike without naming any
-            # of them. It is deliberately no wider than that: a CONSTANT result index (the broadcast
-            # form, `(d0, d1) -> (0, d1)`) is not a projected permutation either and the vectorizer
-            # handles it, so refusing those as well cost 23 / 20 / 4 tagged ops on the three captures
-            # -- ops that were vectorizing correctly. The wider refusal is a coverage regression, not
-            # a safety margin.
-            maps = op.properties.get("indexing_maps")
-            if maps is not None and any(isinstance(r, AffineBinaryOpExpr) for a in maps.data for r in a.data.results):
-                skip_map += 1
-                continue
-            # A TRANSCENDENTAL in the body (math.exp/erf/tanh, i.e. a sigmoid/GELU/SiLU activation) has
-            # no vector form here: convert-math-to-libm scalarizes it back into per-lane extracts + libm
-            # calls, and that pass runs AFTER vector->LLVM, so those extracts reach translation with
-            # nothing left to lower them ("missing LLVMTranslationDialectInterface ... vector.extract",
-            # measured on deepjscc's sigmoid). Those ops are the OTHER lever's job --
-            # `vectorized_transcendental_activation` rewrites them to arith polynomials BEFORE
-            # vectorization -- so the two features compose instead of fighting.
-            if body is not None and any(inner.name.startswith("math.") for inner in body.ops):
-                skip_math += 1
-                continue
-            # The innermost extent must be a whole multiple of the vector width. A partial tail means a
-            # MASKED parallel dim, which does not lower at all on the integer path (see
-            # mining.from_strategy._rvv_blocking_lowers) -- the same predicate the register block obeys.
-            try:
-                shape = list(op.results[0].type.get_shape())
-            except Exception:  # noqa: BLE001
-                shape = []
-            if not shape or shape[-1] % vec_lanes:
-                skip_extent += 1
-                continue
-            op.attributes[f"merlin.vec_r{rank}"] = UnitAttr()
-            n_tag += 1
+        report = vector_backend.vectorize_amax_reduction(module, lanes=vec_lanes, max_rank=vec_max_rank)
+        print("[reduce_vec] vectorize_amax_reduction: " + " ".join(f"{k}={v}" for k, v in sorted(report.items())))
+    if tag_vec_ranks or os.environ.get("MERLIN_VEC_RANK"):
+        report = vector_backend.tag_vector_generics(module, lanes=vec_lanes, max_rank=vec_max_rank)
+        min_rank, _ = vector_backend.vec_rank_bounds()
         print(
-            f"[vec_rank] tagged {n_tag} all-parallel generics for bounded vectorize "
-            f"(ranks {_VEC_RANK_MIN_RANK}..{vec_max_rank}; skipped {skip_gather} gathers, "
-            f"{skip_math} with a transcendental body, {skip_extent} on a non-multiple innermost "
-            f"extent, {skip_rank} outside the rank bound, {skip_map} on a "
-            f"non-projected-permutation indexing map)"
+            f"[vec_rank] tagged {report['tagged']} all-parallel generics for bounded vectorize "
+            f"(ranks {min_rank}..{vec_max_rank}; skipped {report['skip_gather']} gathers, "
+            f"{report['skip_math']} with a transcendental body, "
+            f"{report['skip_extent']} on a non-multiple innermost extent, "
+            f"{report['skip_rank']} outside the rank bound, "
+            f"{report['skip_map']} on a non-projected-permutation indexing map)"
         )
     from ...llvmlower.splat_inputs import scalarize_splat_inputs
 
@@ -715,6 +641,18 @@ class MatrixRouting:
                 f"found {len(extensions)}"
             )
         return extensions[0]
+
+    def route_feature_name(self) -> str | None:
+        """Return an optional feature gate declared by this unit's extension."""
+        declare = getattr(self.extension(), "route_feature_name", None)
+        if declare is None:
+            return None
+        if not callable(declare):
+            raise TypeError("matrix extension route_feature_name must be callable")
+        name = declare()
+        if not isinstance(name, str) or not name:
+            raise ValueError("matrix extension route_feature_name must return a nonempty string")
+        return name
 
 
 MATRIX_ROUTING_RECORD = "matrix_routing.json"
@@ -856,8 +794,10 @@ def prepare_for_lowering(
         _lanes, _max_rank = vector_backend.vec_noncontraction_shape(_closed)
         _ip = vector_backend.im2col_pack_api()
         _wpan = vector_backend.weight_panel_api()
+        _pb = vector_backend.perop_blocks_api()
     elif backend == "scalar":
         from ...llvmlower import im2col_pack as _ip
+        from ...llvmlower import perop_blocks as _pb
         from ...llvmlower import weight_panel as _wpan
         from ...llvmlower.impr_features import normalize as _normalize
         from ...llvmlower.impr_features import vec_noncontraction_lanes as _vec_lanes
@@ -867,7 +807,7 @@ def prepare_for_lowering(
         _lanes, _max_rank = _vec_lanes(_closed), _vec_max_rank(_closed)
     else:
         raise ZephyrModelError(f"unknown preparation backend {backend!r}")
-    from ...llvmlower.impr_features import NAMED_INT8_CONTRACTION_NAME, QUANTIZE_BEFORE_GATHER_NAME
+    from ...llvmlower.shared_feature_registry import NAMED_INT8_CONTRACTION_NAME, QUANTIZE_BEFORE_GATHER_NAME
     from ...llvmlower.quant_hoist import FEATURE as _HOIST_WEIGHT_INVARIANT_QUANTIZE
     from ...llvmlower.quant_round import FEATURE as _FUSE_QUANT_ROUND
     from ...llvmlower.quant_scope import FEATURE as _CAPTURED_QUANT_SCOPE
@@ -890,8 +830,9 @@ def prepare_for_lowering(
         # authority that distinguishes resident weights from inputs.
         bundle_dir=Path(mlir_path).parent,
         op_counts_out=_op_counts,
-        vec_lanes=_lanes or _VEC_RANK_LANES,
-        vec_max_rank=_max_rank or _VEC_RANK_MAX_RANK,
+        vec_lanes=_lanes,
+        vec_max_rank=_max_rank,
+        vector_backend=vector_backend if backend == "rvv" else None,
     )
     # SAY SO when a requested lever cannot fire on this module. A transform schedule matches by op
     # name, and `transform.structured.match` on a name nothing carries yields an empty handle, so
@@ -937,7 +878,9 @@ def prepare_for_lowering(
         try:
             from ...mining.lever_applicability import inapplicable_features as _inapplicable
 
-            for _name, _why in _inapplicable(features, _applicability_source).items():
+            for _name, _why in _inapplicable(
+                features, _applicability_source, registry=vector_backend if backend == "rvv" else None
+            ).items():
                 print(
                     f"[lever] INAPPLICABLE {_name}: needs {list(_why['needs'])}, module has "
                     f"{_why['present']} — this feature cannot fire and will measure as a no-op"
@@ -967,14 +910,19 @@ def prepare_for_lowering(
     # MATRIX-UNIT ROUTING, before the register blocking below: a contraction that has become a call is no
     # longer on the vector path, so the block table must be derived from the IR that remains. Doing it the
     # other way round would tag ops that no longer exist and leave the routed ones double-claimed.
-    from ...llvmlower.impr_features import OPU_MATMUL_NAME
+    if backend == "scalar":
+        from ...llvmlower.impr_features import OPU_MATMUL_NAME as matrix_feature
+    else:
+        matrix_feature = matrix.route_feature_name() if matrix is not None else None
+        if matrix_feature is not None and matrix_feature not in vector_backend.feature_names():
+            raise ValueError(f"matrix extension route feature {matrix_feature!r} is not provider-registered")
 
-    if OPU_MATMUL_NAME in features:
+    if matrix_feature in features or (backend == "rvv" and matrix is not None and matrix_feature is None):
         if matrix is None:
             # Silently not routing would be indistinguishable from a feature that did nothing, and the
             # model would grade correctly while reporting a capability it never used.
             raise ValueError(
-                f"feature {OPU_MATMUL_NAME!r} is enabled but no `matrix=` routing was supplied, so the "
+                f"feature {matrix_feature!r} is enabled but no `matrix=` routing was supplied, so the "
                 "unit and configuration to route to are unknown; pass "
                 "MatrixRouting(support_target=..., unit=..., config=...)"
             )
@@ -1083,16 +1031,23 @@ def prepare_for_lowering(
     # INNERMOST parallel extent it will be pointed at. Resolved ABOVE the `blocking` gate, because it is not a
     # blocking decision and a sentinel that survives to `normalize` raises. Failing to derive a width
     # DROPS the request (the build keeps the compiler's own default) rather than pinning a guess.
-    from ...llvmlower.impr_features import LMUL_GROUP_SENTINEL, lmul_group_feature
+    if backend == "rvv":
+        LMUL_GROUP_SENTINEL = vector_backend.LMUL_GROUP_SENTINEL
+        lmul_group_feature = vector_backend.lmul_group_feature
+        _lmul_policy = vector_backend.lmul_group_api()
+    else:
+        from ...llvmlower import lmul_group as _lmul_policy
+        from ...llvmlower.impr_features import LMUL_GROUP_SENTINEL, lmul_group_feature
 
     if LMUL_GROUP_SENTINEL in features:
         from ...kernels.shapes import contraction_shapes as _cshapes0
-        from ...llvmlower.lmul_group import LmulDerivationError, group_lmul_for_shapes
 
         features = features - {LMUL_GROUP_SENTINEL}
         try:
-            features = features | {lmul_group_feature(group_lmul_for_shapes(_cshapes0(prepared), vlen=vlen))}
-        except LmulDerivationError as exc:
+            features = features | {
+                lmul_group_feature(_lmul_policy.group_lmul_for_shapes(_cshapes0(prepared), vlen=vlen))
+            }
+        except _lmul_policy.LmulDerivationError as exc:
             print(f"[zephyr_model] register-group width not derivable ({exc}); leaving the compiler's default in place")
 
     if not blocking:
@@ -1119,17 +1074,28 @@ def prepare_for_lowering(
         _judge_levers_on(prepared)
         return _finish_preparation(prepared)
     from ...llvmlower import im2col_identity_view as _iv
-    from ...llvmlower import perop_blocks as _pb
-    from ...llvmlower.impr_features import (
-        PEROP_BLOCK_NAME,
-        PEROP_MR_FILL_NAME,
-        PEROP_MR_SENTINEL_PREFIX,
-        PEROP_NR_FILL_NAME,
-        PEROP_NR_SENTINEL_PREFIX,
-        ensure_perop_block,
-        parse_perop_mr_sentinel,
-        parse_perop_nr_sentinel,
-    )
+
+    if backend == "rvv":
+        _perop_features = vector_backend.perop_features_api()
+        PEROP_BLOCK_NAME = _perop_features.PEROP_BLOCK_NAME
+        PEROP_MR_FILL_NAME = _perop_features.PEROP_MR_FILL_NAME
+        PEROP_MR_SENTINEL_PREFIX = _perop_features.PEROP_MR_SENTINEL_PREFIX
+        PEROP_NR_FILL_NAME = _perop_features.PEROP_NR_FILL_NAME
+        PEROP_NR_SENTINEL_PREFIX = _perop_features.PEROP_NR_SENTINEL_PREFIX
+        ensure_perop_block = vector_backend.ensure_perop_block
+        parse_perop_mr_sentinel = vector_backend.parse_perop_mr_sentinel
+        parse_perop_nr_sentinel = vector_backend.parse_perop_nr_sentinel
+    else:
+        from ...llvmlower.impr_features import (
+            PEROP_BLOCK_NAME,
+            PEROP_MR_FILL_NAME,
+            PEROP_MR_SENTINEL_PREFIX,
+            PEROP_NR_FILL_NAME,
+            PEROP_NR_SENTINEL_PREFIX,
+            ensure_perop_block,
+            parse_perop_mr_sentinel,
+            parse_perop_nr_sentinel,
+        )
 
     _mr_named = sorted({n for f in features if (n := parse_perop_mr_sentinel(f)) is not None})
     _nr_named = sorted({n for f in features if (n := parse_perop_nr_sentinel(f)) is not None})

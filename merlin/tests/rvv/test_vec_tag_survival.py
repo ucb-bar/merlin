@@ -158,7 +158,10 @@ def test_the_pre_library_arms_come_from_the_same_generator_as_the_package_ones()
 def test_a_skeleton_the_arms_cannot_splice_into_fails_closed(monkeypatch):
     """ "Enabled and changed nothing" is the failure this file keeps re-learning. If the anchor the
     splice keys on ever moves, the build must stop, not preload an empty entry point."""
-    monkeypatch.setattr(P, "_VEC_PRE_SKELETON", "module {}\n")
+    from merlin.targetgen.plugins import load_declared_chain
+
+    _owner, provider = load_declared_chain("rvv", "rvv_codegen")[0]
+    monkeypatch.setattr(provider, "_VEC_PRE_SKELETON", "module {}\n")
     with pytest.raises(P.PipelineError):
         P.vec_pre_schedule(impr.normalize([VEC]))
 

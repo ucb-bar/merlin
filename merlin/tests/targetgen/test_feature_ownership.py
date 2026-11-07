@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from merlin.llvmlower.backend_spi import load_vector_codegen
 from merlin.llvmlower.shared_feature_registry import eager_features, get_shared_feature
 
@@ -40,7 +42,14 @@ def test_shared_and_vector_hooks_still_change_the_selected_pipeline():
     assert vector.apply_schedule(baseline, features) != baseline
 
 
-def test_chip_marker_is_only_in_the_chip_bound_backend():
+def test_chip_marker_is_only_in_the_chip_bound_backend(monkeypatch):
+    from merlin.targetgen import target_registry
+
+    # An explicit RVV-only selection replaces the default search list. Probe the
+    # pinned chip independently, and skip when this checkout has not fetched it.
+    monkeypatch.delenv("MERLIN_TARGET_PATH", raising=False)
+    if target_registry.default_support_root("kodiak") is None:
+        pytest.skip("pinned Kodiak support is not fetched in this checkout")
     chip = load_vector_codegen("kodiak")
     assert "opu_matmul" in chip.feature_names()
     assert "opu_matmul" in chip.normalize_features({"opu_matmul"})

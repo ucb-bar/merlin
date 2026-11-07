@@ -43,8 +43,18 @@ def _checked(target: str, entries: tuple[tuple[str, Any], ...]) -> Any:
         "accum_microkernel_runner_source",
         "accum_microkernel_rewrite_source",
         "vec_noncontraction_shape",
+        "tag_vector_generics",
+        "vectorize_amax_reduction",
+        "default_vec_rank_shape",
+        "vec_rank_bounds",
         "im2col_pack_api",
+        "perop_blocks_api",
+        "perop_features_api",
         "weight_panel_api",
+        "lmul_group_api",
+        "lmul_group_feature",
+        "microkernel_policy_api",
+        "blocking_cost_api",
     )
     missing = [name for name in required if not callable(getattr(backend, name, None))]
     if missing:
@@ -78,4 +88,6 @@ def load_vector_codegen(target: str) -> Any:
     if not callable(bind):
         raise BackendAPIError(f"{target}: vector provider lacks bind(extension_features)")
     bound = bind(tuple(definitions))
+    if not callable(getattr(bound, "feature_names", None)):
+        raise BackendAPIError(f"{target}: bound vector provider lacks feature_names")
     return _checked(target, ((owner_backend[0][0], bound),))
