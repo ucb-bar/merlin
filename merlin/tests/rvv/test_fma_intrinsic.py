@@ -1,8 +1,11 @@
 """The optional FMA path stays fused and preserves unrelated libm lowering."""
 
 import ctypes
+import hashlib
+import os
 import shutil
 import subprocess
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -11,6 +14,59 @@ from merlin.llvmlower.fma_intrinsic import FEATURE, MARKER, ensure_registered
 from merlin.llvmlower.impr_features import apply_pipeline
 from merlin.llvmlower.pipeline import lower_to_llvm_ir
 from merlin.llvmlower.toolchain import clang
+
+
+def test_torchao_patch_conv_fma_crosses_scalarize_runner_as_rv64_fmadd(tmp_path):
+    """Use the exact captured patch convolution to select its source FMA, then lower that operation."""
+    configured = os.environ.get("MERLIN_SPECT_TORCHAO_CAPTURE")
+    if not configured:
+        pytest.skip("set MERLIN_SPECT_TORCHAO_CAPTURE to the exact source capture")
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower import pipeline as P
+    from merlin.llvmlower.accum_microkernel import SCALARIZE_MARKER
+    from merlin.llvmlower.torchao_cpu_patch_conv import TORCH_SOURCE_COMMIT, rewrite_torch216_avx2_patch_conv
+
+    source_path = Path(configured) / "model.mlir"
+    assert hashlib.sha256(source_path.read_bytes()).hexdigest() == (
+        "9ae3f772ed2d192899cea502e5dec0098d5abf95f56f1707c7ba3cdfcf5481ab"
+    )
+    source = parse_mlir_file(source_path)
+    assert rewrite_torch216_avx2_patch_conv(source, source_commit=TORCH_SOURCE_COMMIT, cpu_capability="AVX2") == 1
+    fmas = [op for op in source.walk() if op.name == "math.fma"]
+    assert len(fmas) == 1
+    assert [str(value.type) for value in [*fmas[0].operands, *fmas[0].results]] == ["f32"] * 4
+
+    # Isolate the real rewrite's scalar operation so the regression exercises
+    # the same two-stage runner without building the whole 1.7 MiB model.
+    isolated = (
+        "module { func.func @forward(%a: f32, %b: f32, %c: f32) -> f32 { "
+        f"%x = {fmas[0].name} %a, %b, %c : f32\n"
+        "return %x : f32 } }"
+    )
+    ensure_registered()
+    stages = SCALARIZE_MARKER + "," + P._upstream_pipeline(frozenset({FEATURE}))
+    llvm = lower_to_llvm_ir(isolated, workdir=tmp_path / "lower", pipeline=stages)
+    assert "@llvm.fma.f32" in llvm and "@fmaf" not in llvm
+    cross = subprocess.run(
+        [
+            str(clang()),
+            "--target=riscv64-unknown-elf",
+            "-march=rv64gcv_zvl512b",
+            "-mabi=lp64d",
+            "-O2",
+            "-S",
+            "-x",
+            "ir",
+            "-",
+            "-o",
+            "-",
+        ],
+        input=llvm,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "fmadd.s" in cross.stdout
 
 
 def test_explicit_stage_after_loop_formation():

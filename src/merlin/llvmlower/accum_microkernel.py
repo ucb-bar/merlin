@@ -54,6 +54,7 @@ from .broadcast_fold import RUNNER_PRELUDE as _BROADCAST_FOLD_PRELUDE
 from .concat_dps import RUNNER_PRELUDE as _CONCAT_DPS_PRELUDE
 from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
+from .fma_intrinsic import RUNNER_PRELUDE as _FMA_INTRINSIC_PRELUDE
 from .int_softmax_table import RUNNER_PRELUDE as _INT_SOFTMAX_TABLE_PRELUDE
 from .named_broadcast_fold import RUNNER_PRELUDE as _NAMED_BROADCAST_FOLD_PRELUDE
 from .panel_parallel import MID_STAGE_SRC as _PANEL_PARALLEL_MID_SRC
@@ -444,6 +445,7 @@ def run_source(*, tag_bmm_tails: bool = False) -> str:
         + _ALLOCA_SCOPE_LOWER_PRELUDE
         + _ROUND_INTRINSIC_PRELUDE
         + _INT_SOFTMAX_TABLE_PRELUDE
+        + _FMA_INTRINSIC_PRELUDE
         + _SCALAR_CONTRACTION_PRELUDE
         + _SCALAR_POINTWISE_UNROLL_PRELUDE
         + DEALLOC_CHECK_PRELUDE
