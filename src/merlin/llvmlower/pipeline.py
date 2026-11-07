@@ -1056,9 +1056,6 @@ def lower_to_llvm_ir(
         from .transpose_maps import ensure_registered as _register_fold_weight_transpose
 
         _register_fold_weight_transpose()
-        from .weight_prepack import ensure_registered as _register_prepack_weight_layout
-
-        _register_prepack_weight_layout()
         from .weight_prequant import ensure_registered as _register_prequantize_constant_weights
 
         _register_prequantize_constant_weights()
@@ -1071,19 +1068,6 @@ def lower_to_llvm_ir(
         from .concat_dps import ensure_registered as _register_concat_dps
 
         _register_concat_dps()
-        # The direct-conv arm's REQUEST feature. Registered here for the same reason as the four above:
-        # this module is imported by the lowering child processes, and a name registered only in the
-        # parent fails `normalize` in the child. It edits nothing here -- the arm is realized by the
-        # per-op block table (llvmlower.perop_blocks), which the preparation step derives -- so a build
-        # that carries the name lowers identically and the name records that the arm was asked for.
-        from .perop_blocks import ensure_registered as _register_conv_arm
-
-        _register_conv_arm()
-        # The panel-packed im2col REQUEST, registered for the same reason: the rewrite happens in the
-        # preparation step, and by lowering time the name only records that the arm was asked for.
-        from .im2col_pack import ensure_registered as _register_im2col_panel_pack
-
-        _register_im2col_panel_pack()
         # This feature edits the pass list itself and lives outside impr_features. Direct callers of
         # this module therefore need the same registration that lower.py performs before normalization.
         from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
