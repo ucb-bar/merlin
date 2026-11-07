@@ -468,13 +468,9 @@ def _fuse_post() -> bool:
     return bool(os.environ.get("MERLIN_FUSE_POST"))
 
 
+# Compatibility names for callers migrating to the provider-owned schedule API.
 PARALLEL_ENTRY = "__transform_parallel_main"
-
-_PARALLEL_DIM_NUM_THREADS = {
-    # op -> {dim: num_threads list}. A 0 means "do not tile this dim".
-    "linalg.matmul": {"m": "[{n}]", "n": "[0, {n}]"},
-    "linalg.batch_matmul": {"b": "[{n}]", "m": "[0, {n}]", "n": "[0, 0, {n}]"},
-}
+VEC_PRE_ENTRY = "__transform_vec_main"
 
 
 def parallel_transform_schedule(
@@ -482,213 +478,33 @@ def parallel_transform_schedule(
     *,
     matmul_dim: str = "n",
     batch_matmul_dim: str = "b",
-    chunks: "list | None" = None,
+    chunks: list | None = None,
     tile_aligned: bool = False,
 ) -> str:
-    """Transform schedule that wraps each contraction in an `scf.forall` over ``n_harts``.
+    """Delegate the parallel transform schedule to the selected RVV provider."""
+    from .backend_spi import load_vector_codegen
 
-    Runs BEFORE the package's own schedule (separate entry point, see above), so the inner
-    tiling/vectorization — and therefore the emitted `vfmacc`/`vwmacc` — is untouched.
-    ``matmul_dim`` / ``batch_matmul_dim`` name the parallel dim to split; K is never
-    tileable here (it is the reduction dim and splitting it would race).
-
-    ``chunks`` (from :func:`perop_blocks.distinct_parallel_arms`) selects the PER-OP form, and it is
-    the form that keeps the claim in the paragraph above true. The class-wide ``num_threads`` split
-    below leaves each hart a ``ceil(dim / n_harts)`` tile the register block then has to mask, so the
-    block — and with it the emitted kernel — became a function of the hart count: measured on
-    lstmnetvit int8 at 8 harts, 5 matmuls fell out of the block table to scalar loops and the linked
-    ELF issued +63.5% instructions with 63% fewer vector ops before any thread was created. With
-    ``chunks``, merlin has already derived a tile that divides the dim EXACTLY and that the op's own
-    block still lowers on (``perop_blocks.parallel_chunk_table``), one arm per distinct (class, tile),
-    matched by the ``merlin.par_*`` tag the same prepare step applies. An op merlin could not split
-    that way carries no tag, matches no arm, and stays serial — with the 1-hart kernel intact.
-
-    ``chunks=None`` keeps the class-wide ``num_threads`` schedule byte-identical, for the packages
-    that carry no per-op block table for a split to be derived against.
-    """
-    if n_harts < 2:
-        raise ValueError(f"parallel schedule needs n_harts >= 2, got {n_harts}")
-    if chunks is not None:
-        return _perop_parallel_schedule(chunks)
-    if tile_aligned:
-        body = [
-            '    %matmul = transform.structured.match ops{["linalg.matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op\n'
-            "    %matmul_loop, %matmul_tiled = transform.structured.tile_using_forall %matmul tile_sizes [0, 16] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)",
-            '    %batch_matmul = transform.structured.match ops{["linalg.batch_matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op\n'
-            "    %batch_matmul_loop, %batch_matmul_tiled = transform.structured.tile_using_forall %batch_matmul tile_sizes [1, 0, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)",
-        ]
-        return (
-            "module attributes {transform.with_named_sequence} {\n"
-            f"  transform.named_sequence @{PARALLEL_ENTRY}"
-            "(%arg0: !transform.any_op {transform.readonly}) {\n" + "\n".join(body) + "\n    transform.yield\n  }\n}\n"
-        )
-    body = []
-    for op, dim in (("linalg.matmul", matmul_dim), ("linalg.batch_matmul", batch_matmul_dim)):
-        choices = _PARALLEL_DIM_NUM_THREADS[op]
-        if dim not in choices:
-            raise ValueError(
-                f"{op}: parallel dim {dim!r} not in {sorted(choices)} (the reduction dim K is never tileable)"
-            )
-        tag = op.split(".")[-1]
-        body.append(
-            f'    %{tag} = transform.structured.match ops{{["{op}"]}} in %arg0 '
-            f": (!transform.any_op) -> !transform.any_op\n"
-            f"    %{tag}_loop, %{tag}_tiled = transform.structured.tile_using_forall "
-            f"%{tag} num_threads {choices[dim].format(n=n_harts)} "
-            f": (!transform.any_op) -> (!transform.any_op, !transform.any_op)"
-        )
-    return (
-        "module attributes {transform.with_named_sequence} {\n"
-        f"  transform.named_sequence @{PARALLEL_ENTRY}"
-        "(%arg0: !transform.any_op {transform.readonly}) {\n" + "\n".join(body) + "\n"
-        "    transform.yield\n"
-        "  }\n"
-        "}\n"
+    return load_vector_codegen("rvv").parallel_transform_schedule(
+        n_harts,
+        matmul_dim=matmul_dim,
+        batch_matmul_dim=batch_matmul_dim,
+        chunks=chunks,
+        tile_aligned=tile_aligned,
     )
-
-
-def _perop_parallel_schedule(chunks: list) -> str:
-    """The PER-OP multicore library: one ``tile_using_forall`` arm per distinct (class, tile).
-
-    Matched by the ``merlin.par_*`` attribute, not by op name, for the same reason the block arms
-    match ``merlin.blk_*``: two contractions of the same class legitimately want different splits,
-    and a name match cannot tell them apart. Uses ``tile_sizes`` rather than ``num_threads`` because
-    the tile is the thing that has to be exact — merlin chose one that divides the extent, so every
-    chunk is STATIC and equal, and the package schedule below sees the same geometry it would have
-    seen at 1 hart.
-
-    An empty ``chunks`` (a hart count was asked for, but no contraction has a dim that splits into
-    equal block-legal pieces) yields a schedule with no arms: the module reaches the package schedule
-    exactly as the serial build does and the image runs on one core. Said rather than silently
-    produced -- see :func:`lower_to_llvm_ir`, which prints it.
-    """
-    from .perop_blocks import class_token, par_tag_for
-
-    body = []
-    for i, (op, tiles) in enumerate(chunks):
-        tiles = tuple(int(t) for t in tiles)
-        h = f"p{i}{class_token(op)}"
-        body.append(
-            f"    %{h} = transform.structured.match attributes{{{par_tag_for(op, tiles)}}} in %arg0 "
-            f": (!transform.any_op) -> !transform.any_op\n"
-            f"    %{h}_loop, %{h}_tiled = transform.structured.tile_using_forall "
-            f"%{h} tile_sizes [{', '.join(str(t) for t in tiles)}] "
-            f": (!transform.any_op) -> (!transform.any_op, !transform.any_op)"
-        )
-    return (
-        "module attributes {transform.with_named_sequence} {\n"
-        f"  transform.named_sequence @{PARALLEL_ENTRY}"
-        "(%arg0: !transform.any_op {transform.readonly}) {\n"
-        + ("\n".join(body) + "\n" if body else "")
-        + "    transform.yield\n"
-        "  }\n"
-        "}\n"
-    )
-
-
-#: Entry point of the library that runs the NON-CONTRACTION vectorize arms, before specialization.
-VEC_PRE_ENTRY = "__transform_vec_main"
-
-#: The skeleton the arms are spliced into. It is deliberately the SAME splice the package schedule
-#: gets (``impr_features.apply_schedule``), anchored on the same ``%f = ... ops{["func.func"]}`` line,
-#: so the arms in the pre-library and the arms in ``__transform_main`` are generated by one function
-#: at one lane width and cannot drift apart.
-_VEC_PRE_SKELETON = (
-    """\
-module attributes {transform.with_named_sequence} {
-  transform.named_sequence @%s(%%arg0: !transform.any_op {transform.readonly}) {
-    %%f = transform.structured.match ops{["func.func"]} in %%arg0 : (!transform.any_op) -> !transform.any_op
-    transform.apply_patterns to %%f {
-      transform.apply_patterns.vector.lower_shape_cast
-    } : !transform.any_op
-    transform.yield
-  }
-}
-"""
-    % VEC_PRE_ENTRY
-)
 
 
 def _vec_after_specialize() -> bool:
-    """Rebuild the OLD placement of the non-contraction arms (``MERLIN_VEC_AFTER_SPECIALIZE=1``).
+    """Compatibility query for the provider's vector schedule placement switch."""
+    from .backend_spi import load_vector_codegen
 
-    An A/B escape hatch, for the reason :func:`_dealloc_passes` keeps ``MERLIN_NO_DEALLOC``: this
-    changes the emitted code for every build that names the lever, and the honest way to defend a
-    claim about it is to be able to rebuild both arms."""
-    import os
-
-    return bool(os.environ.get("MERLIN_VEC_AFTER_SPECIALIZE"))
+    return load_vector_codegen("rvv")._vec_after_specialize()
 
 
-def vec_pre_schedule(features: "frozenset[str]") -> "str | None":
-    """The transform library that vectorizes the tagged non-contraction generics, or None.
+def vec_pre_schedule(features: frozenset[str]) -> str | None:
+    """Delegate non-contraction vector scheduling to the selected RVV provider."""
+    from .backend_spi import load_vector_codegen
 
-    WHY THIS EXISTS -- a COVERAGE bug, measured, not inferred. The prepare pass tags every
-    all-parallel ``linalg.generic`` it can vectorize with a discardable ``merlin.vec_r{rank}``
-    attribute, and ``vectorize_non_contraction_generics`` matches on it. But
-    ``func.func(linalg-specialize-generic-ops)`` -- which must run before the interpreter, so the
-    CONTRACTION arms can match named ``linalg.matmul``/``batch_matmul`` -- rewrites most of those
-    tagged generics into named ops (``linalg.broadcast`` above all) and a rewrite does not carry a
-    DISCARDABLE attribute onto the op it produces. The tag is gone, and with it the match.
-
-    MEASURED, tags present in the module at each stage (int8 recaptures, host lowering). Every tag
-    that reaches an arm is consumed -- the count after the interpreter is 0 in both placements -- so
-    "reaches" and "vectorized" are the same number here::
-
-        model         tagged   after canonicalize,cse   after specialize   reaching an arm
-                      by prep  (where the arms run now) (where they ran)   before -> after
-        deepjscc       93       85                       15                 15  ->  85  (16% -> 91%)
-        small_llama   107       84                       33                 33  ->  84  (31% -> 79%)
-        lstmnetvit    189      160                       36                 36  -> 160  (19% -> 85%)
-
-    So four fifths of the ops the lever was written for never reached an arm, while every tile the
-    remaining fifth produced paid the full loop and destination-buffer overhead -- which is the
-    coverage half of why the lever measured 1.28x SLOWER (the realization half, a ``memref.copy`` of
-    each tile onto itself, was fixed separately and is now implied by the feature).
-
-    The residual (93 -> 85, 107 -> 84, 189 -> 160) is the ``canonicalize``/``cse`` this pipeline
-    already ran before any of this: the generic count falls further than the tag count on all three
-    models, which is consistent with CSE merging duplicate ops rather than with tags being lost.
-
-    NOT A SPEED CLAIM. What is measured here is coverage and the emitted vector census (vector loads
-    108 -> 268 deepjscc, 134 -> 249 small_llama, 285 -> 560 lstmnetvit, with the malloc count FALLING
-    on all three). Whether that pays is a board measurement, and 1.28x is the number it has to beat.
-
-    THE FIX IS A PLACEMENT, NOT A PRESERVATION. Restoring the attribute across specialization would
-    need op identity to survive a rewrite that is not 1:1 -- specialize DECOMPOSES generics (deepjscc:
-    278 generics in, 199 generics + 116 broadcasts + 20 matmuls out), so there is no correspondence to
-    key a restore on. Running the arms BEFORE specialization needs no correspondence at all: the tags
-    are still on the ops that carry them. It is also the better IR to vectorize -- the pre-specialize
-    form is the FUSED one, so an arm tiles one elementwise chain instead of the broadcast + consumer
-    pair specialize would have split it into.
-
-    Realized as a SEPARATE library with its own entry point rather than by re-ordering
-    ``__transform_main``: ``transform-preload-library`` merges several files and the interpreter runs
-    once per entry point, so the package's own schedule -- and every ``impr_features`` edit that
-    anchors on ``__transform_main`` -- composes completely unchanged, and the contraction arms still
-    run exactly once, after specialization, on exactly the IR they run on today.
-
-    Returns None when the lever is off (then the pipeline string is byte-identical to the baseline),
-    when the feature set splices no arms, or under ``MERLIN_VEC_AFTER_SPECIALIZE``.
-    """
-    from .impr_features import apply_schedule, ensure_vec_noncontraction, vec_noncontraction_lanes
-
-    if _vec_after_specialize():
-        return None
-    lanes = vec_noncontraction_lanes(features)
-    if lanes is None:
-        return None
-    text = apply_schedule(_VEC_PRE_SKELETON, frozenset({ensure_vec_noncontraction(lanes)}))
-    if text == _VEC_PRE_SKELETON:
-        # The arms did not splice. Fail closed rather than preload a library whose entry point does
-        # nothing and report the lever as placed: that is the "enabled and changed nothing" failure
-        # this pipeline keeps re-learning.
-        raise PipelineError(
-            f"the non-contraction vectorize lever is enabled at {lanes} lanes but no arms spliced "
-            f"into the pre-specialization library skeleton; the anchor "
-            f'`%f = transform.structured.match ops{{["func.func"]}}` it keys on is gone'
-        )
-    return text
+    return load_vector_codegen("rvv").vec_pre_schedule(features)
 
 
 def build_rvv_pipeline(
