@@ -12,10 +12,10 @@ code_refs: [examples/lib/chip_setup.py, examples/lib/preflight.py, src/merlin/co
 
 A chip is usually "an ISA we already support, plus something": Kodiak is RVV plus an outer-product
 unit, Iris is RVV plus a VME matrix unit. A **chip package** says only the "plus". It is a support
-provider that `extends` a base provider and inherits everything else:
+provider that `extends` a base provider and inherits its declared capabilities:
 
 ```
-rvv-mlir        base: RVV contract (vector unit, dtypes, requant)       pinned; tracked copy at examples/rvv/support
+rvv-mlir        base: RVV capability contract only                       pinned; tracked copy at examples/rvv/support
  ├── kodiak-mlir   + BME outer-product unit, + Kodiak boards             pinned; fetched by examples/kodiak/run.sh setup
  └── iris-mlir     + VME/Xsfmm matrix unit, + Iris boards                pinned; fetched by examples/iris/run.sh setup
 ```
@@ -24,6 +24,19 @@ Each package is its own repository (`ucb-bar/<name>-mlir`). Merlin does not copy
 **pins** each one and fetches it at exactly that commit. Kodiak and Iris are separate tapeouts and are
 never built together, but they share ONE rvv-mlir: everything chip-specific lives in the chip repository's
 overlay (`replace:`/`remove:` included), never in a fork of the base.
+
+### What the RVV pin contains
+
+The pinned `rvv-mlir` revision is a support provider: `provider.yaml`, a target contract, provenance,
+and a contract test. It contains no custom MLIR dialect, compiler passes, or Transform-dialect schedule.
+Pinning it fixes the capabilities that Kodiak and Iris compose against; it does not pin executable RVV
+lowering code. The compiler implementation is part of the **Merlin commit**: the RVV pipeline is in
+[`llvmlower/pipeline.py`](../../src/merlin/llvmlower/pipeline.py), integer quantization lowering is in
+[`llvmlower/passes_quant_int.py`](../../src/merlin/llvmlower/passes_quant_int.py), and the compiler uses
+upstream MLIR Linalg, Vector, Transform, and LLVM dialects. Separately published `rvv-mlir` `stable/*`
+branches carry Transform-dialect schedules and knobs, loaded by
+[`mining/registry.py`](../../src/merlin/mining/registry.py); those branches are not the base support pin.
+Chip package plugins, including matrix lowering, are declared and loaded from each chip package.
 
 ## Pins: one record, fetched by commit
 

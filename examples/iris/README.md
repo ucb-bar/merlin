@@ -5,7 +5,8 @@ carrying the **VME/Xsfmm** matrix unit (harts 0–1), and one Rocket tile with a
 (VLEN 256, no matrix unit; hart 2). Its support is the **Iris chip package**,
 [`ucb-bar/iris-mlir`](https://github.com/ucb-bar/iris-mlir), a layer on the single RVV base (`ucb-bar/rvv-mlir`
 at Merlin's base pin): see [`docs/guides/chip_packages.md`](../../docs/guides/chip_packages.md). Merlin does
-not copy it: it pins one commit (`build_tools/upstreams/target_support.json`, `pinned_support`), and
+not copy it: the RVV pin supplies a capability contract, while Merlin implements RVV lowering. Iris pins
+one chip-package commit (`build_tools/upstreams/target_support.json`, `pinned_support`), and
 `./run.sh setup` fetches exactly that commit into `out/build/generated/pinned/iris@<sha12>/`
 (`merlin-target-fetch iris --root` prints it; below, `<iris-mlir>`). Not fetched, every stage but `setup`
 stops and names `setup`. Changing the package is a commit in iris-mlir and one sha bumped here

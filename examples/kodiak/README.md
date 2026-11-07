@@ -11,7 +11,8 @@ of it (`build_tools/upstreams/target_support.json`, `pinned_support`), and `./ru
 that commit into `out/build/generated/pinned/kodiak@<sha12>/`, where every stage finds it
 (`merlin-target-fetch kodiak --root` prints the path; below, `<kodiak-mlir>`). It is a layer on the single
 RVV base, `ucb-bar/rvv-mlir` at Merlin's base pin (tracked at `examples/rvv/support`): see
-[`docs/guides/chip_packages.md`](../../docs/guides/chip_packages.md). The boards (`chipyard_kodiak`,
+[`docs/guides/chip_packages.md`](../../docs/guides/chip_packages.md#what-the-rvv-pin-contains). That pin
+contains a capability contract; the executable RVV lowering lives in Merlin. The boards (`chipyard_kodiak`,
 `kodiak_opu_2core`, `firesim_kodiak_opu`) are data in `<kodiak-mlir>/boards.yaml`; the field meanings are on
 `Board` in `src/merlin/runtime/boards.py`. Not fetched, every stage but `setup` stops and names `setup`.
 
