@@ -3,7 +3,7 @@ title: Chip packages layered on a base target
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-11-05
+last_verified: 2026-11-07
 related: [target_resolution, adding_a_target, zephyr, model2mlir]
 code_refs: [examples/lib/chip_setup.py, examples/lib/preflight.py, src/merlin/common/pin_drift.py, src/merlin/targetgen/unit_pins.py, src/merlin/targetgen/support_pins.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/provider_compose.py, src/merlin/targetgen/oot_fetch.py, build_tools/upstreams/target_support.json, src/merlin/runtime/boards.py, src/merlin/runtime/backends/matrix_image.py, src/merlin/targetgen/rtl/matrix_isa.py, src/merlin/kernels/matrix_shim.py, src/merlin/compile_cli.py, src/merlin/compile/matrix_leg.py, src/merlin/targetgen/spike_extension.py, build_tools/scripts/vendor_support.py, src/merlin/kernels/matrix_kernels.py, src/merlin/kernels/matrix_kernel_test.py, src/merlin/llvmlower/contraction_normal_form.py, src/merlin/llvmlower/matrix_route_cost.py]
 ---
@@ -15,7 +15,7 @@ unit, Iris is RVV plus a VME matrix unit. A **chip package** says only the "plus
 provider that `extends` a base provider and inherits its declared capabilities:
 
 ```
-rvv-mlir        base: RVV capability contract only                       pinned; tracked copy at examples/rvv/support
+rvv-mlir        base: RVV contract and executable vector codegen          pinned; tracked copy at examples/rvv/support
  ├── kodiak-mlir   + BME outer-product unit, + Kodiak boards             pinned; fetched by examples/kodiak/run.sh setup
  └── iris-mlir     + VME/Xsfmm matrix unit, + Iris boards                pinned; fetched by examples/iris/run.sh setup
 ```
@@ -27,16 +27,13 @@ overlay (`replace:`/`remove:` included), never in a fork of the base.
 
 ### What the RVV pin contains
 
-The pinned `rvv-mlir` revision is a support provider: `provider.yaml`, a target contract, provenance,
-and a contract test. It contains no custom MLIR dialect, compiler passes, or Transform-dialect schedule.
-Pinning it fixes the capabilities that Kodiak and Iris compose against; it does not pin executable RVV
-lowering code. The compiler implementation is part of the **Merlin commit**: the RVV pipeline is in
-[`llvmlower/pipeline.py`](../../src/merlin/llvmlower/pipeline.py), integer quantization lowering is in
-[`llvmlower/passes_quant_int.py`](../../src/merlin/llvmlower/passes_quant_int.py), and the compiler uses
-upstream MLIR Linalg, Vector, Transform, and LLVM dialects. Separately published `rvv-mlir` `stable/*`
-branches carry Transform-dialect schedules and knobs, loaded by
-[`mining/registry.py`](../../src/merlin/mining/registry.py); those branches are not the base support pin.
-Chip package plugins, including matrix lowering, are declared and loaded from each chip package.
+The pinned `rvv-mlir` revision supplies the RVV capability contract and the executable vector backend:
+pipeline, Transform schedules, vector feature definitions, prepacking, and vector run flags. Merlin owns
+the scalar compiler, target-neutral feature registry, and shared quantization semantics. Both use
+upstream MLIR Linalg, Vector, Transform, and LLVM dialects; no private RVV dialect is required. The
+tracked `examples/rvv/support` copy records the exact provider commit and tree. Kodiak and Iris inherit
+that same provider and declare their matrix codegen, ISA encodings, kernels, and simulator adapters in
+their own packages. A build without an RVV provider can still compile scalar code.
 
 ## Pins: one record, fetched by commit
 
@@ -181,7 +178,10 @@ root, checks `API_VERSION = 1`, then calls `bind(routing)` for the selected boar
 extension exposes `offers(operation, *, layout_elements=None)` and
 `lower(prepared, work, *, select=...)`. Each offer names its owning provider and unit and carries an
 estimated cycle cost; the compiler compares legal offers with the RVV fallback and refuses equal-cost
-extension ties. Keep arithmetic and quantization semantics in the shared prepared IR.
+extension ties. If the unit adds a named compiler feature, `extension.py` may also expose
+`feature_definitions()` returning `ImprFeature` values. The loader binds those definitions into a
+per-build RVV registry, so a Kodiak-only name such as `opu_matmul` is unavailable to a plain RVV or Iris
+build. Keep arithmetic and quantization semantics in the shared prepared IR.
 
 For a matrix unit, `MatrixExtension(routing)` adapts the package's existing `matrix_lowering` plugin to
 this interface and preserves its routing report and kernel build. Add a unit test for legality, cost,

@@ -12,14 +12,15 @@ that commit into `out/build/generated/pinned/kodiak@<sha12>/`, where every stage
 (`merlin-target-fetch kodiak --root` prints the path; below, `<kodiak-mlir>`). It is a layer on the single
 RVV base, `ucb-bar/rvv-mlir` at Merlin's base pin (tracked at `examples/rvv/support`): see
 [`docs/guides/chip_packages.md`](../../docs/guides/chip_packages.md#what-the-rvv-pin-contains). That pin
-contains a capability contract; the executable RVV lowering lives in Merlin. The boards (`chipyard_kodiak`,
+contains the capability contract and executable RVV lowering. Merlin supplies scalar lowering and shared
+quantization semantics. The boards (`chipyard_kodiak`,
 `kodiak_opu_2core`, `firesim_kodiak_opu`) are data in `<kodiak-mlir>/boards.yaml`; the field meanings are on
 `Board` in `src/merlin/runtime/boards.py`. Not fetched, every stage but `setup` stops and names `setup`.
 
 **Changing the package** (the OPU kernel, the overlay, the boards): commit in kodiak-mlir, publish the
 commit, then bump its one sha here (`python build_tools/scripts/vendor_support.py pin kodiak <sha>`) and
 re-run `./run.sh setup`. To try an unpublished change first, select your clone explicitly:
-`MERLIN_TARGET_PATH=/path/to/kodiak-mlir ./run.sh op gemm` (a clone made with `git clone
+`MERLIN_TARGET_PATH=/path/to/kodiak-mlir:/path/to/kodiak-mlir/base/rvv-mlir ./run.sh op gemm` (a clone made with `git clone
 --recurse-submodules` carries its rvv base at `base/rvv-mlir`, at the same pinned commit).
 
 ## Quick start on a new machine
@@ -29,7 +30,7 @@ For source-quantized model requirements, see the
 [TorchAO W8A8 source contract](TORCHAO_W8A8_SOURCE.md).
 
 To see how a compiler-routed convolution selects a handwritten OPU kernel, run
-[`examples/conv2d_to_opu.py`](https://github.com/ucb-bar/kodiak-mlir/blob/6710d84bbe0933510a51d0736fb240f89c1d8574/examples/conv2d_to_opu.py)
+[`examples/conv2d_to_opu.py`](https://github.com/ucb-bar/kodiak-mlir/blob/handwritten-implementation/examples/conv2d_to_opu.py)
 from the pinned Kodiak package. It checks routing, the selected kernel, and numerical results on the
 OPU Spike model. The matching [portable evidence](evidence/compiler_selected_conv_kernel_examples.json)
 records the artifact hashes and qualification limits.
