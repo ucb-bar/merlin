@@ -1,0 +1,58 @@
+{
+  "schema": "merlin.kodiak_current_pin_tinyllama_spike_summary.v1",
+  "scope": "legacy W8A8 TinyLlama L2 s64 capture, one inference, functional Spike simulators",
+  "compiler_pins": {
+    "merlin": "2f513d484f5d68016811139344ffdfbf8d23cd95",
+    "rvv_mlir": "f33a253431c64f8fed8aaad4bc673cfde82101c4",
+    "kodiak_mlir": "0cf10a3b65b5703b4b5add9e4b4044287c9f1140"
+  },
+  "board": "chipyard_kodiak",
+  "shipped_opu": {
+    "receipt_sha256": "71fb5b8928aab8bc5630fafe7d0416f30d08b4eed12be41c499a2f19f01be194",
+    "elf_sha256": "e5cae04f2016da4cee35e3d0adb196413f549dc3fc501d612e94a50b87b96d7b",
+    "spike_extension_sha256": "fe9d77b85a0a9d9be6a391e9d154226208a75f115ac569505f980960204f8338",
+    "receipt_status": "verified",
+    "host_gate_scope": "first 4096 of 2048000 logits",
+    "functional_spike_cycles": 1453999576,
+    "routed_contractions_static": 19,
+    "valid_routed_macs_static_one_hit": 9865003008,
+    "unrouted_eligible_macs_static": 0,
+    "geometric_tile_fill": 1.0,
+    "memory_region_bytes": 369098752,
+    "memory_need_bytes": 353329340,
+    "memory_fits": true
+  },
+  "scalar_twin": {
+    "receipt_sha256": "d87019e8b64bd8d4ad032fc6004d330e05c3f775d6dcb16b564d0096b31aa138",
+    "elf_sha256": "3913a5c5f40198fccd7282cb6376f4a2554840df9a1c879676b05578f77e12b3",
+    "status": "verified_prefix",
+    "functional_spike_cycles": 80397591733,
+    "full_output_hash_matches_shipped": true,
+    "prefix_sha256_matches_shipped": true
+  },
+  "plain_rvv": {
+    "merlin_commit": "24eb33f78fd0cd3b9a651e4568bc9b31105000ea",
+    "receipt_sha256": "198418add450258e771512561d085144deffb0593c129ecd0b84cdf14856836c",
+    "elf_sha256": "2c3bad0f19bf10d67757ecd7c671116fea3a1771fe7ba41611aed30d4f1a3bac",
+    "functional_spike_cycles": 6611679592,
+    "full_output_hash_matches_shipped": true
+  },
+  "output": {
+    "elements": 2048000,
+    "device_full_fnv1a32": 2628075425,
+    "host_w8a8_full_fnv1a32": 409951986,
+    "prefix_elements_compared_to_host_w8a8": 4096,
+    "prefix_sha256": "2f7e1f7f9b4aed8f876b3aba5b18fbbc4e97138b66bfb1d4fcb93adf63e41bcf",
+    "prefix_w8a8_cos": 1.0,
+    "prefix_w8a8_rel": 0.0,
+    "host_comparison_complete": false,
+    "full_bitwise_host_parity": false
+  },
+  "limits": [
+    "The matching 32-bit full-output FNV hashes and 4096-value prefix SHA establish the recorded device-to-twin identity, not a byte-for-byte comparison of all 2048000 values.",
+    "The host W8A8 golden differs in full-output hash; the final ELF was not independently dumped and compared against every host element.",
+    "The static one-hit routed MAC and tile-fill calculations are not dynamic MAC rate or physical PE duty measurements.",
+    "Functional Spike cycles are not FireSim target cycles; no final-pin TinyLlama FPGA run is claimed here.",
+    "Independent true TorchAO-source parity belongs to a separate capture and gate."
+  ]
+}

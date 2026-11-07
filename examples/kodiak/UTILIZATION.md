@@ -418,3 +418,15 @@ These are functional results on an identified bitstream archive. The archive
 is not declared in Merlin's artifact registry, and the local Saturn source
 pin was used under an explicit off-pin allowance. They do not establish
 source-to-bitstream reproduction or independent TorchAO-source model parity.
+
+The [final-pin TinyLlama L2 s64 Spike receipt](evidence/current_pin_tinyllama_spike_20261107.json)
+covers the shipped OPU ELF, its same-lowering scalar twin, and a plain-RVV
+image. The shipped and twin images produced the same FNV-1a hash over all
+2,048,000 logits and the same SHA-256 over the first 4,096 values; those first
+4,096 values also match the host W8A8 golden bitwise. The full host W8A8 hash
+differs, and no full-element comparison of this final ELF to the host golden
+was made. All 19 eligible contractions are statically routed to OPU, with
+9,865,003,008 static one-hit valid MACs and 100% geometric tile fill. This is
+a functional Spike result on `chipyard_kodiak`, not a final-pin TinyLlama
+FireSim run or a physical PE-duty measurement. The separate true TorchAO
+capture remains outside this legacy W8A8 qualification.
