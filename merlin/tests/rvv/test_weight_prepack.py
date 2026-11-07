@@ -271,6 +271,21 @@ def test_build_entry_points_share_prepacked_ir_and_runtime_bundle(tmp_path, monk
     monkeypatch.setattr(wp, "_default_cache_root", lambda: tmp_path / "cache")
     monkeypatch.setattr(sm._spike, "gcc_path", lambda: tmp_path / "riscv64-unknown-elf-gcc")
     monkeypatch.setattr(sm.toolchain, "clang", lambda: tmp_path / "clang")
+    # This test substitutes a non-compiling clang executable so it can inspect
+    # the build seam. Supply its selected index layout without asking it to emit IR.
+    monkeypatch.setattr(
+        sm.target_data_layout,
+        "observe_index_width",
+        lambda clang, flags: {
+            "schema": "merlin.selected-index-lowering.v1",
+            "compiler_requested": str(clang),
+            "compiler_resolved": str(Path(clang).resolve()),
+            "compiler_sha256": hashlib.sha256(Path(clang).read_bytes()).hexdigest(),
+            "cross_flags": list(flags),
+            "data_layout": "e-p:64:64",
+            "index_bits": 64,
+        },
+    )
     monkeypatch.setenv(boards.BOARD_CATALOG_ENV, str(repo_root() / "examples/board-catalog.yaml"))
     monkeypatch.setattr(zm, "build_available", lambda: True)
     monkeypatch.setattr(zm, "allocation_bytes", lambda _: (0, False))
@@ -285,7 +300,16 @@ def test_build_entry_points_share_prepacked_ir_and_runtime_bundle(tmp_path, monk
         seen["lower"] = Path(path).parent
         llvm = tmp_path / "model.ll"
         llvm.write_text("; fixture lowering output\n")
-        return SimpleNamespace(ll_path=llvm)
+        return SimpleNamespace(
+            ll_path=llvm,
+            stats={
+                "index_lowering": {
+                    "index_bits": kwargs.get("index_bits", 64),
+                    "data_layout": kwargs.get("data_layout", "e-p:64:64"),
+                    "effective_pipeline": "fixture lowering",
+                }
+            },
+        )
 
     def run_tool(argv, **kwargs):
         command = [str(item) for item in argv]
