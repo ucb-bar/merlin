@@ -77,6 +77,110 @@ def _matrix(harts, twin, shipped, *, on_status="verified", exact=True):
     }
 
 
+def _provider_matrix():
+    """A compiler-owned run needs no runner.spike_extension declaration."""
+    identity = _ident([1, 2], 7)
+    cell = _matrix(1, identity, identity)
+    cell["compile"]["binary"] = "/ship.elf"
+    cell["compile"]["matrix"]["shipped_on_simulator"] = {
+        "status": "verified",
+        "binary": "/provider-simulator",
+        "binary_sha256": "0" * 64,
+        "provenance": {"pin": "simulator", "ok": True},
+        "verify": {**_gate(), "comparison_complete": False, "n_compared": 2, "n_reference": 4},
+        "bit_exact_vs_twin": True,
+        "spike_cycles": 40,
+        "output_identity": identity,
+        "accuracy_2percent_certified": False,
+        "rtl_certified": False,
+    }
+    cell["on_unit_model"] = {"status": "skipped", "reason": "no runner.spike_extension"}
+    return cell
+
+
+def test_the_compilers_verified_provider_run_is_the_matrix_verdict(mm):
+    import copy
+    import json
+
+    cell = _provider_matrix()
+    original_compile = copy.deepcopy(cell["compile"])
+    original_extra = copy.deepcopy(cell["on_unit_model"])
+    checked = mm.summarize(cell)
+    assert checked["status"] == "PASS" and checked["cycles"] == 40
+    assert checked["shipped"]["identity"] == original_compile["matrix"]["twin_output_identity"]
+    assert checked["shipped"]["accuracy_2percent_certified"] is False
+    assert checked["shipped"]["rtl_certified"] is False
+    assert checked["shipped"]["verify"]["comparison_complete"] is False
+    assert checked["shipped"]["verify"]["n_compared"] == 2
+    assert checked["shipped"]["verify"]["n_reference"] == 4
+    assert cell["compile"] == original_compile and cell["on_unit_model"] == original_extra
+    # Re-evaluating a kept cell retains the same actual provider evidence.
+    assert mm.summarize(json.loads(json.dumps(checked)))["status"] == "PASS"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"status": "not_run", "reason": "simulator unavailable"},
+        {"status": "skipped"},
+        {"status": "run_failed"},
+        {"status": "ran"},
+        {"status": None},
+        {"available": False},
+        {"verify": {}},
+        {"verify": {"gate_ok": False}},
+        {"verify": {"gate_ok": "true"}},
+        {"bit_exact_vs_twin": False},
+        {"bit_exact_vs_twin": None},
+        {"output_identity": None},
+        {"output_identity": _ident([9], 9)},
+    ],
+)
+def test_an_incomplete_or_failing_provider_run_cannot_pass(mm, change):
+    cell = _provider_matrix()
+    cell["compile"]["matrix"]["shipped_on_simulator"].update(change)
+    # Even a second successful record cannot hide a compiler-owned failure.
+    cell["on_unit_model"] = _matrix(1, _ident([1, 2], 7), _ident([1, 2], 7))["on_unit_model"]
+    assert mm.summarize(cell)["status"] == "FAIL"
+
+
+def test_a_verified_flag_without_an_executed_twin_is_not_sufficient(mm):
+    cell = _provider_matrix()
+    cell["compile"]["matrix"]["twin_output_identity"] = None
+    assert mm.summarize(cell)["status"] == "FAIL"
+    cell = _provider_matrix()
+    cell["compile"]["matrix"]["twin_executed"] = False
+    assert mm.summarize(cell)["status"] == "FAIL"
+
+
+@pytest.mark.parametrize("record", [False, [], "verified"])
+def test_a_malformed_compiler_hook_is_not_hidden_by_another_run(mm, record):
+    cell = _provider_matrix()
+    cell["compile"]["matrix"]["shipped_on_simulator"] = record
+    cell["on_unit_model"] = _matrix(1, _ident([1], 1), _ident([1], 1))["on_unit_model"]
+    assert mm.summarize(cell)["status"] == "FAIL"
+
+
+def test_a_compiler_owned_run_is_not_simulated_again(mm, monkeypatch):
+    from types import SimpleNamespace
+
+    result = _provider_matrix()["compile"]
+    monkeypatch.setattr(mm.chip_flow, "_compile", lambda *a, **kw: result)
+    monkeypatch.setattr(mm.chip_flow, "matrix_on_spike", lambda *a, **kw: pytest.fail("reran the shipped image"))
+    args = SimpleNamespace(
+        board="b", matrix_unit="u", matrix_config="c", matrix_support_target="t", matrix_kernel=None, timeout=1
+    )
+    assert mm.run_cell(args, "m", 1, "matrix")["status"] == "PASS"
+
+
+def test_absent_or_undeclared_compiler_hook_keeps_the_existing_extension_route(mm):
+    cell = _matrix(1, _ident([1], 1), _ident([1], 1))
+    cell["compile"]["matrix"]["shipped_on_simulator"] = {"status": "not_declared"}
+    assert mm.summarize(cell)["status"] == "PASS"
+    cell.pop("on_unit_model")
+    assert mm.summarize(cell)["status"] == "FAIL"
+
+
 def test_a_cell_passes_only_when_every_gate_it_ran_passed(mm):
     assert mm.summarize(_rvv(1, _ident([1, 2], 7)))["status"] == "PASS"
     failed = mm.summarize(_rvv(1, _ident([1, 2], 7), ok=False))

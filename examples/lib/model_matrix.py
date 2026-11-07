@@ -12,8 +12,9 @@ each model and hart count the matrix builds, with ``merlin-compile``:
           bundle's W8A8 golden;
   matrix  (with the matrix flags) the image that routes contractions to the matrix unit. Its stand-in
           twin (same lowering, scalar tile body) is graded on spike; when the support target declares a
-          spike model of its unit, the SHIPPED image runs on that model too, is graded, and must match
-          the twin bit for bit (``chip_flow.matrix_on_spike``). Its ``routing_report.json`` gives the
+          simulator of its unit, the SHIPPED image runs on that model too, is graded, and must match
+          the twin bit for bit. The compiler's shipped result is reused; older results can use
+          ``chip_flow.matrix_on_spike``. Its ``routing_report.json`` gives the
           routed contractions, the unit's MAC share and why the rest was not routed.
 
 Then, per model and leg, every hart count's output must be bit-identical to the smallest one's: a
@@ -71,13 +72,30 @@ def _verdict_terms(verify: dict) -> dict:
     return {k: verify.get(k) for k in keep if k in verify}
 
 
+def _compiled_shipped_run(result: dict) -> dict | None:
+    """The compiler's declared simulator attempt, including failures/refusals.
+
+    Only absence or an explicit lack of a declaration leaves work for the older
+    extension-only helper. A failed provider run must not be replaced by a
+    different attempt, and a provider-owned binary need not declare an extlib.
+    """
+    run = (result.get("matrix") or {}).get("shipped_on_simulator")
+    if run is None:
+        return None
+    if not isinstance(run, dict):
+        return {"status": "invalid", "reason": "malformed compiler simulator result"}
+    if not run or run.get("status") == "not_declared":
+        return None
+    return run
+
+
 def run_cell(a, model: str, harts: int, leg: str) -> dict:
     """Build and gate one image (two simulations for a matrix cell: twin, then shipped on the unit model)."""
     args = _cell_args(a, harts)
     started = time.monotonic()
     res = chip_flow._compile(model, args, matrix=(leg == "matrix"))
     cell: dict = {"model": model, "harts": harts, "leg": leg, "board": a.board, "compile": res}
-    if leg == "matrix" and res.get("binary"):
+    if leg == "matrix" and res.get("binary") and _compiled_shipped_run(res) is None:
         cell["on_unit_model"] = chip_flow.matrix_on_spike(model, args, res)
     cell["wall_s"] = round(time.monotonic() - started, 1)
     return summarize(cell)
@@ -128,8 +146,12 @@ def summarize(cell: dict) -> dict:
         }
         row["twin_cycles"] = m.get("twin_spike_cycles")
         row["identity"] = m.get("twin_output_identity")
-        on = cell.get("on_unit_model") or {}
+        compiled_run = _compiled_shipped_run(res)
+        on = compiled_run if compiled_run is not None else cell.get("on_unit_model") or {}
         row["shipped"] = {
+            # Preserve the original numerical coverage, provenance and explicit
+            # false qualification flags; the aliases below serve the table.
+            **on,
             "status": on.get("status"),
             "reason": on.get("reason") or on.get("error"),
             "gate": _verdict_terms(on.get("verify") or {}),
@@ -145,6 +167,18 @@ def summarize(cell: dict) -> dict:
             if on.get("status") == "run_mismatch":
                 why = f"bit_exact_vs_twin={on.get('bit_exact_vs_twin')}; {_why(row['shipped']['gate'])}"
             problems.append(f"shipped image on the unit model: {on.get('status')} {str(why)[:300]}".rstrip())
+        else:
+            from merlin.runtime.backends import output_identity
+
+            if on.get("available") is False:
+                problems.append("shipped image simulator was unavailable")
+            if (on.get("verify") or {}).get("gate_ok") is not True:
+                problems.append("shipped image numerical gate failed or was not recorded")
+            same = output_identity.same_output(on.get("output_identity"), m.get("twin_output_identity"))
+            if on.get("bit_exact_vs_twin") is not True or same is not True:
+                problems.append("shipped image is not proven bit-identical to its stand-in twin")
+            if m.get("twin_executed") is False:
+                problems.append("stand-in twin was not executed")
     # The image's memory budget: why it fits the board (rvv: the image; matrix: the shipped image).
     cell["memory"] = res.get("memory") or (res.get("matrix") or {}).get("ship_memory")
     cell.update(row)
