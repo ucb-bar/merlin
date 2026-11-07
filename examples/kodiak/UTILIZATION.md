@@ -427,6 +427,31 @@ image. The shipped and twin images produced the same FNV-1a hash over all
 differs, and no full-element comparison of this final ELF to the host golden
 was made. All 19 eligible contractions are statically routed to OPU, with
 9,865,003,008 static one-hit valid MACs and 100% geometric tile fill. This is
-a functional Spike result on `chipyard_kodiak`, not a final-pin TinyLlama
-FireSim run or a physical PE-duty measurement. The separate true TorchAO
+a functional Spike result on `chipyard_kodiak`. The separate true TorchAO
 capture remains outside this legacy W8A8 qualification.
+
+The [current-pin TinyLlama FireSim receipt](evidence/current_pin_tinyllama_firesim_20261107.json)
+records two independently verified one-core pairs. All four board-specific
+ELFs completed on the pinned U250 bitstream, matched their exact Spike full
+2,048,000-logit hash and 4,096-value prefix, and passed the hardware W8A8
+prefix gate. Both OPU images prove one execution of each of their 19 routed
+calls, so the 9,865,003,008 static valid MACs are also the observed
+one-inference routed work. The profiled OPU images and unprofiled RVV controls
+have different instrumentation; their cycle ratios are **not** speedups.
+
+| Profiled OPU image | OPU target cycles | RVV control cycles | OPU call-window cycles | Useful peak fraction in calls |
+| --- | ---: | ---: | ---: | ---: |
+| Baseline, jobs 3909/3910 | 15,373,604,548 | 27,951,639,405 | 107,120,367 | 8.9934% |
+| Prepacked, jobs 3911/3912 | 1,078,308,198 | 13,689,726,593 | 109,676,962 | 8.7838% |
+
+The prepacked device uses the same profiler and board and produces the same
+output. It eliminates 15 runtime i8 weight transposes moving 153,616,384
+bytes per inference. Its profiled OPU cycle count is **14.257× lower** than
+the baseline's, while OPU call-window time changes little. Cycles outside
+those calls fall from 15,266,484,181 to 968,631,236. The prepacked image
+also reduces memory need from 353,455,172 to 235,485,760 bytes, fitting the
+default 256 MiB region. Whole-inference useful work reaches 0.8934% of
+configured peak in that profiled image; this includes all non-OPU work and
+must not be read as physical array occupancy. The pinned bitstream has no
+active-cell or valid-lane counter. Its SHA is known, but it is not declared
+as a reproducible source-built artifact in Merlin's registry.
