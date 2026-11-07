@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .opu_isa import (
+from .scala_parse import (
     _VECTOR_UNIT_MIXIN_SUFFIX,
     _balanced_after,
     _bit_literal,

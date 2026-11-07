@@ -22,7 +22,7 @@ KERNEL is a name the support package registers in ``kernels/kernels.yaml`` or a 
 The sweep is derived from the configuration's tile edge (``te``): partial M and N around one and two tiles
 (1, te-1, te+1, 2te+1, ...), K tails (1..9, 15..17, 31..33, 63..65, 100, 129) and deep K, multi-tile shapes,
 a bias, full-range operands, back-to-back calls on several slices (what a batched contraction does), and
-the shapes of the frozen OPU certification corpus (:mod:`merlin.kernels.opu_corpus`). A shape outside the
+any extra certification shapes supplied by the selected package. A shape outside the
 kernel's declared constraints is skipped with the rule it breaks; one over the simulation budget is
 skipped with that reason (``--full`` raises the budget).
 
@@ -119,9 +119,15 @@ def operands(shape: Shape, slice_: int) -> tuple[np.ndarray, np.ndarray, np.ndar
 
 
 def _reference(at: np.ndarray, b: np.ndarray, bias: np.ndarray | None) -> np.ndarray:
-    from .opu_corpus import reference
-
-    return reference(at, b, bias)
+    """Reference the shared K-major int8 by int8 to int32 kernel ABI."""
+    lhs = np.asarray(at, dtype=np.int64)
+    rhs = np.asarray(b, dtype=np.int64)
+    if lhs.ndim != 2 or rhs.ndim != 2 or lhs.shape[0] != rhs.shape[0]:
+        raise ValueError(f"expected K-major operands, got {lhs.shape} and {rhs.shape}")
+    acc = lhs.T @ rhs
+    if bias is not None:
+        acc = acc + np.asarray(bias, dtype=np.int64)[None, :]
+    return acc.astype(np.int32)
 
 
 def _fnv1a64(data: bytes, h: int = _FNV64_OFFSET) -> int:
@@ -145,7 +151,12 @@ def expected_digest(shape: Shape) -> int:
 
 
 def sweep(
-    tile_edge: int, constraints: MK.Constraints, *, budget: int = DEFAULT_MACS, quick: bool = False
+    tile_edge: int,
+    constraints: MK.Constraints,
+    *,
+    budget: int = DEFAULT_MACS,
+    quick: bool = False,
+    certification_cases: Sequence[Any] = (),
 ) -> tuple[list[Shape], list[tuple[Shape, str]]]:
     """``(shapes to run, [(shape, why skipped)])`` for a unit whose tile edge is ``tile_edge``."""
     te = int(tile_edge)
@@ -174,10 +185,7 @@ def sweep(
         Shape("batch4_small", te - 1, 5, 9, batch=4, why="back-to-back small calls"),
     ]
     if not quick:
-        from .opu_corpus import select
-
-        runnable, _deferred = select(te)
-        for case in runnable:
+        for case in certification_cases:
             cand.append(
                 Shape(
                     f"corpus_{case.name}",
@@ -185,7 +193,7 @@ def sweep(
                     int(case.n),
                     int(case.k),
                     bias=bool(case.bias),
-                    why="OPU certification corpus: " + " ".join(str(case.why).split())[:80],
+                    why="package certification corpus: " + " ".join(str(case.why).split())[:80],
                 )
             )
     run_: list[Shape] = []
@@ -607,7 +615,15 @@ def run(
         shutil.rmtree(out)
     out.mkdir(parents=True)
 
-    shapes, skipped = sweep(tile_edge, selected.entry.constraints, budget=budget, quick=quick)
+    corpus = getattr(provider, "certification_cases", None)
+    certification_cases = corpus(tile_edge) if callable(corpus) and not quick else ()
+    shapes, skipped = sweep(
+        tile_edge,
+        selected.entry.constraints,
+        budget=budget,
+        quick=quick,
+        certification_cases=certification_cases,
+    )
     header_name = selected.header or f"{unit}.h"
     header = MK.unit_header(
         provider, unit=unit, config=config, header=header_name, prefix=selected.header_prefix or "MATRIX"

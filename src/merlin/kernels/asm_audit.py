@@ -383,7 +383,7 @@ def _matrix_encodings(target: str, block: dict) -> tuple[dict, str]:
     """
     try:
         from merlin.common import provenance as _prov
-        from merlin.targetgen.rtl import opu_isa as _opu_isa
+        from merlin.targetgen.plugins import load_declared
         from merlin.targetgen.target_registry import load_matrix_contract
 
         enc = block.get("encoding") or {}
@@ -391,18 +391,12 @@ def _matrix_encodings(target: str, block: dict) -> tuple[dict, str]:
         spec = units.get(enc.get("unit")) or {}
         if not spec:
             return {}, f"{target}: matrix_units.yaml declares no unit {enc.get('unit')!r}"
-        root = Path(_prov.verify(str(spec["pin"])).observed.path)
-        S, D = spec["sources"], spec["declarations"]
-        derived = _opu_isa.derive(
-            consts=root / S["consts"],
-            instructions=root / S["instructions"],
-            params=root / S["params"],
-            funct6_enum=D["funct6_enum"],
-            consts_container=D["consts_container"],
-            insn_seq=D["insn_seq"],
-            opcode_name=D["opcode_name"],
-            form_funct3=D["form_funct3"],
-        )
+        _prov.verify(str(spec["pin"]))
+        provider = load_declared(target, "matrix_lowering")
+        bind = getattr(provider, "for_unit", None)
+        if callable(bind):
+            provider = bind(str(enc["unit"]))
+        derived = provider.derive_encodings(provider.load_contract(str(enc["unit"])))
         return dict(derived.encodings), ""
     except Exception as exc:  # noqa: BLE001
         return {}, (
