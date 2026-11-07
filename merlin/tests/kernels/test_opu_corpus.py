@@ -62,7 +62,22 @@ class TestReference:
 
 class TestOverflowIsUnreachable:
     def test_the_bound_is_derived_from_the_operand_and_accumulator_widths(self):
-        assert OC.ACC_OVERFLOW_UNREACHABLE_ABOVE_K == ((1 << 31) - 1) // (127 * 127)
+        assert OC.ACC_OVERFLOW_UNREACHABLE_ABOVE_K == ((1 << 31) - 1) // (128 * 128)
+
+    def test_signed_endpoint_boundary_is_selected_exactly(self, monkeypatch):
+        safe_k = OC.ACC_OVERFLOW_UNREACHABLE_ABOVE_K
+        assert safe_k == 131_071
+        assert safe_k * ((-128) * (-128)) <= 2**31 - 1
+        assert (safe_k + 1) * ((-128) * (-128)) > 2**31 - 1
+        cases = (
+            OC.Case("last_safe", 1, 1, safe_k, "signed endpoint boundary"),
+            OC.Case("first_overflow", 1, 1, safe_k + 1, "signed endpoint boundary"),
+        )
+        monkeypatch.setattr(OC, "load_corpus", lambda path=None: cases)
+        runnable, skipped = OC.select(_TILE)
+        assert [case.name for case in runnable] == ["last_safe"]
+        assert [case.name for case, _ in skipped] == ["first_overflow"]
+        assert "above the safe accumulator bound" in skipped[0][1]
 
     def test_no_corpus_case_comes_near_the_accumulator_limit(self):
         # The claim in the module docstring, checked rather than asserted: if a future case did overflow,
@@ -82,12 +97,12 @@ class TestOverflowIsUnreachable:
 
         This used to demand 100x headroom, which was comfortable while the census was spectformer
         (longest K = 1024, 130x). A decode-shaped model lowers K=9216 -- gemma's ffn down -- and that
-        is 14.4x. Still unreachable, and the amplitude-aware check above is the one that actually
+        is 14.2x. Still unreachable, and the amplitude-aware check above is the one that actually
         bounds the accumulator, but "three orders of magnitude" stopped being true, so the number is
         asserted rather than the adjective.
         """
         longest = max(c.resolved(_TILE).k for c in OC.load_corpus())
-        assert longest * (127 * 127) < 2**31 - 1, f"K={longest} at full int8 amplitude overflows the int32 accumulator"
+        assert longest * (128 * 128) < 2**31 - 1, f"K={longest} at full int8 amplitude overflows the int32 accumulator"
         headroom = OC.ACC_OVERFLOW_UNREACHABLE_ABOVE_K / longest
         assert headroom > 10, (
             f"longest corpus reduction K={longest} leaves only {headroom:.1f}x of "

@@ -11,7 +11,7 @@ Three properties, each deliberate:
 * **The reference wraps, and the wrap turns out to be unreachable.** The hardware's accumulator has no
   saturation logic (the RTL says so in a ``TODO``), so where it overflows it wraps, and the reference
   matches that. But the bound is derivable: int8 × int8 into int32 cannot exceed the accumulator below
-  ``K ≈ 133,152`` (:data:`ACC_OVERFLOW_UNREACHABLE_ABOVE_K`), which is 14.4x the longest reduction in
+  ``K = 131,072`` (:data:`ACC_OVERFLOW_UNREACHABLE_ABOVE_K` + 1), which is 14.2x the longest reduction in
   the workload census (``K = 9216``, a decode-shaped ffn down). That margin was three orders of
   magnitude while the census was spectformer alone; whole-model decode shapes cut it by 9x, so it is
   now asserted by the gate rather than described. So the missing saturation is a **retired** hazard on this
@@ -623,15 +623,15 @@ _CASES: tuple[Case, ...] = (
     ),
 )
 
-#: The reduction length at which int8 x int8 accumulation could first exceed a signed 32-bit
-#: accumulator: ``(2**31 - 1) / 127**2``. Derived, not assumed, and it retires a stated hazard rather
-#: than leaving it open: the RTL's missing saturation logic (an explicit ``TODO``) is UNREACHABLE on the
-#: int8 datapath for any K a real contraction has -- the largest reduction in the workload census is
-#: three orders of magnitude below this. So the corpus deliberately contains no wrap case: one would have
+#: The greatest reduction length that cannot overflow a signed 32-bit accumulator
+#: starting at zero, for any signed-int8 pair: ``(2**31 - 1) // ((-128) * (-128))``.
+#: The RTL's missing saturation logic (an explicit ``TODO``) is unreachable for
+#: real contractions: the longest K in the workload census is more than 14x below
+#: this bound. The corpus deliberately contains no wrap case: one would have
 #: to use a K no model produces, and a case that claims to test wrapping while staying inside the range
 #: is worse than no case at all. :func:`reference` still wraps, because the reference must match the
 #: hardware wherever the hardware is defined, and it is unit-tested on synthetic wide values.
-ACC_OVERFLOW_UNREACHABLE_ABOVE_K = ((1 << 31) - 1) // (127 * 127)
+ACC_OVERFLOW_UNREACHABLE_ABOVE_K = ((1 << 31) - 1) // (128 * 128)
 
 
 def load_corpus(path: "str | Path | None" = None) -> tuple[Case, ...]:
@@ -688,7 +688,7 @@ def select(
             skipped.append(
                 (
                     got,
-                    f"k={k} is at or above the accumulator-overflow bound "
+                    f"k={k} is above the safe accumulator bound "
                     f"{ACC_OVERFLOW_UNREACHABLE_ABOVE_K}, where the datapath's missing "
                     f"saturation becomes reachable; no model produces such a reduction",
                 )
