@@ -349,7 +349,7 @@ def ensure_registered() -> str:
     returns False -- an unregistered feature is not an error anyone sees, it is a feature that is
     silently never proposed.
     """
-    from .impr_features import _REGISTRY, ImprFeature, register
+    from .shared_feature_registry import _REGISTRY, ImprFeature, register
 
     if FEATURE in _REGISTRY:
         return FEATURE

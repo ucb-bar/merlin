@@ -66,7 +66,7 @@ def _edit_reduction_unroll(passes: list[str], *, count: int = 2) -> list[str]:
 
 
 def ensure_registered() -> str:
-    from .impr_features import ImprFeature, known, register
+    from .shared_feature_registry import ImprFeature, known, register
 
     if FEATURE not in known():
         register(

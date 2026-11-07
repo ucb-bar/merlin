@@ -52,8 +52,8 @@ def threshold_of(features) -> int | None:
 
 
 def ensure_registered(threshold: int) -> str:
-    from .impr_features import ImprFeature, known, register
     from .parallel_grain import ensure_registered as ensure_grain
+    from .shared_feature_registry import ImprFeature, known, register
 
     value = int(threshold)
     name = feature_name(value)

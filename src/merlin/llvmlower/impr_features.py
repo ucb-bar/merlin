@@ -49,6 +49,12 @@ def register(feature: ImprFeature) -> ImprFeature:
     return _FEATURES.register(feature)
 
 
+from .shared_feature_registry import eager_features as _shared_eager_features
+
+for _shared_feature in _shared_eager_features():
+    register(_shared_feature)
+
+
 #: Cache for :func:`_single_name_lever_modules` (built once per process).
 _LEVER_MODULES: "dict[str, str] | None" = None
 
@@ -122,6 +128,17 @@ def _try_lazy_register(name: str) -> bool:
     ``compiler_features`` -- rather than reaching it through a ``microkernel`` knob block, which
     registers it as a side effect of resolving -- failed with an "unknown impr feature" KeyError.
     Each family is registered from its own arity, so a name is either derivable or an honest error."""
+    from .shared_feature_registry import get_shared_feature
+
+    try:
+        shared = get_shared_feature(name)
+    except KeyError:
+        pass
+    else:
+        if name not in _REGISTRY:
+            register(shared)
+        return True
+
     # A SINGLE-NAME lever lives in its own module and resolves by importing that module, rather than
     # through the arity table below. It has to resolve HERE and not only where it is ranked:
     # `wholemodel_proposer` registers it for the PROPOSAL path, but a package that names it in
@@ -1893,22 +1910,6 @@ def unclaimed_op_classes(feature: str) -> list[str]:
 #: few percent of the datapath's peak while the matmul kernel itself looks fine.
 NAMED_INT8_CONTRACTION_NAME = "named_int8_contraction"
 
-register(
-    ImprFeature(
-        name=NAMED_INT8_CONTRACTION_NAME,
-        action_class="PASS",
-        description="Emit the canonical 2-D i8xi8->i32 contraction as a MIXED-TYPE linalg.matmul instead "
-        "of a linalg.generic, so the named-op transform schedules can see it. The int8 quant "
-        "pass otherwise leaves ZERO linalg.matmul in the module (measured: 15 -> 0 on "
-        "small_llama_int8), and transform.structured.match on a name nothing carries returns "
-        "an empty handle -- which makes every one of the 39 linalg.matmul/batch_matmul "
-        "matchers in this file a vacuous no-op on int8 while still reporting as applied. An "
-        "87-fork beam over those levers emitted only 21 distinct binaries. Batched, conv and "
-        "non-canonical indexing keep the generic form: a named op ASSERTS an indexing "
-        "convention, so claiming one the op does not have would be a correctness bug rather "
-        "than a missed optimization. Default-off; baseline byte-identical.",
-    )
-)
 
 #: Quantize an activation BEFORE the pure data-movement op that expands it, not after.
 #:
@@ -1917,35 +1918,6 @@ register(
 #: False, so a lazily-registered lever is not declined by the search, it is INVISIBLE to it.
 QUANTIZE_BEFORE_GATHER_NAME = "quantize_before_gather"
 
-register(
-    ImprFeature(
-        name=QUANTIZE_BEFORE_GATHER_NAME,
-        action_class="PASS",
-        description=(
-            "When a contraction's f32 activation operand is produced by a PURE data-movement op (an "
-            "all-parallel linalg.generic whose body only yields its input, i.e. an element copy), "
-            "quantize the op's SOURCE with a per-tensor scale instead of quantizing its expanded result "
-            "with a per-parallel-row one. Quantization is elementwise, so quantize(G(A)) == G(quantize(A)) "
-            "exactly for a single shared scale; what blocks the commutation today is only the per-row "
-            "scale, under which one element of A carries a different scale in every im2col column it "
-            "appears in. This is the case that matters on every convolutional model here: model2MLIR "
-            "expands every conv into im2col + matmul before merlin sees it (190 such ops in deepjscc "
-            "int8, 175 in lstmnetvit int8, zero fused conv2d), so the operand being quantized IS the "
-            "expanded matrix -- deepjscc enc.net.1 quantizes a 147x4096 f32 matrix, ~41x the "
-            "1x3x70x70 activation it was gathered from. With the scale moved, the abs-max and the "
-            "quantize both run on the activation and the gather itself moves i8, 4x less traffic for the "
-            "same trip count, and the f32 expansion is erased entirely. The abs-max is EXACT in both "
-            "modes: over the source when the indexing maps and bounds PROVE the gather reads every "
-            "element, otherwise reduced through the gather's own map (same reads, scalar result, no "
-            "materialization) -- so a strided or dilated gather that skips elements is handled, not "
-            "approximated with the coarser amax(A) >= amax(G(A)). Refuses and counts the reason for a "
-            "computed body, a shared intermediate, a dynamic extent or a non-gather producer. "
-            "NOT bit-identical: the per-tensor activation scale is a genuine numeric change against the "
-            "shipped per-row scheme and must pass the accuracy gate on its own. Default-off; with the "
-            "feature absent the int8 datapath is byte-identical."
-        ),
-    )
-)
 
 VEC_NONCONTRACTION_NAME = "vectorize_non_contraction_generics"
 #: Default lane count for the bare feature name. The lane width is a KNOB SPACE, not a
@@ -2470,48 +2442,6 @@ def ensure_vec_noncontraction(lanes: int, max_rank: int = VEC_NONCONTRACTION_MAX
 #: pre-generalization pass still fuses the generics that are already generic, and leaving it in place
 #: keeps this a strict addition to the baseline rather than a reshuffle whose effect is harder to
 #: attribute. General, not target-specific -- every per-channel-quantized model has this shape.
-
-
-register(
-    ImprFeature(
-        name=FUSE_AFTER_GENERALIZE_NAME,
-        action_class="PASS",
-        description="run elementwise fusion a second time, AFTER linalg-generalize-named-ops. The "
-        "upstream order fuses (pos 2) before generalizing (pos 3), and fusion only sees "
-        "linalg.generic -- so every NAMED op is invisible to it. MEASURED on small_llama "
-        "int8: 39 linalg.broadcast ops at 23.9% of the model, each materialising a "
-        "per-channel quantization scale into a full weight-sized tensor (a 344-element "
-        "vector splatted to 44,032 elements, then read straight back). "
-        "MEASURED AND REFUTED as a whole-model lever on that same model: 3,543,517 -> "
-        "4,313,041 ns, 1.22x SLOWER (sustained, n=3, cos identical). It does what it says -- "
-        "the scalar bucket falls 3.1 -> 2.8 ms -- but the contraction RISES 1.8 -> 2.8 ms, "
-        "because fusing the dequant chain into the producers perturbs the shape the "
-        "contraction was vectorized into and costs more than the broadcast it removes. Kept "
-        "registered so the finding is reproducible and the lever is not re-attempted blindly; "
-        "the broadcast waste is real but needs a TARGETED fold of the broadcast into its "
-        "consumer's indexing map, not blanket elementwise fusion. Default-off; baseline "
-        "byte-identical.",
-        edit_pipeline=_fuse_after_generalize,
-    )
-)
-
-
-register(
-    ImprFeature(
-        name=PROMOTE_STACK_NAME,
-        action_class="PASS",
-        description="promote small bufferization allocs to the stack after hoisting. Targets LOCALITY, "
-        "not allocator cost: bufferization gives each intermediate its own memref.alloc (209 "
-        "of them on small_llama int8, ~3% of wall), and scattered heap buffers mean every "
-        "intermediate is written and re-read through cache misses. ExecuTorch's memory "
-        "planner places EVERY activation of the same model into ONE 32,512-byte arena, small "
-        "enough to stay in L1; we have no whole-model planner wired, and this upstream pass "
-        "buys much of the same effect. Per-buffer cap (MERLIN_PROMOTE_STACK_BYTES, default "
-        "16384) is a stack-overflow guard, not a tuning knob. Default-off; baseline "
-        "byte-identical.",
-        edit_pipeline=_promote_buffers_to_stack,
-    )
-)
 
 
 def ensure_promote_stack(nbytes: int) -> str:
@@ -3350,28 +3280,6 @@ module attributes {transform.with_named_sequence} {
 
 register(
     ImprFeature(
-        name="approximate_transcendental_activation",
-        action_class="PASS",
-        description="Explicit f32 activation polynomial rewrite, independent of host vectorization. "
-        "Shares the provenance-scoped exp/erf/tanh approximation with the vectorized activation "
-        "feature. Normalization and unsupported dtypes retain libm lowering. Changes numerical "
-        "arithmetic and requires the caller's original model accuracy gate; default off.",
-    )
-)
-
-register(
-    ImprFeature(
-        name="fuse_activation_polynomial_fma",
-        action_class="PASS",
-        description="Explicit fused evaluation of the selected f32 activation polynomial. "
-        "Changes approximation arithmetic; requires the original model accuracy gate. "
-        "Selects exact FMA intrinsics and leaves normalization expf unchanged; default off.",
-        implies=frozenset({"approximate_transcendental_activation", "lower_fma_to_intrinsic"}),
-    )
-)
-
-register(
-    ImprFeature(
         name="vectorized_transcendental_activation",
         action_class="PASS",
         description="GENERAL vectorized-activation lowering, PRECISELY TARGETED by provenance: the "
@@ -3417,16 +3325,6 @@ register(
 #   instructions 1,710,650 -> 475,899 (3.59x)   ticks 41,195 -> 21,882 (1.88x)
 #   vs XNNPACK   3.57x -> 1.90x
 # The mechanism and why nothing upstream folds it: see llvmlower/selfcopy.py.
-register(
-    ImprFeature(
-        name=_SELF_COPY_FEATURE,
-        action_class="PASS",
-        description="erase `memref.copy %x, %x` (a buffer copied onto itself) after bufferization/cse "
-        "and before finalize-memref-to-llvm, where it would otherwise survive as an opaque "
-        "@memrefCopy rank-generic runtime call costing ~79 retired instructions per OUTPUT "
-        "ELEMENT. Removes the tile-epilogue copy; emits no new code.",
-    )
-)
 
 
 # Expand every static `memref.copy` into an emitted loop nest instead of a runtime call. The
@@ -3443,19 +3341,6 @@ register(
 # erased. Rewriting the copy to `linalg.copy` hands it to the `convert-linalg-to-loops` already in
 # every pipeline, and finalize-memref-to-llvm then has nothing left to turn into a call.
 # See llvmlower/copy_expand.py for the structural predicate and the fail-closed skip count.
-register(
-    ImprFeature(
-        name=_EXPAND_COPY_FEATURE,
-        action_class="PASS",
-        description="rewrite every ranked, statically shaped `memref.copy` to a `linalg.copy` after "
-        "bufferization and before finalize-memref-to-llvm, so the pipeline's own "
-        "convert-linalg-to-loops emits an scf load/store nest instead of leaving a call to "
-        "the rank-generic `@memrefCopy` runtime helper (or a copy-derived `memcpy`). "
-        "Structure-keyed (ranked + static shape), no shape or model assumption; a copy it "
-        "cannot prove static is left alone and counted. Default-off, baseline "
-        "byte-identical.",
-    )
-)
 
 
 # Fold a `linalg.transpose` of a matmul's B operand INTO the matmul's access pattern (transpose-b
@@ -3465,18 +3350,6 @@ register(
 # the scalar transpose op AND its materialized buffer; the op stays `linalg.matmul` (transposed-B
 # indexing_map) so the frozen RVV schedule still vectorizes it. Default-off; baseline byte-identical.
 # The rewrite runs in the lowering runner (gated by argv[5]); see llvmlower/transpose_fuse.py.
-register(
-    ImprFeature(
-        name=_FUSE_TRANSPOSE_FEATURE,
-        action_class="PASS",
-        description="fuse `matmul(A, transpose(B, [1,0]))` into a transpose-b `linalg.matmul` (repoint "
-        "the B operand to the un-transposed weight + permute its indexing_map (k,n)->(n,k), "
-        "then erase the dead transpose). Eliminates the standalone SCALAR weight transpose "
-        "(393 ms / 57% of openvla) and its DRAM buffer with no op materialized; the matmul "
-        "stays vectorized by the frozen schedule and reads B contiguously along k. "
-        "Whole-model cross-op fusion; default-off, baseline byte-identical.",
-    )
-)
 
 
 # ---- vectorize a standalone reduction -> vfredusum/vredsum (the compute.reduction_form lever) ------
@@ -3736,40 +3609,6 @@ register(
 #: (afterwards there are no producer/consumer tensors left to fuse).
 
 
-register(
-    ImprFeature(
-        name=FUSE_ELEMENTWISE_NAME,
-        action_class="PASS",
-        description=(
-            "Run `linalg-fuse-elementwise-ops` (+ canonicalize/cse) after the transform schedule has "
-            "matched and vectorized the contractions, so the elementwise producer->consumer chains that "
-            "`linalg-specialize-generic-ops` un-fuses collapse again and each line is touched once. The "
-            "stage already existed in build_rvv_pipeline but was reachable only through the "
-            "MERLIN_FUSE_POST environment variable, which no fork can vary -- so the tuning loop could "
-            "not select it. Attacks the linalg.generic long tail (16.5% of int8 whole-model runtime "
-            "across 191 ops in 26 classes): the per-row activation-quantize and requant generics each "
-            "read a scale that `specialize` materialized into a full-size temporary first. MEASURED on "
-            "small_llama_int8_consistent at the current best config -- linalg.broadcast 50 -> 13, "
-            "242,944 -> 60,160 bytes written per inference for zero arithmetic (13.9x amplification "
-            "removed); emitted `forward` 35,253 -> 31,348 instructions (-11.1%, vector 14,053 -> 12,561 "
-            "and scalar 13,802 from 15,319, so the vector FRACTION is flat at 0.478 -> 0.477 by "
-            "construction), model.o 189,008 -> 170,664 bytes, stack alloca 118 -> 103 sites. Output "
-            "BIT-IDENTICAL on spike (prefix digest cc60e8a90270ec1e either way; tiers ['fp32','w8a8'], "
-            "tier_ok 'fp32_cos_only', ok True, every gate figure equal to the last digit). NOT the "
-            "refuted `fuse_elementwise_after_generalize`, which runs the stage on the far side of the "
-            "generalize anchor and measured 1.22x SLOWER by perturbing the already-vectorized "
-            "contraction: here vwmacc stays 152 and vredmax 104 while vle32.v 2,116 -> 1,729 and "
-            "vse32.v 809 -> 581. (fmul.s 0 -> 82 is a small scalar tail this introduces.) THE WALL IS "
-            "UNMEASURED -- fewer instructions is a reason to measure, not a result: on this same model a "
-            "transpose fold that removed ops and shrank the object measured 1.09x SLOWER. Structure-keyed "
-            "(names one upstream pass and one anchor pass; no model, shape, dtype or target). "
-            "Default-off; baseline byte-identical."
-        ),
-        edit_pipeline=_fuse_elementwise_pipeline,
-    )
-)
-
-
 # ---- vectorize the amax reduction dynamic quantization emits ------------------------------------
 # Registered EAGERLY, at import of this module, rather than through `_try_lazy_register`. That is
 # deliberate and it is the cheaper half of the trap that hook exists for: the lowering runs in a
@@ -3783,45 +3622,6 @@ from .reduce_vec import ensure_registered as _ensure_amax_reduction  # noqa: E40
 VECTORIZE_AMAX_REDUCTION_NAME = _ensure_amax_reduction()
 
 
-register(
-    ImprFeature(
-        name="reuse_tensor_destination",
-        action_class="PASS",
-        description="Forward tensor destinations through proved insert-slice chains before bufferization; default off.",
-        edit_pipeline=_reuse_tensor_destination,
-        implies=frozenset({_SELF_COPY_FEATURE}),
-    )
-)
-
-register(
-    ImprFeature(
-        name="initialize_tensor_border_only",
-        action_class="PASS",
-        description="Fill only the proved exterior of a fresh tensor destination whose interior is fully overwritten; default off.",
-        implies=frozenset({"reuse_tensor_destination"}),
-    )
-)
-
-
-register(
-    ImprFeature(
-        name="fold_uniform_fill_copy",
-        action_class="PASS",
-        description="Fill proved copy destinations directly from a private uniform buffer; default off.",
-        implies=frozenset({_SELF_COPY_FEATURE}),
-    )
-)
-
-
-register(
-    ImprFeature(
-        name="specialize_contiguous_copy",
-        action_class="PASS",
-        description="Specialize disjoint static copies to contiguous suffix memcpy and outer strided loops; default off.",
-        implies=frozenset({_SELF_COPY_FEATURE}),
-    )
-)
-
 from .bufferized_result_identity import ensure_registered as _ensure_buffer_identity  # noqa: E402
 
 BUFFERIZED_RESULT_IDENTITY_NAME = _ensure_buffer_identity()
@@ -3829,3 +3629,10 @@ BUFFERIZED_RESULT_IDENTITY_NAME = _ensure_buffer_identity()
 from .scalar_squared_sum import ensure_registered as _ensure_squared_sum  # noqa: E402
 
 SCALAR_SQUARED_SUM_NAME = _ensure_squared_sum()
+
+from .shared_feature_registry import get_shared_feature as _get_shared_feature  # noqa: E402
+from .shared_feature_registry import known as _shared_known  # noqa: E402
+
+for _name in _shared_known():
+    if _name not in _REGISTRY:
+        register(_get_shared_feature(_name))

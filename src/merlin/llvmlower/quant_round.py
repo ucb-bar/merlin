@@ -476,12 +476,10 @@ def fuse_round_clamp_convert(module, report_out: "dict | None" = None) -> int:
     return n
 
 
-def ensure_registered() -> str:
-    """Register the isolated rewrite and explicit vectorized composition. Idempotent."""
-    from . import impr_features as F
+def ensure_shared_registered() -> str:
+    """Register the exact arithmetic rewrite without a vector backend."""
+    from . import shared_feature_registry as F
 
-    if FEATURE in F.known() and VEC_FEATURE in F.known():
-        return FEATURE
     if FEATURE not in F.known():
         F.register(
             F.ImprFeature(
@@ -510,6 +508,17 @@ def ensure_registered() -> str:
                 ),
             )
         )
+    return FEATURE
+
+
+def ensure_registered() -> str:
+    """Retain the legacy combined registration for existing callers."""
+    from . import impr_features as F
+    from .shared_feature_registry import get_shared_feature
+
+    ensure_shared_registered()
+    if FEATURE not in F.known():
+        F.register(get_shared_feature(FEATURE))
     if VEC_FEATURE not in F.known():
         F.register(
             F.ImprFeature(
