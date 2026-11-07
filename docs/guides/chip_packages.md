@@ -171,6 +171,25 @@ the drift. `preflight` lists each of these pins as `ok`, `warn` or `stop`.
 | plugins, e.g. `matrix_lowering.py` | executable support the overlay's `plugin:` block names |
 | `tests/`, `provenance.json` | the package's own checks |
 
+### Adding an executable accelerator extension
+
+Pin the tested `rvv-mlir` commit in `provider.yaml` `extends` and its optional `base/rvv-mlir` gitlink.
+The RVV provider supplies the vector codegen and fallback. Put only the new unit's legality, cost,
+instructions, kernels, board facts and simulator in the chip package. Declare
+`plugin.extension: extension.py` in its overlay; Merlin loads this declaration from the package's own
+root, checks `API_VERSION = 1`, then calls `bind(routing)` for the selected board and unit. The bound
+extension exposes `offers(operation, *, layout_elements=None)` and
+`lower(prepared, work, *, select=...)`. Each offer names its owning provider and unit and carries an
+estimated cycle cost; the compiler compares legal offers with the RVV fallback and refuses equal-cost
+extension ties. Keep arithmetic and quantization semantics in the shared prepared IR.
+
+For a matrix unit, `MatrixExtension(routing)` adapts the package's existing `matrix_lowering` plugin to
+this interface and preserves its routing report and kernel build. Add a unit test for legality, cost,
+fallback and an API-version mismatch; then run the package's kernel test and a compiler-routed operator
+on the unit simulator. The current Zephyr whole-image path builds **one selected accelerator unit per
+image** plus RVV fallback. The offer API can compare several extensions, but emitting objects for
+multiple accelerator units in one image still requires a whole-image build extension.
+
 ## Overlay merge rules
 
 `merlin-target-compose <root>` computes base ⊕ overlay:
