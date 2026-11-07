@@ -1092,6 +1092,7 @@ def build_k1_binary(
         work,
         int8_compute=pkg.is_int8 if int8_compute is None else int8_compute,
         features=feats_in,
+        backend="rvv",
         harts=(int(parallel_harts) if parallel_harts else 1),
         vlen=VLEN,
         outline_int8=kernel_backend == "outlined_int8",
@@ -1653,6 +1654,7 @@ def build_k1_session_binary(
             stage_work,
             int8_compute=pkg.is_int8,
             features=features,
+            backend="rvv",
             harts=(int(parallel_harts) if parallel_harts else 1),
             vlen=VLEN,
         )

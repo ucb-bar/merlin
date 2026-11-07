@@ -763,6 +763,7 @@ def build(
                 int8_compute=int8_compute,
                 quant_passes=quant_passes,
                 features=features,
+                backend=backend,
                 vlen=vlen,
                 matrix=matrix,
                 device=device,

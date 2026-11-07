@@ -805,6 +805,7 @@ def prepare_for_lowering(
     int8_compute: bool = False,
     quant_passes: list[str] | None = None,
     features: frozenset[str] | None = None,
+    backend: str = "scalar",
     blocking: bool = True,
     harts: int = 1,
     vlen: int | None = None,
@@ -837,9 +838,6 @@ def prepare_for_lowering(
     and output bytes; semantic, effect and provider proofs remain caller-owned.
     No callback preserves the ordinary preparation path and bytes.
     """
-    from ...llvmlower.impr_features import vec_noncontraction_lanes as _vec_lanes
-    from ...llvmlower.impr_features import vec_noncontraction_max_rank as _vec_max_rank
-
     features = frozenset(features or frozenset())
     # Read the vec-family point off the IMPLIES CLOSURE, not off the raw set. `normalize` is what
     # expands `implies`, and it runs inside the LOWERING (pipeline.apply_schedule) -- after this
@@ -850,11 +848,21 @@ def prepare_for_lowering(
     # vector schedule. Reading the former from the raw set made that composite tag vector loops
     # while silently retaining every scalar ``roundevenf`` call. Direct feature sets remain
     # byte-identical; only a composite now receives the prerequisite declared by ``implies``.
-    from ...llvmlower.impr_features import normalize as _normalize
+    if backend == "rvv":
+        from ...llvmlower.backend_spi import load_vector_codegen
 
-    _closed = _normalize(features)
-    _lanes = _vec_lanes(_closed)
-    _max_rank = _vec_max_rank(_closed)
+        vector_backend = load_vector_codegen(matrix.support_target if matrix else "rvv")
+        _closed = vector_backend.normalize_features(features)
+        _lanes, _max_rank = vector_backend.vec_noncontraction_shape(_closed)
+    elif backend == "scalar":
+        from ...llvmlower.impr_features import normalize as _normalize
+        from ...llvmlower.impr_features import vec_noncontraction_lanes as _vec_lanes
+        from ...llvmlower.impr_features import vec_noncontraction_max_rank as _vec_max_rank
+
+        _closed = _normalize(features)
+        _lanes, _max_rank = _vec_lanes(_closed), _vec_max_rank(_closed)
+    else:
+        raise ZephyrModelError(f"unknown preparation backend {backend!r}")
     from ...llvmlower.impr_features import NAMED_INT8_CONTRACTION_NAME, QUANTIZE_BEFORE_GATHER_NAME
     from ...llvmlower.quant_hoist import FEATURE as _HOIST_WEIGHT_INVARIANT_QUANTIZE
     from ...llvmlower.quant_round import FEATURE as _FUSE_QUANT_ROUND
@@ -2455,6 +2463,7 @@ def build_app(
             int8_compute=int8_compute,
             quant_passes=quant_passes,
             features=features,
+            backend=backend,
             blocking=True,
             harts=n_harts,
             vlen=vlen,
