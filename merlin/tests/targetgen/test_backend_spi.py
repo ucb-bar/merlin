@@ -1,5 +1,6 @@
 """Executable backend loading and scalar independence."""
 
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -93,6 +94,18 @@ def test_chain_loads_base_code_from_base_root(monkeypatch, tmp_path):
     (chip / "contracts/target_contract.yaml").write_text("name: chip\n")
     monkeypatch.setattr(plugins, "resolve_support", lambda target: SimpleNamespace(base=chip))
     monkeypatch.setattr(provider_compose, "_candidate_roots", lambda: [base])
-    entries = plugins.load_declared_chain("chip", "rvv_codegen")
-    assert [owner for owner, _ in entries] == ["rvv"]
-    assert entries[0][1].build_pipeline(None) == "base"
+    namespace = "merlin._oot_targets.rvv"
+    saved = {
+        name: module for name, module in sys.modules.items() if name == namespace or name.startswith(namespace + ".")
+    }
+    for name in saved:
+        sys.modules.pop(name)
+    try:
+        entries = plugins.load_declared_chain("chip", "rvv_codegen")
+        assert [owner for owner, _ in entries] == ["rvv"]
+        assert entries[0][1].build_pipeline(None) == "base"
+    finally:
+        for name in tuple(sys.modules):
+            if name == namespace or name.startswith(namespace + "."):
+                sys.modules.pop(name)
+        sys.modules.update(saved)
