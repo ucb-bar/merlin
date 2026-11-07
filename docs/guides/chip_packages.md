@@ -10,6 +10,9 @@ code_refs: [examples/lib/chip_setup.py, examples/lib/preflight.py, src/merlin/co
 
 # Chip packages layered on a base target
 
+For a fresh-machine path from model assets to a compiled ELF and a kernel
+test, start with [the Kodiak/Iris setup guide](chip_fresh_machine.md).
+
 A chip is usually "an ISA we already support, plus something": Kodiak is RVV plus an outer-product
 unit, Iris is RVV plus a VME matrix unit. A **chip package** says only the "plus". It is a support
 provider that `extends` a base provider and inherits its declared capabilities:

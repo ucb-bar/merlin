@@ -1,5 +1,8 @@
 # Iris: RVV on three harts, int8 contractions on the VME matrix unit
 
+For a fresh host, model assets, and the C-kernel workflow, start with
+[the chip setup guide](../../docs/guides/chip_fresh_machine.md).
+
 Iris is chipyard `iris-cy`'s `IrisConfig`: two Shuttle tiles with Saturn vector units (VLEN 256 / DLEN 128)
 carrying the **VME/Xsfmm** matrix unit (harts 0–1), and one Rocket tile with a Saturn DMA vector unit
 (VLEN 256, no matrix unit; hart 2). Its support is the **Iris chip package**,
@@ -28,7 +31,7 @@ pinned rvv base at `base/rvv-mlir`).
 ```
 
 For a compiler-routed convolution that selects a handwritten VME kernel, run
-[`examples/conv2d_kernel_demo.py`](https://github.com/ucb-bar/iris-mlir/blob/46524a94372ac4d63bb78f3586170b0901db4f8e/examples/conv2d_kernel_demo.py)
+[`examples/conv2d_kernel_demo.py`](https://github.com/ucb-bar/iris-mlir/blob/handwritten-implementation/examples/conv2d_kernel_demo.py)
 from the pinned Iris package. It checks routing, the selected kernel, and the shipped image on pinned
 Zvt Spike. The matching [portable evidence](../kodiak/evidence/compiler_selected_conv_kernel_examples.json)
 records artifact hashes and qualification limits.
@@ -132,5 +135,7 @@ Each shipped image carries 71 VME instruction words (20 `sf.mm`, 5 `sf.vtzero.t`
 rest configuration); each twin carries none. The VME share of contraction MACs is 1.0 in every case: nothing
 was left on the vector unit.
 
-Not measured here: the RTL. The kernel has not run on Iris's Verilator elaboration or on silicon; the
-spike verdict says the words and their use are right under the Zvt draft, which the RTL states it follows.
+The rows above are Zvt Spike results, not RTL cycles. Three direct
+Verilator/SerialTL kernel cases subsequently matched the pinned Zvt Spike
+output digests; see Iris-MLIR's `evidence/zvt_three_case_20261106/`.
+The full RTL kernel suite and physical Iris execution remain unverified.

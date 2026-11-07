@@ -25,6 +25,9 @@ re-run `./run.sh setup`. To try an unpublished change first, select your clone e
 
 ## Quick start on a new machine
 
+For the full path from fresh host and model assets through ELF and C-kernel
+iteration, see [the chip setup guide](../../docs/guides/chip_fresh_machine.md).
+
 For measured utilization and its limits, see [UTILIZATION.md](UTILIZATION.md).
 For source-quantized model requirements, see the
 [TorchAO W8A8 source contract](TORCHAO_W8A8_SOURCE.md).
