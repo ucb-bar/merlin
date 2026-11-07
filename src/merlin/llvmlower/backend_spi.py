@@ -54,4 +54,26 @@ def load_vector_codegen(target: str) -> Any:
     """Return the one version-compatible vector backend in ``target``'s provider chain."""
     from merlin.targetgen.plugins import load_declared_chain
 
-    return _checked(target, load_declared_chain(target, "rvv_codegen"))
+    from .feature_registry import ImprFeature
+
+    owner_backend = load_declared_chain(target, "rvv_codegen")
+    backend = _checked(target, owner_backend)
+    definitions: list[ImprFeature] = []
+    for owner, extension in load_declared_chain(target, "extension"):
+        version = getattr(extension, "API_VERSION", None)
+        if version != API_VERSION:
+            raise BackendAPIError(f"{target}: {owner} extension API version {version!r}; need {API_VERSION}")
+        declare = getattr(extension, "feature_definitions", None)
+        if declare is None:
+            continue
+        if not callable(declare):
+            raise BackendAPIError(f"{target}: {owner} extension feature_definitions is not callable")
+        selected = declare()
+        if not isinstance(selected, tuple) or not all(isinstance(feature, ImprFeature) for feature in selected):
+            raise BackendAPIError(f"{target}: {owner} extension feature_definitions must return ImprFeature tuple")
+        definitions.extend(selected)
+    bind = getattr(backend, "bind", None)
+    if not callable(bind):
+        raise BackendAPIError(f"{target}: vector provider lacks bind(extension_features)")
+    bound = bind(tuple(definitions))
+    return _checked(target, ((owner_backend[0][0], bound),))

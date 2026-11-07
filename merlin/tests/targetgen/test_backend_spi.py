@@ -34,6 +34,7 @@ def test_vector_backend_requires_one_compatible_owner(monkeypatch):
         )
     }
     good = SimpleNamespace(API_VERSION=1, **methods)
+    good.bind = lambda _features: good
     monkeypatch.setattr(plugins, "load_declared_chain", lambda target, key: (("rvv", good),))
     assert backend_spi.load_vector_codegen("kodiak") is good
     monkeypatch.setattr(plugins, "load_declared_chain", lambda target, key: ())
@@ -43,6 +44,54 @@ def test_vector_backend_requires_one_compatible_owner(monkeypatch):
     monkeypatch.setattr(plugins, "load_declared_chain", lambda target, key: (("rvv", bad),))
     with pytest.raises(backend_spi.BackendAPIError, match="requires 1"):
         backend_spi.load_vector_codegen("kodiak")
+
+
+def test_chip_features_bind_only_to_the_selected_backend(monkeypatch):
+    from merlin.llvmlower.feature_registry import ImprFeature
+    from merlin.targetgen import plugins
+
+    feature = ImprFeature("chip_matrix_route", "PASS", "Test chip operation route")
+    bound: list[tuple[ImprFeature, ...]] = []
+    methods = {
+        name: lambda *args, **kwargs: None
+        for name in (
+            "build_pipeline",
+            "baseline_schedule_text",
+            "parallel_transform_schedule",
+            "vec_pre_schedule",
+            "normalize_features",
+            "apply_schedule",
+            "apply_pipeline",
+            "apply_cflags",
+            "vector_cflags",
+            "schedule_path",
+            "prepare_build_bundle",
+            "spike_cflags",
+            "spike_harness_cflags",
+            "accum_microkernel_marker",
+            "accum_microkernel_runner_source",
+            "accum_microkernel_rewrite_source",
+            "vec_noncontraction_shape",
+        )
+    }
+    backend = SimpleNamespace(API_VERSION=1, **methods)
+
+    def bind(features):
+        bound.append(features)
+        return backend
+
+    backend.bind = bind
+    extension = SimpleNamespace(API_VERSION=1, feature_definitions=lambda: (feature,))
+
+    def declared(target, key):
+        if key == "rvv_codegen":
+            return (("rvv", backend),)
+        return (("chip", extension),) if target == "chip" else ()
+
+    monkeypatch.setattr(plugins, "load_declared_chain", declared)
+    assert backend_spi.load_vector_codegen("chip") is backend
+    assert backend_spi.load_vector_codegen("rvv") is backend
+    assert bound == [(feature,), ()]
 
 
 def test_scalar_lowering_never_resolves_vector_provider(monkeypatch, tmp_path):
