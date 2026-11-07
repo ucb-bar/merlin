@@ -702,9 +702,9 @@ class MatrixRouting:
         return self.provider().geometry(unit=self.unit, config=self.config)[0]
 
     def selector(self) -> Callable[[Any], bool]:
-        from ...llvmlower.matrix_route_cost import routing_selector
+        from ...targetgen.extension_offers import MatrixExtension
 
-        return self.select if self.select is not None else routing_selector(self)
+        return self.select if self.select is not None else MatrixExtension(self).selector()
 
 
 MATRIX_ROUTING_RECORD = "matrix_routing.json"
@@ -970,7 +970,9 @@ def prepare_for_lowering(
             from ...llvmlower.int8_contractions import OverwriteOutputSelector
 
             selector = OverwriteOutputSelector(selector)
-        routed = matrix.provider().rewrite_prepared_file(prepared, work, select=selector, tile_edge=matrix.tile_edge())
+        from ...targetgen.extension_offers import MatrixExtension
+
+        routed = MatrixExtension(matrix).lower(prepared, work, select=selector)
         (work / MATRIX_ROUTING_RECORD).write_text(
             json.dumps(
                 {
