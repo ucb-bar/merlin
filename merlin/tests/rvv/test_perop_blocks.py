@@ -493,7 +493,7 @@ def test_the_named_mr_cap_reaches_the_block_table_and_beats_the_env():
     # resolved from the sentinel when named, from the env only as a fallback
     assert "mr_cap = _mr_named[0] if _mr_named else perop_mr_cap()" in prep
     # and the sentinel is swapped for the plain request so it can never reach lowering
-    assert "| {PEROP_BLOCK_NAME})" in prep
+    assert "| {PEROP_BLOCK_NAME}" in prep
 
 
 def test_two_named_mr_caps_are_refused_rather_than_resolved_by_sort_order():

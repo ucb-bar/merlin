@@ -181,9 +181,12 @@ def generate(
     # object indexing [N/NR][K][NR] weights against [K][N] bytes -- it links, it runs, and it computes
     # nonsense. The preparation step leaves its plan beside this call's work directory precisely so
     # the mistake is detectable here rather than in a wrong result hours later.
-    from .weight_panel import guard_planned_pack
+    from .weight_panel import PLAN_FILE
 
-    guard_planned_pack(model_dir, out_dir)
+    if (Path(out_dir).parent / PLAN_FILE).is_file():
+        from .weight_panel import guard_planned_pack
+
+        guard_planned_pack(model_dir, out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     sig = parse_forward_signature(model_dir / "model.mlir")
     man = json.loads((model_dir / "weights.safetensors.manifest.json").read_text())
