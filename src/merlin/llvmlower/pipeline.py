@@ -26,6 +26,17 @@ import tempfile
 from pathlib import Path
 
 from merlin.common import compile_trace
+from merlin.compiler.lower.llvm.normalize import (
+    _f0x_payload_to_llvm as _f0x_payload_to_llvm,
+    _fix_f0x_literals as _fix_f0x_literals,
+    _fix_float_literals,
+)
+from merlin.compiler.lower.llvm.passes import (
+    INDEX_CONVERSION_PASSES,
+    bind_index_width,
+    finalize_pipeline,
+    finalization_passes,
+)
 
 from .compiler_api import PipelineError
 from .source_scalar_carrier_binding import host_admitted
@@ -178,17 +189,7 @@ _UPSTREAM_PASSES = [
     "lower-affine",
     # transcendentals (erf/exp/tanh/...) have no LLVM intrinsic -> libm calls
     # (host libm; riscv newlib libm). Remaining math (fma/abs/...) -> intrinsics.
-    "convert-math-to-libm",
-    "convert-math-to-llvm",
-    "convert-index-to-llvm",
-    "convert-arith-to-llvm",
-    "finalize-memref-to-llvm",
-    "convert-func-to-llvm",
-    "convert-cf-to-llvm",
-    "reconcile-unrealized-casts",
-    "canonicalize",
-    "cse",
-    "symbol-dce",
+    *finalization_passes(),
 ]
 
 
@@ -229,38 +230,8 @@ def _upstream_pipeline(features: "frozenset[str] | None" = None) -> str:
     return _splice(passes)
 
 
-_INDEX_CONVERSION_PASSES = (
-    "convert-index-to-llvm",
-    "convert-arith-to-llvm",
-    "finalize-memref-to-llvm",
-    "convert-func-to-llvm",
-    "convert-cf-to-llvm",
-)
-
-
-def _bind_index_width(pipeline: str, index_bits: int) -> str:
-    """Bind every LLVM index converter, refusing missing or preconfigured passes."""
-    if type(index_bits) is not int or index_bits <= 0:
-        raise ValueError("selected index width must be a positive integer")
-    selected = pipeline
-    for name in _INDEX_CONVERSION_PASSES:
-        positions = []
-        start = 0
-        while (at := selected.find(name, start)) >= 0:
-            before = at - 1
-            while before >= 0 and selected[before].isspace():
-                before -= 1
-            end = at + len(name)
-            while end < len(selected) and selected[end].isspace():
-                end += 1
-            if (before < 0 or selected[before] in "(,") and (end == len(selected) or selected[end] in ",){"):
-                positions.append((at, end))
-            start = at + len(name)
-        if len(positions) != 1 or selected[positions[0][1] :].startswith("{"):
-            raise ValueError(f"selected pipeline has no unique bare {name} pass")
-        at, _end = positions[0]
-        selected = selected[:at] + f"{name}{{index-bitwidth={index_bits}}}" + selected[at + len(name) :]
-    return selected
+_INDEX_CONVERSION_PASSES = INDEX_CONVERSION_PASSES
+_bind_index_width = bind_index_width  # compatibility import; implementation lives in shared LLVM lowerer
 
 
 def _parallel_pipeline(features: "frozenset[str] | None" = None) -> str:
@@ -295,18 +266,7 @@ def _parallel_pipeline(features: "frozenset[str] | None" = None) -> str:
         "convert-scf-to-cf",  # remaining (reduction) scf.for -> cf
         "expand-strided-metadata",
         "lower-affine",
-        "convert-openmp-to-llvm",  # omp region operands -> llvm
-        "convert-math-to-libm",
-        "convert-math-to-llvm",
-        "convert-index-to-llvm",
-        "convert-arith-to-llvm",
-        "finalize-memref-to-llvm",
-        "convert-func-to-llvm",
-        "convert-cf-to-llvm",
-        "reconcile-unrealized-casts",
-        "canonicalize",
-        "cse",
-        "symbol-dce",
+        *finalization_passes(openmp=True),
     ]
     if features:
         from .impr_features import apply_pipeline, normalize
@@ -1144,6 +1104,7 @@ def lower_to_llvm_ir(
         )
     # OpenMP IR — whatever produced it — must take the out-of-process translate route below.
     omp = parallel or parallel_harts is not None
+    explicit_pipeline = pipeline is not None
     if pipeline is None:
         if vectorize:
             sched = work / "rvv_schedule.mlir"
@@ -1201,10 +1162,13 @@ def lower_to_llvm_ir(
             pipeline = _parallel_pipeline(feats)  # multicore (OpenMP) scalar path — K1 big models
         else:
             pipeline = _upstream_pipeline(feats)
-    if index_bits is not None:
-        if not data_layout:
-            raise ValueError("explicit index width requires selected compiler data layout")
-        pipeline = _bind_index_width(pipeline, index_bits)
+    if index_bits is not None and not data_layout:
+        raise ValueError("explicit index width requires selected compiler data layout")
+    pipeline = (
+        _bind_index_width(pipeline, index_bits) if explicit_pipeline and index_bits is not None
+        else pipeline if explicit_pipeline
+        else finalize_pipeline(pipeline, index_bits=index_bits)
+    )
     if _SOURCE_OBSERVATION_FEATURE in feats:
         from .source_observation_stage import validate_pipeline as _validate_observation_pipeline
 
@@ -1613,87 +1577,3 @@ def lower_to_llvm_ir(
         )
     recipe.returned(result)
     return result
-
-
-import struct as _struct
-
-# The MLIR printer emits float immediates in MLIR's own hex spelling, e.g. the real line
-#     %9 = fmul float f0x3F4C422A, %8
-# from a bf16 gelu capsule's model.ll. LLVM's textual parser has no `f0x` literal, so the
-# module fails to parse. LLVM IR wants a bare `0x…`, and a *float* hex literal must carry
-# the 64-bit pattern of the double the f32 represents — so an 8-hex (f32) payload is
-# widened, a 16-hex (f64) payload only sheds the `f`.
-_F0X = "f0x"
-_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
-
-
-def _is_word_char(ch: str) -> bool:
-    """The `\\b` before `f0x`: a preceding identifier character means this is the tail of a
-    longer token (e.g. `named_f0x…`), not a float literal. `%` is not one, so `%f0x…` — an
-    LLVM local whose name happens to start that way — IS treated as a literal, matching the
-    behaviour this replaced."""
-    return ch.isalnum() or ch == "_"
-
-
-def _f0x_payload_to_llvm(hexs: str) -> str:
-    if len(hexs) == 16:  # already a double bit pattern
-        return f"0x{hexs.upper()}"
-    bits = int(hexs, 16)  # f32 -> widen to double
-    f32 = _struct.unpack("<f", _struct.pack("<I", bits))[0]
-    dbits = _struct.unpack("<Q", _struct.pack("<d", f32))[0]
-    return f"0x{dbits:016X}"
-
-
-def _fix_f0x_literals(ll_text: str) -> str:
-    """Rewrite every `f0x<8 or 16 hex>` token to its LLVM `0x…` spelling.
-
-    Scanned structurally: find the literal `f0x`, require an identifier boundary before it,
-    then take the maximal run of hex digits after it. Only a run of EXACTLY 8 (f32) or 16
-    (f64) digits is a float literal — any other length is not something this repair
-    understands, so it is left untouched for the LLVM parser to reject loudly rather than
-    being half-rewritten into a plausible-looking wrong constant.
-    """
-    out: list[str] = []
-    i = 0
-    while True:
-        j = ll_text.find(_F0X, i)
-        if j < 0:
-            out.append(ll_text[i:])
-            break
-        out.append(ll_text[i:j])
-        i = j + len(_F0X)
-        if j > 0 and _is_word_char(ll_text[j - 1]):
-            out.append(_F0X)  # inside a longer token — not a literal
-            continue
-        k = i
-        while k < len(ll_text) and ll_text[k] in _HEX_DIGITS:
-            k += 1
-        if k - i not in (8, 16):
-            out.append(_F0X)  # unknown payload width — leave verbatim
-            continue
-        out.append(_f0x_payload_to_llvm(ll_text[i:k]))
-        i = k
-    return "".join(out)
-
-
-def _fix_float_literals(ll_text: str) -> str:
-    """The MLIR LLVM-IR printer emits non-LLVM float literals (bare inf/-inf/nan,
-    and `f0x..` f32 hex) that the textual parser rejects — canonicalize them."""
-    ll_text = _fix_f0x_literals(ll_text)
-    # half (fp16) uses the LLVM `0xH<4hex>` literal form, bfloat (bf16) uses `0xR<4hex>` — the MLIR
-    # printer emits bare inf/-inf/nan for these too (e.g. an fp16 causal-mask -inf), which the LLVM
-    # textual parser rejects. Order matters: replace the widest names first so `float`↛`bfloat` etc.
-    return (
-        ll_text.replace("bfloat -inf", "bfloat 0xRFF80")
-        .replace("bfloat inf", "bfloat 0xR7F80")
-        .replace("bfloat nan", "bfloat 0xR7FC0")
-        .replace("half -inf", "half 0xHFC00")
-        .replace("half inf", "half 0xH7C00")
-        .replace("half nan", "half 0xH7E00")
-        .replace("float -inf", "float 0xFFF0000000000000")
-        .replace("float inf", "float 0x7FF0000000000000")
-        .replace("float nan", "float 0x7FF8000000000000")
-        .replace("double -inf", "double 0xFFF0000000000000")
-        .replace("double inf", "double 0x7FF0000000000000")
-        .replace("double nan", "double 0x7FF8000000000000")
-    )
