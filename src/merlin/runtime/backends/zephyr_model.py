@@ -2359,17 +2359,22 @@ def build_app(
         raise ZephyrModelError("Zephyr build toolchain unavailable (see env in module doc)")
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
+    vector_backend = None
     if backend == "rvv":
         from ...llvmlower.backend_spi import load_vector_codegen
 
-        model_dir = load_vector_codegen(matrix.support_target if matrix else "rvv").prepare_build_bundle(
-            model_dir, work, features
-        )
+        vector_backend = load_vector_codegen(matrix.support_target if matrix else "rvv")
+        model_dir = vector_backend.prepare_build_bundle(model_dir, work, features)
     # Weights stored as int8 + scale when `prequantize-weights` is selected: the blob carries what the
     # datapath computes with, a quarter of the f32 bytes (weight_prequant).
     from ...llvmlower.weight_prequant import prepare_build_bundle as _prequantized
 
-    model_dir = _prequantized(model_dir, work, features)
+    model_dir = _prequantized(
+        model_dir,
+        work,
+        features,
+        normalize_features=vector_backend.normalize_features if vector_backend is not None else None,
+    )
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
     # NOTE scalar multicore IS supported (see the lowering call below): the scalar path cannot use the
     # forall-under-the-RVV-schedule route, so it parallelizes at the linalg loop level instead. This is

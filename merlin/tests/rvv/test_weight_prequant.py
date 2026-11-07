@@ -13,6 +13,54 @@ from merlin.common.paths import repo_root
 from merlin.llvmlower import weight_prequant as wq
 
 
+def test_prequant_bundle_uses_selected_target_feature_closure(tmp_path):
+    """A chip route marker must not be normalized through the plain RVV registry."""
+    features = frozenset({"opu_matmul", "accumulator_resident_wholemodel_vf"})
+    received = []
+
+    def selected_target_normalize(names):
+        received.append(frozenset(names))
+        return frozenset(names)
+
+    source = tmp_path / "bundle"
+    source.mkdir()
+    result = wq.prepare_build_bundle(
+        source, tmp_path / "work", features, normalize_features=selected_target_normalize
+    )
+    assert result == source.resolve()
+    assert received == [features]
+
+
+def test_prequant_bundle_accepts_kodiak_and_rvv_features_under_bound_provider(tmp_path):
+    from merlin.llvmlower.backend_spi import load_vector_codegen
+    from merlin.targetgen.plugins import PluginError
+    from merlin.targetgen.support_pins import SingleBaseError
+
+    try:
+        backend = load_vector_codegen("kodiak")
+    except (PluginError, SingleBaseError) as exc:
+        pytest.skip(f"requires selected Kodiak and its matching RVV base: {exc}")
+    features = frozenset({"opu_matmul", "accumulator_resident_wholemodel_vf"})
+    assert features <= set(backend.feature_names())
+    source = tmp_path / "bundle"
+    source.mkdir()
+    assert wq.prepare_build_bundle(
+        source, tmp_path / "work", features, normalize_features=backend.normalize_features
+    ) == source.resolve()
+
+
+def test_scalar_prequant_noop_does_not_load_vector_provider(tmp_path, monkeypatch):
+    from merlin.llvmlower import backend_spi
+
+    def forbidden(_target):
+        raise AssertionError("scalar prequantization resolved a vector provider")
+
+    monkeypatch.setattr(backend_spi, "load_vector_codegen", forbidden)
+    source = tmp_path / "bundle"
+    source.mkdir()
+    assert wq.prepare_build_bundle(source, tmp_path / "work", frozenset()) == source.resolve()
+
+
 def _real_bundle(name: str) -> Path:
     """Find an optional local recapture without baking in a developer's path."""
     root = Path(repo_root())

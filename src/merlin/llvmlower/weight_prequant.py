@@ -702,7 +702,13 @@ def prequantized_bundle(src: Path | str, *, cache_root: Path | str | None = None
         raise
 
 
-def prepare_build_bundle(src: Path | str, work: Path | str, features: frozenset[str] | None) -> Path:
+def prepare_build_bundle(
+    src: Path | str,
+    work: Path | str,
+    features: frozenset[str] | None,
+    *,
+    normalize_features=None,
+) -> Path:
     """The bundle a build lowers AND links its weights blob from: the rewritten one when selected.
 
     Both consumers must see the same bundle -- the prepared IR reads i8 where the blob holds i8 -- which
@@ -710,11 +716,12 @@ def prepare_build_bundle(src: Path | str, work: Path | str, features: frozenset[
     Selected by the feature or by the optional pass ``prequantize-weights``; refused, never silently
     skipped, when the plan cannot prove every candidate (the caller asked for it by name).
     """
-    from .impr_features import normalize
+    from .impr_features import normalize as normalize_default
     from .optional_passes import selected_features
 
     ensure_registered()
     src = Path(src).resolve()
+    normalize = normalize_default if normalize_features is None else normalize_features
     if FEATURE not in normalize(selected_features(features) or ()):
         return src
     destination, effect = prequantized_bundle(src)
