@@ -765,6 +765,12 @@ def compile_rvv(
         if b.get("memory"):
             out["memory"] = b["memory"]
         out["status"] = "compiled"
+        # `zephyr` selects a board-specific RTOS image for the caller to run.
+        # `spike` is the separate simulator route. Keep compile-only RVV in
+        # step with the matrix `--matrix-gate build` route, which also returns
+        # the ELF without executing it.
+        if run == "zephyr":
+            return out
         if run == "verilator":
             sim = zm.verilator_sim(board=board)
             if sim is None:

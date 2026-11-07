@@ -13,6 +13,8 @@
 #   ./run.sh probe                build vlen_probe.elf and self-check it on spike        (no board)
 #   ./run.sh capture <model> [--loader loader.py]
 #                                 capture any model to an int8 bundle + its W8A8 golden   (no board)
+#   ./run.sh compile <model> [--opu] [--board B] [--output file.elf]
+#                                 build one Zephyr ELF; print its stable path, do not run it
 #   ./run.sh op gemm [M N K]      ONE operator (gemm|gemm_nt|conv2d|attention|encoder_block|loader.py), RVV vs RVV+OPU,
 #                                 both gated on spike, with the routing report             (no board)
 #                                 --board firesim_kodiak_opu: built for FireSim, and one FireSim job
@@ -40,7 +42,10 @@
 # Flags: --dry-run       prints the commands without running them (useful with no toolchain at all)
 #        --full          with `build`/`package`, the whole model x hart matrix instead of the cheap subset
 #        --opu           with `build`/`package`, ALSO build images that route int8 contractions to the
-#                        outer-product unit (OPU), each gated through its scalar stand-in twin
+#                        outer-product unit (OPU), each gated through its scalar stand-in twin;
+#                        with `compile`, emit the OPU image without a numerical run
+#        --output F      with `compile`, name the resulting .elf (default: content-addressed under out/)
+#        --capture-bundle D  with `compile`, use this saved capture directory explicitly
 #        --models a,b    with `build`/`package`/`firesim`, these bundles instead of the default set
 #                        (a name -> recaptures/<name>_int8_full, or label:/path/to/bundle)
 #        --board B       with `op`/`firesim`, build for board B (op default: chipyard_kodiak)
@@ -49,8 +54,9 @@
 #        --matrix-kernel K  with `op`/`build`/`package`/`matrix`/`firesim`, every routed contraction calls
 #                        OPU kernel K: a name in kernels/kernels.yaml or path/to/kernel.c[:function]
 #                        (default: $MERLIN_MATRIX_KERNEL, else the package's default kernel)
-#        --rvv-package P  with `build`/`package`/`firesim`, select a schedule package, e.g.
-#                        kodiak/kodiak_prepack_w8a8_v1 (default: the K1-certified RVV package)
+#        --rvv-package P  with `compile`/`build`/`package`/`firesim`, select a schedule package, e.g.
+#                        kodiak/kodiak_prepack_w8a8_v1 (compile --opu defaults to this;
+#                        other stages default to the K1-certified RVV package)
 #        --no-spike-backends matrix  with `build`/`package`, build and audit matrix images without
 #                        running the slow scalar twin; the delivery marks those images UNGATED
 set -euo pipefail
@@ -74,12 +80,17 @@ RVV_PACKAGE="${MERLIN_RVV_PACKAGE:-rvv/impr_tuned_wholemodel_vf_int8}"
 ex_parse_flags "$@"
 set -- ${EX_ARGS[@]+"${EX_ARGS[@]}"}
 OPU=0; MODELS_OVERRIDE=""; LOADER=""; HARTS_OPT=""; BOARD_OPT=""; NO_SPIKE_BACKENDS=""; SUBMIT=(); REST=()
+ELF_OUTPUT=""; CAPTURE_BUNDLE=""; RVV_PACKAGE_EXPLICIT=0
 MATRIX_KERNEL="${MERLIN_MATRIX_KERNEL:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --opu)     OPU=1 ;;
     --matrix-kernel) MATRIX_KERNEL="$2"; shift ;;
-    --rvv-package) RVV_PACKAGE="$2"; shift ;;
+    --rvv-package) RVV_PACKAGE="$2"; RVV_PACKAGE_EXPLICIT=1; shift ;;
+    --capture-bundle) CAPTURE_BUNDLE="$(ex_abs "$2")"; shift ;;
+    --output)
+      case "$2" in /*) ELF_OUTPUT="$2" ;; *) ELF_OUTPUT="$EX_CALLER_PWD/$2" ;; esac
+      shift ;;
     --no-spike-backends) NO_SPIKE_BACKENDS="$2"; shift ;;
     --board)   BOARD_OPT="$2"; shift ;;
     --submit)  SUBMIT=(--submit) ;;
@@ -148,6 +159,27 @@ capture)
   ex_run "$PY" "$EX_LIB_DIR/chip_flow.py" capture "$MODEL" ${LOADER:+--loader "$LOADER"}
   ex_note "the W8A8 reference is Merlin's own int8 datapath on the host (it checks the DEVICE reproduces"
   ex_note "the host). Independent arithmetic check: build_tools/scripts/make_w8a8_independent_golden.py"
+  ;;
+
+compile)
+  MODEL="${2:-}"
+  if [ -z "$MODEL" ]; then
+    echo "usage: $0 compile <model> [--opu] [--board B] [--harts N] [--output file.elf]" >&2
+    exit 2
+  fi
+  # The prepacked Kodiak schedule is the compact OPU delivery default. The
+  # original RVV schedule remains the plain-RVV default; an explicit package
+  # or MERLIN_RVV_PACKAGE always wins.
+  if [ "$OPU" = "1" ] && [ "$RVV_PACKAGE_EXPLICIT" = "0" ] && [ -z "${MERLIN_RVV_PACKAGE:-}" ]; then
+    RVV_PACKAGE_PATH="$SUPPORT_ROOT/schedules/kodiak_prepack_w8a8_v1"
+  fi
+  COMPILE_ARGS=(--board "${BOARD_OPT:-$BOARD}" --harts "${HARTS_OPT:-1}" --package "$RVV_PACKAGE_PATH")
+  if [ "$OPU" = "1" ]; then COMPILE_ARGS+=(--opu); fi
+  if [ -n "$ELF_OUTPUT" ]; then COMPILE_ARGS+=(--output "$ELF_OUTPUT"); fi
+  if [ -n "$CAPTURE_BUNDLE" ]; then COMPILE_ARGS+=(--capture-bundle "$CAPTURE_BUNDLE"); fi
+  if [ -n "$MATRIX_KERNEL" ]; then COMPILE_ARGS+=(--matrix-kernel "$(ex_kernel_spec "$MATRIX_KERNEL")"); fi
+  ex_say "compile $MODEL to one Zephyr ELF for ${BOARD_OPT:-$BOARD}"
+  ex_run "$PY" "$REPO_ROOT/examples/kodiak/compile_elf.py" "$MODEL" "${COMPILE_ARGS[@]}"
   ;;
 
 op)

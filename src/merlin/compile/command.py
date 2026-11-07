@@ -70,7 +70,9 @@ def parser(
         "--run",
         choices=list(runs),
         default=None,
-        help=f"where to run after compiling (default: rvv→{rvv_run}, an OOT target→spike; 'none' = compile only)",
+        help=f"execution route (default: rvv→{rvv_run}, an OOT target→spike; "
+        "zephyr = build board ELF for plain RVV, matrix routes honor --matrix-gate; "
+        "spike = simulate, none = K1 compile only)",
     )
     ap.add_argument(
         "--verify",

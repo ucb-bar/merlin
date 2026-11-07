@@ -123,6 +123,7 @@ The stages:
 ./run.sh probe
 ./run.sh op <gemm|gemm_nt|conv2d|attention|encoder_block|loader.py> [dims] [--harts 2]
 ./run.sh capture <model>          # any model model2MLIR can capture, + its W8A8 golden
+./run.sh compile <model> [--opu] [--board B] [--output file.elf]  # one Zephyr ELF, no run
 ./run.sh build [--opu] [--models <model>]   # add --full for the shipped matrix (hours)
 ./run.sh package [--opu] [--models <model>]
 ./run.sh matrix --models <a,b> [--harts 1,2]   # regression matrix: RVV and RVV+OPU per model x harts
@@ -153,68 +154,55 @@ Running on the chip itself (a shared rig: check it is idle first) is in the pack
 (`<kodiak-mlir>/RUNNING.md`). Running on FireSim, for the OPU's real datapath and cycles,
 is [§6](#6-run-on-firesim--the-opus-real-datapath-and-cycles).
 
-### Copyable Zephyr model recipes
+### Build one Zephyr ELF
 
-Run these from `merlin/examples/kodiak` after `./run.sh setup` and
-`./run.sh preflight --require package --require-pin saturn_opu_int8`. Setup
-records LLVM 23, Chipyard, Zephyr SDK 0.17.0, the Kodiak package, and the
-OPU Spike model. A FireSim plan builds **board-specific Zephyr ELFs** at
-`<printed-job-dir>/device/zephyr.elf` (OPU) and
-`<printed-job-dir>/control/zephyr.elf` (plain RVV), verifies both on Spike,
-and names the one-core OPU bitstream. `--submit` boots those ELFs through
-Zephyr on FireSim; `firesim-collect` verifies the actual FPGA output.
+From `merlin/examples/kodiak`, after `./run.sh setup` and a saved int8 capture:
 
 ```bash
-# Spectformer: use a transferred exact capture for the published result, or
-# supply SPECTFORMER_DIR and SPECTFORMER_CKPT before this fresh capture.
-./run.sh capture spectformer
-./run.sh firesim --models spectformer --submit --timeout 7200
-./run.sh firesim-collect <printed-job-dir>
-
-# TinyLlama: this is the two-layer, 64-token section, not the full model.
-# Use a transferred exact section capture for the published result, or a
-# locally cached checkpoint and the capture command in section 2c below.
-./run.sh firesim --models tinyllama_l2_s64 \
-  --rvv-package kodiak/kodiak_prepack_w8a8_v1 \
-  --gate independent-rvv --submit --timeout 7200
-./run.sh firesim-collect <printed-job-dir>
+./run.sh compile spectformer --opu
+./run.sh compile tinyllama_l2_s64 --opu
 ```
 
-To measure useful MAC throughput inside OPU calls, repeat either `firesim`
-command with `--profile`. That creates a different instrumented OPU ELF and
-a SHA-pinned operation table. The profiled OPU versus unprofiled RVV cycle
-ratio is not a valid speedup; use an unprofiled pair for speedup. The
-[current-pin receipts](UTILIZATION.md#current-pin-firesim-qualification-2026-11-07)
-give the exact capture and ELF identities. Captures live under ignored
-`out/artifacts/recaptures/`: a fresh Git checkout alone cannot reproduce
-the published output hash. After transferring the measured bundles, compare
-`capture_sha256` in the printed `firesim_job.json` with the portable receipts:
-Spectformer `6ba976f5c848018a2872c959eada50280a081f317b9cd83feeb624030af443c3`,
-TinyLlama s64 `d2c4db370950a69e121bc8dffb166abf98bd517e28c8a89219c6899055e39820`.
-A new capture needs fresh Spike and FPGA gates.
-
-For **physical Kodiak**, build a separate `chipyard_kodiak` delivery; the
-`firesim_kodiak_opu` ELFs above target a different board and DRAM map. These
-commands produce the h1 Zephyr OPU image and RVV control under
-`out/artifacts/delivery/example-kodiak/`:
+Each command prints the **one ELF to hand off**, its SHA-256, and a small
+`.build.json` receipt. The default board is physical `chipyard_kodiak` with
+one hart. An OPU compile uses the pinned Kodiak prepack schedule by default;
+omit `--opu` for a plain-RVV ELF. No simulator, FireSim job, chip load, or
+numerical verification runs. To choose a filename or the FireSim board:
 
 ```bash
-./run.sh package --opu --models spectformer --harts 1
-./run.sh package --opu --models tinyllama_l2_s64 --harts 1 \
-  --rvv-package kodiak/kodiak_prepack_w8a8_v1
+./run.sh compile spectformer --opu --output ./spectformer.elf
+./run.sh compile tinyllama_l2_s64 --opu --board firesim_kodiak_opu --output ./tinyllama-firesim.elf
 ```
 
-Archive the first delivery before building the second, since both commands
-write the same output directory. The OPU filenames are
-`spectformer_int8_h1_matrix_chipyard_kodiak.elf` and
-`tinyllama_l2_s64_int8_h1_matrix_chipyard_kodiak.elf`. Before any physical
-load, follow the occupancy and positive-control BootAddrReg steps in
+Without `--output`, the ELF has a content-addressed name under
+`out/artifacts/zephyr/`. The command refuses to replace a different ELF at
+an explicit output path. `--capture-bundle /path/to/bundle` selects a saved
+capture directly; otherwise `compile` uses
+`out/artifacts/recaptures/<model>_int8_full` and refuses a missing capture.
+For the published Spectformer, transfer the measured bundle or set
+`SPECTFORMER_DIR` and `SPECTFORMER_CKPT` before `./run.sh capture spectformer`.
+For TinyLlama, use the two-layer, 64-token capture command in section 2c or
+transfer its measured bundle. A fresh capture has a new identity and needs
+its own correctness checks. An OPU ELF is build-audited but has not passed a
+numerical gate merely because `compile` returned successfully.
+
+To run a `chipyard_kodiak` ELF on the physical rig, follow the occupancy and
+positive-control BootAddrReg steps in
 [`kodiak-mlir/RUNNING.md`](https://github.com/ucb-bar/kodiak-mlir/blob/handwritten-implementation/RUNNING.md).
 That positive control currently fails, so physical model execution is
-blocked. Once it passes in an exclusive session, copy the delivery to the
-rig and run the exact ELF with `udp_tsi_host.py --credited 8 --auto run`,
-as shown in that guide; keep the console and require `DONE` and the
-numerical grade.
+blocked. Once it passes in an exclusive session, copy the ELF to the rig and
+run it with `udp_tsi_host.py --credited 8 --auto run`, keeping the console
+through `DONE`. A `firesim_kodiak_opu` ELF targets a different board and DRAM
+map; select that board only for FireSim.
+
+The optional `firesim` stage in [section 6](#6-run-on-firesim--the-opus-real-datapath-and-cycles)
+builds a separate verified OPU/RVV pair, submits it if asked, and grades the
+FPGA output. Add `--profile` to measure useful MAC throughput inside OPU
+calls; the instrumented OPU versus plain-RVV cycle ratio is not a speedup.
+The [current-pin receipts](UTILIZATION.md#current-pin-firesim-qualification-2026-11-07)
+identify the exact captures and images. Their `capture_sha256` values are
+Spectformer `6ba976f5c848018a2872c959eada50280a081f317b9cd83feeb624030af443c3`
+and TinyLlama s64 `d2c4db370950a69e121bc8dffb166abf98bd517e28c8a89219c6899055e39820`.
 
 ## 1. `probe` — ask the chip what it is, before uploading megabytes
 
