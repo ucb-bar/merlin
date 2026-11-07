@@ -1161,6 +1161,10 @@ def build_legs(args) -> Path:
                 f"{leg} leg: merlin-compile returned no result (exit {proc.returncode}): "
                 f"{(proc.stderr or proc.stdout)[-1500:]}"
             ) from exc
+        # A failed compiler reports its exception in the JSON result, often with
+        # empty stderr. Retain that result in the run directory even when the
+        # Spike gate refuses this leg, so the next attempt has an exact cause.
+        (out / "compile_result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
         matrix = result.get("matrix") or {}
         shipped = matrix.get("shipped_on_simulator") or {}
         diagnostic = bool(source and source["diagnostic_only"])
@@ -1170,7 +1174,8 @@ def build_legs(args) -> Path:
             or result.get("status") != expected_status
             or (not diagnostic and result.get("verify", {}).get("tier_ok") != "w8a8")
         ):
-            raise SystemExit(f"{leg} leg failed its spike W8A8 gate: {result.get('status')}; {proc.stderr[-1000:]}")
+            detail = result.get("error") or proc.stderr[-1000:]
+            raise SystemExit(f"{leg} leg failed its spike W8A8 gate: {result.get('status')}; {detail}")
         if leg == "device":
             device_gate_ok = (
                 shipped.get("status") == "verified"
