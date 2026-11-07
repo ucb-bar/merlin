@@ -126,7 +126,7 @@ def parallel_chunk_table(
 
     ``harts < 2`` -> ``{}``: no split, and every schedule derived from this is absent.
     """
-    from .blocking_cost import _rvv_blocking_lowers
+    from ..policy.blocking_cost import _rvv_blocking_lowers
 
     out: dict[str, tuple[int, ...]] = {}
     if int(harts) < 2:
@@ -356,7 +356,7 @@ def _lanes_registers(lanes: int, bits: int, vlen: int) -> int:
     group with a WIDER element, not a way to pack two values into one register), so the floor is 1;
     above that it is the ladder-rounded group width, because ``vtype`` cannot encode a group of 3.
     """
-    from .lmul_group import _ladder_ceil
+    from ..policy.lmul_group import _ladder_ceil
 
     return max(1, _ladder_ceil((int(lanes) * int(bits)) / int(vlen)))
 
@@ -425,7 +425,7 @@ def mr_cap_for_registers(
     than closed here because the alternative (MR=1) would silently DELETE blocking that the caller
     already asked for, which is the failure mode this module's history is made of.
     """
-    from .lmul_group import RESERVED_VREGS, VREG_COUNT
+    from ..policy.lmul_group import RESERVED_VREGS, VREG_COUNT
 
     acc = accum_elem_bits(dtypes)
     operand = narrowest_elem_bits(dtypes)
@@ -455,8 +455,8 @@ def _solve_block(
     ``mr_vlen=None`` skips the whole thing and returns exactly what the single-cap call returned, so
     every existing caller is byte-identical.
     """
-    from .blocking_cost import _rvv_best_block
-    from .lmul_group import LMUL_LADDER
+    from ..policy.blocking_cost import _rvv_best_block
+    from ..policy.lmul_group import LMUL_LADDER
 
     block = _rvv_best_block(mr_cap, nr_cap, pairs)
     if not mr_vlen:
@@ -597,7 +597,7 @@ def ensure_registered(registry=None) -> None:
     from merlin.llvmlower.feature_registry import ImprFeature
 
     if registry is None:
-        from .backend import _FEATURES
+        from ..backend import _FEATURES
 
         registry = _FEATURES
 

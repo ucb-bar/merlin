@@ -214,7 +214,7 @@ def _adapt_frozen_points(feats: list[str], shapes, *, target: str) -> list[str]:
         if not changed:
             out.append(name)
             continue
-        from .backend import ensure_v3_perop_microkernel
+        from ..backend import ensure_v3_perop_microkernel
 
         mm, bmm = chosen["linalg.matmul"], chosen["linalg.batch_matmul"]
         if (

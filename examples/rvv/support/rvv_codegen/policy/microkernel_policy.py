@@ -117,7 +117,7 @@ def _recipe(spec) -> list[str]:
     """The micro-kernel recipe proper (no hygiene) — one feature naming this point in the space."""
     from merlin.kernels.microkernel import VL_DYNAMIC, UnsupportedAxis
 
-    from .backend import (
+    from ..backend import (
         ensure_v3_kblocked_microkernel,
         ensure_v3_microkernel,
         ensure_v3_scalable_microkernel,
@@ -174,8 +174,8 @@ def _recipe(spec) -> list[str]:
     if spec.pack:
         from merlin.llvmlower.feature_registry import ImprFeature
 
-        from .backend import _FEATURES
-        from .grid_features import vfmacc_packed_schedule
+        from ..backend import _FEATURES
+        from ..features.grid_features import vfmacc_packed_schedule
 
         nm = f"vfmacc_packed_{spec.MR}_{spec.NR}_{spec.KC}"
         if nm not in _FEATURES.known():
@@ -216,7 +216,7 @@ def _rvv_microkernel_shape_policy(spec, shapes) -> list[str]:
 
     if spec.vl_strategy != VL_FIXED or spec.unroll_m or spec.pack or spec.k_block:
         return _rvv_microkernel_resolver(spec)
-    from .backend import ensure_v3_perop_microkernel
+    from ..backend import ensure_v3_perop_microkernel
 
     blocks: dict[str, tuple[int, int]] = {}
     for op in _RVV_BLOCKED_OPS:

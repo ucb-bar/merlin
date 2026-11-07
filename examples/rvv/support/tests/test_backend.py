@@ -263,7 +263,10 @@ def test_other_vector_schedule_variants_keep_frozen_outputs():
 
 
 def test_perop_request_and_concrete_schedule_are_provider_owned():
-    assert BACKEND.perop_blocks_api().__name__ == "rvv_provider.perop_blocks"
+    assert (
+        BACKEND.perop_blocks_api().__name__
+        == "rvv_provider.rvv_codegen.transforms.perop_blocks"
+    )
     assert BACKEND.vec_noncontraction_shape(
         BACKEND.normalize_features({"vectorize_non_contraction_generics_l16_r5"})
     ) == (16, 5)
@@ -286,7 +289,7 @@ def test_perop_request_and_concrete_schedule_are_provider_owned():
     assert BACKEND.normalize_features({"conv_register_block"}) == frozenset(
         {"conv_register_block"}
     )
-    from rvv_provider.requant_fuse import fused_arms
+    from rvv_provider.rvv_codegen.transforms.requant_fuse import fused_arms
 
     assert hashlib.sha256(fused_arms([[0, 4, 8, 2, 0, 8]]).encode()).hexdigest() == (
         "bea207e9cd39acf29a8da02f0e5006024d9b0cbc4db028cc7f74afd697320ab4"
@@ -342,10 +345,19 @@ def test_chip_features_bind_per_target_without_mutating_rvv_registry():
         BACKEND.normalize_features({"test_chip_marker"})
     with pytest.raises(ValueError, match="duplicate"):
         BACKEND.bind((extension, extension))
+    assert bound.legacy_module("active_features").__name__ == (
+        "rvv_provider.rvv_codegen.transforms.active_features"
+    )
+    assert bound.reduction_schedule_api().__name__ == (
+        "rvv_provider.rvv_codegen.features.other_vector_features"
+    )
 
 
 def test_rvv_register_block_legality_stays_with_provider():
-    from rvv_provider.blocking_cost import _rvv_best_block, _rvv_blocking_lowers
+    from rvv_provider.rvv_codegen.policy.blocking_cost import (
+        _rvv_best_block,
+        _rvv_blocking_lowers,
+    )
 
     assert _rvv_blocking_lowers(4, 16, 8, 128)
     assert not _rvv_blocking_lowers(4, 16, 17, 128)
@@ -355,12 +367,18 @@ def test_rvv_register_block_legality_stays_with_provider():
 
 def test_rvv_schedule_renderer_and_shape_policy_live_in_provider():
     from merlin.kernels.microkernel import ContractionShape, MicrokernelSpec
-    from rvv_provider.microkernel_policy import _rvv_microkernel_shape_policy
+    from rvv_provider.rvv_codegen.policy.microkernel_policy import (
+        _rvv_microkernel_shape_policy,
+    )
 
     assert (
-        BACKEND.microkernel_policy_api().__name__ == "rvv_provider.microkernel_policy"
+        BACKEND.microkernel_policy_api().__name__
+        == "rvv_provider.rvv_codegen.policy.microkernel_policy"
     )
-    assert BACKEND.blocking_cost_api().__name__ == "rvv_provider.blocking_cost"
+    assert (
+        BACKEND.blocking_cost_api().__name__
+        == "rvv_provider.rvv_codegen.policy.blocking_cost"
+    )
 
     knobs = {
         "op_match": [{"op": "linalg.matmul", "tile": [4, 8, 1], "vector": [4, 8, 1]}],
@@ -396,7 +414,7 @@ backend = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = backend
 spec.loader.exec_module(backend)
 names = (root / 'tests/feature_names_v1.txt').read_text().splitlines()
-metadata = json.loads((root / 'feature_metadata_v1.json').read_text())
+metadata = json.loads((root / 'rvv_codegen/features/feature_metadata_v1.json').read_text())
 assert len(names) == 95
 assert set(metadata) == set(names) - {'opu_matmul'}
 bound = backend.bind((ImprFeature(name='opu_matmul', action_class='PASS', description='chip-owned extension'),))
@@ -422,8 +440,8 @@ except KeyError:
 else:
     raise AssertionError('chip feature leaked into the base RVV provider')
 assert 'merlin.llvmlower.impr_features' not in sys.modules
-assert backend.im2col_pack_api().__name__ == 'rvv_provider.im2col_pack'
-assert backend.weight_panel_api().__name__ == 'rvv_provider.weight_panel'
+assert backend.im2col_pack_api().__name__ == 'rvv_provider.rvv_codegen.packing.im2col_pack'
+assert backend.weight_panel_api().__name__ == 'rvv_provider.rvv_codegen.packing.weight_panel'
 """
     subprocess.run(
         [sys.executable, "-c", script],
@@ -481,7 +499,7 @@ def test_provider_vector_preparation_policy_and_tagging():
     assert report["skip_extent"] == 1
     assert "merlin.vec_r2" in eligible.attributes
     assert not tail.attributes
-    from rvv_provider import reduce_vec
+    from rvv_provider.rvv_codegen.transforms import reduce_vec
 
     assert reduce_vec.sign_mask(16) == 0x7FFF
     assert reduce_vec.sign_mask(32) == 0x7FFF_FFFF
@@ -508,7 +526,7 @@ def test_provider_caps_and_frozen_shape_adaptation(monkeypatch):
         "linalg.matmul": (1, 16),
         "linalg.batch_matmul": (4, 8),
     }
-    from rvv_provider.shape_adapt import _adapt_frozen_points
+    from rvv_provider.rvv_codegen.policy.shape_adapt import _adapt_frozen_points
 
     fitting = [
         SimpleNamespace(op="linalg.matmul", parallel=(8, 256)),
@@ -527,7 +545,9 @@ def test_provider_caps_and_frozen_shape_adaptation(monkeypatch):
 def test_name_derived_feature_descriptions_match_pre_extraction():
     import json
 
-    from rvv_provider.accumulator_grid import ensure_mrpad_for_elem_types
+    from rvv_provider.rvv_codegen.features.accumulator_grid import (
+        ensure_mrpad_for_elem_types,
+    )
 
     expected = json.loads((ROOT / "tests/dynamic_descriptions_v1.json").read_text())
     names = [

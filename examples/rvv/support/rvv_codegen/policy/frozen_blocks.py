@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .active_features import (
+from ..transforms.active_features import (
     WHOLEMODEL_VF_CAPS,
     WHOLEMODEL_VF_MR_MM,
     WHOLEMODEL_VF_NAME,

@@ -9,6 +9,11 @@
     "root_role": "host_schedule"
   },
   "merlin_source_baseline": "6b83c05a7ea7e7eb50fc688670cfa547f16f315c",
+  "compiler_layout": {
+    "plugin_entrypoint": "backend.py",
+    "implementation": "rvv_codegen/backend.py",
+    "feature_metadata": "rvv_codegen/features/feature_metadata_v1.json"
+  },
   "qualification": {
     "level": "metadata_schema_checked_snapshot",
     "schema_valid": true,

@@ -6,8 +6,8 @@ import hashlib
 
 from merlin.llvmlower.feature_registry import FeatureRegistry, ImprFeature
 
-from .active_features import _accumulator_resident_v3_pipeline
-from .perop_blocks import distinct_blocks, schedule_text
+from ..transforms.active_features import _accumulator_resident_v3_pipeline
+from ..transforms.perop_blocks import distinct_blocks, schedule_text
 
 PEROP_BLOCK_NAME = "perop_register_block"
 PEROP_NR_FILL_NAME = "perop_nr_fill_register"

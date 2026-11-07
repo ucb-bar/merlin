@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from merlin.llvmlower.feature_registry import FeatureRegistry, ImprFeature
 
-from .active_features import (
+from ..transforms.active_features import (
     _accumulator_resident_pipeline,
     _accumulator_resident_pre_schedule,
     _accumulator_resident_v2_pipeline,

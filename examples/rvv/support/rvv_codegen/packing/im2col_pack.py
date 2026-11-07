@@ -535,7 +535,7 @@ def _rewrite_one(mt: _Match, nr: int, *, parallel_panels: bool = False) -> None:
         result_types=[acc_t],
         properties=_dyn_slice_props(3, 1, [mt.f, 1, nr]),
     )
-    from .panel_parallel import marker_ops
+    from ..transforms.panel_parallel import marker_ops
 
     markers = marker_ops(parallel_panels, mo)
     body.add_ops([*markers, panel, tile, inner, put, ScfYieldOp(put.results[0])])
@@ -714,7 +714,7 @@ def _spatial_panel_loop(
         result_types=[acc_t],
         properties=_dyn_slice_props(2, 1, [mt.f, width]),
     )
-    from .panel_parallel import marker_ops
+    from ..transforms.panel_parallel import marker_ops
 
     markers = marker_ops(parallel_panels, panels)
     body.add_ops(
@@ -791,7 +791,7 @@ def rewrite_module(
     """
     from merlin.common import mlir_query as mq
 
-    from .perop_blocks import shape_key
+    from ..transforms.perop_blocks import shape_key
 
     report = PackReport()
     candidates: list[tuple[Any, _Match]] = []
@@ -834,7 +834,7 @@ def rewrite_module(
                 (shape_key("linalg.matmul", (mt.f, tail), (mt.k,)), mr, tail)
             )
     if parallel_panels and report.packed:
-        from .panel_parallel import ensure_marker_declaration
+        from ..transforms.panel_parallel import ensure_marker_declaration
 
         ensure_marker_declaration(module)
     return report

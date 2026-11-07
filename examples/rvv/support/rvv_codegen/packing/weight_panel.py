@@ -597,7 +597,7 @@ def _rewrite_one(
         result_types=[acc_t],
         properties=_dyn_slice_props(3, 1, [m, 1, nr]),
     )
-    from .panel_parallel import marker_ops
+    from ..transforms.panel_parallel import marker_ops
 
     markers = marker_ops(parallel_panels, no)
     body.add_ops([*markers, panel, tile, inner, put, ScfYieldOp(put.results[0])])
@@ -793,7 +793,7 @@ def rewrite_module(
     from merlin.common import mlir_query as mq
     from xdsl.rewriter import Rewriter
 
-    from .perop_blocks import shape_key
+    from ..transforms.perop_blocks import shape_key
 
     report = PanelReport()
     fn = _forward(module, func_name)
@@ -872,7 +872,7 @@ def rewrite_module(
 
     rewriter = Rewriter()
     if parallel_panels and kept:
-        from .panel_parallel import ensure_marker_declaration
+        from ..transforms.panel_parallel import ensure_marker_declaration
 
         ensure_marker_declaration(module)
     for op, arg, steps, m, n, k, mr, nr in kept:

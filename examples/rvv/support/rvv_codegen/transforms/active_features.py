@@ -578,7 +578,7 @@ def _accumulator_resident_v3_mrpad_pipeline(passes: list[str]) -> list[str]:
     zero-fill init across every matmul (the "cannot avoid RaW conflict" whole-model PipelineError).
     Reuses ``_packed_eliminate_empties`` (same insertion the packed feature uses). Only runs when this
     feature is enabled; baseline pipeline untouched."""
-    from .grid_features import _packed_eliminate_empties
+    from ..features.grid_features import _packed_eliminate_empties
 
     return _packed_eliminate_empties(_accumulator_resident_v3_pipeline(passes))
 

@@ -16,8 +16,8 @@
       "target": "rvv",
       "repo": "https://github.com/ucb-bar/rvv-mlir.git",
       "branch": "handwritten-implementation",
-      "commit": "1ef5bc2d927d875419c0ea59763078d804b7a9ca",
-      "tree": "aa3f15e0b28d6a8bdf99e0afd4ccc37103367362",
+      "commit": "0427a8971c3c9d8ca5184c3bbe4241c9ba402537",
+      "tree": "6fcbbe7405b06ccf7ec70961a7d69d56b0db4c4b",
       "in_repo": "examples/rvv/support"
     },
     "packages": [
@@ -25,8 +25,8 @@
         "target": "kodiak",
         "repo": "https://github.com/ucb-bar/kodiak-mlir.git",
         "branch": "handwritten-implementation",
-        "commit": "7ff29a18be30c098e5bb56b121b3b4d8301b44e0",
-        "tree": "5b60727c220b3d5def837cd96836b97f13a54812",
+        "commit": "8d60ae427daa4527d09cb3c54792dd4866ffbb9d",
+        "tree": "5d15edfe224202b428c952b0c383b0b15a153782",
         "extends": "rvv",
         "example": "examples/kodiak",
         "core_references": [
@@ -88,8 +88,8 @@
         "target": "iris",
         "repo": "https://github.com/ucb-bar/iris-mlir.git",
         "branch": "handwritten-implementation",
-        "commit": "0ad0286eba0db7ff9a3cb4fdddd778416afa095f",
-        "tree": "22919da0356aedc61948a7bc855a530bae2caca0",
+        "commit": "c1a9c5a36e5408bcb6ae8ebc392e81bc4476d0dd",
+        "tree": "1b4b3ff7274c0c939df784e8c0fe43ee8bc8c07b",
         "extends": "rvv",
         "example": "examples/iris",
         "core_references": [
@@ -219,17 +219,17 @@
       "base_commit": "a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5",
       "catalog_commit": null,
       "root_role": "support",
-      "companion_commit": "1ef5bc2d927d875419c0ea59763078d804b7a9ca",
+      "companion_commit": "0427a8971c3c9d8ca5184c3bbe4241c9ba402537",
       "companion_commit_relation": "same_commit",
       "provider_root": ".",
       "provider_role": "support",
       "vendored": {
         "path": "examples/rvv/support",
         "source_record": "examples/rvv/SOURCE.yaml",
-        "commit": "1ef5bc2d927d875419c0ea59763078d804b7a9ca",
-        "tree": "aa3f15e0b28d6a8bdf99e0afd4ccc37103367362",
-        "vendored_tree": "aa3f15e0b28d6a8bdf99e0afd4ccc37103367362",
-        "file_count": 47
+        "commit": "0427a8971c3c9d8ca5184c3bbe4241c9ba402537",
+        "tree": "6fcbbe7405b06ccf7ec70961a7d69d56b0db4c4b",
+        "vendored_tree": "6fcbbe7405b06ccf7ec70961a7d69d56b0db4c4b",
+        "file_count": 53
       },
       "copied_files": 7,
       "file_provenance": "provenance.json",

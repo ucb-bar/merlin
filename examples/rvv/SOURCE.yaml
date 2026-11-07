@@ -7,22 +7,22 @@ schema: merlin.vendored_support.v1
 target: rvv
 provider_id: rvv-support
 path: support
-file_count: 47
+file_count: 53
 vendored: '2026-11-06'
 source:
   repository: https://github.com/ucb-bar/rvv-mlir.git
   published: true
-  commit: 1ef5bc2d927d875419c0ea59763078d804b7a9ca
-  commit_date: '2026-11-06T23:47:57-08:00'
+  commit: 0427a8971c3c9d8ca5184c3bbe4241c9ba402537
+  commit_date: '2026-11-06T23:54:09-08:00'
   provider_root: .
-  tree: aa3f15e0b28d6a8bdf99e0afd4ccc37103367362
-vendored_tree: aa3f15e0b28d6a8bdf99e0afd4ccc37103367362
+  tree: 6fcbbe7405b06ccf7ec70961a7d69d56b0db4c4b
+vendored_tree: 6fcbbe7405b06ccf7ec70961a7d69d56b0db4c4b
 normalized: []
 pinned:
   manifest: build_tools/upstreams/target_support.json
-  companion_commit: 1ef5bc2d927d875419c0ea59763078d804b7a9ca
+  companion_commit: 0427a8971c3c9d8ca5184c3bbe4241c9ba402537
   relation: same_commit
-  provider_tree: aa3f15e0b28d6a8bdf99e0afd4ccc37103367362
+  provider_tree: 6fcbbe7405b06ccf7ec70961a7d69d56b0db4c4b
   identical_to_source: true
 records:
   file_provenance: support/provenance.json

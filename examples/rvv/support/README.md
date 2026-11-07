@@ -2,9 +2,9 @@
 
 The **base RISC-V Vector (RVV) layer** for [Merlin](https://github.com/ucb-bar/merlin).
 
-The `handwritten-implementation` branch carries executable RVV pipeline construction in `backend.py`
+The `handwritten-implementation` branch carries executable RVV pipeline construction in `rvv_codegen/backend.py`
 and checked schedule payloads in `schedules/`. Merlin loads `plugin.rvv_codegen` from the pinned provider
-root and checks `API_VERSION` before selecting the vector path. A scalar build can run without this
+root through the small `backend.py` compatibility entrypoint and checks `API_VERSION` before selecting the vector path. A scalar build can run without this
 provider. The pipeline uses upstream MLIR passes; this repository does not define a custom RVV dialect.
 
 Everything in this repository is plain RVV. It contains no matrix-unit or OPU code and no
@@ -23,10 +23,12 @@ notices when this base moves.
 
 ## Compiler layout
 
-- `backend.py` builds the RVV pass pipeline and exposes feature, schedule, and preparation APIs.
-- `perop_blocks.py`, `vector_tag.py`, `reduce_vec.py`, `requant_fuse.py`, `im2col_pack.py`, and
-  `weight_panel.py` implement RVV-specific preparation and lowering policy. The supporting feature
-  modules register the named tuning choices.
+- `rvv_codegen/backend.py` builds the RVV pass pipeline and exposes schedule and preparation APIs.
+  Root `backend.py` forwards the pinned plugin entrypoint to that package.
+- `rvv_codegen/features/` registers named tuning choices; `rvv_codegen/transforms/` contains
+  per-operation blocking, vector tagging, reduction and requantization rewrites, and runner source.
+- `rvv_codegen/packing/` implements im2col and weight panel layouts; `rvv_codegen/policy/`
+  derives legal blocks, LMUL, and workload shape adaptations.
 - `schedules/` contains Transform dialect programs and knob data. Upstream MLIR supplies the passes
   those programs invoke; this repository does not ship a custom dialect or pass binary.
 - Merlin owns target-neutral capture, quantization semantics, and scalar compilation. Kodiak and
@@ -36,7 +38,7 @@ notices when this base moves.
 
 | branch | what it is |
 |---|---|
-| `handwritten-implementation` (this branch) | the RVV support provider and executable pipeline selected by Merlin: contract, `backend.py`, schedules, tests |
+| `handwritten-implementation` (this branch) | the RVV support provider and executable pipeline selected by Merlin: contract, `rvv_codegen/`, schedules, tests |
 | `main` | historical landing page; the repository default branch changes after integration gates pass |
 | `stable/impr_tuned_wholemodel_vf_int8` | int8 W8A8 whole-model schedule (`vwmacc`), K1-verified; the RVV schedule the Kodiak builds use |
 | `stable/sol_k1_int8` | int8 speed-of-light schedule, K1-verified, with its analysis |

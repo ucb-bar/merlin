@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .vector_features import VEC_NONCONTRACTION_MIN_RANK
+from ..features.vector_features import VEC_NONCONTRACTION_MIN_RANK
 
 
 def tag_vector_generics(module, *, lanes: int, max_rank: int) -> dict[str, int]:

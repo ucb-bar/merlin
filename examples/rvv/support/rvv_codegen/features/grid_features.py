@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from merlin.llvmlower.feature_registry import FeatureRegistry, ImprFeature
 
-from . import lmul_group
-from .active_features import fused_vfmacc_tiled_schedule
+from ..policy import lmul_group
+from ..transforms.active_features import fused_vfmacc_tiled_schedule
 
 LMUL_GROUP_PREFIX = "lmul_group_m"
 LMUL_GROUP_SENTINEL = "lmul_register_group"
@@ -18,10 +18,10 @@ def lmul_group_feature(lmul: int) -> str:
     lowering SUBPROCESS as well as in the parent -- the same reproducibility requirement
     :func:`_try_lazy_register` exists for.
     """
-    from .lmul_group import LMUL_LADDER
+    from ..policy.lmul_group import LMUL_LADDER
 
     if int(lmul) not in LMUL_LADDER:
-        from .lmul_group import LmulDerivationError
+        from ..policy.lmul_group import LmulDerivationError
 
         raise LmulDerivationError(f"LMUL={lmul!r} is not one of {LMUL_LADDER}")
     return f"{LMUL_GROUP_PREFIX}{int(lmul)}"
@@ -41,7 +41,7 @@ def ensure_lmul_group(
     hold. Nobody types a 4: an ``i8 x i8 -> i32`` contraction derives 4 (which is what the expert
     XNNPACK qd8 kernel runs at), an ``f32`` one derives 1, a ``bf16 -> f32`` one derives 2.
     """
-    from .lmul_group import group_lmul
+    from ..policy.lmul_group import group_lmul
 
     return lmul_group_feature(
         group_lmul(
@@ -62,7 +62,7 @@ def ensure_lmul_group_for_elem_types(
     max_group_elems: int | None = None,
 ) -> str:
     """:func:`ensure_lmul_group` for a contraction named by its MLIR element types ``a x b -> c``."""
-    from .lmul_group import group_lmul_for_elem_types
+    from ..policy.lmul_group import group_lmul_for_elem_types
 
     return lmul_group_feature(
         group_lmul_for_elem_types(a, b, c, vlen=vlen, max_group_elems=max_group_elems)

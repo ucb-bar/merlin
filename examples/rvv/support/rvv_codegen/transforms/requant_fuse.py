@@ -415,7 +415,7 @@ def ensure_registered(registry=None) -> str:
     """Register both points if they are not already. Idempotent, so importing from several entry
     points is safe. Returns the plain (traversal-removal-only) feature name."""
     if registry is None:
-        from .backend import _FEATURES
+        from ..backend import _FEATURES
 
         registry = _FEATURES
     for nm in (FEATURE, VEC_FEATURE):
