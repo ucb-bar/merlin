@@ -10,6 +10,7 @@ ordering and the schedule library. API_VERSION is checked by Merlin's loader.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 API_VERSION = 1
@@ -62,6 +63,7 @@ from .dynamic_accumulator import (
     register_from_name as register_dynamic_accumulator_from_name,
 )
 from .grid_features import register_grid_features
+from .im2col_pack import _feature as _im2col_pack_feature
 from .other_vector_features import register_other_vector_features
 from .perop_blocks import ensure_registered as register_conv_block_feature
 from .perop_features import (
@@ -90,6 +92,7 @@ from .vector_features import (
 from .vector_features import (
     register_from_name as register_vec_noncontraction_from_name,
 )
+from .weight_panel import _feature as _weight_panel_feature
 
 
 def _legacy_feature(name: str) -> bool:
@@ -100,9 +103,16 @@ def _legacy_feature(name: str) -> bool:
         return True
     if register_dynamic_accumulator_from_name(_FEATURES, name):
         return True
-    from .legacy_features import register_existing
+    from merlin.llvmlower.shared_feature_registry import get_shared_feature
 
-    return register_existing(name, _FEATURES)
+    try:
+        shared = get_shared_feature(name)
+    except KeyError:
+        pass
+    else:
+        _FEATURES.register(shared)
+        return True
+    return False
 
 
 _FEATURES = FeatureRegistry(lazy_register=_legacy_feature)
@@ -113,6 +123,8 @@ register_other_vector_features(_FEATURES)
 register_perop_features(_FEATURES)
 register_conv_block_feature(_FEATURES)
 register_requant_features(_FEATURES)
+_FEATURES.register(_im2col_pack_feature())
+_FEATURES.register(_weight_panel_feature())
 _FEATURES.register(
     ImprFeature(
         name="approximate_transcendental_activation",
@@ -163,11 +175,28 @@ _FEATURES.register(
 )
 _FEATURES.register(
     ImprFeature(
+        name="fuse_quantize_round_convert_vec",
+        action_class="PASS",
+        description="Compose exact quantize rewrite with bounded RVV non-contraction vectorization.",
+        implies=frozenset(
+            {"fuse_quantize_round_convert", "vectorize_non_contraction_generics"}
+        ),
+    )
+)
+_FEATURES.register(
+    ImprFeature(
         name="fused_vfmacc_tiled",
         action_class="PASS",
         description="Bounded tiled RVV fused-vfmacc Transform schedule.",
         edit_schedule=lambda _text: fused_vfmacc_tiled_schedule(),
         schedule_replace=True,
+    )
+)
+_FEATURES.register(
+    ImprFeature(
+        name="intrinsic_microkernel",
+        action_class="CODEGEN",
+        description="RVV hand-written intrinsic microkernel ceiling reference; no codegen edit.",
     )
 )
 
@@ -180,6 +209,34 @@ def vec_noncontraction_shape(features) -> tuple[int | None, int | None]:
     from .vector_features import vec_noncontraction_max_rank
 
     return vec_noncontraction_lanes(features), vec_noncontraction_max_rank(features)
+
+
+def ensure_parallel_grain(threshold: int) -> str:
+    from merlin.llvmlower.parallel_grain import ensure_registered
+
+    name = ensure_registered(threshold)
+    _FEATURES.get(name)
+    return name
+
+
+def ensure_parallel_team(work_per_thread: int) -> str:
+    from merlin.llvmlower.parallel_team import ensure_registered
+
+    name = ensure_registered(work_per_thread)
+    _FEATURES.get(name)
+    return name
+
+
+def parallel_grain_threshold(features) -> int | None:
+    from merlin.llvmlower.parallel_grain import threshold_of
+
+    return threshold_of(features)
+
+
+def parallel_team_work(features) -> int | None:
+    from merlin.llvmlower.parallel_team import work_of
+
+    return work_of(features)
 
 
 def perop_mr_sentinel(mr_cap: int) -> str:
@@ -493,7 +550,9 @@ def _vec_after_specialize() -> bool:
     return bool(os.environ.get("MERLIN_VEC_AFTER_SPECIALIZE"))
 
 
-def vec_pre_schedule(features: frozenset[str]) -> str | None:
+def vec_pre_schedule(
+    features: frozenset[str], *, _registry: FeatureRegistry | None = None
+) -> str | None:
     """The transform library that vectorizes the tagged non-contraction generics, or None.
 
     WHY THIS EXISTS -- a COVERAGE bug, measured, not inferred. The prepare pass tags every
@@ -549,8 +608,9 @@ def vec_pre_schedule(features: frozenset[str]) -> str | None:
     lanes = vec_noncontraction_lanes(features)
     if lanes is None:
         return None
-    text = apply_schedule(
-        _VEC_PRE_SKELETON, frozenset({ensure_vec_noncontraction(_FEATURES, lanes)})
+    registry = _FEATURES if _registry is None else _registry
+    text = registry.apply_schedule(
+        _VEC_PRE_SKELETON, frozenset({ensure_vec_noncontraction(registry, lanes)})
     )
     if text == _VEC_PRE_SKELETON:
         # The arms did not splice. Fail closed rather than preload a library whose entry point does
@@ -571,6 +631,8 @@ def build_pipeline(
     par_sched_path: str | Path | None = None,
     vec_sched_path: str | Path | None = None,
     perop_parallel: bool = False,
+    *,
+    _registry: FeatureRegistry | None = None,
 ) -> str:
     """Whole-module pipeline with the transform vectorization stage spliced in after
     named-op generalization (vectorize on tensors) and before bufferization, plus the
@@ -756,5 +818,180 @@ def build_pipeline(
         "symbol-dce",
     ]
     if features:  # default-off impr-fork hooks; empty -> byte-identical
-        passes = apply_pipeline(passes, features)
+        registry = _FEATURES if _registry is None else _registry
+        passes = registry.apply_pipeline(passes, features)
     return splice_passes(passes)
+
+
+class BoundBackendV1:
+    """One target's RVV backend with chip feature definitions isolated per build."""
+
+    API_VERSION = 1
+
+    def __init__(self, extension_features: tuple[ImprFeature, ...]):
+        registry = FeatureRegistry()
+        registry.entries.update(_FEATURES.entries)
+
+        def register_base(name: str) -> bool:
+            try:
+                feature = _FEATURES.get(name)
+            except KeyError:
+                return False
+            registry.register(feature)
+            return True
+
+        registry.lazy_register = register_base
+        for feature in extension_features:
+            if not isinstance(feature, ImprFeature):
+                raise TypeError(
+                    f"extension feature must be ImprFeature, got {type(feature).__name__}"
+                )
+            registry.register(feature)
+        self.registry = registry
+
+    def __getattr__(self, name: str):
+        return getattr(sys.modules[__name__], name)
+
+    def normalize_features(self, features) -> frozenset[str]:
+        return self.registry.normalize(features)
+
+    def feature_names(self) -> tuple[str, ...]:
+        """Return registered feature names for a composed target."""
+        return tuple(sorted(self.registry.entries))
+
+    def apply_schedule(self, schedule_text: str, features: frozenset[str]) -> str:
+        return self.registry.apply_schedule(schedule_text, features)
+
+    def apply_pipeline(self, passes: list[str], features: frozenset[str]) -> list[str]:
+        return self.registry.apply_pipeline(passes, features)
+
+    def apply_cflags(self, cflags: list[str], features: frozenset[str]) -> list[str]:
+        return self.registry.apply_cflags(cflags, features)
+
+    def vec_pre_schedule(self, features: frozenset[str]) -> str | None:
+        return vec_pre_schedule(features, _registry=self.registry)
+
+    def build_pipeline(self, *args, **kwargs) -> str:
+        return build_pipeline(*args, _registry=self.registry, **kwargs)
+
+    def prepare_build_bundle(self, src: Path | str, work: Path | str, features) -> Path:
+        from .prepack import prepare_build_bundle as prepare
+
+        return prepare(src, work, self.normalize_features(features or frozenset()))
+
+
+def bind(extension_features: tuple[ImprFeature, ...] = ()) -> BoundBackendV1:
+    """Compose chip-specific named features without mutating the shared RVV provider."""
+    return BoundBackendV1(extension_features)
+
+
+def im2col_pack_api():
+    """Return the RVV im2col panel packing implementation."""
+    from . import im2col_pack
+
+    return im2col_pack
+
+
+def perop_blocks_api():
+    """Return the RVV per-operation block and tagging implementation."""
+    from . import perop_blocks
+
+    return perop_blocks
+
+
+def perop_features_api():
+    """Return RVV per-operation feature names and sentinel prefixes."""
+    from . import perop_features
+
+    return perop_features
+
+
+def microkernel_policy_api():
+    """Return RVV shape-aware microkernel policy and schedule rendering."""
+    from . import microkernel_policy
+
+    return microkernel_policy
+
+
+def blocking_cost_api():
+    """Return RVV register-block legality and cost policy."""
+    from . import blocking_cost
+
+    return blocking_cost
+
+
+def lmul_group_api():
+    """Return the RVV register-group derivation policy."""
+    from . import lmul_group
+
+    return lmul_group
+
+
+LMUL_GROUP_SENTINEL = "lmul_register_group"
+
+
+def lmul_group_feature(lmul: int) -> str:
+    """Name the exact supported register-group width, refusing unsupported widths."""
+    from .lmul_group import LMUL_LADDER, LmulDerivationError
+
+    if int(lmul) not in LMUL_LADDER:
+        raise LmulDerivationError(f"LMUL={lmul!r} is not one of {LMUL_LADDER}")
+    return f"lmul_group_m{int(lmul)}"
+
+
+def default_vec_rank_shape() -> tuple[int, int]:
+    """The published default lane count and maximum noncontraction rank."""
+    from .vector_features import VEC_NONCONTRACTION_LANES, VEC_NONCONTRACTION_MAX_RANK
+
+    return VEC_NONCONTRACTION_LANES, VEC_NONCONTRACTION_MAX_RANK
+
+
+def vec_rank_bounds() -> tuple[int, int]:
+    """The admitted rank interval for bounded noncontraction vectorization."""
+    from .vector_features import (
+        VEC_NONCONTRACTION_MAX_RANK,
+        VEC_NONCONTRACTION_MIN_RANK,
+    )
+
+    return VEC_NONCONTRACTION_MIN_RANK, VEC_NONCONTRACTION_MAX_RANK
+
+
+def tag_vector_generics(module, *, lanes: int, max_rank: int) -> dict[str, int]:
+    from .vector_tag import tag_vector_generics as tag
+
+    return tag(module, lanes=lanes, max_rank=max_rank)
+
+
+def vectorize_amax_reduction(module, *, lanes: int, max_rank: int) -> dict:
+    from .reduce_vec import apply
+    from .vector_features import VEC_NONCONTRACTION_MIN_RANK
+
+    return apply(
+        module, lanes=lanes, min_rank=VEC_NONCONTRACTION_MIN_RANK, max_rank=max_rank
+    )
+
+
+def weight_panel_api():
+    """Return the RVV weight panel packing and ABI implementation."""
+    from . import weight_panel
+
+    return weight_panel
+
+
+def render_schedule(knobs: dict) -> str:
+    from .microkernel_policy import render_schedule as render
+
+    return render(knobs)
+
+
+def register_microkernel_resolver() -> None:
+    from .microkernel_policy import _register_rvv_microkernel_resolver
+
+    _register_rvv_microkernel_resolver()
+
+
+def microkernel_features(knobs: dict, shapes=()) -> list[str]:
+    from .microkernel_policy import microkernel_features as resolve
+
+    register_microkernel_resolver()
+    return resolve(knobs, "rvv", shapes)

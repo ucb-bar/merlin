@@ -2,10 +2,14 @@
 
 import hashlib
 import importlib.util
+import subprocess
 import sys
 import tempfile
 import types
 from pathlib import Path
+
+import pytest
+from merlin.llvmlower.feature_registry import ImprFeature
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = types.ModuleType("rvv_provider")
@@ -261,6 +265,7 @@ def test_other_vector_schedule_variants_keep_frozen_outputs():
 
 
 def test_perop_request_and_concrete_schedule_are_provider_owned():
+    assert BACKEND.perop_blocks_api().__name__ == "rvv_provider.perop_blocks"
     assert BACKEND.vec_noncontraction_shape(
         BACKEND.normalize_features({"vectorize_non_contraction_generics_l16_r5"})
     ) == (16, 5)
@@ -308,3 +313,159 @@ def test_dynamic_v3_register_blocks_resolve_from_names_and_keep_frozen_schedules
     assert BACKEND.unclaimed_op_classes("accum_resident_v3p_x_x_4_8_16") == [
         "linalg.matmul"
     ]
+
+
+def test_multicore_feature_points_resolve_from_names():
+    assert BACKEND.ensure_parallel_grain(10000) == "parallel_grain_10000"
+    assert BACKEND.ensure_parallel_team(4096) == "parallel_team_cost_4096"
+    features = BACKEND.normalize_features(
+        {"parallel_grain_10000", "parallel_team_cost_4096", "coarsen_openmp_regions"}
+    )
+    assert BACKEND.parallel_grain_threshold(features) == 10000
+    assert BACKEND.parallel_team_work(features) == 4096
+
+
+def test_chip_features_bind_per_target_without_mutating_rvv_registry():
+    extension = ImprFeature(
+        name="test_chip_marker",
+        action_class="PASS",
+        description="Test-only chip feature.",
+        edit_schedule=lambda schedule: schedule + "\n// chip\n",
+    )
+    bound = BACKEND.bind((extension,))
+    features = bound.normalize_features(
+        {"test_chip_marker", "fuse_quantize_round_convert_vec"}
+    )
+    assert "erase_self_copy" in features
+    assert bound.apply_schedule("schedule", frozenset({"test_chip_marker"})) == (
+        "schedule\n// chip\n"
+    )
+    with pytest.raises(KeyError):
+        BACKEND.normalize_features({"test_chip_marker"})
+    with pytest.raises(ValueError, match="duplicate"):
+        BACKEND.bind((extension, extension))
+
+
+def test_rvv_register_block_legality_stays_with_provider():
+    from rvv_provider.blocking_cost import _rvv_best_block, _rvv_blocking_lowers
+
+    assert _rvv_blocking_lowers(4, 16, 8, 128)
+    assert not _rvv_blocking_lowers(4, 16, 17, 128)
+    assert _rvv_blocking_lowers(1, 16, 17, 24)
+    assert _rvv_best_block(4, 16, [(8, 128), (4, 24)]) == (4, 8)
+
+
+def test_rvv_schedule_renderer_and_shape_policy_live_in_provider():
+    from merlin.kernels.microkernel import ContractionShape, MicrokernelSpec
+    from rvv_provider.microkernel_policy import _rvv_microkernel_shape_policy
+
+    assert (
+        BACKEND.microkernel_policy_api().__name__ == "rvv_provider.microkernel_policy"
+    )
+    assert BACKEND.blocking_cost_api().__name__ == "rvv_provider.blocking_cost"
+
+    knobs = {
+        "op_match": [{"op": "linalg.matmul", "tile": [4, 8, 1], "vector": [4, 8, 1]}],
+        "lowering_patterns": ["lower_contraction", "lower_shape_cast"],
+    }
+    schedule = BACKEND.render_schedule(knobs)
+    assert hashlib.sha256(schedule.encode()).hexdigest() == (
+        "0292f91afb12f27054f6b5192b3b6eafd5238be9492f44309748c19444c9fb4f"
+    )
+    shapes = (
+        ContractionShape("linalg.matmul", (1, 16), (32,)),
+        ContractionShape("linalg.batch_matmul", (1, 4, 8), (32,)),
+    )
+    assert _rvv_microkernel_shape_policy(
+        MicrokernelSpec(MR=4, NR=16, KC=16), shapes
+    ) == [
+        "accum_resident_v3p_1_16_4_8_16",
+        "erase_self_copy",
+    ]
+
+
+def test_all_95_existing_levers_resolve_without_legacy_vector_registry():
+    script = """
+import importlib.util, sys, types
+from pathlib import Path
+from merlin.llvmlower.feature_registry import ImprFeature
+root = Path.cwd()
+package = types.ModuleType('rvv_provider')
+package.__path__ = [str(root)]
+sys.modules[package.__name__] = package
+spec = importlib.util.spec_from_file_location('rvv_provider.backend', root / 'backend.py')
+backend = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = backend
+spec.loader.exec_module(backend)
+names = (root / 'tests/feature_names_v1.txt').read_text().splitlines()
+assert len(names) == 95
+bound = backend.bind((ImprFeature(name='opu_matmul', action_class='PASS', description='chip extension'),))
+for name in names:
+    assert bound.registry.get(name).name == name
+assert 'merlin.llvmlower.impr_features' not in sys.modules
+assert backend.im2col_pack_api().__name__ == 'rvv_provider.im2col_pack'
+assert backend.weight_panel_api().__name__ == 'rvv_provider.weight_panel'
+"""
+    subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_provider_weight_panel_pack_preserves_exact_values():
+    import numpy as np
+
+    panel = BACKEND.weight_panel_api()
+    arg = panel.PackedArg(
+        arg=0, orig_shape=(3, 8), elem="i8", steps=(), m=2, k=3, n=8, mr=2, nr=4
+    )
+    weight = np.arange(24, dtype=np.int8).reshape(3, 8)
+    packed = panel.pack_bytes(weight, arg)
+    assert packed.shape == (2, 3, 4)
+    np.testing.assert_array_equal(packed[0], weight[:, :4])
+    np.testing.assert_array_equal(packed[1], weight[:, 4:])
+    np.testing.assert_array_equal(packed.transpose(1, 0, 2).reshape(3, 8), weight)
+    with pytest.raises(panel.PanelPackRefused, match="layout chain yields"):
+        panel.pack_bytes(weight[:, :4], arg)
+
+
+def test_provider_vector_preparation_policy_and_tagging():
+    from types import SimpleNamespace
+
+    assert BACKEND.default_vec_rank_shape() == (8, 4)
+    assert BACKEND.vec_rank_bounds() == (2, 4)
+    assert BACKEND.perop_features_api().PEROP_BLOCK_NAME == "perop_register_block"
+    assert BACKEND.LMUL_GROUP_SENTINEL == "lmul_register_group"
+    assert BACKEND.lmul_group_feature(4) == "lmul_group_m4"
+    with pytest.raises(BACKEND.lmul_group_api().LmulDerivationError):
+        BACKEND.lmul_group_feature(3)
+
+    def generic(shape):
+        result = SimpleNamespace(type=SimpleNamespace(get_shape=lambda: shape))
+        return SimpleNamespace(
+            name="linalg.generic",
+            properties={
+                "iterator_types": "iterator_type parallel iterator_type parallel"
+            },
+            regions=[],
+            results=[result],
+            attributes={},
+        )
+
+    eligible, tail = generic((2, 16)), generic((2, 7))
+    module = SimpleNamespace(walk=lambda: iter((eligible, tail)))
+    report = BACKEND.tag_vector_generics(module, lanes=8, max_rank=4)
+    assert report["tagged"] == 1
+    assert report["skip_extent"] == 1
+    assert "merlin.vec_r2" in eligible.attributes
+    assert not tail.attributes
+    from rvv_provider import reduce_vec
+
+    assert reduce_vec.sign_mask(16) == 0x7FFF
+    assert reduce_vec.sign_mask(32) == 0x7FFF_FFFF
+    assert BACKEND.vectorize_amax_reduction(
+        SimpleNamespace(walk=lambda: iter(())), lanes=8, max_rank=4
+    ) == {"absf_rewrites": 0, "tagged": 0}

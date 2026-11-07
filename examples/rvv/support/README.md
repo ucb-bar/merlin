@@ -13,7 +13,7 @@ chip-specific facts. Chip packages build on it and add only what their chip has:
 ```
 rvv-mlir      base: the RVV target contract (vector unit, dtypes, requant), RVV schedules
  ├── kodiak-mlir   Kodiak tapeout: Saturn + outer-product unit (OPU, BME encodings), its boards
- └── iris-mlir     Iris: 2× Shuttle+Saturn(VME) + Rocket(DMA vector), its boards (VME unit: next)
+ └── iris-mlir     Iris: 2× Shuttle+Saturn(VME) + Rocket(DMA vector), its boards and VME extension
 ```
 
 A chip package's `provider.yaml` says `extends: {target: rvv, commit: <sha of this repo>}`, and its
@@ -70,7 +70,7 @@ merlin-target-fetch kodiak      # clones kodiak-mlir, then rvv-mlir at the commi
    extends:
      target: rvv
      repo: https://github.com/ucb-bar/rvv-mlir.git
-     commit: <full sha of the rvv-mlir main you build on>
+     commit: <full sha from rvv-mlir handwritten-implementation>
    ```
 2. Put only the delta in `contracts/overlay.yaml`: the RTL config (`rtl_source`), extra compute units
    (a matrix unit), `matrix_contract`, and your own `plugin` entries. The base plugin block is never

@@ -126,7 +126,7 @@ def parallel_chunk_table(
 
     ``harts < 2`` -> ``{}``: no split, and every schedule derived from this is absent.
     """
-    from merlin.mining.from_strategy import _rvv_blocking_lowers
+    from .blocking_cost import _rvv_blocking_lowers
 
     out: dict[str, tuple[int, ...]] = {}
     if int(harts) < 2:
@@ -455,8 +455,7 @@ def _solve_block(
     ``mr_vlen=None`` skips the whole thing and returns exactly what the single-cap call returned, so
     every existing caller is byte-identical.
     """
-    from merlin.mining.from_strategy import _rvv_best_block
-
+    from .blocking_cost import _rvv_best_block
     from .lmul_group import LMUL_LADDER
 
     block = _rvv_best_block(mr_cap, nr_cap, pairs)

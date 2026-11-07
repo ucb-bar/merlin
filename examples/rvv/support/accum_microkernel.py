@@ -51,7 +51,6 @@ from __future__ import annotations
 from merlin.llvmlower.alloca_scope_lower import (
     RUNNER_PRELUDE as _ALLOCA_SCOPE_LOWER_PRELUDE,
 )
-from merlin.llvmlower.bmm_tail_pad import RUNNER_PRELUDE as _BMM_TAIL_PAD_PRELUDE
 from merlin.llvmlower.broadcast_fold import RUNNER_PRELUDE as _BROADCAST_FOLD_PRELUDE
 from merlin.llvmlower.concat_dps import RUNNER_PRELUDE as _CONCAT_DPS_PRELUDE
 from merlin.llvmlower.copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
@@ -63,8 +62,6 @@ from merlin.llvmlower.int_softmax_table import (
 from merlin.llvmlower.named_broadcast_fold import (
     RUNNER_PRELUDE as _NAMED_BROADCAST_FOLD_PRELUDE,
 )
-from merlin.llvmlower.panel_parallel import MID_STAGE_SRC as _PANEL_PARALLEL_MID_SRC
-from merlin.llvmlower.panel_parallel import RUNNER_PRELUDE as _PANEL_PARALLEL_PRELUDE
 from merlin.llvmlower.parallel_coarsen import (
     RUNNER_PRELUDE as _PARALLEL_COARSEN_PRELUDE,
 )
@@ -84,6 +81,10 @@ from merlin.llvmlower.scalar_pointwise_unroll import (
 )
 from merlin.llvmlower.selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from merlin.llvmlower.transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
+
+from .bmm_tail_pad import RUNNER_PRELUDE as _BMM_TAIL_PAD_PRELUDE
+from .panel_parallel import MID_STAGE_SRC as _PANEL_PARALLEL_MID_SRC
+from .panel_parallel import RUNNER_PRELUDE as _PANEL_PARALLEL_PRELUDE
 
 # Sentinel pass name spliced into the pipeline string by the feature's edit_pipeline to mark where
 # the A-scalarization rewrite runs (after contract->vector.fma lowering, before one-shot-bufferize).
@@ -425,7 +426,7 @@ def run_source(*, tag_bmm_tails: bool = False) -> str:
     deallocation passes run -- goes through it: sinking a free on this runner is verified exactly as on
     the plain one, instead of being refused for want of the check. The uniform-fill-copy stage is
     spliced with the plain runner's argv slot for the same reason: selected, it must run here too."""
-    from merlin.llvmlower.pipeline import (
+    from merlin.llvmlower.runner_shared import (
         _UNIFORM_FILL_COPY_MID_SRC,
         _UNIFORM_FILL_COPY_PRELUDE,
         DEALLOC_CHECK_PRELUDE,
