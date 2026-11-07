@@ -100,6 +100,10 @@ def host_cache_identity(
     switches.update({key: env.get(key, "") for key in sorted(pass_switches)})
     switches["MERLIN_TORCHAO_CPU_SOURCE_COMMIT"] = env.get("MERLIN_TORCHAO_CPU_SOURCE_COMMIT", "")
     switches["MERLIN_TORCHAO_CPU_CAPABILITY"] = env.get("MERLIN_TORCHAO_CPU_CAPABILITY", "")
+    # This host-only dispatch policy changes completed values without changing
+    # the outlined kernel text or the target object. Strict replay must still
+    # distinguish its selected numerical path.
+    switches["MERLIN_TORCHAO_CPU_VML_TRIG"] = env.get("MERLIN_TORCHAO_CPU_VML_TRIG", "")
     inputs: dict[str, Any] = {
         "schema": "merlin.host_cache_identity.v1",
         "merlin_source": _tree(source),

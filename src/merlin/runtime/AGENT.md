@@ -31,7 +31,9 @@ the per-backend adapters under `backends/`.
   parity diagnosis with `MERLIN_TORCHAO_CPU_VML_TRIG=1`,
   `MERLIN_TORCHAO_CPU_SOURCE_COMMIT=7f24a19c0967db04f2d5ba44c1e56eca489932ec`, and
   `MERLIN_TORCHAO_CPU_CAPABILITY=AVX2`. Score matmul, softmax, and the full-model gate
-  remain independent checks.
+  remain independent checks. The selected switch is part of strict host-cache identity;
+  `merlin-compile` records its wheel and dispatch evidence, and marks the host result
+  diagnostic only even if its numerical comparison passes.
 - `host_arithmetic.py` and `host_outward.py` share explicitly selected CPU
   arithmetic implementations independently of accelerators. ISA/ABI, source
   arithmetic and effect permissions remain caller obligations. Namespaces bind

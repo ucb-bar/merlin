@@ -139,6 +139,18 @@ def test_host_dispatch_routes_trig_and_records_library(kind, tmp_path, monkeypat
     assert counters["dispatch_ledger"][0]["lane"] == "torch_cpu_vml"
     assert counters["dispatch_ledger"][0]["libtorch_cpu_sha256"] == digest
     assert counters["dispatch_ledger"][0]["target_executed"] is False
+    assert counters["source_cpu_fidelity"]["status"] == "diagnostic_only"
+    assert counters["source_cpu_fidelity"]["target_equivalent"] is False
+    assert counters["source_cpu_fidelity"]["executed"] == 1
+
+    from merlin.compile_cli import _mark_host_vml_diagnostic
+
+    compiled_result = {"status": "verified", "verify": {"gate_ok": True, "fp32_cos": 1.0}}
+    _mark_host_vml_diagnostic(compiled_result, counters)
+    assert compiled_result["status"] == "diagnostic_host_only"
+    assert compiled_result["verify"]["numerical_gate_ok"] is True
+    assert compiled_result["verify"]["gate_ok"] is False
+    assert compiled_result["source_cpu_fidelity"] == counters["source_cpu_fidelity"]
 
     monkeypatch.setenv("MERLIN_TORCHAO_CPU_SOURCE_COMMIT", "wrong-source")
     with pytest.raises(DispatchRuntimeError, match="exact source"):
@@ -147,3 +159,24 @@ def test_host_dispatch_routes_trig_and_records_library(kind, tmp_path, monkeypat
     monkeypatch.setenv("MERLIN_TORCHAO_CPU_CAPABILITY", "AVX512")
     with pytest.raises(DispatchRuntimeError, match="AVX2"):
         execute(outlined, [values], tmp_path / "refused_cpu")
+
+
+def test_host_vml_diagnostic_refuses_target_equivalence_claim():
+    from merlin.compile_cli import _mark_host_vml_diagnostic
+    from merlin.runtime.torch_cpu_vml import LIBTORCH_CPU_SHA256
+
+    result = {
+        "source_cpu_fidelity": {
+            "schema": "merlin.source_cpu_fidelity.v1",
+            "route": "torch_cpu_vml_trig",
+            "status": "diagnostic_only",
+            "target_equivalent": True,
+            "source_commit": TORCH_COMMIT,
+            "cpu_capability": "AVX2",
+            "libtorch_cpu_sha256": LIBTORCH_CPU_SHA256,
+            "executed": 0,
+        },
+        "dispatch_ledger": [],
+    }
+    with pytest.raises(ValueError, match="target equivalence"):
+        _mark_host_vml_diagnostic({"verify": {"gate_ok": True}}, result)

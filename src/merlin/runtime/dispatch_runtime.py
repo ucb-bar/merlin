@@ -758,6 +758,17 @@ def execute(
     mesh_counts: dict = counters if counters is not None else {}  # per-CALL, not
     if vml_library is not None:
         mesh_counts["torch_cpu_vml_trig_routed"] = len(vml_routes)
+        mesh_counts["source_cpu_fidelity"] = {
+            "schema": "merlin.source_cpu_fidelity.v1",
+            "route": "torch_cpu_vml_trig",
+            "status": "diagnostic_only",
+            "target_equivalent": False,
+            "source_commit": torch_cpu_vml.TORCH_COMMIT,
+            "cpu_capability": "AVX2",
+            "libtorch_cpu_sha256": vml_digest,
+            "routed_unique": len(vml_routes),
+            "executed": 0,
+        }
     if cache_dir is not None:
         mesh_counts["host_cache"] = {
             "schema": "merlin.host_cache.v1",
@@ -1051,6 +1062,7 @@ def execute(
             env[id(op.results[0])] = out
             mesh_counts["native_host_executed"] = True
             mesh_counts["torch_cpu_vml_trig_ran"] = mesh_counts.get("torch_cpu_vml_trig_ran", 0) + 1
+            mesh_counts["source_cpu_fidelity"]["executed"] += 1
             _record_dispatch(
                 symbol,
                 "torch_cpu_vml",
@@ -1756,4 +1768,11 @@ def run_model(
         )
     if hashlib.sha256(model_source.read_bytes()).hexdigest() != source_sha256:
         raise DispatchRuntimeError("model source changed during whole-model execution")
+    if "source_cpu_fidelity" in res:
+        # The numerical comparison remains inspectable, but a host-only MKL
+        # substitution cannot qualify the same capture for RV64/FireSim.
+        if "ok" in res:
+            res["source_numeric_ok"] = res["ok"]
+            res["ok"] = False
+        res["qualification"] = "diagnostic_host_only"
     return res

@@ -23,7 +23,7 @@ def _synthetic_identity(tmp_path: Path, monkeypatch):
     compiler.write_bytes(b"clang old")
     monkeypatch.setattr("merlin.runtime.host_cache_identity.platform.machine", lambda: "test-machine")
 
-    def identity(passes: str = "", capability: str = "", commit: str = ""):
+    def identity(passes: str = "", capability: str = "", commit: str = "", vml_trig: str = ""):
         return host_cache_identity(
             source_root=source,
             tool_paths={"clang": compiler},
@@ -32,6 +32,7 @@ def _synthetic_identity(tmp_path: Path, monkeypatch):
                 "MERLIN_PASSES": passes,
                 "MERLIN_TORCHAO_CPU_CAPABILITY": capability,
                 "MERLIN_TORCHAO_CPU_SOURCE_COMMIT": commit,
+                "MERLIN_TORCHAO_CPU_VML_TRIG": vml_trig,
             },
         )
 
@@ -50,6 +51,9 @@ def test_host_cache_identity_tracks_mean_pass_dirty_source_and_compiler(tmp_path
     assert selected_patch["sha256"] != original["sha256"]
     assert identity("torchao-cpu-avx2-patch-conv", "AVX512", "pinned-commit")["sha256"] != selected_patch["sha256"]
     assert identity("torchao-cpu-avx2-patch-conv", "AVX2", "other-commit")["sha256"] != selected_patch["sha256"]
+    selected_vml = identity(vml_trig="1")
+    assert selected_vml["sha256"] != original["sha256"]
+    assert selected_vml["inputs"]["switches"]["MERLIN_TORCHAO_CPU_VML_TRIG"] == "1"
     (source / "lower.py").write_text("mean = fixed\n")
     changed_source = identity()
     assert changed_source["sha256"] != original["sha256"]

@@ -252,6 +252,51 @@ def _session_correctness_gate(trajectory: object, expected_steps: int) -> dict:
     }
 
 
+def _mark_host_vml_diagnostic(out: dict, result: dict) -> None:
+    """Keep source-CPU numerical evidence separate from target qualification."""
+    evidence = result.get("source_cpu_fidelity")
+    if evidence is None:
+        return
+    from .runtime.torch_cpu_vml import LIBTORCH_CPU_SHA256, TORCH_COMMIT
+
+    expected = {
+        "schema": "merlin.source_cpu_fidelity.v1",
+        "route": "torch_cpu_vml_trig",
+        "status": "diagnostic_only",
+        "target_equivalent": False,
+        "source_commit": TORCH_COMMIT,
+        "cpu_capability": "AVX2",
+        "libtorch_cpu_sha256": LIBTORCH_CPU_SHA256,
+    }
+    if not isinstance(evidence, dict) or any(evidence.get(key) != value for key, value in expected.items()):
+        raise ValueError("host source-CPU fidelity receipt is incomplete or claims target equivalence")
+    ledger = result.get("dispatch_ledger")
+    if not isinstance(ledger, list) or any(not isinstance(item, dict) for item in ledger):
+        raise ValueError("host source-CPU fidelity receipt lacks a completed dispatch ledger")
+    completed = [item for item in ledger if item.get("lane") == "torch_cpu_vml"]
+    if (
+        type(evidence.get("executed")) is not int
+        or evidence["executed"] < 0
+        or type(evidence.get("routed_unique")) is not int
+        or evidence["routed_unique"] < 0
+        or evidence["executed"] != len(completed)
+        or evidence["executed"] != result.get("torch_cpu_vml_trig_ran", 0)
+        or any(
+            item.get("status") != "pass"
+            or item.get("target_executed") is not False
+            or item.get("libtorch_cpu_sha256") != LIBTORCH_CPU_SHA256
+            for item in completed
+        )
+    ):
+        raise ValueError("host source-CPU fidelity receipt disagrees with completed dispatches")
+    out["source_cpu_fidelity"] = evidence
+    if isinstance(out.get("verify"), dict):
+        out["verify"]["numerical_gate_ok"] = out["verify"].get("gate_ok")
+        out["verify"]["gate_ok"] = False
+        out["verify"]["qualification"] = "diagnostic_host_only"
+    out["status"] = "diagnostic_host_only"
+
+
 def compile_rvv(
     workload: str,
     dtype: str,
@@ -605,6 +650,7 @@ def compile_rvv(
                 g = zm._gate(res["output"], refs)
             out["verify"] = {"gate_ok": bool(g.get("ok")), **g}
             out["status"] = "verified" if g.get("ok") else "run_mismatch"
+        _mark_host_vml_diagnostic(out, res)
         return out
 
     # The Zephyr/spike/verilator routes build a Zephyr image (and are the only ones that can be
