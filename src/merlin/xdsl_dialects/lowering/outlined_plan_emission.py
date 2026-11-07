@@ -340,10 +340,21 @@ class OutlinedGlobalPlanEmitter:
         live = set(program.results)
         live.update(name for node in nodes for name in (*node.inputs, *node.outputs))
         live.update(name for name, spec in program.buffers.items() if spec.kind == "arg")
+        dispatch_outputs = {name for node in nodes if node.kind == "dispatch" for name in node.outputs}
         dispatch = DispatchProgram(
             program.entry,
             list(program.args),
-            {name: replace(spec, shape=list(spec.shape)) for name, spec in program.buffers.items() if name in live},
+            {
+                name: replace(
+                    spec,
+                    shape=list(spec.shape),
+                    # A fused function call produces an intermediate even when
+                    # one of its source operations produced a literal constant.
+                    kind="intermediate" if name in dispatch_outputs else spec.kind,
+                )
+                for name, spec in program.buffers.items()
+                if name in live
+            },
             nodes,
             list(program.results),
         )

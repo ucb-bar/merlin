@@ -57,6 +57,12 @@ def test_real_full_graph_fusion_preserves_computation_without_simulation(capture
     assert emission.dispatch.n_dispatches < graph.n_dispatches
     assert emission.dispatch.args == graph.args
     assert emission.dispatch.results == graph.results
+    assert all(
+        emission.dispatch.buffers[name].kind == "intermediate"
+        for node in emission.dispatch.nodes
+        if node.kind == "dispatch"
+        for name in node.outputs
+    )
     assert not plan.cycles.resolved
     assert emitter.proof["timing"] == "UNKNOWN"
     assert emitter.proof["physical_movement"] == "UNKNOWN"
