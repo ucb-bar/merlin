@@ -7,6 +7,8 @@ contraction the whole model contains, at the same shape and with the same pretra
 
     CAUSAL_LM_MODEL=<hf repo id>   the checkpoint, read from the local HF cache (set HF_HUB_OFFLINE=1 to
                                    forbid a download; gated checkpoints need their own access first)
+    CAUSAL_LM_REVISION=<40-hex commit>  optional exact checkpoint commit; under offline mode the
+                                   selected snapshot must already be cached and match after loading
     CAUSAL_LM_LAYERS=N             keep the first N decoder layers (unset: all of them)
     CAUSAL_LM_ENTRY=ids|embeds     where the exported forward starts. ``ids`` (default): token ids ->
                                    logits. ``embeds``: the hidden state the embedding lookup produces;
@@ -26,9 +28,38 @@ Gemma, Qwen, Mistral, ...). It names no model: the checkpoint is an argument. Ca
 from __future__ import annotations
 
 import os
+import re
 
 import torch
 from torch import nn
+
+_COMMIT_REVISION = re.compile(r"[0-9a-f]{40}\Z")
+
+
+def _load_pretrained(auto_model, model_id: str, attention: str):
+    """Resolve an optional exact HF commit without changing unpinned captures."""
+    kwargs = {"dtype": torch.float32, "use_cache": False, "attn_implementation": attention}
+    revision = os.environ.get("CAUSAL_LM_REVISION")
+    if revision is None:
+        return auto_model.from_pretrained(model_id, **kwargs)
+    if not _COMMIT_REVISION.fullmatch(revision):
+        raise RuntimeError("CAUSAL_LM_REVISION must be a 40-character lowercase commit SHA")
+    offline = any(
+        os.environ.get(name, "").lower() in {"1", "true", "yes", "on"}
+        for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
+    )
+    if offline:
+        from huggingface_hub import snapshot_download
+
+        # Resolve the exact cached commit before model construction. Missing/offline revisions
+        # fail here, instead of falling back to whichever commit refs/main currently names.
+        snapshot_download(repo_id=model_id, revision=revision, local_files_only=True)
+        kwargs["local_files_only"] = True
+    model = auto_model.from_pretrained(model_id, revision=revision, **kwargs)
+    observed = getattr(model.config, "_commit_hash", None)
+    if observed != revision:
+        raise RuntimeError(f"loaded checkpoint revision {observed!r} differs from CAUSAL_LM_REVISION {revision}")
+    return model
 
 
 class _Logits(nn.Module):
@@ -75,12 +106,7 @@ def get_model_and_inputs():
     seq = int(os.environ.get("M2M_SEQ", "8"))
     if batch < 1:
         raise RuntimeError(f"M2M_BATCH must be positive, not {batch}")
-    lm = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        dtype=torch.float32,
-        use_cache=False,
-        attn_implementation=os.environ.get("CAUSAL_LM_ATTENTION", "eager"),
-    ).eval()
+    lm = _load_pretrained(AutoModelForCausalLM, model_id, os.environ.get("CAUSAL_LM_ATTENTION", "eager")).eval()
     # Untie the head from the embedding AFTER loading (loading untied makes a tied checkpoint's head
     # MISSING and randomly initialized), so quantizing the head leaves the lookup alone.
     head = lm.get_output_embeddings()
