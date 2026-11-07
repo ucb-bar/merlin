@@ -26,6 +26,8 @@ def test_vector_backend_requires_one_compatible_owner(monkeypatch):
             "prepare_build_bundle",
             "spike_cflags",
             "spike_harness_cflags",
+            "accum_microkernel_marker",
+            "accum_microkernel_runner_source",
         )
     }
     good = SimpleNamespace(API_VERSION=1, **methods)
@@ -50,6 +52,17 @@ def test_scalar_lowering_never_resolves_vector_provider(monkeypatch, tmp_path):
     source = "module { func.func @main() { return } }"
     lowered = pipeline.lower_to_llvm_ir(source, workdir=tmp_path, vectorize=False)
     assert "define" in lowered
+
+
+def test_scalar_runtime_flags_never_resolve_vector_provider(monkeypatch):
+    from merlin.runtime.backends import spike_model, zephyr_model
+
+    def forbidden(_target):
+        raise AssertionError("scalar runtime resolved RVV codegen")
+
+    monkeypatch.setattr(backend_spi, "load_vector_codegen", forbidden)
+    assert zephyr_model._cflags("scalar")[0] == "-march=rv64gc"
+    assert "-march=rv64gc" in spike_model._harness_cflags(["-march=rv64gc"], backend="scalar")
 
 
 def test_chain_loads_base_code_from_base_root(monkeypatch, tmp_path):

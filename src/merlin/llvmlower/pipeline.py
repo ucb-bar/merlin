@@ -438,36 +438,6 @@ def _reorder_generalize_before_fuse(passes: list[str]) -> list[str]:
     return [*out[:fuse], _GENERALIZE_NAMED, *out[fuse:]]
 
 
-def _par_residue_parallel(features=frozenset()) -> bool:
-    """Whether residual linalg operations use dependence-aware parallel-loop lowering.
-
-    The named ``parallelize_residual_loops_<grain>`` family is the reproducible path: it also
-    implies the matching grain-control feature, which prevents the old unbounded fork explosion.
-    ``MERLIN_PAR_RESIDUE_PARALLEL=1`` remains only as an A/B compatibility escape hatch.
-
-    The environment switch is kept for the same reason :func:`_dealloc_passes` keeps
-    ``MERLIN_NO_DEALLOC``: this changes the emitted code for every derived-split multicore build,
-    and the honest way to defend a claim about it is to be able to rebuild both arms.
-    """
-    import os
-
-    from .residual_parallel import threshold_of
-
-    return threshold_of(features) is not None or bool(os.environ.get("MERLIN_PAR_RESIDUE_PARALLEL"))
-
-
-def _fuse_post() -> bool:
-    """Whether to run the post-contraction fusion stage.
-
-    Still opt-in (``MERLIN_FUSE_POST``) so the shipping baseline stays byte-identical until the fused
-    build is graded bit-exact on hardware -- but a named predicate rather than an inline environ poke,
-    so a test can drive it and a build can record it.
-    """
-    import os
-
-    return bool(os.environ.get("MERLIN_FUSE_POST"))
-
-
 # Compatibility names for callers migrating to the provider-owned schedule API.
 PARALLEL_ENTRY = "__transform_parallel_main"
 VEC_PRE_ENTRY = "__transform_vec_main"
@@ -1033,16 +1003,7 @@ print("OK act_poly rewrote", _n)
 )
 
 
-def _accum_microkernel_v3_features() -> frozenset[str]:
-    """Names of the accumulator-resident micro-kernel v3 features (the ones whose pipeline splices the
-    SCALARIZE_MARKER and need the two-stage A-scalarization runner). Imported lazily so importing
-    pipeline never pulls accum_microkernel / impr_features at module load."""
-    from .impr_features import ACCUM_RESIDENT_V3_NAMES
-
-    return frozenset(ACCUM_RESIDENT_V3_NAMES)
-
-
-def _needs_scalarize_runner(pipeline: str, feats: "frozenset[str]") -> bool:
+def _needs_scalarize_runner(pipeline: str, feats: "frozenset[str]", *, vector_backend=None) -> bool:
     """Does this lowering need the two-stage A-scalarization runner?
 
     GROUND TRUTH is the marker's presence in the built pass pipeline — NOT membership in the static
@@ -1051,11 +1012,11 @@ def _needs_scalarize_runner(pipeline: str, feats: "frozenset[str]") -> bool:
     the plain runner was used, and SCALARIZE_MARKER leaked into the pipeline as if it were a pass
     ("'__merlin_scalarize_a__' does not refer to a registered pass") — every non-grid MR failed at K2.
     Keying on the marker makes this correct for any registration mechanism."""
+    if vector_backend is not None:
+        return vector_backend.accum_microkernel_marker() in pipeline
     from .accum_microkernel import SCALARIZE_MARKER
 
-    if SCALARIZE_MARKER in pipeline:
-        return True
-    return any(f in feats for f in _accum_microkernel_v3_features())
+    return SCALARIZE_MARKER in pipeline
 
 
 def _activation_poly_runner(emit: str = EMIT_TRANSLATE, *, fused: bool = False) -> str:
@@ -1074,6 +1035,7 @@ def _select_runner(
     inspection_dir: str | None = None,
     keep_exact: bool = False,
     printing: tuple[bool, bool] = (True, True),
+    vector_backend=None,
 ) -> str:
     """Pick the lowering-runner source for these features and bind how it emits its result.
 
@@ -1088,11 +1050,16 @@ def _select_runner(
 
     if {"approximate_transcendental_activation", "vectorized_transcendental_activation"} & feats:
         source = _activation_poly_runner(emit, fused="fuse_activation_polynomial_fma" in feats)
-    elif _needs_scalarize_runner(pipeline, feats):
-        from .accum_microkernel import run_source
+    elif _needs_scalarize_runner(pipeline, feats, vector_backend=vector_backend):
         from .bmm_tail_pad import FEATURE as _BMM_TAIL_PAD_FEATURE
 
-        source = run_source(tag_bmm_tails=_BMM_TAIL_PAD_FEATURE in feats).replace("__MERLIN_EMIT__", emit)
+        if vector_backend is None:
+            from .accum_microkernel import run_source
+
+            source = run_source(tag_bmm_tails=_BMM_TAIL_PAD_FEATURE in feats)
+        else:
+            source = vector_backend.accum_microkernel_runner_source(tag_bmm_tails=_BMM_TAIL_PAD_FEATURE in feats)
+        source = source.replace("__MERLIN_EMIT__", emit)
     else:
         source = _RUNNER_SRC.replace("__MERLIN_EMIT__", emit)
     source = _bind_source_observation_runner(source, selected=_SOURCE_OBSERVATION_FEATURE in feats)
@@ -1298,7 +1265,7 @@ def lower_to_llvm_ir(
         # RV64 image needs an explicit llvm.fma to select fmadd.s.
         selected = frozenset(selected or ()) | {"lower_fma_to_intrinsic"}
     vector_backend = None
-    if vectorize and pipeline is None:
+    if vectorize:
         from .backend_spi import load_vector_codegen
 
         vector_backend = load_vector_codegen(codegen_target)
@@ -1455,6 +1422,7 @@ def lower_to_llvm_ir(
         inspection_dir=inspection_dir or (str(native[0]) if native is not None else None),
         keep_exact=audit is not None and audit.mode == "both",
         printing=(native[1], native[2]) if native is not None else (True, True),
+        vector_backend=vector_backend,
     )
     if scalar_stage is not None:
         from .source_stage_transport import bind_runner as _bind_scalar_runner

@@ -972,11 +972,12 @@ def prepare_for_lowering(
         from ...kernels.matrix_kernels import for_routing
 
         chosen_kernel = for_routing(matrix)
-        if (
-            chosen_kernel.generated
-            and matrix.support_target == "kodiak"  # target-ok: generated Kodiak OPU overwrites every output
-            and matrix.unit == "saturn_opu"  # target-ok: no additive destination semantics in this kernel
-        ):
+        output_semantics = getattr(matrix.provider(), "generated_output_semantics", "accumulate")
+        if output_semantics not in {"accumulate", "overwrite"}:
+            raise ValueError(
+                f"{matrix.support_target}/{matrix.unit}: invalid generated output semantics {output_semantics!r}"
+            )
+        if chosen_kernel.generated and output_semantics == "overwrite":
             from ...llvmlower.int8_contractions import OverwriteOutputSelector
 
             selector = OverwriteOutputSelector(selector)
