@@ -28,6 +28,8 @@ def test_vector_backend_requires_one_compatible_owner(monkeypatch):
             "spike_harness_cflags",
             "accum_microkernel_marker",
             "accum_microkernel_runner_source",
+            "accum_microkernel_rewrite_source",
+            "vec_noncontraction_shape",
         )
     }
     good = SimpleNamespace(API_VERSION=1, **methods)
@@ -67,12 +69,15 @@ def test_scalar_runtime_flags_never_resolve_vector_provider(monkeypatch):
 
 def test_chain_loads_base_code_from_base_root(monkeypatch, tmp_path):
     from merlin.targetgen import plugins, provider_compose
+    from merlin.targetgen.support_pins import load_pins
 
     base = tmp_path / "base"
     chip = tmp_path / "chip"
     for root in (base, chip):
         (root / "contracts").mkdir(parents=True)
-    base_commit = "a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5"
+    pins = load_pins()
+    assert pins.base is not None
+    base_commit = pins.base.commit
     (tmp_path / "SOURCE.yaml").write_text(f"path: base\nsource:\n  commit: {base_commit}\n")
     (base / "provider.yaml").write_text(
         "schema: merlin.provider.v1\nid: rvv-support\ntarget: rvv\nrole: support\n"
