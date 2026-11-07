@@ -107,8 +107,12 @@ The cache key covers Merlin lowering source, active pass settings, compiler and
 Python package bytes; each loaded object has a verified construction manifest.
 The earlier SpectFormer and TinyLlama caches predate this identity and cannot
 serve as current host evidence. A cache-only miss is a failed preflight, not a
-model output. Fresh source-bound host populations and strict cache-only replays
-have now run; their numerical failures are recorded below.
+model output. Source-bound host populations and strict cache-only replays ran
+at the compiler identities recorded below. Their numerical failures remain
+evidence for those identities. Merlin `e056201dc` changes the compiler source
+and cache identity; a current-source population and strict replay are pending.
+A read-only SpectFormer preflight binds the exact capture and package to the
+new host identity `351c4e4f4b01c1c8…`, with no refreshed output verdict yet.
 An [empty-cache probe](../../experiments/reference-data/spectformer_torchao_host_cache_preflight_2026-11-06.md)
 against the exact SpectFormer source returned a structured
 `HostCacheMiss` for all 1,361 kernels, zero loaded objects, and no compilation.
@@ -151,7 +155,7 @@ maximum absolute error `0.054239`, same argmax. The CLI's `w8a8_rel=0.011196` di
 maximum absolute error by reference maximum; it is not relative L2. The patch-convolution
 reduction order is another identified source of float drift. The opt-in pinned Torch CPU
 patch-convolution rewrite matches oneDNN bitwise on trained and holdout inputs, and its
-pre-outline integration passed focused tests. The full-model run with **both** rewrites
+pre-outline integration passed focused tests. The earlier full-model run with **both** rewrites
 compiled 1,411 sealed objects, completed an exact normalization/outlining audit, and
 replayed all 1,000 logits from cache with zero misses. It still fails the TorchAO
 golden: direct relative L2 `0.00612534`, maximum absolute error `0.0578337`,
@@ -171,7 +175,7 @@ first fc2 quantized bytes still match. Later spectral blocks add local float
 drift. No source-faithful FFT rewrite has been validated; the full-model
 failure remains open.
 
-The exact full 22-layer TinyLlama source host population compiled 4,413 kernels (4,157
+The earlier exact full 22-layer TinyLlama source host population compiled 4,413 kernels (4,157
 unique sealed objects). Strict cache-only replay compared all 256,000 logits with zero
 misses, then failed the independent TorchAO golden (`status=run_mismatch`, maximum
 absolute error `1.52113`, cosine `0.998830`). Token 0 is bitwise exact; seven of eight
@@ -198,6 +202,12 @@ identical inputs, the host score matmul, softmax, and context matmul each have
 additional small float differences; a PyTorch 2.16 AVX2 reconstruction from
 the captured q/k/v reproduces the source context bitwise. These measurements
 cover one B1 × S8 capture, with no independent holdout for a compiler change.
+An opt-in host route now calls the attested Torch 2.16 AVX2 VML `sin` and
+`cos` implementation for the matched rotary layout. Its library bytes and
+source commit are checked, and the host cache identity records the switch.
+VML-assisted results are explicitly diagnostic and cannot pass the target
+source gate. Score matmul and softmax float fidelity, then complete TinyLlama
+parity, remain open.
 The [trained and holdout activation-code probe](../../experiments/reference-data/spectformer_torchao_activation_code_probe_2026-11-06.md)
 checks Spectformer block-0 fc1 at the exact boundary: with identical norm2
 input, Merlin and TorchAO have bitwise-equal reciprocal scales, signed i8
@@ -249,8 +259,12 @@ logical tiles** before any runtime effects. The OPU and compact VME cost models
 project all 155 roots as candidates, but no emitted route or physical-cell duty is
 measured for this source image.
 
-A fresh-host check verified the Spectformer capture files and reached compilation, but that host
-lacked the Zephyr/Spike toolchain, so full lowering from a transferred capture remains unverified.
+A transferred fresh-host check verified the Spectformer capture files and reached
+compilation, but that host lacked the Zephyr/Spike toolchain. On this shared
+host, exact-source OPU compilation passes weight prepack, identifies 41 routed
+contractions, and reaches lowering. Its bounded run has no ELF, Spike pass,
+or FireSim result yet; the strict host cache must first be refreshed for the
+current compiler identity.
 On the current shared host, the installed workload is `merlin-kodiak` and the queue client needs
 the working-directory launchers. Before `--submit`, set:
 
@@ -437,7 +451,7 @@ Spectformer and 64-token TinyLlama Spike images executed 105 and 143 OPU shim ca
 with zero scalar fallbacks. The baseline 128-token pair gives **2.5061×** control-over-device
 speedup and **0.115576% (conditional one-hit estimate)** whole-inference effective peak for its OPU image; the bitstream still
 has no array-active counter.
-For a future exact-image dynamic rate, add `--profile` to
+For another exact-image dynamic rate, add `--profile` to
 `python examples/lib/firesim_flow.py legs ...`. That opt-in route instruments
 the shipped OPU ELF and its scalar gate twin, requires the complete Spike
 profile, then checks each routed call's hit count and cycle window in the
@@ -610,8 +624,12 @@ bitstream or FPGA counter measurement exists yet. A managed exact-pin counter so
 Firechip compile, target FIRRTL elaboration, Golden Gate, and a Verilator metasim build with
 JDK 17 and Espresso. Its bracketed 64³ GEMM metasim run also passed: full expected hash,
 `DONE`, exit zero, 791,141 target compute cycles, active-row delta 2,048, gate-low delta zero,
-and flat samples before and after the burst. This gives **0.0323583% whole-compute row issue
-duty** and **100% useful issued-slot efficiency** for that one fully filled GEMM. The SHA-bound
+and flat samples before and after the burst. For this metasim image,
+**262,144 issued cell slots / (1,024 peak cell slots per cycle × 791,141
+whole-inference target cycles) = 0.0323583% whole-inference row-issue duty**.
+The full-tile valid-MAC count infers 100% useful issued-slot efficiency for
+this GEMM; there is no independent lane-valid counter. This is neither
+OPU-call-window duty nor FPGA physical occupancy. The SHA-bound
 receipt is in Chipyard managed task
 `opu-counter-goldengate-pin/.tmp/metasim_matrix_hashonly/utilization_receipt.json`.
 U250 synthesis and actual model/FPGA counter measurements remain pending.
