@@ -2341,6 +2341,8 @@ def build_app(
     _completion_metric_line(completion_metric_prefix)
     if profile_dump_opu_only and (not debug or matrix is None):
         raise ZephyrModelError("OPU-only profile dump requires a debug matrix image")
+    if matrix is not None:
+        matrix.provider()  # Validate the selected extension before board or build side effects.
     if board is None:
         raise ZephyrModelError("a board from MERLIN_BOARD_CATALOG must be explicitly selected")
     from ..boards import board as _board_desc
@@ -2351,7 +2353,6 @@ def build_app(
     if matrix is not None:
         brd.check_matrix_route(matrix.support_target, matrix.unit, matrix.config)
         brd.check_matrix_image(n_harts)
-        matrix.provider()  # Refuse unselected/incomplete support before build output or native tools.
     else:
         load_matrix_signatures(Path(work), None)
     if not build_available():
