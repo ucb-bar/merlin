@@ -45,6 +45,36 @@ class ExtensionV1(Protocol):
     def lower(self, prepared: Any, work: Any, *, select: Callable[[Any], bool]) -> Any: ...
 
 
+def load_extensions(target: str, context: Any) -> tuple[ExtensionV1, ...]:
+    """Load versioned extension factories from the target's pinned provider chain.
+
+    The declaration's own repository root resolves its module path. A factory
+    binds the selected board/unit context without copying a base plugin into a
+    child contract. A target without extensions returns an empty tuple.
+    """
+    from merlin.targetgen.plugins import load_declared_chain
+
+    loaded: list[ExtensionV1] = []
+    owners: set[str] = set()
+    for owner, factory in load_declared_chain(target, "extension"):
+        if owner in owners:
+            raise OfferError(f"{target}: duplicate extension owner {owner}")
+        owners.add(owner)
+        version = getattr(factory, "API_VERSION", None)
+        if version != API_VERSION:
+            raise OfferError(f"{target}: {owner} extension API version {version!r}; need {API_VERSION}")
+        bind = getattr(factory, "bind", None)
+        if not callable(bind):
+            raise OfferError(f"{target}: {owner} extension has no bind(context) factory")
+        extension = bind(context)
+        if getattr(extension, "API_VERSION", None) != API_VERSION or not all(
+            callable(getattr(extension, name, None)) for name in ("offers", "lower")
+        ):
+            raise OfferError(f"{target}: {owner} bound extension lacks API v{API_VERSION} offers/lower")
+        loaded.append(extension)
+    return tuple(loaded)
+
+
 def select_extension(
     extensions: tuple[ExtensionV1, ...],
     operation: Any,

@@ -9,6 +9,7 @@ from merlin.targetgen.extension_offers import (
     MatrixExtension,
     OfferError,
     OperationOffer,
+    load_extensions,
     select_extension,
     select_offer,
 )
@@ -130,3 +131,36 @@ def test_extension_api_version_is_checked_before_offers():
 
     with pytest.raises(OfferError, match="API version"):
         select_extension((Incompatible(),), "op", fallback_cycles=10)
+
+
+def test_declared_extension_chain_binds_from_each_owner(monkeypatch):
+    from merlin.targetgen import plugins
+
+    context = object()
+    bound = []
+
+    def factory(owner):
+        def bind(got):
+            assert got is context
+            bound.append(owner)
+            return SimpleNamespace(API_VERSION=1, offers=lambda *_args, **_kw: (), lower=lambda *_args, **_kw: ())
+
+        return SimpleNamespace(API_VERSION=1, bind=bind)
+
+    def chain(target, key):
+        return (("rvv", factory("rvv")), ("chip", factory("chip"))) if (target, key) == ("chip", "extension") else ()
+
+    monkeypatch.setattr(plugins, "load_declared_chain", chain)
+    assert len(load_extensions("chip", context)) == 2
+    assert bound == ["rvv", "chip"]
+
+
+def test_declared_extension_requires_version_and_factory(monkeypatch):
+    from merlin.targetgen import plugins
+
+    monkeypatch.setattr(plugins, "load_declared_chain", lambda *_: (("chip", SimpleNamespace(API_VERSION=2)),))
+    with pytest.raises(OfferError, match="API version"):
+        load_extensions("chip", object())
+    monkeypatch.setattr(plugins, "load_declared_chain", lambda *_: (("chip", SimpleNamespace(API_VERSION=1)),))
+    with pytest.raises(OfferError, match="bind"):
+        load_extensions("chip", object())
