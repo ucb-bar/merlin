@@ -160,6 +160,17 @@ bitwise correctness of the isolated convolution does not imply a monotonic
 whole-model error. The [SHA-bound terminal receipt](evidence/spectformer_torchao_lnconv_host_terminal.json)
 records the source, cache, audit, output, and comparison hashes.
 
+The [trained and holdout residual probe](evidence/spectformer_torchao_combined_residual_boundary.json)
+shows the convolution, positional add, and first LayerNorm match pinned Torch
+bitwise. The first remaining difference is FFT0: relative L2 about `1.3e-7`
+in the complex spectrum on each image. The filter drift crosses the first
+activation quantizer at 16 of 50,176 trained bytes and 20 of 50,176 holdout
+bytes. On identical inputs, the quantizer, int8 GEMM, and fc1 output match
+Torch bitwise. GELU has another small same-input float difference, while the
+first fc2 quantized bytes still match. Later spectral blocks add local float
+drift. No source-faithful FFT rewrite has been validated; the full-model
+failure remains open.
+
 The exact full 22-layer TinyLlama source host population compiled 4,413 kernels (4,157
 unique sealed objects). Strict cache-only replay compared all 256,000 logits with zero
 misses, then failed the independent TorchAO golden (`status=run_mismatch`, maximum
