@@ -106,6 +106,8 @@ python -m pytest             # with Merlin installed; pyproject.toml selects tes
 ruff check .                 # pyproject.toml configures local linting
 ```
 
-`provider.yaml` and the target contract remain the runtime metadata for Merlin.
+`provider.yaml` and the target contract remain the runtime metadata for Merlin. Merlin does not
+consume a `backend.toml`; the schedule and flags are selected by the versioned `src/rvv/backend.py`
+API rather than a second configuration file.
 `provenance.json` records the content hash of the contract. Nothing here claims hardware execution or
 candidate certification.

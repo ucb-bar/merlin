@@ -12,17 +12,17 @@ vendored: '2026-11-07'
 source:
   repository: https://github.com/ucb-bar/rvv-mlir.git
   published: true
-  commit: 6b1d207eab9907664ddfdf19cab702045447a363
-  commit_date: '2026-11-07T00:02:24-08:00'
+  commit: f33a253431c64f8fed8aaad4bc673cfde82101c4
+  commit_date: '2026-11-07T00:14:53-08:00'
   provider_root: .
-  tree: 3126a8c5c5d08d48ca73ee74035b41d8f73f9a1c
-vendored_tree: 3126a8c5c5d08d48ca73ee74035b41d8f73f9a1c
+  tree: f2f7a7f33dce21c171a279fdd425835640009ab9
+vendored_tree: f2f7a7f33dce21c171a279fdd425835640009ab9
 normalized: []
 pinned:
   manifest: build_tools/upstreams/target_support.json
-  companion_commit: 6b1d207eab9907664ddfdf19cab702045447a363
+  companion_commit: f33a253431c64f8fed8aaad4bc673cfde82101c4
   relation: same_commit
-  provider_tree: 3126a8c5c5d08d48ca73ee74035b41d8f73f9a1c
+  provider_tree: f2f7a7f33dce21c171a279fdd425835640009ab9
   identical_to_source: true
 records:
   file_provenance: support/provenance.json

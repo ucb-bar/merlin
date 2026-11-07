@@ -16,6 +16,8 @@ from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
 
+from merlin.compiler.lower.llvm.passes import finalization_passes
+
 API_VERSION = 1
 DEFAULT_SCHEDULE = "impr_tuned_wholemodel_vf_int8"
 RVV_FLAGS = ("-march=rv64gcv", "-fno-vectorize", "-fno-slp-vectorize")
@@ -823,20 +825,7 @@ def build_pipeline(
         "convert-scf-to-cf",
         "expand-strided-metadata",
         "lower-affine",
-        "convert-vector-to-llvm",
-        "convert-ub-to-llvm",
-        *(["convert-openmp-to-llvm"] if par else []),
-        "convert-math-to-libm",
-        "convert-math-to-llvm",
-        "convert-index-to-llvm",
-        "convert-arith-to-llvm",
-        "finalize-memref-to-llvm",
-        "convert-func-to-llvm",
-        "convert-cf-to-llvm",
-        "reconcile-unrealized-casts",
-        "canonicalize",
-        "cse",
-        "symbol-dce",
+        *finalization_passes(vector=True, openmp=par),
     ]
     if features:  # default-off impr-fork hooks; empty -> byte-identical
         registry = _FEATURES if _registry is None else _registry
