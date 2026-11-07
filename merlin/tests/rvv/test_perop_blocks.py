@@ -86,7 +86,7 @@ def test_the_whole_model_backend_offers_the_measured_mr_cap():
     assert zm.perop_mr_cap() == 4
     prep = inspect.getsource(zm.prepare_for_lowering)
     assert "mr_cap=mr_cap" in prep, "block_table must be called with the MR cap"
-    assert "else perop_mr_cap()" in prep, "the env default must remain the unnamed fallback"
+    assert "perop_mr_cap() if _has_block_request" in prep, "the env default must remain the unnamed fallback"
 
 
 def test_the_tag_names_the_op_class():
@@ -328,7 +328,7 @@ def test_the_vector_length_reaches_the_block_table():
     from merlin.runtime.backends import zephyr_model as zm
 
     prep = inspect.getsource(zm.prepare_for_lowering)
-    assert "nr_cap = _nr_named[0] if _nr_named else perop_nr_cap(vlen)" in prep
+    assert "nr_cap = _nr_named[0] if _nr_named else" in prep
     assert "nr_cap=nr_cap" in prep, "the resolved cap must reach the block table"
     assert "vlen: int | None" in prep, "prepare_for_lowering must accept it"
     build = inspect.getsource(zm.build_app)
@@ -489,7 +489,7 @@ def test_the_named_mr_cap_reaches_the_block_table_and_beats_the_env():
     prep = inspect.getsource(zm.prepare_for_lowering)
     assert "mr_cap=mr_cap" in prep, "block_table must receive the resolved cap, not perop_mr_cap()"
     # resolved from the sentinel when named, from the env only as a fallback
-    assert "mr_cap = _mr_named[0] if _mr_named else perop_mr_cap()" in prep
+    assert "mr_cap = _mr_named[0] if _mr_named else" in prep
     # and the sentinel is swapped for the plain request so it can never reach lowering
     assert "| {PEROP_BLOCK_NAME}" in prep
 
@@ -527,7 +527,7 @@ def test_the_named_nr_cap_reaches_both_block_tables():
     assert F.parse_perop_nr_sentinel("perop_register_block_14b_128_deadbeef") is None
     assert name in F.known()
     prep = inspect.getsource(zm.prepare_for_lowering)
-    assert "nr_cap = _nr_named[0] if _nr_named else perop_nr_cap(vlen)" in prep
+    assert "nr_cap = _nr_named[0] if _nr_named else" in prep
     assert prep.count("nr_cap=nr_cap") >= 2
     assert "parse_perop_nr_sentinel(f) is None" in prep
 

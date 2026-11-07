@@ -237,9 +237,9 @@ def perop_nr_cap(vlen: int | None) -> int:
     that chip: a wider tile also raises register pressure, and past some width it spills. So this
     changes what a wide-VLEN board is offered, and the cycle claim belongs to whoever runs it.
     """
-    if not vlen or vlen <= _PEROP_NR_CAP_REF_VLEN:
-        return _PEROP_NR_CAP
-    return _PEROP_NR_CAP * (int(vlen) // _PEROP_NR_CAP_REF_VLEN)
+    from ...llvmlower.backend_spi import load_vector_codegen
+
+    return load_vector_codegen("rvv").default_perop_caps(vlen)[1]
 
 
 #: M-tile cap for a per-op register block. NOT the same kind of number as the NR cap above: NR is a
@@ -289,15 +289,9 @@ def perop_mr_cap() -> int:
     Overridable via ``MERLIN_PEROP_MR_CAP``. A non-positive or unparseable value is IGNORED rather
     than allowed to disable blocking silently -- an env typo must not change what the compiler emits.
     """
-    raw = os.environ.get(_PEROP_MR_CAP_ENV)
-    if raw:
-        try:
-            v = int(raw)
-        except ValueError:
-            v = 0
-        if v > 0:
-            return v
-    return _PEROP_MR_CAP
+    from ...llvmlower.backend_spi import load_vector_codegen
+
+    return load_vector_codegen("rvv").default_perop_caps(None)[0]
 
 
 _PEROP_KC = 16
@@ -800,11 +794,8 @@ def prepare_for_lowering(
         from ...llvmlower import perop_blocks as _pb
         from ...llvmlower import weight_panel as _wpan
         from ...llvmlower.impr_features import normalize as _normalize
-        from ...llvmlower.impr_features import vec_noncontraction_lanes as _vec_lanes
-        from ...llvmlower.impr_features import vec_noncontraction_max_rank as _vec_max_rank
-
         _closed = _normalize(features)
-        _lanes, _max_rank = _vec_lanes(_closed), _vec_max_rank(_closed)
+        _lanes, _max_rank = None, None
     else:
         raise ZephyrModelError(f"unknown preparation backend {backend!r}")
     from ...llvmlower.shared_feature_registry import NAMED_INT8_CONTRACTION_NAME, QUANTIZE_BEFORE_GATHER_NAME
@@ -1036,10 +1027,9 @@ def prepare_for_lowering(
         lmul_group_feature = vector_backend.lmul_group_feature
         _lmul_policy = vector_backend.lmul_group_api()
     else:
-        from ...llvmlower import lmul_group as _lmul_policy
-        from ...llvmlower.impr_features import LMUL_GROUP_SENTINEL, lmul_group_feature
+        LMUL_GROUP_SENTINEL = None
 
-    if LMUL_GROUP_SENTINEL in features:
+    if backend == "rvv" and LMUL_GROUP_SENTINEL in features:
         from ...kernels.shapes import contraction_shapes as _cshapes0
 
         features = features - {LMUL_GROUP_SENTINEL}
@@ -1063,6 +1053,17 @@ def prepare_for_lowering(
                 f"no contraction is tagged and no pair can be formed; the lever would build the "
                 f"baseline and report as applied"
             )
+        if "reuse_tensor_destination" in features:
+            from ...llvmlower.insert_slice_destination import rewrite_prepared_file as _reuse_destination
+
+            prepared = _reuse_destination(
+                prepared,
+                Path(work) / "insert_slice_destination",
+                initialize_border_only="initialize_tensor_border_only" in features,
+            )
+        _judge_levers_on(prepared)
+        return _finish_preparation(prepared)
+    if backend == "scalar":
         if "reuse_tensor_destination" in features:
             from ...llvmlower.insert_slice_destination import rewrite_prepared_file as _reuse_destination
 
@@ -1173,14 +1174,14 @@ def prepare_for_lowering(
             f"{PEROP_MR_SENTINEL_PREFIX}<N> pins the cap block_table derives under, so two of them "
             f"describe two different builds; name exactly one."
         )
-    mr_cap = _mr_named[0] if _mr_named else perop_mr_cap()
+    mr_cap = _mr_named[0] if _mr_named else (perop_mr_cap() if _has_block_request else _PEROP_MR_CAP)
     if len(_nr_named) > 1:
         raise ValueError(
             f"conflicting per-op NR caps requested in one feature set: {_nr_named}. Each "
             f"{PEROP_NR_SENTINEL_PREFIX}<N> pins the cap block_table derives under, so two of them "
             f"describe two different builds; name exactly one."
         )
-    nr_cap = _nr_named[0] if _nr_named else perop_nr_cap(vlen)
+    nr_cap = _nr_named[0] if _nr_named else (perop_nr_cap(vlen) if _has_block_request else _PEROP_NR_CAP)
     # The M-fill request, the exact counterpart of the N-fill one above: passing a vlen here is the
     # only thing that turns it on, so the default path derives the table under the single ambient cap
     # and is byte-identical. A NAMED `_mr<N>` sentinel is a PIN and wins over the derivation -- a fork
@@ -1352,7 +1353,8 @@ def prepare_for_lowering(
                 pairs_out=_pairs if _fuse_rq else None,
             )
             _write_parallel_arms(work, harts, table, par_table)
-            features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC, _pairs, _rf_vec)}
+            kc = vector_backend.default_perop_caps(vlen)[2] if backend == "rvv" else _PEROP_KC
+            features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, kc, _pairs, _rf_vec)}
         else:
             features = features - {PEROP_BLOCK_NAME}
     if "reuse_tensor_destination" in features:

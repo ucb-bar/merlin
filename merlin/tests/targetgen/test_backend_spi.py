@@ -135,6 +135,20 @@ def test_scalar_lowering_never_resolves_vector_provider(monkeypatch, tmp_path):
     assert "define" in lowered
 
 
+def test_scalar_preparation_never_resolves_vector_provider(monkeypatch, tmp_path):
+    from merlin.runtime.backends import zephyr_model
+
+    def forbidden(_target):
+        raise AssertionError("scalar preparation resolved RVV codegen")
+
+    monkeypatch.setattr(backend_spi, "load_vector_codegen", forbidden)
+    source = tmp_path / "model.mlir"
+    source.write_text("module { func.func @forward() { return } }")
+    prepared, features = zephyr_model.prepare_for_lowering(source, tmp_path, backend="scalar", blocking=True)
+    assert prepared.is_file()
+    assert not features
+
+
 def test_scalar_runtime_flags_never_resolve_vector_provider(monkeypatch):
     from merlin.runtime.backends import spike_model, zephyr_model
 
