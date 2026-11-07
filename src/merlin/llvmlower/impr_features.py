@@ -70,9 +70,7 @@ def _provider():
 
 
 def _provider_module(name: str):
-    backend = _provider()
-    root = backend.__class__.__module__.rsplit(".", 1)[0]
-    return importlib.import_module(f"{root}.{name}")
+    return _provider().legacy_module(name)
 
 
 def _try_lazy_register(name: str) -> bool:

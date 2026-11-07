@@ -15,9 +15,9 @@ def __getattr__(name: str):
     if name.startswith("__"):
         raise AttributeError(name)
     if name in {"reduction_arms", "splice_reduction_arms"}:
-        from .impr_features import _provider_module
+        from .backend_spi import load_vector_codegen
 
-        return getattr(_provider_module("other_vector_features"), name)
+        return getattr(load_vector_codegen("rvv").reduction_schedule_api(), name)
     return getattr(_implementation(), name)
 
 
