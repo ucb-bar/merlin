@@ -5,7 +5,8 @@ carrying the **VME/Xsfmm** matrix unit (harts 0–1), and one Rocket tile with a
 (VLEN 256, no matrix unit; hart 2). Its support is the **Iris chip package**,
 [`ucb-bar/iris-mlir`](https://github.com/ucb-bar/iris-mlir), a layer on the single RVV base (`ucb-bar/rvv-mlir`
 at Merlin's base pin): see [`docs/guides/chip_packages.md`](../../docs/guides/chip_packages.md). Merlin does
-not copy it: the RVV pin supplies a capability contract, while Merlin implements RVV lowering. Iris pins
+not copy it: the RVV pin supplies the capability contract and executable RVV lowering. Merlin supplies
+scalar lowering and shared LLVM finalization. Iris pins
 one chip-package commit (`build_tools/upstreams/target_support.json`, `pinned_support`), and
 `./run.sh setup` fetches exactly that commit into `out/build/generated/pinned/iris@<sha12>/`
 (`merlin-target-fetch iris --root` prints it; below, `<iris-mlir>`). Not fetched, every stage but `setup`
@@ -27,7 +28,7 @@ pinned rvv base at `base/rvv-mlir`).
 ```
 
 For a compiler-routed convolution that selects a handwritten VME kernel, run
-[`examples/conv2d_kernel_demo.py`](https://github.com/ucb-bar/iris-mlir/blob/5ca098187a3f3cdbc4c59977b23c9bdb163e8ada/examples/conv2d_kernel_demo.py)
+[`examples/conv2d_kernel_demo.py`](https://github.com/ucb-bar/iris-mlir/blob/46524a94372ac4d63bb78f3586170b0901db4f8e/examples/conv2d_kernel_demo.py)
 from the pinned Iris package. It checks routing, the selected kernel, and the shipped image on pinned
 Zvt Spike. The matching [portable evidence](../kodiak/evidence/compiler_selected_conv_kernel_examples.json)
 records artifact hashes and qualification limits.

@@ -12,8 +12,10 @@ The provider target is `saturn`; its backend registers as `saturn_vec`.
 The sibling `merlin-support/` provider instead describes `rvv`. Do not rename
 either identity or silently use this provider when only RVV was selected.
 
-Merlin supplies shared RVV emitters, the dialect factory, command-buffer
-semantics and Spike harness integration. This package owns the Saturn binding,
+This historical Saturn command-buffer route reuses Merlin's legacy RVV vector
+emitters, dialect factory, command-buffer semantics and Spike harness integration.
+The current MLIR compile route gets executable RVV lowering from the pinned
+`rvv-mlir` provider. This package owns the Saturn binding,
 dialect plan and target contract. Its reference geometry is not a newly
 extracted RTL fact. Native execution requires separately provisioned compilers,
 Spike and harness resources; importing support does not qualify those tools.
