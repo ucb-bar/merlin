@@ -23,7 +23,6 @@ from merlin.llvmlower.lmul_group import (
     group_elements,
     group_lmul,
     group_lmul_for_elem_types,
-    group_lmul_for_shapes,
     lmul_cflags,
 )
 
@@ -190,12 +189,12 @@ def test_the_sentinel_is_actually_consumed_by_the_preparation():
     from merlin.common.paths import repo_root
 
     src = (repo_root() / "merlin/python/merlin/runtime/backends/zephyr_model.py").read_text()
-    assert "if LMUL_GROUP_SENTINEL in features:" in src  # the sentinel IS consumed
+    assert 'if backend == "rvv" and LMUL_GROUP_SENTINEL in features:' in src
     assert "group_lmul_for_shapes(_cshapes0(prepared), vlen=vlen)" in src  # ...from the prepared IR
     assert "lmul_group_feature(" in src  # ...and swapped for a real feature
     # and the resolution sits ABOVE the `blocking` gate, since a `blocking=False` build would
     # otherwise carry the unresolved sentinel into `normalize`.
-    assert src.index("if LMUL_GROUP_SENTINEL in features:") < src.index("    if not blocking:")
+    assert src.index('if backend == "rvv" and LMUL_GROUP_SENTINEL in features:') < src.index("    if not blocking:")
 
 
 # ---- the only assertion that matters: the emitted vsetvli --------------------------------

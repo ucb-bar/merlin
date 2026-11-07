@@ -234,7 +234,6 @@ def ensure_vec_noncontraction(lanes: int, max_rank: int = 4) -> str:
 def ensure_lmul_group(*, operand_bits: int, acc_bits: int, vlen=None, max_group_elems=None) -> str:
     module = _provider_module("grid_features")
     result = module.ensure_lmul_group(
-        _provider().registry,
         operand_bits=operand_bits,
         acc_bits=acc_bits,
         vlen=vlen,
@@ -247,7 +246,7 @@ def ensure_lmul_group(*, operand_bits: int, acc_bits: int, vlen=None, max_group_
 def ensure_lmul_group_for_elem_types(a: str, b: str, c: str, *, vlen=None, max_group_elems=None) -> str:
     module = _provider_module("grid_features")
     result = module.ensure_lmul_group_for_elem_types(
-        _provider().registry, a, b, c, vlen=vlen, max_group_elems=max_group_elems
+        a, b, c, vlen=vlen, max_group_elems=max_group_elems
     )
     _try_lazy_register(result)
     return result
