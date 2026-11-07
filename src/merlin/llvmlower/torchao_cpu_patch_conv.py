@@ -12,6 +12,7 @@ import math as pymath
 
 TORCH_SOURCE_COMMIT = "7f24a19c0967db04f2d5ba44c1e56eca489932ec"
 MARKER = "merlin.torchao_cpu_patch_conv"
+MODULE_MARKER = "merlin.torchao_cpu_patch_conv_applied"
 
 
 def rewrite_torch216_avx2_patch_conv(module, *, source_commit: str, cpu_capability: str, on_rewrite=None) -> int:
@@ -34,6 +35,10 @@ def rewrite_torch216_avx2_patch_conv(module, *, source_commit: str, cpu_capabili
         raise ValueError("exact Torch 2.16 source commit and AVX2 dispatch required")
     if getattr(module.attributes.get("prov.quantization"), "data", None) != "int8_dyn_act_int8_weight":
         raise ValueError("captured TorchAO W8A8 source required")
+    if MODULE_MARKER in module.attributes:
+        if getattr(module.attributes[MODULE_MARKER], "data", None) != TORCH_SOURCE_COMMIT:
+            raise ValueError("conflicting patch convolution source policy marker")
+        return 0
 
     def attr(op, key):
         return getattr(op.attributes.get(key), "data", None)
@@ -59,6 +64,10 @@ def rewrite_torch216_avx2_patch_conv(module, *, source_commit: str, cpu_capabili
         and attr(op, "prov.fqn") == "patch_embed.proj"
         and attr(op, "prov.aten") == "aten.convolution.default"
     ]
+    if not candidates and not any(
+        getattr(op.attributes.get("prov.fqn"), "data", None) == "patch_embed.proj" for op in module.walk()
+    ):
+        return 0
     if len(candidates) != 1:
         raise ValueError("one uniquely identified patch_embed.proj convolution required")
     mm = candidates[0]
@@ -221,5 +230,6 @@ def rewrite_torch216_avx2_patch_conv(module, *, source_commit: str, cpu_capabili
     add.results[0].replace_all_uses_with(add.inputs[0])
     add.parent_block().detach_op(add)
     prune_dead_pure_tensor_ops(module)
+    module.attributes[MODULE_MARKER] = StringAttr(TORCH_SOURCE_COMMIT)
     module.verify()
     return 1

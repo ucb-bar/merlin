@@ -26,6 +26,7 @@ def test_exact_patch_conv_rewrites_bias_and_hwc_fma():
     assert sum("merlin.torchao_cpu_patch_conv" in op.attributes for op in ops) == 1
     assert all(op.name != "arith.addf" for op in ops)
     assert sum(op.name == "linalg.generic" for op in ops) == 3  # gather, bias seed, fused contraction
+    assert rewrite_torch216_avx2_patch_conv(module, source_commit=TORCH_SOURCE_COMMIT, cpu_capability="AVX2") == 0
 
 
 @pytest.mark.parametrize("commit,capability", [("wrong", "AVX2"), (TORCH_SOURCE_COMMIT, "AVX512")])
@@ -50,6 +51,24 @@ def test_patch_conv_rejects_changed_source_scheme():
         )
 
 
+def test_normalization_recipe_requires_patch_source_and_cpu():
+    from merlin.runtime.dispatch_transform_audit import _validate_normalization_recipe
+
+    base = {
+        "int8_compute": False,
+        "quant_passes": None,
+        "prequant_gather": False,
+        "selection_policy": "all",
+        "torchao_cpu_avx2_patch_conv": True,
+        "torch_source_commit": TORCH_SOURCE_COMMIT,
+        "torch_cpu_capability": "AVX2",
+    }
+    assert _validate_normalization_recipe(base)["torchao_cpu_avx2_patch_conv"] is True
+    for key in ("torch_source_commit", "torch_cpu_capability"):
+        with pytest.raises(ValueError, match="invalid options"):
+            _validate_normalization_recipe({**base, key: ""})
+
+
 def test_default_preprocessing_keeps_source_arithmetic(monkeypatch):
     from merlin.llvmlower.passes_xdsl import preprocess_text
 
@@ -70,6 +89,64 @@ def test_selected_rewrite_keeps_source_transform_map(monkeypatch):
     assert stats["torchao_cpu_avx2_patch_convs"] == 1
     assert receipt["schema"] == "source_transform_map_v1"
     assert "math.fma" in out
+
+
+@pytest.mark.parametrize(
+    "passes",
+    [
+        "torchao-cpu-avx2-patch-conv",
+        "torchao-cpu-avx2-layer-norm,torchao-cpu-avx2-patch-conv",
+    ],
+)
+def test_run_model_rewrites_before_outline_and_standalone_kernels_skip(monkeypatch, tmp_path, passes):
+    """Exercise run_model's actual normalizer, outline, audit replay, and kernel seam."""
+    from merlin.llvmlower.kernel_backend import extract_kernel
+    from merlin.llvmlower.passes_xdsl import preprocess_text
+    from merlin.runtime import dispatch_runtime as runtime
+    from merlin.xdsl_dialects._common import text
+
+    monkeypatch.setenv("MERLIN_PASSES", passes)
+    monkeypatch.setenv("MERLIN_TORCHAO_CPU_SOURCE_COMMIT", TORCH_SOURCE_COMMIT)
+    monkeypatch.setenv("MERLIN_TORCHAO_CPU_CAPABILITY", "AVX2")
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    (model_dir / "model.mlir").write_text(source())
+
+    observed = {}
+    real_audit = runtime.record_model_transform_audit
+
+    def observe_audit(model_source, workdir, normalized, outlined, **kwargs):
+        observed["normalized"] = normalized
+        observed["outlined"] = outlined
+        observed["recipe"] = kwargs["normalization_recipe"]
+        return real_audit(model_source, workdir, normalized, outlined, **kwargs)
+
+    class ReachedBinding(Exception):
+        pass
+
+    def stop_at_binding(_model_dir):
+        raise ReachedBinding
+
+    monkeypatch.setattr(runtime, "record_model_transform_audit", observe_audit)
+    monkeypatch.setattr(runtime, "resolve_forward_args", stop_at_binding)
+    with pytest.raises(ReachedBinding):
+        runtime.run_model(model_dir, tmp_path / "work", transform_audit=True)
+
+    assert observed["recipe"]["torchao_cpu_avx2_patch_conv"] is True
+    assert observed["recipe"]["torchao_cpu_avx2_layer_norm"] is ("torchao-cpu-avx2-layer-norm" in passes)
+    assert observed["recipe"]["torch_source_commit"] == TORCH_SOURCE_COMMIT
+    assert observed["recipe"]["torch_cpu_capability"] == "AVX2"
+    normalized = observed["normalized"]
+    ops = list(normalized.walk())
+    assert sum(op.name == "math.fma" for op in ops) == 1
+    assert not any(op.name == "linalg.matmul" for op in ops)
+    assert not any(op.name == "arith.addf" for op in ops)
+    outlined = observed["outlined"]
+    assert outlined.dispatches
+    for dispatch in outlined.dispatches:
+        kernel = extract_kernel(outlined.module, dispatch.symbol)
+        _, stats = preprocess_text(text(kernel))
+        assert stats["torchao_cpu_avx2_patch_convs"] == 0
 
 
 def test_opt_in_lowering_selects_llvm_fma(monkeypatch, tmp_path):

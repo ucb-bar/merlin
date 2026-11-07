@@ -23,6 +23,7 @@ def _validate_normalization_recipe(recipe: dict) -> dict:
     cpu_fields = {
         "torchao_cpu_avx2_mean",
         "torchao_cpu_avx2_layer_norm",
+        "torchao_cpu_avx2_patch_conv",
         "torch_source_commit",
         "torch_cpu_capability",
     }
@@ -32,6 +33,7 @@ def _validate_normalization_recipe(recipe: dict) -> dict:
         **{
             "torchao_cpu_avx2_mean": False,
             "torchao_cpu_avx2_layer_norm": False,
+            "torchao_cpu_avx2_patch_conv": False,
             "torch_source_commit": "",
             "torch_cpu_capability": "",
         },
@@ -51,13 +53,21 @@ def _validate_normalization_recipe(recipe: dict) -> dict:
         or (recipe["prequant_gather"] and not recipe["int8_compute"])
         or type(recipe["torchao_cpu_avx2_mean"]) is not bool
         or type(recipe["torchao_cpu_avx2_layer_norm"]) is not bool
+        or type(recipe["torchao_cpu_avx2_patch_conv"]) is not bool
         or not isinstance(recipe["torch_source_commit"], str)
         or not isinstance(recipe["torch_cpu_capability"], str)
         or (
-            (recipe["torchao_cpu_avx2_mean"] or recipe["torchao_cpu_avx2_layer_norm"])
+            (
+                recipe["torchao_cpu_avx2_mean"]
+                or recipe["torchao_cpu_avx2_layer_norm"]
+                or recipe["torchao_cpu_avx2_patch_conv"]
+            )
             and not recipe["torch_source_commit"]
         )
-        or (recipe["torchao_cpu_avx2_layer_norm"] and not recipe["torch_cpu_capability"])
+        or (
+            (recipe["torchao_cpu_avx2_layer_norm"] or recipe["torchao_cpu_avx2_patch_conv"])
+            and not recipe["torch_cpu_capability"]
+        )
     ):
         raise ValueError("model normalization recipe has invalid options")
     return dict(recipe)
@@ -240,6 +250,7 @@ def qualify_model_transform_audit(index_path: Path) -> dict[str, Any]:
                 prequant_gather=recipe["prequant_gather"],
                 torchao_cpu_avx2_mean=recipe["torchao_cpu_avx2_mean"],
                 torchao_cpu_avx2_layer_norm=recipe["torchao_cpu_avx2_layer_norm"],
+                torchao_cpu_avx2_patch_conv=recipe["torchao_cpu_avx2_patch_conv"],
                 torch_source_commit=recipe["torch_source_commit"],
                 torch_cpu_capability=recipe["torch_cpu_capability"],
             )
