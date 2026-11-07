@@ -16,7 +16,7 @@ The [source archive packaging procedure](SOURCE_ARCHIVE_PACKAGING.md) records
 the immutable receipt and archive hashes Kevin needs before relocation.
 The [captured Torch CPU reduction diagnostic](TORCHAO_CPU_MEAN_FIDELITY.md)
 explains an opt-in source-order fix for TinyLlama's first observed divergence;
-whole-model framework parity still needs a new gate.
+the new whole-model framework gates have run and still fail.
 
 ## Compile and check an image
 
@@ -151,7 +151,14 @@ maximum absolute error `0.054239`, same argmax. The CLI's `w8a8_rel=0.011196` di
 maximum absolute error by reference maximum; it is not relative L2. The patch-convolution
 reduction order is another identified source of float drift. The opt-in pinned Torch CPU
 patch-convolution rewrite matches oneDNN bitwise on trained and holdout inputs, and its
-pre-outline integration passed focused tests. A full-model replay with both rewrites is pending.
+pre-outline integration passed focused tests. The full-model run with **both** rewrites
+compiled 1,411 sealed objects, completed an exact normalization/outlining audit, and
+replayed all 1,000 logits from cache with zero misses. It still fails the TorchAO
+golden: direct relative L2 `0.00612534`, maximum absolute error `0.0578337`,
+same argmax `885`. This is slightly worse than LayerNorm alone on this input;
+bitwise correctness of the isolated convolution does not imply a monotonic
+whole-model error. The [SHA-bound terminal receipt](evidence/spectformer_torchao_lnconv_host_terminal.json)
+records the source, cache, audit, output, and comparison hashes.
 
 The exact full 22-layer TinyLlama source host population compiled 4,413 kernels (4,157
 unique sealed objects). Strict cache-only replay compared all 256,000 logits with zero
@@ -195,7 +202,7 @@ Torch commit and selected CPU capability into new CPU FXImporter captures and
 their byte-bound receipts; a guarded tiny capture verified both fields and
 rejected a tampered commit. It does not retrofit this historical capture or
 prove full source closure. The new SpectFormer full-model gate with both opt-in
-rewrites remains pending. Select them together with
+rewrites fails as reported above. Select them together with
 `MERLIN_PASSES=torchao-cpu-avx2-layer-norm,torchao-cpu-avx2-patch-conv` and the pinned
 source commit and AVX2 environment above.
 The first TinyLlama discrepancy is now localized further: its embedding and first
