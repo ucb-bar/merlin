@@ -27,6 +27,7 @@ from pathlib import Path
 
 from merlin.common import compile_trace
 
+from .compiler_api import PipelineError
 from .source_scalar_carrier_binding import host_admitted
 from .toolchain import m2m_python
 
@@ -1476,10 +1477,6 @@ def _harvest_native(traced: "tuple[Path, bool] | None", produced: Path, failure:
             raise
         stop.note += f"; a later pass failed: {str(failure).strip().splitlines()[0][:200]}"
         raise stop from failure
-
-
-class PipelineError(RuntimeError):
-    pass
 
 
 #: Lexical pieces of an MLIR operation name, for the textual census below. Op names are ASCII

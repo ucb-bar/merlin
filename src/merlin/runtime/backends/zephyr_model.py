@@ -75,11 +75,14 @@ def march_with_vlen(cflags: list[str], vlen: int | None) -> list[str]:
     return out
 
 
-def _cflags(backend: str) -> list[str]:
+def _cflags(backend: str, support_target: str = "rvv") -> list[str]:
     if backend == "scalar":
         return SCALAR_CFLAGS
     if backend == "rvv":
-        return RVV_CFLAGS
+        from ...llvmlower.backend_spi import optional_vector_codegen
+
+        vector_backend = optional_vector_codegen(support_target)
+        return RVV_CFLAGS if vector_backend is None else list(vector_backend.vector_cflags(_CFLAGS_COMMON))
     raise ZephyrModelError(f"unknown backend {backend!r} (want 'scalar' | 'rvv')")
 
 
@@ -2386,9 +2389,9 @@ def build_app(
         vlen = brd.vlen
     # A VLEN the build assumes must match the one it will run on -- see march_with_vlen (and `vlen` below).
     cflags = (
-        march_with_vlen(cflags_override or _cflags(backend), vlen)
+        march_with_vlen(cflags_override or _cflags(backend, matrix.support_target if matrix else "rvv"), vlen)
         if backend == "rvv"
-        else list(cflags_override or _cflags(backend))
+        else list(cflags_override or _cflags(backend, matrix.support_target if matrix else "rvv"))
     )
 
     gcc = _spike.gcc_path()

@@ -28,6 +28,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .compiler_api import PAR_TAG_PREFIX, class_token, par_tag_for
+
 #: Marker pass name spliced after specialization; the runner splits the pipeline here.
 BLOCK_TAG_MARKER = "__merlin_tag_perop_blocks__"
 
@@ -44,12 +46,6 @@ TAG_PREFIX = "merlin.blk_"
 #: arrives as a plain ``linalg.generic`` with a compound-affine input map, and there is no named op to
 #: key on. It is spelled like one so it flows through ``shape_key`` / ``distinct_blocks`` /
 #: ``coverage`` with the contraction classes instead of needing a parallel bookkeeping path.
-_CLASS_TOKEN = {
-    "linalg.matmul": "mm",
-    "linalg.batch_matmul": "bmm",
-    "linalg.conv2d_direct": "conv",
-    "linalg.conv2d_grouped_direct": "gconv",
-}
 
 #: The DIRECT 2-D convolution contraction: ``out[n,f,oh,ow] += in[n,ci,oh*sh+kh,ow*sw+kw] * w[f,ci,kh,kw]``,
 #: i.e. the form model2MLIR emits when the im2col intermediate would exceed its element budget
@@ -72,10 +68,6 @@ GROUPED_CONV_CLASS = "linalg.conv2d_grouped_direct"
 CONV_ARM_FEATURE = "conv_register_block"
 
 
-def class_token(op: str) -> str:
-    return _CLASS_TOKEN.get(op, op.rsplit(".", 1)[-1])
-
-
 def tag_for(op: str, mr: int, nr: int) -> str:
     """Attribute name for op class ``op`` at block ``(mr, nr)`` — the tagger/schedule join key."""
     return f"{TAG_PREFIX}{class_token(op)}_{int(mr)}x{int(nr)}"
@@ -84,14 +76,6 @@ def tag_for(op: str, mr: int, nr: int) -> str:
 #: Attribute prefix for the MULTICORE split. Same join-key contract as :data:`TAG_PREFIX`: one
 #: distinct attribute per distinct (op class, forall tile) pair, set by the tagger and matched by the
 #: parallel schedule. See :func:`parallel_chunk_table` for why the split is derived per op.
-PAR_TAG_PREFIX = "merlin.par_"
-
-
-def par_tag_for(op: str, tiles: "tuple[int, ...]") -> str:
-    """Attribute name for op class ``op`` split by ``scf.forall`` at ``tiles``."""
-    return f"{PAR_TAG_PREFIX}{class_token(op)}_" + "_".join(str(int(t)) for t in tiles)
-
-
 def _even_split(extent: int, harts: int, admits) -> "tuple[int, int] | None":
     """``(chunk, k)`` — the most EQUAL, block-legal chunks ``<= harts`` this extent divides into.
 
