@@ -380,7 +380,7 @@ def schedule_path(name: str = DEFAULT_SCHEDULE) -> Path:
     """Resolve a schedule shipped by this exact provider revision."""
     if not isinstance(name, str) or not name.isidentifier():
         raise ValueError(f"invalid RVV schedule name {name!r}")
-    root = Path(__file__).resolve().parents[1] / "schedules" / name
+    root = Path(__file__).resolve().parents[2] / "schedules" / name
     for file in ("manifest.yaml", "knobs.yaml", "schedule.mlir"):
         if not (root / file).is_file():
             raise FileNotFoundError(root / file)

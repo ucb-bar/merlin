@@ -5,9 +5,8 @@ import json
 from pathlib import Path
 
 import yaml
-
-from merlin.common.schemas import validate_or_raise
 from merlin.common.schemas import validate as validate_schema
+from merlin.common.schemas import validate_or_raise
 from merlin.targetgen.plugins import validate
 from merlin.targetgen.providers import ProviderRole, read_provider
 

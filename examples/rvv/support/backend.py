@@ -1,6 +1,6 @@
 """Compatibility entrypoint for Merlin's pinned ``plugin.rvv_codegen`` declaration."""
 
-from .rvv_codegen import backend as _implementation
+from .src.rvv import backend as _implementation
 
 API_VERSION = _implementation.API_VERSION
 

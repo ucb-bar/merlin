@@ -2,7 +2,7 @@
 
 The **base RISC-V Vector (RVV) layer** for [Merlin](https://github.com/ucb-bar/merlin).
 
-The `handwritten-implementation` branch carries executable RVV pipeline construction in `rvv_codegen/backend.py`
+The `handwritten-implementation` branch carries executable RVV pipeline construction in `src/rvv/backend.py`
 and checked schedule payloads in `schedules/`. Merlin loads `plugin.rvv_codegen` from the pinned provider
 root through the small `backend.py` compatibility entrypoint and checks `API_VERSION` before selecting the vector path. A scalar build can run without this
 provider. The pipeline uses upstream MLIR passes; this repository does not define a custom RVV dialect.
@@ -23,11 +23,11 @@ notices when this base moves.
 
 ## Compiler layout
 
-- `rvv_codegen/backend.py` builds the RVV pass pipeline and exposes schedule and preparation APIs.
+- `src/rvv/backend.py` builds the RVV pass pipeline and exposes schedule and preparation APIs.
   Root `backend.py` forwards the pinned plugin entrypoint to that package.
-- `rvv_codegen/features/` registers named tuning choices; `rvv_codegen/transforms/` contains
+- `src/rvv/features/` registers named tuning choices; `src/rvv/transforms/` contains
   per-operation blocking, vector tagging, reduction and requantization rewrites, and runner source.
-- `rvv_codegen/packing/` implements im2col and weight panel layouts; `rvv_codegen/policy/`
+- `src/rvv/packing/` implements im2col and weight panel layouts; `src/rvv/policy/`
   derives legal blocks, LMUL, and workload shape adaptations.
 - `schedules/` contains Transform dialect programs and knob data. Upstream MLIR supplies the passes
   those programs invoke; this repository does not ship a custom dialect or pass binary.
@@ -38,7 +38,7 @@ notices when this base moves.
 
 | branch | what it is |
 |---|---|
-| `handwritten-implementation` (this branch) | the RVV support provider and executable pipeline selected by Merlin: contract, `rvv_codegen/`, schedules, tests |
+| `handwritten-implementation` (this branch) | the RVV support provider and executable pipeline selected by Merlin: contract, `src/rvv/`, schedules, tests |
 | `main` | historical landing page; the repository default branch changes after integration gates pass |
 | `stable/impr_tuned_wholemodel_vf_int8` | int8 W8A8 whole-model schedule (`vwmacc`), K1-verified; the RVV schedule the Kodiak builds use |
 | `stable/sol_k1_int8` | int8 speed-of-light schedule, K1-verified, with its analysis |
@@ -102,8 +102,10 @@ Hardware revisions (RTL commits) are pinned in Merlin's single registry,
 ## Checks
 
 ```sh
-python -m pytest tests        # with Merlin installed
+python -m pytest             # with Merlin installed; pyproject.toml selects tests/
+ruff check .                 # pyproject.toml configures local linting
 ```
 
+`provider.yaml` and the target contract remain the runtime metadata for Merlin.
 `provenance.json` records the content hash of the contract. Nothing here claims hardware execution or
 candidate certification.
