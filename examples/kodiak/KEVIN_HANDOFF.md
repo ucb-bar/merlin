@@ -160,8 +160,14 @@ The [Torch 2.16 AVX2 LayerNorm reproducer](../../experiments/reference-data/torc
 matches native width-256 means, reciprocal standard deviations, and affine outputs
 bitwise on trained, holdout, and independent random inputs. It isolates one
 source-arithmetic cause of the drift; the captured LayerNorm is already a
-multi-operation region, so the provenance-gated compiler rewrite and unchanged
-full-model framework gate are still pending.
+multi-operation region. The [opt-in compiler rewrite](../../experiments/reference-data/torch216_avx2_ln256_rewrite_2026-11-06.md)
+now replaces all 25 such regions in the exact captured IR. Generated host code
+matches Torch bitwise on trained and holdout LayerNorm inputs. Select it with
+`MERLIN_TORCHAO_CPU_AVX2_LAYER_NORM=1`,
+`MERLIN_TORCHAO_CPU_SOURCE_COMMIT=7f24a19c0967db04f2d5ba44c1e56eca489932ec`,
+and `MERLIN_TORCHAO_CPU_CAPABILITY=AVX2`; the old capture lacks the latter two
+facts, so these are runner assertions rather than independently verified
+capture metadata. The unchanged full-model framework gate remains pending.
 The first TinyLlama discrepancy is now localized further: its embedding and first
 RMSNorm squared values match eager torchAO exactly, but Merlin's serial float32
 mean reduction differs from Torch CPU's reduction tree. This changes the normalization
