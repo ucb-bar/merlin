@@ -107,8 +107,8 @@ The cache key covers Merlin lowering source, active pass settings, compiler and
 Python package bytes; each loaded object has a verified construction manifest.
 The earlier SpectFormer and TinyLlama caches predate this identity and cannot
 serve as current host evidence. A cache-only miss is a failed preflight, not a
-model output. Fresh population is deferred until the VME Vivado run releases
-scratch and memory.
+model output. Fresh source-bound host populations and strict cache-only replays
+have now run; their numerical failures are recorded below.
 An [empty-cache probe](../../experiments/reference-data/spectformer_torchao_host_cache_preflight_2026-11-06.md)
 against the exact SpectFormer source returned a structured
 `HostCacheMiss` for all 1,361 kernels, zero loaded objects, and no compilation.
@@ -142,14 +142,27 @@ so a separate K33 case must cover the Zvt tail. A signed `-128`/`127` endpoint c
 also required before declaring source quantization compatible with VME RTL. Strict
 numerical agreement with the independent torchAO framework golden remains the compiler gate;
 the existing Merlin-host discrepancy is under investigation and these projections are not
-model correctness claims. The true-source Spectformer host run produced finite 1,000-value
-output with the correct argmax, but failed its framework gate (relative L2 `0.00718247`,
-cosine `0.99997751`). In a bounded pretrained TinyLlama true-source run, the first three
-quantized q/k/v contractions had byte-identical signed operands and int32 accumulators to
-independent eager torchAO. The first mismatch was one activation byte at the first attention
-`o_proj` (torchAO `-128`, Merlin `-127`), at a negative `-127.5` rounding tie. Both
-rounding instructions behave correctly; the prequant float values already differ.
-Neither model is source-parity certified yet.
+model correctness claims. The original true-source SpectFormer host run produced finite
+1,000-value output with the correct argmax, but failed its framework gate (relative L2
+`0.00718247`, cosine `0.99997751`). A fresh source-bound host population with the pinned
+Torch CPU LayerNorm rewrite compiled 1,411 sealed objects. Its strict cache-only replay
+compared all 1,000 logits with zero misses and still failed: relative L2 `0.00540088`,
+maximum absolute error `0.054239`, same argmax. The CLI's `w8a8_rel=0.011196` divides
+maximum absolute error by reference maximum; it is not relative L2. The patch-convolution
+reduction order is another identified source of float drift. The opt-in pinned Torch CPU
+patch-convolution rewrite matches oneDNN bitwise on trained and holdout inputs, and its
+pre-outline integration passed focused tests. A full-model replay with both rewrites is pending.
+
+The exact full 22-layer TinyLlama source host population compiled 4,413 kernels (4,157
+unique sealed objects). Strict cache-only replay compared all 256,000 logits with zero
+misses, then failed the independent TorchAO golden (`status=run_mismatch`, maximum
+absolute error `1.52113`, cosine `0.998830`). Token 0 is bitwise exact; seven of eight
+token argmaxes agree, and token 3 differs (host `4151`, TorchAO `12657`). The CLI's
+historical `w8a8_argmax=true` checked only the flattened global maximum; the new
+per-token field reports the failure. Early layer-0 q/k/v roots are bitwise exact; the
+first material tapped difference is layer-0 MLP `down_proj` at token 4 (`8.72e-5`
+maximum absolute error). The earlier first-attention `o_proj` quantization tie was
+observed before the pinned mean rewrite. Neither model is source-parity certified yet.
 The [trained and holdout activation-code probe](../../experiments/reference-data/spectformer_torchao_activation_code_probe_2026-11-06.md)
 checks Spectformer block-0 fc1 at the exact boundary: with identical norm2
 input, Merlin and TorchAO have bitwise-equal reciprocal scales, signed i8
@@ -171,7 +184,10 @@ capture metadata. Model2MLIR `feat/OPU-VME` at `7bbc460` now writes the observed
 Torch commit and selected CPU capability into new CPU FXImporter captures and
 their byte-bound receipts; a guarded tiny capture verified both fields and
 rejected a tampered commit. It does not retrofit this historical capture or
-prove full source closure. The unchanged full-model framework gate remains pending.
+prove full source closure. The new SpectFormer full-model gate with both opt-in
+rewrites remains pending. Select them together with
+`MERLIN_PASSES=torchao-cpu-avx2-layer-norm,torchao-cpu-avx2-patch-conv` and the pinned
+source commit and AVX2 environment above.
 The first TinyLlama discrepancy is now localized further: its embedding and first
 RMSNorm squared values match eager torchAO exactly, but Merlin's serial float32
 mean reduction differs from Torch CPU's reduction tree. This changes the normalization
@@ -179,7 +195,9 @@ and ultimately crosses the attention output-projection quantization tie. A reduc
 tree fitted only to those eight rows failed on new random rows and was rejected.
 The later provenance-gated AVX2 K2048 reduction matched Torch CPU's first
 RMSNorm mean bitwise on all eight source rows and 200 independent holdout rows.
-The complete TinyLlama host framework gate has not been rerun after that fix.
+The complete TinyLlama host framework gate was rerun after that fix and failed as
+described above. The parity probe is isolating `down_proj` input quantization and
+integer arithmetic; no source-quantization recipe change is justified yet.
 Keep two verdicts separate: exact target-arithmetic image versus scalar twin, and
 framework fidelity versus independent torchAO. The current strict framework gate
 still fails. The full 22-layer eight-token source graph has 155 integer Linear roots
@@ -346,8 +364,10 @@ must not be used as a certified speedup. A separate full 22-layer pretrained tor
 `int8_w8a8` capture now has 155 explicit signed i8 × i8 → i32 Linear contractions, 45 float
 attention batch matmuls, zero opaque ops, and a complete ABI. Its framework golden is
 byte-identical to an independent eager torchAO run; source closure is still unverified, and
-Merlin host execution of this explicit integer graph has a 3–5% per-token relative-L2
-disagreement under investigation. The full model remains a required separate compiler gate.
+Merlin host execution of this explicit integer graph has been rerun from a fresh
+source-bound cache. Seven nonzero-token relative-L2 errors range from `0.03418` to
+`0.10859`; token 0 is bitwise exact. The full model remains a required separate
+compiler gate, and no source-authoritative OPU/VME FireSim image exists yet.
 The source-only [eight-request TorchAO experiment](../../experiments/reference-data/tinyllama_torchao_batch_utilization_plan_2026-11-06.md)
 ran all 22 layers on one seeded B=8, S=8 input: all 155 eager integer calls
 had M=64 and its full 8×8×32,000 logits were bitwise equal to eight separate
@@ -384,6 +404,22 @@ result does not inherit an unprofiled pair's speedup; run a separate unprofiled
 pair for that comparison. Neither result measures physical PE duty without a
 counter-equipped bitstream.
 
+A current **profiled** 64 × 64 × 64 int8 operator calibration completed on the pinned
+one-core OPU FireSim image as device job 3900 and independent RVV control job 3901.
+Both returned `DONE`, passed all 4,096 output comparisons, and matched their exact
+Spike images. The device's one dynamic routed call had 262,144 valid MACs and a
+33,087-target-cycle call window. At 1,024 configured MACs per target cycle, its
+**call-window effective peak is 262,144 / (33,087 × 1,024) = 0.773718%**. Across
+the instrumented device's 17,687,828 target cycles, the corresponding
+whole-inference effective peak is **0.00144732%**. Static tile fill and routed
+MAC share are 100%; neither measures PE issue duty. The profile adds instructions,
+so the unprofiled control's 811,923 cycles do not form a valid speedup pair.
+The [SHA-bound result](evidence/profiled_opu_64cube_firesim_3900_3901.json)
+records the exact ELFs, bitstream tar, UARTs, and a compiler-source citation caveat:
+the consumed Saturn read set is attested, while the generic checkout pin report
+remains false. This calibration is an older operator image, not a torchAO-source
+model parity result.
+
 The Kodiak OPU target uses legacy BME instructions. It cannot execute Iris's Zvt/VME encodings;
 those need a separate VME-enabled Kodiak RTL configuration and bitstream. On the separate Iris
 VME configuration, three direct SerialTL RTL cases (K33, biased edge, batch-3) now pass pinned
@@ -398,6 +434,12 @@ the OPU route separately. The [TorchAO delivery instructions](TORCHAO_CAPTURE_DE
 give the source-preserving compile-only VME command. A compact signed K33 VME
 object compiled with 71 Zvt instructions (20 integer matrix multiplies), zero
 in its scalar twin, but linked Spike and model gates remain pending.
+A **different** compact endpoint test ELF (128 × 128 × 33, biased, signed
+`-128`/`127`) passed the pinned Zvt Spike with digest `0xf6c4d45b6a6db32f`
+and `KT DONE`. Its ELF SHA-256 is
+`6ea81cb8b4abae624c735406a3801ef5066b276b2d088b350160d137d4ac892f`;
+its direct RTL attempt ended at a resource guard and is not a pass. Do not
+transfer this Spike result to the separate 71-instruction object or a model.
 The [Kodiak Zvt/VME configuration plan](ZVT_VME_PLAN.md) lists the exact pins and gates needed
 before a Kodiak board may advertise Zvt support. A distinct managed Kodiak VME one-core
 configuration now passes FIRRTL elaboration, and a fresh VLEN512 biased K-tail ELF passes
@@ -433,9 +475,16 @@ records source pins and the report hash. Placement subsequently completed with
 **1,335,383 / 1,728,000 CLB LUTs (77.28%)** and zero errors or critical warnings;
 the placed report SHA-256 is
 `f13243399ef0a6c725d1de463b4e8c62809e444e9b1cdaa185a891c0f77f32a9`.
-The build entered global routing on 2026-11-06, with negative intermediate
-timing. Final routing, timing, bitstream generation, and FPGA execution remain
-pending. No VME FPGA bitstream or model result is claimed yet.
+The original compact build entered global routing on 2026-11-06 and reached
+Phase 4.1 with overlaps reduced from 1,528,687 to 21,372, then hit its 8-hour
+host timeout (`rc=124`) before a routed checkpoint, final timing, or bitstream.
+Its exact terminal receipt is in the managed Chipyard task
+`kodiak-vme-compact-source/.tmp/vme_u250_hardware_gate/original_terminal_receipt.json`
+(SHA-256 `177f38c255b559d1317006ebb934bcaa6cfb7b2cdf904eac12279c02ffe48fb9`).
+A 12-hour guarded resume from the pinned pre-route physopt checkpoint started
+2026-11-07 02:39 UTC; it stops after routing and post-route timing checks,
+before bitstream generation. Final routing, timing, bitstream generation, and
+FPGA execution remain pending. No VME FPGA bitstream or model result is claimed yet.
 The current OPU FireSim bitstream is usable for the BME flow above. Its archived artifact identity
 was checked during the hardware jobs. Reproducing that archive from a clean source tree remains
 unverified because the live Chipyard/Saturn checkout has pin drift. Physical Kodiak rig access
@@ -460,6 +509,17 @@ No Merlin image was loaded; existing tmux sessions were preserved. The current r
 and FPGA bitstream hashes and the August/current section-map comparison are in
 `out/artifacts/probes/chipyard_kodiak/physical_probe_20261106/receipt_addendum.json`;
 no August ELF hash survives to prove byte identity. An
+[additional read-only rig audit](evidence/bootaddr_reset_readonly_audit_20261107.md)
+found an important command-path difference: direct `udp_tsi_host.py run` resets
+both chips by default, while `execute_program.sh` defaults to `--no-reset`.
+In 11 historical August wrapper logs at the same bitstream path, all four
+`--chip-reset` runs read `None` at BootAddr, while all seven no-reset runs read
+`0x80000000`. Reset control writes have no acknowledgement or settle interval.
+This is a correlation, not a controlled cause or a current health check: the
+recent no-reset retry also failed. It narrows a future owner-approved test
+sequence but does not unlock a physical Kodiak compiler run. The SSH alias
+still works, and attached `eth` and `huh` tmux sessions were left untouched.
+An
 [offline replay of the SHA-verified loader](https://github.com/ucb-bar/kodiak-mlir/blob/f2ebd82302deb6b7a40ba118649df0bfcd393b55/evidence/bootaddr_host_replay_20261106/receipt.json)
 shows that it treats any UDP packet as a write acknowledgment and shortens its nominal two-second
 read wait to one second after a read ACK. A valid synthetic response at 1.5 seconds then yields

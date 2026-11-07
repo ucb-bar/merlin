@@ -348,3 +348,28 @@ embeds it in `firesim/results.json` for every fully verified immutable whole-mod
 an exact OPU signatures sidecar on the pinned one-core bitstream. Older single-operator plans
 without a SHA-checked sidecar retain their correctness grade and explicitly report utilization
 unavailable. The console summary prints utilization alongside speedup.
+
+## Dynamic single-operator calibration on the pinned OPU FireSim image
+
+The profiled 64 × 64 × 64 signed-int8 image in device job 3900 and its independent
+RVV control in job 3901 both completed and matched their exact Spike outputs for
+all 4,096 values. The SHA-pinned per-op table and same-image FireSim UART prove
+**one hit** at the routed site. The numerator is therefore the actual inference's
+`64 × 64 × 64 = 262,144` valid MACs, not a guessed static call count. The device
+reported 33,087 target cycles inside the OPU call window and 17,687,828 target
+cycles for the whole instrumented inference. At the configured capacity bound of
+1,024 MACs per cycle:
+
+| Scope | Calculation | Effective fraction of peak |
+| --- | --- | ---: |
+| Routed call window | `262144 / (33087 × 1024)` | 0.773718% |
+| Whole instrumented inference | `262144 / (17687828 × 1024)` | 0.00144732% |
+
+The static logical tile fill and routed MAC share are both 100% for this shape.
+Neither value is the physical PE duty cycle. The bitstream lacks valid-lane and
+MAC-active counters, so PE occupancy remains **unmeasured**. The profiled device
+and unprofiled control have different instrumentation; their cycle ratio is not
+a speedup measurement. The [portable SHA-bound summary](evidence/profiled_opu_64cube_firesim_3900_3901.json)
+records exact ELFs, bitstream tar, UARTs, result hashes, and the compiler-source
+citation caveat. This is a legacy operator calibration; TorchAO-source
+SpectFormer and TinyLlama still require separate parity and image gates.

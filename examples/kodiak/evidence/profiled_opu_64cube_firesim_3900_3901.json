@@ -1,0 +1,54 @@
+{
+  "all_verified": true,
+  "array_active_occupancy": null,
+  "artifacts_sha256": {
+    "control/zephyr.elf": "644c879d850cdf8cd29d1feb39b94547138a5fd66693eee24408f0b09f5ee0f3",
+    "device/routing/op_profile_table.json": "186937900ae4f94ab1ced4251cdd01928247abf5641928e2ada560be96177c85",
+    "device/routing/opu_signatures.json": "601092d93219da17cb665a87e14d25ee1be60653ba9aae55ac19e836fcf91291",
+    "device/zephyr.elf": "6ef5783d3daab407066fdaaaa2abbf251a1a8d019618405c56f4f641e966121b",
+    "firesim/control/staged-binary.json": "032c5bcb5c9a598cda13e416f08ff5020d5b98feb97fe7c19eb4c22a55060f8e",
+    "firesim/control/uartlog": "122451f5d4dd380eb9e496e82793dd33dfadb09d37bb89181bfd6e27488bac71",
+    "firesim/device/staged-binary.json": "1be136de11fb054d2f389dc8d85b87a9eb37f344c238c8ebe7db3ba364ce6929",
+    "firesim/device/uartlog": "c083a6a03c54d725b62a469101cbb1e6902c7ec898811b31f4aa834c97af027c",
+    "firesim/results.json": "c1c0cbe8cf0dca3e91971e6ec67607f642c3a31c0cdbbb5b19812fbd14534d1d",
+    "firesim/utilization.json": "1da88fb4abbe2503dce6f3e9590af6f887507b948c2e95d14a603b0f9026b7d9",
+    "firesim_job.json": "709b676edf08c79b2414c94f150d4fe931b2b31ded76b85cedfd98c080939864"
+  },
+  "bitstream_tar_sha256": "f671be16ae5850c2765d897593010f4144654fe49bed0d5fe0d3ebdbd49d9462",
+  "call_window_effective_peak_fraction": 0.007737177743524647,
+  "call_window_target_cycles": 33087,
+  "compiled_merlin_commit": "7cd365d9cd2145e840acd7b0466b77560503bde7",
+  "control_target_cycles": 811923,
+  "device_spike_console_sha256": "7b21688427a045cbd039ebbeb57fb402436221ae9b20b09904dc51b5422b273f",
+  "device_spike_raw_replay_sha256": "7b21688427a045cbd039ebbeb57fb402436221ae9b20b09904dc51b5422b273f",
+  "device_target_cycles": 17687828,
+  "generic_all_pins_ok": false,
+  "hw_config": "alveo_u250_firesim_kodiak_opu_1core",
+  "occupancy_reason": "the bitstream has no MAC-active-cycle or valid-lane counter",
+  "original_attestation_sha256": "164fbaa3acd163ae414c867869d67228bd1aa884b08cce863822a07a54a5d417",
+  "peak_macs_per_target_cycle": 1024,
+  "queue": {
+    "control": {
+      "job_id": 3901,
+      "state": "DONE"
+    },
+    "device": {
+      "job_id": 3900,
+      "state": "DONE"
+    }
+  },
+  "routed_mac_share": 1.0,
+  "routed_site_hits": 1,
+  "routed_site_id": 23,
+  "schema": "merlin.portable_profiled_opu_firesim_summary.v1",
+  "scope": "64x64x64 int8 legacy operator calibration; no TorchAO source-model framework gate",
+  "source_citation_caveat": "Consumed Saturn read-set bytes match eight pinned blobs and one declared OPUConfigs edit. Generic checkout pin report is false; the archived bitstream source checkout is not generically citable.",
+  "source_read_set_attestation_sha256": "450abc13e1cfd76f9719a272ea92d08872e347fa42042e31e17485992f436b88",
+  "source_read_set_material": false,
+  "source_read_set_status": "8 pin blobs exact; OPUConfigs exact declared local edit",
+  "speedup": null,
+  "speedup_reason": "profiled device ELF has instrumentation; control ELF is unprofiled",
+  "static_tile_fill": 1.0,
+  "valid_routed_macs": 262144,
+  "whole_inference_effective_peak_fraction": 1.4473229839186586e-05
+}
