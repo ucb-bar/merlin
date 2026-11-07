@@ -95,10 +95,20 @@ class TestTheRoutingIsInertUnlessAsked:
 def synthetic_matrix(tmp_path, monkeypatch):
     root = tmp_path / "selected-provider"
     (root / "contracts").mkdir(parents=True)
+    (root / "provider.yaml").write_text(
+        "schema: merlin.provider.v1\nid: synthetic-matrix-support\ntarget: synthetic_matrix_support\n"
+        "role: support\ncontract: contracts/target_contract.yaml\n"
+    )
     (root / "contracts/target_contract.yaml").write_text(
-        "name: synthetic_matrix_support\nplugin: {matrix_lowering: matrix.py}\n"
+        "name: synthetic_matrix_support\nplugin: {matrix_lowering: matrix.py, extension: extension.py}\n"
+    )
+    (root / "extension.py").write_text(
+        "from merlin.targetgen.extension_offers import MatrixExtension\n"
+        "API_VERSION = 1\n"
+        "def bind(routing): return MatrixExtension(routing)\n"
     )
     (root / "matrix.py").write_text("""from merlin.llvmlower import int8_contractions as shared
+API_VERSION = 1
 calls = []
 def geometry(*, unit, config):
     calls.append(("geometry", unit, config))

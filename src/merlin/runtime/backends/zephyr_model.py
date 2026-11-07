@@ -702,9 +702,19 @@ class MatrixRouting:
         return self.provider().geometry(unit=self.unit, config=self.config)[0]
 
     def selector(self) -> Callable[[Any], bool]:
-        from ...targetgen.extension_offers import MatrixExtension
+        return self.select if self.select is not None else self.extension().selector()
 
-        return self.select if self.select is not None else MatrixExtension(self).selector()
+    def extension(self):
+        """Bind this selected unit's executable extension from its pinned provider chain."""
+        from ...targetgen.extension_offers import OfferError, load_extensions
+
+        extensions = load_extensions(self.support_target, self)
+        if len(extensions) != 1 or not callable(getattr(extensions[0], "selector", None)):
+            raise OfferError(
+                f"{self.support_target}/{self.unit}: expected one bound matrix extension with selector, "
+                f"found {len(extensions)}"
+            )
+        return extensions[0]
 
 
 MATRIX_ROUTING_RECORD = "matrix_routing.json"
@@ -970,9 +980,7 @@ def prepare_for_lowering(
             from ...llvmlower.int8_contractions import OverwriteOutputSelector
 
             selector = OverwriteOutputSelector(selector)
-        from ...targetgen.extension_offers import MatrixExtension
-
-        routed = MatrixExtension(matrix).lower(prepared, work, select=selector)
+        routed = matrix.extension().lower(prepared, work, select=selector)
         (work / MATRIX_ROUTING_RECORD).write_text(
             json.dumps(
                 {
