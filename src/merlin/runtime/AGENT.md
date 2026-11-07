@@ -24,6 +24,14 @@ the per-backend adapters under `backends/`.
 - `host_math.py` — explicit portable libm evaluation policies and their compiled runtime objects.
   The default emits nothing. A selected policy changes linked-byte identity and must pass the
   caller's original numerical contract; it does not promise errno or exception-flag equivalence.
+- `torch_cpu_vml.py` — default-off host reference for provenance-marked TorchAO W8A8 f32
+  sine/cosine kernels. It requires the exact captured Torch 2.16 CPU wheel, AVX2 dispatch,
+  MKL build, and `libtorch_cpu.so` hash. Its completed calls are recorded as `torch_cpu_vml`
+  in the dispatch ledger; target images never link Torch or MKL. Select only for source
+  parity diagnosis with `MERLIN_TORCHAO_CPU_VML_TRIG=1`,
+  `MERLIN_TORCHAO_CPU_SOURCE_COMMIT=7f24a19c0967db04f2d5ba44c1e56eca489932ec`, and
+  `MERLIN_TORCHAO_CPU_CAPABILITY=AVX2`. Score matmul, softmax, and the full-model gate
+  remain independent checks.
 - `host_arithmetic.py` and `host_outward.py` share explicitly selected CPU
   arithmetic implementations independently of accelerators. ISA/ABI, source
   arithmetic and effect permissions remain caller obligations. Namespaces bind

@@ -636,6 +636,7 @@ def execute(
     bisection hook.
     """
     import hashlib
+    import os
     import platform
 
     from ..llvmlower.abi import HostModel
@@ -706,6 +707,32 @@ def execute(
                 xnn_routes[sym] = route
         execute.last_xnn_routed = len(xnn_routes)
 
+    # Source CPU parity is a host-reference option.  It never changes the MLIR
+    # kernel, a target image, or a mesh placement.  The captured Torch wheel is
+    # checked before the first dispatch, and only exact provenance-marked unary
+    # kernels with identity indexing are eligible.
+    vml_routes: dict[str, dict] = {}
+    vml_library = None
+    vml_digest = None
+    if os.environ.get("MERLIN_TORCHAO_CPU_VML_TRIG") == "1":
+        from . import torch_cpu_vml
+
+        if (
+            getattr(module.attributes.get("prov.quantization"), "data", None) != torch_cpu_vml.QUANTIZATION
+            or os.environ.get("MERLIN_TORCHAO_CPU_SOURCE_COMMIT") != torch_cpu_vml.TORCH_COMMIT
+            or os.environ.get("MERLIN_TORCHAO_CPU_CAPABILITY") != "AVX2"
+        ):
+            raise DispatchRuntimeError("TorchAO VML host route requires exact source, AVX2, and W8A8 provenance")
+        try:
+            vml_library, vml_digest = torch_cpu_vml.load_attested_vml()
+        except torch_cpu_vml.TorchVmlUnavailable as error:
+            raise DispatchRuntimeError(str(error)) from error
+        for kfn in module.walk():
+            if kfn.name == "func.func" and "$kernel_" in kfn.sym_name.data:
+                route = torch_cpu_vml.classify_kernel(kfn)
+                if route is not None:
+                    vml_routes[kfn.sym_name.data] = route
+
     # --- mesh routing: run each matmul kernel on the target accelerator MESH (real activations) ----------
     # Same structural classifier picks the plain matmul kernels; each is executed on the target's mesh
     # oracle via operand injection (run_matmul_on_mesh) with the LIVE activation/weight arrays, and the
@@ -729,6 +756,8 @@ def execute(
         return _host_kfn_cache.get(sym)
 
     mesh_counts: dict = counters if counters is not None else {}  # per-CALL, not
+    if vml_library is not None:
+        mesh_counts["torch_cpu_vml_trig_routed"] = len(vml_routes)
     if cache_dir is not None:
         mesh_counts["host_cache"] = {
             "schema": "merlin.host_cache.v1",
@@ -1009,6 +1038,33 @@ def execute(
         symbol, outs = _kernel_io(op)
         host_lane = "native_cpu"
         host_evidence: dict = {}
+        vroute = vml_routes.get(symbol)
+        if vroute is not None:
+            from . import torch_cpu_vml
+
+            if len(outs) != 1:
+                raise DispatchRuntimeError("VML trig route requires one result")
+            source = np.ascontiguousarray(env[id(op.operands[vroute["input"]])])
+            if source.shape != outs[0][0] or source.dtype != outs[0][1]:
+                raise DispatchRuntimeError("VML trig route input/result ABI differs")
+            out = torch_cpu_vml.evaluate(vml_library, vroute["kind"], source)
+            env[id(op.results[0])] = out
+            mesh_counts["native_host_executed"] = True
+            mesh_counts["torch_cpu_vml_trig_ran"] = mesh_counts.get("torch_cpu_vml_trig_ran", 0) + 1
+            _record_dispatch(
+                symbol,
+                "torch_cpu_vml",
+                placement="host",
+                executor="torch_cpu_vml",
+                runtime_architecture=native_architecture,
+                target_executed=False,
+                source_commit=torch_cpu_vml.TORCH_COMMIT,
+                libtorch_cpu_sha256=vml_digest,
+                operation=vroute["kind"],
+            )
+            if tap is not None:
+                tap(op, [out])
+            return
         route = xnn_routes.get(symbol)
         if route is not None:
             from .backends import xnnpack_host
