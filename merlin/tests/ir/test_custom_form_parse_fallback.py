@@ -57,18 +57,20 @@ def test_parse_mlir_file_reads_custom_form(tmp_path: Path) -> None:
     module = parse_mlir_file(src)
     names = [getattr(op, "name", "") for op in module.walk()]
     assert any("extract_slice" in n for n in names), names
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["model.mlir"]
 
 
-def test_generic_form_modules_take_the_unchanged_path(tmp_path: Path) -> None:
-    """A module that already parses must not gain a subprocess -- same bytes, same path.
-
-    Asserted by the ABSENCE of the re-printed sibling: the fallback writes ``*.generic.mlir`` next
-    to the source, so if one appears for a module that parsed directly, the fast path was skipped.
-    """
+def test_generic_form_modules_take_the_unchanged_path(tmp_path: Path, monkeypatch) -> None:
+    """A module that already parses must not invoke the generic re-printer."""
     from merlin.frontends.linalg_mlir import parse_mlir_file
-    from merlin.llvmlower.generic_form import GENERIC_SUFFIX
+    from merlin.llvmlower import generic_form
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("generic re-print ran on directly parseable IR")
+
+    monkeypatch.setattr(generic_form, "to_generic_form", unexpected)
 
     src = tmp_path / "plain.mlir"
     src.write_text("module {\n  func.func @forward() {\n    return\n  }\n}\n", encoding="utf-8")
     parse_mlir_file(src)
-    assert not list(tmp_path.glob(f"*{GENERIC_SUFFIX}"))
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["plain.mlir"]

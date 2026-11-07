@@ -18,7 +18,9 @@ absent:
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import struct
 import subprocess
 from pathlib import Path
@@ -41,6 +43,21 @@ MLIR = """builtin.module attributes {prov.weights_file = "SRC/weights.safetensor
 
 W0 = np.arange(6, dtype=np.int8).reshape(2, 3)
 S0 = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+
+
+def test_exact_torchao_spectformer_custom_form_prepack_is_read_only():
+    """The source line 181 tensor.insert_slice needs the generic parser fallback."""
+    configured = os.environ.get("MERLIN_SPECT_TORCHAO_CAPTURE")
+    if not configured:
+        pytest.skip("set MERLIN_SPECT_TORCHAO_CAPTURE to the exact source capture")
+    src = Path(configured)
+    raw = (src / "model.mlir").read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == "9ae3f772ed2d192899cea502e5dec0098d5abf95f56f1707c7ba3cdfcf5481ab"
+    assert b"tensor.insert_slice %395 into %393" in raw
+    before = {p.name: (p.stat().st_size, p.stat().st_mtime_ns) for p in src.iterdir()}
+    report = wp.plan(src)
+    assert (report.hoistable, report.blocked, report.bytes_per_inference, report.problems) == (41, 0, 8644608, ())
+    assert {p.name: (p.stat().st_size, p.stat().st_mtime_ns) for p in src.iterdir()} == before
 
 
 def _write_safetensors(path: Path, header: dict, payload: bytes) -> None:

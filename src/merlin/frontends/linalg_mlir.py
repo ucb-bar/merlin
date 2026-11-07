@@ -150,6 +150,8 @@ def parse_mlir_file(path: str | Path, ctx=None):
     module cannot be re-printed either, the error names both attempts rather than yielding an empty
     module, because a derivation that silently could not run is what this repo keeps re-learning.
     """
+    from tempfile import TemporaryDirectory
+
     from xdsl.utils.exceptions import ParseError
 
     text = Path(path).read_text(encoding="utf-8")
@@ -160,15 +162,28 @@ def parse_mlir_file(path: str | Path, ctx=None):
         # re-print runs in the m2m venv, which a caller that never hits this path need not have.
         from ..llvmlower.generic_form import GenericFormError, to_generic_form
 
-        try:
-            generic = to_generic_form(path)
-        except GenericFormError as exc:
-            raise GenericFormError(
-                f"{path} is printed in MLIR custom form that xDSL cannot read "
-                f"({str(first).splitlines()[0] if str(first) else first}) and it could not be "
-                f"re-printed in generic form: {exc}"
-            ) from first
-        return parse_mlir_text(generic.read_text(encoding="utf-8"), ctx=ctx)
+        # Captures can be immutable or shared with other jobs. Keep the printer's
+        # script and generic output in private scratch, never beside the source.
+        with TemporaryDirectory(prefix="merlin-mlir-generic-") as scratch:
+            try:
+                generic = to_generic_form(path, work=scratch)
+            except GenericFormError as exc:
+                raise GenericFormError(
+                    f"{path} is printed in MLIR custom form that xDSL cannot read "
+                    f"({str(first).splitlines()[0] if str(first) else first}) and it could not be "
+                    f"re-printed in generic form: {exc}"
+                ) from first
+            return parse_mlir_text(generic.read_text(encoding="utf-8"), ctx=ctx)
+
+
+def parse_mlir_text_any_form(text: str, ctx=None):
+    """Parse arbitrary MLIR text through a private file when custom-form fallback is needed."""
+    from tempfile import TemporaryDirectory
+
+    with TemporaryDirectory(prefix="merlin-mlir-text-") as scratch:
+        source = Path(scratch) / "model.mlir"
+        source.write_text(text, encoding="utf-8")
+        return parse_mlir_file(source, ctx=ctx)
 
 
 def load_manifest(path: str | Path) -> dict[int, dict[str, Any]]:

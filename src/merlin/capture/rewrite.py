@@ -429,7 +429,7 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str, func_name: str = "
     src, dst = Path(src), Path(dst)
     mlir_text = (src / "model.mlir").read_text()
     with IR_LOCK:
-        report = weight_layout_report(mq.parse(mlir_text), func_name)
+        report = weight_layout_report(mq.parse(src / "model.mlir"), func_name)
 
     man = json.loads((src / "weights.safetensors.manifest.json").read_text())
     weight_args = {int(k) for k, entry in man.items() if k.isdigit() and "weight" in entry}
@@ -472,7 +472,9 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str, func_name: str = "
     # The count proves only that the expected text was deleted; parsing proves that the
     # updated function signature, block arguments and remaining uses still form valid IR.
     with IR_LOCK:
-        mq.parse(new_text)
+        from ..frontends.linalg_mlir import parse_mlir_text_any_form
+
+        parse_mlir_text_any_form(new_text).verify()
     # Point provenance at the blob this bundle will have. Resolve this before writing any
     # bytes so an ambiguous or stale path cannot leave a partial output directory.
     new_text, retargeted = retarget_weights_file(new_text, (dst / "weights.safetensors").resolve())

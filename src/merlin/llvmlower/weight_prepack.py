@@ -91,7 +91,9 @@ def plan(src: Path | str, func_name: str = "forward") -> PrepackPlan:
 
     src = Path(src)
     with IR_LOCK:
-        report = weight_layout_report(mq.parse((src / "model.mlir").read_text()), func_name)
+        # Give the parser the file path: captured MLIR can contain custom-form
+        # tensor ops, for which mq.parse uses the audited generic-form fallback.
+        report = weight_layout_report(mq.parse(src / "model.mlir"), func_name)
 
     man = json.loads((src / "weights.safetensors.manifest.json").read_text())
     weight_args = {int(k) for k, entry in man.items() if k.isdigit() and "weight" in entry}
