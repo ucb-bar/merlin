@@ -7,12 +7,10 @@ bit-identical outputs (auto-skips without the m2m venv / clang-23).
 
 from __future__ import annotations
 
-import ctypes
-
 import numpy as np
 import pytest
 
-from merlin.common.paths import merlin_dir, repo_root
+from merlin.common.paths import repo_root
 from merlin.xdsl_dialects import _common
 
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
@@ -249,6 +247,59 @@ def test_model_transform_audit_replays_the_int8_rewrite_and_abstains_on_custom_s
         normalization_recipe={**recipe, "selection_policy": "custom_unreplayable"},
     )
     assert qualify_model_transform_audit(custom_index)["normalization_replay"] == "unsupported_custom_selection"
+
+
+def test_model_transform_audit_replays_captured_custom_tensor_slice(tmp_path):
+    """The audit must replay the same custom-form capture that production can parse."""
+    import subprocess
+
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.toolchain import compiler_python
+    from merlin.runtime.dispatch_runtime import (
+        _normalize_model_module,
+        qualify_model_transform_audit,
+        record_model_transform_audit,
+    )
+    from merlin.xdsl_dialects.lowering.outline import outline_dispatches
+
+    python = compiler_python()
+    if not python.is_file() or subprocess.run([str(python), "-c", "import torch_mlir"], capture_output=True).returncode:
+        pytest.skip("MLIR-capable compiler Python is unavailable")
+    source = tmp_path / "custom_slice.mlir"
+    source.write_text(
+        """builtin.module {
+  func.func @forward(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+    %0 = tensor.insert_slice %arg0 into %arg1[0] [4] [1] : tensor<4xf32> into tensor<4xf32>
+    func.return %0 : tensor<4xf32>
+  }
+}
+"""
+    )
+    normalized = parse_mlir_file(source)
+    _normalize_model_module(
+        normalized,
+        int8_compute=False,
+        quant_passes=None,
+        prequant_gather=False,
+        torchao_cpu_avx2_mean=False,
+        torchao_cpu_avx2_layer_norm=False,
+    )
+    receipt = record_model_transform_audit(
+        source,
+        tmp_path / "audit",
+        normalized,
+        outline_dispatches(normalized),
+        enabled=True,
+        normalization_recipe={
+            "int8_compute": False,
+            "quant_passes": None,
+            "prequant_gather": False,
+            "selection_policy": "all",
+        },
+    )
+    archived = {path.name for path in receipt.parent.iterdir()}
+    assert qualify_model_transform_audit(receipt)["normalization_replay"] == "matched"
+    assert {path.name for path in receipt.parent.iterdir()} == archived
 
 
 def test_run_model_default_audit_option_reaches_argument_binding(tmp_path, monkeypatch):

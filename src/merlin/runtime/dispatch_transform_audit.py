@@ -122,7 +122,9 @@ def qualify_model_transform_audit(index_path: Path) -> dict[str, Any]:
     This checks archival integrity, MLIR validity, and deterministic pass output.
     It does not prove that a pass preserves values.
     """
-    from ..frontends.linalg_mlir import parse_mlir_text
+    from tempfile import TemporaryDirectory
+
+    from ..frontends.linalg_mlir import parse_mlir_file
     from ..xdsl_dialects._common import text as to_text
     from ..xdsl_dialects.lowering.outline import outline_dispatches
 
@@ -176,9 +178,19 @@ def qualify_model_transform_audit(index_path: Path) -> dict[str, Any]:
         if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
             raise ValueError(f"model transform audit {name} stage differs from its index")
         contents.append(raw.decode("utf-8"))
+    parsed_stages = []
     for name, content in zip(expected, contents, strict=True):
         try:
-            parse_mlir_text(content).verify()
+            # Captured MLIR can use tensor custom syntax that xDSL cannot parse
+            # directly. Production uses parse_mlir_file's generic-form fallback;
+            # replay the same parser on a private copy of the SHA-checked stage
+            # so qualification never writes sidecars into the archived receipt.
+            with TemporaryDirectory(prefix="merlin-model-transform-audit-") as scratch:
+                stage = Path(scratch) / f"{name}.mlir"
+                stage.write_text(content, encoding="utf-8")
+                parsed = parse_mlir_file(stage)
+                parsed.verify()
+                parsed_stages.append(parsed)
         except Exception as exc:
             raise ValueError(f"model transform audit {name} stage is not valid MLIR: {exc}") from exc
     normalization_replay = "not_recorded"
@@ -215,7 +227,7 @@ def qualify_model_transform_audit(index_path: Path) -> dict[str, Any]:
             from ..llvmlower.quant_passes import known
             from .dispatch_runtime import _normalize_model_module
 
-            replay_normalized = parse_mlir_text(contents[0])
+            replay_normalized = parsed_stages[0]
             # Archived v1 None selected all six. New receipts retain their
             # effective pass selection explicitly; never reinterpret old bytes.
             replay_passes = (
@@ -236,7 +248,7 @@ def qualify_model_transform_audit(index_path: Path) -> dict[str, Any]:
             normalization_replay = "matched"
         else:
             normalization_replay = "unsupported_custom_selection"
-    replay = to_text(outline_dispatches(parse_mlir_text(contents[1])).module, generic=True)
+    replay = to_text(outline_dispatches(parsed_stages[1]).module, generic=True)
     if replay != contents[2]:
         raise ValueError("archived outline differs from replay on the exact normalized MLIR")
     return {
