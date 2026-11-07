@@ -14,6 +14,7 @@ assumed by importing this module.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import struct
@@ -3230,7 +3231,12 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None, min_c
     ``n_compared`` / ``n_reference`` / ``compared_fraction`` / ``comparison_complete``, and
     ``min_coverage`` (default: the ``MERLIN_GATE_MIN_COVERAGE`` knob) refuses every tier below that
     fraction rather than returning a partial-output score as if it were the model's verdict. See
-    ``_GATE_MIN_COVERAGE``."""
+    ``_GATE_MIN_COVERAGE``. For a complete rank-3 output, ``<tier>_argmax_per_token``
+    compares the last-axis argmax at every batch/token position. The existing
+    ``<tier>_argmax`` remains the flattened, global argmax for compatibility. The
+    per-token result carries counts and SHA256 digests of the compared float32
+    tensor bytes; it is omitted for partial console prefixes, where a token
+    verdict would be misleading."""
     pref = np.asarray(prefix, dtype=np.float32).ravel()
     if not isinstance(references, dict):
         references = {"fp32": references}
@@ -3243,7 +3249,8 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None, min_c
     for tier, ref in references.items():
         if ref is None:
             continue
-        _full = np.asarray(ref, dtype=np.float32).ravel()
+        ref_array = np.asarray(ref, dtype=np.float32)
+        _full = ref_array.ravel()
         _ref_n[tier] = int(_full.size)
         r = _full[:k]
         _arr[tier] = r
@@ -3264,6 +3271,19 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None, min_c
         out[f"{tier}_cos"] = cos
         out[f"{tier}_rel"] = rel
         out[f"{tier}_argmax"] = bool(int(np.argmax(pref)) == int(np.argmax(r)))
+        if ref_array.ndim == 3 and k == _full.size:
+            # A global maximum can agree while other token predictions differ.
+            # The runtime may supply either the original tensor or a flat,
+            # row-major output; the reference restores the batch/token shape.
+            got_tokens = np.argmax(pref.reshape(ref_array.shape), axis=-1)
+            want_tokens = np.argmax(ref_array, axis=-1)
+            matching = int(np.count_nonzero(got_tokens == want_tokens))
+            total = int(want_tokens.size)
+            out[f"{tier}_argmax_per_token"] = matching == total
+            out[f"{tier}_argmax_tokens_matching"] = matching
+            out[f"{tier}_argmax_tokens_compared"] = total
+            out[f"{tier}_argmax_output_sha256"] = hashlib.sha256(pref.tobytes()).hexdigest()
+            out[f"{tier}_argmax_reference_sha256"] = hashlib.sha256(ref_array.tobytes()).hexdigest()
         out[f"{tier}_max_rel"] = perel
 
     # ---- derived localized-error veto (see _GATE_QUANT_EXCESS): judge the run against the
