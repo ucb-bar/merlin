@@ -23,8 +23,15 @@ re-run `./run.sh setup`. To try an unpublished change first, select your clone e
 
 ## Quick start on a new machine
 
-For Kevin's tested branch, current model results, and hardware limits, see
-[the OPU handoff](KEVIN_HANDOFF.md).
+For measured utilization and its limits, see [UTILIZATION.md](UTILIZATION.md).
+For source-quantized model requirements, see the
+[TorchAO W8A8 source contract](TORCHAO_W8A8_SOURCE.md).
+
+To see how a compiler-routed convolution selects a handwritten OPU kernel, run
+[`examples/conv2d_to_opu.py`](https://github.com/ucb-bar/kodiak-mlir/blob/6710d84bbe0933510a51d0736fb240f89c1d8574/examples/conv2d_to_opu.py)
+from the pinned Kodiak package. It checks routing, the selected kernel, and numerical results on the
+OPU Spike model. The matching [portable evidence](evidence/compiler_selected_conv_kernel_examples.json)
+records the artifact hashes and qualification limits.
 
 ```bash
 git clone --branch feat/OPU-VME https://github.com/ucb-bar/merlin.git && cd merlin/examples/kodiak
@@ -274,7 +281,7 @@ runs into, in the order you will meet it:
   where sizing to the sum asked for 624 MiB. A TinyLlama section (`examples/workloads/causal_lm_section`)
   of 2 layers at 128 tokens fits a 256 MiB region on RVV. Its h1 OPU image relinks for a 448 MiB
   region; the exact OPU and RVV Spike images and a matched one-core FireSim pair have passed
-  numerical gates ([measured scope](KEVIN_HANDOFF.md)). Eight layers at 128 tokens, or 2 layers at 512 tokens,
+  numerical gates (see [measured scope](UTILIZATION.md)). Eight layers at 128 tokens, or 2 layers at 512 tokens,
   fill physical Kodiak's 512 MiB. The whole model does not fit physical Kodiak: its weights
   alone are about 1.2 GiB. The one-core OPU FireSim target has 16 GiB simulated DRAM and a
   separate external-weight layout; a full-model OPU run there remains unbuilt and unverified. A model

@@ -25,6 +25,12 @@ pinned rvv base at `base/rvv-mlir`).
 ./run.sh capture my_model --loader path/to/loader.py
 ```
 
+For a compiler-routed convolution that selects a handwritten VME kernel, run
+[`examples/conv2d_kernel_demo.py`](https://github.com/ucb-bar/iris-mlir/blob/5ca098187a3f3cdbc4c59977b23c9bdb163e8ada/examples/conv2d_kernel_demo.py)
+from the pinned Iris package. It checks routing, the selected kernel, and the shipped image on pinned
+Zvt Spike. The matching [portable evidence](../kodiak/evidence/compiler_selected_conv_kernel_examples.json)
+records artifact hashes and qualification limits.
+
 ### First hour: checklist
 
 Times measured on a 48-core host (2026-11-05), after the Kodiak example had set up the same clone.

@@ -1,0 +1,76 @@
+{
+  "harts": 1,
+  "merlin_commit": "9511323bb024849bbf4cbe54766d3c43d94a7dcc",
+  "model2mlir_commit": "90d767a22a2cce1989e4c1bc60704b32612f61f2",
+  "qualification_limits": [
+    "No FPGA or physical-chip execution was performed for these custom-kernel examples.",
+    "No exact TorchAO-source model framework parity was established.",
+    "Routed MAC count is work, not measured physical array utilization."
+  ],
+  "runs": {
+    "iris": {
+      "artifacts_sha256": {
+        "matrix.elf": "9aaeb510843b3286d60883774f900242dc10068572bb3aae7e6411478b36c5ce",
+        "matrix_twin.elf": "5ef2333680847bb6b7f3475bf2cc2ac99d1ed98c304dd35eb080606f0d40ee2d",
+        "routing_report.json": "ad07b6983c89c1081488a766cdf710e87a15efd5af43ed186124650e00c87cd8",
+        "rvv.elf": "583ddcba6a96aa64d5341dcf7c5126bc430fcfb06a76c3e71c692f3ae9cfe5a9",
+        "summary.json": "b4187987e21363178de0eb4e0a0423429a231c718b23b146ecfb9dc24d9cf477"
+      },
+      "compared_prefix_elements": 4096,
+      "config": "IrisConfig",
+      "kernel": {
+        "file": "kernels/vme_gemm_2x2_bias.c",
+        "generated": false,
+        "name": "vme_gemm_2x2_bias",
+        "sha256": "3a3747279e4b6de7ff5f588d33e11ea1b2b43912422e8718c9524d13da83b1ff"
+      },
+      "matrix_status": "verified",
+      "prefix_equal": true,
+      "routed_contractions": 1,
+      "routed_conv_valid_macs": 1806336,
+      "rvv_status": "verified",
+      "shipped_bit_exact_vs_twin": true,
+      "shipped_simulator_status": "verified",
+      "simulator": "pinned Zvt Spike",
+      "support_commit": "5ca098187a3f3cdbc4c59977b23c9bdb163e8ada",
+      "support_target": "iris",
+      "unit": "saturn_vme",
+      "whole_output_hash_equal": true,
+      "zvt_spike_sha256": "a343fa72383558d759e6ae0308673bf9587216b1175721a5b873f09766a8f9e5"
+    },
+    "kodiak": {
+      "artifacts_sha256": {
+        "matrix.elf": "0f682834ff43dfb19c154feb0c1037a0b68684798d58dc4f0d04d62b01065593",
+        "matrix_twin.elf": "94c9ea860fcda0e59548d053b9f13f10093ed6dcfb380f7c86165c83d351cc77",
+        "routing_report.json": "e8200c444d0279d9c6e9475ad1c61992d4b127a6d08394223e0f4b9a36806e85",
+        "rvv.elf": "92402d0ce54cc639ab57020ea892c23c78257da3bc0c08a0ae5da24f24dc1b5e",
+        "summary.json": "c74417e5e8ad653f123912e1e5f86aae8c15c50b07cb827adf5fd11cee23f1d9"
+      },
+      "compared_prefix_elements": 4096,
+      "config": "KodiakOPUConfig",
+      "kernel": {
+        "file": "kernels/opu_tile_loop.c",
+        "generated": false,
+        "name": "opu_tile_loop",
+        "sha256": "c32797e7eafe698f81f01dc2b12feab48db6ed717677ad04275597a7e786c4bd"
+      },
+      "matrix_status": "verified",
+      "prefix_equal": true,
+      "routed_contractions": 1,
+      "routed_conv_valid_macs": 1806336,
+      "run_log_sha256": "731d82c6d53171c7a0a1f4f985aa2d043b516bbcf122a5f89c411120c35a54ce",
+      "rvv_status": "verified",
+      "shipped_bit_exact_vs_twin": true,
+      "shipped_simulator_status": "verified",
+      "simulator": "Spike with functional Saturn OPU extension",
+      "source_pin_caveat": "Local Saturn source read set reports saturn_opu_int8 unrecorded/nonmaterial; this numerical result does not certify a clean source-bitstream reproduction.",
+      "support_commit": "6710d84bbe0933510a51d0736fb240f89c1d8574",
+      "support_target": "kodiak",
+      "unit": "saturn_opu",
+      "whole_output_hash_equal": true
+    }
+  },
+  "rvv_base_commit": "a80eea3eb749e5fd4cb822779a08d0d8ca09e5d5",
+  "schema": "merlin.compiler_selected_matrix_kernel_examples.v1",
+  "scope": "built-in conv2d 16 input channels, 64 output channels, 16 spatial, 3 kernel; Merlin W8A8 operator path, not exact TorchAO source"
+}
