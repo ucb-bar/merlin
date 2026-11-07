@@ -150,9 +150,8 @@ The last command gates the RVV image on Spike and builds/audits the OPU image. T
 the OPU image **UNGATED** because its scalar stand-in can take hours. Run the exact OPU image on a
 compatible simulator or chip before claiming that particular ELF passed numerically.
 
-Running on the chip itself (a shared rig: check it is idle first) is in the package's `RUNNING.md`
-(`<kodiak-mlir>/RUNNING.md`). Running on FireSim, for the OPU's real datapath and cycles,
-is [§6](#6-run-on-firesim--the-opus-real-datapath-and-cycles).
+Running on FireSim, for the OPU's datapath and target cycles, is
+[§6](#6-run-on-firesim--the-opus-real-datapath-and-cycles).
 
 ### Build one Zephyr ELF
 
@@ -186,14 +185,10 @@ transfer its measured bundle. A fresh capture has a new identity and needs
 its own correctness checks. An OPU ELF is build-audited but has not passed a
 numerical gate merely because `compile` returned successfully.
 
-To run a `chipyard_kodiak` ELF on the physical rig, follow the occupancy and
-positive-control BootAddrReg steps in
-[`kodiak-mlir/RUNNING.md`](https://github.com/ucb-bar/kodiak-mlir/blob/handwritten-implementation/RUNNING.md).
-That positive control currently fails, so physical model execution is
-blocked. Once it passes in an exclusive session, copy the ELF to the rig and
-run it with `udp_tsi_host.py --credited 8 --auto run`, keeping the console
-through `DONE`. A `firesim_kodiak_opu` ELF targets a different board and DRAM
-map; select that board only for FireSim.
+Physical Kodiak execution is not yet qualified: its independent boot-address
+positive control does not complete. A successful compile is therefore a build
+artifact, not a chip result. A `firesim_kodiak_opu` ELF targets a different
+board and DRAM map; select that board only for FireSim.
 
 The optional `firesim` stage in [section 6](#6-run-on-firesim--the-opus-real-datapath-and-cycles)
 builds a separate verified OPU/RVV pair, submits it if asked, and grades the

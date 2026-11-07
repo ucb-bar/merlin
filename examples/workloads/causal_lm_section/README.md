@@ -7,7 +7,7 @@ Hugging Face commit SHA. When set, it passes that exact revision to
 requires that exact snapshot in the local cache before loading. Without this
 variable the existing model-name lookup is unchanged.
 
-For Kevin's pretrained TinyLlama B1/S8 W8A8 capture, use:
+For the pretrained TinyLlama B1/S8 W8A8 capture, use:
 
 ```sh
 export CAUSAL_LM_MODEL=TinyLlama/TinyLlama-1.1B-Chat-v1.0
@@ -17,9 +17,8 @@ export CAUSAL_LM_ENTRY=ids M2M_BATCH=1 M2M_SEQ=8
 ```
 
 Resolve the snapshot in the **same Python environment and HF cache** as the
-capture. Check its source files before a resource-heavy recapture; the model
-file check reads about 2.2 GB, so run it after shared builds have released
-their scratch and I/O budget:
+capture. Check its source files before recapturing; the model file check reads
+about 2.2 GB:
 
 ```sh
 snapshot="$(python - <<'PY'

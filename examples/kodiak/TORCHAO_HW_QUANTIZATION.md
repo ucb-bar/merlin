@@ -4,7 +4,7 @@ The current SpectFormer and TinyLlama source captures carry explicit integer
 matrix products and explicit quantization arithmetic. Their `prov.quantization`
 label is **not** enough to reconstruct that arithmetic. The capture receipt
 binds the exact `model.mlir` and independent TorchAO `golden.npy` bytes; use
-both hashes when handing a build to Kevin.
+both hashes when distributing a build.
 
 | Source capture | Receipt SHA256 | Explicit signed i8 × i8 → i32 roots | K values |
 | --- | --- | ---: | --- |
@@ -50,13 +50,11 @@ TinyLlama roots have M=8 and N and K divisible by 64, so their **static
 logical tile fill is 8/64 = 12.5%** on either unit. It is a poor match for
 single-sequence inference; token batching or a smaller logical tile would
 need a separately proven source/accuracy and hardware configuration. A
-large speedup from this workload cannot be called high array duty. The
-[eight-request batching experiment](../../experiments/reference-data/tinyllama_torchao_batch_utilization_plan_2026-11-06.md)
-specifies the source shape and complete-model gates needed to test whether
-flattening independent requests fills the existing 64-row tile. Its full-model
-eager TorchAO probe found 155 M=64 integer calls and bitwise equality between
-one B=8 call and eight B=1 calls on one seeded input. The B=8 MLIR capture,
-routed image, and hardware utilization remain unverified.
+large speedup from this workload cannot be called high array duty. An eager
+TorchAO probe of eight independent requests found 155 M=64 integer calls and
+bitwise equality between one B=8 call and eight B=1 calls on one seeded input.
+The B=8 MLIR capture, routed image, complete-model numerical gate, and
+hardware utilization remain unverified.
 
 The captured activation maximum, reciprocal, round/clamp, dequantization, and
 float attention/normalization remain outside the integer matrix unit; their

@@ -101,9 +101,7 @@ valid routed MACs give `9,865,003,008 / (1,022,361,106 × 1,024) = 0.00942308`, 
 fewer OPU target cycles than the verified fill-only device; its matched control improved 0.3144%,
 so the paired speedup grew 3.8116%. Array occupancy remains unmeasured. A versioned opt-in
 package now carries the same knob and schedule bytes; its rebuilt images have separate identities
-and exact Spike gates. The rebuilt Spectformer, s64, and s128 pairs all passed FireSim. The trial's
-SHA-bound comparison is in Merlin managed task
-`quantize-fusion-trial/.tmp/quant_fill_hardware_comparison.json`.
+and exact Spike gates. The rebuilt Spectformer, s64, and s128 pairs all passed FireSim.
 
 The rebuilt quant-package s64 pair independently graded VERIFIED: device job 3893 took
 **1,022,361,106 target compute cycles** and matched plain-RVV control 3894 took
@@ -229,8 +227,7 @@ profiled Spike compute cycles (25.7304%). An isolated exact-image memoization pr
 the full hash but found only 970 cache hits among 2,408,448 erf calls (0.0403%). Its lookup alone
 cost eight target cycles per call; even before cache-store cost it needed about 4.82% hits to
 break even. Memoization is rejected, and this Spike share is not a FireSim speedup forecast.
-The SHA-bound probe receipt is in Merlin managed task
-`spectformer-gelu-trial/.tmp/erf_memo_trial_receipt.json`.
+This isolated probe is not part of the shipped package evidence.
 `python examples/lib/opu_profile_utilization.py
 out/artifacts/probes/firesim_kodiak_opu/spectformer_profiled_h1` verifies the exact ELF,
 full-output identity, every selected profile row, SHA-pinned table and routing sidecar, and OPU callee
@@ -292,11 +289,9 @@ active-row delta of **2,048**, then 651 flat post-event samples; gate-low delta 
 `128 × 2,048 = 262,144` issued MAC slots, exactly the 262,144 valid MACs of the 64³ GEMM.
 The measured **whole-compute row issue duty** is `2,048 / (8 × 791,141) = 0.0323583%`,
 **useful issued-slot efficiency is 100%**, and their product is **0.0323583% useful peak MAC
-utilization**. The SHA-bound metasim receipt in Chipyard managed task
-`opu-counter-goldengate-pin/.tmp/metasim_matrix_hashonly/utilization_receipt.json`
-records exact ELF, simulator, CSV, source, and ROI pins. This validates the counter method in
-metasim. It is not an FPGA array-occupancy measurement; a counter-equipped U250 bitstream and
-model run remain pending.
+utilization**. The metasim receipt is not published with this package, so this
+result is a method validation rather than portable FPGA evidence. A
+counter-equipped U250 bitstream and model run remain pending.
 
 With those counters, report the factors separately over the same inference:
 `valid MACs / (1,024 × inference cycles) = (OPU-window cycles / inference cycles)
@@ -310,28 +305,6 @@ The spectformer image passed its W8A8 numerical gate; its complete output hash m
 Spike-gated image. Its hash does not bit-match the older W8A8 golden, whose libm policy differs.
 The pinned FireSim bitstream artifact matched the job's tar. The local Saturn source pin still
 reports drift in the clock-gate config, so this measurement does not certify all source pins.
-
-Evidence in this task checkout:
-
-- `out/artifacts/probes/firesim_kodiak_opu/spectformer_merlin_compile_h1/firesim/results.json`
-- `out/artifacts/probes/firesim_kodiak_opu/spectformer_merlin_compile_h1/routing/opu_signatures.json`
-- `out/artifacts/probes/firesim_kodiak_opu/spectformer_merlin_compile_h1/routing/routing_report.json`
-- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/device/uartlog`
-- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/results.json`
-- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/firesim/utilization.json`
-- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793948837985216810/firesim/utilization.json`
-- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793959330494516874/firesim/utilization.json`
-- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_firesim_h1/run_1793936108853905576/routing/opu_signatures.json`
-- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793936116770167230/firesim/results.json`
-- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793936116770167230/firesim/utilization.json`
-- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s128_firesim_h1/run_1793936116770167230/device/routing/opu_signatures.json`
-- `out/artifacts/measurements/firesim_alveo_u250_firesim_kodiak_opu_1core/op_gemm_64x64x64/`
-- `out/artifacts/probes/firesim_kodiak_opu/dynamic_opu_counters/` (exact-ELF Spike debugger reads)
-- `out/artifacts/probes/firesim_kodiak_opu/spectformer_profiled_opu_sparse_h1/spike_gate.json`
-- `out/artifacts/probes/firesim_kodiak_opu/spectformer_current_unprofiled_h1/firesim/comparator_utilization_addendum.json`
-- `out/artifacts/probes/firesim_kodiak_opu/spectformer_profiled_opu_sparse_h1/hardware_profile_utilization.json`
-- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_prepack_profiled_opu_safe_h1/spike_profile_utilization.json`
-- `out/artifacts/probes/firesim_kodiak_opu/tinyllama_l2_s64_prepack_profiled_opu_safe_h1/hardware_profile_utilization.json`
 
 For a graded immutable FireSim pair, `python examples/lib/opu_utilization.py <run_dir>` recomputes
 static work and fill from the exact image's SHA-checked routing sidecar, and speedup from the

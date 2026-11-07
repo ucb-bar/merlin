@@ -5,8 +5,7 @@ source and compiler contract; it does not certify an OPU or VME hardware run.
 
 ## Pinned source
 
-- Model2MLIR capture: `spectformer_torchao_w8a8_20261106` in the managed task
-  `spectformer-torchao-w8a8`. `model.mlir` SHA256
+- Model2MLIR capture: `spectformer_torchao_w8a8_20261106`. `model.mlir` SHA256
   `9ae3f772ed2d192899cea502e5dec0098d5abf95f56f1707c7ba3cdfcf5481ab`.
 - Capture receipt SHA256
   `bd554a8cba6caf1b9c9c133073b7a839d3e596b70b2304d99c66aa03cd31038d`.
@@ -103,28 +102,12 @@ Comparison covers the full 1,000-element output. This remains a **failed framewo
 fidelity gate**. A separately labelled target-arithmetic diagnostic may compare a
 source-preserving OPU image and scalar twin on exact Spike/FireSim; such a result
 cannot be called torchAO framework parity while this gate fails.
-The [first-divergence report](../../experiments/reference-data/spectformer_torchao_w8a8_source_parity_2026-11-06.md)
-shows bit-exact im2col and same-input TorchAO fc1/fc2, with the first arithmetic
-drift in float patch convolution. An independent image reproduces the
-one-byte activation-threshold effects; patch-only substitution does not clear
-the complete-output gate.
-The [CPU convolution backend probe](../../experiments/reference-data/spectformer_torchao_mkldnn_sensitivity_2026-11-06.md)
-shows that Torch's fused MKLDNN bias is a major source of that first drift;
-disabling MKLDNN still does not clear the whole-model gate on either input.
-The [repeated float-operation probe](../../experiments/reference-data/spectformer_torchao_repeated_float_ops_2026-11-06.md)
-reproduces the holdout host output without compilation and isolates small
-spectral-filter, norm2, and GELU differences on identical inputs. TorchAO fc1
-matches bitwise on the same host norm2 tensor; shifted norm2 inputs produce
-larger fc1 differences on both images.
-The [FFT stage probe](../../experiments/reference-data/spectformer_torchao_fft_stage_probe_2026-11-06.md)
-finds the first same-input spectral difference in the forward width DFT on
-both trained and holdout images. Complex multiplication is bitwise exact on
-the same FFT input; inverse FFT has a separate small difference. No
-whole-model parity fix follows from those small stage differences yet.
-The [activation-code probe](../../experiments/reference-data/spectformer_torchao_activation_code_probe_2026-11-06.md)
-then checks the exact TorchAO quantizer at block-0 fc1. On identical norm2
-inputs, Merlin and TorchAO agree bitwise on reciprocal scale, signed i8 bytes,
-i32 matrix output, and f32 fc1 output for trained and holdout images. Earlier
-float drift flips only 12 and 16 codes at the `-127.5` rounding boundary,
-amplifying into the observed fc1 error. The quantizer and matrix arithmetic
-need no source-changing correction on this evidence.
+The first same-input arithmetic drift was observed in float patch convolution;
+Torch's fused CPU convolution bias contributes to it. Further small float
+differences occur in the forward width DFT, inverse FFT, normalization, and
+GELU. Complex multiplication on the same FFT input and TorchAO fc1/fc2 on
+the same activation inputs are bitwise exact. At block-0 fc1, identical norm2
+inputs also give bitwise identical reciprocal scales, signed int8 bytes, int32
+matrix outputs, and float32 outputs. Earlier float drift can cross the
+`-127.5` rounding boundary and change a few activation codes. None of these
+isolated checks clears the failed complete-output source gate.

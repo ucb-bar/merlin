@@ -210,4 +210,4 @@ overwrite an existing provider or substitute fabricated facts.
 
 - [Adding a target](adding_a_target.md) — the end-to-end onboarding flow.
 - [Generated target repositories](../reference/generated_target_repos.md) — the full package layout.
-- [Target publishing](target_publishing.md) — publishing a champion package to its `<target>-mlir` repo.
+- [Target publishing](../design/target_publishing.md) — publishing a champion package to its `<target>-mlir` repo.

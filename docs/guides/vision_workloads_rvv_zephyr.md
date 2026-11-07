@@ -91,11 +91,10 @@ and two of them are traps:
 `tile_using_forall ... num_threads`, so MLIR emits a `ceil(dim/3)` tile with an `affine.min` bound on
 the last thread — not a fixed tile size that would drop work.
 
-Running on the chip happens on the Kodiak rig, which loads images over Ethernet (UDP-TSI) through
-its FPGA; see kodiak-mlir's `RUNNING.md` (in the fetched package: `$(merlin-target-fetch kodiak --root)/RUNNING.md`). The rig
-is shared, so check that it is idle before loading or resetting anything. Merlin builds and gates the
-images and packages them with `grade.py`; the console comes back through the usual
-`OUT`/`METRIC`/`DONE` protocol.
+Merlin builds and gates Kodiak images and packages them with `grade.py`; the
+target console uses the `OUT`/`METRIC`/`DONE` protocol. Physical chip execution
+is not yet qualified by the current boot-address positive control. FireSim and
+the pinned simulators have separate results in the Kodiak example guide.
 
 One `march` note: the certified package compiles with plain `-march=rv64gcv`, i.e. **VLEN=128**,
 which matches spike's default. Saturn on Kodiak is VLEN=512, where the same fixed-width vectors use a
