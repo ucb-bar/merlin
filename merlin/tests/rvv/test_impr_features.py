@@ -412,7 +412,7 @@ def test_the_broadcast_pricing_and_its_decision_are_recorded_not_re_derivable():
     finding and the decision must live next to that lever, or the next reader reaches for it."""
     import inspect
 
-    src = inspect.getsource(F)
+    src = inspect.getsource(F._provider_module("vector_features"))
     assert "PRICED AND DECLINED" in src
     assert "51.9x amplification" in src
     assert "171.1 MiB" in src and "3.3 MiB read" in src
