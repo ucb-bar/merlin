@@ -133,15 +133,16 @@ The stages:
 ```
 
 `build`, `package`, and `firesim` accept `--rvv-package <package>`. The default is the older
-K1-certified `rvv/impr_tuned_wholemodel_vf_int8`. For the aligned-weight Kodiak prepack schedule,
-select `rvv/kodiak_prepack_w8a8_v1` explicitly. That package has exact Spike and one-core FireSim
+K1-certified `rvv/impr_tuned_wholemodel_vf_int8`, resolved from the tracked RVV base. For the aligned-weight Kodiak prepack schedule,
+select `kodiak/kodiak_prepack_w8a8_v1` explicitly. `run.sh` resolves it from the pinned Kodiak
+package; the older `rvv/kodiak_prepack_w8a8_v1` spelling remains an alias. That package has exact Spike and one-core FireSim
 evidence for the two-layer TinyLlama 64-token section, recorded in its manifest; it has no K1 or
 physical Kodiak certification. For example:
 
 ```bash
-./run.sh firesim --models tinyllama_l2_s64 --rvv-package rvv/kodiak_prepack_w8a8_v1
+./run.sh firesim --models tinyllama_l2_s64 --rvv-package kodiak/kodiak_prepack_w8a8_v1
 ./run.sh package --opu --models tinyllama_l2_s64:/path/to/section-bundle --harts 1 \
-  --rvv-package rvv/kodiak_prepack_w8a8_v1 --no-spike-backends matrix
+  --rvv-package kodiak/kodiak_prepack_w8a8_v1 --no-spike-backends matrix
 ```
 
 The last command gates the RVV image on Spike and builds/audits the OPU image. The delivery marks
@@ -151,6 +152,69 @@ compatible simulator or chip before claiming that particular ELF passed numerica
 Running on the chip itself (a shared rig: check it is idle first) is in the package's `RUNNING.md`
 (`<kodiak-mlir>/RUNNING.md`). Running on FireSim, for the OPU's real datapath and cycles,
 is [§6](#6-run-on-firesim--the-opus-real-datapath-and-cycles).
+
+### Copyable Zephyr model recipes
+
+Run these from `merlin/examples/kodiak` after `./run.sh setup` and
+`./run.sh preflight --require package --require-pin saturn_opu_int8`. Setup
+records LLVM 23, Chipyard, Zephyr SDK 0.17.0, the Kodiak package, and the
+OPU Spike model. A FireSim plan builds **board-specific Zephyr ELFs** at
+`<printed-job-dir>/device/zephyr.elf` (OPU) and
+`<printed-job-dir>/control/zephyr.elf` (plain RVV), verifies both on Spike,
+and names the one-core OPU bitstream. `--submit` boots those ELFs through
+Zephyr on FireSim; `firesim-collect` verifies the actual FPGA output.
+
+```bash
+# Spectformer: use a transferred exact capture for the published result, or
+# supply SPECTFORMER_DIR and SPECTFORMER_CKPT before this fresh capture.
+./run.sh capture spectformer
+./run.sh firesim --models spectformer --submit --timeout 7200
+./run.sh firesim-collect <printed-job-dir>
+
+# TinyLlama: this is the two-layer, 64-token section, not the full model.
+# Use a transferred exact section capture for the published result, or a
+# locally cached checkpoint and the capture command in section 2c below.
+./run.sh firesim --models tinyllama_l2_s64 \
+  --rvv-package kodiak/kodiak_prepack_w8a8_v1 \
+  --gate independent-rvv --submit --timeout 7200
+./run.sh firesim-collect <printed-job-dir>
+```
+
+To measure useful MAC throughput inside OPU calls, repeat either `firesim`
+command with `--profile`. That creates a different instrumented OPU ELF and
+a SHA-pinned operation table. The profiled OPU versus unprofiled RVV cycle
+ratio is not a valid speedup; use an unprofiled pair for speedup. The
+[current-pin receipts](UTILIZATION.md#current-pin-firesim-qualification-2026-11-07)
+give the exact capture and ELF identities. Captures live under ignored
+`out/artifacts/recaptures/`: a fresh Git checkout alone cannot reproduce
+the published output hash. After transferring the measured bundles, compare
+`capture_sha256` in the printed `firesim_job.json` with the portable receipts:
+Spectformer `6ba976f5c848018a2872c959eada50280a081f317b9cd83feeb624030af443c3`,
+TinyLlama s64 `d2c4db370950a69e121bc8dffb166abf98bd517e28c8a89219c6899055e39820`.
+A new capture needs fresh Spike and FPGA gates.
+
+For **physical Kodiak**, build a separate `chipyard_kodiak` delivery; the
+`firesim_kodiak_opu` ELFs above target a different board and DRAM map. These
+commands produce the h1 Zephyr OPU image and RVV control under
+`out/artifacts/delivery/example-kodiak/`:
+
+```bash
+./run.sh package --opu --models spectformer --harts 1
+./run.sh package --opu --models tinyllama_l2_s64 --harts 1 \
+  --rvv-package kodiak/kodiak_prepack_w8a8_v1
+```
+
+Archive the first delivery before building the second, since both commands
+write the same output directory. The OPU filenames are
+`spectformer_int8_h1_matrix_chipyard_kodiak.elf` and
+`tinyllama_l2_s64_int8_h1_matrix_chipyard_kodiak.elf`. Before any physical
+load, follow the occupancy and positive-control BootAddrReg steps in
+[`kodiak-mlir/RUNNING.md`](https://github.com/ucb-bar/kodiak-mlir/blob/handwritten-implementation/RUNNING.md).
+That positive control currently fails, so physical model execution is
+blocked. Once it passes in an exclusive session, copy the delivery to the
+rig and run the exact ELF with `udp_tsi_host.py --credited 8 --auto run`,
+as shown in that guide; keep the console and require `DONE` and the
+numerical grade.
 
 ## 1. `probe` — ask the chip what it is, before uploading megabytes
 
@@ -490,8 +554,10 @@ prefix SHA-256. This does not separately check the scalar twin's packing path. T
 the scalar-twin gate.
 
 ```bash
-./run.sh firesim --models tinyllama_l2_s64 --gate independent-rvv --timeout 7200
-./run.sh firesim --models tinyllama_l2_s128 --gate independent-rvv --timeout 14400
+./run.sh firesim --models tinyllama_l2_s64 --rvv-package kodiak/kodiak_prepack_w8a8_v1 \
+  --gate independent-rvv --timeout 7200
+./run.sh firesim --models tinyllama_l2_s128 --rvv-package kodiak/kodiak_prepack_w8a8_v1 \
+  --gate independent-rvv --timeout 14400
 ```
 
 ### Without the shared queue
@@ -533,6 +599,11 @@ See [OPU utilization](UTILIZATION.md) for the target-cycle denominator, routed M
 and the limits of the current hardware counters.
 
 ### The reference result
+
+The latest pinned one-core Spectformer and TinyLlama runs, including the
+prepacked TinyLlama A/B and correctly bounded utilization, are in
+[UTILIZATION.md](UTILIZATION.md#current-pin-firesim-qualification-2026-11-07).
+The older Spectformer pair below remains a historical example.
 
 The current `merlin-compile` spectformer pair ran through the shared queue on 2026-11-05. Device job
 3858: **3,531,733,777** target compute cycles; plain-RVV control job 3859: **6,120,729,118** cycles,

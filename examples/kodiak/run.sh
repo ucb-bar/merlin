@@ -49,8 +49,8 @@
 #        --matrix-kernel K  with `op`/`build`/`package`/`matrix`/`firesim`, every routed contraction calls
 #                        OPU kernel K: a name in kernels/kernels.yaml or path/to/kernel.c[:function]
 #                        (default: $MERLIN_MATRIX_KERNEL, else the package's default kernel)
-#        --rvv-package P  with `build`/`package`/`firesim`, select an RVV schedule package, e.g.
-#                        rvv/kodiak_prepack_w8a8_v1 (default: the K1-certified wholemodel package)
+#        --rvv-package P  with `build`/`package`/`firesim`, select a schedule package, e.g.
+#                        kodiak/kodiak_prepack_w8a8_v1 (default: the K1-certified RVV package)
 #        --no-spike-backends matrix  with `build`/`package`, build and audit matrix images without
 #                        running the slow scalar twin; the delivery marks those images UNGATED
 set -euo pipefail
@@ -97,13 +97,22 @@ KERNEL_ARGS=()
 if [ -n "$MATRIX_KERNEL" ]; then KERNEL_ARGS=(--matrix-kernel "$(ex_kernel_spec "$MATRIX_KERNEL")"); fi
 
 cd "$REPO_ROOT"
+# Kodiak's support package (and its boards) is kodiak-mlir at the commit Merlin pins, fetched by setup.
+case "$STAGE" in setup|help|-h|--help) ;; *) ex_select_support "$MATRIX_SUPPORT" ;; esac
+# The default RVV schedule is tracked in the pinned RVV base. Kodiak's prepack
+# choice is tracked in the pinned Kodiak package. Neither requires a pre-existing
+# ignored out/artifacts/targets directory on a fresh checkout.
 RVV_PACKAGE_PATH="$RVV_PACKAGE"
 case "$RVV_PACKAGE" in
+  rvv/impr_tuned_wholemodel_vf_int8)
+    RVV_PACKAGE_PATH="$REPO_ROOT/examples/rvv/support/schedules/impr_tuned_wholemodel_vf_int8" ;;
+  kodiak/kodiak_prepack_w8a8_v1|rvv/kodiak_prepack_w8a8_v1)
+    if [ -n "${SUPPORT_ROOT:-}" ]; then
+      RVV_PACKAGE_PATH="$SUPPORT_ROOT/schedules/kodiak_prepack_w8a8_v1"
+    fi ;;
   /*) ;;
   *) RVV_PACKAGE_PATH="$REPO_ROOT/out/artifacts/targets/$RVV_PACKAGE" ;;
 esac
-# Kodiak's support package (and its boards) is kodiak-mlir at the commit Merlin pins, fetched by setup.
-case "$STAGE" in setup|help|-h|--help) ;; *) ex_select_support "$MATRIX_SUPPORT" ;; esac
 
 case "$STAGE" in
 setup)
@@ -194,7 +203,7 @@ firesim)
   for m in "${FS_MODELS[@]}"; do
     ex_say "FireSim legs for $m on $FS_BOARD: OPU device + RVV control"
     ex_run "$PY" "$EX_LIB_DIR/firesim_flow.py" legs "${m}_int8_full" --board "$FS_BOARD" \
-        --package "$RVV_PACKAGE" --harts "${HARTS_OPT:-1}" --matrix-unit "$MATRIX_UNIT" \
+        --package "$RVV_PACKAGE_PATH" --harts "${HARTS_OPT:-1}" --matrix-unit "$MATRIX_UNIT" \
         --matrix-config "$MATRIX_CONFIG" --matrix-support-target "$MATRIX_SUPPORT" \
         ${KERNEL_ARGS[@]+"${KERNEL_ARGS[@]}"} "$@" ${SUBMIT[@]+"${SUBMIT[@]}"}
   done

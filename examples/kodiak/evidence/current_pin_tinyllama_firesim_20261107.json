@@ -8,6 +8,7 @@
   },
   "board": "firesim_kodiak_opu",
   "hardware_config": "alveo_u250_firesim_kodiak_opu_1core",
+  "tinyllama_l2_s64_capture_sha256": "d2c4db370950a69e121bc8dffb166abf98bd517e28c8a89219c6899055e39820",
   "bitstream_tar_sha256": "f671be16ae5850c2765d897593010f4144654fe49bed0d5fe0d3ebdbd49d9462",
   "hwdb_entry_sha256": "76bddc8d3fa9cff6bd6b7d40ca52acb9a1c682cef6b534b7f845aaddf8a170aa",
   "full_output_elements": 2048000,
