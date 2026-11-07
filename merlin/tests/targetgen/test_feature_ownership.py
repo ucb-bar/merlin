@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -42,14 +43,13 @@ def test_shared_and_vector_hooks_still_change_the_selected_pipeline():
     assert vector.apply_schedule(baseline, features) != baseline
 
 
-def test_chip_marker_is_only_in_the_chip_bound_backend(monkeypatch):
+def test_chip_marker_is_only_in_the_chip_bound_backend():
     from merlin.targetgen import target_registry
 
-    # An explicit RVV-only selection replaces the default search list. Probe the
-    # pinned chip independently, and skip when this checkout has not fetched it.
-    monkeypatch.delenv("MERLIN_TARGET_PATH", raising=False)
-    if target_registry.default_support_root("kodiak") is None:
-        pytest.skip("pinned Kodiak support is not fetched in this checkout")
+    # This gate needs both the chip and its exact base in one explicit selection.
+    # A stale fetched default can have a different base pin during repinning.
+    if os.environ.get("MERLIN_TARGET_PATH") is None or "kodiak" not in target_registry.explicit_targets():
+        pytest.skip("select Kodiak and its pinned RVV base explicitly for chip binding")
     chip = load_vector_codegen("kodiak")
     assert "opu_matmul" in chip.feature_names()
     assert "opu_matmul" in chip.normalize_features({"opu_matmul"})
