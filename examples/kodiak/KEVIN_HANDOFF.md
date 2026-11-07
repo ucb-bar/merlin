@@ -167,7 +167,11 @@ matches Torch bitwise on trained and holdout LayerNorm inputs. Select it with
 `MERLIN_TORCHAO_CPU_SOURCE_COMMIT=7f24a19c0967db04f2d5ba44c1e56eca489932ec`,
 and `MERLIN_TORCHAO_CPU_CAPABILITY=AVX2`; the old capture lacks the latter two
 facts, so these are runner assertions rather than independently verified
-capture metadata. The unchanged full-model framework gate remains pending.
+capture metadata. Model2MLIR `feat/OPU-VME` at `7bbc460` now writes the observed
+Torch commit and selected CPU capability into new CPU FXImporter captures and
+their byte-bound receipts; a guarded tiny capture verified both fields and
+rejected a tampered commit. It does not retrofit this historical capture or
+prove full source closure. The unchanged full-model framework gate remains pending.
 The first TinyLlama discrepancy is now localized further: its embedding and first
 RMSNorm squared values match eager torchAO exactly, but Merlin's serial float32
 mean reduction differs from Torch CPU's reduction tree. This changes the normalization
