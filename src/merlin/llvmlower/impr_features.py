@@ -325,6 +325,8 @@ _COMPAT_CONSTANTS: dict[str, Any] = {
 
 
 def __getattr__(name: str):
+    if name.startswith("__"):
+        raise AttributeError(name)
     if name in _COMPAT_CONSTANTS:
         return _COMPAT_CONSTANTS[name]
     for module_name in _PROVIDER_MODULES:
