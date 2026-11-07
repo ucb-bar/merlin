@@ -1,5 +1,6 @@
 """Executable backend loading and scalar independence."""
 
+import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -119,6 +120,24 @@ def test_scalar_runtime_flags_never_resolve_vector_provider(monkeypatch):
     monkeypatch.setattr(backend_spi, "load_vector_codegen", forbidden)
     assert zephyr_model._cflags("scalar")[0] == "-march=rv64gc"
     assert "-march=rv64gc" in spike_model._harness_cflags(["-march=rv64gc"], backend="scalar")
+
+
+def test_vector_lowering_uses_provider_feature_without_old_registry(tmp_path):
+    source = """
+from pathlib import Path
+import sys
+from merlin.llvmlower.pipeline import lower_to_llvm_ir
+out = lower_to_llvm_ir(
+    'module { func.func @main() { return } }',
+    workdir=Path(sys.argv[1]),
+    vectorize=True,
+    features=frozenset({'intrinsic_microkernel'}),
+)
+assert 'define void @main' in out
+assert 'merlin.llvmlower.impr_features' not in sys.modules
+"""
+    result = subprocess.run([sys.executable, "-c", source, str(tmp_path)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
 
 
 def test_chain_loads_base_code_from_base_root(monkeypatch, tmp_path):

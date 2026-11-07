@@ -513,16 +513,10 @@ from .contiguous_suffix_copy import RUNNER_PRELUDE as _CONTIGUOUS_COPY_PRELUDE
 from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
 from .int_softmax_table import RUNNER_PRELUDE as _INT_SOFTMAX_TABLE_PRELUDE
-from .uniform_fill_copy import MID_STAGE_SRC as _UNIFORM_FILL_COPY_MID_SRC
-from .uniform_fill_copy import RUNNER_PRELUDE as _UNIFORM_FILL_COPY_PRELUDE
 
 # The normal runner already reserves argv[17] for the target data layout.
 # Compose the optional copy stages with their new trailing slots rather than
 # allowing their original standalone gate positions to reinterpret that layout.
-_UNIFORM_FILL_COPY_MID_SRC = _UNIFORM_FILL_COPY_MID_SRC.replace(
-    'if len(sys.argv) > 17 and sys.argv[17] == "1":',
-    'if len(sys.argv) > 18 and sys.argv[18] == "1":',
-)
 _CONTIGUOUS_COPY_MID_SRC = _CONTIGUOUS_COPY_MID_SRC.replace(
     'if len(sys.argv) > 18 and sys.argv[18] == "1":',
     'if len(sys.argv) > 19 and sys.argv[19] == "1":',
@@ -541,6 +535,13 @@ from .parallel_grain import RUNNER_PRELUDE as _PARALLEL_GRAIN_PRELUDE
 from .parallel_team import RUNNER_PRELUDE as _PARALLEL_TEAM_PRELUDE
 from .parallel_team import STAGE_SRC as _PARALLEL_TEAM_STAGE_SRC
 from .roundeven_intrinsic import RUNNER_PRELUDE as _ROUND_INTRINSIC_PRELUDE
+from .runner_shared import (
+    DEALLOC_CHECK_PRELUDE,
+    DEALLOC_CHECK_RUNNER,
+    DEALLOC_CHECK_TOKEN,
+    _UNIFORM_FILL_COPY_MID_SRC,
+    _UNIFORM_FILL_COPY_PRELUDE,
+)
 from .scalar_contraction import RUNNER_PRELUDE as _SCALAR_CONTRACTION_PRELUDE
 from .scalar_pointwise_packet import RUNNER_PRELUDE as _SCALAR_POINTWISE_PACKET_PRELUDE
 from .scalar_pointwise_unroll import RUNNER_PRELUDE as _SCALAR_POINTWISE_UNROLL_PRELUDE
@@ -548,160 +549,6 @@ from .scalar_squared_sum import RUNNER_PRELUDE as _SCALAR_SQUARED_SUM_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
-
-# --- The use-after-free check that guards the sinking stage ---------------------------------
-#
-# Sinking a dealloc is the one edit here whose failure mode is WRONG NUMBERS, not a broken build: a
-# free moved before a use is a use-after-free, and with the static arena bound on top of it the
-# freed bytes are immediately handed to another buffer. `optimize-allocation-liveness` decides where
-# a free may go from upstream's `BufferViewFlowAnalysis`; this re-checks the RESULT, on the IR the
-# stage actually produced, in terms that do not depend on that analysis being right.
-#
-# The rule: for every `memref.alloc` whose `memref.dealloc` the stage placed in the alloc's OWN block
-# (an allocation still freed inside an `scf.if` was not sunk -- upstream placed it, and it is left
-# alone), every use of the allocation AND of every value derived from it must come before that free.
-#
-# "Derived from" is deliberately OVER-approximated: any op result of memref type, and any memref
-# block argument of a region, of an op that consumes an aliasing value joins the alias set. An
-# over-approximation can only make the check REFUSE a placement it could have allowed; it cannot let
-# a real use-after-free through by narrowing what counts as a use. Anything it cannot read -- a use
-# whose ancestor chain does not reach the alloc's block -- is reported, never skipped.
-DEALLOC_CHECK_PRELUDE = r"""
-def _memref_typed(v):
-    return str(v.type).startswith('memref')
-
-
-def _op_key(o):
-    # OpView and Operation both answer `.operation`, and the bindings hand back equal (hashable)
-    # objects for the same op however it was reached -- so this is a stable dict key.
-    return o.operation
-
-
-def _dealloc_placement_violations(module):
-    # (violations, n_allocs, n_sunk) for a post-deallocation memref module.
-    order, block_of, index_of, owner_of_block = [], {}, {}, {}
-    counter = [0]
-
-    def visit(block, owner):
-        bid = counter[0]
-        counter[0] += 1
-        owner_of_block[bid] = owner
-        for i, op in enumerate(block.operations):
-            k = _op_key(op)
-            block_of[k], index_of[k] = bid, i
-            order.append(op)
-            for region in op.regions:
-                for b in region.blocks:
-                    visit(b, op)
-
-    for op in module.body.operations:
-        for region in op.regions:
-            for b in region.blocks:
-                visit(b, op)
-
-    alias, roots, uses = {}, {}, {}
-    for op in order:
-        name = op.operation.name
-        if name == 'memref.alloc' and len(op.results) == 1:
-            rid = len(roots)
-            roots[rid] = op
-            alias[op.results[0]] = {rid}
-            continue
-        hit = set()
-        for v in op.operands:
-            hit |= alias.get(v, set())
-        if not hit:
-            continue
-        for rid in hit:
-            uses.setdefault(rid, []).append(op)
-        for r in op.results:
-            if _memref_typed(r):
-                alias.setdefault(r, set()).update(hit)
-        for region in op.regions:
-            for b in region.blocks:
-                for a in b.arguments:
-                    if _memref_typed(a):
-                        alias.setdefault(a, set()).update(hit)
-
-    def ancestor_in_block(op, bid):
-        o = op
-        while True:
-            k = _op_key(o)
-            if k not in block_of:
-                return None
-            if block_of[k] == bid:
-                return o
-            parent = owner_of_block[block_of[k]]
-            if parent is None:
-                return None
-            o = parent
-
-    violations, sunk = [], 0
-    for rid, alloc in roots.items():
-        abid = block_of[_op_key(alloc)]
-        here = [u for u in uses.get(rid, [])
-                if u.operation.name == 'memref.dealloc' and block_of[_op_key(u)] == abid]
-        if not here:
-            continue                      # freed in a conditional/another block: not sunk
-        sunk += 1
-        d = min(here, key=lambda o: index_of[_op_key(o)])
-        di = index_of[_op_key(d)]
-        ty = str(alloc.results[0].type)
-        for u in uses.get(rid, []):
-            if _op_key(u) == _op_key(d):
-                continue
-            anc = ancestor_in_block(u, abid)
-            if anc is None:
-                violations.append(ty + ': use by ' + u.operation.name +
-                                  ' is outside the block its free was placed in')
-            elif index_of[_op_key(anc)] > di:
-                violations.append(ty + ': freed at #' + str(di) + ' but used at #' +
-                                  str(index_of[_op_key(anc)]) + ' by ' + u.operation.name)
-    return violations, len(roots), sunk
-"""
-
-#: Runner glue: wrap ``_run_stages`` so the placement check runs on the IR the sinking stage
-#: produced, in EVERY runner variant, without any of them having to know about it. The wrapper
-#: delegates unchanged when the pass list carries no sinking stage.
-DEALLOC_CHECK_RUNNER = r"""
-_ORIG_RUN_STAGES = _run_stages
-_SINK_MARK = 'optimize-allocation-liveness'
-
-
-def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
-                pre_generalize=()):
-    passes = [p for p in pipeline.split(',') if p]
-    k = next((i for i, p in enumerate(passes) if _SINK_MARK in p), -1)
-    if k < 0:
-        return _ORIG_RUN_STAGES(ctx, module, pipeline, erase, mid, late, post_openmp,
-                                pre_generalize)
-    head, tail = passes[:k + 1], passes[k + 1:]
-    # `erase`/`mid` open their window after buffer-loop-hoisting, and `late` opens its own before
-    # convert-scf-to-openmp; hand each to whichever half contains its anchor, or it would be
-    # accepted here and silently never run. A `late` whose anchor is in neither half goes to the
-    # tail, where the wrapped runner still applies it at the end rather than dropping it.
-    hoist_head = any('buffer-loop-hoisting' in p for p in head)
-    late_head = any('convert-scf-to-openmp' in p for p in head)
-    post_head = late_head
-    _ORIG_RUN_STAGES(ctx, module, ','.join(head),
-                     erase if hoist_head else 0, mid if hoist_head else (),
-                     late if late_head else (), post_openmp if post_head else (),
-                     pre_generalize)
-    bad, n_alloc, n_sunk = _dealloc_placement_violations(module)
-    print('OK dealloc_placement', n_alloc, 'allocations', n_sunk, 'sunk', len(bad), 'violations')
-    if bad:
-        raise RuntimeError('dealloc placement moved a free before a use of the buffer '
-                           '(' + str(len(bad)) + ' violations):\n  ' + '\n  '.join(bad[:20]))
-    if tail:
-        _ORIG_RUN_STAGES(ctx, module, ','.join(tail),
-                         0 if hoist_head else erase, () if hoist_head else mid,
-                         () if late_head else late, () if post_head else post_openmp, ())
-"""
-
-#: The line the runner prints once the check has run. `lower_to_llvm_ir` REQUIRES it whenever the
-#: pipeline carries the sinking stage: a runner variant that drove the PassManager itself and never
-#: reached the wrapper would otherwise sink the frees with nothing checking them, and report success.
-DEALLOC_CHECK_TOKEN = "OK dealloc_placement"
 
 
 def apply_passes(mlir_text: str, pipeline: str, timeout: int = 600) -> str:
@@ -1198,61 +1045,62 @@ def lower_to_llvm_ir(
     (work / _SOURCE_CHECKPOINT).unlink(missing_ok=True)
     (work / _SOURCE_REPORT).unlink(missing_ok=True)
     recipe_sources = {"pipeline_driver": Path(__file__)}
-    from .impr_features import normalize
+    if not vectorize:
+        from .impr_features import normalize
 
-    # `normalize` REJECTS an unregistered name, and the lowering runs in forked/child processes that
-    # import this module without importing `llvmlower.lower` (where the runner-gated features are
-    # registered). Registering here, before the set is validated, is what keeps a feature the caller
-    # legitimately asked for from failing as "unknown impr feature" in one process and working in
-    # another. Idempotent.
-    from .transpose_maps import ensure_registered as _register_fold_weight_transpose
+        # `normalize` REJECTS an unregistered name, and the lowering runs in forked/child processes that
+        # import this module without importing `llvmlower.lower` (where the runner-gated features are
+        # registered). Registering here, before the set is validated, is what keeps a feature the caller
+        # legitimately asked for from failing as "unknown impr feature" in one process and working in
+        # another. Idempotent.
+        from .transpose_maps import ensure_registered as _register_fold_weight_transpose
 
-    _register_fold_weight_transpose()
-    from .weight_prepack import ensure_registered as _register_prepack_weight_layout
+        _register_fold_weight_transpose()
+        from .weight_prepack import ensure_registered as _register_prepack_weight_layout
 
-    _register_prepack_weight_layout()
-    from .weight_prequant import ensure_registered as _register_prequantize_constant_weights
+        _register_prepack_weight_layout()
+        from .weight_prequant import ensure_registered as _register_prequantize_constant_weights
 
-    _register_prequantize_constant_weights()
-    from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
+        _register_prequantize_constant_weights()
+        from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
 
-    _register_fold_broadcast_into_generic()
-    from .named_broadcast_fold import ensure_registered as _register_named_broadcast_fold
+        _register_fold_broadcast_into_generic()
+        from .named_broadcast_fold import ensure_registered as _register_named_broadcast_fold
 
-    _register_named_broadcast_fold()
-    from .concat_dps import ensure_registered as _register_concat_dps
+        _register_named_broadcast_fold()
+        from .concat_dps import ensure_registered as _register_concat_dps
 
-    _register_concat_dps()
-    # The direct-conv arm's REQUEST feature. Registered here for the same reason as the four above:
-    # this module is imported by the lowering child processes, and a name registered only in the
-    # parent fails `normalize` in the child. It edits nothing here -- the arm is realized by the
-    # per-op block table (llvmlower.perop_blocks), which the preparation step derives -- so a build
-    # that carries the name lowers identically and the name records that the arm was asked for.
-    from .perop_blocks import ensure_registered as _register_conv_arm
+        _register_concat_dps()
+        # The direct-conv arm's REQUEST feature. Registered here for the same reason as the four above:
+        # this module is imported by the lowering child processes, and a name registered only in the
+        # parent fails `normalize` in the child. It edits nothing here -- the arm is realized by the
+        # per-op block table (llvmlower.perop_blocks), which the preparation step derives -- so a build
+        # that carries the name lowers identically and the name records that the arm was asked for.
+        from .perop_blocks import ensure_registered as _register_conv_arm
 
-    _register_conv_arm()
-    # The panel-packed im2col REQUEST, registered for the same reason: the rewrite happens in the
-    # preparation step, and by lowering time the name only records that the arm was asked for.
-    from .im2col_pack import ensure_registered as _register_im2col_panel_pack
+        _register_conv_arm()
+        # The panel-packed im2col REQUEST, registered for the same reason: the rewrite happens in the
+        # preparation step, and by lowering time the name only records that the arm was asked for.
+        from .im2col_pack import ensure_registered as _register_im2col_panel_pack
 
-    _register_im2col_panel_pack()
-    # This feature edits the pass list itself and lives outside impr_features. Direct callers of
-    # this module therefore need the same registration that lower.py performs before normalization.
-    from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
+        _register_im2col_panel_pack()
+        # This feature edits the pass list itself and lives outside impr_features. Direct callers of
+        # this module therefore need the same registration that lower.py performs before normalization.
+        from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
 
-    _register_epilogue_fusion()
-    from .roundeven_intrinsic import ensure_registered as _register_roundeven_intrinsic
+        _register_epilogue_fusion()
+        from .roundeven_intrinsic import ensure_registered as _register_roundeven_intrinsic
 
-    _register_roundeven_intrinsic()
-    from .fma_intrinsic import ensure_registered as _register_fma_intrinsic
+        _register_roundeven_intrinsic()
+        from .fma_intrinsic import ensure_registered as _register_fma_intrinsic
 
-    _register_fma_intrinsic()
-    from .quant_scope import ensure_registered as _register_quant_scope
+        _register_fma_intrinsic()
+        from .quant_scope import ensure_registered as _register_quant_scope
 
-    _register_quant_scope()
-    from .int_softmax_table import ensure_registered as _register_int_softmax_table
+        _register_quant_scope()
+        from .int_softmax_table import ensure_registered as _register_int_softmax_table
 
-    _register_int_softmax_table()
+        _register_int_softmax_table()
     # `--pass` / `--no-pass` / MERLIN_PASSES add or remove feature-bound optional passes.
     from .optional_passes import selected_features
 
