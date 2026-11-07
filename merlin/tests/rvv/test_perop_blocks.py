@@ -18,7 +18,6 @@ import inspect
 
 import pytest
 
-from merlin.common.paths import repo_root
 from merlin.llvmlower import perop_blocks as pb
 
 
@@ -441,7 +440,6 @@ def test_the_n_fill_knob_is_off_by_default_and_only_turns_on_by_request():
     accumulator spills and NR=32 is e32,m8 with six. This pins the wiring that keeps it opt-in."""
     import inspect
 
-    from merlin.llvmlower.impr_features import PEROP_NR_FILL_NAME
     from merlin.runtime.backends import zephyr_model as zm
 
     prep = inspect.getsource(zm.prepare_for_lowering)
@@ -678,13 +676,18 @@ def test_the_mr_fill_knob_is_registered_at_import_and_ranked():
     from merlin.common.paths import merlin_dir, repo_root
     from merlin.llvmlower.impr_features import PEROP_MR_FILL_NAME
     from merlin.mining.wholemodel_proposer import RANKED_LEVERS, _composes
+    from merlin.targetgen.target_registry import effective_target_path
 
     code = (
         "import json\n"
         "from merlin.llvmlower import impr_features as F\n"
         "print(json.dumps(F.PEROP_MR_FILL_NAME in F.known()))\n"
     )
-    env = {"PYTHONPATH": str(merlin_dir() / "python"), "PATH": "/usr/bin:/bin"}
+    env = {
+        "PYTHONPATH": str(merlin_dir() / "python"),
+        "PATH": "/usr/bin:/bin",
+        "MERLIN_TARGET_PATH": effective_target_path(),
+    }
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=repo_root(), env=env)
     assert r.returncode == 0, r.stderr[-2000:]
     assert json.loads(r.stdout.strip().splitlines()[-1]) is True

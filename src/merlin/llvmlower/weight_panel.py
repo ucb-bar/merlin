@@ -19,4 +19,8 @@ def __getattr__(name: str):
 
 
 def ensure_registered():
-    return _implementation().ensure_registered()
+    result = _implementation().ensure_registered()
+    from .impr_features import get
+
+    get(FEATURE)
+    return result
