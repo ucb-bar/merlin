@@ -30,7 +30,7 @@ The example compiler and ordinary and cached composition drivers default to the 
 
 Select an RMS reduction domain with `--reduction-policy`. The default is `bf16-adjacent-fp32-tree-rne-seeded-tile-sum-ltr-chop-v1`. The explicit alternative `bf16-nonnegative-normal-adjacent-fp32-tree-rne-seeded-tile-sum-ltr-chop-v1` admits positive zero and nonnegative normal BF16 inputs without changing the reduction arithmetic. The Atlas provider owns both domain definitions and validates the selected policy through `AtlasApplicationAdapter`; the generic `compile_semantic_application` API is unchanged. `precision.json` and `compiled.json` record the exact policy identifier, and drivers refuse to reuse a compilation with a different reduction selection. Numerical exactness and quality still require separate gates.
 
-Compilation uses generic `SearchLimits()` defaults, including 24 candidate nodes and a 60-second search wall limit. Target ABI and pointwise allocation inherit the active generic wall budget and the deterministic allocation-order policy from the generic compiler. The drivers retain fixed-shape I/O and application capacities of 4,325,376 and 536,870,912 bytes.
+Compilation uses generic `SearchLimits()` defaults, including 24 candidate nodes and a 60-second search wall limit. Target ABI and pointwise allocation inherit the active generic wall budget and deterministic allocation-order policy. The drivers default to I/O and application capacities of 67,108,864 and 536,870,912 bytes. A 4,325,376-byte I/O window selects the K32 tile route for Q, O, up, gate, and down, producing about 42,000 host-driven launches per layer.
 
 For a declared text window, pass `--initial-inputs`, `--initial-preparation`, `--source-bundle`, and, when available, `--initial-tokens` and `--selection-manifest`. The canonical quality authenticator loads only the source graph and original BF16 embedding table, verifies the token and source hashes, and independently gathers the raw words. It checks that the embedding is the original direct parameter lookup and that every other captured preparation boundary is independent of token values. Only layer0 `input_0` may change. The concurrent composition mode also binds that input to the oracle's preparation and token hashes; sequential mode authenticates it directly against the unchanged source gather; mask, rotary, and later hidden-state fixtures retain their existing strict checks. No source graph arithmetic is executed during authentication.
 
@@ -54,6 +54,72 @@ After capture, staging, signature, and every original tensor payload have been a
 
 For live model reconstruction, use `adapter_loader.py` with the generic capture worker and `--already-quantized --quant-adapter atlas_fp8 --contract EXPORT/manifest.json --policy EXPORT/policy.json`, plus the two expected SHA-256 flags. Set `ATLAS_EXPORT_DIR`, `ATLAS_ARCHITECTURE`, and `ATLAS_INPUTS_SAFETENSORS`, and supply the same frozen hashes through `ATLAS_EXPECTED_CONTRACT_SHA256` and `ATLAS_EXPECTED_POLICY_SHA256`. The loader constructs the architecture on the meta device, installs authenticated raw codes, exponents, and ordinary tensors, and exports inside the original native-site context without loading a saved source program.
 
-Validation provenance: the source bundle used for the adapter receipts is a regeneration of the source-author bundle at `a6a1aa4`, produced by following its how-to and passing `verify_bundle`; it is not the original artifact files. The measured worker invocation uses a job-local observer around `adapter_loader.py` that saves its returned native EP. Numeric validation re-extracts 24 boundaries from that saved EP and runs `compile_capsule.py --adapter-export` in saved-boundary mode. It does not compile the worker's own `linalg.mlir`, and this repository does not currently provide that worker-capture-to-regional-compiler path. Graph lineage links the two routes; serialized trace provenance differences remain recorded. Compilation manifests can differ in `native_snapshot_sha256` and `pointwise_lowering_source_sha256` even when all executable, launch, and parameter bytes match.
+Validation provenance: adapter validation uses a regenerated bundle at source revision `a6a1aa4fef1106fc12f0ea4afc035310a2d4b7ff` that passes `verify_bundle`; it does not use the original artifact files. A capture observer saves the live loader's returned native export, from which validation extracts 24 boundaries and runs `compile_capsule.py --adapter-export`. This saved-boundary route is the qualified compilation route. The live capture worker's `linalg.mlir` is not consumed by the regional compiler; connecting those two entry points remains open work. Graph lineage links the routes, and serialized trace provenance differences remain recorded. Compilation manifests can differ in `native_snapshot_sha256` and `pointwise_lowering_source_sha256` even when executable, launch, and parameter bytes match.
 
-The capacities 4,325,376 I/O bytes and 536,870,912 application bytes are inherited fixed-shape driver defaults, used by the independent parameter baseline. They are memory-window sizes, not increased effort or timeout bounds; they were not changed by the adapter work.
+Layer-0 compilation is load-sensitive under the unchanged 30-second per-tool wall inherited from the Atlas binding. Prefill64 sizing has taken about 23 seconds on a quiet host. A timeout is a failed compile; retain the failure receipt and retry under lower load without raising the limit.
+
+## Run layer 0
+
+Use matching `feat/tinyllama` branches of atlas-mlir, Merlin, and [model2MLIR](https://github.com/reed-nicolas/model2MLIR/tree/feat/tinyllama). Install the standalone `atlas_fp8` package from the atlas-mlir checkout with `python -m pip install -e "$ATLAS_ROOT/adapter"`. The matching model2MLIR head is `e445587543bf9b84e6ee1371414f2202f2533d9c`, also pinned in `merlin/contract/software_pins.yaml`. Retain the selected atlas-mlir and Merlin branch SHAs beside each run receipt; documentation commits can advance these draft branch heads. These are draft branches, and the live adapter capture is separate from the qualified saved-boundary route below.
+
+Regenerate from Loren's [atlas-torchao exporter](https://github.com/ucb-ee290c/atlas-torchao/blob/a6a1aa4fef1106fc12f0ea4afc035310a2d4b7ff/docs/algos/howto-model-to-fx-graph.md) at `a6a1aa4fef1106fc12f0ea4afc035310a2d4b7ff`, with the pinned checkpoint and calibration data. Run these commands in that checkout with a fresh `$BUNDLE`:
+
+```sh
+nice -n 10 "$CAPTURE_PYTHON" src/eval.py --model "$CHECKPOINT" \
+  --seqlen 2048 --calib-n 16 --calib-seed 1234 --modes ref_conv \
+  --export-only --algo atlas_v1_awq_tile_static --device cpu \
+  --export-dir "$BUNDLE/export" --out "$BUNDLE/export_cli.json"
+nice -n 10 "$CAPTURE_PYTHON" src/fx_export.py --model "$CHECKPOINT" \
+  --export-dir "$BUNDLE/export" --out-dir "$BUNDLE/fx" --device cpu --seqlen 64 --native-fp8
+nice -n 10 "$CAPTURE_PYTHON" scripts/tile_flow/verify_bundle.py \
+  "$BUNDLE/export" "$BUNDLE/fx" "$BUNDLE/verify_bundle.json"
+"$CAPTURE_PYTHON" scripts/tile_flow/make_bundle_manifest.py "$BUNDLE"
+```
+
+Keep the original unfolded parameter bytes. In the compiler environment, install matching local checkouts, including exactly one adapter entry point:
+
+```sh
+"$COMPILER_PYTHON" -m pip install -e "$M2M_ROOT" -e "$MERLIN_ROOT" -e "$ADAPTER_ROOT"
+export PYTHONPATH="$ATLAS_ROOT/python:$SOURCE_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
+CONTRACT_SHA=$(sha256sum "$BUNDLE/export/manifest.json" | cut -d ' ' -f 1)
+POLICY_SHA=$(sha256sum "$BUNDLE/export/policy.json" | cut -d ' ' -f 1)
+```
+
+Here `$SOURCE_ROOT` is the exporter checkout. Save the two hashes in the frozen source receipt before compilation and compare them on every reuse. From Merlin, extract prefill64 regions from the verified FX directory:
+
+```sh
+TOOLS=examples/atlas/whole-model/unchanged_fx
+nice -n 10 "$CAPTURE_PYTHON" "$TOOLS/extract_capsules.py" \
+  --bundle "$BUNDLE/fx" --output "$PREFILL_REGIONS" --whole-model --threads 1
+```
+
+Decode65 uses a separately authenticated query-one, past-length-64 native capture and its extracted `$DECODE_REGIONS`; a fixed64 no-cache graph cannot stand in for it. The cache capture and extraction entry points are described above. Set `$COMPILED64` and `$COMPILED65` to fresh destinations. These commands reproduce the layer-0 gate settings: prefill64 does not merge adjacent regions, and decode65 does.
+
+```sh
+compile_layer0() {
+  nice -n 10 "$COMPILER_PYTHON" "$TOOLS/compile_capsule.py" \
+    --capsule "$1/layer0" --output "$2/layer0" --external-parameters \
+    --adapter-export "$BUNDLE/export" --expected-contract-sha256 "$CONTRACT_SHA" \
+    --expected-policy-sha256 "$POLICY_SHA" --atlas-root "$ATLAS_ROOT" \
+    --allocation-timeout-ms 1000 --io-memory-bytes 67108864 \
+    --application-memory-bytes 536870912 \
+    --reduction-policy bf16-adjacent-fp32-tree-rne-seeded-tile-sum-ltr-chop-v1 \
+    --softmax-mask-policy bf16-minfinite-zero-rowspan80-nonempty-v1 "${@:3}"
+}
+compile_layer0 "$PREFILL_REGIONS" "$COMPILED64"
+compile_layer0 "$DECODE_REGIONS" "$COMPILED65" --merge-adjacent-device-regions
+```
+
+Use Bash for this function. Build atlas-mlir in Release mode before compilation, and expose its tools through the target's configured tool paths. `compile_capsule.py` calls model2MLIR, Merlin, and the Atlas binding; its selected target invokes atlas-mlir tools. Search, allocation, proof, instruction, and tool-wall limits retain their defaults.
+
+For generated execution against an independent same-shape oracle, run `composition.py --regions "$PREFILL_REGIONS" --compiled "$COMPILED64" --execution "$EXECUTION64" --oracle "$ORACLE64" --wait-for-compiled --sequential --workers 1 --stop-after layer0 --backend functional --max-instructions 1000000`, with the same compiler paths, adapter hashes, memory capacities, and arithmetic policies above, plus `--model-root "$MODEL_ROOT" --model-python "$MODEL_PYTHON" --compiler-python "$COMPILER_PYTHON"`. The model interpreter and checkout must match `model_runtime.py`'s pin. A qualified native backend instead requires both arithmetic and memory qualification receipts. For a whole-model run, compile with `composition.py --compile-only --stop-after head` and execute with `--stop-after head`; the embedding gather and original BF16 LM head execute on the host. Actual cache chains use `cache_composition.py`, an independent phase oracle, and authenticated parent execution and region publications. A direct `execute_graph.py` decode run consumes saved oracle input words and needs a separate exact comparison; it does not establish generated parent-cache continuity.
+
+Run `python -m pytest merlin/tests` for Merlin and `python -m pytest tests` from each model2MLIR and adapter checkout. Run the regional and quality tests in separate processes so schema-only quality registration cannot conflict with native source-op registration:
+
+```sh
+python -m pytest "$TOOLS"/test_*.py
+python -m pytest "$TOOLS/quality"
+ctest --test-dir "$ATLAS_BUILD" --output-on-failure
+```
+
+Test results and functional instruction counts do not establish target timing or full-protocol quality. Retain exact checked-out revisions, compiled artifacts, launch schedules, and separate numerical comparison receipts.

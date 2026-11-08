@@ -47,6 +47,7 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
   resolve them, and `run_matmul_on_mesh`/`_mesh_rows`/`_certify_tile_via_executor` call each other.
 - No import cycles: `mesh` imports `capacity`, `mesh_backend` and `mesh_reference`; `mesh_model` imports
   `mesh`; `host_lane` imports `bundles`. Library imports stay inside functions, as they were.
+- `c_softmax_mask.py` renders generic mask conversion and exact encoded row-span checks. The provider supplies numerical bounds and admission policy. Keep byte validation before device I/O and preserve source values rather than clipping them into an admitted range.
 - Mesh compilation/execution takes `numeric_policy` explicitly. It carries the author's complete
   numerical regime (comparison, tolerances, scaling and subnormal handling), not hardware evidence.
   Core never discovers a profile by target name. Floating execution without that declaration refuses;
@@ -76,3 +77,7 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
   Preserve finite-input/RNE guards and exact f32/f64 call signatures. Merge
   actual symbol requirements into the existing application interface; final
   linking must check the supplier. Never use a verification helper at runtime.
+
+- Generic RMSNorm source recognition infers any finite positive binary32 epsilon.
+  A target caller may constrain the match with explicit `epsilon_bits`; no model
+  epsilon or shape belongs in the shared matcher.
