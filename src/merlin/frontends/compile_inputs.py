@@ -211,7 +211,7 @@ def _argument_bindings(
     if (CONSTANT_FILE in members) != materialized:
         raise ValueError("capture constant archive differs from signature schema")
     headers = {name: _weight_header(members[name]) for name in files}
-    roles = {"param", "buffer", "constant"} if materialized else {"param", "buffer"}
+    roles = {"param", "buffer", "constant"}
     fields = {"kind", "weight", "dtype", "shape"} | ({"file"} if materialized else set())
     bindings = []
     used_inputs: set[int] = set()
@@ -236,19 +236,23 @@ def _argument_bindings(
             continue
         name = row.get("weight")
         file = row.get("file") if materialized else "weights.safetensors"
+        archived_constant = kind == "constant" and file == "weights.safetensors"
+        expected_fields = fields | {"name"} if archived_constant else fields
+        placeholder = row.get("name")
         dtype_name = row.get("dtype")
         dtype = _WEIGHT_DTYPES.get(dtype_name) if isinstance(dtype_name, str) else None
         if (
-            not isinstance(kind, str) or kind not in roles or set(row) != fields
+            not isinstance(kind, str) or kind not in roles or set(row) != expected_fields
             or not isinstance(file, str) or file not in files
             or kind == "param" and file != "weights.safetensors"
-            or kind == "constant" and file != CONSTANT_FILE
+            or archived_constant and (not isinstance(placeholder, str)
+                                      or not placeholder.isidentifier())
             or not isinstance(name, str) or not name
             or dtype is None
             or not isinstance(row.get("shape"), list)
             or any(type(extent) is not int or extent < 0 for extent in row["shape"])
             or row["shape"] != actual["shape"]
-            or dtype[0] != actual["dtype"]
+            or not (dtype[0] == actual["dtype"] or dtype_name == "uint8" and actual["dtype"] == "i8")
         ):
             raise ValueError("weight argument shape or dtype differs from parsed function")
         stored = headers[file].get(name)
@@ -268,7 +272,9 @@ def _argument_bindings(
         if name not in used_weights[file]:
             ranges[file].append((offsets[0], offsets[1]))
         used_weights[file].add(name)
-        bindings.append({"kind": row["kind"], "weight": name, **actual, **({"file": file} if materialized else {})})
+        bindings.append({"kind": row["kind"], "weight": name, **actual,
+                         **({"name": placeholder} if archived_constant else {}),
+                         **({"file": file} if materialized else {})})
     if used_inputs != set(range(len(runtime_inputs))) or any(
         used_weights[file] != set(headers[file]) for file in files
     ):
@@ -383,6 +389,9 @@ def stage_compile_inputs(
     materialized = needs_materialization(weight_manifest, receipt)
     if weight_manifest:
         copied["input_order.json"] = _checked_member(source, receipt, "input_order.json")
+        order = json.loads(copied["input_order.json"])
+        if not isinstance(order, dict) or set(order) & set(receipt.get("lifted_constants", {})):
+            raise ValueError("lifted constants cannot occupy runtime input positions")
     if precision_policy is not None:
         copied["precision-policy.json"] = _selected_precision_policy(
             Path(precision_policy).absolute(), source, _sha(raw)
@@ -430,9 +439,6 @@ def stage_compile_inputs(
         raise ValueError("capture has an incomplete invocation signature")
     materialization = None
     if materialized:
-        order = json.loads(copied.get("input_order.json", b"{}"))
-        if not isinstance(order, dict) or set(order) & set(receipt.get("lifted_constants", {})):
-            raise ValueError("lifted constants cannot occupy runtime input positions")
         weight_manifest, copied[CONSTANT_FILE], materialization = materialize_arguments(
             weight_manifest,
             [_tensor_abi(type_) for type_ in _entry_type(parsed, signature["entry"]).inputs.data],
@@ -440,6 +446,17 @@ def stage_compile_inputs(
         )
         copied["weights.safetensors.manifest.json"] = json.dumps(weight_manifest, sort_keys=True).encode()
         signature["schema"] = "merlin.compile-signature.v3"
+    readonly = metadata.get("read_only_buffer_arguments", [])
+    if (not isinstance(readonly, list) or any(type(index) is not int for index in readonly)
+            or len(set(readonly)) != len(readonly)
+            or any(str(index) not in weight_manifest or weight_manifest[str(index)].get("kind") != "buffer" for index in readonly)):
+        raise ValueError("capture read-only buffer declaration differs from its argument manifest")
+    if readonly:
+        for index in readonly:
+            row = weight_manifest[str(index)]
+            row["kind"] = "constant" if row.get("file") == CONSTANT_FILE else "param"
+        copied["weights.safetensors.manifest.json"] = json.dumps(weight_manifest, sort_keys=True).encode()
+        materialization = {**(materialization or {}), "read_only_buffer_arguments": readonly}
     if weight_manifest:
         signature["arguments"] = _argument_bindings(
             _entry_type(parsed, signature["entry"]), signature["inputs"], copied, materialized=materialized,

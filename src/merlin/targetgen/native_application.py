@@ -39,6 +39,21 @@ def _source(args, binding, target_identity):
         raise NativeCompilationError("unsupported_semantics", "selected support has no semantic application adapter")
     directory = Path(args.compile_inputs)
     staged = load_compile_inputs(directory)
+    adapter = factory(staged.precision_policy, original_source_sha256=staged.original_source_sha256)
+    already_quantized = getattr(args, "already_quantized", False)
+    declared = bool((staged.precision_policy or {}).get("already_quantized"))
+    if already_quantized != declared:
+        raise ValueError("already-quantized application flag and source-bound precision policy must agree")
+    source_translators = None
+    if already_quantized:
+        source_translators = getattr(adapter, "source_operation_translators", None)
+        if callable(source_translators):
+            source_translators = source_translators()
+        if not isinstance(source_translators, dict) or not source_translators or any(
+            not isinstance(name, str) or not callable(translator)
+            for name, translator in source_translators.items()
+        ):
+            raise NativeCompilationError("unsupported_semantics", "selected support has no already-quantized source translators")
     state_path = getattr(args, "application_state", None)
     declaration = None
     if state_path:
@@ -61,6 +76,7 @@ def _source(args, binding, target_identity):
         target_identity=target_identity,
         lowering_policy=args.mode,
         argument_constants={index: payload for index, payload in parameters.items() if index not in state_arguments},
+        source_operation_translators=source_translators,
     ).request
     state = None
     if external:
@@ -72,7 +88,6 @@ def _source(args, binding, target_identity):
                 (source.source_identity + ":state:" + declaration.compilation_identity(parameters)).encode()
             ).hexdigest(),
         )
-    adapter = factory(staged.precision_policy, original_source_sha256=staged.original_source_sha256)
     try:
         source, folding = prepare_source(
             source, constant_math_policy=(staged.precision_policy or {}).get("source_constant_math")

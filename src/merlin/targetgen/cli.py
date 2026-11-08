@@ -750,6 +750,8 @@ def _native_compile_report_with_options(args: argparse.Namespace) -> dict:
     )
 
     try:
+        if getattr(args, "already_quantized", False) and not getattr(args, "application", False):
+            raise ValueError("--already-quantized requires --application")
         if getattr(args, "application_state", None) and not getattr(args, "application", False):
             raise ValueError("--application-state requires --application")
         if getattr(args, "application_parameters", "embedded") != "embedded" and not args.application:

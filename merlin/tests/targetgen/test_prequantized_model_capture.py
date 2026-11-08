@@ -26,6 +26,7 @@ from merlin.targetgen.capsule_source import (
     write_model_capsule,
 )
 from merlin.targetgen.corpus_spec import CorpusBinding
+from merlin.targetgen.golden_store import load_golden
 
 
 def test_model_numeric_policy_uses_captured_output_not_operand_dtype() -> None:
@@ -110,7 +111,7 @@ def test_host_island_example_preserves_its_authored_integer_matmuls(tmp_path: Pa
     capsule = yaml.safe_load((output / "capsule.yaml").read_text())
     assert capsule["numeric_policy"] == {"compare": "exact_int", "dtype": "i8"}
     assert capsule["operation"]["attributes"]["materialized_contractions"] == 2
-    assert golden.golden(capsule, output) == yaml.safe_load((output / "golden.yaml").read_text())["outputs"]
+    assert golden.golden(capsule, output) == load_golden(output)["outputs"]
 
 
 def test_static_w8a8_recipe_cannot_accept_narrow_result_as_wide_accumulation() -> None:
