@@ -6,7 +6,52 @@ from merlin.semantic_compiler.model import TensorType, pointwise_identity_maps
 
 from .c_sources import c_source_pair
 
-FLOAT_ARITHMETIC_OPERATIONS = ("f64_mul", "bf16_add", "bf16_sub")
+FLOAT_ARITHMETIC_OPERATIONS = ("f64_mul", "bf16_add", "bf16_sub", "bf16_neg", "f32_neg", "f64_neg")
+
+
+def _emit_float_negation_c(source, name):
+    pure = [node for node in source.nodes if node.effect == "pure"]
+    if len(pure) != 1 or source.physical_extents or source.boundary_layouts or source.output_layouts:
+        raise ValueError("float sign flip needs one dense logical computation")
+    node = pure[0]
+    dtype = node.op.removesuffix("_neg")
+    policy = f"{dtype}-sign-bit-flip-v1"
+    if (dtype not in {"bf16", "f32", "f64"} or len(node.inputs) != 1 or source.outputs != (node.id,)
+            or node.type.dtype != dtype or node.type.numerical_policy != "raw-bit-pattern"
+            or dict(node.attrs) != {"numeric_semantics": policy}
+            or node.index_maps != pointwise_identity_maps(len(node.type.shape), 1)
+            or len(source.nodes) != 2 or source.node(node.inputs[0]).type != node.type
+            or source.node(node.inputs[0]).effect not in {"input", "constant"}
+            or source.node(node.inputs[0]).attrs or source.node(node.inputs[0]).index_maps):
+        raise ValueError("float sign flip source types, indexing, or policy differ")
+    width = {"bf16": 2, "f32": 4, "f64": 8}[dtype]
+    size = prod(node.type.shape) * width
+    if not node.type.shape or size > 2**63 - 1:
+        raise ValueError("float sign flip exceeds its byte-size domain")
+    for binding in source.constants:
+        if binding.node_id != node.inputs[0] or binding.encoding != dtype + "-le-raw" or len(bytes.fromhex(binding.data_hex)) != size:
+            raise ValueError("float sign flip constant encoding differs")
+    implementation = f"""#include <stddef.h>
+#include <stdint.h>
+#include <limits.h>
+_Static_assert(CHAR_BIT==8 && SIZE_MAX>={size}ULL,"float sign flip host types");
+int {name}(void *context,const void *const *inputs,void *const *outputs) {{
+  (void)context;
+  if (!inputs || !outputs || !inputs[0] || !outputs[0]) return -1;
+  uintptr_t a=(uintptr_t)inputs[0],b=(uintptr_t)outputs[0];
+  if (a>UINTPTR_MAX-{size}u || b>UINTPTR_MAX-{size}u || (a<b+{size}u && b<a+{size}u)) return -1;
+  const unsigned char *input=(const unsigned char *)inputs[0];
+  unsigned char *output=(unsigned char *)outputs[0];
+  for (size_t i=0;i<{size}u;++i) output[i]=input[i]^((i%{width}u=={width-1}u)?128u:0u);
+  return 0;
+}}
+"""
+    return {
+        "source_request_digest": source.digest(), "implementation": name,
+        "inputs": list(node.inputs), "outputs": [node.id], "arithmetic": "exact-source-" + node.op.replace("_", "-"),
+        "numeric_semantics": policy, "domain": "all bit patterns, including signed zero and NaN payloads",
+    }, c_source_pair(name, public_headers={}, private_headers={}, sources={"float_negation.c": implementation},
+                     declarations=f"int {name}(void *, const void *const *, void *const *);\n")
 
 # BF16 finite values are integer multiples of 2^-133. Five 64-bit limbs
 # preserve the entire exact sum, including cancellation across all exponents.
@@ -115,7 +160,10 @@ def emit_float_arithmetic_c(source, name):
     Preserve complete significands before the one declared rounding step.
     Reject unqualified NaNs and invalid infinity operations across the entire
     tensor before any output write. BF16 source add/sub is not truncated.
+    Sign flips preserve every source bit except the sign, including NaN payloads.
     """
+    if any(node.op in {"bf16_neg", "f32_neg", "f64_neg"} for node in source.nodes):
+        return _emit_float_negation_c(source, name)
     pure = [node for node in source.nodes if node.effect == "pure"]
     if len(pure) != 1 or source.physical_extents or source.boundary_layouts or source.output_layouts:
         raise ValueError("float arithmetic needs one logical computation and dense buffers")

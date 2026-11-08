@@ -126,6 +126,16 @@ def recognize_static_f32_exp_rsqrt_body(op) -> StaticF32MathPattern:
     )
 
 
+def recognize_static_f32_neg_body(op) -> StaticF32MathPattern:
+    """Preserve exact IEEE sign inversion, including zeros and NaN payloads."""
+    from xdsl.dialects import arith
+
+    return _recognize_static_f32_unary_math_body(
+        op, admitted=frozenset({"arith.negf"}), operation_classes=(arith.NegfOp,),
+        description="unflagged f32 sign inversion",
+    )
+
+
 def screen_static_f32_math_source(path: Path, ordinals: tuple[int, ...]) -> StaticF32MathSource:
     """Bind every requested normalized ordinal to the read source bytes."""
     raw_sha, normalized_sha, evidence = _screen_static_linalg_source(path, ordinals, recognize_static_f32_math_body)

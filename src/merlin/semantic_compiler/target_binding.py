@@ -72,7 +72,7 @@ def verify_native_publication(
 ) -> None:
     """Check the immutable identity of files before publishing a target result."""
     persisted_path = staged / "manifest.json"
-    if not persisted_path.is_file():
+    if staged.is_symlink() or persisted_path.is_symlink() or not persisted_path.is_file():
         raise ValueError("selected target did not emit a native manifest")
     persisted = json.loads(persisted_path.read_text())
     if (
@@ -101,12 +101,23 @@ def verify_native_publication(
             artifact = staged / path
             if (
                 not isinstance(digest, str)
-                or artifact.is_symlink()
+                or any((staged / Path(*path.parts[:depth])).is_symlink() for depth in range(1, len(path.parts) + 1))
                 or not artifact.is_file()
                 or not artifact.resolve().is_relative_to(staged.resolve())
                 or digest_file(artifact)[0] != digest
             ):
                 raise ValueError(f"native stage artifact changed or is missing: {relative}")
+    if manifest.get("artifact_kind") == "host_application":
+        regions = manifest.get("regions")
+        segments = staged / "segments"
+        if (manifest.get("segments") != [] or not isinstance(regions, list) or not regions
+                or any(not isinstance(row, dict) or row.get("placement") != "host"
+                       or row.get("native_programs") != [] for row in regions)
+                or not isinstance(stage_artifacts, dict) or not stage_artifacts
+                or not segments.is_dir() or segments.is_symlink() or any(segments.iterdir())
+                or (staged / "program.bin").exists() or (staged / "execution_plan.json").exists()):
+            raise ValueError("host-only application must contain authenticated host regions and no device programs")
+        return
     if manifest.get("artifact_kind") == "program_set":
         if (staged / "program.bin").exists() or (staged / "execution_plan.json").exists():
             raise ValueError("program set must not masquerade as one native binary")
@@ -114,26 +125,36 @@ def verify_native_publication(
         if not isinstance(rows, list) or not rows:
             raise ValueError("native program set has no segment identities")
         seen: set[str] = set()
+        branches: dict[str, set[str]] = {"segments": set()}
         for index, row in enumerate(rows):
             if not isinstance(row, dict) or row.get("index") != index:
                 raise ValueError("native program set has invalid segment order")
             relative = row.get("path")
             if (
                 not isinstance(relative, str)
-                or not relative.startswith("segments/")
-                or relative != f"segments/{Path(relative).name}"
+                or len(Path(relative).parts) < 2
+                or Path(relative).parts[0] != "segments"
+                or Path(relative).as_posix() != relative
+                or "\\" in relative
                 or Path(relative).is_absolute()
                 or ".." in Path(relative).parts
                 or relative in seen
+                or any(relative.startswith(previous + "/") or previous.startswith(relative + "/") for previous in seen)
             ):
                 raise ValueError("native program set has an unsafe or repeated segment path")
             seen.add(relative)
+            parts = Path(relative).parts
+            for depth in range(1, len(parts)):
+                parent = Path(*parts[:depth]).as_posix()
+                branches.setdefault(parent, set()).add(parts[depth])
             segment = staged / relative
-            if not segment.is_dir() or segment.is_symlink() or not segment.resolve().is_relative_to(staged.resolve()):
+            if (any((staged / Path(*parts[:depth])).is_symlink() for depth in range(1, len(parts) + 1))
+                    or not segment.is_dir() or not segment.resolve().is_relative_to(staged.resolve())):
                 raise ValueError("native program set segment is missing or escapes its package")
             segment_manifest = segment / "manifest.json"
             if (
-                not segment_manifest.is_file()
+                segment_manifest.is_symlink()
+                or not segment_manifest.is_file()
                 or row.get("manifest_sha256") != hashlib.sha256(segment_manifest.read_bytes()).hexdigest()
             ):
                 raise ValueError("native program set segment manifest changed")
@@ -151,21 +172,33 @@ def verify_native_publication(
             )
         if not (staged / "segments").is_dir() or (staged / "segments").is_symlink():
             raise ValueError("native program set segment root is missing or linked")
-        if {item.name for item in (staged / "segments").iterdir()} != {Path(relative).name for relative in seen}:
-            raise ValueError("native program set has an unaccounted segment")
+        for relative, children in branches.items():
+            for item in (staged / relative).iterdir():
+                if item.name in children and item.is_dir() and not item.is_symlink():
+                    continue
+                # A multi-image region may retain source/plan metadata beside
+                # its image leaves. The parent publication must authenticate
+                # each such regular file; extra directories remain refused.
+                member = item.relative_to(staged).as_posix()
+                if (relative != "segments" and item.name not in {"manifest.json", "program.bin", "execution_plan.json"}
+                        and isinstance(stage_artifacts, dict) and member in stage_artifacts
+                        and not item.is_symlink() and item.is_file()):
+                    continue
+                raise ValueError("native program set has an unaccounted segment")
         return
     if manifest.get("artifact_kind") not in {None, "program"}:
         raise ValueError("unknown native publication kind")
     binary = staged / "program.bin"
     if (
-        not binary.is_file()
+        binary.is_symlink()
+        or not binary.is_file()
         or binary.stat().st_size == 0
         or manifest.get("binary_sha256") != hashlib.sha256(binary.read_bytes()).hexdigest()
     ):
         raise ValueError("native emitted binary differs from checked manifest")
     plan = staged / "execution_plan.json"
     expected_plan_digest = manifest.get("execution_plan_sha256")
-    if plan.exists() != (expected_plan_digest is not None):
+    if plan.is_symlink() or plan.exists() != (expected_plan_digest is not None):
         raise ValueError("native execution plan and manifest identity disagree")
     if plan.exists() and (not plan.is_file() or hashlib.sha256(plan.read_bytes()).hexdigest() != expected_plan_digest):
         raise ValueError("native execution plan differs from checked manifest identity")

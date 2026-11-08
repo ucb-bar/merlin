@@ -608,3 +608,32 @@ def _named_matmul_maps_are_default(op) -> bool:
     return tuple(attr.data for attr in op.get_indexing_maps()) == expected and tuple(
         attr.data for attr in op.get_iterator_types()
     ) == (IteratorType.PARALLEL, IteratorType.PARALLEL, IteratorType.REDUCTION)
+
+
+def _verify_source_floating_matmul(op) -> None:
+    """Check a closed ordinary floating contraction without choosing its order."""
+    from .precision_intake import _check_matmul_body
+    if set(op.properties) != {"indexing_maps", "operandSegmentSizes"} or any(
+        not key.startswith("prov.") for key in op.attributes
+    ):
+        raise LinalgBridgeError("source f32 matmul has an unknown semantic attribute")
+    _check_matmul_body(op)
+    try:
+        op.verify()
+    except Exception as exc:  # noqa: BLE001 - xDSL owns source verification
+        raise LinalgBridgeError(f"source f32 matmul failed verification: {exc}") from exc
+
+
+def _verify_bf16_zero_fill(op) -> None:
+    """Preserve the authored scalar in a closed positive-zero fill body."""
+    if any(not key.startswith("prov.") for key in op.attributes):
+        raise LinalgBridgeError("BF16 zero fill has unknown attributes")
+    if (len(op.regions) != 1 or len(op.regions[0].blocks) != 1
+            or len(op.regions[0].block.args) != 2
+            or tuple(item.name for item in op.regions[0].block.ops) != ("linalg.yield",)
+            or tuple(op.regions[0].block.last_op.operands) != (op.regions[0].block.args[0],)):
+        raise LinalgBridgeError("BF16 zero fill scalar body differs from its source value")
+    try:
+        op.verify()
+    except Exception as exc:
+        raise LinalgBridgeError(f"BF16 zero fill failed verification: {exc}") from exc

@@ -19,7 +19,7 @@ binary64. Runtime-sized compaction and general control flow remain unsupported.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 from math import prod
@@ -39,6 +39,8 @@ from .linalg_recognition import (
     _scalar_i64,
     _scalar_integer,
     _source_f32_batched_matmul,
+    _verify_source_floating_matmul,
+    _verify_bf16_zero_fill,
     _static_f32_square_maps,
     _static_index_copy_map,
     _transpose_maps,
@@ -46,6 +48,7 @@ from .linalg_recognition import (
 )
 from .model import ConstantBinding, IndexMap, KernelRequest, SemanticNode, TensorType, pointwise_identity_maps
 from .reference import TensorValue
+from .scalar_source_patterns import is_direct_division_silu, is_strict_source_negation
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,7 @@ def translate_linalg_text(
     lowering_policy: str = "strict-native",
     boundary_storage: str = "external",
     argument_constants: Mapping[int, bytes] | None = None,
+    source_operation_translators: Mapping[str, Callable] | None = None,
 ) -> LinalgTranslation:
     """Translate one admitted function, preserving its init and ordered returns.
 
@@ -207,7 +211,14 @@ def translate_linalg_text(
             indexed_updates[operation] = indexed
             indexed_prelude.update(indexed.prelude)
     for ordinal, op in enumerate(operations):
-        source_operations.append(op.name)
+        from .registered_source import operation_name, translate_registered_source
+
+        source_name = operation_name(op)
+        source_operations.append(source_name)
+        translator = (source_operation_translators or {}).get(source_name)
+        if translator is not None:
+            translate_registered_source(op, translator=translator, ordinal=ordinal, env=env, nodes=nodes)
+            continue
         if op.name == "linalg.generic" and len(op.results) == len(op.outputs) == 2:
             from merlin.frontends.linalg_extremum_patterns import recognize_static_i64_argmin
 
@@ -243,6 +254,9 @@ def translate_linalg_text(
                 env[value] = node.id
             continue
         if op.name == "linalg.generic" and len(op.results) == 1 and len(op.outputs) == 1:
+            if is_strict_source_negation(op) or is_direct_division_silu(op):
+                append_scalar_region(op, ordinal)
+                continue
             from .constant_indexing import translate_constant_index_read
 
             indexed = translate_constant_index_read(op, env, nodes, constants, node_id=f"op{ordinal}r0")
@@ -251,6 +265,24 @@ def translate_linalg_text(
                 env[op.results[0]] = indexed.id
                 continue
             element_types = tuple(str(getattr(value.type, "element_type", None)) for value in (*op.inputs, *op.results))
+            # Preserve exact BF16 mask selection before specialized arithmetic
+            # recognizers. Only the closed select body is admitted here; its
+            # Boolean condition, literal encoding, and singleton projections
+            # are checked by the scalar-region translator.
+            if (
+                element_types[-1] == "bf16"
+                and len(op.inputs) in {2, 3}
+                and set(element_types) <= {"i1", "bf16"}
+                and len(op.regions) == 1
+                and len(op.regions[0].blocks) == 1
+                and tuple(item.name for item in op.regions[0].block.ops) in {
+                    ("arith.select", "linalg.yield"),
+                    ("arith.constant", "arith.select", "linalg.yield"),
+                }
+                and all(item.data == IteratorType.PARALLEL for item in op.iterator_types)
+            ):
+                append_scalar_region(op, ordinal)
+                continue
             if (
                 len(op.inputs) == 1
                 and _type(op.inputs[0].type).dtype in {"bf16", "fp8_e4m3", "i8", "i32"}
@@ -866,8 +898,7 @@ def translate_linalg_text(
             if type_ != _type(destination.type):
                 raise LinalgBridgeError("linalg.fill result/destination has unsupported type")
             if type_.dtype == "bf16" and scalar in bf16_zeros and env[destination] is None:
-                if any(not key.startswith("prov.") for key in op.attributes):
-                    raise LinalgBridgeError("BF16 zero fill has unknown attributes")
+                _verify_bf16_zero_fill(op)
                 zero_fills.add(op.results[0])
                 env[op.results[0]] = None
                 continue
@@ -1314,6 +1345,8 @@ def translate_linalg_text(
                 if not _named_matmul_maps_are_default(op):
                     raise LinalgBridgeError("named matmul has nonstandard indexing or iterators")
                 lhs, rhs, init = (*op.inputs, op.outputs[0])
+            if op.name == "linalg.matmul" and init in zero_fills and env.get(init) is None:
+                env[init] = append_splat(f"op{ordinal}seed", _type(init.type), 0, "bf16-le-raw", b"\x00\x00")
             if any(value not in env or env[value] is None for value in (lhs, rhs, init)):
                 raise LinalgBridgeError("matmul reads an undefined or uninitialized operand")
             lhs_type, rhs_type, init_type, result_type = (
@@ -1321,8 +1354,8 @@ def translate_linalg_text(
             )
             if lhs_type.dtype != rhs_type.dtype or lhs_type.numerical_policy != rhs_type.numerical_policy:
                 raise LinalgBridgeError("matmul input dtypes or numerical policies differ")
-            if op.name == "linalg.matmul" and lhs_type.dtype not in {"i32", "f32"}:
-                raise LinalgBridgeError("named matmul needs i32 operands or a source-only f32 graph node")
+            if op.name == "linalg.matmul" and lhs_type.dtype not in {"i32", "f32", "bf16"}:
+                raise LinalgBridgeError("named matmul needs i32 operands or a source-only floating graph node")
             if (
                 len(lhs_type.shape) != 2
                 or len(rhs_type.shape) != 2
@@ -1330,32 +1363,22 @@ def translate_linalg_text(
                     lhs_type.shape[1] != rhs_type.shape[0]
                     or result_type.shape != (lhs_type.shape[0], rhs_type.shape[1])
                     or init_type != result_type
-                    or result_type.dtype != ("f32" if lhs_type.dtype == "f32" else "i32")
+                    or result_type.dtype != (lhs_type.dtype if lhs_type.dtype in {"f32", "bf16"} else "i32")
                 )
             ):
                 raise LinalgBridgeError("matmul shape or initialized result type differs")
             node_id = f"op{ordinal}r0"
-            if op.name == "linalg.matmul" and lhs_type.dtype == "f32":
-                from .precision_intake import _check_matmul_body
-
-                if set(op.properties) != {"indexing_maps", "operandSegmentSizes"} or any(
-                    not key.startswith("prov.") for key in op.attributes
-                ):
-                    raise LinalgBridgeError("source f32 matmul has an unknown semantic attribute")
-                _check_matmul_body(op)
-                try:
-                    op.verify()
-                except Exception as exc:  # noqa: BLE001 - xDSL owns source verification
-                    raise LinalgBridgeError(f"source f32 matmul failed verification: {exc}") from exc
+            if op.name == "linalg.matmul" and lhs_type.dtype in {"f32", "bf16"}:
+                _verify_source_floating_matmul(op)
                 nodes.append(
                     SemanticNode(
                         node_id,
-                        "source_f32_matmul_unqualified",
+                        f"source_{lhs_type.dtype}_matmul_unqualified",
                         tuple(env[value] for value in (lhs, rhs, init)),
                         result_type,
                         attrs=(
                             ("reduction_order", "unresolved"),
-                            ("numeric_semantics", "source-f32-mul-add-unqualified-v1"),
+                            ("numeric_semantics", f"source-{lhs_type.dtype}-mul-add-unqualified-v1"),
                         ),
                         index_maps=_maps(),
                     )

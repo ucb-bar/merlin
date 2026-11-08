@@ -4,6 +4,7 @@ import ctypes
 import shutil
 import subprocess
 from dataclasses import replace
+from math import prod
 
 import numpy as np
 import pytest
@@ -104,6 +105,14 @@ def indexed_case(kind, dtype="f32", policy="raw-bit-pattern"):
 
         def expected(values):
             return np.broadcast_to(values[0], shape)
+    elif kind == "scalar_broadcast":
+        inputs = ((),)
+        shape = (2, 3, 7)
+        op = "gather"
+        maps = (IndexMap(3, (), ()), pointwise_identity_maps(3, 1)[0])
+
+        def expected(values):
+            return np.broadcast_to(values[0], shape)
     elif kind == "im2col":
         inputs, shape, op = ((1, 2, 4, 5),), (2, 2, 2, 1, 3, 4), "gather"
         maps = (
@@ -164,7 +173,7 @@ def indexed_case(kind, dtype="f32", policy="raw-bit-pattern"):
     ), expected
 
 
-@pytest.mark.parametrize("kind", ["reverse", "broadcast", "im2col", "transpose3d", "insert", "padding", "concat"])
+@pytest.mark.parametrize("kind", ["reverse", "broadcast", "scalar_broadcast", "im2col", "transpose3d", "insert", "padding", "concat"])
 def test_indexed_layout_preserves_bits_maps_guards_and_source_storage(tmp_path, kind, element):
     dtype, policy, codebook = element
     request, reference = indexed_case(kind, dtype, policy)
@@ -194,7 +203,7 @@ def test_indexed_layout_preserves_bits_maps_guards_and_source_storage(tmp_path, 
     leaves = request.nodes[:-1]
     for panel in range(3):
         values = [
-            np.resize(np.roll(codebook, panel + i), np.prod(node.type.shape)).reshape(node.type.shape)
+            np.resize(np.roll(codebook, panel + i), prod(node.type.shape)).reshape(node.type.shape)
             for i, node in enumerate(leaves)
         ]
         storage = [ctypes.create_string_buffer(value.tobytes()) for value in values]

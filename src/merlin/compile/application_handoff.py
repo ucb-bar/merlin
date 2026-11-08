@@ -39,7 +39,23 @@ def application_handoff(source, interface, regions, files, native_root):
                 else None,
             }
             bindings.append(digest)
-        calls.append({"region": region["id"], "placement": region["placement"], "images": bindings})
+        call = {"region": region["id"], "placement": region["placement"], "images": bindings}
+        description = region.get("description", {})
+        if "device_launch_schedule" in description:
+            from .launch_schedule import validate_launch_schedule
+
+            if "launches_per_call" in description:
+                raise ValueError("device launch schedule cannot coexist with legacy launches_per_call")
+            call["device_launch_schedule"] = validate_launch_schedule(
+                description["device_launch_schedule"], image_sha256s=bindings, placement=region["placement"])
+        if "launches_per_call" in description:
+            count = description["launches_per_call"]
+            if type(count) is not int or count <= 0:
+                raise ValueError("explicit device launches_per_call must be a positive integer")
+            if region["placement"] not in {"accelerator", "device"} or len(bindings) != 1:
+                raise ValueError("explicit launches_per_call requires exactly one device image")
+            call["launches_per_call"] = count
+        calls.append(call)
     constants = []
     for constant in source.constants:
         payload = bytes.fromhex(constant.data_hex)

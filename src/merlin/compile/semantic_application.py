@@ -255,7 +255,7 @@ original-model accuracy or execution on an integrated SoC or FPGA.
 
 def compile_semantic_application(
     source, *, adapter, snapshot, target_source, destination, limits, name, capacity, state=None, source_folding=None,
-    parameters=None,
+    parameters=None, allow_host_only=False,
 ):
     """Compile every selected region; fail without substituting a different route."""
     if state is not None:
@@ -302,12 +302,13 @@ def compile_semantic_application(
                     "binary_sha256": manifest["binary_sha256"],
                 }
             )
-    if not rows:
+    if not rows and (not allow_host_only or not summaries
+            or any(row["placement"] != "host" or row["native_programs"] for row in summaries)):
         raise ValueError("native application has no accelerator program")
     manifest = {
         "schema": "merlin.semantic_application.v1",
         "engine": "merlin_native",
-        "artifact_kind": "program_set",
+        "artifact_kind": "program_set" if rows else "host_application",
         "compile_mode": source.lowering_policy,
         "qualification_scope": "diagnostic_only",
         "request_digest": source.digest(),
@@ -335,15 +336,19 @@ def compile_semantic_application(
         state=state,
         source_folding=source_folding,
         parameters=parameters,
+        allow_host_only=allow_host_only,
     )
     return manifest
 
 
 def verify_semantic_application(
     source, *, adapter, snapshot, target_source, artifact, state=None, source_folding=None, parameters=None,
+    allow_host_only=False,
 ):
     """Replay source partitioning, region exports, buffer planning and C generation."""
     manifest = json.loads((artifact / "manifest.json").read_bytes())
+    if manifest.get("artifact_kind") == "host_application" and not allow_host_only:
+        raise ValueError("host-only application requires explicit allow_host_only selection")
     if manifest.get("diagnostics_only"):
         raise NativeCompilationError(manifest["status"], manifest["reason"])
     if source_folding is not None:
