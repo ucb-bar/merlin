@@ -20,6 +20,8 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
 - `standard_memref.py` binds standard reinterpret casts from ranked or unranked
   memrefs with checked element/space/layout and dynamic operand segments.
   This corrects a Python binding restriction without changing native semantics.
+  It also binds standard generic atomic regions/yields with matching scalar
+  element/index types, the required parent, and a pure modification body.
 - `ir_inspection.py` — read-only generic printer views with large dense tensor attributes
   referenced by separate raw-byte audit payloads. Type, shape and hash descriptors retain
   their interpretation without converting numeric values. The no-sink printer still

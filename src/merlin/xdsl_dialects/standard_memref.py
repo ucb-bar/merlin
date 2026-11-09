@@ -10,8 +10,8 @@ from typing import ClassVar
 
 from xdsl.dialects import builtin, memref
 from xdsl.ir import Dialect
-from xdsl.irdl import AttrSizedOperandSegments, IRDLOperation, irdl_op_definition, operand_def, prop_def, result_def, traits_def, var_operand_def
-from xdsl.traits import NoMemoryEffect
+from xdsl.irdl import AttrSizedOperandSegments, IRDLOperation, irdl_op_definition, operand_def, prop_def, region_def, result_def, traits_def, var_operand_def
+from xdsl.traits import IsTerminator, MemoryReadEffect, MemoryWriteEffect, NoMemoryEffect, is_side_effect_free
 from xdsl.utils.exceptions import VerifyException
 
 
@@ -57,7 +57,38 @@ class ReinterpretCastOp(IRDLOperation):
                 raise VerifyException("reinterpretation result strides differ from their static attributes")
 
 
+@irdl_op_definition
+class AtomicYieldOp(IRDLOperation):
+    name = "memref.atomic_yield"
+    value = operand_def()
+    traits = traits_def(IsTerminator(), NoMemoryEffect())
+
+    def verify_(self):
+        if not isinstance(self.parent_op(), GenericAtomicRMWOp):
+            raise VerifyException("atomic yield requires its standard generic atomic parent")
+
+
+@irdl_op_definition
+class GenericAtomicRMWOp(IRDLOperation):
+    """Standard MemRefOps.td region atomic, absent from the pinned xDSL schema."""
+    name = "memref.generic_atomic_rmw"
+    memref = operand_def(builtin.MemRefType)
+    indices = var_operand_def(builtin.IndexType)
+    result = result_def()
+    body = region_def("single_block")
+    traits = traits_def(MemoryReadEffect(), MemoryWriteEffect())
+
+    def verify_(self):
+        element = self.memref.type.element_type
+        block = self.body.block
+        if (self.result.type != element or len(self.indices) != len(self.memref.type.get_shape())
+                or len(block.args) != 1 or block.args[0].type != element
+                or not isinstance(block.last_op, AtomicYieldOp) or block.last_op.value.type != element
+                or any(not is_side_effect_free(op) for op in block.ops)):
+            raise VerifyException("generic atomic requires matching element/index types and a pure typed atomic yield")
+
+
 @cache
 def memref_dialect():
     return Dialect("memref", [ReinterpretCastOp if op is memref.ReinterpretCastOp else op
-                              for op in memref.MemRef.operations], list(memref.MemRef.attributes))
+                              for op in memref.MemRef.operations] + [GenericAtomicRMWOp, AtomicYieldOp], list(memref.MemRef.attributes))
