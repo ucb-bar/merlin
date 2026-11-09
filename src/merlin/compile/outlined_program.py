@@ -182,11 +182,15 @@ def build_outlined_program(
         }
         if fp8_scalar_codec is not None:
             from merlin.llvmlower import fp8_scalar_codec as codec_owner
+            from merlin.llvmlower import stock_arith_compat
 
             if type(fp8_scalar_codec) is not codec_owner.BoundedE4M3FNCodec:
                 raise ValueError("explicit bounded scalar codec required")
 
             identity["fp8_scalar_codec"] = fp8_scalar_codec.validate()
+            identity["compiler_owner_sha256"][str(Path(stock_arith_compat.__file__))] = sha256_file(
+                stock_arith_compat.__file__
+            )
             identity["codec_symbol_scope"] = "exact_defined_function_global_alpha_rename_per_emitted_entry_v1"
             identity["compiler_owner_sha256"][str(Path(codec_owner.__file__))] = sha256_file(codec_owner.__file__)
             identity["compiler_owner_sha256"][str(Path(fp8_encode_fusion.__file__))] = sha256_file(
@@ -321,6 +325,11 @@ def build_outlined_program(
             source_pins.update(identity["fp8_scalar_codec"]["input_sha256"])
             source_pins.update(identity["codec_tools"])
             source_pins[str(Path(codec_owner.__file__))] = sha256_file(codec_owner.__file__)
+            compatibility_path = str(Path(stock_arith_compat.__file__))
+            compatibility_digest = identity["compiler_owner_sha256"][compatibility_path]
+            if sha256_file(compatibility_path) != compatibility_digest:
+                raise ValueError("stock arithmetic compatibility input changed before build closure")
+            source_pins[compatibility_path] = compatibility_digest
             source_pins[str(Path(fp8_encode_fusion.__file__))] = sha256_file(fp8_encode_fusion.__file__)
             source_pins.update(
                 {str(path): sha256_file(path) for path in (output / "fp8-source").rglob("*") if path.is_file()}

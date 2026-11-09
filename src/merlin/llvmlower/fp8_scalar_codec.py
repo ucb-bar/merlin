@@ -392,7 +392,7 @@ def legalize_file(source: Path, output: Path, policy: BoundedE4M3FNCodec | None)
     from merlin.llvmlower.deployable_ir import checked_generic_text
     from merlin.xdsl_dialects.fp8 import Float8E4M3FNType, Float8E5M2Type, register_fp8_bitcast_constraints
 
-    from . import toolchain
+    from . import stock_arith_compat, toolchain
     from .compilation_recipe import CompilationRecipe
 
     register_fp8_bitcast_constraints()
@@ -405,6 +405,9 @@ def legalize_file(source: Path, output: Path, policy: BoundedE4M3FNCodec | None)
     normalizer = toolchain.llvm_install() / "bin" / "mlir-opt"
     (output / "normalization").mkdir()
     recipe = CompilationRecipe(output / "normalization", producer=Path(__file__))
+    compatibility_source = Path(stock_arith_compat.__file__)
+    compatibility_sha256 = sha256_file(compatibility_source)
+    recipe.bind_preparation("stock_integer_compatibility", compatibility_source)
     argv = [normalizer, snapshot, "--mlir-print-op-generic", "-o", normalized]
     recipe.run(argv, runner=lambda args: run_checked(args, timeout=180), inputs=[snapshot], output=normalized)
     recipe.completed_product(normalized, kind="mlir")
@@ -413,9 +416,7 @@ def legalize_file(source: Path, output: Path, policy: BoundedE4M3FNCodec | None)
     # Custom-form xDSL parsing can discard unknown linalg attributes. Analyze
     # only the stock compiler's lossless generic form, never a lossy reprint.
     module = parse_mlir_text(normalized.read_text())
-    from .stock_arith_compat import unflagged_truncations
-
-    stock_integer_compatibility = unflagged_truncations(module)
+    stock_integer_compatibility = stock_arith_compat.unflagged_truncations(module)
     module.verify()
     casts, counts = [], {"decode": 0, "encode": 0}
     for op in module.walk():
@@ -472,7 +473,11 @@ def legalize_file(source: Path, output: Path, policy: BoundedE4M3FNCodec | None)
         module.body.block.add_op(FuncOp.external(policy.encode_symbol, [Float32Type()], [i64]))
     module.verify()
     text = checked_generic_text(module)
-    if source.read_bytes() != original or policy.validate() != bindings:
+    if (
+        source.read_bytes() != original
+        or policy.validate() != bindings
+        or sha256_file(compatibility_source) != compatibility_sha256
+    ):
         raise ValueError("codec source or selected bindings changed during legalization")
     result = output / "model.mlir"
     result.write_text(text)
@@ -485,6 +490,7 @@ def legalize_file(source: Path, output: Path, policy: BoundedE4M3FNCodec | None)
             "bindings": bindings,
             "casts": counts,
             "stock_integer_compatibility": stock_integer_compatibility,
+            "stock_integer_compatibility_input_sha256": {str(compatibility_source): compatibility_sha256},
             "normalizer": {
                 "path": str(normalizer),
                 "sha256": sha256_file(normalizer),

@@ -180,3 +180,26 @@ def test_later_nondefault_cast_refuses_before_mutating_earlier_default(tmp_path)
     with pytest.raises(ValueError, match="default-none"):
         unflagged_truncations(module)
     assert [op.properties for op in casts] == before
+
+
+def test_helper_dependency_bytes_are_bound_and_cannot_change_during_fusion(tmp_path, monkeypatch):
+    from test_fp8_scalar_codec import codec
+
+    from merlin.llvmlower import stock_arith_compat
+
+    dependency = tmp_path / "selected_compatibility.py"
+    dependency.write_text("# immutable declared helper dependency\n")
+    monkeypatch.setattr(stock_arith_compat, "__file__", str(dependency))
+    actual = stock_arith_compat.unflagged_truncations
+
+    def changed(module):
+        result = actual(module)
+        dependency.write_text("# changed dependency\n")
+        return result
+
+    monkeypatch.setattr(stock_arith_compat, "unflagged_truncations", changed)
+    source = tmp_path / "mixed.mlir"
+    source.write_text(MIXED)
+    with pytest.raises(ValueError, match="changed"):
+        fuse_clamped_encoders(source, tmp_path / "refused", codec(tmp_path))
+    assert not (tmp_path / "refused/model.mlir").exists()

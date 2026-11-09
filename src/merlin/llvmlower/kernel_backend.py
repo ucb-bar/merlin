@@ -230,9 +230,18 @@ def compile_deployable_kernel(
     obj = codegen.compile_ll(selected_ll, work / "kernel.o", extra_flags=extra_cflags)
     codec_inputs = {}
     if selected_codec is not None:
-        from . import host_llvm_helpers, late_quant_rne
+        from . import host_llvm_helpers, late_quant_rne, stock_arith_compat
 
         codec_inputs.update(selected_codec.validate()["input_sha256"])
+        compatibility_inputs = json.loads((work / "codec-model/report.json").read_text())[
+            "stock_integer_compatibility_input_sha256"
+        ]
+        if set(compatibility_inputs) != {str(Path(stock_arith_compat.__file__))}:
+            raise ValueError("scalar codec compatibility source binding is incomplete")
+        for path, digest in compatibility_inputs.items():
+            if sha256_file(path) != digest:
+                raise ValueError("scalar codec compatibility input changed before kernel closure")
+        codec_inputs.update(compatibility_inputs)
         codec_inputs.update(
             {
                 str(path): sha256_file(path)

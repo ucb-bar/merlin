@@ -58,7 +58,7 @@ def fuse_clamped_encoders(source: Path, output: Path, policy):
     from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.xdsl_dialects.fp8 import Float8E4M3FNType
 
-    from . import toolchain
+    from . import stock_arith_compat, toolchain
     from .compilation_recipe import CompilationRecipe
     from .deployable_ir import checked_generic_text
     from .fp8_scalar_codec import BoundedE4M3FNCodec, _complete_elementwise, _ordered_clamp_body
@@ -74,6 +74,9 @@ def fuse_clamped_encoders(source: Path, output: Path, policy):
     snapshot.write_bytes(original)
     normalizer = toolchain.llvm_install() / "bin" / "mlir-opt"
     recipe = CompilationRecipe(output, producer=Path(__file__))
+    compatibility_source = Path(stock_arith_compat.__file__)
+    compatibility_sha256 = sha256_file(compatibility_source)
+    recipe.bind_preparation("stock_integer_compatibility", compatibility_source)
     recipe.run(
         [normalizer, snapshot, "--mlir-print-op-generic", "-o", normalized],
         runner=lambda args: run_checked(args, timeout=180),
@@ -81,9 +84,7 @@ def fuse_clamped_encoders(source: Path, output: Path, policy):
         output=normalized,
     )
     module = parse_mlir_text(normalized.read_text())
-    from .stock_arith_compat import unflagged_truncations
-
-    stock_integer_compatibility = unflagged_truncations(module)
+    stock_integer_compatibility = stock_arith_compat.unflagged_truncations(module)
     module.verify()
     records = []
     for consumer in list(module.walk()):
@@ -207,7 +208,12 @@ def fuse_clamped_encoders(source: Path, output: Path, policy):
             }
         )
     module.verify()
-    if source.read_bytes() != original or snapshot.read_bytes() != original or policy.validate() != bindings:
+    if (
+        source.read_bytes() != original
+        or snapshot.read_bytes() != original
+        or policy.validate() != bindings
+        or sha256_file(compatibility_source) != compatibility_sha256
+    ):
         raise ValueError("encoder fusion changed source or selected bindings")
     result = output / "model.mlir"
     result.write_text(checked_generic_text(module))
@@ -220,6 +226,7 @@ def fuse_clamped_encoders(source: Path, output: Path, policy):
             "output_sha256": sha256_file(result),
             "pairs": records,
             "stock_integer_compatibility": stock_integer_compatibility,
+            "stock_integer_compatibility_input_sha256": {str(compatibility_source): compatibility_sha256},
             "source_quantizer_replaced": False,
         },
     )
