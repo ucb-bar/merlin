@@ -31,6 +31,13 @@ import shutil
 import sys
 from pathlib import Path
 
+from merlin.targetgen._shared_session_capture import (
+    exported_integer_mm_count as _exported_integer_mm_count,
+)
+from merlin.targetgen._shared_session_capture import (
+    framework_catalog as _framework_catalog,
+)
+
 # canonical dtype token -> (torchAO scheme | None, base-weight dtype cast | None). Mirrors
 # workloads/capture.py SCHEME + DTYPE_CAST so a capsule's precision matches how models are captured.
 _SCHEME = {
@@ -466,48 +473,20 @@ def _fp32_stage_observation(
     }
 
 
-def _exported_integer_mm_count(module) -> int:
-    """Count proven i8×i8→i32 contractions in the emitted, unnormalized MLIR."""
-    from xdsl.dialects.builtin import IntegerType, TensorType
+def _materialize_shared_dynamic_session(model, args, out: Path, *, determinism: dict, dependencies: list, torch) -> int:
+    from merlin.targetgen._shared_session_capture import CaptureServices, materialize
 
-    def width(value) -> int | None:
-        typ = getattr(value, "type", None)
-        if not isinstance(typ, TensorType) or not isinstance(typ.element_type, IntegerType):
-            return None
-        return int(typ.element_type.width.data)
-
-    if module is None:
-        return 0
-    count = 0
-    for op in module.walk():
-        if op.name != "linalg.generic" or len(op.operands) < 3 or len(op.results) != 1:
-            continue
-        prov = op.attributes.get("prov.op")
-        if (
-            str(getattr(prov, "data", "")) == "int_matmul"
-            and [width(value) for value in op.operands[:2]] == [8, 8]
-            and width(op.results[0]) == 32
-        ):
-            count += 1
-    return count
-
-
-def _framework_catalog(torch) -> dict:
-    """Observe the registry in this exact capture interpreter, never another build."""
-    owner = Path(__file__).with_name("_aten_opset_worker.py")
-    try:
-        spec = importlib.util.spec_from_file_location("_capture_opset", owner)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module.core_opset()
-    except Exception as exc:  # noqa: BLE001 -- unavailable is not an empty registry
-        return {
-            "schema": "merlin.pytorch_opset.v1",
-            "status": "not_available",
-            "torch": str(torch.__version__),
-            "n_all_aten": None,
-            "reason": f"capture framework catalog unavailable: {type(exc).__name__}: {exc}",
-        }
+    services = CaptureServices(
+        abi_version=_CAPTURE_ABI_VERSION,
+        float_reference=_float_reference,
+        quant_for=_quant_for,
+        scalars=_scalars,
+        input_abi=_input_abi,
+        output_abi=_output_abi,
+    )
+    return materialize(
+        model, args, out, determinism=determinism, dependencies=dependencies, torch=torch, services=services
+    )
 
 
 def _materialize_session(
@@ -516,6 +495,10 @@ def _materialize_session(
     """Capture an explicit multi-program protocol; do not infer stages by model name."""
     if not args.materialize_bundle:
         raise ValueError("deferred multi-program capture requires --materialize-bundle")
+    if args.scheme == "int8_dyn_act_int8_weight":
+        return _materialize_shared_dynamic_session(
+            model, args, out, determinism=determinism, dependencies=dependencies, torch=torch
+        )
     recipe = json.loads(Path(args.recipe).read_text()) if args.recipe else None
     quantized = args.dtype == "int8" and recipe is not None
     if (args.dtype not in {"fp32", "f32"} and not quantized) or args.scheme or args.already_quantized:
@@ -693,6 +676,7 @@ def _materialize_session(
         "qualification": "capture only; no target lowering, execution or application accuracy claim",
     }
     (out / "session-receipt.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+    write_bundle_integrity(out)
     ok = all(stage["ok"] for stage in stages)
     print(
         "__M2M_CAPTURE__ "

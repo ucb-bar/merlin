@@ -13,6 +13,15 @@ launching, capsule grading, golden generation, sandboxing and certification. The
 
 ## What belongs here
 
+- `_shared_session_capture.py` materializes an explicitly source-declared shared model
+  with one dynamic TorchAO transform and a version-2 stage/state binding. It preserves
+  original FP32 snapshots and separate source-quality outputs, full quantized goldens,
+  exact stage receipts and root file integrity. Capture is refused (diagnostic exit 3)
+  when original-to-quantized/prepared lineage is incomplete. Integer graph presence,
+  shared tensor identity and complete files do not confer numerical or target admission.
+  The worker passes a frozen `CaptureServices` object; detached/runpy execution never
+  discovers helpers through process `__main__` or another checkout.
+
 - `artifact_bundle.py` supplies explicit profile-bound structural checks for a
   draft artifact composition. File identities and logical-buffer ordering grant
   no artifact ABI, physical alias, capability, synchronization or execution
