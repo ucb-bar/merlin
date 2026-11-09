@@ -2,6 +2,13 @@
 
 ## Purpose
 
+`demand_pointwise_gather` is an explicit, default-off transform for evaluating
+closed pointwise producer DAGs at their original gather coordinates. It clones
+the original arithmetic and retains bounds preconditions, metadata and unknown
+contracts. Immutable inputs, nontrapping floating arithmetic and unobserved
+floating flags are caller obligations; no quantizer, observed-index
+specialization, physical storage permission or whole-model fit is inferred.
+
 `counted_copy_check` proves only a closed original integer tensor identity/copy
 to scalar LLVM counted loop under explicit original software pointer objects.
 It checks complete source/body/CFG, ordinal/byte bounds, pointer bases, loaded
