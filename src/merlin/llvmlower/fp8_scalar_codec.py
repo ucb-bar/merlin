@@ -413,6 +413,9 @@ def legalize_file(source: Path, output: Path, policy: BoundedE4M3FNCodec | None)
     # Custom-form xDSL parsing can discard unknown linalg attributes. Analyze
     # only the stock compiler's lossless generic form, never a lossy reprint.
     module = parse_mlir_text(normalized.read_text())
+    from .stock_arith_compat import unflagged_truncations
+
+    stock_integer_compatibility = unflagged_truncations(module)
     module.verify()
     casts, counts = [], {"decode": 0, "encode": 0}
     for op in module.walk():
@@ -481,6 +484,7 @@ def legalize_file(source: Path, output: Path, policy: BoundedE4M3FNCodec | None)
             "output_sha256": sha256_file(result),
             "bindings": bindings,
             "casts": counts,
+            "stock_integer_compatibility": stock_integer_compatibility,
             "normalizer": {
                 "path": str(normalizer),
                 "sha256": sha256_file(normalizer),

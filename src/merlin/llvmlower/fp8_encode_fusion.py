@@ -81,6 +81,9 @@ def fuse_clamped_encoders(source: Path, output: Path, policy):
         output=normalized,
     )
     module = parse_mlir_text(normalized.read_text())
+    from .stock_arith_compat import unflagged_truncations
+
+    stock_integer_compatibility = unflagged_truncations(module)
     module.verify()
     records = []
     for consumer in list(module.walk()):
@@ -216,6 +219,7 @@ def fuse_clamped_encoders(source: Path, output: Path, policy):
             "source_sha256": sha256_file(source),
             "output_sha256": sha256_file(result),
             "pairs": records,
+            "stock_integer_compatibility": stock_integer_compatibility,
             "source_quantizer_replaced": False,
         },
     )

@@ -837,3 +837,10 @@ original FP32 quantization/scaling DAG and account for the added correction work
   pruned; unknown effects stay live and unsupported deployment forms refuse.
   Compute workers produce canonical boolean bytes; controller inspection grants
   no inference arithmetic or permission to remove source conditions.
+
+- `stock_arith_compat` is a selected-roundtrip compatibility rule for MLIR 23's
+  explicit `arith.trunci` default-none overflow property and the pinned xDSL
+  unflagged form. Validate all candidates before mutation, retain every cast,
+  operand/result identity, type and attribute, and record normalization. Unknown
+  or nondefault flags refuse; this is neither a global parser change nor a
+  permission to remove poison/effect/numerical contracts.
