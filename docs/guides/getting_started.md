@@ -26,9 +26,10 @@ lists only its own workflow-specific extras. For *what* the repo is read
 **Read this first, then jump to your workflow.** One Merlin package contains compiler and research
 code. A base install needs no optional engines, submodules or external toolchains; dependency extras
 enable phase execution, studies, boards and model capture. Root help stays available without them.
-The full historical test suite also references private corpora and retained run artifacts; a fresh
-clone cannot be assumed to pass every test without those inputs. Missing prerequisites must remain
-explicit failures or documented skips, never fabricated passes. Set up the pieces for your workflow;
+The compact permanent suite has a repository-wide ceiling of 150 collected cases.
+Native capture, prover and device checks still need their selected external dependencies.
+Missing prerequisites remain explicit failures or documented skips, never fabricated passes.
+Historical instruments use their original Git/frozen inputs. Set up the pieces for your workflow;
 §4 is the map.
 
 ## 1. Base install — needed for every workflow
@@ -51,7 +52,8 @@ Select the dependency extras needed by your workflow from the same package:
 uv pip install -e '.[dev,xdsl,targetgen,experiments,analysis,dse,mining]'
 .venv/bin/merlin experiment list
 .venv/bin/python build_tools/scripts/check_structure.py
-.venv/bin/python -m pytest merlin/tests packages/merlin-experiments/tests packages/merlin-dse/tests packages/merlin-mining/tests
+.venv/bin/python build_tools/scripts/check_test_budget.py --output out/build/python/ci/test-budget.json
+.venv/bin/python -m pytest merlin/tests -q -ra
 ```
 
 The `experiments` extra installs the pinned AET dependency; no implicit sibling checkout is

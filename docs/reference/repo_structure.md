@@ -10,11 +10,78 @@ code_refs: [pyproject.toml, src/merlin, packages, experiments/catalog.yaml]
 
 # Repository structure
 
-Start at `experiments/catalog.yaml` to select a phase workflow. All Merlin Python implementation
+For ordinary compilation, start at `src/merlin/api.py`. For an agent experiment,
+start at `experiments/catalog.yaml`. All Merlin Python implementation
 ships in one `merlin` distribution from `src/`. Shared compiler, trusted evaluation and research
 workflows retain distinct logical owners; dependency extras enable optional engines rather than
 installing additional copies of the code. The old `merlin/python/merlin` directory is a compatibility
 symlink, not the place to add new modules.
+
+This map describes the current checkout. Compiler ownership is clearer than the
+retained legacy areas, and some active modules still need responsibility-based
+decomposition. A passing structure gate does not establish that every file is
+short, cohesive or easy to read.
+
+## Read the compiler in this order
+
+```text
+src/merlin/
+  api.py                 public compile, run and inspection calls
+  service_cli.py         command-line arguments for those same calls
+  compiler/
+    request.py           source and compile options
+    artifact.py          products, manifests and deployment records
+    system.py            discover implementations for a selected system
+    pipeline.py          materialize a selected region plan
+    invocation.py        call a provider and admit its returned products
+    frontend/            capture/import and source-state binding
+    quantization/        numerical contracts, preparation and legalization
+    ir/                  shared graph, effect and boundary records
+    backend/             provider contracts, offers, composition and call ABI
+    planning/            choose compatible regions and implementations
+    partition/           materialize selected boundaries
+    transforms/          reusable source-IR transformations
+    passes/              pass contracts, composition and execution adapters
+    schedule/            shared tiling, retention, transfers and command ordering
+    lower/
+      scalar/            scalar computation lowering
+      llvm/              shared terminal LLVM conversion and ABI admission
+      c/                 portable control, dispatch and handoff emission
+    build/               compile/link products and selected platform images
+      zephyr/            configuration from selected SoC/board/tree capabilities
+  runtime/               execute artifacts or prepare/collect external execution
+  verification/          independent references, proofs and artifact checks
+  target/spec/           reviewed numerical, instruction and effect declarations
+  development/           experiment definition validation and command selection
+```
+
+To understand a single transform, open its implementation in `transforms/` or
+`schedule/` first. To understand the complete compilation flow, open `api.py`,
+then `system.py` or `pipeline.py` according to the selected route. These are
+different reading tasks: the algorithm should be understandable in its owner;
+the orchestrator explains how independently meaningful stages compose.
+
+OOT lowering begins at the provider invocation in `compiler/invocation.py`:
+`provider.compile` or the admitted `provider.compile_selected` hook. The actual
+target dialect lowering, encoder and device implementation live in the selected
+OOT package. Its products may be LLVM, objects, device binaries or commands.
+The scalar provider starts in `compiler/backend/scalar.py`, reusing scalar and
+LLVM lowering. The pass library spans source transforms and counted scheduling;
+`passes/` supplies the contracts and invocation machinery, not every algorithm.
+
+`llvmlower/`, `targetgen/`, `sched/` and `transforms/` outside `compiler/` still
+contain active implementation and research interfaces. Some older modules under
+`compile/`, `verify/` and other packages are exact compatibility identities.
+Check the module's owner declaration rather than assuming an entire directory is
+obsolete or another editable copy. The task table below gives current entry points.
+
+The readability policy is in [CONTRIBUTING.md](../../CONTRIBUTING.md): one coherent
+concept per owner, decomposition review near 400 handwritten lines, ordinarily
+under 600 for new or substantially rewritten modules, and comments explaining
+invariants and reasons. Splits need real independent responsibilities or contracts;
+small forwarding modules alone do not improve readability.
+
+## Repository roots
 
 Read-only resource identity is independent of writable output roots.
 `merlin.common.paths.data_path` selects this implementation's actual source

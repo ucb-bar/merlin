@@ -10,7 +10,7 @@ historical Phase 0/1/2 names remain in the module layout and separate workflows.
   target/toolchain and verification primitives independent of research orchestration.
 - `src/merlin_experiments/` and `src/merlin_dse/`: research workflows in the same Merlin distribution;
   optional dependencies stay lazy and logical compiler/research access boundaries remain explicit.
-- `packages/`: retained research tests and the independent `merlin-timing` observer distribution.
+- `packages/`: historical project metadata/inputs and the independent `merlin-timing` observer distribution.
 - `experiments/`: the experiment catalog and versioned definitions; start here to run a study.
 - `merlin/`: schemas, tests, native runtime, and legacy engines/resources during migration.
   `merlin/python/merlin` is a compatibility symlink, not another source tree.
@@ -73,6 +73,14 @@ even when the final tree passes tests or a push has been requested urgently.
 
 Never force-push a shared or published branch to repair history. If poor history has already
 been published, report it and prepare a separate reviewed remedy before changing that branch.
+
+## Readability
+
+Follow `CONTRIBUTING.md` for module ownership and comment conventions. Keep one
+coherent concept understandable in its owner. Review decomposition near 400
+handwritten lines and ordinarily keep new or substantially rewritten modules
+under 600; avoid both mechanical splits and monoliths just below a CI ceiling.
+Preserve real verification, source-identity and ABI boundaries when splitting.
 
 ## Verification
 

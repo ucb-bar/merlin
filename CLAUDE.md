@@ -13,7 +13,7 @@ changes; the same gates run in pre-commit and CI.
 `src/` owns the single installed Merlin distribution: `merlin`, `merlin_experiments`, and
 `merlin_dse`. Research workflows preserve their historical imports while optional dependencies
 stay lazy. Logical compiler/research and protected-source boundaries remain independent of
-wheel ownership. `packages/` retains research tests and the independent timing observer;
+wheel ownership. `packages/` retains historical project metadata/inputs and the independent timing observer;
 do not duplicate active Merlin code there. `merlin/python/merlin` is only a compatibility symlink.
 Experiment definitions start at `experiments/catalog.yaml`; retained research inputs live under
 `experiments/reference-data/`, not generated `out/`. See `docs/reference/repo_structure.md`.
@@ -208,8 +208,10 @@ Escape hatch for a genuine one-off: `export MERLIN_ALLOW_ARTIFACT_WRITE=1` or ad
 
 Cross-subsystem tests live in **`merlin/tests/`** (the root project's pytest `testpaths`), organized
 into **subsystem buckets**: `kernels/ rvv/ dse/ gemmini/ targetgen/ ir/ runtime/ infra/`.
-Retained workflow tests also live in `packages/*/tests/`; their implementations ship in the
-main Merlin distribution. The independent timing observer retains its own project configuration.
+The permanent suite is capped at 150 collected cases across owned project roots,
+including parameterization. Retired workflow tests remain in Git/frozen inputs;
+their implementations ship in the main Merlin distribution. The independent
+timing observer retains its own project configuration.
 Rules for the cross-subsystem suite (enforced by
 `build_tools/scripts/check_structure.py` "test layout"; see `.claude/skills/test-layout`):
 
@@ -218,12 +220,12 @@ Rules for the cross-subsystem suite (enforced by
 - Shared inputs live in `merlin/tests/fixtures/` and `merlin/tests/data/`.
 - Resolve repo paths via `merlin.common.paths.repo_root()` / `merlin_dir()` — **never** `Path(__file__).parents[N]`
   (so tests are location-independent and survive moves).
-- Run the cross-subsystem suite: `.venv/bin/python -m pytest merlin/tests`; include the retained
-  workflow test directories explicitly when validating those workflows. Install their selected
+- Run `build_tools/scripts/check_test_budget.py --output out/build/python/ci/test-budget.json`
+  before `.venv/bin/python -m pytest merlin/tests`. Install the selected
   optional dependency extras; a base Merlin installation need not include research engines.
   Historical replay retains its recorded source/distribution selection and test inputs.
-- Apply the strict behavioral review bar in `merlin/tests/AGENT.md` to both the
-  cross-subsystem suite and retained package tests. Keep distinct core and
+- Apply the strict behavioral review bar in `merlin/tests/AGENT.md` to the
+  permanent suite. Keep distinct core and
   acceptance obligations; consolidate redundant snapshots and implementation
   trivia rather than requiring a test for every helper or option.
 

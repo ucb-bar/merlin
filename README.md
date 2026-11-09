@@ -135,7 +135,7 @@ kernel-derived policies stay as schemas/YAML/JSON.
 |---|---|
 | `src/merlin/` | Shared compiler IR, scheduling, capture contracts, target/toolchain resolution and runtime primitives |
 | `src/merlin_experiments/`, `src/merlin_dse/` | Research workflows in the main package, with explicit dependency and evaluator access boundaries |
-| `packages/` | Retained focused research tests and the independently packaged timing observer |
+| `packages/` | Historical project metadata/inputs and the independently packaged timing observer |
 | `examples/` | Target experiment definitions, authored `phase0/recipe.yaml` inputs and walkthroughs; not generated corpora or private answers |
 | `experiments/` | Single experiment catalog, generic templates, and curated reference inputs; retained synthesis inputs live in `reference-data/phase0/` |
 | `merlin/` | Schemas, tests, native runtime, and legacy engine/resource trees during migration; `python/merlin` is a compatibility symlink |

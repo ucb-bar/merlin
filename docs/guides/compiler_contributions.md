@@ -33,13 +33,21 @@ instructions and [development setup](getting_started.md), then choose a boundary
 
 | Work | Start in code | Reference and focused checks |
 | --- | --- | --- |
-| Pass selection and efficient generated code | [pipeline_policy.py](../../src/merlin/transforms/pipeline_policy.py): `evaluate_variants`; [dense_source.py](../../src/merlin/compiler/schedule/dense_source.py): `schedule_source_dense`; [fusion_workflow.py](../../src/merlin/compiler/planning/explore.py): `realize_candidate` | [Shared passes](../reference/shared_compiler_passes.md), [conditional pipelines](conditional_compiler_pipelines.md); `test_pipeline_policy.py`, `test_dense_source_catalog.py`, `test_fusion_exploration.py` |
-| Graph and state preservation | [connected_regions.py](../../src/merlin/compiler/lower/connected.py): `plan_connected_region`; [lean_checker.py](../../src/merlin/verification/lean_checker.py): `verify_pipeline_change`; [Lean sources](../../src/merlin/verification/lean/Merlin/) | [Verification boundaries](../design/compiler_verification.md), [toolchain integration](verified_compiler_tooling.md); `test_connected_regions.py`, `test_lean_state_effects.py` |
-| Phase 0 coverage and quantization | [software_spec.py](../../src/merlin/targetgen/software_spec.py): `admit_operation`; [quantization_spec.py](../../src/merlin/compiler/quantization/admission.py): `build_quantization_contract`; [Phase 0](../../src/merlin_experiments/phase0/) | [Specification](phase0_specification.md), [quantization methodology](../design/target_quantization_methodology.md); `test_quantization_spec.py`, `test_phase0_support_accounting.py` |
+| Pass selection and efficient generated code | [pipeline_policy.py](../../src/merlin/transforms/pipeline_policy.py): `evaluate_variants`; [dense_source.py](../../src/merlin/compiler/schedule/dense_source.py): `schedule_source_dense`; [explore.py](../../src/merlin/compiler/planning/explore.py): `realize_candidate` | [Shared passes](../reference/shared_compiler_passes.md), [conditional pipelines](conditional_compiler_pipelines.md); retained related cases in `test_schedule_pipeline.py`, `test_ordered_mnk_tiling.py`, `test_fusion_discovery.py` |
+| Graph and state preservation | [connected.py](../../src/merlin/compiler/lower/connected.py): `plan_connected_region`; [lean_checker.py](../../src/merlin/verification/lean_checker.py): `verify_pipeline_change`; [Lean sources](../../src/merlin/verification/lean/Merlin/) | [Verification boundaries](../design/compiler_verification.md), [toolchain integration](verified_compiler_tooling.md); retained related cases in `test_verification_borrowed_buffer_results_native.py`, `test_verification_lean_checked.py` |
+| Phase 0 coverage and quantization | [software_spec.py](../../src/merlin/targetgen/software_spec.py): `admit_operation`; [admission.py](../../src/merlin/compiler/quantization/admission.py): `build_quantization_contract`; [Phase 0](../../src/merlin_experiments/phase0/) | [Specification](phase0_specification.md), [quantization methodology](../design/target_quantization_methodology.md); retained related cases in `test_quantization_spec.py`, `test_precision_policy.py` |
 
 Test files are under `merlin/tests/ir/`, `merlin/tests/infra/` or
 `merlin/tests/targetgen/`; run the affected family, not a full campaign for every
-edit. Lean execution additionally requires the explicitly selected toolchain.
+edit. These are related retained obligations, not a claim that every API in a row
+has a direct permanent test. Historical matrices belong to their recorded
+Git/frozen inputs. Lean execution additionally requires the explicitly selected toolchain.
+
+Read the [repository map](../reference/repo_structure.md) for the whole compile
+flow and [module readability policy](../../CONTRIBUTING.md#module-ownership-and-readability)
+before adding a new owner. Keep one algorithm understandable locally and split
+at actual contracts or independently changing responsibilities. A small file
+that only forwards to another small file is not a readability improvement.
 
 Use source semantics, shapes and explicit hardware facts to derive applicability.
 Keep generic transforms, packing and host code in Merlin; target encodings,
