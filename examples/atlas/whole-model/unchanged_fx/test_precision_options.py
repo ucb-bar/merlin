@@ -12,6 +12,10 @@ from atlas_mlir_native.reduction import (
 from merlin.semantic_compiler.buffer_allocation import current_allocation_wall_budget_ms
 from precision_options import add_reduction_policy_argument, verify_reduction_policy
 import compile_capsule
+from merlin.compile.c_bf16_linear import SOURCE_POLICY
+
+
+OLD_HEAD_POLICY = "bf16-product-rne-tree32-f32-rne-bf16-rne-tiles-ltr-chop-v1"
 
 
 def parse_policy(*args):
@@ -56,6 +60,41 @@ def test_reuse_requires_precision_and_compiled_selection_to_agree(saved):
         verify_reduction_policy('layer0', precision, {'reduction_policy': saved}, other)
     with pytest.raises(ValueError, match='different selected reduction policy'):
         verify_reduction_policy('layer0', precision, {'reduction_policy': other}, saved)
+
+
+@pytest.mark.parametrize('policy', [None, OLD_HEAD_POLICY, 'unknown'])
+def test_head_reuse_refuses_missing_or_obsolete_precision_policy(policy):
+    precision = {'reduction': REDUCTION_POLICY}
+    if policy is not None:
+        precision['host_bf16_linear'] = policy
+    compilation = {'regions': [{'description': {
+        'arithmetic': 'selected-host-bf16-matmul', 'numeric_semantics': SOURCE_POLICY}}]}
+    with pytest.raises(ValueError, match='different selected host BF16 linear policy'):
+        verify_reduction_policy('head', precision, compilation, REDUCTION_POLICY)
+
+
+@pytest.mark.parametrize('policy', [None, OLD_HEAD_POLICY, 'unknown'])
+def test_head_reuse_refuses_inconsistent_or_missing_compiled_arithmetic(policy):
+    precision = {'reduction': REDUCTION_POLICY, 'host_bf16_linear': SOURCE_POLICY}
+    description = {'arithmetic': 'selected-host-bf16-matmul'}
+    if policy is not None:
+        description['numeric_semantics'] = policy
+    compilation = {'regions': [
+        {'description': {'arithmetic': 'selected-host-bf16-matmul', 'numeric_semantics': SOURCE_POLICY}},
+        {'description': description}]}
+    with pytest.raises(ValueError, match='different selected host BF16 linear policy'):
+        verify_reduction_policy('head', precision, compilation, REDUCTION_POLICY)
+
+
+@pytest.mark.parametrize('recorded', [False, True])
+def test_head_reuse_accepts_current_policy_and_preserves_precision_only_receipts(recorded):
+    precision = {'reduction': REDUCTION_POLICY, 'host_bf16_linear': SOURCE_POLICY}
+    compilation = {'reduction_policy': REDUCTION_POLICY}
+    if recorded:
+        compilation['regions'] = [
+            {'description': {'arithmetic': 'byte-preserving'}},
+            {'description': {'arithmetic': 'selected-host-bf16-matmul', 'numeric_semantics': SOURCE_POLICY}}]
+    verify_reduction_policy('head', precision, compilation, REDUCTION_POLICY)
 
 
 @pytest.mark.parametrize('override,expected', [(None, 1000), (2300, 2300)])

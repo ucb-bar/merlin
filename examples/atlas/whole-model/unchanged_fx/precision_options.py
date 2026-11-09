@@ -14,6 +14,15 @@ def verify_reduction_policy(kind, precision, compilation, selected):
         if (precision.get("reduction") != selected
                 or compilation.get("reduction_policy", precision.get("reduction")) != selected):
             raise ValueError(f"compiled region uses a different selected reduction policy: {kind}")
+    if kind == "head":
+        from merlin.compile.c_bf16_linear import SOURCE_POLICY
+
+        recorded = [region.get("description", {}).get("numeric_semantics")
+                    for region in compilation.get("regions", [])
+                    if region.get("description", {}).get("arithmetic") == "selected-host-bf16-matmul"]
+        if (precision.get("host_bf16_linear") != SOURCE_POLICY
+                or any(policy != SOURCE_POLICY for policy in recorded)):
+            raise ValueError("compiled head uses a different selected host BF16 linear policy")
 
 
 def build_precision_policy(kind, source_hash, *, reduction_policy, softmax_mask_policy):
