@@ -212,6 +212,10 @@ def build_outlined_program(
                 Path(__file__),
             )
         }
+        for built in builds:
+            if sha256_file(built["object"]) != built["object_sha256"]:
+                raise ValueError("ordinary kernel object changed before build closure")
+            source_pins[built["object"]] = built["object_sha256"]
         if data_preparation:
             source_pins[str(Path(deployable_packing.__file__))] = sha256_file(deployable_packing.__file__)
         for selected in prepared_staged_kernels.values():

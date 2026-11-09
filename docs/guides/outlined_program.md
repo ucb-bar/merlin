@@ -247,3 +247,8 @@ the flat path. The default `None` preserves the original loop and plan metadata.
 The selected shape, budget, logical traffic and fallback reason enter the plan
 and build identity. Input/output alias rejection and whole-chain lifetimes remain
 unchanged; tile selection grants no in-place permission or numerical conversion.
+
+Ordinary compiled kernel objects are checked against their recorded compilation
+hashes and included in the build's `input_sha256` closure, alongside prepared
+provider objects. A changed object refuses the build. The caller still binds and
+checks the complete linker, runtime and resulting target ELF independently.
