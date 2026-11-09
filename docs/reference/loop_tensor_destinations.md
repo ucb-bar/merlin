@@ -25,13 +25,18 @@ current block with the exact carried tensor type, positive static dimensions, on
 parallel iterators, an identity output map, and an unused output-init block
 argument. Its original scalar-body profile contains numeric arithmetic/math or
 linalg index/yield operations. A second closed profile also permits scalar
-`memref.load` observations through standard views of a `read_only`
-`bufferization.to_buffer` over an actual function-entry tensor argument, with
-numeric `scf.if` branches. The loop seed must then be independently synthesized:
+`memref.load` observations through standard views of either a `read_only`
+`bufferization.to_buffer` over an actual function-entry tensor argument, or an
+actual private `memref.alloc`, with numeric `scf.if` branches. The loop seed must then be independently synthesized:
 an empty tensor, dense literal, scalar fill, or its complete pure generalized
 form. Tensor-fed seeds, CFG phi arguments, unknown memory roots, writes and
-opaque calls do not qualify for that read extension. Every nested branch and
-operation is checked; no capture, effect or arithmetic changes.
+opaque calls do not qualify for that read extension. Private allocations supply
+disjointness from that independent seed, not a readonly fact or release authority.
+Every nested branch and
+operation is checked; no capture, effect or arithmetic changes. Loop-local
+scalar capture producers also close recursively, so moving a scalar load outside
+the generic cannot bypass its root/seed checks. Pure padding/conditional values
+and restricted tensor imports from the qualified roots remain in that closure.
 Serial `scf.while` after-regions also qualify when the condition forwards every
 before-argument unchanged, in the same position and type. Computed, permuted or
 heterogeneous condition state remains unchanged because it cannot inherit the
@@ -59,6 +64,15 @@ whether physical storage can be reused, including conflicts with live inputs.
 Ordinary deallocation and lifetime checks remain mandatory. The feature grants
 no physical alias, effect, numeric approximation or target permission.
 
+Destination timing follows original liveness. If the old carried value remains
+in use after a producer, retain that producer and copy its complete value only
+at the selected control edge, after those reads. Nonidentity carried-input maps
+also require a complete computed value before any carried element is overwritten.
+Ancestor inspection stops at the owning loop; mutually exclusive sibling
+branches do not become later uses. This keeps coupled online-softmax states
+executable without forcing fresh ownership on every iteration. Native alias
+analysis may still refuse or introduce copies; lifetime checks remain enabled.
+
 The runner requires exactly one marker immediately before bufferization and
 rejects a moved or missing seam. Empty feature selection retains the original
 runner. Native proof tests cover init reads, zero/dynamic shapes and opaque
@@ -75,6 +89,10 @@ Nested pointer branches, pointer-returning helper inlining, `for`/`while` state,
 and conditional row reductions now also execute through the actual Merlin
 library path over independent empty/tail domains, choices and iteration counts.
 Computed/permuted before-state and broader ownership profiles remain separate.
+Tiled online attention additionally retains two contractions and running maximum,
+normalizer and accumulator through one native library, including empty keys,
+runtime tails and independently changing query/key dimensions. This is measured
+finite-f32 numerical coverage, not all attention variants or device execution.
 
 The upstream boundary is LLVM `a47bddccec30255619bb8c37fa59700e661d4e66`:
 `mlir/lib/Dialect/SCF/Transforms/BufferizableOpInterfaceImpl.cpp` requires

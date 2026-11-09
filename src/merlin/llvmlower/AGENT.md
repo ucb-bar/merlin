@@ -11,6 +11,12 @@ result before edits. Retarget only complete unused-init generics; captured or
 closed pure computed values may use an explicit identity value copy into the
 carried destination. Preserve reduction/init semantics and all branch order.
 Unknown effects/captures and library calls grant no copy/reuse permission.
+Old-state reads after a producer and nonidentity carried-input maps require a
+complete value copy at the selected edge, after those reads. Bound ancestor
+inspection by the owning loop. Read captures may also use actual private
+allocations disjoint from an independently synthesized seed; this grants no
+readonly, release or escaping-alias fact. Close loop-local scalar capture
+producers and qualified padding/conditional/tensor-import values recursively.
 
 Mixed borrowed composition retains distinct live ordinary descriptor and plural
 writer owners for one exact source epoch. Disjoint ABI rows, original effect
@@ -79,8 +85,9 @@ overwritten static parallel generic's loop-carried tensor destination. The init
 scalar must be unused and the output map identity. Native tensor alias analysis
 and ordinary ownership/lifetime checks remain authoritative; dynamic trip counts
 grant no release permission. Default source lowering is unchanged.
-Its readonly-capture extension additionally requires an independently synthesized
-seed and standard views of a read-only actual function-entry tensor. Numeric
+Its read-capture extension additionally requires an independently synthesized
+seed and standard views of a read-only actual function-entry tensor or an
+actual private allocation. Numeric
 conditional reads retain every effect. Writes, calls, unknown roots and CFG phi
 aliases refuse; no physical alias or deallocation permission is added.
 

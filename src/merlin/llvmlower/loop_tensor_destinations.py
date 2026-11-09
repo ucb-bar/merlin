@@ -66,14 +66,30 @@ def _ltd_readonly_input(value):
     return False
 
 
+def _ltd_separate_read_root(value):
+    # Called only with an independently synthesized carried seed. A live
+    # private allocation is disjoint from it; no readonly/immutability fact is
+    # invented for the buffer, and every original read/write remains in place.
+    root = value
+    while isinstance(root, ir.OpResult):
+        op = root.owner.operation
+        if op.name in ('memref.cast', 'memref.subview', 'memref.reinterpret_cast', 'memref.collapse_shape', 'memref.expand_shape'):
+            root = op.operands[0]
+            continue
+        if op.name == 'memref.alloc':
+            return True
+        break
+    return _ltd_readonly_input(value)
+
+
 def _ltd_scalar_body(op, *, fresh_seed):
-    # The read extension admits only readonly entry storage, disjoint from a
-    # newly synthesized loop seed. It changes no capture or memory effect;
+    # Readonly entry storage or an actual private allocation is disjoint from
+    # a newly synthesized loop seed. This changes no capture or memory effect;
     # native bufferization still decides whether physical reuse is legal.
     for inner in _ltd_walk(op):
         name = inner.name
         if name == 'memref.load':
-            if (not fresh_seed or not inner.operands or not _ltd_readonly_input(inner.operands[0])
+            if (not fresh_seed or not inner.operands or not _ltd_separate_read_root(inner.operands[0])
                     or inner.regions or len(inner.results) != 1 or not _ltd_numeric(inner.results[0].type)
                     or any(not isinstance(v.type, ir.IndexType) for v in tuple(inner.operands)[1:])):
                 return False
@@ -89,7 +105,7 @@ def _ltd_scalar_body(op, *, fresh_seed):
                 if terminal.name != 'scf.yield' or tuple(v.type for v in terminal.operands) != tuple(v.type for v in inner.results):
                     return False
             continue
-        if name.split('.')[0] not in ('arith', 'math') and name not in ('linalg.yield', 'linalg.index', 'scf.yield'):
+        if name.split('.')[0] not in ('arith', 'math') and name not in ('linalg.yield', 'linalg.index', 'scf.yield', 'tensor.yield'):
             return False
         if inner.regions or any(not _ltd_numeric(v.type) for v in (*inner.operands, *inner.results)):
             return False
@@ -157,8 +173,24 @@ def _ltd_copy_safe(value, incoming, inside, seen):
         return True
     if op.name == 'memref.load':
         return (len(op.results) == 1 and _ltd_numeric(value.type) and _ltd_fresh_seed(incoming)
-                and _ltd_readonly_input(op.operands[0])
+                and _ltd_separate_read_root(op.operands[0])
                 and all(_ltd_copy_safe(v, incoming, inside, seen) for v in tuple(op.operands)[1:]))
+    if op.name == 'bufferization.to_tensor':
+        return (len(op.operands) == 1 and len(op.results) == 1 and 'restrict' in op.attributes
+                and _ltd_fresh_seed(incoming) and _ltd_separate_read_root(op.operands[0]))
+    if op.name == 'scf.if':
+        if (len(op.operands) != 1 or str(op.operands[0].type) != 'i1' or len(op.regions) != 2
+                or not _ltd_copy_safe(op.operands[0], incoming, inside, seen)):
+            return False
+        index = tuple(op.results).index(value)
+        for region in op.regions:
+            if len(region.blocks) != 1 or region.blocks[0].arguments:
+                return False
+            terminal = tuple(region.blocks[0].operations)[-1].operation
+            if (terminal.name != 'scf.yield' or tuple(v.type for v in terminal.operands) != tuple(v.type for v in op.results)
+                    or not _ltd_copy_safe(terminal.operands[index], incoming, inside, seen)):
+                return False
+        return True
     def numeric(type_):
         return _ltd_numeric(ir.RankedTensorType(type_).element_type) if isinstance(type_, ir.RankedTensorType) else _ltd_numeric(type_)
     if any(not numeric(v.type) for v in (*op.operands, *op.results)):
@@ -168,18 +200,46 @@ def _ltd_copy_safe(value, incoming, inside, seen):
     if op.name.split('.')[0] in ('arith', 'math') or op.name in tensor_values:
         if op.regions:
             return False
-    elif op.name.startswith('linalg.'):
+    elif op.name.startswith('linalg.') or op.name == 'tensor.pad':
         if 'library_call' in op.attributes or not _ltd_scalar_body(op, fresh_seed=_ltd_fresh_seed(incoming)):
             return False
         for captured in _ltd_captured_values(op):
             if str(captured.type).startswith('memref'):
-                if not _ltd_fresh_seed(incoming) or not _ltd_readonly_input(captured):
+                if not _ltd_fresh_seed(incoming) or not _ltd_separate_read_root(captured):
                     return False
             elif not _ltd_copy_safe(captured, incoming, inside, seen):
                 return False
     else:
         return False
     return all(_ltd_copy_safe(v, incoming, inside, seen) for v in op.operands)
+
+
+def _ltd_late_destination(ctx, previous, producer):
+    # Reuse at the producer would clobber an old value still needed by another
+    # computation. An identity value copy at the selected edge keeps those
+    # reads before the update. Nonidentity input maps similarly need a complete
+    # computed tensor before overwriting any carried element.
+    block = producer.block
+    order = {op.operation: i for i, op in enumerate(block.operations)}
+    scope = previous.owner.owner.operation
+    for use in previous.uses:
+        current = use.owner.operation
+        # A loop block argument has no uses outside its owning loop. Stop
+        # there: native bindings cannot ask a detached/module op for a block.
+        while current is not None and current != scope:
+            if current.block == block:
+                if order[current] > order[producer]:
+                    return True
+                break
+            current = current.parent
+    if producer.name == 'linalg.generic':
+        maps = tuple(ir.ArrayAttr(producer.attributes['indexing_maps']))
+        with ctx:
+            identity = ir.AffineMap.get_identity(len(ir.RankedTensorType(previous.type).shape))
+        if any(v == previous and ir.AffineMapAttr(maps[i]).value != identity
+               for i, v in enumerate(tuple(producer.operands)[:-1])):
+            return True
+    return False
 
 
 def _ltd_destination_plan(ctx, value, block, terminal, position, previous, incoming, inside, claimed):
@@ -198,7 +258,11 @@ def _ltd_destination_plan(ctx, value, block, terminal, position, previous, incom
         return [('copy', terminal, position, value, previous)]
     if owner.name == 'linalg.generic':
         if owner not in claimed and _ltd_complete_generic(ctx, owner, block, previous, incoming, inside):
+            if _ltd_late_destination(ctx, previous, owner):
+                return [('copy', terminal, position, value, previous)]
             return [] if owner.operands[-1] == previous else [('generic', owner, previous)]
+    if owner.name == 'scf.if' and owner.block == block and _ltd_late_destination(ctx, previous, owner):
+        return [('copy', terminal, position, value, previous)] if _ltd_copy_safe(value, incoming, inside, set()) else None
     if (owner.name != 'scf.if' or owner.block != block or len(owner.operands) != 1
             or str(owner.operands[0].type) != 'i1' or len(owner.regions) != 2):
         # Keep non-overwrite producers (including reductions/init reads)

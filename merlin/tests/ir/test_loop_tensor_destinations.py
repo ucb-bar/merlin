@@ -9,7 +9,7 @@ from merlin.llvmlower.loop_tensor_destinations import FEATURE, MARKER, PRELUDE, 
 from merlin.llvmlower.toolchain import available, compiler_python
 
 
-def source(*, shape="4", init_read=False, opaque=False):
+def source(*, shape="4", init_read=False, opaque=False, later_use=False, reverse=False):
     empty = "%size" if shape == "?" else ""
     value = "%init" if init_read else "%one"
     payload = f"%v=arith.addf %in,{value}:f32"
@@ -18,8 +18,10 @@ def source(*, shape="4", init_read=False, opaque=False):
         declaration = "func.func private @unknown(f32)->f32"
         payload = "%v=func.call @unknown(%in):(f32)->f32"
     type_ = f"tensor<{shape}xf32>"
+    input_map = "affine_map<(i)->(3-i)>" if reverse else "affine_map<(i)->(i)>"
+    after = f"%observed=tensor.extract %old[%c0]:{type_}\nmemref.store %observed,%sink[%c0]:memref<4xf32>" if later_use else ""
     return f"""module {{ {declaration}
-      func.func @forward(%x:{type_},%bound:index) -> {type_} {{
+      func.func @forward(%x:{type_},%bound:index,%sink:memref<4xf32>) -> {type_} {{
         %c0=arith.constant 0:index
         %c1=arith.constant 1:index
         %one=arith.constant 1.0:f32
@@ -28,12 +30,13 @@ def source(*, shape="4", init_read=False, opaque=False):
         %e=tensor.empty({empty}):{type_}
         %seed=linalg.fill ins(%seven:f32) outs(%e:{type_})->{type_}
         %result=scf.for %iv=%c0 to %bound step %c1 iter_args(%old=%x)->{type_} {{
-          %next=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
+          %next=linalg.generic {{indexing_maps=[{input_map},affine_map<(i)->(i)>],iterator_types=["parallel"]}}
             ins(%old:{type_}) outs(%seed:{type_}) {{
             ^bb0(%in:f32,%init:f32):
               {payload}
               linalg.yield %v:f32
           }} -> {type_}
+          {after}
           scf.yield %next:{type_}
         }}
         return %result:{type_}
@@ -70,10 +73,22 @@ def test_complete_destinations_or_value_copies_preserve_original_producers(tmp_p
     assert ('prov.op = "copy-selected-state"' in text) == init_read
 
 
-def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True, write=False, opaque=False, constant=False, while_state=None, outside_read=False):
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("options", [{"later_use": True}, {"reverse": True}])
+def test_old_state_reads_and_permutations_finish_before_destination_updates(tmp_path, options):
+    stdout, output = rewrite(tmp_path, source(**options))
+    assert "OK loop_tensor_destinations 1" in stdout
+    assert 'prov.op = "copy-selected-state"' in output
+    if options.get("later_use"):
+        assert output.index("memref.store") < output.index('prov.op = "copy-selected-state"')
+
+
+def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True, write=False, opaque=False, constant=False, while_state=None, outside_read=False, private=False, unknown_owner=False):
     marker = "read_only" if readonly else ""
     seed = "%seed" if fresh else "%x"
     declaration = "func.func private @observe()" if opaque else ""
+    if unknown_owner:
+        declaration += "func.func private @allocate()->memref<4xf32>"
     extra = "func.call @observe() : () -> ()" if opaque else ""
     store = "memref.store %v, %mutable[%i] : memref<4xf32>" if write else ""
     read = "%v = memref.load %view[%i] : memref<?xf32>"
@@ -92,6 +107,13 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
           ins(%zero:f32) outs(%empty:tensor<4xf32>) {^bb0(%v:f32,%init:f32):linalg.yield %v:f32}->tensor<4xf32>"""
     if constant:
         fill = "%seed=arith.constant dense<0.0>:tensor<4xf32>"
+    imported = f"%base=bufferization.to_buffer %x {marker}:tensor<4xf32> to memref<4xf32>"
+    if private:
+        imported = f"""%source=bufferization.to_buffer %x {marker}:tensor<4xf32> to memref<4xf32>
+          %base=memref.alloc():memref<4xf32>
+          memref.copy %source,%base:memref<4xf32> to memref<4xf32>"""
+    if unknown_owner:
+        imported = "%base=func.call @allocate():()->memref<4xf32>"
     header = f"%result=scf.for %iv=%c0 to %bound step %c1 iter_args(%old={seed})->tensor<4xf32> {{"
     tail = "scf.yield %next:tensor<4xf32>"
     returned = "%result"
@@ -112,7 +134,7 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
         %c1=arith.constant 1:index
         %c2=arith.constant 2:index
         %zero=arith.constant 0.0:f32
-        %base=bufferization.to_buffer %x {marker}:tensor<4xf32> to memref<4xf32>
+        {imported}
         %view=memref.cast %base:memref<4xf32> to memref<?xf32>
         %empty=tensor.empty():tensor<4xf32>
         {fill}
@@ -153,6 +175,16 @@ def test_scalar_read_captures_close_their_loop_local_producer_graph(tmp_path, op
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("options,changed", [
+    ({"private": True}, 1), ({"private": True, "readonly": False}, 1),
+    ({"private": True, "fresh": False}, 0), ({"unknown_owner": True}, 0),
+])
+def test_private_read_roots_require_actual_allocations_and_independent_seeds(tmp_path, options, changed):
+    stdout, _ = rewrite(tmp_path, read_source(**options))
+    assert f"OK loop_tensor_destinations {changed}" in stdout
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
 @pytest.mark.parametrize("state,options,changed", [
     ("identity", {}, 1), ("identity", {"generalize": True}, 1),
     ("identity", {"constant": True}, 1), ("identity", {"fresh": False}, 0),
@@ -165,7 +197,7 @@ def test_while_destinations_require_unmodified_condition_state(tmp_path, state, 
     assert "scf.while" in output and "scf.condition" in output and "memref.load" in output
 
 
-def branch_source(*, while_loop=True, nested=False, passthrough=False, opaque=False, multiple=False, inside=False, reduction=False):
+def branch_source(*, while_loop=True, nested=False, passthrough=False, opaque=False, multiple=False, inside=False, reduction=False, later_use=False):
     type_ = "tensor<4xf32>"
     returned = "%result#0" if while_loop else "%result"
     header = f"""%result:2=scf.while (%before=%seed,%step_before=%zero_index)
@@ -181,6 +213,7 @@ def branch_source(*, while_loop=True, nested=False, passthrough=False, opaque=Fa
     arithmetic = "%v=func.call @unknown(%in):(f32)->f32" if opaque else "%v=arith.addf %in,%one:f32"
     value = "%old" if passthrough else "%inside" if inside else "%capture"
     extra = f"%inside=arith.constant dense<2.0>:{type_}" if inside else ""
+    after = f"%observed=tensor.extract %old[%zero_index]:{type_}\nmemref.store %observed,%sink[%zero_index]:memref<4xf32>" if later_use else ""
     computed = f"""%next=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
       ins(%old:{type_}) outs(%empty:{type_}) {{^bb0(%in:f32,%init:f32):
       {arithmetic}
@@ -206,7 +239,7 @@ def branch_source(*, while_loop=True, nested=False, passthrough=False, opaque=Fa
           scf.yield {value}:{type_}
         }} else {{ {computed} scf.yield %next:{type_} }}"""
     return f"""module {{ {declaration}
-      func.func @forward(%capture:{type_},%matrix:tensor<4x3xf32>,%bound:index,%choose:i1)->{type_} {{
+      func.func @forward(%capture:{type_},%matrix:tensor<4x3xf32>,%bound:index,%choose:i1,%sink:memref<4xf32>)->{type_} {{
         %zero_index=arith.constant 0:index
         %one_index=arith.constant 1:index
         %zero=arith.constant 0.0:f32
@@ -216,6 +249,7 @@ def branch_source(*, while_loop=True, nested=False, passthrough=False, opaque=Fa
         {header}
           {extra}
           {branch}
+          {after}
           {tail}
         }}
         return {returned}:{type_}
@@ -228,12 +262,13 @@ def branch_source(*, while_loop=True, nested=False, passthrough=False, opaque=Fa
     ({}, 2), ({"while_loop": False}, 2), ({"nested": True}, 2),
     ({"passthrough": True}, 1), ({"multiple": True}, 2),
     ({"opaque": True}, 0), ({"inside": True}, 2), ({"reduction": True}, 2),
+    ({"later_use": True}, 1), ({"later_use": True, "opaque": True}, 0),
 ])
 def test_branch_state_qualifies_every_path_before_reusing_destinations(tmp_path, options, changed):
     stdout, output = rewrite(tmp_path, branch_source(**options))
     assert f"OK loop_tensor_destinations {changed}" in stdout
     assert "scf.if" in output and ("scf.for" if options.get("while_loop") is False else "scf.while") in output
-    assert ('prov.op = "copy-selected-state"' in output) == (changed == 2)
+    assert ('prov.op = "copy-selected-state"' in output) == (changed == 2 or changed == 1 and options.get("later_use", False))
     if options.get("multiple"):
         assert "index, tensor<4xf32>" in output
 
