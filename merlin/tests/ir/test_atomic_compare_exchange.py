@@ -1,6 +1,7 @@
 """Actual native CAS helpers preserve source values and borrowing boundaries."""
 
 import os
+import struct
 import subprocess
 
 import pytest
@@ -27,6 +28,7 @@ def source(width=32, mutation=None):
     elif mutation == "layout": result = result.replace(f"memref<?xi{width}>", f"memref<?xi{width}, strided<[2], offset: ?>>")
     elif mutation == "space": result = result.replace(f"memref<?xi{width}>", f"memref<?xi{width}, 3>")
     elif mutation == "extra": result = result.replace("%chosen=", f"%different=arith.addi %old,%cmp:i{width}\n%chosen=")
+    elif mutation == "data-layout": result = result.replace("module {", 'module attributes {llvm.data_layout="e-p:32:32"} {')
     return result
 
 
@@ -97,7 +99,7 @@ def test_actual_ownership_pipeline_retains_and_restores_scalar_atomic_helpers(tm
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
-@pytest.mark.parametrize("mutation", ["predicate", "failure", "inside-value", "layout", "space", "extra"])
+@pytest.mark.parametrize("mutation", ["predicate", "failure", "inside-value", "layout", "space", "extra", "data-layout"])
 def test_non_cas_regions_refuse_before_any_helper_or_source_mutation(tmp_path, mutation):
     assert "REFUSED unchanged" in run(tmp_path, source(mutation=mutation), "refuse")
 
@@ -123,3 +125,18 @@ def test_compare_exchange_has_an_explicit_unmodified_pre_bufferization_seam():
     source_ = "_run_stages(ctx,module,pipeline,0)\n"
     assert bind_runner(source_, selected=False) == source_
     assert "_CAS_CONSUMED" in bind_runner(source_, selected=True)
+
+
+@pytest.mark.parametrize("width,accepted", [("0", True), ("64", True), ('"64"', True), ("32", False), ("16", False), ("invalid", False)])
+def test_native_address_round_trip_requires_the_qualified_index_width(width, accepted):
+    namespace = {}
+    exec(SUPPORT, namespace)
+    pipeline = "builtin.module(finalize-memref-to-llvm{index-bitwidth=" + width + "})"
+    if struct.calcsize("P") != 8:
+        with pytest.raises(ValueError, match="64-bit host descriptor ABI"):
+            namespace["_cas_native_policy"](pipeline)
+    elif accepted:
+        namespace["_cas_native_policy"](pipeline)
+    else:
+        with pytest.raises(ValueError, match="64-bit index ABI"):
+            namespace["_cas_native_policy"](pipeline)

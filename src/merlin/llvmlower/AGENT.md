@@ -37,6 +37,8 @@ then restored with unchanged declaration attributes before liveness verification
 and final LLVM conversion. Never omit a helper or disable ownership/lifetime
 checks. Borrowing grants reconstruct the complete current private body and call
 types under direct root-function symbol scope; names/provenance grant nothing.
+The native pointer/index round-trip requires the qualified default 64-bit ABI;
+narrower index conversion and explicit layout/triple overrides grant no support.
 
 Mixed borrowed composition retains distinct live ordinary descriptor and plural
 writer owners for one exact source epoch. Disjoint ABI rows, original effect

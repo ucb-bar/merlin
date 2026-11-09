@@ -27,6 +27,11 @@ values come from outside the region. Qualified buffers have rank one, identity
 layout, the default memory space, and i16/i32/i64 elements. Broader atomic
 regions, float policies, layouts and external synchronization require separate
 capabilities. This pass adds no bounds, initialization, alias or numeric proof.
+The currently qualified native descriptor/index ABI is 64-bit. Explicit narrower
+index conversion, scoped data-layout or target-triple overrides refuse before
+source mutation: an aligned pointer cannot round-trip through a narrower index.
+This restriction belongs to native materialization; portable atomic IR retains
+its original target-independent semantics.
 
 The native helper takes a memref, index, comparison and new value and returns
 the old scalar. Its body derives the byte address from that memref and index

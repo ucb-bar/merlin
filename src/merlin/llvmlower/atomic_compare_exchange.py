@@ -15,6 +15,15 @@ SUPPORT = r"""
 _CAS_GENERATED = []
 _CAS_PENDING = []
 
+
+def _cas_native_policy(pipeline):
+    import re, struct
+    if struct.calcsize('P') != 8:
+        raise ValueError('native compare/exchange requires the qualified 64-bit host descriptor ABI')
+    widths = re.findall(r'index-bitwidth\s*=\s*(?:"(\d+)"|(\d+))', pipeline)
+    if len(widths) != pipeline.count('index-bitwidth') or any(int(a or b) not in (0, 64) for a, b in widths):
+        raise ValueError('native compare/exchange requires the qualified default 64-bit index ABI')
+
 def _cas_walk(operation):
     for region in operation.regions:
         for block in region.blocks:
@@ -85,6 +94,13 @@ def _cas_rewrite(ctx, module):
     plans = [(op, match) for op in operations if (match := _cas_match(op)) is not None]
     if any(_cas_root_function(op, module) is None for op, _ in plans):
         raise ValueError('compare/exchange requires a direct root function and closed standard control scopes')
+    if plans:
+        _cas_native_policy('')
+        owners = {module.operation, *(_cas_root_function(op, module) for op, _ in plans)}
+        for owner in owners:
+            names = [item if isinstance(item, str) else item.name for item in owner.attributes]
+            if any(name.startswith('dlti.') or name in ('llvm.data_layout', 'llvm.target_triple') for name in names):
+                raise ValueError('native compare/exchange requires the default compiler data layout')
     symbols = {ir.StringAttr(op.attributes['sym_name']).value for op in module.body.operations if 'sym_name' in op.attributes}
     helpers = {}
     for op, (memory, index, comparison, value, width) in plans:
@@ -208,6 +224,7 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(), p
         return _CAS_PREVIOUS_RUN_STAGES(ctx, module, pipeline, erase, mid, late, post_openmp, pre_generalize)
     if pipeline.count(marker) != 1:
         raise ValueError('integer compare/exchange requires one pre-bufferization marker')
+    _cas_native_policy(pipeline)
     head, _, tail = pipeline.partition(marker)
     head, tail = head.rstrip(','), tail.lstrip(',')
     if not tail.startswith('one-shot-bufferize{') or 'one-shot-bufferize' in head:
