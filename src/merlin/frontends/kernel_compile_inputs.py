@@ -14,6 +14,7 @@ from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, IntegerAttr, String
 from xdsl.dialects.func import FuncOp
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.frontends.kernel_shape_abi import validate_dimensions
 from merlin.xdsl_dialects._common import text
 
 
@@ -65,7 +66,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
     if provenance.get("profile", "shared-functional-tensor") != receipt["profile"]:
         raise ValueError("kernel receipt and memory provenance profiles differ")
     memory_members = _checked_memory_members(checked, provenance)
-    if spec.get("schema") not in ("t2m.shared-tensor-abi.v1", "t2m.shared-tensor-abi.v2", "t2m.shared-tensor-abi.v3", "t2m.shared-tensor-abi.v4"):
+    if spec.get("schema") not in tuple("t2m.shared-tensor-abi.v" + str(i) for i in range(1, 6)):
         raise ValueError("unsupported standalone tensor ABI")
     if (provenance.get("spec") != spec or provenance.get("mlir_sha256") != digest(raw)
             or provenance.get("source_sha256") != digest(ttir)):
@@ -79,12 +80,12 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
         raise ValueError("standalone profile has an incomplete memory ABI")
     inputs = [b for b in buffers if b["effect"] != "write"]
     scalars = spec.get("runtime_scalars", [])
-    if bool(scalars) != (spec["schema"] in ("t2m.shared-tensor-abi.v3", "t2m.shared-tensor-abi.v4")):
+    if bool(scalars) != (spec["schema"] in ("t2m.shared-tensor-abi.v3", "t2m.shared-tensor-abi.v4", "t2m.shared-tensor-abi.v5")):
         raise ValueError("runtime scalar inputs require the explicit ABI v3 profile")
     if any(set(s) != {"name", "dtype", "source_arg"} | ({"bounds"} if "bounds" in s else set())
            or not isinstance(s["name"], str) or not s["name"].isidentifier() for s in scalars):
         raise ValueError("runtime scalar declarations carry names/types/positions, never invocation values")
-    if (spec["schema"] == "t2m.shared-tensor-abi.v4") != any("bounds" in s for s in scalars):
+    if spec["schema"] != "t2m.shared-tensor-abi.v5" and (spec["schema"] == "t2m.shared-tensor-abi.v4") != any("bounds" in s for s in scalars):
         raise ValueError("guarded runtime scalar ranges require ABI v4")
     for scalar in scalars:
         if "bounds" not in scalar:
@@ -94,6 +95,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
                 or any(type(n) is not int for n in bounds)
                 or not -(1 << (int(dtype[1:]) - 1)) <= bounds[0] <= bounds[1] < 1 << (int(dtype[1:]) - 1)):
             raise ValueError("runtime scalar range is outside its signed integer type")
+    dynamic = validate_dimensions(spec, buffers, scalars)
     positions = [s.get("source_arg") for s in scalars]
     names = [b.get("name") for b in buffers] + [s.get("name") for s in scalars]
     if (len(set(names)) != len(names)
@@ -128,19 +130,23 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
                 if isinstance(type_, TensorType) or str(type_) != buffer["dtype"]:
                     raise ValueError("kernel MLIR scalar type differs from declared ABI")
                 values.append({"shape": [], "dtype": str(type_), "kind": "scalar",
+                               **({"scalar": buffer["name"]} if dynamic else {}),
                                **({"bounds": buffer["bounds"]} if "bounds" in buffer else {})})
                 continue
-            if not isinstance(type_, TensorType) or any(n <= 0 for n in type_.get_shape()):
-                raise ValueError("standalone profile requires positive static tensor shapes")
-            value = {"shape": list(type_.get_shape()), "dtype": str(type_.get_element_type())}
-            if value != {"shape": buffer.get("shape"), "dtype": buffer.get("dtype", "f32")}:
+            if not isinstance(type_, TensorType):
+                raise ValueError("standalone profile requires ranked tensor shapes")
+            shape, declared = tuple(type_.get_shape()), buffer["shape"]
+            if len(shape) != len(declared) or any((n < 0) != isinstance(d, str) or n >= 0 and n != d for n, d in zip(shape, declared)):
+                raise ValueError("kernel MLIR tensor dimensions differ from declared ABI")
+            value = {"shape": declared, "dtype": str(type_.get_element_type())}
+            if value["dtype"] != buffer.get("dtype", "f32"):
                 raise ValueError("kernel MLIR tensor type differs from declared ABI")
             values.append(value)
         return values
 
-    signature = {"schema": "merlin.compile-signature.v1", "entry": "forward",
+    signature = {"schema": "merlin.compile-signature.v2" if dynamic else "merlin.compile-signature.v1", "entry": "forward",
                  "inputs": abi(entry.function_type.inputs, inputs), "outputs": abi(entry.function_type.outputs, outputs),
-                 "shape_scope": "static_captured_signature", "capture_dtype": "typed-per-argument",
+                 "shape_scope": "runtime_scalar_bound_dimensions" if dynamic else "static_captured_signature", "capture_dtype": "typed-per-argument",
                  "input_mutability": "borrowed-immutable-tensors"}
     if scalars:
         signature["scalar_abi"] = "native-by-value; invocation-data"
@@ -168,7 +174,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
                "source-correspondence.json": encoded(correspondence)}
     manifest = {"schema": "merlin.compile-inputs.v1", "source_profile": "standalone-tensor-kernel",
                 "payload_profile": receipt["profile"],
-                "scope": "compiler_only_static_capture; source_closure_and_numerical_admission_unverified",
+                "scope": "compiler_only_declared_runtime_shapes; source_closure_and_numerical_admission_unverified" if dynamic else "compiler_only_static_capture; source_closure_and_numerical_admission_unverified",
                 "source": {"capture_receipt_sha256": digest(receipt_raw), "capture_schema": receipt["schema"],
                            "model_mlir_sha256": digest(raw), "correspondence": "source-correspondence.json"},
                 "members": {name: digest(data) for name, data in members.items()},

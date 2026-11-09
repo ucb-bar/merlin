@@ -26,6 +26,10 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   The explicit shared-functional-buffer payload retains the public functional ABI,
   checks byte-bound memory witness/continuation relations and copies their compiler evidence.
   Both standalone and derived staging exclude evaluator values from that view.
+  `kernel_shape_abi.py` validates ABI v5's named runtime dimensions and logical
+  ceil-divided grids. Standalone compile-signature v2 retains symbolic tensor
+  dimensions and typed scalar bindings. Staging checks declared types/relations,
+  excludes example sizes and grants no memory, shape-guard or numeric proof.
 - `linalg_math_patterns.py` — source-only, closed unary f32 sine/cosine/exponential/roundeven
   scalar-region checks; each operation requires its own explicit declaration. No host admission,
   selected math implementation or numerical-equivalence claim follows. Scalar-literal power refuses.

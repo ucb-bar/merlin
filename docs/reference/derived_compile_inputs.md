@@ -9,6 +9,7 @@ code_refs:
   - src/merlin/frontends/compile_inputs.py
   - src/merlin/frontends/derived_compile_inputs.py
   - src/merlin/frontends/kernel_compile_inputs.py
+  - src/merlin/frontends/kernel_shape_abi.py
   - src/merlin/xdsl_dialects/standard_tensor.py
   - src/merlin/xdsl_dialects/standard_bufferization.py
   - src/merlin/xdsl_dialects/standard_memref.py
@@ -96,3 +97,13 @@ same shape/element checks as native MLIR. Standard `memref.reinterpret_cast`
 accepts ranked or unranked sources while checking element type, memory space,
 size/stride/offset and dynamic operand segments. These bindings preserve the
 upstream raw-buffer representation without changing loop-carried SSA types.
+
+Standalone ABI v5 additionally admits named rank-one runtime dimensions and
+logical ceil-divided grid expressions over bounded nonnegative integer scalars.
+Its `merlin.compile-signature.v2` retains symbolic shapes and named scalar
+bindings for input checks and result allocation. Actual input/result dimensions
+are dynamic; maximum bounds are declarations for proof, not captured sizes.
+Legacy signatures remain v1. The compiler view receives no evaluator arrays or
+example shape values. This declared-contract check does not establish that the
+program enforces its guards, covers its outputs or has qualified numerics;
+consumer lowering and repeated independent-shape execution remain separate.
