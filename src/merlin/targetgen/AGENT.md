@@ -52,20 +52,9 @@ conversion, overflow and incomplete reference trees. This is materialization,
 not sealed execution or arithmetic authority. `capsule_privacy` protects every
 copied expected-output leaf, including the legacy lossy output-zero projection.
 
-`selected_library_imports` is a stdlib-only source startup helper for an
-already host-selected compiler snapshot. It may be copied identically into
-both compiler treatments before imports. Exact namespace/leaf sources precede
-explicit original host dependency roots; preloaded foreign leaves refuse.
-Its source record is data, not review, import, sandbox or qualification authority.
-The original CompilerLibrarySelection, profile masks and final same-release
-handoff checks remain mandatory. No selected SDK API or historical default changes.
-
-Explicit startup V2 may reopen an absent original root only at the existing
-`/perf-compiler-library/<verified-contract-sha256>/python` sandbox projection.
-Every selected leaf is rehashed before and after import; existing invalid roots
-and preloaded foreign leaves refuse. Absent original dependency roots add no
-imports. Select V2 during new compiler preparation before source freeze; never
-rewrite an old package or add host-directory mounts to satisfy startup paths.
+Previously prepared startup V2 packages retain their frozen source and sandbox
+projection contracts. The unused preparation prototype has been retired; do not
+rewrite an old package or add host-directory mounts to satisfy its startup paths.
 
 Model entries may explicitly select `output_numeric_policy:
 captured_per_output_v1` to apply the existing exact captured-ABI numerical

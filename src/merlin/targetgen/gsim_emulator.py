@@ -527,8 +527,8 @@ def resolve_wrapper(
     evidence and is reported as its own status — weaker than a bound receipt, and not silently equated
     with one.
     """
-    home = Path(home) if home is not None else engine_home(target, engine)
-    path = home / wrapper_name(engine)
+    path = wrapper_path(target, engine) if home is None else Path(home) / wrapper_name(engine)
+    home = path.parent
     if not path.is_file():
         return None
     digest = _digest(path)

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from test_compiler_tool_profile import _inherited_tool_profile
 
 from merlin.common.paths import repo_root
 from merlin.compiler.schedule.export import _NAMESPACES, PUBLIC_MODULES
@@ -20,7 +21,6 @@ from merlin.targetgen.tool_profile import (
     COMMON_SUBSTRATE_V5,
     COMMON_SUBSTRATE_V6,
     attach_common_substrate,
-    inherited_tool_profile,
     tool_profile_prompt,
     verify_tool_profile,
 )
@@ -76,9 +76,9 @@ def test_release_requires_preparation_and_preserves_old_profiles(tmp_path):
     assert "shared_scheduling_library" not in before
     assert set(PUBLIC_MODULES) <= set(after["common_public_modules"])
     assert "Every V6 treatment" in tool_profile_prompt(new)
-    assert inherited_tool_profile(new, copy.deepcopy(new)) == after
+    assert _inherited_tool_profile(new, copy.deepcopy(new)) == after
     with pytest.raises(ValueError, match="Phase 2 changed"):
-        inherited_tool_profile(old, new)
+        _inherited_tool_profile(old, new)
     with pytest.raises((OSError, ValueError)):
         bundle(repo_root() / "src")
 
@@ -170,7 +170,7 @@ def test_archived_v6_roster_keeps_exact_original_grants_after_new_release(tmp_pa
     before = copy.deepcopy(selected)
     profile = verify_tool_profile(selected)
     assert selected == before
-    assert inherited_tool_profile(selected, copy.deepcopy(selected)) == profile
+    assert _inherited_tool_profile(selected, copy.deepcopy(selected)) == profile
     modules = {row["module"] for row in profile["common_sources"]}
     assert "merlin.common.__init__" not in modules and "merlin.common.dense_float_ir" not in modules
 
@@ -383,4 +383,4 @@ def test_exact_archived_v6_rosters_reconstruct_only_the_original_selected_grants
     assert set(private) == sources - {name.removesuffix(".__init__") for name in namespaces} - set(public)
     assert ("merlin.compile.scheduling.configuration_ir" in public) is (not pre_configuration)
     assert ("merlin.common.dense_float_ir" in private) is dense_float
-    assert inherited_tool_profile(selected, copy.deepcopy(selected)) == profile
+    assert _inherited_tool_profile(selected, copy.deepcopy(selected)) == profile

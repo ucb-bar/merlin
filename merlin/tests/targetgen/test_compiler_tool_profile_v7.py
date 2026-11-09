@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 import pytest
+from test_compiler_tool_profile import _inherited_tool_profile
 from test_compiler_tool_profile_v6 import bundle, original_owner, prepare, reseal
 
 from merlin.common.paths import repo_root
@@ -16,7 +17,6 @@ from merlin.targetgen.package_runtime import _py_imports_merlin
 from merlin.targetgen.tool_profile import (
     COMMON_SUBSTRATE_V6,
     COMMON_SUBSTRATE_V7,
-    inherited_tool_profile,
     substrate_inventory,
     tool_profile_prompt,
     verify_tool_profile,
@@ -59,9 +59,9 @@ def test_explicit_v7_does_not_reinterpret_v6_manifest_or_inherited_grants(tmp_pa
     assert new["shared_scheduling_library"]["schema"] == "merlin.shared_scheduling_library.v2"
     assert new["shared_scheduling_library"]["inventory_version"] == 7
     assert "Every V7 treatment" in tool_profile_prompt(seven)
-    assert inherited_tool_profile(seven, copy.deepcopy(seven)) == new
+    assert _inherited_tool_profile(seven, copy.deepcopy(seven)) == new
     with pytest.raises(ValueError, match="Phase 2 changed"):
-        inherited_tool_profile(six, seven)
+        _inherited_tool_profile(six, seven)
     for root, version in ((tmp_path / "six", 7), (tmp_path / "seven", 6)):
         with pytest.raises(ValueError, match="reviewed SDK export"):
             reviewed_shared_manifest(root, version=version)
@@ -251,4 +251,4 @@ def test_first_v7_roster_replays_without_new_staged_grants(tmp_path):
     assert {row["module"].removesuffix(".__init__") for row in profile["common_sources"]}.isdisjoint(
         {"merlin.compile.scheduling.staged_dense", "merlin.compile.scheduling.staged_dense_verification"}
     )
-    assert inherited_tool_profile(selected, copy.deepcopy(selected)) == profile
+    assert _inherited_tool_profile(selected, copy.deepcopy(selected)) == profile

@@ -75,7 +75,6 @@
         "merlin.targetgen.package_certification",
         "merlin.targetgen.private_head_dispatch",
         "merlin.targetgen.private_sibling_dispatch",
-        "merlin.targetgen.riscv_memory_effects",
         "merlin.targetgen.rtl.gen_rocc_replay",
         "merlin.targetgen.seeded_grade",
         "merlin.targetgen.simulation_certificate",

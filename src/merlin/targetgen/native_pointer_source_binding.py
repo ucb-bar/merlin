@@ -149,8 +149,13 @@ def preflight_large_intake(command_buffer, capsule_dir, capture_bundle, *, intak
     root, capture = map(_plain, (capsule_dir, capture_bundle))
     source_tree(root, intake_protocol=intake_protocol)
     source_tree(capture, intake_protocol=intake_protocol)
-    parsed_metadata = {"capsule.yaml", "golden.yaml", "model.mlir", "input_order.json",
-                       "weights.safetensors.manifest.json"}
+    parsed_metadata = {
+        "capsule.yaml",
+        "golden.yaml",
+        "model.mlir",
+        "input_order.json",
+        "weights.safetensors.manifest.json",
+    }
     for directory in (root, capture):
         for path in directory.iterdir():
             if path.is_file() and path.name in parsed_metadata and path.stat().st_size > 4 << 20:
@@ -180,11 +185,18 @@ def preflight_large_intake(command_buffer, capsule_dir, capture_bundle, *, intak
     working_bytes = reference_bytes + capture_bytes + 64 * output_elements
     if working_bytes > LARGE_MAX_WORKING_BYTES:
         raise NativeModelExecutionError("large source intake exceeds its bounded complete-check working storage")
-    return dict(protocol=intake_protocol, max_elements=LARGE_MAX_ELEMENTS,
-                max_payload_bytes=LARGE_MAX_PAYLOAD_BYTES, max_working_bytes=LARGE_MAX_WORKING_BYTES,
-                logical_bytes=logical_bytes, reference_bytes=reference_bytes,
-                capture_bytes=capture_bytes, output_elements=output_elements,
-                working_bytes=working_bytes, input_transport="streamed_exact_logical_bytes")
+    return dict(
+        protocol=intake_protocol,
+        max_elements=LARGE_MAX_ELEMENTS,
+        max_payload_bytes=LARGE_MAX_PAYLOAD_BYTES,
+        max_working_bytes=LARGE_MAX_WORKING_BYTES,
+        logical_bytes=logical_bytes,
+        reference_bytes=reference_bytes,
+        capture_bytes=capture_bytes,
+        output_elements=output_elements,
+        working_bytes=working_bytes,
+        input_transport="streamed_exact_logical_bytes",
+    )
 
 
 def _names(values):
@@ -211,8 +223,11 @@ def bind_pointer_source(command_buffer, capsule_dir, capture_bundle, *, intake_p
 
     intake_limits(intake_protocol)
     root, capture = map(_plain, (capsule_dir, capture_bundle))
-    intake = (preflight_large_intake(command_buffer, root, capture, intake_protocol=intake_protocol)
-              if intake_protocol is not None else None)
+    intake = (
+        preflight_large_intake(command_buffer, root, capture, intake_protocol=intake_protocol)
+        if intake_protocol is not None
+        else None
+    )
     before = (source_tree(root, intake_protocol=intake_protocol), source_tree(capture, intake_protocol=intake_protocol))
     cb = json.loads(json.dumps(command_buffer))
     if cb.get("kernel_abi") is not None:
@@ -334,8 +349,11 @@ def bind_pointer_source(command_buffer, capsule_dir, capture_bundle, *, intake_p
         values = canonical_input_values(declaration, root)
     else:
         recorded = provenance.get("inputs") or {}
-        values = {name: {"shape": row.get("shape"), "values": row["decoded"]}
-                  for name, row in recorded.items() if isinstance(row, dict) and "decoded" in row}
+        values = {
+            name: {"shape": row.get("shape"), "values": row["decoded"]}
+            for name, row in recorded.items()
+            if isinstance(row, dict) and "decoded" in row
+        }
     if set(values) != set(source_inputs):
         raise NativeModelExecutionError("pointer source independent input values are incomplete")
     bound, rows = {}, []
@@ -353,8 +371,11 @@ def bind_pointer_source(command_buffer, capsule_dir, capture_bundle, *, intake_p
                 or actual.dtype != np.int8
                 or list(actual.shape) != typed["shape"]
                 or expected.size != actual.size
-                or not (_equal_complete_arrays(actual, expected) if intake is not None
-                        else np.array_equal(actual.reshape(-1), expected.reshape(-1)))
+                or not (
+                    _equal_complete_arrays(actual, expected)
+                    if intake is not None
+                    else np.array_equal(actual.reshape(-1), expected.reshape(-1))
+                )
             ):
                 raise NativeModelExecutionError(
                     "pointer source captured inputs differ from complete independent values"
@@ -366,8 +387,9 @@ def bind_pointer_source(command_buffer, capsule_dir, capture_bundle, *, intake_p
                 from merlin.runtime.tensor_payload import TensorPayload
 
                 actual.flags.writeable = False
-                bound[compiled] = TensorPayload(tuple(actual.shape), "i8",
-                    WeightPayload.array(actual.nbytes, lambda array=actual: array))
+                bound[compiled] = TensorPayload(
+                    tuple(actual.shape), "i8", WeightPayload.array(actual.nbytes, lambda array=actual: array)
+                )
             rows.append(
                 dict(
                     argument_index=position,
@@ -409,52 +431,10 @@ def _equal_complete_arrays(actual, expected):
     if expected.dtype.kind not in "iu" or actual.size != expected.size:
         return False
     left, right = actual.reshape(-1), expected.reshape(-1)
-    return all(np.array_equal(left[i:i + CHUNK_ELEMENTS], right[i:i + CHUNK_ELEMENTS])
-               for i in range(0, actual.size, CHUNK_ELEMENTS))
-
-
-def pointer_inputs_equal(left, right, *, intake_protocol=None):
-    if intake_protocol is None:
-        return left == right
-    intake_limits(intake_protocol)
-    if set(left) != set(right):
-        return False
-    for name in left:
-        a, b = left[name], right[name]
-        if (a.shape, a.dtype, a.byte_order) != (b.shape, b.dtype, b.byte_order):
-            return False
-        for value in (a, b):
-            value.bind(shape=value.shape, dtype=value.dtype, byte_order=value.byte_order)
-        if _payload_digest(a.payload) != _payload_digest(b.payload):
-            return False
-    return True
-
-
-def _payload_digest(payload):
-    digest = hashlib.sha256()
-    for chunk in payload.chunks():
-        digest.update(chunk)
-    return digest.hexdigest()
-
-
-def payload_matches_array(value, expected, *, shape):
-    """Compare every streamed logical scalar with independent compact values."""
-    from merlin.runtime.tensor_payload import TensorPayload
-
-    if type(value) is not TensorPayload or tuple(shape) != value.shape:
-        return False
-    value.bind(shape=shape, dtype=value.dtype, byte_order="little")
-    expected = np.asarray(expected)
-    if expected.dtype.kind not in "iu" or expected.size != math.prod(shape):
-        return False
-    scalar = np.dtype(("<u" if value.dtype.startswith("u") else "<i") + str(int(value.dtype[1:]) // 8))
-    flat, cursor = expected.reshape(-1), 0
-    for chunk in value.payload.chunks(CHUNK_ELEMENTS * scalar.itemsize):
-        actual = np.frombuffer(chunk, dtype=scalar)
-        if not np.array_equal(actual, flat[cursor:cursor + actual.size]):
-            return False
-        cursor += actual.size
-    return cursor == expected.size
+    return all(
+        np.array_equal(left[i : i + CHUNK_ELEMENTS], right[i : i + CHUNK_ELEMENTS])
+        for i in range(0, actual.size, CHUNK_ELEMENTS)
+    )
 
 
 def compare_complete_integer_outputs(expected, observed, policy, *, golden_source):
@@ -467,8 +447,7 @@ def compare_complete_integer_outputs(expected, observed, policy, *, golden_sourc
         raise NativeModelExecutionError("large source exact comparison requires its complete output roster")
     if policy.get("compare") == "per_output":
         # Reuse the original complete policy-roster checks without allocating outputs.
-        compare({name: [] for name in expected}, {name: [] for name in expected}, policy,
-                golden_source=golden_source)
+        compare({name: [] for name in expected}, {name: [] for name in expected}, policy, golden_source=golden_source)
 
     def scalars(value):
         if isinstance(value, np.ndarray):
@@ -483,9 +462,16 @@ def compare_complete_integer_outputs(expected, observed, policy, *, golden_sourc
         else:
             raise NativeModelExecutionError("large source comparison requires exact integer outputs")
 
-    result = dict(policy=policy.get("compare"), golden_source=golden_source, status="pass",
-                  mismatch_count=0, max_abs_error=0, max_rel_error=0.0,
-                  first_mismatch=None, per_output={})
+    result = dict(
+        policy=policy.get("compare"),
+        golden_source=golden_source,
+        status="pass",
+        mismatch_count=0,
+        max_abs_error=0,
+        max_rel_error=0.0,
+        first_mismatch=None,
+        per_output={},
+    )
     for name, expected_value in expected.items():
         selected = policy.get("outputs", {}).get(name, policy) if policy.get("compare") == "per_output" else policy
         if selected.get("compare") != "exact_int":
@@ -508,11 +494,16 @@ def compare_complete_integer_outputs(expected, observed, policy, *, golden_sourc
             if first is not None and result["first_mismatch"] is None:
                 result["first_mismatch"] = {**first, "index": first["index"] + offset}
             row = checked["per_output"][name]
-            indices.extend(i + offset for i in row.get("mismatch_indices", [])[:max(0, 64 - len(indices))])
+            indices.extend(i + offset for i in row.get("mismatch_indices", [])[: max(0, 64 - len(indices))])
             offset += len(a)
-        row = dict(status="pass" if not mismatches else "fail", mismatch_count=mismatches,
-                   max_abs_error=maximum, max_rel_error=relative, n_elements=nexp,
-                   saturated=bool(mismatches and mismatches == nexp))
+        row = dict(
+            status="pass" if not mismatches else "fail",
+            mismatch_count=mismatches,
+            max_abs_error=maximum,
+            max_rel_error=relative,
+            n_elements=nexp,
+            saturated=bool(mismatches and mismatches == nexp),
+        )
         if nexp != nactual:
             row.update(status="fail", failure_class="output_shape_mismatch", n_expected=nexp, n_observed=nactual)
         if mismatches:

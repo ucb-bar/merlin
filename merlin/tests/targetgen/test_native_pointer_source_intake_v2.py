@@ -1,7 +1,9 @@
 """Prospective large storage stays bounded, complete and independently checked."""
 
+import hashlib
 import io
 import json
+import math
 import zipfile
 
 import numpy as np
@@ -16,6 +18,51 @@ from merlin.targetgen import native_pointer_source_binding as P
 SELECTED = dict(intake_protocol=P.LARGE_INTAKE_PROTOCOL)
 
 
+# Independent test assertions over every observed chunk; production owns intake policy.
+def _pointer_inputs_equal(left, right, *, intake_protocol=None):
+    if intake_protocol is None:
+        return left == right
+    P.intake_limits(intake_protocol)
+    if set(left) != set(right):
+        return False
+    for name in left:
+        a, b = left[name], right[name]
+        if (a.shape, a.dtype, a.byte_order) != (b.shape, b.dtype, b.byte_order):
+            return False
+        for value in (a, b):
+            value.bind(shape=value.shape, dtype=value.dtype, byte_order=value.byte_order)
+        if _payload_digest(a.payload) != _payload_digest(b.payload):
+            return False
+    return True
+
+
+def _payload_digest(payload):
+    digest = hashlib.sha256()
+    for chunk in payload.chunks():
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _payload_matches_array(value, expected, *, shape):
+    """Compare every streamed logical scalar with independent compact values."""
+    from merlin.runtime.tensor_payload import TensorPayload
+
+    if type(value) is not TensorPayload or tuple(shape) != value.shape:
+        return False
+    value.bind(shape=shape, dtype=value.dtype, byte_order="little")
+    expected = np.asarray(expected)
+    if expected.dtype.kind not in "iu" or expected.size != math.prod(shape):
+        return False
+    scalar = np.dtype(("<u" if value.dtype.startswith("u") else "<i") + str(int(value.dtype[1:]) // 8))
+    flat, cursor = expected.reshape(-1), 0
+    for chunk in value.payload.chunks(P.CHUNK_ELEMENTS * scalar.itemsize):
+        actual = np.frombuffer(chunk, dtype=scalar)
+        if not np.array_equal(actual, flat[cursor : cursor + actual.size]):
+            return False
+        cursor += actual.size
+    return cursor == expected.size
+
+
 def test_selected_storage_preserves_complete_independent_inputs(frozen):  # noqa: F811
     root, capture, cb, a, b = frozen
     inputs, record = P.bind_pointer_source(cb, root, capture, **SELECTED)
@@ -23,10 +70,10 @@ def test_selected_storage_preserves_complete_independent_inputs(frozen):  # noqa
     assert record["schema"] == "merlin.native_pointer_source_binding.v2"
     assert record["intake"]["logical_bytes"] == 28
     assert all(type(v) is TensorPayload for v in inputs.values())
-    assert P.payload_matches_array(inputs["left"], a, shape=a.shape)
-    assert P.payload_matches_array(inputs["right"], b, shape=b.shape)
+    assert _payload_matches_array(inputs["left"], a, shape=a.shape)
+    assert _payload_matches_array(inputs["right"], b, shape=b.shape)
     again, same = P.bind_pointer_source(cb, root, capture, **SELECTED)
-    assert same == record and P.pointer_inputs_equal(inputs, again, **SELECTED)
+    assert same == record and _pointer_inputs_equal(inputs, again, **SELECTED)
     assert "intake" not in P.bind_pointer_source(cb, root, capture)[1]
 
 
@@ -127,8 +174,13 @@ def test_hidden_or_changed_storage_is_rejected_in_preflight(frozen, field, value
 
 
 def _reference(array, key):
-    return {G.REFERENCE: G.ARRAYS, "key": key, "dtype": array.dtype.str,
-            "shape": list(array.shape), "sha256": G._digest(array)}
+    return {
+        G.REFERENCE: G.ARRAYS,
+        "key": key,
+        "dtype": array.dtype.str,
+        "shape": list(array.shape),
+        "sha256": G._digest(array),
+    }
 
 
 @pytest.mark.parametrize("m,k,n", [(12544, 64, 256), (12544, 256, 64)])
@@ -138,8 +190,9 @@ def test_actual_tall_storage_extents_use_compact_complete_transport(frozen, m, k
     text = SOURCE.replace("2x3", f"{m}x{k}").replace("3x2", f"{k}x{n}").replace("2x2", f"{m}x{n}")
     (root / "source.mlir").write_text(text)
     (capture / "model.mlir").write_text(text)
-    arrays = dict(a=np.zeros((m, k), dtype=np.int8), b=np.zeros((k, n), dtype=np.int8),
-                  out=np.zeros((m, n), dtype=np.int32))
+    arrays = dict(
+        a=np.zeros((m, k), dtype=np.int8), b=np.zeros((k, n), dtype=np.int8), out=np.zeros((m, n), dtype=np.int32)
+    )
     np.savez_compressed(capture / "inputs.npz", in0=arrays["a"], in1=arrays["b"])
     np.savez_compressed(root / "golden.npz", **arrays)
     declaration = yaml.safe_load((root / "capsule.yaml").read_text())
@@ -150,7 +203,8 @@ def test_actual_tall_storage_extents_use_compact_complete_transport(frozen, m, k
     golden["outputs"]["answer"] = _reference(arrays["out"], "out")
     for name, key in [("I0", "a"), ("I1", "b")]:
         golden["oracle_provenance"]["inputs"][name] = dict(
-            shape=list(arrays[key].shape), decoded=_reference(arrays[key], key))
+            shape=list(arrays[key].shape), decoded=_reference(arrays[key], key)
+        )
     (root / "golden.yaml").write_text(yaml.safe_dump(golden))
     for name, shape in [("left", [m, k]), ("right", [k, n]), ("result", [m, n])]:
         cb["tensors"][name]["shape"] = shape
@@ -159,12 +213,13 @@ def test_actual_tall_storage_extents_use_compact_complete_transport(frozen, m, k
     inputs, record = P.bind_pointer_source(cb, root, capture, **SELECTED)
     assert record["intake"]["output_elements"] == m * n
     assert record["intake"]["working_bytes"] < P.LARGE_MAX_WORKING_BYTES
-    assert P.payload_matches_array(inputs["left"], arrays["a"], shape=(m, k))
+    assert _payload_matches_array(inputs["left"], arrays["a"], shape=(m, k))
     compact = G.load_golden(root, compact_arrays=True)
     assert isinstance(compact["outputs"]["answer"], np.ndarray)
     assert not compact["outputs"]["answer"].flags.writeable
-    report = P.compare_complete_integer_outputs(compact["outputs"], {"answer": arrays["out"]},
-                                                dict(compare="exact_int"), golden_source="zero_fixture")
+    report = P.compare_complete_integer_outputs(
+        compact["outputs"], {"answer": arrays["out"]}, dict(compare="exact_int"), golden_source="zero_fixture"
+    )
     assert report["status"] == "pass" and report["per_output"]["answer"]["n_elements"] == m * n
 
 
@@ -172,20 +227,22 @@ def test_complete_chunk_check_detects_last_cell_and_short_output():
     expected = np.zeros((P.CHUNK_ELEMENTS * 2 + 3,), dtype=np.int32)
     observed = expected.copy()
     observed[-1] = 1
-    report = P.compare_complete_integer_outputs({"y": expected}, {"y": observed},
-                                                dict(compare="exact_int"), golden_source="fixture")
+    report = P.compare_complete_integer_outputs(
+        {"y": expected}, {"y": observed}, dict(compare="exact_int"), golden_source="fixture"
+    )
     assert report["status"] == "fail" and report["mismatch_count"] == 1
     assert report["first_mismatch"]["index"] == len(expected) - 1
     assert json.loads(json.dumps(report)) == report
-    report = P.compare_complete_integer_outputs({"y": expected}, {"y": observed[:-1]},
-                                                dict(compare="exact_int"), golden_source="fixture")
+    report = P.compare_complete_integer_outputs(
+        {"y": expected}, {"y": observed[:-1]}, dict(compare="exact_int"), golden_source="fixture"
+    )
     assert report["status"] == "fail"
     assert report["per_output"]["y"]["failure_class"] == "output_shape_mismatch"
 
 
 def test_per_output_policy_cannot_omit_original_results():
-    policy = dict(compare="per_output", schema="merlin.numeric_policy.per_output.v1",
-                  outputs={"x": dict(compare="exact_int")})
+    policy = dict(
+        compare="per_output", schema="merlin.numeric_policy.per_output.v1", outputs={"x": dict(compare="exact_int")}
+    )
     with pytest.raises(ValueError, match="complete original result policy roster"):
-        P.compare_complete_integer_outputs({"x": [1], "y": [2]}, {"x": [1], "y": [2]},
-                                           policy, golden_source="fixture")
+        P.compare_complete_integer_outputs({"x": [1], "y": [2]}, {"x": [1], "y": [2]}, policy, golden_source="fixture")

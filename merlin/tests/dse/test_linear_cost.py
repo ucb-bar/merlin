@@ -1,6 +1,7 @@
 """Linear per-command cost model: prediction, band, folds, round-trip, and fail-closed resolution."""
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -92,6 +93,11 @@ def test_for_target_reads_the_declared_vocabulary(tmp_path, monkeypatch):
     monkeypatch.setenv("MERLIN_TARGETS_DIR", str(tmp_path))
     home = tmp_path / "t" / "cost_model"
     home.mkdir(parents=True)
+    from merlin.targetgen import target_registry
+
+    # This is a vocabulary-reader test; supply its explicitly selected support
+    # root instead of depending on retired implicit target-directory discovery.
+    monkeypatch.setattr(target_registry, "resolve", lambda target: SimpleNamespace(base=home.parent, kind="external"))
     _model().save(home / "coefficients.json")
     (home / "vocabulary.json").write_text(json.dumps({"events": list(EVENTS), "folds": FOLD}))
     m = LinearCostModel.for_target("t")

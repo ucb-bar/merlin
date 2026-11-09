@@ -10,17 +10,17 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
-from merlin_experiments.phase2 import broker_policy as BP
-from merlin_experiments.phase2 import common_transforms as P2
-from merlin_experiments.phase2 import functional_inputs as FI
 from test_phase2_broker import make_broker
 
 from merlin.common.paths import repo_root
 from merlin.targetgen.sandbox import bwrap
-from merlin.targetgen.tool_profile import attach_common_substrate, inherited_tool_profile
+from merlin.targetgen.tool_profile import attach_common_substrate, verify_tool_profile
 from merlin.targetgen.tool_profile_shared import prepare_shared_source_release
 from merlin.transforms.client import CHECK_SCHEMA
 from merlin.verify.lean_contract import coverage_policy_record
+from merlin_experiments.phase2 import broker_policy as BP
+from merlin_experiments.phase2 import common_transforms as P2
+from merlin_experiments.phase2 import functional_inputs as FI
 
 
 @pytest.mark.parametrize("profile", [None, [], {}, {"common_substrate": []}, {"common_substrate": "unknown"}])
@@ -58,7 +58,11 @@ def original(tmp_path, version, monkeypatch):
         SimpleNamespace(host_provenance=object()), candidate=candidate, work_root=tmp_path / "host_work"
     )
     assert callable(apply) and callable(check)
-    assert inherited_tool_profile(before, bundle) == before["compiler_tool_profile"]
+    # Fixture continuity only: the actual broker below retains its original
+    # frozen owner and independently rejects changed authority after issuance.
+    assert verify_tool_profile(before) == verify_tool_profile(bundle) == before["compiler_tool_profile"]
+    for key in ("allowed", "denied", "host_inputs", "selected_rtl_facts_file"):
+        assert before.get(key) == bundle.get(key)
     assert bundle["compiler_tool_profile"]["proof_policy"] == coverage_policy_record(version="3")
     return bundle, before, archived, candidate, check
 

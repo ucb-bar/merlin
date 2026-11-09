@@ -108,7 +108,7 @@ def test_source_binding_requires_new_explicit_inventory_before_writes(tmp_path, 
 @pytest.mark.parametrize("original_version", [6, 7])
 def test_archive_recognition_never_replaces_original_frozen_profile(tmp_path, original_version):
     from merlin.common.paths import repo_root
-    from merlin.targetgen.tool_profile import attach_common_substrate, inherited_tool_profile, verify_tool_profile
+    from merlin.targetgen.tool_profile import attach_common_substrate, verify_tool_profile
     from merlin.targetgen.tool_profile_shared import prepare_shared_source_release
 
     original_root, incoming_root = tmp_path / "original", tmp_path / "incoming"
@@ -134,6 +134,13 @@ def test_archive_recognition_never_replaces_original_frozen_profile(tmp_path, or
         return result
 
     original = bundle(original_root, original_version)
+    original_snapshot = copy.deepcopy(original)
     different_archive = bundle(incoming_root, 6)
-    with pytest.raises(ValueError, match="Phase 2 changed"):
-        inherited_tool_profile(original, different_archive)
+    # Both archives are structurally valid fixtures. Recognizing the incoming
+    # roster does not make its grants/profile equal to the original selection;
+    # actual Phase 2 admission keeps the original frozen bundle independently.
+    assert verify_tool_profile(original) != verify_tool_profile(different_archive)
+    assert original["compiler_tool_profile"] != different_archive["compiler_tool_profile"]
+    assert verify_tool_profile(original) == verify_tool_profile(original_snapshot)
+    for key in ("allowed", "denied", "host_inputs", "selected_rtl_facts_file"):
+        assert original.get(key) == original_snapshot.get(key)

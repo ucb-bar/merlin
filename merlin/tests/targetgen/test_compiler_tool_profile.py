@@ -22,11 +22,22 @@ from merlin.targetgen.tool_profile import (
     COMMON_SUBSTRATE_V1,
     COMMON_SUBSTRATE_V2,
     attach_common_substrate,
-    inherited_tool_profile,
     substrate_inventory,
     tool_profile_prompt,
     verify_tool_profile,
 )
+
+
+def _inherited_tool_profile(phase1_bundle: dict, phase2_bundle: dict) -> dict | None:
+    """Compare test fixtures; live Phase 2 reuses its original frozen bundle."""
+    before = verify_tool_profile(phase1_bundle)
+    after = verify_tool_profile(phase2_bundle)
+    if before != after:
+        raise ValueError("Phase 2 changed the frozen Phase 1 compiler tool profile")
+    for key in ("allowed", "denied", "host_inputs", "selected_rtl_facts_file"):
+        if phase1_bundle.get(key) != phase2_bundle.get(key):
+            raise ValueError("Phase 2 changed the frozen Phase 1 target/spec/runtime grants")
+    return before
 
 
 @pytest.fixture
@@ -67,7 +78,7 @@ def test_v2_extends_inventory_without_reinterpreting_v1_membership(selected_sour
         assert verify_tool_profile(bundle)["common_public_modules"] == list(COMMON_PUBLIC_MODULES)
         assert verify_tool_profile(bundle)["proof_policy"]["registry_version"] == "1"
     with pytest.raises(ValueError, match="changed|differs"):
-        inherited_tool_profile(next(iter(original.values())), next(iter(extended.values())))
+        _inherited_tool_profile(next(iter(original.values())), next(iter(extended.values())))
 
 
 def _te():
@@ -83,10 +94,18 @@ def test_original_public_resource_policy_is_in_frozen_profile(selected_sources, 
 
     monkeypatch.setattr(capsule_common, "discover_capsules", lambda *a, **kw: [{"name": "public_scale_a"}])
     monkeypatch.setattr(TargetExperiment, "effective_exclusions", lambda *a: [])
-    policy = {"required": True, "timeout_s": 120, "capsules": ["public_scale_a"],
-              "device_ir_budget": {"mode": "enforce", "max_code_bytes": 8192}}
-    selected = generate_bundles(_te(), common_substrate=COMMON_SUBSTRATE_V1,
-                               python_source_root=selected_sources, public_codegen_resource_policy=policy)
+    policy = {
+        "required": True,
+        "timeout_s": 120,
+        "capsules": ["public_scale_a"],
+        "device_ir_budget": {"mode": "enforce", "max_code_bytes": 8192},
+    }
+    selected = generate_bundles(
+        _te(),
+        common_substrate=COMMON_SUBSTRATE_V1,
+        python_source_root=selected_sources,
+        public_codegen_resource_policy=policy,
+    )
     bundle = next(iter(selected.values()))
     profile = verify_tool_profile(bundle)
     assert profile[FIELD]["device_ir_budget"]["max_code_bytes"] == 8192
@@ -126,7 +145,7 @@ def test_factored_pipeline_state_is_pinned_without_a_new_public_grant(selected_s
     row = next(r for r in profile["common_sources"] if r["module"] == "merlin.transforms.pipeline_state")
     assert row["sha256"] == hashlib.sha256(state.read_bytes()).hexdigest()
     assert str(state) in _paths(current, "allowed")
-    assert inherited_tool_profile(current, copy.deepcopy(current)) == profile
+    assert _inherited_tool_profile(current, copy.deepcopy(current)) == profile
     # A frozen self-contained historical profile retains its original inventory.
     assert verify_tool_profile(legacy) == legacy["compiler_tool_profile"]
 
@@ -188,7 +207,7 @@ def test_automatic_verifier_closure_is_pinned_host_only_on_lower_levels(selected
     after = next(iter(_bundles(selected_sources, arms=("merlin_rtlchecks",)).values()))
     assert before["compiler_tool_profile"]["sha256"] != after["compiler_tool_profile"]["sha256"]
     with pytest.raises(ValueError, match="Phase 1 compiler tool profile"):
-        inherited_tool_profile(before, after)
+        _inherited_tool_profile(before, after)
 
 
 def test_direct_substrate_selection_uses_canonical_private_files(selected_sources):
@@ -274,7 +293,7 @@ def test_optional_inventory_requires_the_frozen_profile_and_uses_longest_stem(se
 
 def test_changed_profile_and_phase2_assistance_are_rejected(selected_sources):
     row = next(iter(_bundles(selected_sources, arms=("merlin_isa",)).values()))
-    assert inherited_tool_profile(row, copy.deepcopy(row)) == row["compiler_tool_profile"]
+    assert _inherited_tool_profile(row, copy.deepcopy(row)) == row["compiler_tool_profile"]
     changed = copy.deepcopy(row)
     changed["compiler_tool_profile"]["proof_policy"]["mode"] = "advisory"
     with pytest.raises(ValueError, match="identity changed"):
@@ -282,10 +301,10 @@ def test_changed_profile_and_phase2_assistance_are_rejected(selected_sources):
     changed = copy.deepcopy(row)
     changed["allowed"].append({"path": "/additional-tool", "mode": "ro"})
     with pytest.raises(ValueError, match="Phase 1 target/spec/runtime grants"):
-        inherited_tool_profile(row, changed)
+        _inherited_tool_profile(row, changed)
     changed = next(iter(_bundles(selected_sources, arms=("merlin_lean",)).values()))
     with pytest.raises(ValueError, match="Phase 1 compiler tool profile"):
-        inherited_tool_profile(row, changed)
+        _inherited_tool_profile(row, changed)
 
 
 def test_profile_prompt_only_names_optional_capabilities_actually_granted(selected_sources):

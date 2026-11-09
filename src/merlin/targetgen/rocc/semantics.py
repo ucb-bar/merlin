@@ -203,24 +203,6 @@ def encoding_fields(declared: dict, *, target: str | None = None, contract: dict
     return encoding
 
 
-def derived_readout_bits(addr_len: int, *, target: str | None = None, contract: dict | None = None) -> dict[str, int]:
-    """``encoding.readout_bits`` for an ``addr_len``-bit local address, composed from the contract.
-
-    The values are the contract's ``rocc_operand_roles.readout_bits`` names evaluated over its declared
-    local-address flags (bit offsets from the address MSB) and float32 scalars, for the given width.
-    Nothing is assumed about which flags exist: a contract (``contract``, or the one ``target``
-    resolves) that declares no ``readout_bits`` composition yields ``{}``.
-    """
-    if type(addr_len) is not int or addr_len <= 0:
-        raise OperandRolesError(f"addr_len must be a positive integer, got {addr_len!r}")
-    if contract is None:
-        if target is None:
-            raise OperandRolesError("derived_readout_bits needs the target (or its contract) whose roles compose it")
-        contract = _load_manifest(target).contract
-    completed = encoding_fields({"addr_len": addr_len}, contract=contract)
-    return dict(completed.get("readout_bits") or {})
-
-
 _INTERPRETATIONS = {"int", "operand", "raw", "f32", "flag", "flag_choice", "all_ones", "equals", "const"}
 
 

@@ -592,3 +592,19 @@ def test_an_installed_engine_still_passes_through_the_provenance_gate(monkeypatc
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "per_run_tmp"))
     resolved = GE.resolve("phantomsim")
     assert not resolved.ok and resolved.refused, resolved.reason
+
+
+def test_wrapper_resolution_uses_default_path_owner_and_keeps_explicit_home(tmp_path, monkeypatch):
+    default = tmp_path / "default" / "gsim_run.py"
+    explicit = tmp_path / "explicit" / "gsim_run.py"
+    for path in (default, explicit):
+        path.parent.mkdir()
+        path.write_text("def run_program(*args): pass\n")
+    calls = []
+    monkeypatch.setattr(GE, "wrapper_path", lambda target, engine: calls.append((target, engine)) or default)
+    monkeypatch.setattr(GE, "_validate_receipt", lambda *a: ("bound", "fixture receipt", {}))
+    result = GE.resolve_wrapper("fixture")
+    assert result.ok and result.path == default
+    result = GE.resolve_wrapper("fixture", home=explicit.parent)
+    assert result.ok and result.path == explicit
+    assert calls == [("fixture", "gsim")]

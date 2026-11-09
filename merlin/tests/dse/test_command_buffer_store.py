@@ -135,3 +135,16 @@ def test_receipt_bridge_reads_a_stored_buffer_and_refuses_a_changed_one(tmp_path
     command, provenance = RB._command_buffer({"command_buffer_artifact": artifact}, {}, identity, "row", issues)
     assert (command, provenance) == ({}, "")
     assert [issue["code"] for issue in issues] == ["COMMAND_BUFFER_RECEIPT_MISMATCH"]
+
+
+@pytest.mark.parametrize("artifact", [None, [], {}, {"command_buffer": []}, {STORE.REFERENCE_KEY: []}])
+def test_buffer_presence_admission_does_not_invent_a_buffer(artifact):
+    assert STORE.has_command_buffer(artifact) is False
+    assert STORE.load_command_buffer(artifact) is None
+
+
+def test_incomplete_reference_still_refuses_after_presence_admission():
+    artifact = {"command_buffer": [], STORE.REFERENCE_KEY: {}}
+    assert STORE.has_command_buffer(artifact) is True
+    with pytest.raises(STORE.CommandBufferIntegrityError, match="malformed"):
+        STORE.load_command_buffer(artifact)

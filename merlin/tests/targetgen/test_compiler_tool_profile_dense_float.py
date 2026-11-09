@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from test_compiler_tool_profile import _inherited_tool_profile
 from test_compiler_tool_profile import selected_sources as selected_sources  # noqa: F401
 
 from merlin.common.paths import repo_root
@@ -20,7 +21,6 @@ from merlin.targetgen.tool_profile import (
     COMMON_SUBSTRATE_V5,
     _digest,
     attach_common_substrate,
-    inherited_tool_profile,
     substrate_data,
     substrate_inventory,
     verify_tool_profile,
@@ -75,9 +75,9 @@ def test_new_dense_dependency_preserves_historical_frozen_inventory(selected_sou
     )
     assert verify_tool_profile(historical) == old
     assert historical == frozen
-    assert inherited_tool_profile(historical, copy.deepcopy(historical)) == old
+    assert _inherited_tool_profile(historical, copy.deepcopy(historical)) == old
     with pytest.raises(ValueError, match="Phase 2 changed"):
-        inherited_tool_profile(historical, current)
+        _inherited_tool_profile(historical, current)
 
 
 @pytest.mark.parametrize(

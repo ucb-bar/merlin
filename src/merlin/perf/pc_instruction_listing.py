@@ -84,10 +84,6 @@ def riscv_width(insn: RawInsn) -> int:
     return 4
 
 
-def instruction_bytes(insns: Iterable[RawInsn]) -> bytes:
-    return b"".join(int(insn.hexcode, 16).to_bytes(riscv_width(insn), "little") for insn in insns)
-
-
 def _link_call(insn: RawInsn) -> bool:
     """Standard RV64 JAL/JALR link destinations, independent of accelerator ISA."""
     word = int(insn.hexcode, 16)
@@ -391,87 +387,6 @@ def control_flow(insns: Sequence[RawInsn]) -> dict[str, Any]:
         "natural_loops": loops,
         "unresolved": unresolved,
     }
-
-
-def match_symbol_bodies(
-    insns: Sequence[RawInsn],
-    regions: Sequence[ListingRegion],
-    *,
-    symbols: Mapping[str, Sequence[RawInsn]],
-    candidate_sha256: str,
-) -> tuple[dict[str, Any], ...]:
-    """Match complete contiguous body bytes; preserve every identical symbol.
-
-    Candidate symbols/extent and ELF pin must come from the selected ELF reader.
-    Names are reported as evidence and never dispatch compilation. A function with
-    a different body cannot be promoted by a shared prefix or mnemonic pattern.
-    """
-    import hashlib
-
-    if len(candidate_sha256) != 64 or any(char not in "0123456789abcdef" for char in candidate_sha256):
-        raise ValueError("candidate requires an exact lowercase SHA256")
-    indexed: dict[str, list[dict[str, Any]]] = {}
-    for name, body in symbols.items():
-        if not body or any(right.addr != left.addr + riscv_width(left) for left, right in zip(body, body[1:])):
-            continue
-        data = instruction_bytes(body)
-        indexed.setdefault(hashlib.sha256(data).hexdigest(), []).append(
-            {"symbol": name, "entry_pc": body[0].addr, "size_bytes": len(data), "candidate_sha256": candidate_sha256}
-        )
-    out = []
-    for region in regions:
-        body = [insns[index] for index in region.indices]
-        contiguous = all(right.addr == left.addr + riscv_width(left) for left, right in zip(body, body[1:]))
-        body_hash = hashlib.sha256(instruction_bytes(body)).hexdigest()
-        out.append(
-            {
-                "region_id": region.region_id,
-                "body_sha256": body_hash,
-                "contiguous_body": contiguous,
-                "matches": indexed.get(body_hash, []) if contiguous else [],
-                "basis": "complete_listed_body_bytes",
-                "whole_elf_identity": "unknown",
-            }
-        )
-    return tuple(out)
-
-
-def pc_relative_constants(insns: Sequence[RawInsn]) -> tuple[dict[str, Any], ...]:
-    """Prove adjacent RV64 AUIPC+ADDI values without replaying missing state.
-
-    These are instruction-local address constants, not loaded data or an ABI
-    assignment. Any intervening instruction, register mismatch or other opcode
-    declines the pair. Standard RISC-V field layout supplies the arithmetic.
-    """
-    out = []
-    for first, second in zip(insns, insns[1:]):
-        a, b = int(first.hexcode, 16), int(second.hexcode, 16)
-        rd = (a >> 7) & 31
-        if (
-            riscv_width(first) != 4
-            or riscv_width(second) != 4
-            or second.addr != first.addr + 4
-            or a & 127 != 0x17
-            or b & 0x707F != 0x13
-            or rd == 0
-            or (b >> 7) & 31 != rd
-            or (b >> 15) & 31 != rd
-        ):
-            continue
-        high, low = a & 0xFFFFF000, b >> 20
-        high = high - (1 << 32) if high & (1 << 31) else high
-        low = low - (1 << 12) if low & (1 << 11) else low
-        out.append(
-            {
-                "first_pc": first.addr,
-                "second_pc": second.addr,
-                "register": rd,
-                "value": (first.addr + high + low) % (1 << 64),
-                "basis": "adjacent_rv64_auipc_addi",
-                "pointee_value": None,
-            }
-        )
-    return tuple(out)
 
 
 def normalized_text(insns: Iterable[RawInsn]) -> str:

@@ -709,16 +709,6 @@ def attach_common_substrate(
     verify_tool_profile(bundle)
 
 
-def inherited_tool_profile(phase1_bundle: dict, phase2_bundle: dict) -> dict | None:
-    """Phase 2 must reuse the exact admitted Phase 1 grants and proof policy."""
-    before = verify_tool_profile(phase1_bundle)
-    after = verify_tool_profile(phase2_bundle)
-    if before != after:
-        raise ValueError("Phase 2 changed the frozen Phase 1 compiler tool profile")
-    for key in ("allowed", "denied", "host_inputs", "selected_rtl_facts_file"):
-        if phase1_bundle.get(key) != phase2_bundle.get(key):
-            raise ValueError("Phase 2 changed the frozen Phase 1 target/spec/runtime grants")
-    return before
 
 
 def tool_profile_prompt(bundle: dict) -> str:

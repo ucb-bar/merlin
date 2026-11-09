@@ -168,14 +168,12 @@ def load_command_buffer(artifact: Any, *, base: str | Path | None = None) -> Map
     :class:`CommandBufferIntegrityError` unless its size and SHA-256 equal the reference's and the
     reference's digest equals ``artifact_sha256``.
     """
-    if not isinstance(artifact, Mapping):
+    if not has_command_buffer(artifact):
         return None
     inline = artifact.get("command_buffer")
     if isinstance(inline, Mapping):
         return inline
-    reference = artifact.get(REFERENCE_KEY)
-    if not isinstance(reference, Mapping):
-        return None
+    reference = artifact[REFERENCE_KEY]
     sha256, size = reference.get("sha256"), reference.get("bytes")
     if not _is_sha256(sha256) or sha256 != artifact.get("artifact_sha256") or type(size) is not int:
         raise CommandBufferIntegrityError("stored command buffer reference is malformed or names another digest")

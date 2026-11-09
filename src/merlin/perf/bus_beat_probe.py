@@ -15,16 +15,17 @@ shape are useful for finding signals, but are not accepted as proof that the bun
 payload channel.  A target-owned integration must independently establish that semantic binding and
 must content-bind it to this proof before emitting any physical-byte fact.
 """
+
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+
 from merlin.common import digest as _mdigest
 from merlin.common import jsonio as _mjson
-
 
 _sha256 = _mdigest.sha256_bytes
 
@@ -93,7 +94,7 @@ def _balanced_slice(text: str, start: int) -> str | None:
         elif char == ")":
             depth -= 1
             if depth == 0:
-                return text[start + 1:index]
+                return text[start + 1 : index]
     return None
 
 
@@ -116,8 +117,10 @@ def _module(hw_text: str, name: str) -> tuple[str, list[str]] | None:
             cursor += 1
         if depth:
             return None
-        header = " ".join(line.strip() for line in body[:next(
-            (position + 1 for position, line in enumerate(body) if "{" in line), len(body))])
+        header = " ".join(
+            line.strip()
+            for line in body[: next((position + 1 for position, line in enumerate(body) if "{" in line), len(body))]
+        )
         return header, body
     return None
 
@@ -172,7 +175,7 @@ def _output_aliases(body: Sequence[str], ports: Mapping[str, Mapping[str, Any]])
     output_lines = [line.strip() for line in body if line.strip().startswith("hw.output")]
     if len(output_lines) != 1:
         return {}
-    operands = output_lines[0][len("hw.output"):].split(" :", 1)[0].strip()
+    operands = output_lines[0][len("hw.output") :].split(" :", 1)[0].strip()
     values = _split_items(operands)
     if len(values) != len(outputs):
         return {}
@@ -190,7 +193,7 @@ def _operation_refs(rhs: str, operation: str) -> tuple[str, ...] | None:
     prefix = operation + " "
     if not rhs.startswith(prefix):
         return None
-    operands = rhs[len(prefix):]
+    operands = rhs[len(prefix) :]
     for marker in (" {", " :"):
         operands = operands.split(marker, 1)[0]
     if operands.startswith("bin "):
@@ -208,19 +211,30 @@ def _data_handshake_bundles(ports: Mapping[str, Mapping[str, Any]]) -> list[dict
         width = data.get("width_bits")
         if not isinstance(name, str) or not name.endswith(tail):
             continue
-        bundle = name[:-len(tail)]
+        bundle = name[: -len(tail)]
         valid_ref, ready_ref = "%" + bundle + "_valid", "%" + bundle + "_ready"
         valid, ready = ports.get(valid_ref), ports.get(ready_ref)
-        if (not isinstance(valid, Mapping) or not isinstance(ready, Mapping)
-                or valid.get("width_bits") != 1 or ready.get("width_bits") != 1
-                or valid.get("direction") != data.get("direction")
-                or ready.get("direction") == valid.get("direction")
-                or not isinstance(width, int) or width <= 0 or width % 8):
+        if (
+            not isinstance(valid, Mapping)
+            or not isinstance(ready, Mapping)
+            or valid.get("width_bits") != 1
+            or ready.get("width_bits") != 1
+            or valid.get("direction") != data.get("direction")
+            or ready.get("direction") == valid.get("direction")
+            or not isinstance(width, int)
+            or width <= 0
+            or width % 8
+        ):
             continue
-        bundles.append({
-            "valid_port": valid_ref, "ready_port": ready_ref, "data_port": data_ref,
-            "data_width_bits": width, "beat_width_bytes": width // 8,
-        })
+        bundles.append(
+            {
+                "valid_port": valid_ref,
+                "ready_port": ready_ref,
+                "data_port": data_ref,
+                "data_width_bits": width,
+                "beat_width_bytes": width // 8,
+            }
+        )
     return bundles
 
 
@@ -243,8 +257,11 @@ def _candidate_monitor(hw_text: str, candidate: Mapping[str, Any]) -> dict[str, 
     if handshake is not None:
         aliases = _output_aliases(body, ports)
         handshake = tuple(aliases.get(ref, ref) for ref in handshake)
-    if handshake is None or len(handshake) != 2 or any(
-            ref not in ports or ports[ref].get("width_bits") != 1 for ref in handshake):
+    if (
+        handshake is None
+        or len(handshake) != 2
+        or any(ref not in ports or ports[ref].get("width_bits") != 1 for ref in handshake)
+    ):
         return {
             "status": "unknown",
             "why": "counter update is not the conjunction of exactly two one-bit leaf-module ports",
@@ -261,12 +278,12 @@ def _candidate_monitor(hw_text: str, candidate: Mapping[str, Any]) -> dict[str, 
     size_tail = "_bits_size"
     if not extent_name.endswith(size_tail):
         return {"status": "unknown", "why": "encoded extent has no structurally paired data field"}
-    bundle = extent_name[:-len(size_tail)]
+    bundle = extent_name[: -len(size_tail)]
     data_ref = "%" + bundle + "_bits_data"
     valid_ref = "%" + bundle + "_valid"
     data_port = ports.get(data_ref)
     width = data_port.get("width_bits") if isinstance(data_port, Mapping) else None
-    if (valid_ref not in handshake or not isinstance(width, int) or width <= 0 or width % 8):
+    if valid_ref not in handshake or not isinstance(width, int) or width <= 0 or width % 8:
         alternatives = _data_handshake_bundles(ports)
         if len(alternatives) == 1:
             only = alternatives[0]
@@ -276,16 +293,17 @@ def _candidate_monitor(hw_text: str, candidate: Mapping[str, Any]) -> dict[str, 
                 "module": module_name,
                 "counter_field": candidate.get("counter_field"),
                 "event_predicate_ssa": None,
-                "event_expression": {
-                    "operation": "and", "operands": [only["valid_port"], only["ready_port"]]},
+                "event_expression": {"operation": "and", "operands": [only["valid_port"], only["ready_port"]]},
                 "derivation_anchor_predicate_ssa": predicate,
                 "encoded_extent_port": extent_ref,
                 **only,
                 "mechanical_formula": f"accepted_event_count * {only['beat_width_bytes']}",
                 "bundle_association": "unique_structural_data_handshake_in_counter_leaf",
                 "physical_semantics": "unknown",
-                "why": ("the counter leaf has exactly one byte-aligned decoupled data interface; "
-                        "CIRCT still does not prove that it carries host-memory payload bytes"),
+                "why": (
+                    "the counter leaf has exactly one byte-aligned decoupled data interface; "
+                    "CIRCT still does not prove that it carries host-memory payload bytes"
+                ),
             }
         return {
             "status": "unknown",
@@ -295,9 +313,11 @@ def _candidate_monitor(hw_text: str, candidate: Mapping[str, Any]) -> dict[str, 
             "handshake_ports": list(handshake),
             "encoded_extent_port": extent_ref,
             "candidate_data_handshakes": alternatives,
-            "why": ("the counter event bundle has no byte-aligned data port, or its valid port is not "
-                    "part of the proved update predicate; alternate data handshakes are not selected "
-                    "when more than one exists"),
+            "why": (
+                "the counter event bundle has no byte-aligned data port, or its valid port is not "
+                "part of the proved update predicate; alternate data handshakes are not selected "
+                "when more than one exists"
+            ),
         }
     ready_ref = handshake[0] if handshake[1] == valid_ref else handshake[1]
     return {
@@ -315,13 +335,16 @@ def _candidate_monitor(hw_text: str, candidate: Mapping[str, Any]) -> dict[str, 
         "mechanical_formula": f"accepted_event_count * {width // 8}",
         "bundle_association": "structural_name_only",
         "physical_semantics": "unknown",
-        "why": ("CIRCT proves a handshake-shaped event and a byte-aligned data width; it does not "
-                "prove that this bundle carries host-memory payload bytes"),
+        "why": (
+            "CIRCT proves a handshake-shaped event and a byte-aligned data width; it does not "
+            "prove that this bundle carries host-memory payload bytes"
+        ),
     }
 
 
-def derive_counter_beat_monitors(hw_text: str, counter_probe: Mapping[str, Any], *,
-                                 source: str | None = None) -> dict[str, Any]:
+def derive_counter_beat_monitors(
+    hw_text: str, counter_probe: Mapping[str, Any], *, source: str | None = None
+) -> dict[str, Any]:
     """Derive content-addressed monitor candidates without promoting byte semantics."""
     candidates = counter_probe.get("candidates")
     if not isinstance(candidates, Sequence) or isinstance(candidates, (str, bytes)):
@@ -339,16 +362,20 @@ def derive_counter_beat_monitors(hw_text: str, counter_probe: Mapping[str, Any],
         "counter_probe_sha256": counter_probe.get("artifact_sha256"),
         "monitors": monitors,
         "physical_byte_facts": [],
-        "why": (f"{derived} monitor candidate(s) are mechanically derivable, but no protocol semantic "
-                "binding was supplied; physical bytes remain UNKNOWN" if derived else
-                "no structurally proved counter candidate yields a byte-aligned data-beat monitor"),
+        "why": (
+            f"{derived} monitor candidate(s) are mechanically derivable, but no protocol semantic "
+            "binding was supplied; physical bytes remain UNKNOWN"
+            if derived
+            else "no structurally proved counter candidate yields a byte-aligned data-beat monitor"
+        ),
     }
     artifact["artifact_sha256"] = _canonical_sha256(artifact)
     return artifact
 
 
-def measure_physical_beat_trace(trace: Mapping[str, Any], monitor_proof: Mapping[str, Any], *,
-                                semantic_bindings: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def measure_physical_beat_trace(
+    trace: Mapping[str, Any], monitor_proof: Mapping[str, Any], *, semantic_bindings: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
     """Count exact accepted beats only from a complete, content-bound per-cycle trace.
 
     The independent bindings are intentionally not inferred here.  Each one must identify one
@@ -358,8 +385,9 @@ def measure_physical_beat_trace(trace: Mapping[str, Any], monitor_proof: Mapping
     accepted beat and is therefore refused.
     """
     problems: list[str] = []
-    expected_proof_sha = _canonical_sha256({
-        key: value for key, value in monitor_proof.items() if key != "artifact_sha256"})
+    expected_proof_sha = _canonical_sha256(
+        {key: value for key, value in monitor_proof.items() if key != "artifact_sha256"}
+    )
     proof_sha = monitor_proof.get("artifact_sha256")
     if not _digest(proof_sha) or proof_sha != expected_proof_sha:
         problems.append("monitor proof is not self content-addressed")
@@ -377,19 +405,23 @@ def measure_physical_beat_trace(trace: Mapping[str, Any], monitor_proof: Mapping
         problems.append("trace does not bind a full simulator binary digest")
 
     monitors_value = monitor_proof.get("monitors")
-    monitors = ([row for row in monitors_value
-                 if isinstance(row, Mapping) and row.get("status") == "monitor_derivable"]
-                if isinstance(monitors_value, Sequence) and not isinstance(
-                    monitors_value, (str, bytes)) else [])
+    monitors = (
+        [row for row in monitors_value if isinstance(row, Mapping) and row.get("status") == "monitor_derivable"]
+        if isinstance(monitors_value, Sequence) and not isinstance(monitors_value, (str, bytes))
+        else []
+    )
     by_identity = {
-        (row.get("module"), row.get("valid_port"), row.get("ready_port"), row.get("data_port")): row
-        for row in monitors
+        (row.get("module"), row.get("valid_port"), row.get("ready_port"), row.get("data_port")): row for row in monitors
     }
     bound: dict[tuple[Any, Any], Mapping[str, Any]] = {}
     directions: set[str] = set()
     for position, binding in enumerate(semantic_bindings):
-        identity = (binding.get("module"), binding.get("valid_port"),
-                    binding.get("ready_port"), binding.get("data_port"))
+        identity = (
+            binding.get("module"),
+            binding.get("valid_port"),
+            binding.get("ready_port"),
+            binding.get("data_port"),
+        )
         if identity not in by_identity or identity in bound:
             problems.append(f"binding[{position}] does not identify one unique derived monitor")
             continue
@@ -400,10 +432,12 @@ def measure_physical_beat_trace(trace: Mapping[str, Any], monitor_proof: Mapping
             problems.append(f"binding[{position}] direction is UNKNOWN")
         else:
             directions.add(str(direction))
-        if (binding.get("derived_from_rtl") is not True
-                or binding.get("circt_hw_sha256") != circt_sha
-                or binding.get("monitor_proof_sha256") != proof_sha
-                or not _digest(binding.get("evidence_sha256"))):
+        if (
+            binding.get("derived_from_rtl") is not True
+            or binding.get("circt_hw_sha256") != circt_sha
+            or binding.get("monitor_proof_sha256") != proof_sha
+            or not _digest(binding.get("evidence_sha256"))
+        ):
             problems.append(f"binding[{position}] lacks exact independent RTL evidence")
         if binding.get("exhaustive_for_direction") is not True:
             problems.append(f"binding[{position}] is not exhaustive for its direction")
@@ -418,16 +452,25 @@ def measure_physical_beat_trace(trace: Mapping[str, Any], monitor_proof: Mapping
         window = {}
         problems.append("trace has no exact measurement window")
     start, end = window.get("start_cycle"), window.get("end_cycle")
-    if (isinstance(start, bool) or not isinstance(start, int) or isinstance(end, bool)
-            or not isinstance(end, int) or start < 0 or end <= start):
+    if (
+        isinstance(start, bool)
+        or not isinstance(start, int)
+        or isinstance(end, bool)
+        or not isinstance(end, int)
+        or start < 0
+        or end <= start
+    ):
         problems.append("trace measurement window is not a positive half-open cycle interval")
         start, end = 0, 0
     if not _digest(window.get("marker_evidence_sha256")):
         problems.append("measurement-window markers lack independent content-addressed evidence")
 
     samples_value = trace.get("samples")
-    samples = (list(samples_value) if isinstance(samples_value, Sequence)
-               and not isinstance(samples_value, (str, bytes)) else [])
+    samples = (
+        list(samples_value)
+        if isinstance(samples_value, Sequence) and not isinstance(samples_value, (str, bytes))
+        else []
+    )
     cycles = [sample.get("cycle") for sample in samples if isinstance(sample, Mapping)]
     if len(cycles) != len(samples) or cycles != list(range(start, end)):
         problems.append("trace is not one complete ordered sample per cycle in the exact window")
@@ -457,15 +500,20 @@ def measure_physical_beat_trace(trace: Mapping[str, Any], monitor_proof: Mapping
                 break
     if problems:
         return {
-            "schema": "merlin.physical-beat-trace.v1", "status": "unknown",
-            "physical_bytes": None, "problems": list(dict.fromkeys(problems)),
+            "schema": "merlin.physical-beat-trace.v1",
+            "status": "unknown",
+            "physical_bytes": None,
+            "problems": list(dict.fromkeys(problems)),
         }
     return {
-        "schema": "merlin.physical-beat-trace.v1", "status": "exact",
+        "schema": "merlin.physical-beat-trace.v1",
+        "status": "exact",
         "basis": "accepted_valid_ready_beats_times_circt_data_width",
-        "window": dict(window), "accepted_beats": accepted,
+        "window": dict(window),
+        "accepted_beats": accepted,
         "physical_bytes": {**totals, "total": totals["read"] + totals["write"]},
-        "inputs": dict(inputs), "semantic_bindings": [dict(row) for row in semantic_bindings],
+        "inputs": dict(inputs),
+        "semantic_bindings": [dict(row) for row in semantic_bindings],
     }
 
 
@@ -478,10 +526,14 @@ def _make_assignment(text: str, key: str) -> str | None:
     return values[0] if len(values) == 1 else None
 
 
-def assess_compiled_simulator(*, simulator: Path, public_header: Path | None,
-                              build_metadata: Path | None,
-                              required_ports: Sequence[str],
-                              exact_window_marker: str | None = None) -> dict[str, Any]:
+def assess_compiled_simulator(
+    *,
+    simulator: Path,
+    public_header: Path | None,
+    build_metadata: Path | None,
+    required_ports: Sequence[str],
+    exact_window_marker: str | None = None,
+) -> dict[str, Any]:
     """Determine whether a compiled model can observe every required beat in an exact window.
 
     This is intentionally an availability check, not a request to rebuild or patch an external RTL
@@ -501,16 +553,14 @@ def assess_compiled_simulator(*, simulator: Path, public_header: Path | None,
         capability_notes.append("compiled model has no public C++ signal header")
     else:
         public_text = public_header.read_text(encoding="utf-8", errors="replace")
-        inputs["public_header"] = {
-            "path": str(public_header), "sha256": _sha256(public_text.encode("utf-8"))}
+        inputs["public_header"] = {"path": str(public_header), "sha256": _sha256(public_text.encode("utf-8"))}
 
     build_text = ""
     if build_metadata is None or not build_metadata.is_file():
         capability_notes.append("compiled model has no trace-capability build metadata")
     else:
         build_text = build_metadata.read_text(encoding="utf-8", errors="replace")
-        inputs["build_metadata"] = {
-            "path": str(build_metadata), "sha256": _sha256(build_text.encode("utf-8"))}
+        inputs["build_metadata"] = {"path": str(build_metadata), "sha256": _sha256(build_text.encode("utf-8"))}
 
     trace_value = _make_assignment(build_text, "VM_TRACE")
     trace_compiled = trace_value not in {None, "0"}
@@ -519,8 +569,7 @@ def assess_compiled_simulator(*, simulator: Path, public_header: Path | None,
     missing_ports = [name for name in required_ports if name not in public_text]
     public_api = bool(required_ports) and not missing_ports
     if not public_api:
-        capability_notes.append(
-            "public model API does not expose every derived valid/ready/data signal")
+        capability_notes.append("public model API does not expose every derived valid/ready/data signal")
     if not isinstance(exact_window_marker, str) or not exact_window_marker:
         problems.append("no simulator-visible exact measurement-window marker is bound")
 

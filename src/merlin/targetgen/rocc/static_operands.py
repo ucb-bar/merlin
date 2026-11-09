@@ -65,9 +65,13 @@ def fold_integer(value, bindings):
                     elif op.name == "llvm.xor":
                         result = a ^ b
                     elif op.name in {"llvm.shl", "llvm.lshr", "llvm.ashr"} and 0 <= b < width:
-                        result = (a << b if op.name == "llvm.shl" else
-                                  a >> b if op.name == "llvm.ashr" else
-                                  (a & ((1 << width) - 1)) >> b)
+                        result = (
+                            a << b
+                            if op.name == "llvm.shl"
+                            else a >> b
+                            if op.name == "llvm.ashr"
+                            else (a & ((1 << width) - 1)) >> b
+                        )
                     else:
                         return None
                 else:
@@ -109,7 +113,7 @@ def _incoming(block_argument):
                 args = tuple(end.operands)
             elif end.name == "llvm.cond_br":
                 sizes = tuple(end.properties["operandSegmentSizes"].get_values())
-                args = tuple(end.operands[1:1 + sizes[1]] if i == 0 else end.operands[1 + sizes[1]:])
+                args = tuple(end.operands[1 : 1 + sizes[1]] if i == 0 else end.operands[1 + sizes[1] :])
             else:
                 return None
             if len(args) != len(block.args) or args[block_argument.index].type != block_argument.type:
@@ -244,7 +248,7 @@ def known_integer_bits(value, bindings, ranges=None):
                                 args = tuple(end.operands)
                             elif end.name == "llvm.cond_br":
                                 sizes = tuple(end.properties["operandSegmentSizes"].get_values())
-                                args = tuple(end.operands[1:1 + sizes[1]] if i == 0 else end.operands[1 + sizes[1]:])
+                                args = tuple(end.operands[1 : 1 + sizes[1]] if i == 0 else end.operands[1 + sizes[1] :])
                             else:
                                 valid = False
                                 continue
@@ -260,17 +264,35 @@ def known_integer_bits(value, bindings, ranges=None):
                         result = mask, bits, width
         else:
             op = v.owner
-            if isinstance(op, Operation) and not _poison_flags(op) and not any(
-                op.properties.get(key) is not None for key in ("nonNeg", "sameSign")
+            if (
+                isinstance(op, Operation)
+                and not _poison_flags(op)
+                and not any(op.properties.get(key) is not None for key in ("nonNeg", "sameSign"))
             ):
                 if op.name == "llvm.mlir.constant" and isinstance(attr := op.properties.get("value"), IntegerAttr):
                     result = full, attr.value.data & full, width
                 elif op.name in {
-                    "llvm.add", "llvm.sub", "llvm.mul", "llvm.and", "llvm.or", "llvm.xor", "llvm.icmp",
-                    "llvm.select", "llvm.shl", "llvm.lshr", "llvm.trunc", "llvm.zext", "llvm.sext",
+                    "llvm.add",
+                    "llvm.sub",
+                    "llvm.mul",
+                    "llvm.and",
+                    "llvm.or",
+                    "llvm.xor",
+                    "llvm.icmp",
+                    "llvm.select",
+                    "llvm.shl",
+                    "llvm.lshr",
+                    "llvm.trunc",
+                    "llvm.zext",
+                    "llvm.sext",
                 }:
-                    arity = (3 if op.name == "llvm.select" else
-                             1 if op.name in {"llvm.trunc", "llvm.zext", "llvm.sext"} else 2)
+                    arity = (
+                        3
+                        if op.name == "llvm.select"
+                        else 1
+                        if op.name in {"llvm.trunc", "llvm.zext", "llvm.sext"}
+                        else 2
+                    )
                     args = [visit(arg, depth + 1) for arg in op.operands] if len(op.operands) == arity else []
                     if args and all(arg is not None for arg in args):
                         widths = [arg[2] for arg in args]
@@ -340,12 +362,6 @@ def known_integer_bits(value, bindings, ranges=None):
         return result
 
     return visit(value)
-
-
-def counted_loop_observations(module):
-    """Reuse the independent constant-loop proof, with no dynamic enumeration."""
-    facts = counted_loop_facts(module)
-    return facts["observation"], facts["bindings"]
 
 
 def _callers(module):
@@ -424,7 +440,10 @@ def counted_loop_facts(module):
                     body = nodes if row.get("post_tested") else nodes - {header}
                     for block in body:
                         bindings.setdefault(block, {})[induction] = row["initial"]
-    observation = {"basis": "original_llvm_cfg_constant_induction_v1", "functions": functions,
-                   "instruction_multiplicity": "executions_per_kernel_call",
-                   "varying_operands": "induction ranges only; loop bounds are not operand or hazard proof"}
+    observation = {
+        "basis": "original_llvm_cfg_constant_induction_v1",
+        "functions": functions,
+        "instruction_multiplicity": "executions_per_kernel_call",
+        "varying_operands": "induction ranges only; loop bounds are not operand or hazard proof",
+    }
     return {"observation": observation, "bindings": bindings, "ranges": ranges, "executions": executions}

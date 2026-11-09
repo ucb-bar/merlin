@@ -9,6 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from test_compiler_tool_profile import _inherited_tool_profile
 
 from merlin.common.paths import repo_root
 from merlin.targetgen.generate_bundles import generate_bundles
@@ -18,7 +19,6 @@ from merlin.targetgen.tool_profile import (
     COMMON_SUBSTRATE_V2,
     COMMON_SUBSTRATE_V3,
     attach_common_substrate,
-    inherited_tool_profile,
     substrate_data,
     substrate_inventory,
     verify_tool_profile,
@@ -74,7 +74,7 @@ def test_v3_adds_only_new_automatic_domains_and_keeps_original_versions(source_r
     assert len(substrate_data(COMMON_SUBSTRATE_V1)) == len(substrate_data(COMMON_SUBSTRATE_V2)) == 1
     assert len(substrate_data(COMMON_SUBSTRATE_V3)) == 3
     with pytest.raises(ValueError, match="Phase 2 changed"):
-        inherited_tool_profile(second, third)
+        _inherited_tool_profile(second, third)
 
 
 def test_selected_facts_are_host_only_unless_original_level_already_grants_them(source_root, tmp_path):
@@ -113,10 +113,10 @@ def test_selected_facts_are_host_only_unless_original_level_already_grants_them(
             row.get("module") == "merlin.verify.lean_state_projection" for row in profile["automatic_checker_sources"]
         )
         copied = copy.deepcopy(bundle)
-        assert inherited_tool_profile(bundle, copied) == profile
+        assert _inherited_tool_profile(bundle, copied) == profile
         copied["compiler_tool_profile"]["semantic_inputs"]["registry_sha256"] = "a" * 64
         with pytest.raises(ValueError, match="identity changed"):
-            inherited_tool_profile(bundle, copied)
+            _inherited_tool_profile(bundle, copied)
 
 
 def test_v3_semantic_inventory_is_required_and_cannot_be_forged_as_legacy(source_root):

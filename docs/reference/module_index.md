@@ -21,6 +21,8 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.compile.scheduling` | Legacy scheduling imports; use merlin.compiler.schedule. |
 | `merlin.compiler` | Shared compiler contracts and implementation capabilities. |
 | `merlin.compiler.backend` | Explicit out-of-tree provider identity, composition, and implementation contracts. |
+| `merlin.compiler.build` | Build executable artifacts from admitted compiler products. |
+| `merlin.compiler.build.zephyr` | Resolve and build images for an explicitly selected Zephyr platform. |
 | `merlin.compiler.frontend` | Framework adapters; numerical preparation remains an explicit stage. |
 | `merlin.compiler.frontend.torch` | Process-isolated PyTorch input adapters without eager framework imports. |
 | `merlin.compiler.ir` | Shared read-only IR analyses used before planning and materialization. |
