@@ -42,6 +42,10 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   arithmetic-only parent input and both actual native reports. Staging checks
   their byte chain, optimizer identity and declared inventory; producer-side
   event reconstruction and numerical equivalence remain separate obligations.
+  V3 memory admission additionally retains the explicit private-invocation
+  integer atomic contract, thirty-bit ownership fragments and source operation/
+  scope/order/old-value inventory. Staging checks those declarations and costs;
+  it grants no atomic linearizability, race/initialization or target proof.
   It shares the guarded public ABI without granting source or numeric proof.
   `kernel_shape_abi.py` validates ABI v5's named runtime dimensions and logical
   ceil-divided grids. Standalone compile-signature v2 retains symbolic tensor

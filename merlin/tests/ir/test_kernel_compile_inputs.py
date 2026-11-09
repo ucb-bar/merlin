@@ -509,3 +509,72 @@ def test_rehashed_invalid_isolated_word_chain_never_publishes(tmp_path, change):
     with pytest.raises(ValueError, match="source-word"):
         stage_compile_inputs(source, target)
     assert not target.exists()
+
+
+def atomic_fixture(root, change=None):
+    """Declaration custody only; the producer's real atomic tests own execution."""
+    from xdsl.dialects.builtin import IntegerAttr, StringAttr, i64
+    from merlin.xdsl_dialects._common import text
+    word_fixture(root)
+    receipt = json.loads((root / "capture_receipt.json").read_text())
+    provenance = json.loads((root / "provenance.json").read_text())
+    admission = json.loads((root / "memory-admission.json").read_text())
+    spec = provenance["spec"]
+    spec["grid"] = [2**30 + 1]
+    for buffer in spec["buffers"]:
+        buffer["dtype"] = "i32"
+    info = {"operation": "add", "standard_kind": 1, "word_bits": 32, "source_order": "relaxed", "source_scope": "gpu",
+        "logical_scope": "all-logical-programs-in-private-invocation", "standard_order": "acq_rel",
+        "external_participants": "excluded-by-private-buffer-ABI"}
+    provenance["normalized_operations"][0].update(opcode="tt.atomic_rmw", atomic=json.loads(encoded(info)))
+    access = {"buffer": "old", "opcode": "tts.unstructured_atomic_rmw", "effect": "atomic-readwrite",
+        "source_ids": ["normalized.0"], "tile": [2], "mask": "source-per-lane", "atomic": info}
+    payload = {**info, "buffer": "old", "source_ids": ["normalized.0"], "inactive_old_value": "zero-refinement-of-source-undefined-old-value",
+        "effect_boundary": "standard-execute-region-no-inline", "payload": "standard-memref-atomic-rmw-with-original-returned-old-value"}
+    effect = "private-invocation-integer-atomics-v1"
+    admission.update(schema="t2m.memory-admission.v3", spec=spec, owner_fragment_bits=30, owner_words_per_element=2,
+        guard_storage_bytes_per_output_element=24, ownership_protocol="sticky-complemented-atomic-participants-v1",
+        effect_profile=effect, accesses=[access], atomic_adaptations=[payload])
+    provenance["memory"].update(effect_profile=effect, atomic_payload=json.loads(encoded([payload])))
+    module = parse_mlir_text((root / "model.mlir").read_text().replace("f32", "i32"))
+    entry = next(iter(module.ops))
+    entry.attributes["prov.effect_profile"] = StringAttr(effect)
+    entry.attributes["prov.memory_guard_bytes_per_result_element"] = IntegerAttr(24, i64)
+    if change == "protocol": admission["ownership_protocol"] = "sticky-complemented-program-fragments"
+    elif change == "fragments": admission["owner_fragment_bits"] = 31
+    elif change == "cost": admission["guard_storage_bytes_per_output_element"] = 16
+    elif change == "order": access["atomic"]["source_order"] = "unspecified"
+    elif change == "scope": access["atomic"]["source_scope"] = "external"
+    elif change == "kind": access["atomic"]["standard_kind"] = 15
+    elif change == "old-value": payload["payload"] = "discarded"
+    elif change == "once": payload["effect_boundary"] = "duplicable"
+    elif change == "effect-intent": del entry.attributes["prov.effect_profile"]
+    elif change == "profile": provenance["memory"]["effect_profile"] = "ordinary"
+    entry.attributes["prov.source_accesses"] = StringAttr(json.dumps(admission["accesses"]))
+    model = text(module, generic=True).encode()
+    provenance.update(spec=spec, mlir_sha256=record(model)["sha256"])
+    provenance["memory"]["admission_sha256"] = record(encoded(admission))["sha256"]
+    for name, raw in {"spec.json": encoded(spec), "model.mlir": model, "provenance.json": encoded(provenance),
+                      "memory-admission.json": encoded(admission)}.items():
+        (root / name).write_bytes(raw)
+        receipt["artifacts"][name] = record(raw)
+    (root / "capture_receipt.json").write_bytes(encoded(receipt))
+
+
+def test_atomic_staging_retains_v3_source_contract_and_thirty_bit_cost(tmp_path):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    atomic_fixture(source)
+    manifest = stage_compile_inputs(source, target)
+    assert manifest["payload_profile"] == "shared-source-word-buffer"
+    signature = json.loads((target / "signature.json").read_text())
+    assert signature["guard_storage_bytes_per_result_element"] == 24
+    assert (target / "source/memory-admission.json").read_bytes() == (source / "memory-admission.json").read_bytes()
+
+
+@pytest.mark.parametrize("change", ["protocol", "fragments", "cost", "order", "scope", "kind", "old-value", "once", "effect-intent", "profile"])
+def test_rehashed_inconsistent_atomic_contract_never_publishes(tmp_path, change):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    atomic_fixture(source, change)
+    with pytest.raises(ValueError):
+        stage_compile_inputs(source, target)
+    assert not target.exists()

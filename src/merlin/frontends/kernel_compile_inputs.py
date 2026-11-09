@@ -19,15 +19,17 @@ from merlin.frontends.kernel_shape_abi import validate_dimensions
 from merlin.xdsl_dialects._common import text
 
 
-def _guard_layout(spec, version2):
+def _guard_layout(spec, version2, *, atomics=False):
     if not version2:
         return {"guard_storage_bytes_per_output_element": 16}
     validate_dimensions(spec, spec["buffers"], spec.get("runtime_scalars", []))
     bounds = {s["name"]: s.get("bounds") for s in spec.get("runtime_scalars", [])}
     counts = [n if type(n) is int else (bounds[n["dimension"]][1] + n["divisor"] - 1) // n["divisor"]
               for n in spec.get("grid", [1])]
-    words = max(1, ((math.prod(counts) - 1).bit_length() + 30) // 31)
-    return {"owner_words_per_element": words, "guard_storage_bytes_per_output_element": 8 * (words + 1)}
+    bits = 30 if atomics else 31
+    words = max(1, ((math.prod(counts) - 1).bit_length() + bits - 1) // bits)
+    return {"owner_words_per_element": words, "guard_storage_bytes_per_output_element": 8 * (words + 1),
+            **({"owner_fragment_bits": bits} if atomics else {})}
 
 
 def _checked_memory_members(checked, provenance):
@@ -41,7 +43,8 @@ def _checked_memory_members(checked, provenance):
     names = ("memory-admission.json" if guarded else "memory-witness.mlir", "memory-input.mlir", "memory-stage.mlir", "memory-stage.json")
     copied = {name: checked(name) for name in names}
     admission = json.loads(copied[names[0]]) if guarded else None
-    version2 = admission is not None and admission.get("schema") == "t2m.memory-admission.v2"
+    version3 = admission is not None and admission.get("schema") == "t2m.memory-admission.v3"
+    version2 = admission is not None and admission.get("schema") in ("t2m.memory-admission.v2", "t2m.memory-admission.v3")
     memory = provenance.get("memory", {})
     for name, key in ((names[0], "admission_sha256" if guarded else "witness_sha256"), (names[1], "continuation_input_sha256"),
                       (names[2], "continuation_output_sha256")):
@@ -62,30 +65,38 @@ def _checked_memory_members(checked, provenance):
         arguments = ([{"kind": "extent", "buffer": b["name"]} for b in spec["buffers"]]
             + [{"kind": kind, "buffer": b["name"]} for b in spec["buffers"] if b["effect"] != "read" for kind in ("owners", "visited")]
             + [{"kind": "program"}])
-        layout = _guard_layout(spec, version2)
-        if (admission.get("schema") not in ("t2m.memory-admission.v1", "t2m.memory-admission.v2")
+        layout = _guard_layout(spec, version2, atomics=version3)
+        if (admission.get("schema") not in ("t2m.memory-admission.v1", "t2m.memory-admission.v2", "t2m.memory-admission.v3")
                 or admission.get("strategy") != "runtime-guarded-private-output-state"
                 or admission.get("spec") != spec or admission.get("internal_arguments") != arguments
                 or admission.get("guarded_input_sha256") != record(names[1])["sha256"]
                 or admission.get("continuation_output_sha256") != record(names[2])["sha256"]
                 or any(admission.get(key) != value for key, value in layout.items())
-                or version2 and admission.get("ownership_protocol") != "sticky-complemented-program-fragments"
+                or version2 and admission.get("ownership_protocol") != ("sticky-complemented-atomic-participants-v1" if version3 else "sticky-complemented-program-fragments")
                 or admission.get("writable_reads") != ("shared-readers-or-single-writer-program" if version2 else "refused")
                 or admission.get("fresh_initialization") != "post-grid-complete-write-coverage"
                 or not isinstance(admission.get("accesses"), list)):
             raise ValueError("guarded memory evidence has an inconsistent admission contract")
         buffers = {b["name"]: b for b in spec["buffers"]}
-        inventory = {r["id"] for r in provenance.get("normalized_operations", provenance.get("source_operations", []))}
+        records = provenance.get("normalized_operations", provenance.get("source_operations", []))
+        inventory = {r["id"] for r in records}
         for access in admission["accesses"]:
             buffer = buffers.get(access.get("buffer"))
-            write = access.get("opcode") in ("tts.store", "tts.scatter")
-            if (buffer is None or access.get("opcode") not in ("tts.load", "tts.store", "tts.gather", "tts.scatter")
-                    or access.get("effect") != ("write" if write else "read")
+            atomic = version3 and access.get("opcode") == "tts.unstructured_atomic_rmw"
+            write = access.get("opcode") in ("tts.store", "tts.scatter") or atomic
+            allowed = ("tts.load", "tts.store", "tts.gather", "tts.scatter") + (("tts.unstructured_atomic_rmw",) if version3 else ())
+            if (buffer is None or access.get("opcode") not in allowed
+                    or access.get("effect") != ("atomic-readwrite" if atomic else "write" if write else "read")
                     or write and buffer["effect"] == "read"
                     or not write and buffer["effect"] != "read" and not version2
                     or not access.get("source_ids") or any(s not in inventory for s in access["source_ids"])
                     or not access.get("tile") or any(type(n) is not int or n <= 0 for n in access["tile"])):
                 raise ValueError("guarded memory access inventory differs from its source/effect contract")
+        if version3:
+            from .kernel_atomic_evidence import checked_atomic_effects
+            if not word:
+                raise ValueError("atomic memory evidence requires its source-word address profile")
+            checked_atomic_effects(admission, memory, records, buffers)
     if word:
         for name in ("word-input.mlir", "word-tensor.mlir", "word-stage.json"):
             copied[name] = checked(name)
@@ -107,6 +118,11 @@ def _checked_word_intent(entry, members):
     access = entry.attributes.get("prov.source_accesses")
     if not isinstance(access, StringAttr) or json.loads(access.data) != json.loads(members["memory-admission.json"])["accesses"]:
         raise ValueError("source-word kernel access intent differs from admission")
+    admission = json.loads(members["memory-admission.json"])
+    if admission.get("schema") == "t2m.memory-admission.v3":
+        from .kernel_atomic_evidence import EFFECT_PROFILE
+        if entry.attributes.get("prov.effect_profile") != StringAttr(EFFECT_PROFILE):
+            raise ValueError("atomic kernel lacks its private-invocation effect intent")
 
 
 def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw: bytes) -> dict:
