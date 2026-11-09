@@ -49,3 +49,9 @@ To add a target: a reference dialect under `../targets/`, a lowering table in it
   fresh literal fills retained by driver values, without introducing scalar
   kernel arguments or changing reduction seed ownership. Unknown fill bodies,
   effects and contracts grant no extra outlining permission.
+
+- `outline_scalar_views` is a separate explicit capability for a complete
+  rank-zero extract/single-element rebox fragment. Retain both original ops and
+  their exact equal metadata inside a tensor-only compute kernel. Require the
+  scalar's complete single-consumer/type/encoding proof. This is neither an
+  alias permission nor scalar interpretation on the controller.

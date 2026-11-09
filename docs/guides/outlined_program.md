@@ -237,6 +237,14 @@ input contract. Only an exact literal/empty/identity-yield body is eligible.
 This changes no
 quantization, floating arithmetic order, overflow policy or literal bits.
 
+A closed rank-zero `tensor.extract` immediately consumed by one length-one
+`tensor.from_elements` may also stay together in its original tensor-input and
+tensor-output compute kernel. This selection proves exact type, encoding,
+complete scalar uses and equal source attributes. The original operations and
+all their metadata remain intact. It neither evaluates a scalar on the
+controller nor grants a source/destination storage alias. Other scalar
+consumers, arithmetic, indices and unknown contracts retain normal refusal.
+
 A standalone kernel containing only a fresh-output static `linalg.transpose`
 with its exact identity-yield body may become controller byte packing. The
 permutation, dimensions, dtype, full destination coverage and source/destination

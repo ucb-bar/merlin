@@ -203,9 +203,17 @@ def plan_deployable_chain(
         "sym_visibility",
     }:
         raise ValueError("function-level contracts cannot be redistributed across outlined kernel arities")
-    outlined = outline_dispatches(module.clone(), forward=entry, outline_literal_fills=data_preparation)
+    outlined = outline_dispatches(
+        module.clone(),
+        forward=entry,
+        outline_literal_fills=data_preparation,
+        outline_scalar_views=data_preparation,
+    )
     if preparation is not None:
         preparation["literal_fill_kernels"] = [d.symbol for d in outlined.dispatches if d.root_op == "linalg.fill"]
+        preparation["scalar_tensor_view_kernels"] = [
+            d.symbol for d in outlined.dispatches if d.root_op == "tensor.from_elements"
+        ]
     full = build_dispatch_program(outlined, entry=entry)
     program = prune_dead_nodes(full)
     if verify_program(program):

@@ -800,3 +800,8 @@ original FP32 quantization/scaling DAG and account for the added correction work
   and fresh disjoint output. Inputs may alias each other. Unknown contracts,
   rank-zero concat and unproved boolean storage refuse; neither capability
   permits in-place cache updates or shortened whole-chain lifetimes.
+
+- Data preparation may also retain a closed scalar extract/rebox pair in its
+  original tensor-only compute kernel. Type/encoding/source-attribute equality
+  and complete scalar use closure are mandatory. Do not bypass a reshape
+  verifier, erase a live scalar consumer or introduce a C scalar driver ABI.
