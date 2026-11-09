@@ -64,6 +64,8 @@
     "merlin/prompts/rvv_mining_v1.md",
     "merlin/prompts/rvv_tuning_v1.md",
     "merlin/runtime/abi/mlir_runtime.c",
+    "merlin/runtime/abi/portable_math.h",
+    "merlin/runtime/abi/portable_math_tables.h",
     "merlin/runtime/baremetal/out_b64.h",
     "merlin/runtime/baremetal/out_bin.h",
     "merlin/runtime/baremetal/out_bin_memory.h",
