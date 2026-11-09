@@ -241,13 +241,20 @@ def substrate_inventory(version: str) -> tuple[tuple[str, ...], tuple[str, ...],
                 else "merlin.compile.scheduling.export"
             ),
         )
+        if version == COMMON_SUBSTRATE_V19:
+            from merlin.compiler.schedule.library_sources import canonical_module
+
+            automatic = tuple(canonical_module(name) for name in automatic)
         return namespaces, public, automatic
     raise ValueError("unknown common compiler substrate")
 
 
 def substrate_data(version: str) -> tuple[str, ...]:
     substrate_inventory(version)
-    return AUTOMATIC_CHECKER_DATA_V3 if version in _ISA_SUBSTRATES else AUTOMATIC_CHECKER_DATA
+    data = AUTOMATIC_CHECKER_DATA_V3 if version in _ISA_SUBSTRATES else AUTOMATIC_CHECKER_DATA
+    if version == COMMON_SUBSTRATE_V19:
+        return tuple(path.replace("verify/lean/", "verification/lean/", 1) for path in data)
+    return data
 
 
 def _policy_version(version: str) -> str:
@@ -389,9 +396,12 @@ def common_tool_profile(
         automatic_sources.append(
             {"module": None, "path": _PY + relative, "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}
         )
+    policy_module = (
+        "merlin.verification.lean_contract" if version == COMMON_SUBSTRATE_V19 else "merlin.verify.lean_contract"
+    )
     if (
         hashlib.sha256(Path(lean_contract.__file__).read_bytes()).hexdigest()
-        != hashlib.sha256(_source(root, "merlin.verify.lean_contract").read_bytes()).hexdigest()
+        != hashlib.sha256(_source(root, policy_module).read_bytes()).hexdigest()
     ):
         raise ValueError("loaded formal coverage policy differs from the selected source release")
     policy = lean_contract.coverage_policy_record(version=_policy_version(version))
@@ -707,8 +717,6 @@ def attach_common_substrate(
     profile["sha256"] = _digest(profile)
     bundle["compiler_tool_profile"] = profile
     verify_tool_profile(bundle)
-
-
 
 
 def tool_profile_prompt(bundle: dict) -> str:

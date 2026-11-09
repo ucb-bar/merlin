@@ -103,6 +103,7 @@ class CommonTransformService:
                 "merlin.common_compiler_substrate.v15",
                 "merlin.common_compiler_substrate.v16",
                 "merlin.common_compiler_substrate.v17",
+                "merlin.common_compiler_substrate.v19",
             }:
                 from .tool_profile_shared import host_source_digest
 
@@ -133,6 +134,7 @@ class CommonTransformService:
             "merlin.common_compiler_substrate.v15",
             "merlin.common_compiler_substrate.v16",
             "merlin.common_compiler_substrate.v17",
+            "merlin.common_compiler_substrate.v19",
         }:
             resources = self.profile["shared_scheduling_resources"]
             frozen = BW.snapshot_input_paths(
@@ -243,6 +245,7 @@ class CommonTransformService:
             COMMON_SUBSTRATE_V13,
             COMMON_SUBSTRATE_V14,
             COMMON_SUBSTRATE_V15,
+            COMMON_SUBSTRATE_V19,
         )
 
         supports_planning = self.profile.get("common_substrate") in {
@@ -260,6 +263,7 @@ class CommonTransformService:
             COMMON_SUBSTRATE_V13,
             COMMON_SUBSTRATE_V14,
             COMMON_SUBSTRATE_V15,
+            COMMON_SUBSTRATE_V19,
         }
         if not supports_planning and set(options) & {
             "eliminate_redundancy",
@@ -370,6 +374,7 @@ class CommonTransformService:
                 COMMON_SUBSTRATE_V13,
                 COMMON_SUBSTRATE_V14,
                 COMMON_SUBSTRATE_V15,
+                COMMON_SUBSTRATE_V19,
             }:
                 from merlin.perf.pass_observation import observe_changes
 
@@ -398,6 +403,7 @@ class CommonTransformService:
             COMMON_SUBSTRATE_V13,
             COMMON_SUBSTRATE_V14,
             COMMON_SUBSTRATE_V15,
+            COMMON_SUBSTRATE_V19,
         )
         from merlin.verification.lean_checked import accepted_authored_receipt, verify_authored_transform
         from merlin.verification.lean_contract import document_digest
@@ -417,6 +423,7 @@ class CommonTransformService:
             COMMON_SUBSTRATE_V13,
             COMMON_SUBSTRATE_V14,
             COMMON_SUBSTRATE_V15,
+            COMMON_SUBSTRATE_V19,
         }:
             raise ValueError("authored transformation checks are outside the original frozen substrate")
         if (

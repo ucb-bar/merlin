@@ -416,6 +416,10 @@ def canonical_module(name):
     }
     if name in renamed:
         return renamed[name]
+    if name.startswith("merlin.verify."):
+        return name.replace("merlin.verify", "merlin.verification", 1)
+    if name == "merlin.compile.__init__":
+        return "merlin.compiler.__init__"
     if name.startswith("merlin.compile.analysis."):
         return name.replace("merlin.compile.analysis", "merlin.analysis", 1)
     return name.replace("merlin.compile.scheduling", "merlin.compiler.schedule", 1)

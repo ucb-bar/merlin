@@ -54,7 +54,18 @@ _NAMESPACE_MODULES_V24 = (*_NAMESPACE_MODULES_V20, "merlin.capture", "merlin.tar
 def _namespace_modules(version):
     library_modules(version)
     if version == 26:
-        return tuple(dict.fromkeys((*map(canonical_module, _namespace_modules(25)), "merlin.compiler.selection")))
+        # The exporter's reviewed package replacements also determine source
+        # paths. Treating one as an implementation would request ``scalar.py``
+        # instead of the real ``scalar/__init__.py`` namespace.
+        return tuple(
+            dict.fromkeys(
+                (
+                    *map(canonical_module, _namespace_modules(25)),
+                    "merlin.compiler.selection",
+                    *namespace_replacements(26),
+                )
+            )
+        )
     return {
         6: _NAMESPACE_MODULES_V6,
         7: _NAMESPACE_MODULES_V7,
