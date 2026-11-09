@@ -60,6 +60,62 @@ with ir.Context() as ctx:
     return result.stdout, output.read_text()
 
 
+def atomic_source(*, private=True, fresh=True, no_inline=True, unknown=False, init_read=False, extra=False):
+    target = "%private" if private else "%external"
+    allocation = "%private=memref.alloc():memref<4xi32>" if private else ""
+    seed = "%seed" if fresh else "%input"
+    boundary = "no_inline" if no_inline else ""
+    effect = "memref.store %one,%external[%zero]:memref<4xi32>" if extra else ""
+    payload = ("%v=func.call @unknown(%x):(i32)->i32" if unknown else
+               f"%v=memref.atomic_rmw addi %one,{target}[%j]:(i32,memref<4xi32>)->i32")
+    value = "%unused" if init_read else "%v"
+    declaration = "func.func private @unknown(i32)->i32" if unknown else ""
+    return f'''module {{ {declaration}
+      func.func @forward(%input:tensor<4xi32>,%external:memref<4xi32>,%bound:index)->tensor<4xi32> {{
+        %zero=arith.constant 0:index
+        %step=arith.constant 1:index
+        %one=arith.constant 1:i32
+        %empty=tensor.empty():tensor<4xi32>
+        %seed=linalg.fill ins(%one:i32) outs(%empty:tensor<4xi32>)->tensor<4xi32>
+        {allocation}
+        %result=scf.for %iv=%zero to %bound step %step iter_args(%old={seed})->tensor<4xi32> {{
+          %event=scf.execute_region ->tensor<4xi32> {boundary} {{
+            {effect}
+            %prior=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
+                ins(%old:tensor<4xi32>) outs(%empty:tensor<4xi32>) {{
+              ^bb0(%x:i32,%unused:i32):
+                %j=linalg.index 0:index
+                {payload}
+                linalg.yield {value}:i32
+            }} ->tensor<4xi32>
+            scf.yield %prior:tensor<4xi32>
+          }}
+          %next=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
+              ins(%old,%event:tensor<4xi32>,tensor<4xi32>) outs(%empty:tensor<4xi32>) {{
+            ^bb0(%a:i32,%b:i32,%unused:i32):
+              %sum=arith.addi %a,%b:i32
+              linalg.yield %sum:i32
+          }} ->tensor<4xi32>
+          scf.yield %next:tensor<4xi32>
+        }}
+        return %result:tensor<4xi32>
+      }}
+    }}'''
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("options,changed", [({}, 1), ({"private": False}, 0), ({"fresh": False}, 0),
+    ({"no_inline": False}, 0), ({"unknown": True}, 0), ({"init_read": True}, 0), ({"extra": True}, 0)])
+def test_atomic_result_reuse_requires_closed_private_exactly_once_snapshot(tmp_path, options, changed):
+    source = atomic_source(**options)
+    report, rewritten = rewrite(tmp_path, source)
+    assert f"OK loop_tensor_destinations {changed}" in report
+    assert rewritten.count("memref.atomic_rmw") == source.count("memref.atomic_rmw")
+    assert rewritten.count("scf.execute_region") == 1
+    if options.get("no_inline", True):
+        assert "no_inline" in rewritten
+
+
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
 @pytest.mark.parametrize("shape,init_read,opaque,changed", [
     ("4", False, False, 1), ("17", False, False, 1),

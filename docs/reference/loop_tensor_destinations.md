@@ -61,6 +61,19 @@ memory captures; unknown producers, writes and opaque calls do not qualify.
 Reduction bodies and live original init arguments remain intact; the separate
 copy moves their complete computed value. Library calls grant no permission.
 
+An additional dependency profile accepts an already-computed integer atomic
+snapshot. Its standard `scf.execute_region no_inline` must contain exactly one
+tensor generic and its result yield. The generic's output seed is independently
+synthesized, its output-init argument is unused, and its closed numeric body
+may contain i32/i64 `memref.atomic_rmw` only on actual private allocations through
+standard views. The loop seed must also be independently synthesized. This
+lets an atomic old value feed a loop accumulator without allocating a new
+accumulator generation on every iteration. The original atomic, destination,
+mask, exactly-once boundary, ordering and control position remain intact; only
+the downstream pure value destination/copy changes. External or unknown atomic
+roots, shared seeds, extra effects and opaque calls remain outside this profile.
+Native alias and post-deallocation lifetime checks remain authoritative.
+
 Original payload operations, inputs, attributes and arithmetic order remain.
 Direct retargeting changes only an unused destination. New copies use identity
 maps and an unused init, preserve source IDs/location on the selected edge, and

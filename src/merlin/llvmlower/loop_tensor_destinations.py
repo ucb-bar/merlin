@@ -66,7 +66,7 @@ def _ltd_readonly_input(value):
     return False
 
 
-def _ltd_separate_read_root(value):
+def _ltd_private_root(value):
     # Called only with an independently synthesized carried seed. A live
     # private allocation is disjoint from it; no readonly/immutability fact is
     # invented for the buffer, and every original read/write remains in place.
@@ -79,7 +79,11 @@ def _ltd_separate_read_root(value):
         if op.name == 'memref.alloc':
             return True
         break
-    return _ltd_readonly_input(value)
+    return False
+
+
+def _ltd_separate_read_root(value):
+    return _ltd_private_root(value) or _ltd_readonly_input(value)
 
 
 def _ltd_tensor_read_root(value):
@@ -96,12 +100,20 @@ def _ltd_tensor_read_root(value):
             and value.owner == value.owner.owner.operation.regions[0].blocks[0])
 
 
-def _ltd_scalar_body(op, *, fresh_seed):
+def _ltd_scalar_body(op, *, fresh_seed, private_atomics=False):
     # Readonly entry storage or an actual private allocation is disjoint from
     # a newly synthesized loop seed. This changes no capture or memory effect;
     # native bufferization still decides whether physical reuse is legal.
     for inner in _ltd_walk(op):
         name = inner.name
+        if name == 'memref.atomic_rmw':
+            if (not private_atomics or not fresh_seed or len(inner.operands) < 2 or inner.regions
+                    or not _ltd_private_root(inner.operands[1]) or len(inner.results) != 1
+                    or str(inner.results[0].type) not in ('i32', 'i64')
+                    or inner.operands[0].type != inner.results[0].type
+                    or any(not isinstance(v.type, ir.IndexType) for v in tuple(inner.operands)[2:])):
+                return False
+            continue
         if name == 'memref.load':
             if (not fresh_seed or not inner.operands or not _ltd_separate_read_root(inner.operands[0])
                     or inner.regions or len(inner.results) != 1 or not _ltd_numeric(inner.results[0].type)
@@ -182,6 +194,29 @@ def _ltd_captured_values(op):
             if (v.owner.operation if isinstance(v, ir.OpResult) else v.owner.owner.operation) not in local}
 
 
+def _ltd_atomic_snapshot(op):
+    # An exactly-once region remains at its original position. Only its already
+    # computed tensor value may feed a destination copy/reuse; the event itself
+    # is never cloned, retargeted or moved. An independent output seed and
+    # private atomic targets exclude aliases with the loop's fresh tensor seed.
+    parent = op.block.owner.operation
+    if (parent.name != 'scf.execute_region' or 'no_inline' not in parent.attributes
+            or len(parent.regions) != 1 or len(parent.regions[0].blocks) != 1
+            or parent.regions[0].blocks[0].arguments or len(parent.results) != 1
+            or op.name != 'linalg.generic' or 'library_call' in op.attributes or len(op.results) != 1
+            or len(op.regions) != 1 or len(op.regions[0].blocks) != 1 or not op.operands
+            or not _ltd_fresh_seed(op.operands[-1])):
+        return False
+    operations = tuple(parent.regions[0].blocks[0].operations)
+    if (len(operations) != 2 or operations[0].operation != op or operations[-1].operation.name != 'scf.yield'
+            or tuple(operations[-1].operands) != tuple(op.results)):
+        return False
+    scalar = op.regions[0].blocks[0]
+    segments = tuple(ir.DenseI32ArrayAttr(op.attributes['operandSegmentSizes']))
+    return (segments == (len(op.operands) - 1, 1) and not list(scalar.arguments[-1].uses)
+            and any(inner.name == 'memref.atomic_rmw' for inner in _ltd_walk(op)))
+
+
 def _ltd_copy_safe(value, incoming, inside, seen):
     if value in seen:
         return True
@@ -211,6 +246,13 @@ def _ltd_copy_safe(value, incoming, inside, seen):
                     or not _ltd_copy_safe(terminal.operands[index], incoming, inside, seen)):
                 return False
         return True
+    if op.name == 'scf.execute_region':
+        if (not _ltd_fresh_seed(incoming) or len(op.regions) != 1 or len(op.regions[0].blocks) != 1
+                or len(op.results) != 1):
+            return False
+        operations = tuple(op.regions[0].blocks[0].operations)
+        return (len(operations) == 2 and _ltd_atomic_snapshot(operations[0].operation)
+                and _ltd_copy_safe(operations[0].results[0], incoming, inside, seen))
     def numeric(type_):
         return _ltd_numeric(ir.RankedTensorType(type_).element_type) if isinstance(type_, ir.RankedTensorType) else _ltd_numeric(type_)
     if any(not numeric(v.type) for v in (*op.operands, *op.results)):
@@ -221,7 +263,8 @@ def _ltd_copy_safe(value, incoming, inside, seen):
         if op.regions:
             return False
     elif op.name.startswith('linalg.') or op.name == 'tensor.pad':
-        if 'library_call' in op.attributes or not _ltd_scalar_body(op, fresh_seed=_ltd_fresh_seed(incoming)):
+        if 'library_call' in op.attributes or not _ltd_scalar_body(op, fresh_seed=_ltd_fresh_seed(incoming),
+                                                                 private_atomics=_ltd_atomic_snapshot(op)):
             return False
         for captured in _ltd_captured_values(op):
             if str(captured.type).startswith('memref'):

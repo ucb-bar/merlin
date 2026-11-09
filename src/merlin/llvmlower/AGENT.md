@@ -20,6 +20,13 @@ producers and qualified padding/conditional/tensor-import values recursively.
 Scalar `tensor.extract` read captures require an independent seed and an actual
 entry tensor/view or restricted import from the qualified private roots. CFG
 phi tensors and unknown snapshot owners grant no independence or reuse fact.
+An exactly-once `scf.execute_region no_inline` may supply an integer atomic
+snapshot to that value dependency closure when it contains only one unused-init
+tensor generic and its yield, the output seed is independently synthesized,
+and every RMW target is an actual private allocation through standard views.
+Retain the complete event and boundary; never clone/move the atomic or retarget
+its output. External/unknown targets, shared seeds, extra effects and opaque
+calls grant no permission. Native alias/lifetime checks remain mandatory.
 
 Mixed borrowed composition retains distinct live ordinary descriptor and plural
 writer owners for one exact source epoch. Disjoint ABI rows, original effect
