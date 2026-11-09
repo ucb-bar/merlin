@@ -158,13 +158,17 @@ class Board:
             return tuple(self.matrix_hart_ids)
         return self.hart_ids_for("rvv")
 
-    def check_matrix_image(self, n_harts: int) -> None:
+    def check_matrix_image(self, n_harts: int, worker_harts: tuple[int, ...] | None = None) -> None:
         """Refuse a matrix image whose ``n_harts`` workers would include a hart without the unit.
 
         A vector image over ``n_harts`` runs on the first ``n_harts`` of :meth:`hart_ids_for`; every one
         of those must carry the matrix unit, since the tile loop is split across all of them.
         """
-        used = self.hart_ids_for("rvv")[: int(n_harts)]
+        used = self.hart_ids_for("rvv")[: int(n_harts)] if worker_harts is None else worker_harts
+        if worker_harts is not None and (not isinstance(worker_harts, tuple) or len(worker_harts) != n_harts
+                                         or len(set(worker_harts)) != n_harts
+                                         or any(type(h) is not int for h in worker_harts)):
+            raise BoardRegistryError("Explicit matrix workers must be a distinct complete integer tuple")
         missing = [h for h in used if h not in self.matrix_harts]
         if missing:
             raise BoardRegistryError(
