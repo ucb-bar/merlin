@@ -21,7 +21,7 @@ from xdsl.dialects.func import FuncOp
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.xdsl_dialects._common import text as module_text
-from merlin.frontends.kernel_compile_inputs import _checked_memory_members
+from merlin.frontends.kernel_compile_inputs import _checked_memory_members, _checked_word_intent
 
 
 def _sha(raw: bytes) -> str:
@@ -111,7 +111,7 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
                   for name in ("model.mlir", "source.ttir", "spec.json", "provenance.json")}
         provenance, spec = json.loads(kernel["provenance.json"]), json.loads(kernel["spec.json"])
         kernel.update(_checked_memory_members(lambda name: checked(directory + "/" + name), provenance))
-        if provenance.get("profile") == "shared-guarded-buffer":
+        if provenance.get("profile") in ("shared-guarded-buffer", "shared-source-word-buffer"):
             outputs = [b for b in spec["buffers"] if b["effect"] != "read"]
             if any(not b.get("shape") or any(type(n) is not int or n <= 0 for n in b["shape"]) for b in outputs):
                 raise ValueError("guarded derived kernels require static positive scratch dimensions")
@@ -120,6 +120,8 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
             entries = list(kernel_module.ops)
             if len(entries) != 1 or not isinstance(entries[0], FuncOp):
                 raise ValueError("guarded derived kernel lacks one typed entry")
+            if provenance["profile"] == "shared-source-word-buffer":
+                _checked_word_intent(entries[0], kernel)
             contract = entries[0].attributes.get("prov.memory_guard_bytes_per_result_element")
             types = list(entries[0].function_type.outputs)
             cost = json.loads(kernel["memory-admission.json"])["guard_storage_bytes_per_output_element"]

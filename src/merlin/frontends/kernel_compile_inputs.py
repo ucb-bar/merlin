@@ -34,8 +34,9 @@ def _checked_memory_members(checked, provenance):
     profile = provenance.get("profile", "shared-functional-tensor")
     if profile == "shared-functional-tensor":
         return {}
-    guarded = profile == "shared-guarded-buffer"
-    if profile not in ("shared-functional-buffer", "shared-guarded-buffer"):
+    word = profile == "shared-source-word-buffer"
+    guarded = profile in ("shared-guarded-buffer", "shared-source-word-buffer")
+    if profile not in ("shared-functional-buffer", "shared-guarded-buffer", "shared-source-word-buffer"):
         raise ValueError("unsupported kernel memory evidence profile")
     names = ("memory-admission.json" if guarded else "memory-witness.mlir", "memory-input.mlir", "memory-stage.mlir", "memory-stage.json")
     copied = {name: checked(name) for name in names}
@@ -85,7 +86,37 @@ def _checked_memory_members(checked, provenance):
                     or not access.get("source_ids") or any(s not in inventory for s in access["source_ids"])
                     or not access.get("tile") or any(type(n) is not int or n <= 0 for n in access["tile"])):
                 raise ValueError("guarded memory access inventory differs from its source/effect contract")
+    if word:
+        for name in ("word-input.mlir", "word-tensor.mlir", "word-stage.json"):
+            copied[name] = checked(name)
+        word_stage = json.loads(copied["word-stage.json"])
+        command = word_stage.get("command", [])
+        transport = {"--mlir-disable-threading", "--verify-each", "--mlir-print-op-generic",
+                     "--mlir-print-debuginfo", "--mlir-print-local-scope"}
+        pipeline = [flag for flag in (command if isinstance(command, list) else [])
+                    if isinstance(flag, str) and flag.startswith("--") and flag not in transport]
+        expected = ["--triton-to-unstructured=offset-bit-width=64",
+            "--triton-arith-to-linalg=pids-to-func-args=false tt-to-func-func=false", "--remove-dead-values", "--canonicalize"]
+        if (not version2 or admission.get("address_policy") != "source-words-offset64"
+                or memory.get("address_policy") != "source-words-offset64"
+                or memory.get("word_stage_sha256") != record("word-stage.json")["sha256"]
+                or admission.get("word_input_sha256") != record("word-input.mlir")["sha256"]
+                or admission.get("word_tensor_sha256") != record("word-tensor.mlir")["sha256"]
+                or word_stage.get("schema") != "t2m.triton-shared-stage.v1" or word_stage.get("stage") != "source-word-tensor"
+                or word_stage.get("stage_completed") is not True
+                or word_stage.get("artifacts", {}).get("source.ttir") != record("word-input.mlir")
+                or word_stage.get("artifacts", {}).get("lowered.mlir") != record("word-tensor.mlir")
+                or not isinstance(command, list) or any(type(flag) is not str for flag in command) or pipeline != expected):
+            raise ValueError("source-word address evidence does not bind its declared input/output/policy")
     return copied
+
+
+def _checked_word_intent(entry, members):
+    if entry.attributes.get("prov.address_policy") != StringAttr("source-words-offset64"):
+        raise ValueError("source-word kernel lacks its declared address intent")
+    access = entry.attributes.get("prov.source_accesses")
+    if not isinstance(access, StringAttr) or json.loads(access.data) != json.loads(members["memory-admission.json"])["accesses"]:
+        raise ValueError("source-word kernel access intent differs from admission")
 
 
 def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw: bytes) -> dict:
@@ -104,7 +135,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
             raise ValueError("kernel compiler member differs from receipt: " + name)
         return raw
 
-    if receipt.get("profile") not in ("shared-functional-tensor", "shared-functional-buffer", "shared-guarded-buffer"):
+    if receipt.get("profile") not in ("shared-functional-tensor", "shared-functional-buffer", "shared-guarded-buffer", "shared-source-word-buffer"):
         raise ValueError("unsupported standalone kernel profile")
     raw, ttir, spec_raw, provenance_raw = (checked(name) for name in
                                          ("model.mlir", "source.ttir", "spec.json", "provenance.json"))
@@ -194,13 +225,15 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
                  "inputs": abi(entry.function_type.inputs, inputs), "outputs": abi(entry.function_type.outputs, outputs),
                  "shape_scope": "runtime_scalar_bound_dimensions" if dynamic else "static_captured_signature", "capture_dtype": "typed-per-argument",
                  "input_mutability": "borrowed-immutable-tensors"}
-    if receipt["profile"] == "shared-guarded-buffer":
+    if receipt["profile"] in ("shared-guarded-buffer", "shared-source-word-buffer"):
         contract = entry.attributes.get("prov.memory_guard_bytes_per_result_element")
         admission = json.loads(memory_members["memory-admission.json"])
         cost = admission["guard_storage_bytes_per_output_element"]
         if not isinstance(contract, IntegerAttr) or contract.value.data != cost:
             raise ValueError("guarded kernel lacks its declared scratch storage contract")
         signature["guard_storage_bytes_per_result_element"] = cost
+        if receipt["profile"] == "shared-source-word-buffer":
+            _checked_word_intent(entry, memory_members)
     if scalars:
         signature["scalar_abi"] = "native-by-value; invocation-data"
     # The native host's existing ABI names @forward. Record this symbol-only

@@ -136,3 +136,13 @@ source-base gather observations as actual memory loads before optimization.
 V1 evidence remains readable with its original write-only admission scope,
 16-byte cost and `memory-ir` continuation. Neither version grants an executable
 memory or numerical proof through staging alone.
+
+The explicit `shared-source-word-buffer` profile retains the same guarded
+memory protocol and public ABI while selecting upstream's source-word address
+stage. Additional `word-input.mlir`, `word-tensor.mlir` and `word-stage.json`
+members bind its exact input/output and pass sequence, including the supported
+64-bit offset option. Staging validates/copies these records and checks declared
+function access intent against admission. Logical-grid annotations retain the
+same intent through producer model-call inlining. This custody check establishes
+neither source equivalence nor numerical qualification and supplies no source
+Triton frontend or evaluator data to the compiler.

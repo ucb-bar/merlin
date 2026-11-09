@@ -380,3 +380,72 @@ def test_rehashed_invalid_mutable_contract_never_publishes(tmp_path, change):
     with pytest.raises(ValueError):
         stage_compile_inputs(source, target)
     assert not target.exists()
+
+
+def word_fixture(root, change=None):
+    """Source-policy byte custody only; this is not an execution oracle."""
+    from xdsl.dialects.builtin import StringAttr
+    from merlin.xdsl_dialects._common import text
+    mutable_fixture(root, (1,), 1)
+    receipt = json.loads((root / "capture_receipt.json").read_text())
+    provenance = json.loads((root / "provenance.json").read_text())
+    admission = json.loads((root / "memory-admission.json").read_text())
+    word_input, word_tensor = b"original typed integer word operations", b"signed i64 pointer offset stage"
+    pipeline = ["--triton-to-unstructured=offset-bit-width=64",
+        "--triton-arith-to-linalg=pids-to-func-args=false tt-to-func-func=false", "--remove-dead-values", "--canonicalize"]
+    stage = {"schema": "t2m.triton-shared-stage.v1", "stage": "source-word-tensor", "stage_completed": True,
+        "command": ["optimizer", *pipeline, "source.ttir"], "artifacts": {
+            "source.ttir": record(word_input), "lowered.mlir": record(word_tensor)}}
+    if change == "pipeline":
+        stage["command"].insert(1, "--canonicalize")
+    elif change == "width":
+        stage["command"][1] = "--triton-to-unstructured=offset-bit-width=32"
+    elif change == "stage":
+        stage["stage"] = "tensor-ir"
+    elif change == "untyped_command":
+        stage["command"] = None
+    admission.update(address_policy="structured" if change == "scope" else "source-words-offset64",
+        word_input_sha256=record(word_input)["sha256"], word_tensor_sha256=record(word_tensor)["sha256"])
+    module = parse_mlir_text((root / "model.mlir").read_text())
+    entry = next(iter(module.ops))
+    if change != "policy_attribute":
+        entry.attributes["prov.address_policy"] = StringAttr("source-words-offset64")
+    entry.attributes["prov.source_accesses"] = StringAttr(json.dumps([] if change == "intent" else admission["accesses"]))
+    model = text(module, generic=True).encode()
+    provenance.update(profile="shared-source-word-buffer", mlir_sha256=record(model)["sha256"])
+    provenance["memory"].update(address_policy="source-words-offset64", word_stage_sha256=record(encoded(stage))["sha256"],
+        admission_sha256=record(encoded(admission))["sha256"])
+    files = {"word-input.mlir": word_input + (b"changed" if change == "input" else b""),
+        "word-tensor.mlir": word_tensor, "word-stage.json": encoded(stage), "model.mlir": model,
+        "memory-admission.json": encoded(admission), "provenance.json": encoded(provenance)}
+    for name, raw in files.items():
+        (root / name).write_bytes(raw)
+        receipt["artifacts"][name] = record(raw)
+    receipt["profile"] = "shared-source-word-buffer"
+    (root / "capture_receipt.json").write_bytes(encoded(receipt))
+
+
+def test_source_word_staging_keeps_policy_evidence_and_original_access_intent(tmp_path, monkeypatch):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    word_fixture(source)
+    original = Path.read_bytes
+    def read(path):
+        if path.name in ("inputs.npz", "golden.npy", "extra.npz", "execution.json"):
+            raise AssertionError("source-word compiler accessed evaluator values")
+        return original(path)
+    monkeypatch.setattr(Path, "read_bytes", read)
+    manifest = stage_compile_inputs(source, target)
+    assert manifest["payload_profile"] == "shared-source-word-buffer"
+    for name in ("word-input.mlir", "word-tensor.mlir", "word-stage.json"):
+        assert (target / ("source/" + name)).read_bytes() == (source / name).read_bytes()
+    entry = next(iter(parse_mlir_text((target / "program.mlir").read_text()).ops))
+    assert entry.attributes["prov.address_policy"].data == "source-words-offset64"
+
+
+@pytest.mark.parametrize("change", ["input", "pipeline", "width", "stage", "scope", "intent", "policy_attribute", "untyped_command"])
+def test_rehashed_inconsistent_source_word_policy_never_publishes(tmp_path, change):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    word_fixture(source, change)
+    with pytest.raises(ValueError, match="source-word"):
+        stage_compile_inputs(source, target)
+    assert not target.exists()

@@ -36,6 +36,9 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   V2 memory admission checks the sticky reader/writer protocol and derives
   metadata word count/cost from the maximum logical grid, retaining the explicit
   pre-CSE memory-effects stage. V1 evidence keeps its original scope and cost.
+  The source-word buffer profile also retains exact word-stage input/output
+  evidence and validates its explicit pass sequence and function access intent.
+  It shares the guarded public ABI without granting source or numeric proof.
   `kernel_shape_abi.py` validates ABI v5's named runtime dimensions and logical
   ceil-divided grids. Standalone compile-signature v2 retains symbolic tensor
   dimensions and typed scalar bindings. Staging checks declared types/relations,
