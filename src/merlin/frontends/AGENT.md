@@ -9,6 +9,8 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
 - `linalg_mlir.py` — xDSL parsing of linalg-on-tensors artifacts + matmul inventory (shapes, dtypes, weights resolved via the safetensors manifest, `prov.*` provenance).
   Its standard memref and bufferization dialect registrations admit prepared
   fresh borrowed writer wrappers without an unregistered custom-syntax fallback.
+  Custom generic leading attributes that xDSL would discard refuse; the file
+  parser's existing upstream generic-form fallback retains those source contracts.
 - `facts.py` — lifting the inventory to contract-level reuse facts, driving the core pipeline with real model shapes, residency-variant DSE measurement.
 - `linalg_math_patterns.py` — source-only, closed unary f32 sine/cosine scalar-region checks;
   no host admission or numerical-equivalence claim. Its unary schema refuses scalar-literal power.

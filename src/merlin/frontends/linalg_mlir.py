@@ -100,6 +100,54 @@ def make_context():
     return ctx
 
 
+def _reject_dropped_generic_attributes(text: str, ctx) -> None:
+    """Refuse custom Generic dictionaries the selected xDSL reader would drop.
+
+    The upstream custom reader retains only its declared properties from the
+    first dictionary. Extra attributes belong in generic operation form or its
+    explicit ``attrs`` dictionary. Never let a lost contract become a proof of
+    purity or an implementation-cache identity.
+    """
+    if "linalg.generic" not in text:
+        return
+    from xdsl.parser import Parser
+    from xdsl.utils.exceptions import ParseError
+    from xdsl.utils.lexer import Input, Span
+    from xdsl.utils.mlir_lexer import MLIRLexer, MLIRTokenKind
+
+    source = Input(text, "<merlin-source>")
+    lexer = MLIRLexer(source)
+    angle_depth = 0
+    while (token := lexer.lex()).kind is not MLIRTokenKind.EOF:
+        if token.kind is MLIRTokenKind.LESS:
+            angle_depth += 1
+        elif token.kind is MLIRTokenKind.GREATER:
+            angle_depth = max(0, angle_depth - 1)
+        if angle_depth or token.kind is not MLIRTokenKind.BARE_IDENT or token.text != "linalg.generic":
+            continue
+        opening = lexer.lex()
+        if opening.kind is not MLIRTokenKind.L_BRACE:
+            continue  # The ordinary parser reports malformed operation syntax.
+        depth, closing = 1, opening
+        while depth:
+            closing = lexer.lex()
+            if closing.kind is MLIRTokenKind.EOF:
+                return  # Preserve the ordinary parser's unclosed-dictionary error.
+            if closing.kind is MLIRTokenKind.L_BRACE:
+                depth += 1
+            elif closing.kind is MLIRTokenKind.R_BRACE:
+                depth -= 1
+        attrs = Parser(ctx, text[opening.span.start : closing.span.end]).parse_optional_attr_dict()
+        unknown = set(attrs) - {"indexing_maps", "iterator_types", "doc", "library_call"}
+        if unknown:
+            raise ParseError(
+                Span(opening.span.start, closing.span.end, source),
+                "custom linalg.generic leading attributes would be discarded: "
+                + ", ".join(sorted(unknown))
+                + "; use generic operation form or the explicit attrs dictionary",
+            )
+
+
 def parse_mlir_text(text: str, ctx=None):
     """Parse linalg-on-tensors MLIR text into an xDSL module.
 
@@ -120,7 +168,9 @@ def parse_mlir_text(text: str, ctx=None):
     # of seconds against builds and simulations that take minutes, so the cost of serializing here is
     # small and the alternative is a build whose success depends on scheduling.
     with IR_LOCK:
-        return Parser(ctx or make_context(), text).parse_module()
+        context = ctx or make_context()
+        _reject_dropped_generic_attributes(text, context)
+        return Parser(context, text).parse_module()
 
 
 def parse_mlir_file(path: str | Path, ctx=None):
