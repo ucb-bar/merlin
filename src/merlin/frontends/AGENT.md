@@ -43,7 +43,8 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   their byte chain, optimizer identity and declared inventory; producer-side
   event reconstruction and numerical equivalence remain separate obligations.
   V3 memory admission additionally retains the explicit private-invocation
-  integer atomic contract, thirty-bit ownership fragments and source operation/
+  integer atomic contract, or the explicit v4 typed profile with bitwise f32/f64
+  exchange, thirty-bit ownership fragments and source operation/
   scope/order/old-value inventory. Staging checks those declarations and costs;
   CAS additionally retains i16/i32/i64 comparison/old-value facts, its unmasked
   source access, and exact source versus memory opcode correspondence.

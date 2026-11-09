@@ -1,12 +1,14 @@
 """Byte-bound declared atomic effects; producer/execution proofs stay separate."""
 
 EFFECT_PROFILE = "private-invocation-integer-atomics-v1"
+TYPED_EFFECT_PROFILE = "private-invocation-typed-atomics-v2"
 _KINDS = {"and": 2, "or": 14, "xor": 15, "add": 1, "max": 6, "min": 10, "umax": 7, "umin": 11, "exch": 3,
           "cas": "compare-exchange"}
 
 
 def checked_atomic_effects(admission, memory, records, buffers):
-    if (admission.get("effect_profile") != EFFECT_PROFILE or memory.get("effect_profile") != EFFECT_PROFILE
+    profile = TYPED_EFFECT_PROFILE if admission.get("schema") == "t2m.memory-admission.v4" else EFFECT_PROFILE
+    if (admission.get("effect_profile") != profile or memory.get("effect_profile") != profile
             or admission.get("address_policy") != "source-words-offset64"
             or not isinstance(admission.get("atomic_adaptations"), list)
             or admission["atomic_adaptations"] != memory.get("atomic_payload")):
@@ -20,8 +22,13 @@ def checked_atomic_effects(admission, memory, records, buffers):
         info = access.get("atomic")
         buffer = buffers[access["buffer"]]
         candidates = [source[s] for s in access["source_ids"] if s in source]
+        floating = isinstance(info, dict) and info.get("value_dtype") in ("f32", "f64")
+        dtype = info.get("value_dtype") if floating else "i" + str(info.get("word_bits")) if isinstance(info, dict) else None
         if (not isinstance(info, dict) or not candidates or any(c != info for c in candidates)
-                or buffer.get("dtype") != "i" + str(info.get("word_bits"))
+                or buffer.get("dtype") != dtype
+                or floating and (profile != TYPED_EFFECT_PROFILE or info.get("operation") != "exch"
+                    or dtype != "f" + str(info.get("word_bits")) or info.get("numeric_contract") != "bitwise-exchange")
+                or not floating and ("value_dtype" in info or "numeric_contract" in info)
                 or info.get("word_bits") not in ((16, 32, 64) if info.get("operation") == "cas" else (32, 64))
                 or info.get("operation") not in _KINDS or info.get("standard_kind") != _KINDS[info["operation"]]
                 or access.get("opcode") != ("tt.atomic_cas" if info["operation"] == "cas" else "tts.unstructured_atomic_rmw")

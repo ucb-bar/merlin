@@ -43,8 +43,8 @@ def _checked_memory_members(checked, provenance):
     names = ("memory-admission.json" if guarded else "memory-witness.mlir", "memory-input.mlir", "memory-stage.mlir", "memory-stage.json")
     copied = {name: checked(name) for name in names}
     admission = json.loads(copied[names[0]]) if guarded else None
-    version3 = admission is not None and admission.get("schema") == "t2m.memory-admission.v3"
-    version2 = admission is not None and admission.get("schema") in ("t2m.memory-admission.v2", "t2m.memory-admission.v3")
+    version3 = admission is not None and admission.get("schema") in ("t2m.memory-admission.v3", "t2m.memory-admission.v4")
+    version2 = admission is not None and admission.get("schema") in ("t2m.memory-admission.v2", "t2m.memory-admission.v3", "t2m.memory-admission.v4")
     memory = provenance.get("memory", {})
     for name, key in ((names[0], "admission_sha256" if guarded else "witness_sha256"), (names[1], "continuation_input_sha256"),
                       (names[2], "continuation_output_sha256")):
@@ -66,7 +66,7 @@ def _checked_memory_members(checked, provenance):
             + [{"kind": kind, "buffer": b["name"]} for b in spec["buffers"] if b["effect"] != "read" for kind in ("owners", "visited")]
             + [{"kind": "program"}])
         layout = _guard_layout(spec, version2, atomics=version3)
-        if (admission.get("schema") not in ("t2m.memory-admission.v1", "t2m.memory-admission.v2", "t2m.memory-admission.v3")
+        if (admission.get("schema") not in ("t2m.memory-admission.v1", "t2m.memory-admission.v2", "t2m.memory-admission.v3", "t2m.memory-admission.v4")
                 or admission.get("strategy") != "runtime-guarded-private-output-state"
                 or admission.get("spec") != spec or admission.get("internal_arguments") != arguments
                 or admission.get("guarded_input_sha256") != record(names[1])["sha256"]
@@ -119,9 +119,10 @@ def _checked_word_intent(entry, members):
     if not isinstance(access, StringAttr) or json.loads(access.data) != json.loads(members["memory-admission.json"])["accesses"]:
         raise ValueError("source-word kernel access intent differs from admission")
     admission = json.loads(members["memory-admission.json"])
-    if admission.get("schema") == "t2m.memory-admission.v3":
-        from .kernel_atomic_evidence import EFFECT_PROFILE
-        if entry.attributes.get("prov.effect_profile") != StringAttr(EFFECT_PROFILE):
+    if admission.get("schema") in ("t2m.memory-admission.v3", "t2m.memory-admission.v4"):
+        from .kernel_atomic_evidence import EFFECT_PROFILE, TYPED_EFFECT_PROFILE
+        profile = TYPED_EFFECT_PROFILE if admission["schema"] == "t2m.memory-admission.v4" else EFFECT_PROFILE
+        if entry.attributes.get("prov.effect_profile") != StringAttr(profile):
             raise ValueError("atomic kernel lacks its private-invocation effect intent")
 
 

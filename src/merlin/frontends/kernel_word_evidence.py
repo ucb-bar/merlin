@@ -67,7 +67,7 @@ def checked_word_stages(stage, source, output, memory, inventory):
                        for key in ("input_types", "result_types"))
                 or len(binding["input_types"]) < 2
                 or len(binding["result_types"]) != (0 if binding["opcode"] == "tt.store" else 1)
-                or atomic and (memory.get("effect_profile") != "private-invocation-integer-atomics-v1"
+                or atomic and (memory.get("effect_profile") not in ("private-invocation-integer-atomics-v1", "private-invocation-typed-atomics-v2")
                                or len(binding["input_types"]) not in (3, 4) or binding.get("fill") != "unchanged")
                 or binding.get("opcode") == "tt.atomic_cas" and len(binding["input_types"]) != 4
                 or binding.get("fill") not in ("unchanged", "source-mask-select-after-zero-filled-load")):
