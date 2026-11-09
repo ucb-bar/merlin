@@ -255,6 +255,15 @@ int run(const void *const *inputs,void *const *outputs) {{ return capsule_run(&c
     if not interface.get("platform_binding"):
         parameter_field = "static capsule_parameters parameters;" if interface.get("model_parameters") else ""
         parameter_argument = "&parameters," if interface.get("model_parameters") else ""
+        typed = ""
+        pointer_arguments = "inputs,outputs"
+        if interface.get("pointer_abi") != "opaque_native_dense_buffers":
+            ni, no = len(interface["inputs"]), len(interface["outputs"])
+            typed = (f"  const float *typed_inputs[{max(1, ni)}]={{0}}; float *typed_outputs[{max(1, no)}]={{0}};\n"
+                     f"  if ((!inputs && {ni}u) || !outputs) return -1;\n"
+                     f"  for (size_t i=0;i<{ni}u;++i) typed_inputs[i]=(const float *)inputs[i];\n"
+                     f"  for (size_t i=0;i<{no}u;++i) typed_outputs[i]=(float *)outputs[i];\n")
+            pointer_arguments = "typed_inputs,typed_outputs"
         shim = f'''#include "{header}"
 static capsule_driver_state state;
 static _Alignas(64) unsigned char workspace[{interface["workspace_bytes"]}];
@@ -262,7 +271,7 @@ static void *contexts[{len(manifest["regions"])}];
 static capsule_driver_contexts dispatch={{contexts,{len(manifest["regions"])}}};
 {parameter_field}
 int run(const void *const *inputs,void *const *outputs) {{
-  return capsule_invoke(&state,workspace,sizeof(workspace),{parameter_argument}inputs,outputs,&dispatch);
+{typed}  return capsule_invoke(&state,workspace,sizeof(workspace),{parameter_argument}{pointer_arguments},&dispatch);
 }}
 '''
         if interface.get("model_parameters"):
