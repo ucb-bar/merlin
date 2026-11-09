@@ -4,7 +4,8 @@ on:
   push:
     paths:
       - 'merlin/lean/**'
-      - 'src/merlin/verify/lean/**'
+      - 'src/merlin/verify/**'
+      - 'src/merlin/transforms/**'
       - 'src/merlin/common/owned_process.py'
       - 'src/merlin/llvmlower/**'
       - 'src/merlin/runtime/backends/zephyr_model.py'
@@ -49,6 +50,7 @@ jobs:
           uv sync --frozen --extra dev --extra verify --extra targetgen
           uv venv --python 3.12 out/build/lean/mlir-venv
           uv pip install --python "$MERLIN_M2M_PYTHON" --no-deps -r build_tools/toolchains/lean-mlir-requirements.txt
+          echo "MERLIN_COMPILER_PYTHON=$MERLIN_M2M_PYTHON" >> "$GITHUB_ENV"
       - name: install isolated pinned CPU source oracle
         run: |
           uv venv --python 3.12 out/build/lean/torch-venv
@@ -58,6 +60,7 @@ jobs:
           set -euo pipefail
           curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+          echo "MERLIN_LEAN_SDK_BIN=$HOME/.elan/bin" >> "$GITHUB_ENV"
       - name: fetch Mathlib cache
         working-directory: merlin/lean
         run: lake exe cache get

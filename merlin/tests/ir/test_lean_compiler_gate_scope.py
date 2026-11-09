@@ -26,7 +26,6 @@ def test_all_selects_integrated_proofs_without_policy_admission(tmp_path, monkey
         assert validation.passes == frozenset(pass_validation.CHECKS)
         assert pass_validation.CHECKS == {
             "prune_dead_pure_tensor_ops": "tensor_refinement",
-            "cse": "tensor_refinement",
             "ordered_loop_unrolling": "compiler_loop_refinement",
             "ordered_loop_segmentation": "compiler_loop_refinement",
             "buffer_reuse": "compiler_buffer_refinement",
@@ -125,11 +124,11 @@ def test_explicit_integrated_selectors_do_not_approve_numerical_policy(tmp_path,
         validation.gate.close()
 
 
-@pytest.mark.parametrize("selection", ["preprocess_text_textual", "lower_bf16_matmul_f32acc", "w8a8_policy"])
+@pytest.mark.parametrize("selection", ["cse", "preprocess_text_textual", "lower_bf16_matmul_f32acc", "w8a8_policy"])
 def test_unregistered_gate_is_rejected_before_tool_or_policy_access(tmp_path, monkeypatch, selection):
     monkeypatch.setenv(pass_validation.ENV_PASSES, selection)
     monkeypatch.delenv(pass_validation.ENV_SDK_BIN, raising=False)
     monkeypatch.setattr(pass_validation.CheckerTools, "__post_init__", forbidden)
     monkeypatch.setattr(draft_policy, "require_admission", forbidden)
-    with pytest.raises(ValueError, match="subset.*cse.*prune_dead_pure_tensor_ops"):
+    with pytest.raises(ValueError, match="nonempty subset.*prune_dead_pure_tensor_ops"):
         pass_validation.from_environment(tmp_path)

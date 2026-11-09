@@ -124,7 +124,7 @@ must not be substituted for a numerical-policy proof or for one another.
 
 The explicit `lower_quant_ext` compiler selector now checks actual xDSL and
 textual Q/DQ lowering boundaries with typed refinement, source support and
-chain composition under the existing proposed Q/DQ semantics. It stays outside
+chain composition under the existing proposed Q/DQ semantics. It is included in
 `all`; source-specification approval and framework/IEEE/native fidelity are
 not established. Optional `SourceCapture` selection freshly reconstructs the
 retained original PT2 graph, checks source correspondence and reopens the pinned
