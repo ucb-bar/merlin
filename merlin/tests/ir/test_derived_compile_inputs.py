@@ -74,7 +74,10 @@ def test_derived_staging_preserves_both_graphs_and_excludes_evaluator_values_and
     manifest = stage_compile_inputs(capture, staged)
     assert manifest["source_profile"] == "derived-tensor-model"
     assert "frontend-trace.json" not in manifest["members"]
-    assert parse_mlir_text((staged / "program.mlir").read_text()).verify() is None
+    parsed = parse_mlir_text((staged / "program.mlir").read_text())
+    parsed.verify()
+    function = next(iter(parsed.ops))
+    assert function.arg_attrs.data[0].data["bufferization.writable"].value.data == 0
     assert json.loads((staged / "signature.json").read_text())["inputs"] == [{"shape": [2], "dtype": "f32"}]
     for name, digest in manifest["members"].items():
         assert hashlib.sha256((staged / name).read_bytes()).hexdigest() == digest
@@ -92,6 +95,21 @@ def test_changed_derived_compiler_input_never_publishes_a_stage(tmp_path, name):
     with pytest.raises(ValueError, match="differs from receipt"):
         stage_compile_inputs(capture, staged)
     assert not staged.exists()
+
+
+def test_derived_identity_program_has_no_required_kernel_calls(tmp_path):
+    capture, staged = tmp_path / "capture", tmp_path / "compiler"
+    receipt = capture_fixture(capture)
+    name = "kernel-bindings.json"
+    bindings = json.loads((capture / name).read_bytes())
+    bindings.update(calls=[], kernels={})
+    raw = encoded(bindings)
+    (capture / name).write_bytes(raw)
+    receipt["kernel_artifacts"] = {}
+    receipt["artifacts"][name] = record(raw)
+    (capture / "capture_receipt.json").write_bytes(encoded(receipt))
+    stage_compile_inputs(capture, staged)
+    assert not (staged / "source/kernels").exists()
 
 
 @pytest.mark.parametrize("relation", ["model", "kernel", "parent", "evaluator_path"])

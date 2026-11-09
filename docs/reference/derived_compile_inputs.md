@@ -20,6 +20,10 @@ explicit `t2m.bound-model-receipt.v1` derived-model path. It publishes a
 The latter retains a static typed `forward` program, weights and argument
 manifest, signature, original parent source/FX trace, TTIR implementations/specs,
 and `merlin.derived-source-correspondence.v1` derivation evidence.
+Public tensor inputs carry `bufferization.writable = false`: they are borrowed
+functional values, including parameters, and must survive repeated invocations.
+This prevents function-boundary bufferization's default writable-argument policy
+from silently turning destination reuse into caller-visible mutation.
 
 The original FX trace remains under `source/parent/`; it is not relabeled as
 correspondence for the transformed model. A compiler-only projection of the

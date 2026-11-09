@@ -15,7 +15,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from xdsl.dialects.builtin import StringAttr, TensorType
+from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, IntegerAttr, StringAttr, TensorType, i1
 from xdsl.dialects.func import FuncOp
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
@@ -96,7 +96,7 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
     if not isinstance(implementations, dict) or set(implementations) != set(bindings.get("kernels", {})):
         raise ValueError("derived kernel implementation inventory differs from correspondence")
     calls = bindings.get("calls")
-    if (not isinstance(calls, list) or not calls
+    if (not isinstance(calls, list)
             or {call.get("implementation_sha256") for call in calls} != set(implementations)
             or len({call.get("id") for call in calls}) != len(calls)):
         raise ValueError("derived kernel call correspondence is incomplete or ambiguous")
@@ -135,11 +135,19 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
 
     if module.attributes.get("prov.weights_file") != StringAttr("weights.safetensors"):
         raise ValueError("derived model needs its canonical relative weight reference")
+    # Public tensor values are borrowed functional inputs. Function-boundary
+    # bufferization otherwise treats entry arguments as writable by default.
+    # Keep this ABI premise explicit instead of allowing destination reuse to
+    # mutate model parameters or runtime inputs across invocations.
+    argument_attributes = list(entry.arg_attrs) if entry.arg_attrs is not None else [DictionaryAttr({}) for _ in entry.function_type.inputs]
+    entry.properties["arg_attrs"] = ArrayAttr(DictionaryAttr({**attributes.data, "bufferization.writable": IntegerAttr(0, i1)})
+                                             for attributes in argument_attributes)
     staged = module_text(module, generic=True).encode()
     parse_mlir_text(staged.decode()).verify()
     signature = {"schema": "merlin.compile-signature.v1", "entry": entry.sym_name.data,
                  "inputs": abi(entry.function_type.inputs), "outputs": abi(entry.function_type.outputs),
-                 "shape_scope": "static_captured_signature", "capture_dtype": "typed-per-argument"}
+                 "shape_scope": "static_captured_signature", "capture_dtype": "typed-per-argument",
+                 "input_mutability": "borrowed-immutable-tensors"}
     correspondence = {"schema": "merlin.derived-source-correspondence.v1", "producer": "triton2MLIR",
                       "input_model_sha256": _sha(raw), "staged_model_sha256": _sha(staged),
                       "derivation": bindings, "scope": "byte-bound-lineage; semantic-admission-unverified"}
