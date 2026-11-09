@@ -10,31 +10,28 @@ not a semantic KernelRequest emitter. Its widening rewrite also permits
 contraction, so it cannot establish this policy's separate, ascending-K binary32
 operations. Reuse this C emitter to keep the arithmetic contract explicit.
 
-The default POLICY remains for historical saved-boundary arithmetic and its raw
-word regression tests. Source-f32 selection must opt into SOURCE_POLICY; the
-historical product rounding and tile chop cannot stand in for that selection.
+SOURCE_POLICY selects separate, ascending-K binary32 operations for either
+accepted source representation. Placement on the host does not select a target
+product-rounding, reduction-tree, or tile-accumulation model.
 """
 from math import prod
 
 from merlin.semantic_compiler.model import IndexMap, TensorType, pointwise_identity_maps
 from .c_sources import c_source_pair
 
-# Historical explicit host arithmetic used by the saved-boundary head path.
-POLICY = "bf16-product-rne-tree32-f32-rne-bf16-rne-tiles-ltr-chop-v1"
 SOURCE_POLICY = "bf16-exact-product-f32-ltr-rne-bf16-rne-v1"
 
 
-def emit_c(source, name, *, policy=POLICY):
+def emit_c(source, name, *, policy=SOURCE_POLICY):
     """Emit a dense positive-zero-seeded BF16 matmul under an explicit policy.
 
     SOURCE_POLICY widens BF16 operands exactly, multiplies in binary32, adds in
     ascending K order with one binary32 rounding per step, and rounds once to
     BF16. BF16 products are exact in binary32 when representable; binary32
-    underflow follows RNE. POLICY retains the historical BF16 product/tree/tile
-    arithmetic for existing callers. This is host placement, with no FP8 recoding.
+    underflow follows RNE. This is host placement, with no FP8 recoding.
     The caller must disable contraction and fast math.
     """
-    if policy not in {POLICY, SOURCE_POLICY}:
+    if policy != SOURCE_POLICY:
         raise ValueError("unknown host BF16 matmul arithmetic policy")
     pure = [node for node in source.nodes if node.effect == "pure"]
     if source.physical_extents or source.boundary_layouts or source.output_layouts:
@@ -43,7 +40,7 @@ def emit_c(source, name, *, policy=POLICY):
         raise ValueError("host BF16 matmul operation or ordered inputs differ")
     output = source.node(source.outputs[0])
     attrs_of = lambda node: {key: value for key, value in node.attrs if not key.startswith("prov.")}
-    widened = policy == SOURCE_POLICY and output.op == "f32_to_bf16"
+    widened = output.op == "f32_to_bf16"
     if widened:
         if len(pure) != 4 or len(output.inputs) != 1:
             raise ValueError("host BF16 matmul needs a closed widened source chain")
@@ -155,40 +152,7 @@ int PREFIX(void *context,const void *const *inputs,void *const *outputs) {
   if (!temporary) return -3;
   const unsigned char *a=(const unsigned char *)inputs[0],*b=(const unsigned char *)inputs[1];
   for (size_t row=0;row<MDIMu;++row) for (size_t column=0;column<NDIMu;++column) {
-    uint16_t total=0;
-    for (size_t begin=0;begin<KDIMu;begin+=32u) {
-      float tree[32];
-      for (size_t lane=0;lane<32u;++lane) {
-        uint16_t left=0,right=0;
-        if (begin+lane<KDIMu) { left=PREFIX_load(a+2u*(row*KDIMu+begin+lane));right=PREFIX_load(b+2u*((begin+lane)*NDIMu+column)); }
-        volatile float product=PREFIX_float(left)*PREFIX_float(right);
-        uint32_t raw=PREFIX_bits(product);
-        if (!PREFIX_finite(raw)) { free(temporary);return -2; }
-        uint16_t rounded=PREFIX_rne(raw);
-        if ((rounded&0x7fffu)>=0x7f80u) { free(temporary);return -2; }
-        tree[lane]=PREFIX_float(rounded);
-      }
-      for (size_t width=32u;width>1u;width/=2u) for (size_t i=0;i<width/2u;++i) {
-        volatile float sum=tree[2u*i]+tree[2u*i+1u];
-        if (!PREFIX_finite(PREFIX_bits(sum))) { free(temporary);return -2; }
-        tree[i]=sum;
-      }
-      uint16_t partial=PREFIX_rne(PREFIX_bits(tree[0]));
-      if ((partial&0x7fffu)>=0x7f80u) { free(temporary);return -2; }
-      volatile float sum=PREFIX_float(total)+PREFIX_float(partial);
-      uint32_t raw=PREFIX_bits(sum);
-      if (!PREFIX_finite(raw)) { free(temporary);return -2; }
-      total=(uint16_t)(raw>>16);
-    }
-    size_t at=2u*(row*NDIMu+column);temporary[at]=(unsigned char)total;temporary[at+1u]=(unsigned char)(total>>8);
-  }
-  memcpy(outputs[0],temporary,CSIZEu);free(temporary);return 0;
-}
-"""
-    if policy == SOURCE_POLICY:
-        begin = implementation.index("    uint16_t total=0;")
-        end = implementation.index("    size_t at=", begin)
-        implementation = implementation[:begin] + r"""    float accumulator=0.0f;
+    float accumulator=0.0f;
     for (size_t reduction=0;reduction<KDIMu;++reduction) {
       uint16_t left=PREFIX_load(a+2u*(row*KDIMu+reduction));
       uint16_t right=PREFIX_load(b+2u*(reduction*NDIMu+column));
@@ -200,7 +164,11 @@ int PREFIX(void *context,const void *const *inputs,void *const *outputs) {
     }
     uint16_t total=PREFIX_rne(PREFIX_bits(accumulator));
     if ((total&0x7fffu)>=0x7f80u) { free(temporary);return -2; }
-""" + implementation[end:]
+    size_t at=2u*(row*NDIMu+column);temporary[at]=(unsigned char)total;temporary[at+1u]=(unsigned char)(total>>8);
+  }
+  memcpy(outputs[0],temporary,CSIZEu);free(temporary);return 0;
+}
+"""
     replacements = {"PREFIX": name, "MAXSIZE": str(max(sizes)), "ASIZE": str(sizes[0]), "BSIZE": str(sizes[1]),
                     "SEEDSIZE": str(sizes[2]), "CSIZE": str(output_size), "MDIM": str(m), "KDIM": str(k), "NDIM": str(n)}
     for token, value in replacements.items():

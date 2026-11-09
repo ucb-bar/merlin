@@ -7,7 +7,7 @@ import struct
 
 import pytest
 
-from merlin.compile.c_bf16_linear import POLICY, SOURCE_POLICY, emit_c
+from merlin.compile.c_bf16_linear import SOURCE_POLICY, emit_c
 from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType, pointwise_identity_maps
 
 
@@ -26,7 +26,7 @@ def request(k):
                          (("a", "external"), ("b", "external"), ("seed", "external")), "synthetic")
 
 
-def compile_c(directory, k, *, policy=POLICY, source=None):
+def compile_c(directory, k, *, policy=SOURCE_POLICY, source=None):
     source = source or request(k)
     record, files = emit_c(source, "dot", policy=policy)
     for name, text in files.items():
@@ -54,33 +54,6 @@ def memory(words):
 def call(library, arrays, output):
     inputs = (ctypes.c_void_p * 3)(*(ctypes.addressof(value) + 5 for value in arrays))
     return library.dot(None, inputs, (ctypes.c_void_p * 1)(ctypes.addressof(output) + 5))
-
-
-@pytest.mark.parametrize("a,b,expected", [
-    ([0x3f81], [0x3fc0], 0x3fc2),  # Exact BF16 product halfway rounds to even.
-    ([0x3f80] * 4, [0x4b80, 0x3f80, 0xcb80, 0xbf80], 0),  # Adjacent FP32 tree, not serial accumulation.
-    ([0x3f80] * 2, [0x4380, 0x4040], 0x4382),  # BF16 RNE after the FP32 tree.
-    ([0x3f80] * 33, [0x3f80] + [0] * 31 + [0x3c40], 0x3f81),  # Tile accumulation chops.
-    ([1], [0x3f80], 1),  # Preserve a BF16 subnormal through the declared operations.
-    ([0x8000], [0x3f80], 0),  # The positive-zero seed determines this zero sign.
-])
-def test_directed_rounding_tree_tile_seam_and_raw_bits(tmp_path, a, b, expected):
-    record, library = compile_c(tmp_path, len(a))
-    arrays, output = [memory(a), memory(b), memory([0])], memory([0xdead])
-    before = [value.raw for value in arrays]
-    assert call(library, arrays, output) == 0
-    assert output.raw == memory([expected]).raw
-    assert [value.raw for value in arrays] == before
-    assert record["numeric_semantics"] == POLICY
-    assert record["placement"] == "host"
-
-
-@pytest.mark.parametrize("k,expected", [(1, 0x3f80), (31, 0x41f8), (32, 0x4200), (33, 0x4204), (65, 0x4282)])
-def test_partial_and_multiple_tiles(tmp_path, k, expected):
-    _, library = compile_c(tmp_path, k)
-    arrays, output = [memory([0x3f80] * k), memory([0x3f80] * k), memory([0])], memory([0xdead])
-    assert call(library, arrays, output) == 0
-    assert output.raw == memory([expected]).raw
 
 
 def test_runtime_refusals_are_atomic(tmp_path):
@@ -128,9 +101,12 @@ def widened_request(k):
 
 @pytest.mark.parametrize("widened", [False, True])
 @pytest.mark.parametrize("a,b,expected", [
+    ([0x3f81], [0x3fc0], 0x3fc2),  # Exact BF16 product halfway rounds to even at the result.
     ([0x3f81, 0x3f80], [0x3fc0, 0xbfc0], 0x3c40),  # BF16-rounded products would give 0x3c80.
     ([0x3f80] * 4, [0x4b80, 0x3f80, 0xcb80, 0xbf80], 0xbf80),  # Ascending K, not a tree.
+    ([0x3f80] * 2, [0x4380, 0x4040], 0x4382),  # Final BF16 RNE after binary32 accumulation.
     ([0x3f80] * 33, [0x3f80] + [0] * 31 + [0x3c40], 0x3f82),  # Single final RNE, no tile chop.
+    ([1], [0x3f80], 1),  # Preserve a BF16 subnormal through the declared operations.
     ([1], [0x3fc0], 2),  # Subnormal final BF16 RNE, including tie-to-even.
     ([1], [1], 0),  # Binary32 product underflow follows source arithmetic.
     ([0x8000], [0x3f80], 0),
@@ -145,6 +121,7 @@ def test_source_f32_accumulation_preserves_products_and_order(tmp_path, widened,
     assert output.raw == memory([expected]).raw
     assert [value.raw for value in arrays] == before
     assert record["numeric_semantics"] == SOURCE_POLICY
+    assert record["placement"] == "host"
     assert record["source_request_digest"] == source.digest()
     assert record["inputs"] == ["a", "b", "seed"]
     assert record["outputs"] == ["out"]
@@ -176,10 +153,10 @@ def test_widened_source_seed_and_policy_refusals(tmp_path):
         output = memory([0xdead])
         assert call(library, [memory([0x3f80]), memory([0x3f80]), memory(words)], output) == -2
         assert output.raw == memory([0xdead]).raw
-    with pytest.raises(ValueError, match="dense logical"):
-        emit_c(source, "dot")
-    with pytest.raises(ValueError, match="unknown.*policy"):
-        emit_c(request(1), "dot", policy="unspecified")
+    assert emit_c(source, "dot") == emit_c(source, "dot", policy=SOURCE_POLICY)
+    for policy in ("unspecified", "bf16-product-rne-tree32-f32-rne-bf16-rne-tiles-ltr-chop-v1"):
+        with pytest.raises(ValueError, match="unknown.*policy"):
+            emit_c(request(1), "dot", policy=policy)
     changed_cast = replace(source.nodes[3], attrs=(("numeric_semantics", "other"),))
     with pytest.raises(ValueError, match="conversion"):
         emit_c(replace(source, nodes=(*source.nodes[:3], changed_cast, *source.nodes[4:])), "dot", policy=SOURCE_POLICY)
