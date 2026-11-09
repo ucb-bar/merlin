@@ -22,6 +22,22 @@ def _views(views, positions) -> list[str]:
             lines.append(f"    c->buffers[{dst}] = c->buffers[{src}];")
             continue
         if view["kind"] == "pack_permutation":
+            policy = view.get("packing_policy", {})
+            if policy.get("strategy") == "blocked_rank2":
+                rows, columns = view["output_shape"]
+                row_stride, column_stride = view["source_strides"]
+                tr, tc = policy["effective_tile_shape"]
+                width = view["element_bytes"]
+                lines.append(f"    for(size_t r0=0; r0<{rows};) {{ size_t nr={rows}-r0; if(nr>{tr})nr={tr};")
+                lines.append(f"      for(size_t c0=0; c0<{columns};) {{ size_t nc={columns}-c0; if(nc>{tc})nc={tc};")
+                lines.append("        for(size_t r=0;r<nr;++r)for(size_t q=0;q<nc;++q) {")
+                lines.append(
+                    f"          memcpy((unsigned char*)c->buffers[{dst}]+((r0+r)*{columns}+c0+q)*{width},"
+                    f"(const unsigned char*)c->buffers[{src}]+"
+                    f"((r0+r)*{row_stride}+(c0+q)*{column_stride})*{width},{width});"
+                )
+                lines.append("        } c0+=nc;\n      } r0+=nr;\n    }")
+                continue
             count = math.prod(view["output_shape"])
             lines.append(f"    for (size_t i=0; i<{count}; ++i) {{ size_t rem=i, source=0;")
             for size, stride in reversed(list(zip(view["output_shape"], view["source_strides"], strict=True))):

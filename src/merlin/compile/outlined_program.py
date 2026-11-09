@@ -31,6 +31,8 @@ def build_outlined_program(
     prefix: str = "merlin_chain",
     prepared_staged_kernels=None,
     data_preparation: bool = False,
+    packing_tile_shape: tuple[int, int] | None = None,
+    packing_tile_budget_bytes: int | None = None,
 ) -> dict:
     """Compile isolated kernels and emit a real C staged chain, default-off.
 
@@ -75,6 +77,8 @@ def build_outlined_program(
             workspace_budget_bytes=workspace_budget_bytes,
             alignment_bytes=alignment_bytes,
             data_preparation=data_preparation,
+            packing_tile_shape=packing_tile_shape,
+            packing_tile_budget_bytes=packing_tile_budget_bytes,
         )
         prepared_staged_kernels = {} if prepared_staged_kernels is None else dict(prepared_staged_kernels)
         plan, state_layout = prepared_staged_kernel.reserve_states(
@@ -110,6 +114,8 @@ def build_outlined_program(
             from merlin.llvmlower import deployable_packing
 
             identity["data_preparation"] = True
+            if packing_tile_shape is not None:
+                identity["controller_packing_policy"] = plan.data_preparation["controller_packing_policy"]
             identity["compiler_owner_sha256"][str(Path(deployable_packing.__file__))] = sha256_file(
                 deployable_packing.__file__
             )
@@ -274,6 +280,10 @@ def main(argv=None) -> int:
         if not isinstance(config.get(key), list):
             raise ValueError("worker assignments and target compiler flags require JSON lists")
         config[key] = tuple(config[key])
+    if config.get("packing_tile_shape") is not None:
+        if not isinstance(config["packing_tile_shape"], list):
+            raise ValueError("packing_tile_shape requires a JSON list")
+        config["packing_tile_shape"] = tuple(config["packing_tile_shape"])
     built = build_outlined_program(args.source, args.output, roles=StagedRoles(**role_data), **config)
     print(json.dumps({"status": built["status"], "build": str(args.output / "build.json")}))
     return 0

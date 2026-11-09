@@ -234,3 +234,16 @@ provenance. Plan/build records bind this choice and the preparation owner source
 This seam supplies neither automatic offload policy nor source-model numerical,
 allocator, target or performance qualification. Full independent target output
 checks and complete memory/runtime admission remain required.
+
+For a proved dense rank-2 permutation, the separate options
+`packing_tile_shape=(rows, columns)` and `packing_tile_budget_bytes=budget`
+select blocked byte transport. Both are required together with
+`data_preparation=True`; JSON uses a two-element list. The budget bounds twice
+the effective tile's element count times the storage width, for its logical
+source and destination footprints. It allocates no scratch and declares no cache
+capacity, cache-line traffic or hardware performance benefit. Partial tiles copy
+every element exactly once. Higher-rank proved permutations explicitly retain
+the flat path. The default `None` preserves the original loop and plan metadata.
+The selected shape, budget, logical traffic and fallback reason enter the plan
+and build identity. Input/output alias rejection and whole-chain lifetimes remain
+unchanged; tile selection grants no in-place permission or numerical conversion.

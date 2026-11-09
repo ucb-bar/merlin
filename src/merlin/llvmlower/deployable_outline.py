@@ -144,6 +144,8 @@ def plan_deployable_chain(
     alignment_bytes: int,
     entry: str = "forward",
     data_preparation: bool = False,
+    packing_tile_shape: tuple[int, int] | None = None,
+    packing_tile_budget_bytes: int | None = None,
 ) -> DeployableChain:
     """Admit a closed chain without changing the caller's module or arithmetic.
 
@@ -163,6 +165,13 @@ def plan_deployable_chain(
         raise ValueError("positive workspace budget and power-of-two alignment >=8 required")
     if type(data_preparation) is not bool:
         raise ValueError("explicit boolean data preparation selection required")
+    packing_policy = None
+    if packing_tile_shape is not None or packing_tile_budget_bytes is not None:
+        from merlin.llvmlower.deployable_packing import tile_policy
+
+        packing_policy = tile_policy(packing_tile_shape, packing_tile_budget_bytes)
+        if not data_preparation:
+            raise ValueError("blocked byte packing requires explicit data_preparation=True")
     module.verify()
     source_hash = hashlib.sha256(checked_generic_text(module).encode()).hexdigest()
     preparation = None
@@ -173,6 +182,8 @@ def plan_deployable_chain(
         count = canonicalize_constant_splats(module)
         module.verify()
         preparation = {"constant_splats_canonicalized": count, "controller_permutations": []}
+        if packing_policy is not None:
+            preparation["controller_packing_policy"] = packing_policy
     entries = [op for op in module.body.block.ops if op.name == "func.func" and op.sym_name.data == entry]
     if len(entries) != 1:
         raise ValueError("one explicit source entry required")
@@ -206,7 +217,7 @@ def plan_deployable_chain(
         specs[bid] = ChainBuffer(bid, shape, dtype, size, buffer.arg_index, None)
     packing = {}
     if data_preparation:
-        from merlin.llvmlower.deployable_packing import static_permutation
+        from merlin.llvmlower.deployable_packing import select_packing_policy, static_permutation
 
         for node in program.nodes:
             if node.kind == "dispatch":
@@ -217,6 +228,7 @@ def plan_deployable_chain(
                 )
                 view = static_permutation(function, node, specs)
                 if view is not None:
+                    view = select_packing_policy(view, packing_policy)
                     node.kind = "view"
                     packing[id(node)] = view
                     preparation["controller_permutations"].append(view)

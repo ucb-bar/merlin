@@ -164,3 +164,55 @@ def static_permutation(function, node, specs):
         "element_bytes": source.bytes // math.prod(source.shape),
         "effect": "readonly source and complete fresh dense destination; byte copies only",
     }
+
+
+def tile_policy(tile_shape, tile_budget_bytes):
+    """Validate explicit logical-footprint knobs; infer no cache/target facts."""
+    if tile_shape is None and tile_budget_bytes is None:
+        return None
+    if (
+        not isinstance(tile_shape, tuple)
+        or len(tile_shape) != 2
+        or any(type(size) is not int or not 0 < size < 1 << 63 for size in tile_shape)
+        or type(tile_budget_bytes) is not int
+        or not 0 < tile_budget_bytes < 1 << 63
+    ):
+        raise ValueError("positive explicit rank2 tile_shape and logical tile budget required")
+    return {"tile_shape": tile_shape, "logical_tile_budget_bytes": tile_budget_bytes}
+
+
+def select_packing_policy(view, policy):
+    """Select only on an already-proved fresh dense byte permutation."""
+    if policy is None:
+        return view
+    result = dict(view)
+    common = {
+        **policy,
+        "extra_scratch_bytes": 0,
+        "logical_read_bytes": math.prod(view["source_shape"]) * view["element_bytes"],
+        "logical_write_bytes": math.prod(view["output_shape"]) * view["element_bytes"],
+        "physical_traffic_bytes": None,
+        "physical_cache_geometry_known": False,
+        "traffic_basis": "one logical element read and write; not physical transactions or cache traffic",
+    }
+    if len(view["output_shape"]) != 2:
+        result["packing_policy"] = {
+            **common,
+            "strategy": "flat",
+            "reason": "blocked selection supports rank2 only; proved flat permutation retained",
+        }
+        return result
+    actual = tuple(
+        min(requested, size) for requested, size in zip(policy["tile_shape"], view["output_shape"], strict=True)
+    )
+    footprint = 2 * math.prod(actual) * view["element_bytes"]
+    if footprint > policy["logical_tile_budget_bytes"]:
+        raise ValueError(f"source+destination logical tile footprint {footprint} exceeds declared budget")
+    result["packing_policy"] = {
+        **common,
+        "strategy": "blocked_rank2",
+        "effective_tile_shape": actual,
+        "logical_tile_footprint_bytes": footprint,
+        "budget_basis": "source plus destination logical tile bytes; no scratch allocation or assumed cache capacity",
+    }
+    return result

@@ -787,3 +787,7 @@ original FP32 quantization/scaling DAG and account for the added correction work
   controller byte packing. Preserve source/argument/attribute identity, dense
   encoding, full bounds and whole-chain lifetimes; all numerical work stays in
   compute callbacks. Unknown effects/layouts/bodies grant no packing permission.
+- Optional blocked controller permutations require an explicit rank2 tile shape
+  and logical source-plus-destination tile budget. Infer no cache geometry or
+  physical traffic. Keep the default flat loop, exact byte bits, tail coverage,
+  fresh-output alias proof and original arithmetic kernels unchanged.
